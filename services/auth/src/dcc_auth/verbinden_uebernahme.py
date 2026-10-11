@@ -113,6 +113,12 @@ async def uebernahme_pruefen(
     (dort wirft ``instanz_verbinden`` selbst) oder ein fälliger Antrag dieses
     Kontos gegen genau diesen Eintrag. Sonst ``UebernahmeGesperrt``,
     ``UebernahmeBeantragt`` oder ``ZuVieleServer``. Ohne Commit.
+
+    **Falle für Aufrufer:** Scheitert das Anlegen des Antrags an einem
+    gleichzeitigen (``IntegrityError``), rollt die Funktion die Transaktion
+    des Aufrufers zurück und liest ``user`` neu; was er vorher in dieser
+    Sitzung geschrieben hat, ist dann weg. Nach dem letzten Versuch steigt
+    die ``IntegrityError`` selbst auf.
     """
     user_id = user.id
     for _ in range(_VERSUCHE - 1):

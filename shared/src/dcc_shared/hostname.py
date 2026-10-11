@@ -4,7 +4,7 @@ Seit dem Verbinden per Gerätecode (Spec
 ``docs/superpowers/specs/2026-10-09-selfhost-ohne-freigabe-design.md``, E1)
 trägt die Cloud die Adresse eines Servers selbst ein: so, wie der Server sie
 beim Anfragen des Codes nennt. Dieselbe Adresse muss danach in jeder
-Schreibweise (mit Schema, Port, Grossbuchstaben, abschliessendem Punkt)
+Schreibweise (mit Schema, Port, Großbuchstaben, abschließendem Punkt)
 denselben Eintrag treffen — sonst entstünden zwei Einträge für einen Server,
 und die Übernahme einer Adresse (E2) fände den alten nicht.
 
@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 # Mindestens zwei Labels; ein Label beginnt und endet mit Buchstabe oder Ziffer
 # (RFC 1123). Oberste Ebene alphabetisch oder Punycode — eine reine Zahl dort
-# hiesse IP-Adresse, und die kann kein Zertifikat für einen Namen tragen.
+# hieße IP-Adresse, und die kann kein Zertifikat für einen Namen tragen.
 _FQDN_RE = re.compile(
     r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$"
 )

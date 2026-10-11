@@ -35,7 +35,13 @@ async def hinweis_mail(db: AsyncSession, empfaenger: User, mail: tuple[str, str]
     try:
         await send_email(empfaenger.email, betreff, text, session=db)
     except Exception as exc:  # noqa: BLE001
-        log.warning("verbinden_hinweis_mail_fehlgeschlagen user_id=%s: %s", empfaenger.id, exc)
+        # Nur der Typ: bei ``SMTPRecipientsRefused`` steht die Empfängeradresse
+        # in der Meldung, und die gehört nicht ins Log.
+        log.warning(
+            "verbinden_hinweis_mail_fehlgeschlagen user_id=%s: %s",
+            empfaenger.id,
+            type(exc).__name__,
+        )
 
 
 def compose_verbinden_hinweis(hostname: str, zeitpunkt: datetime) -> tuple[str, str]:
@@ -48,8 +54,8 @@ def compose_verbinden_hinweis(hostname: str, zeitpunkt: datetime) -> tuple[str, 
         f"dein Pulse-Konto wurde soeben mit einem Server verbunden:\n\n"
         f"  Adresse:   {hostname}\n"
         f"  Zeitpunkt: {_utc_minute(zeitpunkt)}\n\n"
-        f"Der Server erscheint jetzt unter Meine Server und in der Leiste\n"
-        f"deiner Geräte.\n\n"
+        f"Sobald der Server seine Zugangsdaten abgeholt hat, erscheint er unter\n"
+        f"Meine Server und in der Leiste deiner Geräte.\n\n"
         f"Warst du das nicht? Lösche den Server in Pulse unter Meine Server.\n"
     )
     return subject, body

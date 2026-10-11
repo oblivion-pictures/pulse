@@ -605,6 +605,9 @@ async def test_hinweis_mail_nach_dem_verbinden(client, mit_redis, nachweis, monk
     assert _HOST in text
     assert "UTC" in text
     assert "Warst du das nicht? Lösche den Server in Pulse unter Meine Server." in text
+    # Beim Versand ist der Server noch nicht abgeholt, also nicht schon da.
+    assert "erscheint jetzt" not in text
+    assert "Sobald der Server seine Zugangsdaten abgeholt hat" in text
     assert code not in text and code.replace("-", "") not in text
 
 
@@ -624,6 +627,35 @@ async def test_versandfehler_bricht_das_verbinden_nicht_ab(
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "verbunden"
     assert (await _abholen(client)).status_code == 200
+
+
+async def test_versandfehler_loggt_nur_den_typ_nicht_die_adresse(
+    client, mit_redis, nachweis, monkeypatch, caplog
+):
+    """``SMTPRecipientsRefused`` trägt die Empfängeradresse in seiner Meldung."""
+    import smtplib
+
+    adresse = "postfach-kaputt@dcc-test.example.com"
+
+    async def abgelehnt(*_a, **_k):
+        raise smtplib.SMTPRecipientsRefused({adresse: (550, b"no such user")})
+
+    monkeypatch.setattr(email_verbinden, "send_email", abgelehnt)
+    konto = await _konto(client, "postfach-kaputt")
+    code = (await _start(client)).json()["code"]
+
+    with caplog.at_level("WARNING", logger=email_verbinden.__name__):
+        r = await _entscheiden(client, konto, code, "verbinden")
+    assert r.status_code == 200, r.text
+    (zeile,) = [
+        z
+        for z in caplog.records
+        if z.getMessage().startswith("verbinden_hinweis_mail_fehlgeschlagen")
+    ]
+    assert zeile.getMessage() == (
+        f"verbinden_hinweis_mail_fehlgeschlagen user_id={konto['id']}: SMTPRecipientsRefused"
+    )
+    assert adresse not in caplog.text and "no such user" not in caplog.text
 
 
 async def test_uebernahme_schreibt_dem_vorbesitzer(

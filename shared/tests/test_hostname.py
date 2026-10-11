@@ -1,9 +1,9 @@
-"""Eine Schreibweise fuer jede Server-Adresse.
+"""Eine Schreibweise für jede Server-Adresse.
 
-Die Cloud traegt beim Verbinden eines Servers dessen Adresse in
-``auth.registered_instances.hostname`` ein und findet ihn spaeter darueber
-wieder (Serverticket, Uebernahme). Kaeme dieselbe Adresse einmal mit Schema,
-Port oder Grossbuchstaben an, entstuenden zwei Eintraege fuer einen Server.
+Die Cloud trägt beim Verbinden eines Servers dessen Adresse in
+``auth.registered_instances.hostname`` ein und findet ihn später darüber
+wieder (Serverticket, Übernahme). Käme dieselbe Adresse einmal mit Schema,
+Port oder Großbuchstaben an, entstünden zwei Einträge für einen Server.
 """
 
 from __future__ import annotations
