@@ -40,6 +40,17 @@ import Foundation
                  ausgang(.abbruch, nil, besetzt: true) == .meldenUndSofortBeenden)
             soll("A5: der laufende Anruf selbst ist nicht besetzt",
                  ausgang(.klingeln, u, besetzt: true) == .erneutMelden(u))
+            // R1: ein klingelnder Anruf DESSELBEN Kanals gilt als abgelöst.
+            let alt = UUID()
+            soll("R1: ein Rückruf desselben Kanals löst den klingelnden ab",
+                 V.pushAusgang(art: .klingeln, bekannt: nil, klingelt: false, kuerzlichBeendet: false,
+                               ohneCallKit: false, abgeloest: alt) == .abloesen(alt))
+            soll("R1: läuft daneben noch ein anderer, bleibt es besetzt (A5)",
+                 V.pushAusgang(art: .klingeln, bekannt: nil, klingelt: false, kuerzlichBeendet: false,
+                               ohneCallKit: false, besetzt: true, abgeloest: alt) == .besetzt)
+            soll("R1: ein eben beendeter löst nichts ab",
+                 V.pushAusgang(art: .klingeln, bekannt: nil, klingelt: false, kuerzlichBeendet: true,
+                               ohneCallKit: false, abgeloest: alt) == .meldenUndSofortBeenden)
             // **A6, die Entscheidung:** die Hülle hält keinen CallKit-Eintrag
             // nach dem WS-Ende offen. Ein Abbruch, der danach kommt, wird
             // weiter gemeldet und sofort beendet — gespart wird er am Server,
@@ -61,6 +72,45 @@ import Foundation
                 v.annehmenVomWeb(kennung: k, name: "Probe") { weiter.resume() }
             }
             soll("A4: Annahme nach dem Ende beginnt kein Gespräch", v.uuid(fuer: k) == nil && !v.fuehrt(k))
+        }
+
+        private static func klingeln(_ kennung: String, kanal: String) -> [String: String] {
+            ["art": "klingelt", "call_id": kennung, "einleiter_name": "Probe",
+             "anruf_art": "dm", "channel_id": kanal]
+        }
+
+        /// **R1 gegen CallKit**: ein Rückruf desselben Kanals, während der
+        /// frühere noch klingelt — im selben Lauf, weil der Simulator jeden
+        /// Anruf nach rund 150 ms trennt (Kopf von `AnrufPushProbe`). Danach
+        /// ein Anruf aus einem ANDEREN Kanal: der bleibt besetzt (A5).
+        @MainActor static func abloesung(_ stamm: String) async {
+            let v = V.geteilt
+            // CallKit führt höchstens eine Anrufgruppe; die Anrufe davor
+            // müssen dort erst zu Ende sein (s. `laufendesGespraechVersuch`).
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            let alt = stamm + "-alt", neu = stamm + "-neu", fremd = stamm + "-fremd"
+            var altUuid: UUID?
+            await AnrufPushProbe.zustellen([
+                .init(was: "R1: ein Anruf klingelt", inhalt: klingeln(alt, kanal: "r1"), ausgang: .neuMelden),
+                .init(was: "R1: Rückruf desselben Kanals, der frühere klingelt noch",
+                      inhalt: klingeln(neu, kanal: "r1"),
+                      ausgangDanach: { altUuid.map { .abloesen($0) } },
+                      vorher: { altUuid = v.uuid(fuer: alt) },
+                      // Der Beleg, dass CallKit den neuen gleich nach dem Ende
+                      // des alten annimmt (eine Anrufgruppe, `starten()`).
+                      folge: .angezeigt,
+                      stand: ("der frühere ist beendet, der neue klingelt", {
+                          v.uuid(fuer: alt) == nil && v.kuerzlichBeendet[alt] != nil
+                              && v.uuid(fuer: neu).map { v.phasen[$0] == .klingelt } == true
+                      })),
+                .init(was: "R1/A5: ein Anruf aus einem anderen Kanal bleibt besetzt",
+                      inhalt: klingeln(fremd, kanal: "r1-anders"), ausgang: .besetzt,
+                      stand: ("abgewiesen, der neue klingelt weiter", {
+                          v.uuid(fuer: fremd) == nil && v.uuid(fuer: neu) != nil
+                      })),
+            ])
+            soll("R1: der frühere war gebucht, als der Rückruf kam", altUuid != nil)
+            v.beenden(kennung: neu, grund: .lokal)
         }
     }
 #endif

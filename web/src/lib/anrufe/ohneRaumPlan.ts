@@ -17,6 +17,12 @@
  *  - **angenommen** (mit Kanal): die Annahme fortsetzen, die der Nutzer schon
  *    gegeben hat. Der Server nimmt sie idempotent; war der Anruf inzwischen
  *    vorbei, räumt der Fehlschlag ab wie jede gescheiterte Annahme.
+ *  - **klingelt ohne Kanal** (die Oberfläche hatte ihn über `ankommen`
+ *    gemeldet, der Push mit dem Kontext kam nie): ablehnen, nicht auflegen.
+ *    Der Server prüft beim Auflegen die Rolle nicht, und ein Auflegen auf
+ *    einen klingelnden Gruppenanruf beendet ihn für ALLE (`routes/anrufe.py`,
+ *    `anruf_auflegen` → `_beenden`). Ein Ablehnen beendet ihn nur für dieses
+ *    Konto (Nachprüfung der Fix-Runden, R2).
  *  - **sonst** (ausgehend, oder angenommen ohne Kanal — beides hat die Seite
  *    selbst begonnen, und mit ihr ist der Anruf-Schlüssel weg): beenden, am
  *    Server und bei CallKit. Fortsetzen ginge nicht, und ein stehen gelassener
@@ -41,7 +47,7 @@ export type OhneRaumPlan =
       anruf: { call_id: string; art: 'dm' | 'gruppe'; channel_id: string; einleiter_id: string };
       name: string;
     }
-  | { tun: 'beenden'; kennung: string };
+  | { tun: 'beenden' | 'ablehnen'; kennung: string };
 
 /** `null`: nichts zu tun — kein solcher Anruf, oder eine Hülle, die das Feld
  *  nicht kennt („unbekannt", dann bleibt es wie bisher). */
@@ -60,5 +66,5 @@ export function ohneRaumPlan(o: AnrufOhneRaum | null | undefined): OhneRaumPlan 
       name: o.kontext.einleiter_name || 'Pulse'
     };
   }
-  return { tun: 'beenden', kennung: o.kennung };
+  return { tun: o.phase === 'klingelt' ? 'ablehnen' : 'beenden', kennung: o.kennung };
 }

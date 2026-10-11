@@ -172,7 +172,7 @@ export class AnrufStore extends AnrufMedienZustand {
         // **Web-Weg: die Klingel-Anzeige ZUERST weg** (Bughunt E4). Bis zum
         // 2026-10-11 kam das erst nach dem Verbinden — die iOS-Hülle hielt
         // die Session solange für CallKits und übersprang das Aktivieren.
-        await nativBeenden('anderswo-angenommen');
+        await nativBeenden('anderswo-angenommen', anruf.id);
       }
       if (!nochDa()) return;
       if (e2eeFaehig(anruf.art)) {
@@ -329,7 +329,7 @@ export class AnrufStore extends AnrufMedienZustand {
     // Klingel-Notification auf dem Sperrbildschirm entfernen — deckt ablehnen,
     // auflegen, call_ende, Klingel-Timeout und Annahme-Fehlschlag ab. Auf iOS
     // schliesst das den CallKit-Anruf und mit ihm den nativen Raum.
-    void nativBeenden(grund);
+    void nativBeenden(grund, this.aktiv?.id || undefined);
     this.#annahmeLaeuftFuer = null;
     // Auch der Klingel-Wecker gehört zum Aufräumen — sonst feuert der Wecker
     // eines beendeten Anrufs in den NÄCHSTEN hinein und legt ihn still weg.

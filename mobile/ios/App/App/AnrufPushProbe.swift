@@ -43,7 +43,7 @@ import Foundation
     /// unseren. Und wo zwei Pushes einen lebenden Anruf brauchen, gehen sie
     /// im selben Lauf hintereinander hinaus.
     enum AnrufPushProbe {
-        private typealias V = Anrufverwaltung
+        typealias V = Anrufverwaltung
         @MainActor private static var fehler = 0
 
         static func ausStartargumenten() {
@@ -122,10 +122,13 @@ import Foundation
         // MARK: - Gegen CallKit
 
         /// Ein Push und was für ihn gelten muss (`nil`: nicht geprüft).
-        private struct Push {
+        struct Push {
             let was: String
             let inhalt: [String: String]
             var ausgang: V.PushAusgang?
+            /// Der erwartete Ausgang, erst nach dem Lauf ausgewertet — für einen,
+            /// der eine UUID nennt, die erst im Lauf entsteht (R1).
+            var ausgangDanach: (() -> V.PushAusgang?)?
             /// Läuft unmittelbar vor dem Push, im selben Lauf.
             var vorher: (() -> Void)?
             var folge: V.MeldungsFolge?
@@ -173,7 +176,7 @@ import Foundation
         /// verarbeitet war (im Simulator sein Abbau, s. Kopf). Der Zustand
         /// bleibt dann ungeprüft — gezählt und geprüft wird alles andere.
         @MainActor @discardableResult
-        private static func zustellen(_ pushes: [Push]) async -> Bool {
+        static func zustellen(_ pushes: [Push]) async -> Bool {
             let v = V.geteilt
             let fremdVorher = v.spur.fremdEnden
             var beobachtet = [Beobachtung](repeating: Beobachtung(), count: pushes.count)
@@ -196,7 +199,9 @@ import Foundation
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) { wecker.wecken() }
             }
             for (p, b) in zip(pushes, beobachtet) {
-                if let erwartet = p.ausgang { soll("\(p.was): Ausgang \(erwartet)", b.ausgang == erwartet) }
+                if let erwartet = p.ausgang ?? p.ausgangDanach?() {
+                    soll("\(p.was): Ausgang \(erwartet)", b.ausgang == erwartet)
+                }
                 soll("\(p.was): genau eine Meldung im selben Lauf (\(b.gemeldet))", b.gemeldet == 1)
                 soll("\(p.was): PushKits completion gerufen", b.fertig)
                 if let erwartet = p.folge { soll("\(p.was): CallKit antwortet \(erwartet)", b.folge == erwartet) }
@@ -281,6 +286,7 @@ import Foundation
                 ausgang: .meldenUndSofortBeenden, stand: ("bleibt unbekannt", { v.uuid(fuer: k4) == nil }))])
 
             await laufendesGespraech(stamm + "-5")
+            await AnrufPushProbe2.abloesung(stamm + "-6")
         }
 
         /// Ein Anruf, den erst der Push bringt — und die Oberfläche, die ihn

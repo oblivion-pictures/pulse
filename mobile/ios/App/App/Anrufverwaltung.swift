@@ -63,6 +63,9 @@ public final class Anrufverwaltung: NSObject {
     /// einmal klingeln lassen.
     var kuerzlichBeendet: [String: Date] = [:]
     var klingelUhren: [UUID: DispatchWorkItem] = [:]
+    /// Die Frist eines angenommenen Anrufs, dessen Raum noch nicht begann
+    /// (R4, `raumFristStellen`).
+    var raumUhren: [UUID: DispatchWorkItem] = [:]
     /// Anrufe, für die der native Raum schon begonnen wurde
     /// (`AnrufRaum.beitreten`). **Unterscheidet ein Gespräch von einer
     /// Annahme, die der Server nie gesehen hat** (A3, `pushAusgang`), und
@@ -76,6 +79,11 @@ public final class Anrufverwaltung: NSObject {
     /// 60 s liegen hinter den 45 s des Webs (`KLINGEL_TIMEOUT_MS`) und der
     /// Push-Laufzeit — im Normalfall beendet der Server vorher.
     static let klingelFrist: TimeInterval = 60
+    /// **Wie lange ein angenommener Anruf auf seinen Raum wartet** (R4). Der
+    /// Weg der Oberfläche dorthin: Annahme am Server, der Schlüssel des
+    /// Anrufers (höchstens 10 s, `SCHLUESSEL_WARTEZEIT_MS`), Token, Beitritt.
+    /// 60 s liegen weit dahinter. Gesetzt, nicht gemessen.
+    static let raumFrist: TimeInterval = 60
 
     /// Der PushKit-Token dieses Geräts, sobald ihn das System geliefert hat.
     public internal(set) var token: String?
@@ -262,6 +270,7 @@ public final class Anrufverwaltung: NSObject {
         phasen[uuid] = nil
         annahmenVomWeb.remove(uuid)
         klingelUhren.removeValue(forKey: uuid)?.cancel()
+        raumUhren.removeValue(forKey: uuid)?.cancel()
     }
 
     /// Ein Anruf ohne begonnenen Raum (A10, `raumZustand`): Kennung, Phase

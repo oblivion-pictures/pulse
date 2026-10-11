@@ -17,6 +17,8 @@ extension Anrufverwaltung: CXProviderDelegate {
     public func providerDidReset(_ provider: CXProvider) {
         for uhr in klingelUhren.values { uhr.cancel() }
         klingelUhren.removeAll()
+        for uhr in raumUhren.values { uhr.cancel() }
+        raumUhren.removeAll()
         // Wie jedes andere Ende: ein Push danach klingelt nicht neu.
         for kennung in kennungen.values { kuerzlichBeendet[kennung] = Date() }
         kennungen.removeAll()
@@ -46,7 +48,37 @@ extension Anrufverwaltung: CXProviderDelegate {
         sessionUebernehmen()
         // Kam die Annahme aus der Oberfläche, weiss sie es schon.
         if annahmenVomWeb.remove(uuid) == nil { melde("annehmen", uuid) }
+        raumFristStellen(uuid)
         action.fulfill()
+    }
+
+    /// **Ein angenommener Anruf, dessen Raum nie beginnt, endet nach der
+    /// Frist** (Nachprüfung der Fix-Runden, R4). Die Annahme erreicht den
+    /// Server nur über das Web; bleibt es eingefroren, steht bei CallKit ein
+    /// Gespräch in Stille. Für einen 1:1-Anruf schliesst das der Abbruch-Push
+    /// am Ende (A3) — ein Gruppenanruf aber endet nicht, solange die anderen
+    /// sprechen, und bekam deshalb nie einen. `alleinGelassen` (`AnrufRaum`)
+    /// hilft hier nicht: es hängt am Raum, und genau der fehlt.
+    ///
+    /// **„ablehnen", nicht „auflegen"**: der Server hat die Annahme womöglich
+    /// nie gesehen, der Anruf klingelt dort noch — und ein Auflegen auf einen
+    /// klingelnden Gruppenanruf beendet ihn für alle (`routes/anrufe.py`). Ein
+    /// Ablehnen nimmt nur dieses Konto heraus.
+    private func raumFristStellen(_ uuid: UUID) {
+        let uhr = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            raumUhren[uuid] = nil
+            guard phasen[uuid] == .angenommen, let kennung = kennungen[uuid],
+                  !raumBegonnen.contains(kennung) else { return }
+            NSLog("[PulseAnruf] %@ angenommen, aber nach %.0f s kein Raum — beendet",
+                  kennung, Self.raumFrist)
+            melde("ablehnen", uuid)
+            anbieter?.reportCall(with: uuid, endedAt: nil, reason: .failed)
+            anrufZu(uuid)
+        }
+        raumUhren.removeValue(forKey: uuid)?.cancel()
+        raumUhren[uuid] = uhr
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.raumFrist, execute: uhr)
     }
 
     public func provider(_ provider: CXProvider, perform action: CXStartCallAction) {

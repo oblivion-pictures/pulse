@@ -51,10 +51,16 @@ public class AnrufPlugin: CAPPlugin, CAPBridgedPlugin {
 
     /// `grund` (optional, s. `Endgrund`): eine ältere Oberfläche schickt ihn
     /// nicht — dann gilt „die Gegenseite", wie bisher.
+    ///
+    /// `callId` (optional): nur diesen Anruf beenden. Ohne — eine ältere
+    /// Oberfläche — jeden. Bis zur Nachprüfung der Fix-Runden beendete das
+    /// Aufräumen eines alten Anrufs im Web auch einen neuen, der ihn hier
+    /// inzwischen abgelöst hatte (R1).
     @objc func beenden(_ call: CAPPluginCall) {
         let grund = call.getString("grund").flatMap(Anrufverwaltung.Endgrund.init) ?? .gegenseite
+        let kennung = call.getString("callId").flatMap { $0.isEmpty ? nil : $0 }
         DispatchQueue.main.async {
-            Anrufverwaltung.geteilt.beenden(grund: grund)
+            Anrufverwaltung.geteilt.beenden(kennung: kennung, grund: grund)
             call.resolve()
         }
     }

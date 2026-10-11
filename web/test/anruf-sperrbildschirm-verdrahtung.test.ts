@@ -45,7 +45,7 @@ test('Die Plugin-Registrierung liegt an GENAU EINER Stelle', () => {
     bruecke,
     /ankommen\(opts: \{ callId: string; gegenstelle: string; video\?: boolean \}\)/
   );
-  assert.match(bruecke, /beenden\(opts\?: \{ grund\?: AnrufEndgrund \}\): Promise<void>/);
+  assert.match(bruecke, /beenden\(opts\?: \{ grund\?: AnrufEndgrund; callId\?: string \}\): Promise<void>/);
   assert.match(bruecke, /voipToken\(\): Promise</);
   // Und nur dort: eine zweite Registrierung wäre genau der Rückfall.
   assert.doesNotMatch(store, /registerPlugin</);
@@ -62,7 +62,7 @@ test('Store signalisiert ankommen/beenden und hört auf das aktion-Event', () =>
   // auflegen, call_ende, Klingel-Timeout ab), annehmen() auf dem Web-Weg
   // schon VOR dem Verbinden (Bughunt E4).
   assert.match(store, /void nativAnkommen\(evt\.call_id, gegenstelle\)/);
-  assert.match(store, /void nativBeenden\(grund\);/);
+  assert.match(store, /void nativBeenden\(grund, this\.aktiv\?\.id \|\| undefined\);/);
   // Das `aktion`-Ereignis hört die Hülle, angebunden vom Zustand beim Laden.
   assert.match(
     huelle,

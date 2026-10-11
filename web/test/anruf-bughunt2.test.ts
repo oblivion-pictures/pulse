@@ -76,7 +76,33 @@ test('A10: nach dem Laden nimmt die Seite auch einen Anruf ohne Raum auf', () =>
   assert.match(aufnehmen, /anrufe\.nativUebernehmen\(z\);\s*return;/);
   assert.match(aufnehmen, /const plan = ohneRaumPlan\(z\.ohneRaum\);/);
   assert.match(aufnehmen, /anrufe\.eingehend\(plan\.anruf, plan\.name, \{ ton: false \}\);/);
-  assert.match(aufnehmen, /void anrufAuflegen\(plan\.kennung\)/);
+  assert.match(aufnehmen, /plan\.tun === 'ablehnen' \? anrufAblehnen : anrufAuflegen/);
+  assert.match(aufnehmen, /void nativBeenden\('fehler', plan\.kennung\);/);
+});
+
+test('R2: ein klingelnder Anruf ohne Kontext wird abgelehnt, nicht aufgelegt', () => {
+  // Auflegen auf einen klingelnden Gruppenanruf beendet ihn am Server für
+  // alle; Ablehnen nur für dieses Konto.
+  assert.deepEqual(ohneRaumPlan({ kennung: '9', phase: 'klingelt', kontext: {} }), {
+    tun: 'ablehnen',
+    kennung: '9'
+  });
+});
+
+test('R3: schliesst die Hülle einen Anruf selbst, räumt die Oberfläche ab — ohne Server-Ruf', () => {
+  const huelle = lies('src/lib/anrufe/anrufHuelle.ts');
+  const zweig = zwischen(huelle, "if (aktion === 'beendet') {", '\n  }\n');
+  assert.match(zweig, /if \(anruf\?\.id === callId\) anrufe\.ende\(callId, 'beendet', 0\);/);
+  assert.doesNotMatch(zweig, /anrufAblehnen|anrufAuflegen/);
+});
+
+test('R1: das Aufräumen beendet in der Hülle nur DIESEN Anruf', () => {
+  // Sonst räumte das Ende des abgelösten Anrufs den neuen gleich mit ab.
+  const store = lies('src/lib/anrufe/anruf.svelte.ts');
+  assert.match(store, /void nativBeenden\(grund, this\.aktiv\?\.id \|\| undefined\);/);
+  assert.match(store, /await nativBeenden\('anderswo-angenommen', anruf\.id\);/);
+  const huelle = lies('src/lib/anrufe/anrufHuelle.ts');
+  assert.match(huelle, /anrufNativ\.beenden\(callId \? \{ grund, callId \} : \{ grund \}\)/);
 });
 
 test('A4: nach jedem await der Annahme zuerst fragen, ob es den Anruf noch gibt', () => {
@@ -88,7 +114,10 @@ test('A4: nach jedem await der Annahme zuerst fragen, ob es den Anruf noch gibt'
     return annehmen.slice(i + marke.length, i + marke.length + 40);
   };
   assert.match(nach('await anrufAnnehmen(anruf.id);'), /^\s*if \(!nochDa\(\)\) return;/);
-  assert.match(annehmen, /await nativBeenden\('anderswo-angenommen'\);\s*\}\s*if \(!nochDa\(\)\) return;/);
+  assert.match(
+    annehmen,
+    /await nativBeenden\('anderswo-angenommen', anruf\.id\);\s*\}\s*if \(!nochDa\(\)\) return;/
+  );
   assert.match(annehmen, /catch \(e\) \{[\s\S]*if \(!nochDa\(\)\) return;\s*fehlerMelden/);
 });
 

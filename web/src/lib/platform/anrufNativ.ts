@@ -22,8 +22,11 @@ import type { AnrufOhneRaum } from '$lib/anrufe/ohneRaumPlan';
 export interface AnrufAktion {
   /** `auflegen`: „Beenden" auf einem LAUFENDEN Anruf (bis zum 2026-10-11
    *  kam dafür immer `ablehnen`, Bughunt M5). `getrennt`: der native Raum
-   *  ist von aussen weggebrochen. Beide nur iOS. */
-  aktion: 'annehmen' | 'ablehnen' | 'auflegen' | 'getrennt';
+   *  ist von aussen weggebrochen. `beendet`: die Hülle hat den Anruf selbst
+   *  geschlossen (Abbruch-Push, oder von einem neuen Anruf desselben Kanals
+   *  abgelöst) — der Server weiss es schon. Alle drei nur iOS; `beendet` erst
+   *  seit der Nachprüfung der Fix-Runden (R1, R3). */
+  aktion: 'annehmen' | 'ablehnen' | 'auflegen' | 'getrennt' | 'beendet';
   callId: string;
   /** Nur bei einer Aktion aus einem VoIP-Push (iOS): dann kennt das Web den
    *  Anruf noch nicht und braucht den Kanal, um ihn annehmen zu können.
@@ -76,8 +79,9 @@ export interface AnrufNativPlugin {
   /** Eingehenden Anruf anzeigen (Android: Notification, iOS: CallKit). */
   ankommen(opts: { callId: string; gegenstelle: string; video?: boolean }): Promise<void>;
   /** Anzeige entfernen beziehungsweise den CallKit-Anruf beenden — auf iOS
-   *  samt nativem Raum. */
-  beenden(opts?: { grund?: AnrufEndgrund }): Promise<void>;
+   *  samt nativem Raum. `callId`: nur diesen (iOS, seit der Nachprüfung der
+   *  Fix-Runden); ohne, oder in einer älteren Hülle, jeden. */
+  beenden(opts?: { grund?: AnrufEndgrund; callId?: string }): Promise<void>;
   /** PushKit-Token dieses Geräts. **Nur iOS** — Android hat keinen. */
   voipToken(): Promise<{ token: string | null }>;
   /** In der App angenommen — CallKit nimmt mit an. **Nur iOS.** */

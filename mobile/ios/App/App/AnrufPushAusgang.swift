@@ -46,6 +46,10 @@ extension Anrufverwaltung {
         /// `meldenUndSofortBeenden`, dazu als beendet merken und dem Web
         /// „ablehnen" sagen (Bughunt 2, A5, `besetzt` unten).
         case besetzt
+        /// Ein NEUER Anruf desselben Kanals, während dort ein früherer noch
+        /// klingelt: der frühere gilt als abgelöst und wird beendet, DANN der
+        /// neue gemeldet (Nachprüfung der Fix-Runden, R1, `abgeloest` unten).
+        case abloesen(UUID)
     }
 
     /// Was CallKit auf eine Meldung geantwortet hat.
@@ -94,15 +98,29 @@ extension Anrufverwaltung {
     /// `eingehend`); klingelte er trotzdem bei CallKit, bot das System
     /// „Beenden & Annehmen" an, und das beendete über `beenden(kennung: nil)`
     /// beide. Gemeldet wird er — Apples Regel —, aber sofort beendet.
+    ///
+    /// **`abgeloest`: hier klingelt noch ein früherer Anruf DESSELBEN Kanals**
+    /// (R1) — `besetzt` zählt ihn dann nicht mit. Der Fall ist ein Rückruf:
+    /// der Anrufer legt auf und ruft sofort wieder an. Sein Abbruch kommt erst
+    /// nach der Frist des Servers (`anruf_push.py`, `ABBRUCH_FRIST_S`), das
+    /// neue Klingeln sofort; bis zur Nachprüfung der Fix-Runden fand es den
+    /// alten noch klingelnd vor und wurde als `besetzt` still abgewiesen — bei
+    /// gesperrtem iPhone verpasst, ohne dass es je klingelte. **Nicht einfach
+    /// „klingelnde Anrufe zählen nicht"**: das öffnete das Doppel-Klingeln aus
+    /// A5 wieder (zwei Anrufe aus verschiedenen Kanälen, „Beenden & Annehmen"
+    /// beendet beide). Derselbe Kanal heisst dagegen: dieselbe Gegenseite
+    /// fragt noch einmal, und der neuere Anruf ist der, um den es geht.
     static func pushAusgang(art: PushArt, bekannt: UUID?, klingelt: Bool,
                             kuerzlichBeendet: Bool, ohneCallKit: Bool,
-                            angenommenOhneRaum: Bool = false, besetzt: Bool = false) -> PushAusgang {
+                            angenommenOhneRaum: Bool = false, besetzt: Bool = false,
+                            abgeloest: UUID? = nil) -> PushAusgang {
         if let bekannt {
             let beenden = art == .abbruch && (klingelt || angenommenOhneRaum)
             return beenden ? .erneutMeldenUndBeenden(bekannt) : .erneutMelden(bekannt)
         }
         guard art == .klingeln, !kuerzlichBeendet, !ohneCallKit else { return .meldenUndSofortBeenden }
-        return besetzt ? .besetzt : .neuMelden
+        if besetzt { return .besetzt }
+        return abgeloest.map { .abloesen($0) } ?? .neuMelden
     }
 
     /// Ein Duplikat erkennt man an Domäne UND Code — eine `2` aus einer

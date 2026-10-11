@@ -21,12 +21,15 @@ extension Anrufverwaltung {
         let art: PushArt = inhalt["art"] as? String == "abbruch" ? .abbruch : .klingeln
         let bekannt = uuid(fuer: kennung)
         let phase = bekannt.flatMap { phasen[$0] }
+        let abgeloest = bekannt == nil && art == .klingeln
+            ? klingelnderAnruf(kanal: inhalt["channel_id"] as? String ?? "", ausser: kennung) : nil
         let ausgang = Self.pushAusgang(
             art: art, bekannt: bekannt, klingelt: phase == .klingelt,
             kuerzlichBeendet: istKuerzlichBeendet(kennung),
             ohneCallKit: !kennung.isEmpty && ohneCallKitKennung == kennung,
             angenommenOhneRaum: phase == .angenommen && !raumBegonnen.contains(kennung),
-            besetzt: besetzt(ausser: kennung))
+            besetzt: besetzt(ausser: [kennung, abgeloest.flatMap { kennungen[$0] } ?? ""]),
+            abgeloest: abgeloest)
         NSLog("[PulseAnruf] VoIP-Push %@ %@ → %@", art.rawValue, kennung, "\(ausgang)")
         #if DEBUG
             spur.ausgang = ausgang
@@ -58,13 +61,47 @@ extension Anrufverwaltung {
             kuerzlichBeendet[kennung] = Date()
             bruecke?.aktionMelden(aktion: "ablehnen", kennung: kennung, kontext: [:])
             meldenUndSofortBeenden(name: name, fertig: fertig)
+        case .abloesen(let alt):
+            // ERST den alten beenden, dann den neuen melden: CallKit führt
+            // höchstens eine Anrufgruppe (`starten()`), und der neue käme
+            // sonst als Anklopfen neben den alten (A5).
+            abloesen(alt)
+            neuMelden(kennung: kennung, name: name, video: false, fertig: fertig)
         }
     }
 
-    /// Läuft oder klingelt hier ein ANDERER Anruf als `kennung`? (A5)
-    private func besetzt(ausser kennung: String) -> Bool {
-        kennungen.values.contains { $0 != kennung }
-            || (ohneCallKitKennung.map { $0 != kennung } ?? false)
+    /// Läuft oder klingelt hier ein Anruf, der nicht in `ausser` steht? (A5)
+    private func besetzt(ausser: Set<String>) -> Bool {
+        kennungen.values.contains { !ausser.contains($0) }
+            || (ohneCallKitKennung.map { !ausser.contains($0) } ?? false)
+    }
+
+    /// Ein noch klingelnder Anruf desselben Kanals, ausser `kennung` selbst
+    /// (R1, `pushAusgang`). Den Kanal kennt die Hülle aus dem Push; einen
+    /// Anruf, den nur die Oberfläche gemeldet hat (`ankommen`, ohne Push),
+    /// findet sie hier nicht — er bleibt `besetzt` wie bisher. Seit T14 kommt
+    /// zu jedem Anruf ein Push, also ist das der seltene Rest.
+    private func klingelnderAnruf(kanal: String, ausser kennung: String) -> UUID? {
+        guard !kanal.isEmpty else { return nil }
+        return kennungen.first { uuid, kn in
+            kn != kennung && phasen[uuid] == .klingelt && !raumBegonnen.contains(kn)
+                && kontexte[kn]?["channel_id"] == kanal
+        }?.key
+    }
+
+    /// Den abgelösten Anruf beenden. **Ohne Ruf an den Server**: dort ist er
+    /// vorbei oder wird es gleich (sein Abbruch ist unterwegs). Das Web
+    /// erfährt es (`beendet`, aufbewahrt), sonst stünde dort weiter ein
+    /// klingelnder Anruf, der jeden neuen ablehnt (R3). Kommt der Abbruch
+    /// danach noch, findet er hier nichts mehr und wird nach Apples Regel
+    /// gemeldet und sofort beendet (`meldenUndSofortBeenden`, über
+    /// `kuerzlichBeendet` aus `anrufZu`).
+    private func abloesen(_ alt: UUID) {
+        NSLog("[PulseAnruf] %@ klingelte noch — ein neuer Anruf desselben Kanals löst ihn ab",
+              kennungen[alt] ?? "?")
+        melde("beendet", alt)
+        anbieter?.reportCall(with: alt, endedAt: nil, reason: .remoteEnded)
+        anrufZu(alt)
     }
 
     /// Die Oberfläche meldet einen Anruf (`ankommen`): die WebSocket war
@@ -116,6 +153,11 @@ extension Anrufverwaltung {
             case .nichts:
                 break
             case .beenden:
+                // **Das Web erfährt es** (R3) — aufbewahrt, die Oberfläche kann
+                // eingefroren sein oder eben neu geladen haben (A10: dann zeigt
+                // sie das Klingeln wieder an und hörte sonst nie, dass es
+                // vorbei ist). Vor `anrufZu`: das nimmt den Kontext mit.
+                self.melde("beendet", uuid)
                 self.anbieter?.reportCall(with: uuid, endedAt: nil, reason: .remoteEnded)
                 self.anrufZu(uuid)
             case .geisterBeenden:

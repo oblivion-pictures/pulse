@@ -58,11 +58,16 @@ export async function nativAnkommen(callId: string, gegenstelle: string): Promis
  *  beendet das den CallKit-Anruf samt nativem Raum — ohne diesen Ruf
  *  klingelte das Telefon weiter, nachdem der Anruf im Web vorbei ist.
  *  `grund` bestimmt, was CallKit in den Anrufverlauf schreibt; ältere
- *  Hüllen und Android übergehen ihn. */
-export async function nativBeenden(grund: AnrufEndgrund): Promise<void> {
+ *  Hüllen und Android übergehen ihn.
+ *
+ *  `callId`: nur DIESEN Anruf beenden. Ohne beendet die Hülle jeden, den sie
+ *  führt — und hat sie einen klingelnden Anruf inzwischen durch einen neuen
+ *  desselben Kanals abgelöst (R1), räumte das Aufräumen des alten den neuen
+ *  gleich mit ab. Eine ältere Hülle und Android übergehen das Feld. */
+export async function nativBeenden(grund: AnrufEndgrund, callId?: string): Promise<void> {
   if (!nativeHuelle()) return;
   try {
-    await anrufNativ.beenden({ grund });
+    await anrufNativ.beenden(callId ? { grund, callId } : { grund });
   } catch (e) {
     console.warn('[anruf] native Klingel-Anzeige entfernen fehlgeschlagen', e);
   }
@@ -71,9 +76,9 @@ export async function nativBeenden(grund: AnrufEndgrund): Promise<void> {
 /**
  * **Nach einem Reload aufnehmen, was die Hülle noch hält.** Ein Gespräch mit
  * Raum übernimmt die Seite (`nativUebernehmen`); einen Anruf ohne Raum
- * (`ohneRaum`) zeigt sie wieder an, setzt seine Annahme fort oder beendet ihn
- * (`ohneRaumPlan.ts`, Bughunt 2, A10). Ein Ereignis, das inzwischen den
- * Zustand gesetzt hat (eine aufbewahrte Aktion), gewinnt.
+ * (`ohneRaum`) zeigt sie wieder an, setzt seine Annahme fort, lehnt ihn ab
+ * oder beendet ihn (`ohneRaumPlan.ts`, Bughunt 2, A10). Ein Ereignis, das
+ * inzwischen den Zustand gesetzt hat (eine aufbewahrte Aktion), gewinnt.
  */
 async function nativAufnehmen(anrufe: AnrufStore): Promise<void> {
   if (anrufe.aktiv || !nativerAnrufweg()) return;
@@ -86,9 +91,10 @@ async function nativAufnehmen(anrufe: AnrufStore): Promise<void> {
   }
   const plan = ohneRaumPlan(z.ohneRaum);
   if (!plan) return;
-  if (plan.tun === 'beenden') {
-    void anrufAuflegen(plan.kennung).catch(() => {});
-    void nativBeenden('fehler');
+  if (!('anruf' in plan)) {
+    const amServer = plan.tun === 'ablehnen' ? anrufAblehnen : anrufAuflegen;
+    void amServer(plan.kennung).catch(() => {});
+    void nativBeenden('fehler', plan.kennung);
     return;
   }
   anrufe.eingehend(plan.anruf, plan.name, { ton: false });
@@ -140,6 +146,18 @@ function nativeAktionVerarbeiten(anrufe: AnrufStore, daten: AnrufAktion): void {
       { ton: false }
     );
     anruf = anrufe.aktiv;
+  }
+  if (aktion === 'beendet') {
+    // **Die Hülle hat den Anruf selbst geschlossen** — ein Abbruch-Push kam,
+    // oder ein neuer Anruf desselben Kanals hat ihn abgelöst (R1, R3). Am
+    // Server ist er schon vorbei, also kein Ruf dorthin; hier nur abräumen,
+    // was die Oberfläche noch zeigt. Bis zur Nachprüfung der Fix-Runden
+    // erfuhr sie davon nichts: ein nach einem Neuladen wieder angezeigtes
+    // Klingeln stand bis zu 45 s weiter da und lehnte jeden neuen Anruf ab.
+    // `ende` mit einem Grund, den der Server nie schickt: keine Systemzeile,
+    // kein Hinweis — WARUM es vorbei ist, weiss die Hülle nicht.
+    if (anruf?.id === callId) anrufe.ende(callId, 'beendet', 0);
+    return;
   }
   if (!anruf || anruf.id !== callId) {
     // **Ein Ende, das die Oberfläche nicht kennt** — sie war eingefroren
