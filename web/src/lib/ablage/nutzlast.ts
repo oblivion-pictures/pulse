@@ -57,10 +57,26 @@ export class NutzlastFehler extends Error {
 	}
 }
 
-/** Übersetzt eine Nachricht vom Wire in die Bestand-Form. Die Anhänge
- *  werden VERBATIM übernommen (statt auf vier Felder verkürzt): bei
- *  verschlüsselten Nachrichten tragen sie den Dateischlüssel, ohne den
- *  kein wiederhergestelltes Gerät den Anhang je wieder öffnen könnte. */
+/** Ein Anhang in der Bestand-Form: VERBATIM übernommen (statt auf vier
+ *  Felder verkürzt) — bei verschlüsselten Nachrichten trägt er den
+ *  Dateischlüssel, ohne den kein wiederhergestelltes Gerät den Anhang je
+ *  wieder öffnen könnte —, nur ohne die kurzlebigen Abruf-Adressen. Fehlende
+ *  Namen, MIME-Typen und Größen werden aufgefüllt statt durchgereicht: ohne
+ *  Größe wiese `leseNachricht` den ganzen Rahmen ab, und mit ihm die
+ *  Nachricht; ein fehlender Name oder MIME-Typ käme dort als Zeichenkette
+ *  „undefined" zurück. */
+function zuAblageAnhang(anhang: Record<string, unknown>): AblageAnhang {
+	const { url: _url, thumb_url: _thumb, ...dauerhaft } = anhang;
+	return {
+		...dauerhaft,
+		id: String(anhang.id),
+		name: (anhang.filename as string | null | undefined) ?? null,
+		mime: (anhang.mime as string | null | undefined) ?? null,
+		groesse: Number(anhang.size ?? 0),
+	};
+}
+
+/** Übersetzt eine Nachricht vom Wire in die Bestand-Form. */
 export function ausWire(m: Message): AblageNachricht {
 	return {
 		fassung: NUTZLAST_FASSUNG,
@@ -70,14 +86,50 @@ export function ausWire(m: Message): AblageNachricht {
 		zeit: m.created_at,
 		bearbeitet: m.edited_at ?? null,
 		antwortAuf: m.reply_to_id ?? null,
-		anhaenge: (m.attachments ?? []).map(({ url: _url, thumb_url: _thumb, ...dauerhaft }) => ({
-			...dauerhaft,
-			id: dauerhaft.id,
-			name: dauerhaft.filename,
-			mime: dauerhaft.mime,
-			groesse: dauerhaft.size,
-		})),
+		anhaenge: (m.attachments ?? []).map(zuAblageAnhang),
 		...(m.krypto_id ? { kryptoId: m.krypto_id } : {}),
+	};
+}
+
+/** Der Ausschnitt eines Verlaufs-Satzes (`verlauf/schema.ts::Satz`), den
+ *  `ausSatz` liest — strukturell beschrieben, ohne Import. */
+export interface SatzAusschnitt {
+	nachrichtId: string;
+	autorId: string;
+	inhalt: string;
+	erstelltAm: string;
+	bearbeitetAm: string | null;
+	antwortAufId?: string | null;
+	anhaenge?: unknown[];
+	kryptoId?: string | null;
+}
+
+/**
+ * Übersetzt einen abgelegten Satz des lokalen Verlaufs in die Bestand-Form —
+ * der Weg der Erstsicherung (`sicherung/andock.ts::sicherungErstsicherung`).
+ *
+ * Bis 2026-10-11 baute die Erstsicherung die Bestand-Form von Hand nach und
+ * ließ dabei die `kryptoId` weg — als `ausWire` sie bekam (2ca26243), wurde
+ * diese zweite Stelle nicht mitgezogen. Ein Empfangs-Satz (Zustellungs-ID D,
+ * Kennung K) wanderte so als Nachricht ohne Kennung in die Sicherung, und
+ * nach dem nächsten Gerätewechsel stand er neben seiner Kopie doppelt. Beide
+ * Wege teilen sich deshalb jetzt die Anhang-Umwandlung, und die Kennung
+ * steht in beiden genau einmal. Dass beide für dieselbe Nachricht dieselbe
+ * Bestand-Form liefern, hält `test/sicherung-umwandlung.test.ts` fest.
+ */
+export function ausSatz(satz: SatzAusschnitt): AblageNachricht {
+	return {
+		fassung: NUTZLAST_FASSUNG,
+		id: satz.nachrichtId,
+		autor: satz.autorId,
+		inhalt: satz.inhalt,
+		zeit: satz.erstelltAm,
+		bearbeitet: satz.bearbeitetAm,
+		antwortAuf: satz.antwortAufId ?? null,
+		anhaenge: (Array.isArray(satz.anhaenge) ? satz.anhaenge : [])
+			.filter((a): a is Record<string, unknown> => typeof a === 'object' && a !== null)
+			.map(zuAblageAnhang),
+		...(satz.kryptoId ? { kryptoId: satz.kryptoId } : {}),
 	};
 }
 

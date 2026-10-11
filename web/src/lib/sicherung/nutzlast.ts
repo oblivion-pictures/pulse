@@ -30,6 +30,39 @@ export function sicherungEintrag(kanalId: string, nachricht: AblageNachricht): S
 	return { fassung: SICHERUNG_EINTRAG_FASSUNG, kanalId, nachricht };
 }
 
+/**
+ * Kehrt `ablage/nutzlast.ts::ausWire` um — die Nachrichtenform, die
+ * `verlauf/satz.ts::zuSatz` beim Wiederherstellen liest. Die `kryptoId` reist
+ * als `krypto_id` mit: ohne sie erkennt der Anzeige-Merge die Kopie des
+ * anderen Geräts nicht (`verlauf/identitaet.ts`). Frames vor der
+ * Nutzlast-Erweiterung tragen sie nicht und bleiben deswegen Duplikat-Risiko.
+ *
+ * Jeder Anhang gilt als verschlüsselt-ladbar (Bytes aus dem Archiv, lokal
+ * entpackt), auch wenn ältere Container-Rahmen das Feld nicht tragen — die
+ * Sicherung spiegelt über `verlaufSpeichernPflicht` nur den E2EE-Weg.
+ * Ausnahme: die Erstsicherung nimmt auch Klartext-Sätze mit
+ * (`andock.ts::sicherungErstsicherung`), deren Anhänge diese Annahme nicht
+ * erfüllen.
+ */
+export function zuWire(n: AblageNachricht) {
+	return {
+		id: n.id,
+		author_id: n.autor,
+		content: n.inhalt,
+		created_at: n.zeit,
+		edited_at: n.bearbeitet,
+		reply_to_id: n.antwortAuf,
+		...(n.kryptoId ? { krypto_id: n.kryptoId } : {}),
+		attachments: n.anhaenge.map((a) => ({
+			...a,
+			filename: a.name ?? null,
+			mime: a.mime,
+			size: a.groesse,
+			verschluesselt: true,
+		})),
+	};
+}
+
 /** Festes Feldfolge — gleicher Eintrag ergibt immer gleiche Bytes. */
 export function kodiereSicherungEintrag(eintrag: SicherungEintrag): Uint8Array {
 	const n = eintrag.nachricht;

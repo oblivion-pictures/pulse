@@ -36,7 +36,7 @@
 
 import { SICHERUNG_ENABLED } from '../krypto/schalter.ts';
 import type { Message } from '../api/types.ts';
-import { ausWire, NUTZLAST_FASSUNG, type AblageNachricht } from '../ablage/nutzlast.ts';
+import { ausSatz, ausWire, NUTZLAST_FASSUNG, type AblageNachricht } from '../ablage/nutzlast.ts';
 import type { AblageAdapter } from '../ablage/adapter.ts';
 import { openIdentityDb, idbPutIdentity, idbGetIdentity } from '../identity/idb-shared.ts';
 import {
@@ -50,7 +50,7 @@ import { aktuellesKonto } from '../verlauf/konto.ts';
 import { sortierSchluessel, zuSatz } from '../verlauf/satz.ts';
 import { verschlüsseleEintrag } from './krypto.ts';
 import { KANAL_ORDNER_MUSTER, leseSicherungKanalSeite } from './wiederherstellen.ts';
-import type { SicherungEintrag } from './nutzlast.ts';
+import { zuWire, type SicherungEintrag } from './nutzlast.ts';
 import {
 	SicherungsSpiegel,
 	aufbauAdapter,
@@ -306,41 +306,13 @@ export function sicherungGrabstein(kanalId: string, nachrichtId: string): void {
 }
 
 /** Wandelt gelesene Sicherungs-Einträge in Verlaufs-Sätze — die geteilte
- *  Rechnung von seitenweisem und Bulk-Laden. Anhang-BYTES bleiben draußen:
- *  die holt die Chat-Ansicht lazily aus dem Archiv, wenn eine Kachel
- *  gerendert wird (krypto/anhangHolen.ts → archivAnhang), sonst läde der
- *  erste Login alles. */
+ *  Rechnung von seitenweisem und Bulk-Laden (Umwandlung: `nutzlast.ts::
+ *  zuWire`). Anhang-BYTES bleiben draußen: die holt die Chat-Ansicht lazily
+ *  aus dem Archiv, wenn eine Kachel gerendert wird (krypto/anhangHolen.ts →
+ *  archivAnhang), sonst läde der erste Login alles. */
 function eintraegeZuSaetze(eintraege: SicherungEintrag[], kontoId: string) {
 	return eintraege
-		.map((eintrag) =>
-			zuSatz(eintrag.kanalId, {
-				id: eintrag.nachricht.id,
-				author_id: eintrag.nachricht.autor,
-				content: eintrag.nachricht.inhalt,
-				created_at: eintrag.nachricht.zeit,
-				edited_at: eintrag.nachricht.bearbeitet,
-				reply_to_id: eintrag.nachricht.antwortAuf,
-					// Die geraeteuebergreifende Autor-ID — ohne sie erkennt der
-					// Anzeige-Merge die Kopie des anderen Geräts nicht (s.
-					// zusammenfuegen.ts); Frames vor der Nutzlast-Erweiterung
-					// tragen sie nicht und bleiben deswegen Duplikat-Risiko.
-					...(eintrag.nachricht.kryptoId
-						? { krypto_id: eintrag.nachricht.kryptoId }
-						: {}),
-					attachments: eintrag.nachricht.anhaenge.map((a) => ({
-					...(a as unknown as Record<string, unknown>),
-					id: a.id,
-					filename: (a as unknown as { name?: string | null }).name ?? null,
-					mime: a.mime,
-					size: a.groesse,
-					// Die Sicherung spiegelt nur den E2EE-Weg — jeder
-					// restaurierte Anhang ist verschlüsselt-ladbar (Bytes
-					// aus dem Archiv, lokal entpackt), auch wenn ältere
-					// Container-Rahmen das Feld nicht tragen.
-					verschluesselt: true,
-				})),
-			}, kontoId),
-		)
+		.map((eintrag) => zuSatz(eintrag.kanalId, zuWire(eintrag.nachricht), kontoId))
 		.filter((satz) => satz !== null);
 }
 
@@ -552,11 +524,14 @@ export async function sicherungGespraechEntfernen(
  * den Container. Ohne sie enthält das Archiv nur Nachrichten, die NACH der
  * Aktivierung eintrafen — der gesamte bisherige Verlauf des Geräts bliebe
  * im Laufwerk unsichtbar. Idempotent in der Wirkung (der Wiederherstellungs-
- * Leser dedupliziert je Kanal+Nachricht-Id), im Container aber eine neue
- * Rahmen-Partie — also bewusst ein Knopf, kein Autolauf.
+ * Leser legt dieselbe Nachricht über lokale Id und Identität zusammen,
+ * `eintragsGruppen.ts`), im Container aber eine neue Rahmen-Partie — also
+ * bewusst ein Knopf, kein Autolauf.
  *
- * Anhänge wandern in dieser Fassung NICHT mit (nur Metadaten wären da,
- * die Bytes liegen separat) und gelöschte Zeilen bleiben außen vor.
+ * Anhang-Bytes wandern über `sicherungAnhaenge` mit, soweit das Gerät sie
+ * noch hält und das Konto sie selbst gesendet hat; gelöschte Zeilen bleiben
+ * außen vor. Anders als der laufende Spiegel nimmt die Erstsicherung JEDEN
+ * Satz des Kontos mit, auch Klartext-Sätze von DMs.
  */
 const MERKER_ERSTSICHERUNG = 'pulse.sicherung-erstsicherung-ok';
 
@@ -585,28 +560,13 @@ export async function sicherungErstsicherung(): Promise<number> {
 	for (const satz of saetze) {
 		if (satz.geloescht) continue;
 		const liste = nachKanal.get(satz.kanalId) ?? [];
-		liste.push({
-			fassung: NUTZLAST_FASSUNG,
-			id: satz.nachrichtId,
-			autor: satz.autorId,
-			inhalt: satz.inhalt,
-			zeit: satz.erstelltAm,
-			bearbeitet: satz.bearbeitetAm,
-			antwortAuf: satz.antwortAufId ?? null,
-			// Anhang-Metadaten aus dem lokalen Satz — die BYTES holt
-			// `sicherungAnhaenge` aus dem gerätelokalen Bytes-Speicher und
-			// legt sie als eigene Dateien ins Archiv. Was das Gerät nicht
-			// mehr hält, bleibt außen vor (ehrliche Grenze).
-			anhaenge: Array.isArray(satz.anhaenge)
-				? (satz.anhaenge as Array<Record<string, unknown>>).map((a) => ({
-						...a,
-						id: String(a.id),
-						name: (a.filename as string | null) ?? null,
-						mime: (a.mime as string | null) ?? null,
-						groesse: Number(a.size ?? 0),
-					}))
-				: [],
-		});
+		// Dieselbe Anhang-Umwandlung wie der Wire-Weg (`ausWire`), samt
+		// `kryptoId` (`ablage/nutzlast.ts::ausSatz`). Anhang-Metadaten kommen
+		// aus dem lokalen Satz — die BYTES holt `sicherungAnhaenge` aus dem
+		// gerätelokalen Bytes-Speicher und legt sie als eigene Dateien ins
+		// Archiv. Was das Gerät nicht mehr hält, bleibt außen vor (ehrliche
+		// Grenze).
+		liste.push(ausSatz(satz));
 		nachKanal.set(satz.kanalId, liste);
 	}
 	let gesamt = 0;
