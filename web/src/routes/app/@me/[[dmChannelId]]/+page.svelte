@@ -38,6 +38,7 @@
   import { erstelleDmKanalWechsel } from '$lib/components/chat/dmKanalWechsel.svelte';
   import { sendeDmNachricht } from '$lib/components/chat/dmSenden';
   import { bannerAntworten } from '$lib/platform/bannerAntwort.svelte';
+  import { appSperre } from '$lib/platform/appSperre.svelte';
   import { drafts } from '$lib/stores/drafts.svelte';
   import {
     nachrichtBearbeiten,
@@ -221,8 +222,11 @@
   // Antwort aus dem Mitteilungs-Banner (iOS): senden, sobald die Seite den
   // Kanal kennt — Begründung in `platform/bannerAntwort.svelte.ts`. Gesperrt
   // (keine Freundschaft) oder gescheitert: als Entwurf zurück ins Feld.
+  // **Nicht vor der App-Sperre** (Bughunt 2, F5): bis Face ID durch ist,
+  // bleibt die Antwort liegen und geht danach hinaus.
   $effect(() => {
     const id = dmChannelId;
+    if (appSperre.gesperrt) return;
     if (!id || !(activeDM || aktiveGruppe) || bannerAntworten.fuer(id) === undefined) return;
     untrack(() => {
       const text = bannerAntworten.nehmen(id);

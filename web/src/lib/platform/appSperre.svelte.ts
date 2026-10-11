@@ -77,6 +77,31 @@ class AppSperre {
   /** Letzter Fehlschlag, der KEIN Abbruch war — nur dann gibt es etwas zu
    *  sagen. Ein weggetippter Dialog ist keine Fehlermeldung wert. */
   fehler = $state<string | null>(null);
+  #aufgehoben!: () => void;
+  #entsperrt = new Promise<void>((weiter) => (this.#aufgehoben = weiter));
+
+  constructor() {
+    if (!this.gesperrt) this.#aufgehoben();
+  }
+
+  /**
+   * Wartet, bis die Sperre aufgehoben ist — sofort, wenn sie nie stand.
+   *
+   * **Die Sperre hält nicht nur den Blick ab, sondern auch, was die App von
+   * selbst tut** (Bughunt 2 vom 2026-10-11, F4/F5): Wiederaufnehmen,
+   * Auto-Connect und Auto-Beitritt öffneten das Mikrofon im Kanal, eine
+   * Antwort aus dem Mitteilungs-Banner ging hinaus — alles vor Face ID. Wer
+   * etwas mit Aussenwirkung tut, ohne dass der Nutzer es in der App
+   * angestossen hat, wartet hierauf.
+   */
+  entsperrt(): Promise<void> {
+    return this.#entsperrt;
+  }
+
+  #aufheben(): void {
+    this.gesperrt = false;
+    this.#aufgehoben();
+  }
 
   async entsperren(grund: string): Promise<void> {
     if (!this.gesperrt || this.laeuft) return;
@@ -85,7 +110,7 @@ class AppSperre {
     try {
       const antwort = await plugin.pruefen({ grund });
       if (antwort.ok) {
-        this.gesperrt = false;
+        this.#aufheben();
         return;
       }
       if (!antwort.abgebrochen) this.fehler = antwort.grund || null;
@@ -95,7 +120,7 @@ class AppSperre {
       // zurückbleibt, die App unbenutzbar — und die Einstellung liegt im
       // Gerät, also käme man nicht einmal an den Schalter.
       console.warn('[appSperre] Prüfung nicht erreichbar, Sperre aufgehoben', e);
-      this.gesperrt = false;
+      this.#aufheben();
     } finally {
       this.laeuft = false;
     }
