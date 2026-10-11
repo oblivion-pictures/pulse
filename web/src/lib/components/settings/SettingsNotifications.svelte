@@ -14,8 +14,9 @@
   } from '$lib/notifications/pushSubscribe';
   import { listSubscriptions, type SubscriptionDescriptor } from '$lib/notifications/api';
   import { ApiError } from '$lib/api/client';
-  import { isElectron } from '$lib/platform/runtime';
+  import { isCapacitorIOS, isElectron } from '$lib/platform/runtime';
   import Checkbox from '$lib/components/form/Checkbox.svelte';
+  import HuelleMitteilungen from './HuelleMitteilungen.svelte';
 
   // UI state.
   let permission = $state<'granted' | 'denied' | 'default' | 'unsupported'>('default');
@@ -34,6 +35,12 @@
   // Track whether we're on Electron — push uses native IPC there, the
   // browser-push toggle is hidden.
   const electron = isElectron();
+  // In der iOS-Hülle gibt es keinen Web-Push, sondern die System-Erlaubnis —
+  // eigener Abschnitt statt „nicht unterstützt" (iOS-Bughunt 2, F3).
+  const iosHuelle = isCapacitorIOS();
+  // Die Erlaubnis-Zeile der Seite (Notification-API) entfällt in Electron
+  // (native IPC) und in der iOS-Hülle (System-Erlaubnis, eigener Abschnitt).
+  const seitenErlaubnisZeigen = !electron && !iosHuelle;
 
   async function requestNotifyPermission() {
     if (notifyBusy) return;
@@ -115,7 +122,9 @@
     </p>
   </div>
 
-  {#if !electron}
+  {#if iosHuelle}
+    <HuelleMitteilungen />
+  {:else if !electron}
     <section class="flex flex-col gap-2 rounded-2xl border border-border bg-bg-input/40 p-4">
       <div class="flex items-start justify-between gap-3">
         <div class="flex flex-col gap-1">
@@ -205,7 +214,7 @@
       />
     </label>
 
-    {#if !electron && notifyPermission === 'default'}
+    {#if seitenErlaubnisZeigen && notifyPermission === 'default'}
       <!-- The toggles above only fire OS popups once the browser permission is
            granted. Independent of web-push — this just unlocks the in-page
            (WS-driven) path. Shown only when not yet decided. -->
@@ -221,7 +230,7 @@
           {notifyBusy ? '…' : m.settings_notifications_permission_allow()}
         </Button>
       </div>
-    {:else if !electron && notifyPermission === 'denied'}
+    {:else if seitenErlaubnisZeigen && notifyPermission === 'denied'}
       <p class="text-text-muted text-xs">{m.settings_notifications_permission_blocked()}</p>
     {/if}
   </section>

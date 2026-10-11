@@ -19,12 +19,15 @@
 import { vonAussenOeffnen } from '$lib/navigation/navigationsHerkunft';
 import { request } from '$lib/api/client';
 import { serversStore } from '$lib/api/servers.svelte';
+import { drafts } from '$lib/stores/drafts.svelte';
+import { guilds } from '$lib/stores/guilds.svelte';
 import { bannerAntworten } from './bannerAntwort.svelte';
 import { isCapacitorAndroid, isCapacitorIOS } from './runtime';
 import { badgeNachziehen } from './badge';
 import { berechtigungsblatt } from './berechtigung.svelte';
 import type { Stand } from './berechtigungRegel';
 import { pushGeraetId } from './geraeteKennungPush';
+import { mitteilungsZiel } from './mitteilungsZiel';
 
 /** Schmaler Ausschnitt der Plugin-Oberfläche (nur was wir rufen). */
 interface FcmPlugin {
@@ -83,7 +86,8 @@ async function meldeAn(fcm: FcmPlugin): Promise<void> {
 }
 
 /**
- * Push-Tap → Deep-Link in den DM-Chat (Kanal ohne Guild → `/app/@me`).
+ * Push-Tap → Deep-Link in den Chat (DM und private Gruppe unter `/app/@me`,
+ * ein Gilden-Kanal auf seiner Kanal-Route — `mitteilungsZiel.ts`).
  *
  * Die Aktion „Antworten" bringt den im Banner getippten Text mit. Er wird
  * nicht HIER gesendet — Senden heisst bei einer verschlüsselten DM, eine
@@ -97,16 +101,30 @@ function zeigAn(event: {
   actionId?: string;
   inputValue?: string;
 }): void {
-  const data = event.notification?.data;
-  const kanalId =
-    typeof data === 'object' && data !== null && 'channel_id' in data
-      ? String((data as Record<string, unknown>).channel_id)
-      : '';
-  if (!kanalId) return;
+  // Ziel nach Kanalart (iOS-Bughunt 2, C4) — Regel in `mitteilungsZiel.ts`.
+  const ziel = mitteilungsZiel(event.notification?.data, gildeVonKanal);
+  if (!ziel) return;
   const text = event.actionId === 'antworten' ? (event.inputValue ?? '').trim() : '';
-  if (text) bannerAntworten.ablegen(kanalId, text);
-  void vonAussenOeffnen(`/app/@me/${kanalId}`);
+  if (text) {
+    // Gesendet wird nur auf der DM-Seite; in einem Gilden-Kanal wartet die
+    // Antwort als Entwurf im Eingabefeld, statt unbemerkt liegen zu bleiben.
+    if (ziel.antwortWirdGesendet) bannerAntworten.ablegen(ziel.kanalId, text);
+    else drafts.einsetzen(ziel.kanalId, text);
+  }
+  void vonAussenOeffnen(ziel.pfad);
 }
+
+/** In welcher Gilde liegt dieser Kanal? `null`, wenn der Klient es nicht weiss. */
+function gildeVonKanal(kanalId: string): string | null {
+  for (const [gilde, kanaele] of Object.entries(guilds.channelsByGuild)) {
+    if (kanaele.some((k) => k.id === kanalId)) return gilde;
+  }
+  return null;
+}
+
+/** Die Anmeldung samt Tipp-Hörer, sobald `installiereFcmPush` lief — für die
+ *  Stellen, an denen die Erlaubnis gerade erst erteilt wurde. */
+let anmeldenNachErlaubnis: (() => void) | null = null;
 
 /**
  * Beim App-Start verkabeln (app/+layout.svelte): Token holen + melden,
@@ -160,6 +178,7 @@ export function installiereFcmPush(): void {
     })();
   };
 
+  anmeldenNachErlaubnis = meldeBestEffort;
   meldeBestEffort();
   // Nach Login/Resume: Token nachmelden, ohne den Listener doppelt zu hängen.
   document.addEventListener('visibilitychange', () => {
@@ -187,8 +206,8 @@ function alsStand(receive: 'granted' | 'denied' | 'prompt'): Stand {
  *
  * Gerufen wird das nach einer gesendeten Nachricht, nicht beim Start. Grund:
  * der iOS-Dialog erscheint GENAU EINMAL, und beim Start hat der Nutzer keinen
- * Grund, ja zu sagen. Die Regel (wie viele Nachrichten, einmal abgelehnt =
- * nicht wieder) steht in `berechtigungRegel.ts`.
+ * Grund, ja zu sagen. Die Regel (wie viele Nachrichten, wie lange ein
+ * „später" hält) steht in `berechtigungRegel.ts`.
  *
  * Mehrfache Aufrufe sind billig: liegt die Erlaubnis vor oder ist sie
  * verweigert, kehrt die Funktion vor jeder Frage zurück; fehlt der Anlass oder
@@ -206,12 +225,50 @@ export async function mitteilungenAnfragen(): Promise<void> {
     if (!(await berechtigungsblatt.fragen('mitteilungen', stand))) return;
     const neu = await fcm.requestPermissions();
     if (neu.receive !== 'granted') return;
-    // Bis eben hat `badgeSetzen` nichts getan (es fragt nie selbst) — die
-    // Plakette jetzt nachziehen, nicht erst bei der nächsten Nachricht.
-    badgeNachziehen();
-    await meldeAn(fcm);
+    await nachErteilterErlaubnis(fcm);
   } catch {
     /* Kein Firebase-Setup / keine Session / offline — bewusst still. */
+  }
+}
+
+async function nachErteilterErlaubnis(fcm: FcmPlugin): Promise<void> {
+  // Bis eben hat `badgeSetzen` nichts getan (es fragt nie selbst) — die
+  // Plakette jetzt nachziehen, nicht erst bei der nächsten Nachricht.
+  badgeNachziehen();
+  // Über die Anmeldung beim Start, damit auch der Tipp-Hörer hängt — der
+  // hing bisher erst nach dem nächsten Vordergrund.
+  if (anmeldenNachErlaubnis) anmeldenNachErlaubnis();
+  else await meldeAn(fcm);
+}
+
+/** Stand der Mitteilungs-Erlaubnis dieses Geräts; `null` ohne Plugin oder
+ *  bei einem Fehler. Für die Einstellungen (`HuelleMitteilungen.svelte`). */
+export async function mitteilungenStand(): Promise<Stand | null> {
+  const fcm = plugin();
+  if (!fcm) return null;
+  try {
+    return alsStand((await fcm.checkPermissions()).receive);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Aus den Einstellungen der App: direkt nach der Erlaubnis fragen
+ * (iOS-Bughunt 2, F3). **Ohne Vorerklärung** — wer in den Einstellungen auf
+ * „Erlauben" tippt, hat den Grund vor Augen, und ein „später" davor gäbe es
+ * hier nicht. Liefert den Stand danach; `null` ohne Plugin oder bei einem
+ * Fehler.
+ */
+export async function mitteilungenJetztErlauben(): Promise<Stand | null> {
+  const fcm = plugin();
+  if (!fcm) return null;
+  try {
+    const stand = alsStand((await fcm.requestPermissions()).receive);
+    if (stand === 'erteilt') await nachErteilterErlaubnis(fcm);
+    return stand;
+  } catch {
+    return null;
   }
 }
 

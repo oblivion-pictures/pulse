@@ -28,6 +28,8 @@ function load(): Record<string, string> {
 
 class DraftsStore {
   #map = $state<Record<string, string>>(typeof window === 'undefined' ? {} : load());
+  /** Je Kanal: wie oft von aussen eingesetzt wurde (`einsetzen`). */
+  #eingesetzt = $state<Record<string, number>>({});
   #timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -56,6 +58,34 @@ class DraftsStore {
     this.#schedulePersist();
   }
 
+  /**
+   * Einen Text VON AUSSEN in das Eingabefeld eines Kanals legen — sichtbar,
+   * auch wenn das Gespräch gerade offen ist (iOS-Bughunt 2, C6).
+   *
+   * `set` allein reicht dafür nicht: das Eingabefeld liest den Entwurf nur
+   * beim Wechsel des Kanals (`MessageInput.svelte`). Im offenen Gespräch
+   * blieb eine nicht gesendete Banner-Antwort deshalb unsichtbar, und der
+   * erste Tastendruck überschrieb sie. `einsetzungen` sagt dem Feld, dass es
+   * neu lesen muss.
+   *
+   * Steht im Feld schon etwas, bleibt es erhalten — der eingesetzte Text
+   * kommt davor, durch einen Zeilenumbruch getrennt. Keiner der beiden geht
+   * verloren; welcher wohin gehört, entscheidet der Nutzer.
+   */
+  einsetzen(channelId: string, text: string): void {
+    const bestehend = this.get(channelId).trim();
+    this.set(channelId, bestehend ? `${text}\n${bestehend}` : text);
+    this.#eingesetzt = {
+      ...this.#eingesetzt,
+      [channelId]: (this.#eingesetzt[channelId] ?? 0) + 1
+    };
+  }
+
+  /** Reaktiv: wie oft in diesen Kanal eingesetzt wurde (s. `einsetzen`). */
+  einsetzungen(channelId: string): number {
+    return this.#eingesetzt[channelId] ?? 0;
+  }
+
   clear(channelId: string): void {
     if (!(channelId in this.#map)) return;
     const { [channelId]: _evicted, ...rest } = this.#map;
@@ -66,6 +96,7 @@ class DraftsStore {
   /** Sign-Out/Account-Wechsel: Entwürfe des Vorgängers restlos entfernen. */
   clearAll(): void {
     this.#map = {};
+    this.#eingesetzt = {};
     if (this.#timer) clearTimeout(this.#timer);
     this.#timer = null;
     try {

@@ -127,11 +127,14 @@
 
   let text = $state('');
 
-  // Entwurf je Channel (auch DMs): beim Mount/Channel-Wechsel wiederherstellen …
-  // (untrack: der Effect soll nur auf channelId reagieren, nicht auf spätere
-  // Draft-Schreibvorgänge — sonst würde jeder Tastendruck ihn re-triggern.)
+  // Entwurf je Channel (auch DMs): beim Mount/Channel-Wechsel wiederherstellen,
+  // und wenn von aussen etwas eingesetzt wurde (`drafts.einsetzen`, etwa eine
+  // nicht gesendete Banner-Antwort im offenen Gespräch, C6) …
+  // (untrack: der Effect soll nicht auf spätere Draft-Schreibvorgänge
+  // reagieren — sonst würde jeder Tastendruck ihn re-triggern.)
   $effect(() => {
     const id = channelId;
+    if (id) drafts.einsetzungen(id);
     text = id ? untrack(() => drafts.get(id)) : '';
   });
   // … und laufend sichern. Leerer Text löscht den Entwurf — damit räumt auch

@@ -80,3 +80,20 @@ test('nur ein anlassloses "spaeter" wird dauerhaft gemerkt', () => {
   assert.equal(ablehnungMerken('kamera'), false);
   assert.equal(ablehnungMerken('mikrofon'), false);
 });
+
+test('ein „später" vor der Mitteilungsfrage hält eine Weile, nicht für immer (F3)', async () => {
+  // iOS-Bughunt 2, F3: ohne je gefragt zu haben, führt iOS die App nicht
+  // unter Einstellungen → Mitteilungen — ein endgültiges „später" sperrte
+  // Mitteilungen damit für immer.
+  const { spaeterGiltNoch, SPAETER_GILT_MS } = await import(
+    '../src/lib/platform/berechtigungRegel.ts'
+  );
+  const damals = 1_000_000;
+  assert.equal(spaeterGiltNoch(damals, damals + 1), true);
+  assert.equal(spaeterGiltNoch(damals, damals + SPAETER_GILT_MS - 1), true);
+  assert.equal(spaeterGiltNoch(damals, damals + SPAETER_GILT_MS), false);
+  // Was ältere Bauten gemerkt haben (`true` ohne Zeitpunkt), gilt als
+  // abgelaufen — sonst blieben genau die Getroffenen gesperrt.
+  assert.equal(spaeterGiltNoch(true, damals), false);
+  assert.equal(spaeterGiltNoch(undefined, damals), false);
+});

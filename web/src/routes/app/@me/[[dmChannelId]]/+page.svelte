@@ -221,7 +221,9 @@
 
   // Antwort aus dem Mitteilungs-Banner (iOS): senden, sobald die Seite den
   // Kanal kennt — Begründung in `platform/bannerAntwort.svelte.ts`. Gesperrt
-  // (keine Freundschaft) oder gescheitert: als Entwurf zurück ins Feld.
+  // (keine Freundschaft) oder gescheitert: als Entwurf zurück ins Feld, und
+  // zwar sichtbar (`einsetzen`, C6) — mit `set` blieb er im offenen Gespräch
+  // unsichtbar, bis man den Kanal wechselte.
   // **Nicht vor der App-Sperre** (Bughunt 2, F5): bis Face ID durch ist,
   // bleibt die Antwort liegen und geht danach hinaus.
   $effect(() => {
@@ -231,8 +233,8 @@
     untrack(() => {
       const text = bannerAntworten.nehmen(id);
       if (!text) return;
-      if (dmSperre) drafts.set(id, text);
-      else sendMessage(text, null, [], [], (ok) => !ok && drafts.set(id, text));
+      if (dmSperre) drafts.einsetzen(id, text);
+      else sendMessage(text, null, [], [], (ok) => !ok && drafts.einsetzen(id, text));
     });
   });
 

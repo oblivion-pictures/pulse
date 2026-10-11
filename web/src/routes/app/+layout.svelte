@@ -29,7 +29,7 @@
   import { statusLeisteFolgtTheme } from '$lib/platform/statusLeiste';
   import { installiereExterneLinks } from '$lib/platform/externeLinks';
   import { installiereUniversalLinks } from '$lib/platform/universalLinks';
-  import { badgeSetzen } from '$lib/platform/badge';
+  import { badgeNachziehen } from '$lib/platform/badge';
   import { badgeMelden } from '$lib/platform/badgeMelden';
   import { ungeleseneNachrichten } from '$lib/navigation/abzeichen.svelte';
   import { voice } from '$lib/voice/livekit.svelte';
@@ -459,14 +459,20 @@
     // Empfaenger: das Geraet selbst (nur in der iOS-Huelle wirksam) und der
     // Server, der die Zahl in den naechsten Push legt — ohne ihn stuende sie
     // still, solange die App zu ist (eingefrorene JS-Engine).
-    const zahl = ungeleseneNachrichten();
-    badgeSetzen(zahl);
-    badgeMelden(zahl);
-    // Bei Resume auffrischen: die Mitteilungserlaubnis kann nachtraeglich
-    // erteilt worden sein (Simulator-Befund 2026-10-06 — setBadgeCount
-    // scheitert stumm ohne Erlaubnis).
+    // Ans Icon legt `badgeMelden` die Zahl erst, wenn sie etwas bedeutet —
+    // vorher räumte die ungeladene 0 die Plakette des letzten Pushs ab
+    // (iOS-Bughunt 2, C7, Begründung dort).
+    badgeMelden(ungeleseneNachrichten());
+  });
+
+  // Icon-Badge bei Resume auffrischen: die Mitteilungserlaubnis kann
+  // nachträglich erteilt worden sein (Simulator-Befund 2026-10-06 —
+  // setBadgeCount scheitert stumm ohne Erlaubnis). Eigener Effect, weil der
+  // Hörer die Zahl nicht braucht — `badgeNachziehen` kennt die zuletzt gewünschte.
+  $effect(() => {
+    if (typeof document === 'undefined') return;
     const badgeBeiSichtbar = () => {
-      if (document.visibilityState === 'visible') badgeSetzen(zahl);
+      if (document.visibilityState === 'visible') badgeNachziehen();
     };
     document.addEventListener('visibilitychange', badgeBeiSichtbar);
     return () => document.removeEventListener('visibilitychange', badgeBeiSichtbar);

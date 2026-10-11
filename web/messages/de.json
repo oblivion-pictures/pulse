@@ -3343,5 +3343,10 @@
   "camera_video_vorbereiten": "Video wird vorbereitet …",
   "camera_video_kuerzen": "Kürzen",
   "camera_nicht_verfuegbar": "Kamera nicht verfügbar",
-  "message_input_anhang_kamera": "Kamera"
+  "message_input_anhang_kamera": "Kamera",
+  "settings_mitteilungen_huelle_titel": "Mitteilungen auf diesem Gerät",
+  "settings_mitteilungen_huelle_offen": "Pulse darf dir noch keine Mitteilungen schicken. Dein Gerät fragt einmal nach der Erlaubnis.",
+  "settings_mitteilungen_huelle_erteilt": "Erlaubt — du bekommst eine Mitteilung, wenn eine Nachricht für dich ankommt.",
+  "settings_mitteilungen_huelle_verweigert": "Ausgeschaltet. Einschalten kannst du sie nur in den iOS-Einstellungen.",
+  "settings_mitteilungen_huelle_einstellungen": "Einstellungen öffnen"
 }

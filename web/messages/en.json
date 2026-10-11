@@ -3343,5 +3343,10 @@
   "camera_video_vorbereiten": "Preparing video …",
   "camera_video_kuerzen": "Trim",
   "camera_nicht_verfuegbar": "Camera not available",
-  "message_input_anhang_kamera": "Camera"
+  "message_input_anhang_kamera": "Camera",
+  "settings_mitteilungen_huelle_titel": "Notifications on this device",
+  "settings_mitteilungen_huelle_offen": "Pulse can't send you notifications yet. Your device will ask for permission once.",
+  "settings_mitteilungen_huelle_erteilt": "Allowed — you'll get a notification when a message arrives for you.",
+  "settings_mitteilungen_huelle_verweigert": "Turned off. You can only turn them on in the iOS settings.",
+  "settings_mitteilungen_huelle_einstellungen": "Open Settings"
 }

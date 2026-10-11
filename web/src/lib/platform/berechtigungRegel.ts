@@ -20,10 +20,11 @@
  *  2. **Nur in einer Hülle.** Im Browser ist die Berechtigung an die Seite
  *     gebunden und jederzeit über das Schloss in der Adresszeile umkehrbar;
  *     die Einmaligkeit, gegen die wir hier arbeiten, gibt es dort nicht.
- *  3. **Ein „später" genügt — bei Mitteilungen.** Wer die Erklärung dort
- *     einmal weggetippt hat, sieht sie nicht wieder — die Erlaubnis bleibt
- *     über die Einstellungen erreichbar. Bei Kamera und Mikrofon bricht
- *     „später" nur die Handlung ab (s. `ablehnungMerken`).
+ *  3. **Ein „später" hält eine Weile — bei Mitteilungen.** Wer die Erklärung
+ *     dort weggetippt hat, sieht sie `SPAETER_GILT_MS` lang nicht wieder,
+ *     danach beim nächsten Anlass erneut. Dazu der Weg in den Einstellungen
+ *     der App (Mitteilungen). Bei Kamera und Mikrofon bricht „später" nur die
+ *     Handlung ab (s. `ablehnungMerken`).
  *  4. **Mitteilungen brauchen einen ANLASS.** Kamera und Mikrofon werden von
  *     einer Handlung ausgelöst (Kachel öffnen, Sprachkanal betreten), die den
  *     Grund selbst erklärt. Mitteilungen nicht — deshalb hängen sie an einer
@@ -59,18 +60,19 @@ export interface Lage {
   stand: Stand;
   /** Läuft die App in einer Capacitor-Hülle? */
   inHuelle: boolean;
-  /** Hat der Nutzer die Vorerklärung für DIESE Art schon weggetippt? */
+  /** Hat der Nutzer die Vorerklärung für DIESE Art weggetippt, und gilt das
+   *  noch (`spaeterGiltNoch`)? */
   schonAbgelehnt: boolean;
   /** Eigene gesendete Nachrichten (nur für `mitteilungen` relevant). */
   sendungen: number;
 }
 
 /**
- * Wird ein „später" dauerhaft gemerkt?
+ * Wird ein „später" gemerkt?
  *
  * **Nur für Mitteilungen.** Dort gibt es keine auslösende Handlung: „später"
- * heisst „frag mich nicht wieder", und genau so wird es behandelt — erreichbar
- * bleibt die Erlaubnis über die Einstellungen.
+ * heisst „frag mich jetzt nicht", und so wird es behandelt — für
+ * `SPAETER_GILT_MS`, nicht für immer (s. `spaeterGiltNoch`).
  *
  * Bei Mikrofon und Kamera ist „später" dagegen **das Abbrechen der Handlung**,
  * nicht das Ablehnen der Erklärung: wer die Kamera öffnet und dann abbricht,
@@ -80,6 +82,29 @@ export interface Lage {
  */
 export function ablehnungMerken(art: Berechtigung): boolean {
   return art === 'mitteilungen';
+}
+
+/**
+ * So lange hält ein „später" vor der Mitteilungsfrage. **Gesetzt, nicht
+ * gemessen** — wie oft man fragen darf, ohne zu nerven, ist eine Produktfrage.
+ */
+export const SPAETER_GILT_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Gilt ein gemerktes „später" noch?
+ *
+ * **Warum es befristet ist** (iOS-Bughunt 2, F3). Bis zum 2026-10-11 war es
+ * endgültig — und auf iOS damit die Erlaubnis: solange eine App nie gefragt
+ * hat, führt iOS sie unter Einstellungen → Mitteilungen gar nicht, der
+ * System-Dialog war der einzige Weg, und den öffnete nach einem „später"
+ * niemand mehr (iOS-Verhalten laut Bughunt, am Gerät nicht gemessen).
+ *
+ * `gemerkt` ist, was im Speicher steht: seitdem der Zeitpunkt (ms), in
+ * Bauten davor ein bloßes `true`. Das gilt als abgelaufen — sonst blieben
+ * genau die Nutzer gesperrt, die der Fehler schon getroffen hat.
+ */
+export function spaeterGiltNoch(gemerkt: unknown, jetzt: number): boolean {
+  return typeof gemerkt === 'number' && jetzt - gemerkt < SPAETER_GILT_MS;
 }
 
 /**

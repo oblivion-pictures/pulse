@@ -13,6 +13,7 @@
  */
 import {
   ablehnungMerken,
+  spaeterGiltNoch,
   vorgehenVorDemDialog,
   type Berechtigung,
   type Stand
@@ -105,7 +106,7 @@ class Berechtigungsblatt {
       art,
       stand,
       inHuelle: isCapacitorIOS() || isCapacitorAndroid(),
-      schonAbgelehnt: karteLesen<true>(ABGELEHNT_SCHLUESSEL)[art] === true,
+      schonAbgelehnt: spaeterGiltNoch(karteLesen<unknown>(ABGELEHNT_SCHLUESSEL)[art], Date.now()),
       sendungen: sendungenLesen()
     });
     if (vorgehen === 'weiter') return true;
@@ -121,10 +122,11 @@ class Berechtigungsblatt {
     });
     this.offen = null;
     this.#loesen = null;
-    // Nur ANLASSLOSE Ablehnungen sind dauerhaft — bei Mikrofon und Kamera ist
+    // Nur ANLASSLOSE Ablehnungen werden gemerkt — bei Mikrofon und Kamera ist
     // „später" das Abbrechen der Handlung, nicht das Ablehnen der Erklärung
-    // (Begründung an `ablehnungMerken`).
-    if (!weiter && ablehnungMerken(art)) karteMerken(ABGELEHNT_SCHLUESSEL, art, true);
+    // (Begründung an `ablehnungMerken`). Gemerkt wird der ZEITPUNKT: das
+    // „später" hält nur eine Weile (`spaeterGiltNoch`, iOS-Bughunt 2, F3).
+    if (!weiter && ablehnungMerken(art)) karteMerken(ABGELEHNT_SCHLUESSEL, art, Date.now());
     return weiter;
   }
 

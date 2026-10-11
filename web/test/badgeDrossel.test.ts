@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { darfMelden, MINDESTABSTAND_MS } from '../src/lib/platform/badgeDrossel.ts';
+import type { Drosselstand } from '../src/lib/platform/badgeDrossel.ts';
 
 test('derselbe Wert wird nicht erneut gemeldet', () => {
 	assert.equal(darfMelden({ letzterWert: 3, letzteZeit: 0, bereit: true }, 3, 10_000_000), false);
@@ -52,4 +53,28 @@ test('nach dem Wiederverbinden geht derselbe Wert erneut raus (T12)', async () =
 	assert.equal(darfMelden(stand, 3, 10_001), false);
 	serverStandUnsicher(stand);
 	assert.equal(darfMelden(stand, 3, 10_001), true);
+});
+
+test('eine aufgeschobene Zahl bekommt ihre Wartezeit statt verworfen zu werden (C3)', async () => {
+	// iOS-Bughunt 2, C3: innerhalb der Frist fiel die Zahl bisher weg — kam
+	// danach keine Änderung mehr, blieb der Server auf dem Wert davor.
+	const { wartezeit } = await import('../src/lib/platform/badgeDrossel.ts');
+	const stand = { letzterWert: 1, letzteZeit: 10_000, bereit: true };
+	assert.equal(wartezeit(stand, 2, 11_000), MINDESTABSTAND_MS - 1_000);
+	assert.equal(wartezeit(stand, 2, 10_000 + MINDESTABSTAND_MS), 0);
+	assert.equal(wartezeit(stand, 1, 11_000), null);
+	assert.equal(wartezeit({ ...stand, bereit: false }, 2, 11_000), null);
+	assert.equal(wartezeit(stand, 0, 11_000), 0);
+});
+
+test('nach einer Zustellung bei wacher App geht derselbe Wert gedrosselt erneut raus (C1)', async () => {
+	// Der Server pusht seit C1 auch an ein wachendes iPhone und zählt dabei
+	// hoch. Wurde die Nachricht sofort gelesen, bleibt die Zahl hier gleich —
+	// sie muss trotzdem zurück zum Server, aber nicht öfter als die Frist erlaubt.
+	const { serverHatGezaehlt, wartezeit } = await import('../src/lib/platform/badgeDrossel.ts');
+	const stand: Drosselstand = { letzterWert: 3, letzteZeit: 10_000, bereit: true };
+	assert.equal(wartezeit(stand, 3, 11_000), null);
+	serverHatGezaehlt(stand);
+	assert.equal(wartezeit(stand, 3, 11_000), MINDESTABSTAND_MS - 1_000);
+	assert.equal(wartezeit(stand, 3, 10_000 + MINDESTABSTAND_MS), 0);
 });
