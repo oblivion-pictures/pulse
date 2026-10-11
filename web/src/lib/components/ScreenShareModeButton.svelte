@@ -101,7 +101,8 @@
 
   // setScreenShare setzt isScreenSharing erst NACH dem await (getDisplayMedia);
   // ohne In-Flight-Guard startet ein Doppelklick zwei getDisplayMedia-Sessions,
-  // die zweite überschreibt #bypassVideoTrack → erste Capture bleibt verwaist.
+  // die zweite überschreibt die Umweg-Spur (`FensterTonUmweg` in
+  // `voice/bildschirmFreigabe.ts`) → erste Capture bleibt verwaist.
   let sharing = $state(false);
 
   async function doAction() {

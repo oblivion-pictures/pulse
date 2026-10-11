@@ -139,7 +139,7 @@ class MicTest {
     await this.#setSink(outputId);
   }
 
-  /** Same ballistics + clip logic as the live send meter (livekit #onSendLevel). */
+  /** Same ballistics + clip logic as the live send meter (`EigenesSignal.#feedSendMeter`). */
   #onSend(rms: number, peak: number): void {
     this.sendLevel = ballistics(rms, this.sendLevel, LEVEL_DECAY);
     this.sendPeak = ballistics(peak, this.sendPeak, PEAK_DECAY);
