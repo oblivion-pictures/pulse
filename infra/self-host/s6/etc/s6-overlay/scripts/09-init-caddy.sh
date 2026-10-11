@@ -17,6 +17,7 @@ set -euo pipefail
 
 TEMPLATE="/etc/caddy/Caddyfile.template"
 TARGET="/etc/caddy/Caddyfile"
+ENV_SH="/etc/pulse/env.sh"
 TLS_MODE="${PULSE_TLS_MODE:-auto}"
 HTTP_PORT="${PULSE_HTTP_PORT:-8080}"
 
@@ -24,6 +25,22 @@ echo "[07-init-caddy] TLS-Modus: ${TLS_MODE}"
 
 # Caddyfile aus Template erzeugen
 cp "$TEMPLATE" "$TARGET"
+
+# Ohne Admin-Mail: die globale `email`-Zeile entfernen. Caddy startet mit einer
+# `email`-Direktive ohne Wert nicht, und Let's Encrypt braucht keine Adresse
+# (ohne sie entfallen nur die Ablauf-Warnungen per Mail). Gefragt wird
+# /etc/pulse/env.sh, nicht die eigene Umgebung: die Mail kann aus
+# /data/pulse/verbindung.env stammen (07-render-env.sh läuft vorher), und Caddy
+# liest dieselbe Datei (s6-rc.d/caddy/run). Spec 2026-10-09, E4.
+ADMIN_EMAIL="$( [ -r "$ENV_SH" ] && . "$ENV_SH"; printf '%s' "${PULSE_ADMIN_EMAIL:-}" )"
+if [[ -z "$ADMIN_EMAIL" ]]; then
+    sed -i '/^    email {\$PULSE_ADMIN_EMAIL}$/d' "$TARGET"
+    if grep -qF 'email {$PULSE_ADMIN_EMAIL}' "$TARGET"; then
+        echo "[07-init-caddy] FEHLER: email-Zeile konnte nicht entfernt werden." >&2
+        exit 1
+    fi
+    echo "[07-init-caddy] Keine PULSE_ADMIN_EMAIL — Zertifikat ohne Kontaktadresse."
+fi
 
 if [[ "$TLS_MODE" == "provided" ]]; then
     CERT="/data/certs/cert.pem"
@@ -63,7 +80,7 @@ elif [[ "$TLS_MODE" == "behind-proxy" ]]; then
     echo "[07-init-caddy] Proxy-Regel beim Admin: pulse.domain → http://<container>:${HTTP_PORT}"
 elif [[ "$TLS_MODE" == "auto" ]]; then
     # auto — nichts zu tun, Caddy macht ACME selbst.
-    echo "[07-init-caddy] Let's Encrypt Auto-TLS aktiv (ACME via PULSE_ADMIN_EMAIL)."
+    echo "[07-init-caddy] Let's Encrypt Auto-TLS aktiv."
     echo "[07-init-caddy] DNS-A-Record muss VOR dem ersten Start auf diese IP zeigen."
 else
     echo "[07-init-caddy] FEHLER: unbekannter PULSE_TLS_MODE='${TLS_MODE}'." >&2

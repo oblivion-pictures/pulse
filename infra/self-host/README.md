@@ -94,10 +94,12 @@ Zeile steht in `docker-compose.yml`).
 Updates richtest du auf dem manuellen Pfad (Compose wie `docker run`) selbst
 ein — siehe [Auto-update](#auto-update).
 
-The six `-e` vars are mandatory; cont-init aborts with a clear error otherwise.
-`PULSE_INSTANCE_ID`, `PULSE_INSTANCE_OWNER_ID`, `PULSE_CLOUD_CLIENT_ID` and the
-secret come from the Cloud approval — the ready-made `.env` under "Meine
-Instanzen" on howispulse.com carries all but the secret.
+Only `PULSE_HOSTNAME` is mandatory; cont-init aborts with a clear error without
+it. A server started without `PULSE_INSTANCE_ID`, `PULSE_INSTANCE_OWNER_ID`,
+`PULSE_CLOUD_CLIENT_ID` and `PULSE_CLOUD_CLIENT_SECRET` runs but admits nobody
+until it is connected: `docker exec -it pulse pulse-connect` (the values then
+live in `/data/pulse/verbindung.env`; values passed with `-e` win). Servers set
+up with a Cloud approval keep passing them with `-e` as before.
 All internal secrets (Postgres password, JWT keys, coturn shared-secret,
 LiveKit API key pair, Garage S3 credentials — still named `minio.*`
 internally) are **generated on first boot**

@@ -128,8 +128,8 @@ async def test_limits_are_per_account(client, session_factory):
 # ---------------------------------------------------------------------------
 # Der volle Cloud-Durchlauf (Heim-Server 2026-09-27): Selbstbedienung →
 # Bootstrap-Token → Einlösung → die Werte, ohne die der All-in-One-Container
-# hart failt (10-check-cloud-creds.sh verlangt HOSTNAME, INSTANCE_ID,
-# CLIENT_ID/SECRET, ADMIN_EMAIL, OWNER_ID). Genau diese Kette fährt die
+# niemanden aufnimmt (bis 2026-10 verlangte 10-check-cloud-creds.sh sie alle
+# schon beim Start; seither startet er ohne sie unverbunden). Genau diese Kette fährt die
 # Server-App (`serverProvision.provision`) — der Test ist ihr Spiegelbild.
 # ---------------------------------------------------------------------------
 
@@ -172,7 +172,8 @@ async def test_voller_durchlauf_selbstbedienung_bis_container_env(
     )
     assert redeem.status_code == 200, redeem.text
     creds = redeem.json()
-    # 10-check-cloud-creds.sh fordert genau diese fünf:
+    # Die Werte, ohne die der Server niemanden aufnimmt (bis 2026-10 verlangte
+    # sie 10-check-cloud-creds.sh alle schon beim Start):
     assert creds["hostname"], "PULSE_HOSTNAME fehlt"
     assert creds["instance_id"] == iid, "PULSE_INSTANCE_ID fehlt"
     assert creds["client_id"] and creds["client_secret"], "CLOUD_CLIENT_ID/SECRET fehlen"

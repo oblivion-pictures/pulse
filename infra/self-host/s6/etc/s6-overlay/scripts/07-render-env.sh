@@ -14,6 +14,34 @@ chown pulse:pulse /etc/pulse
 # Default lokal, damit CORS_ALLOW_ORIGINS unten kein führendes Komma erbt.
 : "${PULSE_CLOUD_ORIGIN:=https://howispulse.com}"
 
+# Verbindung mit einem Pulse-Konto (pulse-connect, Spec 2026-10-09 E4): die
+# abgeholten Zugangsdaten liegen im Datenvolumen. Übernommen wird nur, was die
+# Umgebung LEER lässt — Werte aus `docker run -e` oder der .env gewinnen, damit
+# Bestandsserver und Server-App unverändert laufen.
+#
+# Bewusst kein `.`/source: die Werte stammen aus einer Antwort der Cloud, und
+# eine Zeile wie `X=$(...)` würde beim Sourcen ausgeführt. Erlaubt sind nur die
+# fünf Namen und die Zeichen, die verbinden_cli.py (_WERT) schreibt — beide
+# Stellen synchron halten.
+VERBINDUNG="${DATA}/pulse/verbindung.env"
+if [ -r "$VERBINDUNG" ]; then
+    while IFS='=' read -r schluessel wert || [ -n "$schluessel" ]; do
+        case "$schluessel" in
+            PULSE_INSTANCE_ID|PULSE_INSTANCE_OWNER_ID|PULSE_CLOUD_CLIENT_ID|PULSE_CLOUD_CLIENT_SECRET|PULSE_ADMIN_EMAIL) ;;
+            *) continue ;;
+        esac
+        case "$wert" in
+            ''|*[!A-Za-z0-9._@+-]*)
+                echo "[07-render-env] ${schluessel} in ${VERBINDUNG} ignored (unexpected characters)" >&2
+                continue ;;
+        esac
+        eval "aktuell=\${${schluessel}:-}"
+        if [ -z "$aktuell" ]; then
+            export "${schluessel}=${wert}"
+        fi
+    done < "$VERBINDUNG"
+fi
+
 PG_PASS=$(cat "${KEYS}/postgres.password")
 INTERNAL_SECRET=$(cat "${KEYS}/internal_service.token")
 LIVEKIT_KEY=$(cat "${KEYS}/livekit.key")
@@ -145,20 +173,27 @@ export SNOWFLAKE_WORKER_ID_CHAT=2
 # Self-host identity.
 export PULSE_HOSTNAME='${PULSE_HOSTNAME}'
 export PULSE_INSTANCE_MODE=self-host
-# PULSE_INSTANCE_ID = the Snowflake-ID the Cloud assigned at approval. Without it
-# chat-gateway hard-fails on startup (app.py — pulse_instance_id==0 +
-# mode=self-host → RuntimeError). The longrun services source ONLY this env.sh,
-# so the docker-run -e value MUST be rendered through here — handing it to the
-# container env alone never reaches the services.
-export PULSE_INSTANCE_ID='${PULSE_INSTANCE_ID}'
-export PULSE_INSTANCE_OWNER_ID='${PULSE_INSTANCE_OWNER_ID}'
+# Instanz-Nummer, Besitzer und Zugangsdaten kommen aus der Umgebung
+# (Bestandsserver, Server-App) oder aus ${DATA}/pulse/verbindung.env
+# (pulse-connect, Block oben). Ein frisch installierter Server hat noch keine:
+# er startet trotzdem und nimmt niemanden auf (chat-gateway, POST /session
+# antwortet 503 nicht_verbunden). Die beiden Zahlen werden als 0 statt leer
+# gerendert, weil pydantic eine leere Zeichenkette nicht als int liest und der
+# chat-gateway sonst schon beim Laden seiner Einstellungen stürbe. Die Dienste
+# lesen NUR diese Datei; ein Wert, der nur in der Container-Umgebung steht,
+# erreicht sie nicht.
+export PULSE_INSTANCE_ID='${PULSE_INSTANCE_ID:-0}'
+export PULSE_INSTANCE_OWNER_ID='${PULSE_INSTANCE_OWNER_ID:-0}'
 export PULSE_CLOUD_ORIGIN='${PULSE_CLOUD_ORIGIN}'
-export PULSE_ADMIN_EMAIL='${PULSE_ADMIN_EMAIL}'
-# Cloud-pairing credentials (reserved for the Phase 4–6 instance↔Cloud
-# handshake — heartbeat / suspend-enforcement). Rendered so they're ready;
-# no service consumes them yet.
-export PULSE_CLOUD_CLIENT_ID='${PULSE_CLOUD_CLIENT_ID}'
-export PULSE_CLOUD_CLIENT_SECRET='${PULSE_CLOUD_CLIENT_SECRET}'
+export PULSE_ADMIN_EMAIL='${PULSE_ADMIN_EMAIL:-}'
+# Zugangsdaten bei der Cloud: gelesen vom direct-adapter (Heartbeat; schläft
+# ohne sie, s6-rc.d/direct-adapter/run) und von instance_name.py (Server-Name
+# an die Cloud). NIE loggen.
+export PULSE_CLOUD_CLIENT_ID='${PULSE_CLOUD_CLIENT_ID:-}'
+export PULSE_CLOUD_CLIENT_SECRET='${PULSE_CLOUD_CLIENT_SECRET:-}'
+# Wo pulse-connect Nachweis und Zugangsdaten ablegt (chat-gateway-Einstellung
+# pulse_verbinden_dir, Spec 2026-10-09 E4/E6).
+export PULSE_VERBINDEN_DIR='${DATA}/pulse'
 # Bughunt Runde 13: drei Vars, die Longruns bisher NIE sahen (sie lesen nur
 # diese env.sh) — der direct-adapter schlief deshalb im All-in-One-Container
 # immer („kein Relay-Token"), und /health/setup meldete für behind-proxy-
