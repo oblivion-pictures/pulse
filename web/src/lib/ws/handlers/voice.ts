@@ -6,6 +6,7 @@
  */
 import { voicePresence } from '$lib/stores/voicePresence.svelte';
 import { currentServerUserId } from '$lib/stores/currentServerUser';
+import { startTor } from '$lib/voice/startTor.svelte';
 import { registerWsHandler } from '../handler-registry';
 import { m } from '$lib/paraglide/messages.js';
 import { toast } from 'svelte-sonner';
@@ -64,9 +65,17 @@ export function register(ctx: HandlerContext): void {
     // can just connect — voice.connect() disconnects any current room
     // first. The channel itself arrives separately via channel_revealed.
     if (currentServerUserId() !== evt.user_id) return;
-    void import('$lib/voice/livekit.svelte').then(({ voice }) => {
-      void voice.connect(evt.channel_id, evt.channel_name);
-    });
+    // **Erst nach dem Start** (`voice/startTor.svelte.ts`): ein Holen, das
+    // vor Face ID ankommt, öffnete sonst das Mikrofon hinter der App-Sperre,
+    // und eines vor dem Abgleich mit der Hülle verdrängte einen überlebenden
+    // Raum, ohne Stumm und Taub mitzunehmen (Bughunt 2, F4/N1). Ausserhalb
+    // des Starts ist das Tor offen, und es geht wie bisher sofort.
+    void startTor
+      .warten()
+      .then(() => import('$lib/voice/livekit.svelte'))
+      .then(({ voice }) => {
+        void voice.connect(evt.channel_id, evt.channel_name);
+      });
   });
 
   registerWsHandler('voice_override', (evt) => {

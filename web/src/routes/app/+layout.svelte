@@ -3,6 +3,7 @@
   import { dev } from '$app/environment';
   import { onMount, onDestroy } from 'svelte';
   import { istInAppZiel } from '$lib/notifications/pushZiel';
+  import { vonAussenOeffnen } from '$lib/navigation/navigationsHerkunft';
   import { auth } from '$lib/stores/auth.svelte';
   import { guilds } from '$lib/stores/guilds.svelte';
   import { serverGuilds } from '$lib/stores/serverGuilds.svelte';
@@ -31,7 +32,8 @@
   import { badgeSetzen } from '$lib/platform/badge';
   import { badgeMelden } from '$lib/platform/badgeMelden';
   import { ungeleseneNachrichten } from '$lib/navigation/abzeichen.svelte';
-  import { voice, resumeVoiceIfPending } from '$lib/voice/livekit.svelte';
+  import { voice } from '$lib/voice/livekit.svelte';
+  import { startBeitritteAusfuehren } from '$lib/voice/startBeitritte';
   import { netzwacheStarten } from '$lib/ws/netzwache';
   import { schriftGroesseVerfolgen } from '$lib/platform/schriftGroesse';
   import { voipTokenVerfolgen } from '$lib/platform/voipToken';
@@ -42,7 +44,6 @@
   import VerbindungsHinweis from '$lib/components/VerbindungsHinweis.svelte';
   import AppSperre from '$lib/components/AppSperre.svelte';
   import BerechtigungVorerklaerung from '$lib/components/BerechtigungVorerklaerung.svelte';
-  import { autoConnectIfConfigured } from '$lib/voice/autoconnect.svelte';
   import VoiceControlBar from '$lib/components/VoiceControlBar.svelte';
   import WatchPartyPickerDialog from '$lib/components/WatchPartyPickerDialog.svelte';
   import StreamPickerDialog from '$lib/components/StreamPickerDialog.svelte';
@@ -179,15 +180,17 @@
     // events build the channel URL from the ids. target_url comes from the
     // push payload — validated as a same-origin in-app path before goto()
     // (Security-Scan 2026-09-18, s. $lib/notifications/pushZiel.ts).
+    // `vonAussenOeffnen`: eine Mitteilung ist kein Tipp in der App — landet
+    // sie auf einem Sprachkanal, tritt die Route nicht bei (Bughunt 2, D1).
     if (targetUrl && istInAppZiel(targetUrl)) {
-      void goto(targetUrl);
+      void vonAussenOeffnen(targetUrl);
       return;
     }
     if (!channelId) return;
     const url = guildId
       ? `/app/guilds/${guildId}/channels/${channelId}`
       : `/app/@me/${channelId}`;
-    void goto(url);
+    void vonAussenOeffnen(url);
   }
 
   /** Listener cleanup handles for the click bridges. Both are registered in
@@ -290,12 +293,10 @@
     ]);
     hydrated = true;
 
-    // Voice-Resume: war der User vor einem Reload (manuelles F5 oder „Neu
-    // laden" nach einem Update) in einem Voice-Channel, jetzt — nach Auth +
-    // WS-Ready — automatisch zurückverbinden. Fire-and-forget; no-op, wenn
-    // kein Resume-Eintrag vorliegt. DANACH (sequenziell — Resume gewinnt):
-    // Auto-Connect in den fest gewählten Voice-Channel, falls konfiguriert.
-    void resumeVoiceIfPending().then(() => autoConnectIfConfigured());
+    // Voice-Resume, danach Auto-Connect — erst nach der App-Sperre und mit
+    // dem Abgleich der Hülle vorneweg; bis dahin wartet auch der Auto-Beitritt
+    // der Kanal-Route. Reihenfolge und Gründe: `voice/startBeitritte.ts`.
+    void startBeitritteAusfuehren();
     // Netz zurück / App wieder vorn → Verbindungen sofort prüfen, statt auf
     // die nächste Backoff-Stufe zu warten (bis 300 s). Begründung und die
     // drei Anlässe: `ws/netzwache.ts`.

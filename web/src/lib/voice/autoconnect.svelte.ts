@@ -91,7 +91,8 @@ export const voiceAutoConnect = new VoiceAutoConnectStore();
 
 /**
  * Nach dem Boot aufrufen — NACH `resumeVoiceIfPending()` (der Reload-Resume
- * trägt den echten letzten Zustand und gewinnt). Gates:
+ * trägt den echten letzten Zustand und gewinnt) und nach der App-Sperre; die
+ * Reihenfolge hält `startBeitritte.ts`. Gates:
  *  - kein Join, wenn schon (ver)bunden (auch: Resume hat gerade verbunden);
  *  - nur im gemerkten Server-/Account-Kontext;
  *  - nur im sichtbaren Tab (ein vergessener Hintergrund-Tab joint nicht);

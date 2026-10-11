@@ -16,7 +16,7 @@
  *    in den Chat (`channel_id` aus der Push-Nutzlast, inhaltsfrei).
  */
 
-import { goto } from '$app/navigation';
+import { vonAussenOeffnen } from '$lib/navigation/navigationsHerkunft';
 import { request } from '$lib/api/client';
 import { serversStore } from '$lib/api/servers.svelte';
 import { bannerAntworten } from './bannerAntwort.svelte';
@@ -105,7 +105,7 @@ function zeigAn(event: {
   if (!kanalId) return;
   const text = event.actionId === 'antworten' ? (event.inputValue ?? '').trim() : '';
   if (text) bannerAntworten.ablegen(kanalId, text);
-  void goto(`/app/@me/${kanalId}`);
+  void vonAussenOeffnen(`/app/@me/${kanalId}`);
 }
 
 /**

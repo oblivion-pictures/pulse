@@ -41,8 +41,9 @@ export function verbindungAusHuelle(roh: string): HuellenVerbindung | null {
   }
 }
 
-/** Was nach einem Reload mit einem Raum geschieht, den die Hülle noch hält. */
-export type Abgleich = 'nichts' | 'uebernehmen' | 'verlassen';
+/** Was nach einem Reload mit einem Raum geschieht, den die Hülle noch hält
+ *  — oder mit dem Resume-Eintrag, wenn sie keinen mehr hält (`verwerfen`). */
+export type Abgleich = 'nichts' | 'uebernehmen' | 'verlassen' | 'verwerfen';
 
 /**
  * Übernehmen oder verlassen? (Entwurf §5: „Ein Reload der Web-App darf den
@@ -59,17 +60,41 @@ export type Abgleich = 'nichts' | 'uebernehmen' | 'verlassen';
  * Umständen mit offenem Mikrofon, und es gibt keinen Knopf zum Gehen
  * (Bughunt 2026-10-11, E5). Deshalb: alles, was nicht bestätigt ist, wird
  * verlassen, nicht übernommen.
+ *
+ * Hält die Hülle keinen Raum mehr, weil der Nutzer ihn dort aufgelegt hat,
+ * heisst das Ergebnis `verwerfen`: der Eintrag ist überholt
+ * (`vomNutzerAufgelegt`, B1).
  */
 export function abgleichEntscheiden(z: {
-  huelle: { kanalId: string } | null;
+  huelle: { kanalId: string; sitzung?: number; aufgelegtSitzung?: number | null } | null;
   resume: { serverId: string; channelId: string } | null;
   aktiverServer: string;
 }): Abgleich {
-  if (!z.huelle || !z.huelle.kanalId) return 'nichts';
+  if (!z.huelle) return 'nichts';
+  if (!z.huelle.kanalId) return vomNutzerAufgelegt(z.huelle) ? 'verwerfen' : 'nichts';
   if (!z.resume) return 'verlassen';
   if (z.resume.serverId !== z.aktiverServer) return 'verlassen';
   if (z.resume.channelId !== z.huelle.kanalId) return 'verlassen';
   return 'uebernehmen';
+}
+
+/**
+ * Hat der Nutzer die LETZTE Sitzung der Hülle dort selbst aufgelegt — in der
+ * nativen Ansicht oder in der Live Activity, ohne dass die Oberfläche es
+ * mitbekam (Bughunt 2 vom 2026-10-11, B1)?
+ *
+ * Nach einem WebContent-Absturz hört drüben niemand mehr zu; die Hülle legt
+ * dann allein auf, und ihr „getrennt" geht ins Leere. Der Resume-Eintrag
+ * blieb stehen, und das Neuladen trat wieder bei — in einen Kanal, den der
+ * Nutzer eben verlassen hatte. Die Hülle merkt sich deshalb, WELCHE Sitzung
+ * sie so beendet hat (`aufgelegtSitzung`, `SpracheRaum.vomNutzerAufgelegt`).
+ * Gilt nur, solange seither kein Beitritt kam: jeder zählt `sitzung` hoch.
+ *
+ * **Ein fehlendes Feld heisst „unbekannt", nie „aufgelegt"** — eine ältere
+ * Hülle schickt es nicht, und für sie bleibt alles beim Alten.
+ */
+export function vomNutzerAufgelegt(h: { sitzung?: number; aufgelegtSitzung?: number | null }): boolean {
+  return typeof h.aufgelegtSitzung === 'number' && h.aufgelegtSitzung === h.sitzung;
 }
 
 /**

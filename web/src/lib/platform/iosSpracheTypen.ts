@@ -40,6 +40,12 @@ export interface NativerZustand {
   /** Zählt die Beitritte der Hülle. Ein `verlassen` mit dieser Zahl trifft
    *  nur genau diesen Raum (Bughunt 2026-10-11, M6). */
   sitzung?: number;
+  /** Die Sitzung, die der Nutzer IN DER HÜLLE aufgelegt hat (native Ansicht,
+   *  Live Activity) — `null`, solange er das nicht tat. Stimmt sie mit
+   *  `sitzung` überein, kam seither kein Beitritt, und ein Resume-Eintrag ist
+   *  überholt (Bughunt 2 vom 2026-10-11, B1, `nativAbgleich.ts`). Eine ältere
+   *  Hülle schickt das Feld nicht: dann „unbekannt", nie „aufgelegt". */
+  aufgelegtSitzung?: number | null;
   teilnehmer: NativerTeilnehmer[];
   mikro: boolean;
   /** Eigene Kamera an? Nach einem Reload der Web-App ist dieses Vollbild die

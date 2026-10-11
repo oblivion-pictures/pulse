@@ -1,5 +1,5 @@
 import { App } from '@capacitor/app';
-import { goto } from '$app/navigation';
+import { vonAussenOeffnen } from '$lib/navigation/navigationsHerkunft';
 import { isCapacitorAndroid, isCapacitorIOS } from './runtime';
 import { zielPfad } from './tiefenlink';
 
@@ -26,7 +26,10 @@ export function installiereUniversalLinks(): () => void {
     // schon im Vordergrund; irgendwohin zu springen wäre schlechter als da zu
     // bleiben, wo der Nutzer war.
     if (!ziel) return;
-    void goto(ziel);
+    // **Von aussen**: ein Link auf einen Sprachkanal öffnet die Seite, tritt
+    // aber nicht bei — bis zum 2026-10-11 trat er ungefragt bei, mit offenem
+    // Mikrofon (Bughunt 2, D1; Regel in `navigation/herkunft.ts`).
+    void vonAussenOeffnen(ziel);
   });
   return () => {
     void griff.then((h) => h.remove()).catch(() => undefined);

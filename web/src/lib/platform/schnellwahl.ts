@@ -16,7 +16,7 @@
  * wäre ein eigener Punkt, nicht ein Nebenprodukt.
  */
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
-import { goto } from '$app/navigation';
+import { vonAussenOeffnen } from '$lib/navigation/navigationsHerkunft';
 import { isCapacitorIOS } from './runtime';
 import { zielPfadIntern } from './tiefenlink';
 import type { Eintrag } from './schnellwahlAuswahl';
@@ -70,6 +70,7 @@ export function schnellwahlVerfolgen(): void {
     // Kein erkanntes Ziel: NICHTS tun — die App ist durch den Tipp ohnehin
     // schon offen, irgendwohin zu springen wäre schlechter als zu bleiben.
     if (!ziel) return;
-    void goto(ziel);
+    // Von aussen — kein Tipp in der App (`navigation/herkunft.ts`).
+    void vonAussenOeffnen(ziel);
   });
 }

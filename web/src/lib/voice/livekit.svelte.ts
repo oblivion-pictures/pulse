@@ -50,7 +50,7 @@ import { nameFor, userIdFromIdentity } from './identity';
 import { currentServerUserId } from '$lib/stores/currentServerUser';
 import { guilds } from '$lib/stores/guilds.svelte';
 import { activeServer } from '$lib/stores/active-server.svelte';
-import { saveVoiceResume, clearVoiceResume, loadVoiceResume, type VoiceResume } from './resume';
+import { saveVoiceResume, clearVoiceResume, type VoiceResume } from './resume';
 import { gateway } from '$lib/ws/connection';
 import { sounds } from '$lib/sounds/engine';
 import { toast } from 'svelte-sonner';
@@ -60,6 +60,7 @@ import { istAblehnung, standMerken } from '$lib/platform/berechtigung.svelte';
 import { isMobile } from '$lib/platform/runtime';
 import { nativerSprachwegBefund } from '$lib/platform/iosSprache';
 import { NativerRaum } from './nativerRaum.svelte';
+import type { StartAbgleich } from './startBeitritt';
 import { melde } from '$lib/diagnose/app-diagnose';
 import { setVoiceActive, maybeSendAudioDiagnostic } from '$lib/platform/audioRoute';
 import { tonSystemFilterBeobachten, tonSystemFiltert, tonVoice } from '$lib/platform/iosTon';
@@ -733,12 +734,19 @@ class VoiceRoom {
   }
 
   /** Nach einem Reload einen Raum übernehmen, den die Hülle noch hält
-   *  (Entwurf §5). `true`, wenn danach ein Kanal steht. */
-  async nativUebernehmen(resume: VoiceResume | null): Promise<boolean> {
-    const ok = await this.#nativ.uebernehmen(resume, activeServer.serverId);
+   *  (Entwurf §5). Das Ergebnis entscheidet danach über den Resume-Eintrag
+   *  (`startBeitritt.ts::resumePlan`). Ein `connect()` oder `disconnect()`
+   *  während der Abfrage macht sie `ueberholt`. */
+  async nativUebernehmen(resume: VoiceResume | null): Promise<StartAbgleich> {
+    const gen = this.#connectGen;
+    const ergebnis = await this.#nativ.uebernehmen(
+      resume,
+      activeServer.serverId,
+      () => gen === this.#connectGen
+    );
     // Wie `connect()`: ein künftiger Abbruch muss wieder abräumen dürfen.
-    if (ok) this.#teardownDone = false;
-    return ok;
+    if (ergebnis === 'uebernehmen') this.#teardownDone = false;
+    return ergebnis;
   }
 
   /**
@@ -2134,46 +2142,3 @@ tonSystemFilterBeobachten(() => void voice.applyNoiseFilter());
 // in state.svelte.ts, damit das Root-Layout dieses Modul (und mit ihm
 // livekit-client) nicht mehr laden muss.
 registerVoiceActions(voice);
-
-/**
- * Nach dem Boot aufrufen (sobald Auth + WS-Ready stehen): war der User vor
- * einem Reload in einem Voice-Channel, automatisch zurückverbinden — inkl.
- * Mute/Deafen. Quelle ist der sessionStorage-Eintrag aus `resume.ts`.
- *
- * Sicherheits-/Korrektheits-Gates:
- *  - kein Rejoin, wenn schon (ver)bunden;
- *  - nur wenn der gemerkte Server == aktiver Server ist (sonst andere Token-/
- *    Membership-Welt — vermeidet ungewollte Server-Switch-Seiteneffekte);
- *  - schlägt der Connect fehl (Channel gelöscht, Token verweigert), wird der
- *    Resume-Eintrag verworfen, damit es keine Reload-Schleife gibt.
- *
- * Hinweis Autoplay: Nach einem Reload gibt es keine User-Geste → die Wiedergabe
- * fremder Audiospuren kann bis zum ersten Klick blockiert sein (`audioBlocked`
- * + bestehender Unblock-Pfad in der UI). Der eigene Mic-Publish braucht keine
- * Geste, wenn die Berechtigung schon erteilt war.
- */
-export async function resumeVoiceIfPending(): Promise<void> {
-  const r = loadVoiceResume();
-  if (voice.connected || voice.connecting) return;
-  // iOS: hält die Hülle den Raum noch, wird er übernommen statt neu
-  // betreten — oder verlassen, wenn ihn nichts bestätigt (`nativAbgleich.ts`).
-  // Muss VOR dem `!r` stehen: gerade ein Raum OHNE Eintrag darf nicht
-  // unsichtbar weiterlaufen (Bughunt 2026-10-11, E5).
-  if (await voice.nativUebernehmen(r)) return;
-  if (!r) return;
-  // Nur im exakt selben Server-Kontext rejoinen. Ein Reload trifft denselben
-  // aktiven Server (persistiert), also matcht das im Normalfall. Stimmen die
-  // ids nicht überein (oder fehlt die gemerkte id), NICHT rejoinen — ein Join
-  // in eine unbestätigte Server-/Token-/Membership-Welt wäre falsch.
-  if (r.serverId !== activeServer.serverId) return;
-  try {
-    await voice.connect(r.channelId, r.channelName, {
-      startMuted: r.muted,
-      startDeafened: r.deafened,
-      micBeforeDeafen: r.micBeforeDeafen,
-    });
-  } catch {
-    // Channel weg / Token verweigert → stale Resume entfernen (keine Schleife).
-    clearVoiceResume();
-  }
-}

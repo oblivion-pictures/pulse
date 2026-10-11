@@ -13,7 +13,7 @@
  * and its `onClick` listener (set up in `app/+layout.svelte`).
  */
 
-import { goto } from '$app/navigation';
+import { vonAussenOeffnen } from '$lib/navigation/navigationsHerkunft';
 import { isElectron } from '$lib/platform/runtime';
 import { settings } from '$lib/stores/settings.svelte';
 import { presence } from '$lib/stores/presence.svelte';
@@ -167,7 +167,8 @@ export function fireInPageNotification(input: InPageNotifyInput): void {
       } catch {
         /* some browsers don't allow programmatic focus here */
       }
-      void goto(buildTargetUrl(input));
+      // Von aussen: eine Mitteilung ist kein Tipp in der App (Bughunt 2, D1).
+      void vonAussenOeffnen(buildTargetUrl(input));
       n.close();
     });
   } catch {

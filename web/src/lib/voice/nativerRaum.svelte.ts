@@ -29,6 +29,7 @@ import {
 } from './nativAbgleich';
 import { NativeBefehle, type NativeHaken, type NativerWirt } from './nativeBefehle';
 import type { VoiceResume } from './resume';
+import type { StartAbgleich } from './startBeitritt';
 import { voiceState } from './state.svelte';
 
 /**
@@ -132,21 +133,33 @@ export class NativerRaum {
 
   /**
    * Nach einem Reload: hält die Hülle noch einen Raum, wird er übernommen
-   * oder verlassen (Entscheidung in `abgleichEntscheiden`). `true`, wenn der
-   * Store danach in einem Kanal sitzt.
+   * oder verlassen (Entscheidung in `abgleichEntscheiden`). Das Ergebnis geht
+   * an `resumeVoiceIfPending`, das danach über den Resume-Eintrag entscheidet
+   * (`startBeitritt.ts::resumePlan`).
    *
    * **Bis zum 2026-10-11 fragte niemand** — `spracheZustand()` hatte keinen
    * Aufrufer. Ein Reload liess den Raum weiterlaufen, die Oberfläche hielt
    * sich für getrennt (Bughunt E5).
+   *
+   * `aktuell`: gilt die Abfrage noch? Ein Tipp auf einen Kanal während des
+   * Brücken-Rundlaufs gewinnt — er räumt den alten Raum in der Hülle ohnehin
+   * ab (`SpracheRaum.beitreten`), und eine Übernahme danach überschriebe den
+   * Zustand seines Beitritts mit dem des alten Raums.
    */
-  async uebernehmen(resume: VoiceResume | null, aktiverServer: string): Promise<boolean> {
-    if (!nativerSprachwegDa()) return false;
+  async uebernehmen(
+    resume: VoiceResume | null,
+    aktiverServer: string,
+    aktuell: () => boolean
+  ): Promise<StartAbgleich> {
+    if (!nativerSprachwegDa()) return 'nichts';
     const z = await spracheZustand().catch(() => null);
+    if (!aktuell()) return 'ueberholt';
     const abgleich = abgleichEntscheiden({ huelle: z, resume, aktiverServer });
-    if (abgleich === 'verlassen') await spracheVerlassen().catch(() => undefined);
+    // **Mit der Sitzung**: genau den Raum, den die Abfrage gesehen hat.
+    if (abgleich === 'verlassen') await spracheVerlassen(z?.sitzung).catch(() => undefined);
     // Bei `uebernehmen` sind `z` und `resume` immer gesetzt; die Prüfung engt
     // nur den Typ ein.
-    if (abgleich !== 'uebernehmen' || !z || !resume) return false;
+    if (abgleich !== 'uebernehmen' || !z || !resume) return abgleich;
     const w = this.#wirt;
     spracheRaumUebernommen();
     w.channelId = z.kanalId;
@@ -156,7 +169,7 @@ export class NativerRaum {
     this.#stehen(z, resume.deafened, resume.micBeforeDeafen);
     this.ansichtOffen = z.ansichtOffen ?? false;
     this.#angekommen();
-    return true;
+    return 'uebernehmen';
   }
 
   /** Auflegen (vom Store aus `disconnect`). Räumt nur den nativen Teil; den

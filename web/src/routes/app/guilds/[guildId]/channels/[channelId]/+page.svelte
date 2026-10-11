@@ -39,6 +39,7 @@
   import { kanalEreignisEinspeisen } from '$lib/krypto/gruppe/kanalSitzungStore';
   import { kanalWsEreignisAbbilden } from '$lib/krypto/gruppe/kanalEreignisAbbildung';
   import { voice } from '$lib/voice/livekit.svelte';
+  import { routenBeitrittVerdrahten } from '$lib/voice/routenBeitritt.svelte';
   import { navDrawer } from '$lib/stores/navDrawer.svelte';
   import { viewport } from '$lib/stores/viewport.svelte';
   import { erstelleKanalWechsel } from '$lib/components/chat/kanalWechsel.svelte';
@@ -109,26 +110,13 @@
   // schon vorher statt still zu scheitern. Verlauf bleibt lesbar.
   let legacyReadonly = $derived(!!activeChannel?.legacy_readonly);
 
-  // Auf Mobil hat ein Voice-Kanal keine eigene Vollbild-Seite: stattdessen
-  // bleibt die Kanal-Liste sichtbar (oben Text-, unten Sprachkanäle). Zusätzlich
-  // Auto-Rejoin beim Laden/Navigieren auf einen Voice-Kanal — sonst ist man nach
-  // einem Reload "auf dem Kanal", aber nicht verbunden (→ Text-Kanal zeigt
-  // Vollbild statt Karten-Stapel). Spiegelt das frühere
-  // VoiceChannelView.onMount-Auto-Join, das mit der Vollbild-Seite entfiel.
-  // Nur EINMAL pro Kanal-Landing (Guard) und untracked gelesen — NICHT reaktiv
-  // auf Verbindungsabbruch, sonst würde "Verlassen" sofort wieder beitreten;
-  // und nur, wenn wir nirgends im Voice sind (kein Auto-Switch).
-  let autoJoinedVoiceChannel = '';
+  // Mobil: Auto-Beitritt beim Landen auf einem Sprachkanal — nur nach einem
+  // Tipp in der App und erst, wenn der Start durch ist (Regel und Gründe in
+  // `voice/routenBeitritt.svelte.ts`).
   $effect(() => {
-    if (!viewport.isMobile || !isVoiceChannel) return;
-    navDrawer.open = true;
-    const ch = activeChannel;
-    if (!ch || autoJoinedVoiceChannel === ch.id) return;
-    autoJoinedVoiceChannel = ch.id;
-    untrack(() => {
-      if (!voice.connected && !voice.connecting) void voice.connect(ch.id, ch.name);
-    });
+    if (viewport.isMobile && isVoiceChannel) navDrawer.open = true;
   });
+  routenBeitrittVerdrahten(() => (viewport.isMobile && isVoiceChannel ? activeChannel : null));
 
   // Mobil: Nach dem Auflegen zurück in die Community-Übersicht — die Voice-
   // Vollbild-Ansicht ist ein Detail-Screen ohne Leiste; wer auflegt, will
