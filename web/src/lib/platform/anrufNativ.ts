@@ -82,8 +82,10 @@ export interface AnrufNativPlugin {
    *  samt nativem Raum. `callId`: nur diesen (iOS, seit der Nachprüfung der
    *  Fix-Runden); ohne, oder in einer älteren Hülle, jeden. */
   beenden(opts?: { grund?: AnrufEndgrund; callId?: string }): Promise<void>;
-  /** PushKit-Token dieses Geräts. **Nur iOS** — Android hat keinen. */
-  voipToken(): Promise<{ token: string | null }>;
+  /** PushKit-Token dieses Geräts. **Nur iOS** — Android hat keinen.
+   *  `faehigkeiten`: was die Hülle von sich sagt (`voipMeldung.ts`); eine
+   *  ältere Hülle schickt das Feld nicht. */
+  voipToken(): Promise<{ token: string | null; faehigkeiten?: string[] }>;
   /** In der App angenommen — CallKit nimmt mit an. **Nur iOS.** */
   annehmen(opts: { callId: string; gegenstelle: string }): Promise<AnrufRaumZustand>;
   /** Ausgehender Anruf, sobald die Kennung steht. **Nur iOS.** */
@@ -111,7 +113,7 @@ export interface AnrufNativPlugin {
   ): Promise<PluginListenerHandle>;
   addListener(
     event: 'voipToken',
-    cb: (data: { token: string }) => void
+    cb: (data: { token: string; faehigkeiten?: string[] }) => void
   ): Promise<PluginListenerHandle>;
   /** **Nur iOS.** Jede Änderung am nativen Raum, ganz (s. `teilnehmer` im
    *  Sprachweg: ein Vollbild braucht keine Reihenfolge). */

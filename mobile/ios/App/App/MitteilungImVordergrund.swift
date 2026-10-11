@@ -44,6 +44,12 @@ final class MitteilungImVordergrund: NSObject, NotificationHandlerProtocol {
     /// und `AppDelegate.mitteilungsAktionenRegistrieren`.
     static let dmKategorie = "dm"
 
+    /// Die Fähigkeit, die dieser Bau mit seinem PushKit-Token meldet
+    /// (`AnrufPlugin.faehigkeiten`, Nachprüfung der Fix-Runden S2). Steht hier,
+    /// weil sie genau das zusagt, was dieser Typ tut — wer ihn entfernt,
+    /// entfernt sie mit.
+    static let faehigkeit = "dm_vordergrund"
+
     /// Der Router hält seinen Handler nur `weak` — gehalten wird er hier.
     private static var eingehaengt: MitteilungImVordergrund?
 

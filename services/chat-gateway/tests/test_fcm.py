@@ -117,8 +117,9 @@ async def test_entfernen_idempotent(client, _auth_signer, session_factory):
 class _ManagerStub:
     """Duck-typed ConnectionManager: 0 Sockets = offline."""
 
-    def __init__(self, sockets_by_user: dict[int, int]):
+    def __init__(self, sockets_by_user: dict[int, int], redis=None):
         self._counts = sockets_by_user
+        self.redis = redis
 
     def user_socket_count(self, user_id: int) -> int:
         return self._counts.get(user_id, 0)
@@ -210,13 +211,22 @@ async def test_push_raeumt_tote_tokens(client, session_factory, monkeypatch):
 # iOS-Bughunt 2, C1: iOS-Geräte ohne Frische-Prüfung
 
 
+async def _vordergrund_faehig(app, uid: int, geraet: str) -> None:
+    from dcc_chat_gateway.fcm_empfaenger import faehigkeiten_merken
+
+    await faehigkeiten_merken(
+        app.state.redis, user_id=uid, geraet_id=geraet, faehigkeiten=["dm_vordergrund"]
+    )
+
+
 async def test_ios_geraet_bekommt_den_push_trotz_frischer_websocket(
-    client, session_factory, _fcm_sender
+    app, client, session_factory, _fcm_sender
 ):
     """Ein eben weggestecktes iPhone hält bis zu 95 s eine „frische"
     Verbindung, deren JS schon eingefroren ist. Bisher fiel die DM dann ohne
-    Mitteilung durch. iOS-Geräte (erkannt am PushKit-Token desselben Geräts)
-    bekommen den Push jetzt immer, Android-Geräte desselben Kontos nicht."""
+    Mitteilung durch. iOS-Geräte (erkannt am PushKit-Token desselben Geräts,
+    mit der Fähigkeit ``dm_vordergrund``) bekommen den Push jetzt immer,
+    Android-Geräte desselben Kontos nicht."""
     import dcc_chat_gateway.fcm as fcm_mod
 
     async with session_factory() as s:
@@ -224,19 +234,65 @@ async def test_ios_geraet_bekommt_den_push_trotz_frischer_websocket(
         s.add(VoipToken(user_id=555, geraet_id="iphone", token="voip-iphone"))
         s.add(FcmToken(user_id=555, geraet_id="pixel", token="tok-pixel"))
         await s.commit()
+    await _vordergrund_faehig(app, 555, "iphone")
 
     n = await fcm_mod.fan_out_fcm_dm_push(
         recipient_ids={555},
         author_name="Anna",
         channel_id=42,
-        manager=_ManagerStub({555: 1}),
+        manager=_ManagerStub({555: 1}, redis=app.state.redis),
     )
     assert n == 1
     assert [tok for tok, _p in _fcm_sender] == ["tok-iphone"]
 
 
+async def test_aelterer_ios_bau_ohne_faehigkeit_bleibt_beim_alten_riegel(
+    app, client, session_factory, _fcm_sender
+):
+    """Nachprüfung der Fix-Runden, S2: die Bauten vom 08. bis 11.10. melden
+    einen PushKit-Token, unterdrücken DM-Banner im Vordergrund aber nicht.
+    Ohne gemeldete Fähigkeit bekommen sie bei frischer WebSocket keinen Push —
+    sonst erschiene jede DM im Vordergrund als Banner mit Ton."""
+    import dcc_chat_gateway.fcm as fcm_mod
+
+    async with session_factory() as s:
+        s.add(FcmToken(user_id=557, geraet_id="iphone-alt", token="tok-iphone-alt"))
+        s.add(VoipToken(user_id=557, geraet_id="iphone-alt", token="voip-iphone-alt"))
+        await s.commit()
+
+    n = await fcm_mod.fan_out_fcm_dm_push(
+        recipient_ids={557},
+        author_name="Anna",
+        channel_id=42,
+        manager=_ManagerStub({557: 1}, redis=app.state.redis),
+    )
+    assert n == 0
+    assert _fcm_sender == []
+
+
+async def test_voip_anmeldung_setzt_und_loescht_die_faehigkeit(app, client, _auth_signer):
+    """Die Fähigkeit reist mit der Token-Anmeldung. Eine spätere Anmeldung
+    OHNE sie (älterer Bau unter derselben Geräte-Kennung) nimmt sie zurück."""
+    from dcc_chat_gateway.fcm_empfaenger import FAEHIG_PRAEFIX
+
+    token, uid = _user(_auth_signer)
+    schluessel = f"{FAEHIG_PRAEFIX}{uid}:iphone"
+    r = await client.post(
+        "/voip/token",
+        json={"token": f"voip-{uid}", "geraet_id": "iphone", "faehigkeiten": ["dm_vordergrund"]},
+        headers=_auth(token),
+    )
+    assert r.status_code == 204
+    assert await app.state.redis.get(schluessel) is not None
+    r = await client.post(
+        "/voip/token", json={"token": f"voip-{uid}", "geraet_id": "iphone"}, headers=_auth(token)
+    )
+    assert r.status_code == 204
+    assert await app.state.redis.get(schluessel) is None
+
+
 async def test_ohne_websocket_bekommen_beide_geraete_den_push(
-    client, session_factory, _fcm_sender
+    app, client, session_factory, _fcm_sender
 ):
     import dcc_chat_gateway.fcm as fcm_mod
 

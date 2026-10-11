@@ -66,14 +66,25 @@ public class AnrufPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func voipToken(_ call: CAPPluginCall) {
-        call.resolve(["token": Anrufverwaltung.geteilt.token as Any])
+        call.resolve(["token": Anrufverwaltung.geteilt.token as Any,
+                      "faehigkeiten": Self.faehigkeiten])
     }
+
+    /// **Was dieser Bau von sich sagt, wenn er seinen PushKit-Token anmeldet**
+    /// (Nachprüfung der Fix-Runden, S2). `dm_vordergrund`: DM-Mitteilungen
+    /// erscheinen nicht als Banner, solange die App vorn ist
+    /// (`MitteilungImVordergrund.swift`). Erst dann pusht der Server DMs an
+    /// dieses Gerät auch bei frischer WebSocket (`fcm_empfaenger.py`); ein
+    /// älterer Bau sagt nichts und bleibt beim alten Riegel — sonst bekäme er
+    /// jede DM im Vordergrund als Banner mit Ton.
+    static let faehigkeiten = [MitteilungImVordergrund.faehigkeit]
 
     func tokenMelden(_ token: String?) {
         guard let token else { return }
         // `retainUntilConsumed`: der Token kann vor dem ersten Hörer kommen —
         // der Push-Registry antwortet beim Start, die WebView lädt erst.
-        ereignisMelden("voipToken", ["token": token], aufbewahren: true)
+        ereignisMelden("voipToken", ["token": token, "faehigkeiten": Self.faehigkeiten],
+                       aufbewahren: true)
     }
 
     func aktionMelden(aktion: String, kennung: String, kontext: [String: String]) {

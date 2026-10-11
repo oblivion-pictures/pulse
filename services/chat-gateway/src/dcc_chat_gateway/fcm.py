@@ -262,9 +262,10 @@ async def fan_out_fcm_dm_push(
                 select(FcmToken).where(FcmToken.user_id.in_(list(recipient_ids)))
             )
             alle = ergebnis.scalars().all()
+            redis = getattr(manager, "redis", None)
             rows = empfangende_geraete(
                 alle,
-                ios_geraete=await ios_geraete(session, {r.user_id for r in alle}),
+                ios_geraete=await ios_geraete(session, {r.user_id for r in alle}, redis),
                 wach=wach,
             )
             if not rows:
@@ -273,7 +274,6 @@ async def fan_out_fcm_dm_push(
             # ein Konto hat einen Ungelesen-Stand, auch wenn Handy und Tablet
             # beide einen Push bekommen. Ohne Redis (pfadlose Aufrufe, Tests)
             # bleibt der Stand unbekannt und das Feld entfällt im Push.
-            redis = getattr(manager, "redis", None)
             badges: dict[int, int | None] = {}
             if redis is not None:
                 for uid in {r.user_id for r in rows}:

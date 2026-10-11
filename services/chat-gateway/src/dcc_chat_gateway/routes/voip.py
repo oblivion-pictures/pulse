@@ -22,10 +22,13 @@ nicht verhindern, der sonst über die WebSocket zustande käme.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Response, status
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.fcm_empfaenger import faehigkeiten_merken
 from dcc_chat_gateway.models import VoipToken
 from dcc_chat_gateway.ratelimit import check as ratelimit_check
 from dcc_chat_gateway.routes import _geraetetoken as geraetetoken
@@ -39,6 +42,13 @@ class VoipTokenIn(BaseModel):
     #: Gerätelokale, persistierte Kennung des Klienten — derselbe Wert, den
     #: die FCM-Anmeldung benutzt. Ein Gerät, zwei Registrierungen.
     geraet_id: str = Field(min_length=1, max_length=128)
+    #: Was der Bau von sich sagt (Nachprüfung der Fix-Runden, S2). Fehlt das
+    #: Feld — ein älterer Bau oder eine ältere Oberfläche —, heisst das
+    #: „unbekannt": der Server bleibt beim vorsichtigen Riegel
+    #: (``fcm_empfaenger.py``).
+    faehigkeiten: list[Annotated[str, Field(max_length=64)]] | None = Field(
+        default=None, max_length=16
+    )
 
 
 class VoipTokenEntfernen(BaseModel):
@@ -50,6 +60,7 @@ async def token_speichern(
     payload: VoipTokenIn,
     session: SessionDep,
     current: CurrentUser,
+    request: Request,
 ) -> Response:
     """Token dieses Geräts speichern oder auffrischen."""
     if not ratelimit_check("voip_token", current.id):
@@ -62,6 +73,12 @@ async def token_speichern(
         token=payload.token,
         konflikt_detail="voip_token_belegt",
         kette=geraetetoken.kette_des_aufrufers(current.payload),
+    )
+    await faehigkeiten_merken(
+        getattr(request.app.state, "redis", None),
+        user_id=current.id,
+        geraet_id=payload.geraet_id,
+        faehigkeiten=payload.faehigkeiten,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

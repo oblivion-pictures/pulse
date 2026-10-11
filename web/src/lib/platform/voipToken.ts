@@ -13,13 +13,25 @@
  * den Normalfall, der Hörer den Rest; nativ wird die Meldung aufbewahrt
  * (`retainUntilConsumed`), falls sie vor der WebView da war.
  *
+ * **Gemeldet wird erneut, sobald sich Token, Anmelde-Kette oder die
+ * Fähigkeiten der Hülle ändern** — nach dem Start, auf den Hörer hin, bei
+ * jeder Rückkehr in den Vordergrund und nach einem Passwortwechsel
+ * (`voipMeldung.ts`, Nachprüfung der Fix-Runden S2/S3).
+ *
  * Alles andere als iOS: No-op.
  */
 import { anrufNativ } from './anrufNativ';
-import { request } from '$lib/api/client';
+import { currentAccessToken, request } from '$lib/api/client';
+import { jwtPayload } from '$lib/api/storage';
 import { serversStore } from '$lib/api/servers.svelte';
 import { pushGeraetId } from './geraeteKennungPush';
 import { isCapacitorIOS } from './runtime';
+import {
+  faehigkeitenAusHuelle,
+  ketteAusZugriff,
+  meldungNoetig,
+  type VoipMeldung
+} from './voipMeldung';
 
 /**
  * **An die CLOUD, nicht an den aktiven Server** (Bughunt 2026-10-11, T2).
@@ -33,17 +45,36 @@ function cloud(): { serverId?: string } {
   return { serverId: serversStore.cloudId() };
 }
 
-let gemeldet: string | null = null;
+let gemeldet: VoipMeldung | null = null;
+let verfolgt = false;
 
-async function melden(token: string | null): Promise<void> {
-  if (!token || token === gemeldet) return;
+/** Was die Hülle liefert — `voipToken()` und das `voipToken`-Ereignis. Eine
+ *  ältere Hülle schickt keine `faehigkeiten`. */
+interface HuellenToken {
+  token: string | null;
+  faehigkeiten?: unknown;
+}
+
+async function melden({ token, faehigkeiten }: HuellenToken): Promise<void> {
+  if (!token) return;
+  const zugriff = currentAccessToken();
+  const neu: VoipMeldung = {
+    token,
+    kette: ketteAusZugriff(zugriff ? jwtPayload(zugriff) : null),
+    faehigkeiten: faehigkeitenAusHuelle(faehigkeiten)
+  };
+  if (!meldungNoetig(gemeldet, neu)) return;
   try {
-    await request<void>(
-      '/voip/token',
-      { method: 'POST', body: { token, geraet_id: pushGeraetId() } },
-      cloud()
-    );
-    gemeldet = token;
+    // Ohne Fähigkeiten (ältere Hülle) fehlt das Feld ganz — der Server liest
+    // das als „unbekannt" und bleibt beim vorsichtigen Riegel
+    // (`fcm_empfaenger.py`).
+    const body = {
+      token,
+      geraet_id: pushGeraetId(),
+      ...(neu.faehigkeiten ? { faehigkeiten: neu.faehigkeiten } : {})
+    };
+    await request<void>('/voip/token', { method: 'POST', body }, cloud());
+    gemeldet = neu;
   } catch (e) {
     // Keine Sitzung, offline, oder der Server kennt die Route nicht (älterer
     // Stand) — still. `gemeldet` wird absichtlich NICHT gesetzt, damit der
@@ -52,13 +83,29 @@ async function melden(token: string | null): Promise<void> {
   }
 }
 
-/** Einmal nach dem Anmelden aufrufen. */
+/** Nach dem Anmelden aufrufen. Die Hörer hängen nur beim ersten Mal ein —
+ *  das App-Layout ruft nach jeder Anmeldung im selben Dokument erneut. */
 export function voipTokenVerfolgen(): void {
   if (!isCapacitorIOS()) return;
-  void anrufNativ.addListener('voipToken', ({ token }) => void melden(token));
+  if (!verfolgt) {
+    verfolgt = true;
+    void anrufNativ.addListener('voipToken', (daten) => void melden(daten));
+    // Zurück im Vordergrund: hat sich die Kette inzwischen geändert, zieht
+    // die Zeile nach (S3). Sonst tut `melden` nichts.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') voipTokenNachmelden();
+    });
+  }
+  voipTokenNachmelden();
+}
+
+/** Den Token neu anbieten — `melden` entscheidet, ob er wirklich rausgeht.
+ *  Nach einem Passwortwechsel zu rufen (neue Kette, S3). */
+export function voipTokenNachmelden(): void {
+  if (!isCapacitorIOS()) return;
   void anrufNativ
     .voipToken()
-    .then(({ token }) => melden(token))
+    .then((daten) => melden(daten))
     .catch(() => undefined);
 }
 
