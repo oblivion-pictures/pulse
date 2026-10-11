@@ -171,9 +171,9 @@ pkill -f "uvicorn dcc_" 2>/dev/null
 sleep 0.5
 
 # PULSE_INSTANCE_MODE=cloud: lokales Dev verhält sich wie howispulse.com.
-# Ohne das greift der Default `self-host` → chat-gateway verlangt eine
-# PULSE_INSTANCE_ID (Cert-Modell) und crasht beim Start, auth-svc blockt zudem
-# POST /register.
+# Ohne das greift der Default `self-host` → chat-gateway läuft ohne
+# PULSE_INSTANCE_ID als unverbundener Self-Host (POST /session → 503
+# nicht_verbunden), auth-svc blockt zudem POST /register.
 set -l common_env "REDIS_URL=redis://localhost:6380/0 AUTH_JWKS_URL=http://127.0.0.1:8001/.well-known/jwks.json PULSE_INSTANCE_MODE=cloud"
 # Upload-Fläche: die Prod-Cloud lässt in Kanälen nur Bilder zu, schaltet
 # DM-Anhänge ab und die Ablage ganz aus (restriktive Defaults in config.py,
