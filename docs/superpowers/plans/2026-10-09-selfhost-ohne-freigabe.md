@@ -37,6 +37,7 @@
 3. **Bestätigung zu spät oder Konsole abgebrochen.** Wer nach 15 Minuten klickt oder `pulse-connect` mit Strg+C beendet, ruft es erneut auf. Erwartet: Die Seite zeigt „Dieser Code gilt nicht mehr“ mit dem Handgriff; jeder Ausgang von `pulse-connect` (auch Strg+C) löscht die Nachweis-Datei, ein neuer Aufruf erzeugt eine neue Kennung und bekommt einen neuen Code (die Cloud sperrt nur dieselbe Kennung für eine andere Adresse). Tests in Task 2.4 (Strg+C), Task 1.7 (`vorgang_laeuft` nur bei gleicher Kennung) und Task 3.2 (404 → „gilt nicht mehr“).
 4. **Neuinstallation auf altem, schon verbundenem Volumen.** Erwartet: Der Installer verbindet nicht erneut (Server-Info meldet `verbunden: true`) und sagt das. Test in Task 4.1.
 5. **Bestandsserver nach dem Image-Update.** Umgebung mit Zugangsdaten gewinnt vor `verbindung.env`; ein Fremder kann einen antwortenden Bestandsserver nicht von einem anderen Rechner aus übernehmen (kein Nachweis). Tests in Task 2.3 (Vorrang der Umgebung) und Task 1.6 (keine Übernahme ohne Nachweis).
+6. **Kurz gekaperte Adresse** (Nachtrag 2026-10-11). Wer die DNS-Einträge eines fremden Servers ein paar Minuten kontrolliert, besteht den Nachweis. Erwartet: Bestätigen legt nur einen Übernahme-Antrag an, der alte Server läuft weiter, sein Besitzer bekommt sofort eine Mail und kann 72 Stunden widersprechen; vollzogen wird erst nach der Frist und mit einem zweiten bestandenen Nachweis. Umgekehrt scheitert der Widerspruch dessen, der eine fremde, freie Adresse nur kurz kontrolliert und als Erster eingetragen hat, weil unter der Adresse nicht mehr sein Server antwortet. Tests in Task 1.11.
 
 ## Etappen und Reihenfolge
 
@@ -272,7 +273,7 @@ Zwei Abweichungen vom Vertrag betreffen nur auth-svc-interne Signaturen und nich
 - `vorgang_entscheiden(...) -> bool` statt `-> None`. Die Route committet ihre Datenbank-Arbeit nur, wenn genau dieser Aufruf den Vorgang aus `wartet` heraus entschieden hat (Doppelklick, zwei Tabs).
 - `instanz_verbinden(...) -> Verbunden` (benanntes Tupel aus `instanz` und `abgeloest`) statt `-> RegisteredInstance`. Bei einer Übernahme muss die Route nach dem Commit den Cache der Sperrliste für den alten Eintrag leeren.
 
-**Nachträge eingearbeitet:** Task 1.8 (Hinweis-Mails an das bestätigende Konto und bei einer Übernahme an den bisherigen Besitzer, Entwurf E5 „Schutz gegen untergeschobene Links“) und Task 1.9 (Ereignis `instanz_verbunden` an die Geräte des Besitzers, Entwurf E3).
+**Nachträge eingearbeitet:** Task 1.8 (Hinweis-Mails an das bestätigende Konto und bei einer Übernahme an den bisherigen Besitzer, Entwurf E5 „Schutz gegen untergeschobene Links“) und Task 1.9 (Ereignis `instanz_verbunden` an die Geräte des Besitzers, Entwurf E3). Nachtrag 2026-10-11: Task 1.11 (Widerspruchsfrist, bevor ein fremdes Konto eine Adresse übernimmt, Entwurf E2).
 
 **Für alle Tasks:**
 - Testbefehl Backend (alle drei Variablen sind Pflicht, CLAUDE.md „Tests“):
@@ -1460,7 +1461,8 @@ Der Server legt den SHA-256 seiner Abholkennung unter
 Die Cloud prüft das beim Anfragen des Codes und noch einmal vor dem Eintragen.
 Das verhindert, dass jemand eine fremde Adresse für sich einträgt, und macht
 einen Besitzerwechsel eindeutig: Es gewinnt, wer die Adresse nachweislich
-gerade betreibt.
+gerade betreibt — ein fremdes Konto erst nach der Widerspruchsfrist
+(``verbinden_uebernahme.py``).
 
 Die Route dahinter ist anonym — die Cloud ruft hier auf Zuruf eines
 Unbekannten einen fremden Rechner auf. Deshalb dieselbe Absicherung wie bei
@@ -1884,7 +1886,7 @@ git commit -m "refactor(auth): Zugangsdaten-Ausgabe aus dem Bootstrap herauszieh
   - Gesperrter Eintrag unter der Adresse → `InstanzGesperrt`. Sonst entkäme ein gesperrter Server seiner Sperre durch Neuverbinden.
   - Eigener Eintrag → wiederverwenden (Mitgliedschaft sicherstellen). Er zählt nicht gegen die Grenze.
   - Sonst Grenze: mindestens 10 eigene Einträge mit `status = 'active'` und `origin = 'vps'` → `ZuVieleServer`.
-  - Fremder Eintrag → Soft-Delete, `flush`, dann neu anlegen.
+  - Fremder Eintrag → Soft-Delete, `flush`, dann neu anlegen. **Ab Task 1.11** ruft die Route `instanz_verbinden` für einen fremden Eintrag nur noch auf, wenn die Widerspruchsfrist abgelaufen ist; die Funktion selbst bleibt der Vollzug und ändert sich nicht.
   - Neu: `origin="vps"`, `ohne_freigabe=True`, `registered_by=user.id`, keine Worker-IDs, zufällige `client_id`, Argon2-Hash eines verworfenen Zufallswerts, Besitzer-Mitgliedschaft `role="owner"`.
 
 - [ ] **Step 1: Fehlschlagenden Test schreiben** (`services/auth/tests/test_verbinden_eintrag.py`).
@@ -1895,7 +1897,9 @@ git commit -m "refactor(auth): Zugangsdaten-Ausgabe aus dem Bootstrap herauszieh
 Die Route hat den Nachweis schon geprüft, wenn ``instanz_verbinden`` läuft:
 Unter der Adresse antwortet der Server, der den Code angefragt hat. Daraus
 folgt die ganze Regel (Spec 2026-10-09, E2) — wer die Adresse nachweislich
-betreibt, bekommt den Eintrag.
+betreibt, bekommt den Eintrag. Bei einem fremden Eintrag hat die Route vorher
+die Widerspruchsfrist geprüft (``verbinden_uebernahme.py``); hier geht es nur
+um den Vollzug.
 """
 
 from __future__ import annotations
@@ -2115,7 +2119,8 @@ angefragt hat. Daraus folgt die Regel (Spec
   desselben Besitzers; Mitglieder und Nummer bleiben),
 * fremder Eintrag → Soft-Delete wie ``routes_instance_delete.py`` und neu
   anlegen. Der alte Server steht über die Sperrliste still, falls er
-  irgendwo noch läuft,
+  irgendwo noch läuft. Die Route ruft das bei einem fremden Eintrag erst
+  nach abgelaufener Widerspruchsfrist auf (``verbinden_uebernahme.py``),
 * kein Eintrag → neu anlegen.
 
 Committet nicht: der Aufrufer committet erst, wenn der Vorgang in Redis
@@ -2268,6 +2273,7 @@ git commit -m "feat(auth): Server-Eintrag beim Verbinden anlegen, wiederverwende
   2. `POST /selfhost/verbinden/abholen`, Body `{"kennung": str}` → 202 `{"status": "wartet"}` | 200 `VerbindenZugangOut` | 403 `abgelehnt` | 410 `abgelaufen`.
   3. `POST /me/selfhost/verbinden/vorgang`, Body `{"code": str}` → 200 `{"hostname", "gueltig_bis"}` | 404 `unbekannt` | 401.
   4. `POST /me/selfhost/verbinden/entscheidung`, Body `{"code": str, "aktion": "verbinden" | "ablehnen"}` → 200 `{"status": "verbunden", "hostname", "instance_id"}` bzw. `{"status": "abgelehnt"}`; 403 `verbinden_gesperrt`; 403 `instance_suspended`; 409 `zu_viele_server`; 409 `nachweis_fehlt`; 404 `unbekannt`.
+  - **Ab Task 1.11** zusätzlich: `vorgang` liefert `adresse_vergeben`, `entscheidung` kennt 200 `uebernahme_beantragt` und 409 `uebernahme_gesperrt`, `abholen` 409 `uebernahme_beantragt` und 403 `uebernahme_gesperrt`.
   - Der Anzeigecode steht in keinem Pfad (Vertrag, Nachtrag 2): Pfade landen in Zugriffsprotokollen (`infra/prod/web-nginx.conf:35-43` loggt `$uri`). Ein Test hält das für alle Routen des Routers fest.
   - `class VerbindenZugangOut(ZugangsdatenOut)` mit `owner_name: str` (Anzeigename, sonst Benutzername)
   - Einstellungen `rate_limit_verbinden_start = "10/hour"`, `rate_limit_verbinden_abholen = "30/minute"`, `rate_limit_verbinden_bestaetigen = "20/hour"`
@@ -3023,7 +3029,7 @@ Gegenmittel 2 gegen untergeschobene Links: Wer einen Link bestätigt hat, den ih
 - Consumes: `send_email(to: str, subject: str, body_plain: str, session: AsyncSession | None = None) -> None` (`email.py:113`; ohne SMTP-Konfiguration nur `email_skipped` im Log, bei SMTP-Fehlern wirft sie). `Verbunden.abgeloest` (Task 1.6). `soft_delete_instance` lässt `registered_by` des alten Eintrags stehen (`routes_instance_delete.py:75-127`), der bisherige Besitzer ist also noch bekannt, sofern er sein Konto nicht gelöscht hat.
 - Produces:
   - `compose_verbinden_hinweis(hostname: str, zeitpunkt: datetime) -> tuple[str, str]`, Betreff `Pulse: Ein Server wurde mit deinem Konto verbunden`, an das bestätigende Konto, bei jedem Verbinden
-  - `compose_verbinden_uebernahme(hostname: str, zeitpunkt: datetime) -> tuple[str, str]`, Betreff `Pulse: Dein Server wurde mit einem anderen Konto verbunden`, an den bisherigen Besitzer, nur bei einer Übernahme (nicht, wenn derselbe Besitzer neu verbindet)
+  - `compose_verbinden_uebernahme(hostname: str, zeitpunkt: datetime) -> tuple[str, str]`, Betreff `Pulse: Dein Server wurde mit einem anderen Konto verbunden`, an den bisherigen Besitzer, nur bei einer Übernahme (nicht, wenn derselbe Besitzer neu verbindet). Ab Task 1.11 erst beim **Vollzug** nach der Widerspruchsfrist; beim Anlegen des Antrags geht vorher `compose_uebernahme_beantragt`.
   - Log-Ereignis `verbinden_hinweis_mail_fehlgeschlagen user_id=…` (warning, ohne Code und Kennung)
 
 - [ ] **Step 1: Fehlschlagende Tests anhängen** (Ende von `services/auth/tests/test_verbinden_routen.py`).
@@ -3643,14 +3649,143 @@ git commit -m "feat(auth): Admin-Schalter „Darf Server verbinden“"
 
 ---
 
-### Task 1.11: Landen
+### Task 1.11: Widerspruchsfrist bei einer fremden Adresse (Nachtrag 2026-10-11, Entwurf E2)
+
+**Warum.** Bis hierhin übernimmt das Bestätigen eine Adresse, die für ein anderes Konto eingetragen ist, sofort (Task 1.6, Regel „Fremder Eintrag“): alter Eintrag gelöscht, alter Server über die Sperrliste still, Mitgliedschaften aller Mitglieder weg. Wer die DNS-Einträge einer fremden Domain für ein paar Minuten kontrolliert (übernommenes Konto beim DNS-Anbieter oder Registrar), besteht den Nachweis und legt so eine Community dauerhaft still — auch nachdem das DNS längst repariert ist. Der Eigentümer hat am 2026-10-11 entschieden: Ein Wechsel zu einem **fremden** Konto greift erst nach einer Frist, in der der bisherige Besitzer widersprechen kann.
+
+**Entscheidungen des Eigentümers (2026-10-11):**
+- Frist **72 Stunden** ab dem Bestätigen.
+- Nach einem Widerspruch kann **30 Tage** lang kein fremdes Konto die Adresse erneut beanspruchen. Streitfälle (Domain wirklich verkauft, alter Besitzer widerspricht trotzdem) löst der Cloud-Admin.
+- Ein gewollter schneller Wechsel braucht keinen eigenen Knopf: Der bisherige Besitzer löscht den Server unter „Meine Server“ (`DELETE /me/instances/{id}`, gibt es schon), danach ist die Adresse frei und der neue Besitzer verbindet ohne Frist.
+- **Ein Widerspruch gilt nur, solange unter der Adresse noch der Server des alten Eintrags antwortet** (`/.well-known/pulse-server-info` meldet dessen `instance_id`). Grund ist der gespiegelte Angriff: Wer eine **freie** fremde Adresse kurz kontrolliert (verwaister DNS-Eintrag, übernommene Subdomain), trägt sie ohne Frist als Erster ein. Ohne diese Bedingung müsste der echte Domaininhaber danach 72 Stunden warten, und der Eindringling könnte immer wieder widersprechen. Mit ihr scheitert dessen Widerspruch, weil unter der Adresse längst ein anderer Server antwortet.
+
+**Vorgaben dieses Plans (nicht vom Eigentümer entschieden, bei Bedarf ändern):**
+- Ein Antrag **verfällt**, wenn er nicht binnen **7 Tagen** nach Fristende vollzogen wird. Danach beginnt ein neues Bestätigen eine neue Frist (und eine neue Mail).
+- Widersprechen geht, bis der Antrag vollzogen oder verfallen ist — also auch nach Fristende, solange der neue Betreiber noch nicht wiedergekommen ist.
+- Hat der alte Eintrag keinen Besitzer mehr (`registered_by IS NULL`), gilt die Frist trotzdem; es geht nur keine Mail raus, und niemand kann widersprechen. Solche aktiven Einträge sind Altlast: `DELETE /me` löscht die eigenen Instanzen vorher (`routes_account.py:205-225`). Eine Ausnahme ohne Frist wäre ein Umweg um die Frist.
+- Beim **Anlegen** eines Antrags bekommt nur der bisherige Besitzer eine Mail. Das antragstellende Konto bekommt die Hinweis-Mail aus Task 1.8 erst beim Vollzug, wenn der Server wirklich mit ihm verbunden wird.
+- Streitfälle löst der Cloud-Admin ohne eigene Oberfläche, per SQL auf der Cloud-Datenbank (Anhang, Offene Punkte Teil A Nr. 12). Eine Admin-Route ist nicht Teil dieses Plans.
+
+**Was gleich bleibt:** Eigener Eintrag → sofort wiederverwendet (Task 1.6). Gesperrter Eintrag → `instance_suspended` (Task 1.6), auch beim Vollzug nach der Frist. Freie Adresse → sofort neuer Eintrag. Heim-Server liegen unter der Relay-Domain und sind über `adresse_gesperrt` ohnehin ausgenommen.
+
+**Sicherheitsgewinn, der über die Frist hinausgeht:** Der Antrag hängt an der alten Instanz und am Konto, nicht an der Abholkennung. Nach Fristende ruft der neue Betreiber `pulse-connect` erneut auf, und die Cloud prüft den Nachweis dann **noch einmal** (Task 1.7, zweite Prüfung beim Bestätigen). Ein Angreifer bräuchte die Adresse also zu zwei Zeitpunkten, mindestens 72 Stunden auseinander — und der bisherige Besitzer ist dazwischen per Mail gewarnt.
+
+**Files:**
+- Create: `services/auth/alembic/versions/20261011_1200_0057_uebernahme.py`
+- Create: `services/auth/src/dcc_auth/verbinden_uebernahme.py`
+- Create: `services/auth/src/dcc_auth/routes_uebernahme.py` (nur die Widerspruchs-Route)
+- Modify: `services/auth/src/dcc_auth/models_instances.py` (Modell `InstanzUebernahme`)
+- Modify: `services/auth/src/dcc_auth/verbinden.py` (Status und Feld `frist_bis` am `Vorgang`)
+- Modify: `services/auth/src/dcc_auth/verbinden_nachweis.py` (`server_info_instanz`)
+- Modify: `services/auth/src/dcc_auth/routes_verbinden.py` (`VorgangAus`, `EntscheidungAus`, `verbinden_ansehen`, `verbinden_entscheiden`, `verbinden_abholen`)
+- Modify: `services/auth/src/dcc_auth/email.py` (`compose_uebernahme_beantragt`)
+- Modify: `services/auth/src/dcc_auth/app.py` (Import, `include_router` neben `routes_verbinden`)
+- Modify: `services/auth/src/dcc_auth/config.py` (drei Einstellungen)
+- Modify: `services/auth/src/dcc_auth/routes_instance_applications.py` (nur `InstanceOut.uebernahme_frist_bis` und dessen Befüllung in `GET /me/instances`; die Datei liegt schon über der harten Größengrenze, Anhang „Offene Punkte (Teil A)“ Nr. 5 — deshalb die Route in einer eigenen Datei)
+- Test: `services/auth/tests/test_verbinden_uebernahme.py` (neu); `services/auth/tests/test_verbinden_routen.py` (zwei Tests aus Task 1.7/1.8 anpassen, s. Step 5); `services/auth/tests/test_verbinden_nachweis.py` (Tests für `server_info_instanz` anhängen, s. Step 1)
+- Modify: `services/auth/src/dcc_auth/verbinden_eintrag.py` (`_aktive_gemietete_server` → öffentlich `aktive_gemietete_server`, Aufrufer in derselben Datei mitziehen)
+
+**Interfaces:**
+- Consumes: `instanz_verbinden`, `Verbunden`, `InstanzGesperrt`, `ZuVieleServer`, `HOECHSTENS_SERVER`, `aktive_gemietete_server(db, user_id) -> int` (Task 1.6, dort als `_aktive_gemietete_server` angelegt; hier öffentlich gemacht, damit Antrag und Vollzug dieselbe Zählung benutzen); `vorgang_entscheiden`, `Vorgang` (Task 1.3); `pruefe_dns`, `Ziel`, `_klient`, `FRIST_S`, Lese-Obergrenze (Task 1.4); `send_email`, `compose_verbinden_uebernahme`, `_hinweis_mail` (Task 1.8); `_require_cloud` (`routes_admin_instances.py:44`); `_require_user` (`routes_instance_applications.py:55`); `eigene_instanz_oder_404(..., with_for_update=True)` (`instance_provisioning.py`); `next_id` (`snowflake.py`).
+- Produces:
+  - **Tabelle `auth.instanz_uebernahmen`**: `id BIGINT PK` (Snowflake); `alte_instanz_id BIGINT NOT NULL → registered_instances.id` — **der Schlüssel**: Antrag, Sperre und Verfall hängen an der alten Instanz, nicht an der Adresse; `hostname TEXT NOT NULL` (normalisiert, nur zur Lesbarkeit in Logs und Admin-SQL); `neues_konto_id BIGINT NULL → users.id ON DELETE SET NULL` (nicht `CASCADE`: sonst höbe ein Wegwerf-Konto, das sich nach dem Widerspruch löscht, die 30-Tage-Sperre auf); `beantragt_at`, `frist_bis` (`timestamptz NOT NULL`); `widersprochen_at`, `vollzogen_at`, `verfallen_at` (`timestamptz NULL`). Index auf `alte_instanz_id`. **Höchstens ein offener Antrag je alter Instanz**: partieller Unique-Index `WHERE widersprochen_at IS NULL AND vollzogen_at IS NULL AND verfallen_at IS NULL`, im Modell mit `postgresql_where` **und** `sqlite_where` (sonst fehlt er in den `create_all`-Tests). Migration `0057_uebernahme`, `down_revision = "0056_verbinden"`, rein additiv.
+  - Begriffe: **offen** = alle drei Zeitstempel `NULL`; **lebendig** = offen, `neues_konto_id IS NOT NULL` (hat der Antragsteller sein Konto gelöscht, wartet niemand mehr) und `jetzt < frist_bis + verfall`; **fällig** = lebendig und `jetzt >= frist_bis`. Ein **widersprochener** Antrag sperrt 30 Tage, auch wenn `neues_konto_id` inzwischen `NULL` ist.
+  - Einstellungen `verbinden_uebernahme_frist_s: int = 259200` (72 h), `verbinden_uebernahme_sperre_s: int = 2592000` (30 Tage), `verbinden_uebernahme_verfall_s: int = 604800` (7 Tage nach Fristende).
+  - `Vorgang.status` erweitert um `"uebernahme_beantragt"` und `"uebernahme_gesperrt"`; neues Feld `Vorgang.frist_bis: str | None = None` (ISO 8601; bei `uebernahme_gesperrt` das Sperrende); `vorgang_entscheiden(..., frist_bis: str | None = None)`. Nur additiv, damit offene Vorgänge in Redis beim Ausrollen lesbar bleiben.
+  - `VorgangAus.adresse_vergeben: bool = False`; `EntscheidungAus.status: Literal["verbunden", "abgelehnt", "uebernahme_beantragt"]`, neues Feld `EntscheidungAus.frist_bis: str | None = None` (ohne die Erweiterung antwortet das `response_model` mit 500).
+  - `verbinden_nachweis.server_info_instanz(hostname: str) -> str | None`: ruft `https://<hostname>/.well-known/pulse-server-info` mit derselben Absicherung wie `nachweis_pruefen` ab (DNS prüfen, an die geprüfte IP, keine Weiterleitungen, höchstens 4 KiB, `FRIST_S`) und gibt `instance_id` zurück; `None` bei jedem Fehler oder fehlendem Feld.
+  - `verbinden_uebernahme.py`:
+    - `_jetzt() -> datetime` (UTC; Ansatzpunkt für Tests, die die Uhr vorstellen) und `_utc(dt) -> datetime` (SQLite liefert naive Werte; Muster `refresh_kette.py:156`). Jeder Vergleich mit Werten aus der Datenbank geht über `_utc`.
+    - `class UebernahmeBeantragt(Exception)` mit `alte_instanz_id: int`, `besitzer_id: int | None`, `frist_bis: datetime`, `neu: bool` (nur bei `neu` geht eine Mail raus).
+    - `class UebernahmeGesperrt(Exception)` mit `bis: datetime`: nach einem Widerspruch gegen diese alte Instanz `widersprochen_at + sperre`; bei einem lebendigen Antrag eines **anderen** Kontos dessen `frist_bis + verfall`.
+    - `async uebernahme_pruefen(db, user, hostname, settings) -> None`. Lädt den aktiven Eintrag unter der Adresse **mit `with_for_update()`**. Wirft nichts, wenn `instanz_verbinden` aufgerufen werden darf: Adresse frei, eigener Eintrag, gesperrter Eintrag (dort wirft `instanz_verbinden` selbst), oder ein **fälliger** Antrag dieses Kontos gegen genau diesen Eintrag. Sonst, in dieser Reihenfolge: offene, aber nicht mehr lebendige Anträge gegen den Eintrag (abgelaufen oder Antragsteller gelöscht) auf `verfallen_at = jetzt` setzen; Widerspruch in den letzten 30 Tagen → `UebernahmeGesperrt`; lebendiger Antrag eines anderen Kontos → `UebernahmeGesperrt`; lebendiger eigener Antrag vor Fristende → `UebernahmeBeantragt(neu=False)`; sonst Grenze prüfen (`aktive_gemietete_server`, dieselbe Zählung wie `instanz_verbinden`, bei Überschreitung `ZuVieleServer` **vor** dem Anlegen, also ohne Antrag und ohne Mail), Antrag anlegen, `flush`, `UebernahmeBeantragt(neu=True)`. Ein `IntegrityError` beim `flush` (zwei gleichzeitige Bestätigungen) → zurückrollen, neu lesen und wie oben antworten, nie 500. Ohne Commit.
+    - `async uebernahme_vollzogen(db, alte_instanz_id: int) -> None` — setzt `vollzogen_at` am fälligen Antrag (keiner da: nichts zu tun). Ohne Commit.
+    - `async lebendige_uebernahme(db, instanz_id: int) -> InstanzUebernahme | None` — für „Meine Server“.
+    - `async widersprechen(db, instanz: RegisteredInstance) -> bool` — setzt `widersprochen_at` am lebendigen Antrag; `False`, wenn keiner lebendig ist. Ohne Commit.
+  - Routen:
+    - `POST /me/selfhost/verbinden/vorgang` → 200 zusätzlich `adresse_vergeben` (aktiver Eintrag eines **anderen** Kontos unter der Adresse). Kein Name, keine Nummer — die Seite warnt nur.
+    - `POST /me/selfhost/verbinden/entscheidung` (`aktion = verbinden`) → zusätzlich 200 `{"status": "uebernahme_beantragt", "hostname", "frist_bis"}` und 409 `{"detail": {"code": "uebernahme_gesperrt", "bis"}}`. Der Vorgang endet in beiden Fällen, damit `pulse-connect` es beim nächsten Abholen erfährt. 409 `zu_viele_server` jetzt auch schon beim Antrag.
+    - `POST /selfhost/verbinden/abholen` → zusätzlich 409 `{"detail": {"code": "uebernahme_beantragt", "frist_bis"}}` und 403 `{"detail": {"code": "uebernahme_gesperrt", "bis"}}`. Beide entnehmen den Vorgang (genau einmal, wie `abgelehnt`).
+    - `GET /me/instances` → `InstanceOut.uebernahme_frist_bis: str | None` (nur am eigenen Eintrag gesetzt, wenn ein lebendiger Antrag existiert).
+    - `POST /me/instances/{instance_id}/uebernahme/widerspruch` in `routes_uebernahme.py` (Router mit `dependencies=[Depends(_require_cloud)]`, wie `routes_admin_instances.py:62`). Ablauf: (1) Bremse je Konto wie beim Bestätigen (`_bremse_je_konto` aus `routes_verbinden.py`, Regel `rate_limit_verbinden_bestaetigen`) — die Route löst einen ausgehenden Abruf aus. (2) Eintrag über `eigene_instanz_oder_404` laden (ohne Sperre) und `lebendige_uebernahme` prüfen; keiner → 404, ohne Netzabruf. (3) `await db.rollback()` (keine Transaktion und keine Verbindung über den Netzabruf halten), dann `server_info_instanz(hostname) == str(instanz.id)` — bis zu 8 s; passt es nicht → 409. (4) Eintrag mit `eigene_instanz_oder_404(..., with_for_update=True)` neu laden, `widersprechen` aufrufen (es fragt den Antrag frisch ab); `False` → 404, sonst committen → 204. Die Sperre in (4) sorgt dafür, dass sich Widerspruch und Vollzug nicht kreuzen (der Vollzug sperrt dieselbe Zeile in `uebernahme_pruefen`). Geprüft wird die Bedingung **beim Einlegen**: Verschwindet der Server danach, bleibt die 30-Tage-Sperre bestehen. Antworten: 204; 404, wenn der Eintrag nicht dem Konto gehört oder kein Antrag lebendig ist (beides gleich, kein Orakel); 409 `{"detail": {"code": "widerspruch_ohne_server"}}`, wenn unter der Adresse nicht mehr dieser Server antwortet (Meldung: „Dein Server antwortet unter dieser Adresse nicht. Widersprechen kannst du nur, solange er dort läuft — versuche es später erneut.“).
+  - Mail `compose_uebernahme_beantragt(hostname: str, frist_bis: datetime) -> tuple[str, str]`, Betreff `Pulse: Jemand möchte deinen Server übernehmen`, an den bisherigen Besitzer, **nur beim Anlegen** eines Antrags. Text: Adresse, Zeitpunkt, Fristende in UTC; „Hast du den Server nicht abgegeben? Widersprich unter Meine Server.“; „Hast du ihn abgegeben, musst du nichts tun — oder lösche ihn unter Meine Server, dann geht es sofort.“ Die Mail aus Task 1.8 (`compose_verbinden_uebernahme`) geht weiterhin beim **Vollzug**.
+  - Log-Ereignisse (`warning`, ohne Code und Kennung): `verbinden_uebernahme_beantragt hostname=… alt=… konto=…`, `verbinden_uebernahme_widerspruch alt=…`, `verbinden_uebernahme_gesperrt hostname=… konto=…`.
+
+- [ ] **Step 1: Fehlschlagende Tests schreiben** (`services/auth/tests/test_verbinden_uebernahme.py`, Fixtures und Helfer `_konto`/`_start`/`_entscheiden`/`_abholen`/`nachweis`/`mit_redis` wie in `test_verbinden_routen.py`; die Uhr über `monkeypatch` auf `verbinden_uebernahme._jetzt` vorstellen, nicht schlafen; `server_info_instanz` per `monkeypatch` ersetzen). Je ein Test:
+  1. `test_fremde_adresse_beantragt_statt_zu_uebernehmen` — Konto B bestätigt eine Adresse von Konto A: 200 `uebernahme_beantragt`, `frist_bis` = jetzt + 72 h; A's Eintrag bleibt `active`, keine Sperrliste, A's Mitgliedschaften bleiben; Abholen liefert 409 `uebernahme_beantragt` mit demselben `frist_bis`, danach 410.
+  2. `test_vor_fristende_bleibt_es_beim_antrag` — B bestätigt nach 71 h erneut: wieder `uebernahme_beantragt`, derselbe Antrag (kein zweiter Datensatz, keine zweite Mail).
+  3. `test_nach_fristende_wird_vollzogen` — B bestätigt nach 72 h: 200 `verbunden`, A's Eintrag `deleted` und auf der Sperrliste, `vollzogen_at` gesetzt, Mail aus Task 1.8 an A, Hinweis-Mail an B.
+  4. `test_widerspruch_sperrt_dreissig_tage` — A widerspricht (Server-Info meldet A's Nummer) → 204; B bestätigt nach 72 h: 409 `uebernahme_gesperrt`, `bis` = Widerspruch + 30 Tage; auch Konto C bekommt `uebernahme_gesperrt`; nach 30 Tagen beginnt ein neues Bestätigen einen neuen Antrag.
+  5. `test_widerspruch_ohne_eigenen_server` — Server-Info meldet eine andere Nummer, `null` oder ist nicht erreichbar: 409 `widerspruch_ohne_server`, Antrag bleibt lebendig.
+  6. `test_widerspruch_nach_fristende_solange_nicht_vollzogen` — A widerspricht nach 80 h, B kam noch nicht wieder: 204, danach `uebernahme_gesperrt` für B.
+  7. `test_zweites_fremdes_konto_wartet` — lebendiger Antrag von B; C bestätigt: 409 `uebernahme_gesperrt` mit `bis` = B's Fristende + 7 Tage.
+  8. `test_verfallener_antrag_blockiert_niemanden` — B kommt erst 72 h + 7 Tage + 1 s wieder: neuer Antrag mit neuer Frist und neuer Mail an A; der alte trägt `verfallen_at`. Ebenso bekommt C dann einen eigenen Antrag statt `uebernahme_gesperrt`, und A sieht bei einem verfallenen Antrag keinen Widerspruchs-Knopf mehr (`uebernahme_frist_bis = null`).
+  9. `test_loeschen_macht_die_adresse_sofort_frei` — A löscht seinen Eintrag während der Frist (`DELETE /me/instances/{id}`); B bestätigt sofort: 200 `verbunden`, kein Warten.
+  10. `test_eigener_eintrag_ohne_frist` — A verbindet seine eigene Adresse neu: 200 `verbunden` wie bisher, kein Antrag.
+  11. `test_eintrag_ohne_besitzer_hat_auch_frist` — `registered_by IS NULL`: B bekommt `uebernahme_beantragt`, keine Mail; nach 72 h vollzogen.
+  12. `test_alter_eintrag_gewechselt` — Antrag gegen Eintrag 1; A löscht, Konto C verbindet die Adresse neu (Eintrag 2); B kommt nach Fristende: der alte Antrag zählt nicht, gegen Eintrag 2 beginnt ein neuer.
+  13. `test_alter_eintrag_waehrend_der_frist_gesperrt` — der Admin sperrt A's Eintrag während der Frist; B bestätigt nach 72 h: 403 `instance_suspended`.
+  14. `test_grenze_schon_beim_antrag` — B hat 10 aktive VPS: 409 `zu_viele_server`, kein Antrag, keine Mail an A.
+  15. `test_konto_des_antragstellers_geloescht` — A widerspricht, B löscht danach sein Konto; Konto C bestätigt: weiter `uebernahme_gesperrt` bis Widerspruch + 30 Tage (`neues_konto_id` ist `NULL`, die Sperre bleibt).
+  16. `test_gleichzeitige_bestaetigungen` — der zweite Antrag scheitert am Unique-Index (`flush` per `monkeypatch` so getaktet, dass beide Aufrufe vor dem ersten `flush` lesen): einer bekommt `uebernahme_beantragt`, der andere `uebernahme_gesperrt`, genau ein Antrag, kein 500. Die Tests laufen auf SQLite, das `with_for_update` ignoriert — der Test belegt die Behandlung des `IntegrityError`, nicht die Postgres-Sperre (Offene Punkte Teil A Nr. 12 (h)).
+  17. `test_mail_nur_beim_anlegen` — genau eine Mail `Pulse: Jemand möchte deinen Server übernehmen` an A nach Test-1-Ablauf, mit Adresse und `UTC`; keine bei Wiederholung (Test 2); keine Mail an B beim Antrag.
+  18. `test_widerspruch_nur_fuer_den_besitzer` — B (oder C) ruft die Widerspruchs-Route für A's Eintrag: 404; A ohne lebendigen Antrag: 404, **ohne** dass `server_info_instanz` aufgerufen wird.
+  19. `test_meine_server_zeigt_den_antrag` — `GET /me/instances` für A liefert `uebernahme_frist_bis`; für B (nicht Besitzer) `null`.
+  20. `test_vorgang_meldet_vergebene_adresse` — `POST /me/selfhost/verbinden/vorgang` liefert `adresse_vergeben: true` für B, `false` für A und für eine freie Adresse.
+  21. `test_widerspruch_nur_in_der_cloud` — mit `PULSE_INSTANCE_MODE=self-host` antwortet die Widerspruchs-Route wie die übrigen Cloud-Routen (Muster `test_nur_in_der_cloud` in `test_verbinden_routen.py`).
+  22. `test_antragsteller_geloescht_ohne_widerspruch` — B beantragt und löscht sein Konto, ohne dass A widersprochen hat: der Antrag ist nicht mehr lebendig; C bekommt einen eigenen Antrag statt `uebernahme_gesperrt`, A sieht `uebernahme_frist_bis = null`.
+
+  In `test_verbinden_nachweis.py` für `server_info_instanz` (Muster der bestehenden Tests dort, `MockTransport`): passende Antwort → die Nummer als String; `instance_id` `null` oder als Zahl → `None`; Adresse im privaten Netz → `None` ohne HTTP-Aufruf; Weiterleitung, mehr als 4 KiB, kein JSON, Zeitüberschreitung → `None`.
+
+- [ ] **Step 2: Tests laufen lassen, sie müssen scheitern.**
+
+Run: `REDIS_URL=redis://127.0.0.1:6380/1 PULSE_INSTANCE_MODE=cloud PULSE_INSTANCE_ID=0 uv run --all-packages pytest -q services/auth/tests/test_verbinden_uebernahme.py`
+Expected: Sammelfehler `ImportError` (Modul `verbinden_uebernahme` fehlt).
+
+- [ ] **Step 3: Migration, Modell, Einstellungen, Vorgang-Status, Antwortmodelle.** Migration nach dem Muster von `0056_verbinden` (Task 1.2; Revision-ID höchstens 32 Zeichen). Den partiellen Index in der Migration und im Modell (`postgresql_where`/`sqlite_where`) gleich formulieren.
+
+- [ ] **Step 4: `verbinden_uebernahme.py`, `server_info_instanz` und die Routen.** In `verbinden_entscheiden` direkt **nach** der zweiten Nachweisprüfung und **vor** `instanz_verbinden` `uebernahme_pruefen(db, user, vorgang.hostname, get_settings())` aufrufen:
+  - `UebernahmeBeantragt`: `vorgang_entscheiden(redis, nachweis, "uebernahme_beantragt", instance_id=None, user_id=str(user.id), frist_bis=…)`; bei `False` zurückrollen und 404 `unbekannt` wie im bestehenden Code, sonst committen. Ist der Antrag neu und hat der alte Eintrag einen Besitzer, danach die Mail an ihn über `_hinweis_mail` (Fehler nur als `warning`). Antwort 200 `{"status": "uebernahme_beantragt", "hostname", "frist_bis"}`.
+  - `UebernahmeGesperrt`: zurückrollen (verfallene Anträge, die `uebernahme_pruefen` geschlossen hat, gehen dabei nicht verloren: sie werden beim nächsten Aufruf erneut geschlossen), Vorgang mit `"uebernahme_gesperrt"` und `frist_bis = bis` beenden, Antwort 409 `{"detail": {"code": "uebernahme_gesperrt", "bis"}}`.
+  - `ZuVieleServer` aus `uebernahme_pruefen`: wie der bestehende Zweig (409 `zu_viele_server`).
+  - Sonst wie bisher `instanz_verbinden`. Wenn `verbunden.abgeloest is not None`, vor dem Commit `uebernahme_vollzogen(db, verbunden.abgeloest)`.
+
+  In `verbinden_abholen` nach `vorgang_entnehmen` die beiden neuen Status vor dem `abgelehnt`-Zweig abfangen (409 bzw. 403 wie unter Interfaces). In `verbinden_ansehen` `adresse_vergeben` aus `registered_instances` berechnen (aktiv und `registered_by` ungleich dem Konto, auch `NULL`).
+
+- [ ] **Step 5: Zwei bestehende Tests anpassen.** In `test_verbinden_routen.py` prüfen `test_uebernahme_einer_fremden_adresse` (Task 1.7) und `test_uebernahme_schreibt_dem_vorbesitzer` (Task 1.8) die sofortige Übernahme. Beide bekommen einen ersten Durchlauf, der `uebernahme_beantragt` erwartet, dann die Uhr 72 h vor und einen zweiten Durchlauf (neue Kennung, neuer Code) mit den bisherigen Erwartungen an Eintrag und Sperrliste. Die Mail-Zählungen filtern nach **Betreff**: an den Vorbesitzer genau eine `Pulse: Jemand möchte deinen Server übernehmen` (erster Durchlauf) und genau eine `Pulse: Dein Server wurde mit einem anderen Konto verbunden` (zweiter); an den Nachfolger genau eine `Pulse: Ein Server wurde mit deinem Konto verbunden`, und zwar erst im zweiten Durchlauf.
+
+- [ ] **Step 6: Tests laufen lassen.**
+
+Run: `REDIS_URL=redis://127.0.0.1:6380/1 PULSE_INSTANCE_MODE=cloud PULSE_INSTANCE_ID=0 uv run --all-packages pytest -q services/auth/tests/test_verbinden_uebernahme.py services/auth/tests/test_verbinden_routen.py services/auth/tests/test_verbinden_eintrag.py services/auth/tests/test_verbinden_nachweis.py`
+Expected: alles grün.
+
+- [ ] **Step 7: Vereinfachen.** `code-simplifier` über die geänderten Dateien, Step 6 wiederholen, `bash .claude/hooks/simplify-stamp.sh`.
+
+- [ ] **Step 8: Commit.**
+
+```bash
+git add services/auth/alembic/versions/20261011_1200_0057_uebernahme.py \
+  services/auth/src/dcc_auth/verbinden_uebernahme.py services/auth/src/dcc_auth/routes_uebernahme.py \
+  services/auth/src/dcc_auth/models_instances.py services/auth/src/dcc_auth/verbinden.py \
+  services/auth/src/dcc_auth/verbinden_nachweis.py services/auth/src/dcc_auth/routes_verbinden.py \
+  services/auth/src/dcc_auth/email.py services/auth/src/dcc_auth/app.py services/auth/src/dcc_auth/config.py \
+  services/auth/src/dcc_auth/routes_instance_applications.py \
+  services/auth/src/dcc_auth/verbinden_eintrag.py \
+  services/auth/tests/test_verbinden_uebernahme.py services/auth/tests/test_verbinden_routen.py \
+  services/auth/tests/test_verbinden_nachweis.py
+git commit -m "feat(auth): Widerspruchsfrist, bevor ein fremdes Konto eine Adresse übernimmt"
+```
+
+---
+
+### Task 1.12: Landen
 
 **Files:** keine neuen.
 
 - [ ] **Step 1: Ganze Backend-Suite, dann das Gate.**
 
 Run: `REDIS_URL=redis://127.0.0.1:6380/1 PULSE_INSTANCE_MODE=cloud PULSE_INSTANCE_ID=0 uv run --all-packages pytest -q -n 8 shared/tests services/auth/tests`
-Expected: alles grün (am 2026-10-11 in einer Kopie nachgefahren: `925 passed, 2 skipped`; dazu `services/chat-gateway/tests` mit `1741 passed`, weil der chat-gateway das geänderte Ereignis-Register liest — das Gate fährt ihn ohnehin mit).
+Expected: alles grün (am 2026-10-11 in einer Kopie nachgefahren, **vor** Task 1.11: `925 passed, 2 skipped` — Task 1.11 bringt rund 30 neue Tests mit, die Zahl ist danach nicht nachgefahren; dazu `services/chat-gateway/tests` mit `1741 passed`, weil der chat-gateway das geänderte Ereignis-Register liest — das Gate fährt ihn ohnehin mit).
 
 Run: `bash scripts/gate.sh`
 Expected: grün. Der Python-Teil läuft, weil sich `services/` und `shared/` gegenüber `origin/main` geändert haben. Web und Rust werden übersprungen (Teilbaum gleich `origin/main`). Den Lauf nicht neben `cargo build` oder `pnpm build` legen (CLAUDE.md „Tests“).
@@ -3660,7 +3795,7 @@ Expected: grün. Der Python-Teil läuft, weil sich `services/` und `shared/` geg
 Run: `bash scripts/check-changelog.sh origin/main HEAD`
 Expected: die Warnung `Dieser Push ändert Code, aber web/static/changelog.json wurde nicht aktualisiert.` Sie ist hier richtig, denn `services/auth/src/**` und `shared/src/**` stehen nicht in `NON_USER_FACING` (`scripts/check-changelog.sh:27`), und das Skript endet immer mit `exit 0`. Kein Eintrag: Ohne `pulse-connect` (Etappe 2) und ohne Bestätigungsseite (Etappe 3) kann kein Nutzer etwas davon bemerken. Neue Heim-Server zeigen nur in der Admin-Liste leere Worker-IDs.
 
-- [ ] **Step 3: Freigabe des Eigentümers einholen, dann landen.** Landen heißt Prod-Deploy: Der Cron auf dem netcup zieht `:latest` binnen 5 Minuten und fährt `migrate-auth` mit, also Migration 0056 auf der Cloud-Datenbank. Erst nach ausdrücklichem „ja“:
+- [ ] **Step 3: Freigabe des Eigentümers einholen, dann landen.** Landen heißt Prod-Deploy: Der Cron auf dem netcup zieht `:latest` binnen 5 Minuten und fährt `migrate-auth` mit, also die Migrationen 0056 und 0057 auf der Cloud-Datenbank. Erst nach ausdrücklichem „ja“:
 
 ```bash
 bash scripts/ship.sh
@@ -3671,7 +3806,7 @@ bash scripts/ship.sh
 ```bash
 ssh michael@159.195.150.54 'docker exec pulse_postgres psql -U dcc -d dcc -tAc "select version_num from auth.alembic_version"'
 ```
-Expected: `0056_verbinden`.
+Expected: `0057_uebernahme`.
 
 ```bash
 ssh michael@159.195.150.54 "docker exec pulse_postgres psql -U dcc -d dcc -tAc \"select hostname, origin, ohne_freigabe, worker_id_chat is not null from auth.registered_instances where status = 'active' order by registered_at\""
@@ -5000,13 +5135,19 @@ die email-Zeile im Caddyfile (Spec 2026-10-09, E4)."
   - `dcc_auth.verbinden.nachweis_aus_kennung(kennung: str) -> str` (nur im Prüfstein-Test).
   - `verbindung.NACHWEIS_DATEI`, `verbindung.VERBINDUNG_DATEI`; `Settings.pulse_verbinden_dir`, `.pulse_cloud_origin`, `.pulse_instance_id`, `.pulse_instance_mode`; Umgebung `PULSE_HOSTNAME`.
 - Produces:
-  - `verbinden_cli.main(argv: list[str] | None = None) -> int` — Optionen `--no-restart`, `--yes`; Exit 0 verbunden, 1 Fehler, 2 abgelehnt/abgelaufen, 3 Nachweis von außen nicht erreichbar.
+  - `verbinden_cli.main(argv: list[str] | None = None) -> int` — Optionen `--no-restart`, `--yes`; Exit 0 verbunden, 1 Fehler, 2 abgelehnt/abgelaufen, 3 Nachweis von außen nicht erreichbar, **4 Übernahme beantragt** (Nachtrag 2026-10-11, s. unten).
   - `verbinden_cli.verbinden(umgebung: Umgebung, client: httpx.Client, *, neustart: Callable[[], None] | None, rueckfrage: Callable[[str], bool], schlafen: Callable[[float], None] = time.sleep, uhr: Callable[[], float] = time.monotonic, ausgabe: Callable[[str], None] = _drucke) -> int`
   - `verbinden_cli.Umgebung(hostname: str, cloud_origin: str, verzeichnis: Path, instanz_id: int, modus: str)` (frozen dataclass)
   - `verbinden_cli.nachweis_aus_kennung(kennung: str) -> str` = `hashlib.sha256(kennung.encode("utf-8")).hexdigest()`; Kennung = `secrets.token_urlsafe(32)`.
   - `verbinden_cli.lies_verbindung(verzeichnis: Path) -> dict[str, str]`, `container_neustarten() -> None`, `frage_im_terminal(frage: str) -> bool`, `HALT = "/run/s6/basedir/bin/halt"`, `HOECHSTENS_S = 900`, `ANFRAGE_FRIST_S = 15.0`.
   - Dateien: `verbinden-nachweis` (0644, eine Zeile 64 Hex = `sha256(kennung)`, VOR `start` geschrieben, nach jedem Lauf gelöscht — auch bei Fehler und Strg+C); `verbindung.env` (0600, atomar, Format wie in Task 2.3).
   - Hülle `/usr/local/bin/pulse-connect`: sourct `/etc/pulse/env.sh`, ruft `python3 -m dcc_chat_gateway.verbinden_cli "$@"` als root.
+
+**Nachtrag 2026-10-11 (Task 1.11, Widerspruchsfrist).** Die Code-Blöcke unten stammen von vorher und kennen die beiden neuen Antworten beim Abholen noch nicht. Beim Umsetzen ergänzen:
+- 409 `{"detail": {"code": "uebernahme_beantragt", "frist_bis"}}` → Exit **4**, Meldung sinngemäß: `The account that confirmed this code does not own <host> in Pulse. A takeover request was filed: the current owner has been notified and can object until <frist_bis, UTC>. Run pulse-connect again after that. If you confirmed with the wrong account, run pulse-connect again now and confirm with the owner's account.` Der letzte Satz deckt den Fall, dass ein Fremder den Code für die eigene Adresse schneller bestätigt hat: Dann verbindet der Besitzer sofort neu (eigener Eintrag) und widerspricht dem Antrag. Kein Neustart, Nachweis-Datei wie immer löschen.
+- 403 `{"detail": {"code": "uebernahme_gesperrt", "bis"}}` → Exit **2**, Meldung sinngemäß: `This address can't be moved to your account right now (until <bis, UTC>): its current owner objected, or another account is already waiting. Ask the current owner to delete the server under "My servers".` Ein 403 mit `detail = "abgelehnt"` (Zeichenkette) bleibt wie bisher.
+- Texte in `verbinden_texte.py`, Docstring „Exit-Codes“ in `verbinden_cli.py` um 4 ergänzen. `SCHON_VERBUNDEN` bekommt vor der Frage den Satz `Another account has to wait 72 hours unless the current owner deletes the server under "My servers" first.`
+- Tests in `test_verbinden_cli.py`: `test_uebernahme_beantragt_endet_mit_exit_4` (Fristende steht in der Ausgabe, kein Neustart, keine `verbindung.env`, Nachweis-Datei weg) und `test_uebernahme_gesperrt_endet_mit_exit_2`.
 
 - [ ] **Step 1: Fehlschlagende Tests schreiben.**
 
@@ -6269,6 +6410,7 @@ git commit -m "feat(web): Verbindungs-Code normalisieren und über die Anmeldung
   - `BEFUNDE`, `type VerbindenFehler`, `verbindenFehler(status: number | null, body: unknown): VerbindenFehler`, `meldungsSchluessel(f: VerbindenFehler): string | null` (`web/src/lib/verbinden/fehler.ts`)
   - `VerbindenKarte.svelte` mit exportiertem `type VerbindenZustand`
   - Route `/verbinden`; `data-testid`s siehe „Neue Namen“.
+- **Nachtrag 2026-10-11 (Task 1.11, Widerspruchsfrist):** `holeVerbindung` liefert zusätzlich `adresse_vergeben: boolean`; ist es wahr, zeigt die Karte vor dem Knopf den Hinweis `verbinden_adresse_vergeben` („Diese Adresse ist schon mit einem anderen Pulse-Konto verbunden. Bestätigst du, greift der Wechsel frühestens nach 72 Stunden; bis dahin kann der bisherige Besitzer widersprechen.“). `entscheideVerbindung` kennt das Ergebnis `{status: 'uebernahme_beantragt', hostname, frist_bis}` → eigener `VerbindenZustand` mit `verbinden_uebernahme_beantragt` („Übernahme beantragt. Der bisherige Besitzer kann bis {datum} widersprechen. Rufe danach `pulse-connect` auf deinem Server erneut auf.“). `verbindenFehler` deutet 409 `{detail: {code: 'uebernahme_gesperrt', bis}}` als `{art: 'uebernahme_gesperrt', bis}` mit `verbinden_uebernahme_gesperrt` („Diese Adresse kann gerade nicht übernommen werden (bis {datum}). Der bisherige Besitzer hat widersprochen, oder ein anderes Konto wartet schon.“). Je ein Fall in `web/test/verbinden-fehler.test.ts` und in `web/tests/e2e/verbinden.spec.ts` (Antworten gemockt); Schlüssel in `de.json` und `en.json`.
 
 - [ ] **Step 1: Test für die Fehlerdeutung schreiben.** `web/test/verbinden-fehler.test.ts`:
 
@@ -7446,7 +7588,7 @@ Task 4.4 Step 1 prüft Schritt 1 und 2.
 
 **Interfaces:**
 - Consumes:
-  - `docker exec -it <container> pulse-connect --no-restart` (Etappe 2, `verbinden_cli.py`): Exit 0 verbunden, 1 Fehler, 2 abgelehnt/abgelaufen, 3 von außen nicht erreichbar; liest das Terminal; gibt nie Secret oder Kennung aus.
+  - `docker exec -it <container> pulse-connect --no-restart` (Etappe 2, `verbinden_cli.py`): Exit 0 verbunden, 1 Fehler, 2 abgelehnt/abgelaufen, 3 von außen nicht erreichbar, 4 Übernahme beantragt (Nachtrag 2026-10-11; `pulse-connect` nennt das Fristende selbst, der Installer behandelt 4 wie jedes andere Scheitern: `Connect later: …`, Exit 0 — keine eigene Weiche nötig); liest das Terminal; gibt nie Secret oder Kennung aus.
   - `GET /.well-known/pulse-server-info` mit Feld `verbunden: bool` (Etappe 2) — im Container unter `http://127.0.0.1:8002/…` (chat-gateway direkt), von außen unter `https://<adresse>/…`.
   - `/data/pulse/verbindung.env` im Datenvolumen (Etappe 2): Zeilen `KEY=wert` für `PULSE_INSTANCE_ID`, `PULSE_INSTANCE_OWNER_ID`, `PULSE_CLOUD_CLIENT_ID`, `PULSE_CLOUD_CLIENT_SECRET`, optional `PULSE_ADMIN_EMAIL`.
   - `POST ${CLOUD_ORIGIN}/api/auth/selfhost/diagnose/{instance_id}` mit `X-Pulse-Client-Id`, `X-Pulse-Client-Secret`, `X-Pulse-Container-Name` (unverändert, `routes_selfhost_diagnose.py`).
@@ -10350,7 +10492,9 @@ Neu:
 
   <p>Two different numbers means the wrong account. To hand the server to
   another account, run <code>docker exec -it pulse pulse-connect</code> again and
-  confirm with that account. Servers set up before October 2026 carry the owner
+  confirm with that account. The current owner gets an email and has 72 hours
+  to object; to skip the wait, the current owner deletes the server under
+  <em>My servers</em> first. Servers set up before October 2026 carry the owner
   as <code>PULSE_INSTANCE_OWNER_ID</code> in their <code>.env</code> instead;
   change it there and restart. Needs <code>PULSE_LOG_LEVEL=info</code>, which is
   the default &mdash; if neither line appears, the container is running quieter
@@ -10633,7 +10777,7 @@ ssh -t "root@${VM}" "PULSE_HOSTNAME=${PROBE} bash /root/install.sh"
 
 Expected: `This server is already connected to a Pulse account.` und **kein** Link, kein Code; am Ende `Done.`; die `instance_id` aus Step 6 ist unverändert (`curl -fsS "https://${PROBE}/.well-known/pulse-server-info"`).
 
-- [ ] **Step 8: Neuinstallation mit frischem Volumen und Konto B übernimmt die Adresse.** Erst die alte Instanz-Nummer merken, dann Container und Volumen wegwerfen und neu installieren:
+- [ ] **Step 8: Neuinstallation mit frischem Volumen und Konto B — Widerspruchsfrist (Task 1.11).** Erst die alte Instanz-Nummer merken, dann Container und Volumen wegwerfen und neu installieren:
 
 ```bash
 ALT="$(curl -fsS "https://${PROBE}/.well-known/pulse-server-info" | python3 -c 'import json,sys; print(json.load(sys.stdin)["instance_id"])')"
@@ -10641,15 +10785,19 @@ ssh "root@${VM}" 'docker rm -f pulse && docker volume rm pulse-data'
 ssh -t "root@${VM}" "PULSE_HOSTNAME=${PROBE} bash /root/install.sh"
 ```
 
-Im Browser mit Konto B bestätigen. Expected in der Konsole: `Connected to <Name von B>.`
+Im Browser mit Konto B bestätigen. Die Seite zeigt vorher den Hinweis, dass die Adresse einem anderen Konto gehört, danach „Übernahme beantragt“ mit Fristende. Expected in der Konsole: `This address is registered to another Pulse account. …` mit dem Fristende, danach `Connect later: …`.
 
-Run: `ssh michael@159.195.150.54 "docker exec pulse_postgres psql -U dcc -d dcc -Atc \"select status, registered_by from auth.registered_instances where id = ${ALT}\""`
+Run: `ssh michael@159.195.150.54 "docker exec pulse_postgres psql -U dcc -d dcc -At -c \"select status from auth.registered_instances where id = ${ALT}\" -c \"select count(*) from auth.instanz_uebernahmen where alte_instanz_id = ${ALT} and widersprochen_at is null and vollzogen_at is null and verfallen_at is null\""`
 
-Expected: `deleted|<ID von A>`.
+Expected: `active` und `1` (der alte Eintrag lebt, ein Antrag ist offen). Konto A hat die Mail `Pulse: Jemand möchte deinen Server übernehmen`; unter „Meine Server“ steht am Probe-Server der Hinweis mit „Widersprechen“.
+
+A klickt „Widersprechen“. Expected: „Dein Server antwortet unter dieser Adresse nicht …“ (409 `widerspruch_ohne_server`), denn unter der Adresse läuft jetzt B's noch unverbundener Server (`instance_id` `null`). Das ist hier die Gegenprobe zum gespiegelten Angriff; den erfolgreichen Widerspruch decken die automatischen Tests in Task 1.11.
+
+Schneller Weg: A löscht den Probe-Server unter „Meine Server“. B ruft `pulse-connect` noch einmal auf und bestätigt. Expected: `Connected to <Name von B>.` sofort, ohne Frist (die Adresse ist frei; die 30-Tage-Sperre hängt am alten Eintrag).
 
 Run: `curl -fsS https://howispulse.com/.well-known/pulse-suspended-instances | grep -c "${ALT}"`
 
-Expected: `1` (der alte Eintrag steht auf der Sperrliste). Auf A's Gerät verschwindet der Server aus der Leiste, auf B's erscheint er.
+Expected: `1` (A's gelöschter Eintrag steht auf der Sperrliste). Auf A's Gerät verschwindet der Server aus der Leiste, auf B's erscheint er. Den Vollzug nach Ablauf der 72 Stunden prüfen nur die automatischen Tests in Task 1.11.
 
 - [ ] **Step 9: Probe abbauen.** In Pulse mit Konto B den Probe-Server löschen (heute: „Meine Instanzen“ → Löschen), dann die VM löschen und den DNS-Eintrag entfernen.
 
@@ -11362,6 +11510,8 @@ Komponenten, damit Leiste und Route schrumpfen."
 - Modify: `web/src/lib/components/UserFooter.svelte:15-21` (Importe), `:36-40`, `:74-85`
 - Modify: `web/src/lib/components/mobile/MeSectionList.svelte:1-14,15-31,84-87,118-133`
 - Modify (ganz ersetzen): `web/src/routes/app/server/+page.svelte`, `web/src/lib/components/account/MyInstances.svelte`
+- Create: `web/src/lib/components/account/UebernahmeHinweis.svelte` (Nachtrag 2026-10-11, s. Interfaces)
+- Modify: `web/src/lib/api/instances.ts` (Nachtrag 2026-10-11: nur additiv `Instance.uebernahme_frist_bis` und `instancesApi.widersprechen`; Task 5.4 ersetzt die Datei später ganz und muss beides übernehmen)
 - Modify: `web/src/lib/navigation/tabs.ts:41-45,54-58,104-109`, `web/test/tabs.test.ts:42-48,85-91`
 - Modify: `web/src/lib/components/GuildRail.svelte:66` (Import), `:742-748` (Kommentar), `:771` (Mount), `:794-810` (Betreiber-Hinweis) — nach Task 5.1 liegen diese Stellen etwa 35 Zeilen höher
 - Modify: `web/src/routes/app/rooms/+page.svelte:26` (Import), `:255-261` (Knopf) — nach Task 5.1 etwa 37 Zeilen höher
@@ -11375,6 +11525,7 @@ Komponenten, damit Leiste und Route schrumpfen."
 **Interfaces:**
 - Produces: `hatEigeneServer(server: ReadonlyArray<{ isCloud: boolean; role?: string | null }>): boolean`; `data-testid` `user-footer-meine-server`, `me-meine-server`.
 - Consumes: `serversStore.servers` (`ServerEntry.role`, gefüllt aus `GET /me/instances` über `hydrateFromBackend`/`instanzNachzug`), `instancesApi.listMyInstances/deleteMyInstance` (bleiben).
+- **Nachtrag 2026-10-11 (Task 1.11, Widerspruchsfrist):** Trägt ein eigener Eintrag in `GET /me/instances` `uebernahme_frist_bis`, zeigt „Meine Server“ an ihm einen Hinweis: „Ein anderes Pulse-Konto möchte diesen Server übernehmen. Ohne Widerspruch geschieht das frühestens am {datum}. Hast du den Server nicht abgegeben?“ mit dem Knopf „Widersprechen“ (`data-testid` `meine-server-widerspruch`, `POST /me/instances/{id}/uebernahme/widerspruch`, danach Liste neu laden; 409 `widerspruch_ohne_server` zeigt „Dein Server antwortet unter dieser Adresse nicht. Widersprechen kannst du nur, solange er dort läuft — versuche es später erneut.“) und dem Satz „Hast du ihn abgegeben, musst du nichts tun — oder lösche ihn, dann geht es sofort.“ Eigene Komponente `web/src/lib/components/account/UebernahmeHinweis.svelte` (Größengrenze von `MyInstances.svelte`), `instancesApi.widersprechen(instanceId)`, `Instance.uebernahme_frist_bis: string | null`, Schlüssel `meine_server_uebernahme_*` in `de.json`/`en.json`. Ein Fall in `web/tests/e2e/eigener-server.spec.ts` (Antwort gemockt).
 - Verhalten, das sich bewusst ändert: `/app/server` gehört zum Bereich „Du“ (vorher „Räume“) und ist am Handy ein Detail-Bildschirm (Bereichs-Leiste weg, Zurück führt nach `/app/me`) — der Einstieg sitzt dort jetzt im Du-Bereich.
 
 - [ ] **Step 1: Test für die Sichtbarkeits-Rechnung.** `web/test/eigene-server.test.ts`:
@@ -12433,7 +12584,7 @@ Expected: FAIL — `instances-tab-pending` noch vorhanden.
   "admin_badge_meldungen_aria": "Open reports"
 ```
 
-- [ ] **Step 3: `web/src/lib/api/instances.ts` vollständig ersetzen.** Vorher die Verbraucher prüfen:
+- [ ] **Step 3: `web/src/lib/api/instances.ts` vollständig ersetzen.** **Nachtrag 2026-10-11:** Der Ersatzwortlaut unten stammt von vor Task 1.11 — `Instance.uebernahme_frist_bis: string | null` und `instancesApi.widersprechen(instanceId)` (`POST /me/instances/{id}/uebernahme/widerspruch`), die Task 5.2 angelegt hat, beim Ersetzen übernehmen, sonst wird `pnpm check` rot (`UebernahmeHinweis.svelte` greift darauf zu). Vorher die Verbraucher prüfen:
 
 ```bash
 cd /home/michael/Dokumente/pulse && grep -rnF "api/instances'" web/src | grep -v "web/src/lib/api/instances.ts"
@@ -14877,7 +15028,7 @@ also ausgerechnet der Fall, den `10-check-cloud-creds.sh` damals schon beim Star
 neu:
 
 ```markdown
-- **Keine Freigabe mehr — Verbinden per Gerätecode (seit Oktober 2026).** Jeder installiert mit `curl -fsSL https://howispulse.com/install | bash` oder Compose; Pflicht ist nur `PULSE_HOSTNAME`, das Bild `ghcr.io/oblivion-pictures/pulse` ist öffentlich. Am Ende verbindet `docker exec -it pulse pulse-connect` (Installer: von selbst) den Server mit einem Konto: Gerätecode nach RFC 8628, Bestätigung auf `howispulse.com/verbinden`, Nachweis unter `/.well-known/pulse-verbinden` — die Cloud ruft ihn vor dem Anfragen UND vor dem Eintragen ab, also kann niemand eine Adresse eintragen, die er nicht betreibt, und wer sie nachweislich betreibt, übernimmt sie (der alte Eintrag wird soft-gelöscht und landet auf der Sperrliste). Die Zugangsdaten liegen danach in `/data/pulse/verbindung.env`; **Werte aus der Umgebung gewinnen** — so laufen die drei Bestands-VPS (Zugangsdaten in ihrer `.env`; ihr Update-Skript meldet sich damit bei `registry.howispulse.com` an und hört bei einem Fehlschlag STILL auf zu aktualisieren) und die Server-App unverändert. Der Installer übernimmt die Verbindungszeilen einer alten `pulse.env` derselben Adresse und fragt „schon verbunden?“ im Container (`127.0.0.1:8002`), nicht über die eigene Adresse. Antrag, Admin-Freigabe und `.env`-Download sind entfernt; die Tabelle `auth.instance_applications` bleibt als Historie. Bootstrap-Token + `POST /selfhost/bootstrap` bleiben für die Server-App (Container-Crash-Recovery nutzt persistierte `client_id`/`client_secret` direkt, ohne Re-Redeem). Neue Einträge bekommen **keine Worker-IDs** mehr (Spalten nullable, Migration `0056_verbinden`) — der Vorrat endete bei ~307 Einträgen, und kein Self-Host las sie. Code: `dcc_auth/routes_verbinden.py`, `verbinden*.py`, chat-gateway `verbinden_cli.py`. Spec: `docs/superpowers/specs/2026-10-09-selfhost-ohne-freigabe-design.md`.
+- **Keine Freigabe mehr — Verbinden per Gerätecode (seit Oktober 2026).** Jeder installiert mit `curl -fsSL https://howispulse.com/install | bash` oder Compose; Pflicht ist nur `PULSE_HOSTNAME`, das Bild `ghcr.io/oblivion-pictures/pulse` ist öffentlich. Am Ende verbindet `docker exec -it pulse pulse-connect` (Installer: von selbst) den Server mit einem Konto: Gerätecode nach RFC 8628, Bestätigung auf `howispulse.com/verbinden`, Nachweis unter `/.well-known/pulse-verbinden` — die Cloud ruft ihn vor dem Anfragen UND vor dem Eintragen ab, also kann niemand eine Adresse eintragen, die er nicht betreibt, und wer sie nachweislich betreibt, übernimmt sie — dasselbe Konto sofort, ein **fremdes erst nach 72 Stunden Widerspruchsfrist** (`verbinden_uebernahme.py`, Tabelle `auth.instanz_uebernahmen`; der bisherige Besitzer bekommt eine Mail und kann unter „Meine Server“ widersprechen, ein Widerspruch sperrt fremde Konten 30 Tage und gilt nur, solange unter der Adresse noch sein Server antwortet; Löschen gibt die Adresse sofort frei). Erst beim Vollzug wird der alte Eintrag soft-gelöscht und landet auf der Sperrliste. Die Zugangsdaten liegen danach in `/data/pulse/verbindung.env`; **Werte aus der Umgebung gewinnen** — so laufen die drei Bestands-VPS (Zugangsdaten in ihrer `.env`; ihr Update-Skript meldet sich damit bei `registry.howispulse.com` an und hört bei einem Fehlschlag STILL auf zu aktualisieren) und die Server-App unverändert. Der Installer übernimmt die Verbindungszeilen einer alten `pulse.env` derselben Adresse und fragt „schon verbunden?“ im Container (`127.0.0.1:8002`), nicht über die eigene Adresse. Antrag, Admin-Freigabe und `.env`-Download sind entfernt; die Tabelle `auth.instance_applications` bleibt als Historie. Bootstrap-Token + `POST /selfhost/bootstrap` bleiben für die Server-App (Container-Crash-Recovery nutzt persistierte `client_id`/`client_secret` direkt, ohne Re-Redeem). Neue Einträge bekommen **keine Worker-IDs** mehr (Spalten nullable, Migration `0056_verbinden`) — der Vorrat endete bei ~307 Einträgen, und kein Self-Host las sie. Code: `dcc_auth/routes_verbinden.py`, `verbinden*.py`, chat-gateway `verbinden_cli.py`. Spec: `docs/superpowers/specs/2026-10-09-selfhost-ohne-freigabe-design.md`.
 ```
 
 **6. Zeile 208** — alt:
@@ -15037,6 +15188,7 @@ Namen, die nicht im Vertrag stehen oder dort anders lauten:
 - Log-Ereignisse: `verbinden_uebernahme hostname=… alt=… neu=…` (warning) und `verbinden_hinweis_mail_fehlgeschlagen user_id=…: <Fehler>` (warning, Vertrag).
 - Test-Fixture `redis_echt` in `services/auth/tests/conftest.py`.
 - Heim-Server-Provisionierung: 503-Text `instance allocation conflict, try again` (vorher `worker-id allocation conflict, …`).
+- Nachtrag 2026-10-11 (Task 1.11): Tabelle `auth.instanz_uebernahmen` (Modell `InstanzUebernahme`, Migration `0057_uebernahme`), Modul `dcc_auth.verbinden_uebernahme` (`_jetzt`, `_utc`, `UebernahmeBeantragt`, `UebernahmeGesperrt`, `uebernahme_pruefen`, `uebernahme_vollzogen`, `lebendige_uebernahme`, `widersprechen`), Router `dcc_auth.routes_uebernahme`, Einstellungen `verbinden_uebernahme_{frist,sperre,verfall}_s`, Vorgang-Status `uebernahme_beantragt`/`uebernahme_gesperrt` mit `Vorgang.frist_bis`, Mail `compose_uebernahme_beantragt`, Feld `InstanceOut.uebernahme_frist_bis`, Antwortfeld `adresse_vergeben`, `verbinden_nachweis.server_info_instanz`, Antwort 409 `widerspruch_ohne_server`, `lebendige_uebernahme`.
 
 ### Offene Punkte (Teil A)
 
@@ -15044,13 +15196,14 @@ Namen, die nicht im Vertrag stehen oder dort anders lauten:
 2. **Nachtrag 1 im Vertrag** nennt für die Hinweis-Mail noch den alten Pfad `POST /me/selfhost/verbinden/{code}`. Gemeint ist `POST /me/selfhost/verbinden/entscheidung` mit `aktion = "verbinden"`, so umgesetzt in Task 1.8.
 3. **Web-Typen:** `web/src/lib/api/instances.ts` führt `worker_id_*` weiter als `number`, und `ohne_freigabe` fehlt dort. `AdminInstancesActive.svelte:150` zeigt für neue Einträge „Workers: //“. Gehört zu Teil C, Etappe 5 (Admin-Oberfläche).
 4. **Widerspruch im Entwurf:** §10 Prüfplan nennt „`self_host_enabled = false` → Bestätigen abgelehnt“. Das widerspricht E8 und dem Vertrag. Umgesetzt ist E8 (`server_verbinden_gesperrt`). Die Zeile im Entwurf sollte in Etappe 6 berichtigt werden.
-5. **Größen-Policy:** `routes_instance_applications.py` lag schon vor dieser Etappe über der harten Grenze (524 Zeilen) und wächst um 6. Aufteilen ist hier nicht Thema. Etappe 6 entfernt den `.env`-Download (E11) und damit den größten Block der Datei.
+5. **Größen-Policy:** `routes_instance_applications.py` lag schon vor dieser Etappe über der harten Grenze (524 Zeilen) und wächst um 6, mit Task 1.11 um wenige weitere Zeilen (`uebernahme_frist_bis`; die Widerspruchs-Route liegt deshalb in `routes_uebernahme.py`). Aufteilen ist hier nicht Thema. Etappe 6 entfernt den `.env`-Download (E11) und damit den größten Block der Datei.
 6. **Gesperrte Adresse:** Steht unter einer Adresse ein gesperrter Eintrag, kann dort niemand neu verbinden (`403 instance_suspended`), auch kein neuer, rechtmäßiger Inhaber der Domain. Das ist bewusst so (sonst Sperrumgehung). Der Ausweg führt über den Admin.
 7. **Abholen nach `GETDEL`:** Scheitert der Datenbank-Commit nach dem Entnehmen des Vorgangs, ist der Code verbraucht, und der Betreiber muss `pulse-connect` erneut starten. Ein Rückbau wäre aufwendiger als der seltene Fall.
 8. **Web muss `instanz_verbunden` noch verarbeiten (Teil C):** Handler neben `instance_status` in `web/src/lib/ws/handlers/instanzen.ts` (Server-Liste neu laden, `hydrateFromBackend` in `web/src/lib/api/servers.svelte.ts:372`), Typ in `web/src/lib/ws/handlers/types.ts` (neben `op: 'instance_status'`, Zeile 444), und Eintrag in der Liste der Hintergrund-Cloud-Verbindung `web/src/lib/ws/dispatch-rules.ts` (neben `'instance_status'`, Zeile 68). Sonst verwirft ein Gerät mit aktivem Self-Host das Ereignis. Bis dahin liefert der chat-gateway das Ereignis aus, und die Oberfläche ignoriert es.
 9. **Unbestätigte E-Mail-Adressen** dürfen verbinden (wie beim Serverticket). Die Hinweis-Mail geht dann an eine möglicherweise falsche Adresse.
-10. **Remote-Dev-Stack:** Wer Etappe 2 gegen `pulse.unicutmedia.com` testen will, braucht dort Migration 0056 (`scripts/dev-sync.sh --migrate`, `infra/dev-remote/README.md`). Nicht geprüft.
+10. **Remote-Dev-Stack:** Wer Etappe 2 gegen `pulse.unicutmedia.com` testen will, braucht dort die Migrationen 0056 und 0057 (`scripts/dev-sync.sh --migrate`, `infra/dev-remote/README.md`). Nicht geprüft.
 11. **ruff** ist in keinem Gate, und seine isort-Regel widerspricht dem Bestand. Die neuen Dateien folgen dem Stil der Nachbarn, nicht ruff.
+12. **Widerspruchsfrist (Task 1.11), bewusste Lücken.** (a) Streitfälle — die Domain gehört wirklich dem neuen Konto, der alte Besitzer widerspricht trotzdem und sein Server antwortet noch — löst der Cloud-Admin ohne Oberfläche, per SQL auf der Cloud-Datenbank: `UPDATE auth.instanz_uebernahmen SET widersprochen_at = NULL, frist_bis = now() WHERE id = <antrag>`; danach vollzieht ein erneutes `pulse-connect` des neuen Kontos sofort. Eine Admin-Route lohnt erst, wenn das vorkommt. (b) Die Geräte des bisherigen Besitzers erfahren vom Antrag nur über die Mail und beim nächsten Laden von „Meine Server“, nicht über ein Ereignis auf `user:events`. (c) Wer die Adresse zweimal im Abstand von 72 Stunden kontrolliert und dessen Opfer keine Mails liest, übernimmt weiterhin — die Frist macht den Angriff sichtbar und abwehrbar, nicht unmöglich. (d) Verfall nach 7 Tagen, Widerspruch bis zum Vollzug, keine Ausnahme für Einträge ohne Besitzer und keine Mail an das antragstellende Konto sind Vorgaben dieses Plans, nicht vom Eigentümer entschieden. (e) Hat ein fremdes Konto den Code für eine **neue** Adresse schneller bestätigt (Entwurf §8), wirkt ein erneutes `pulse-connect` des rechtmäßigen Betreibers nicht mehr sofort: Er stellt einen Antrag gegen dieses Konto, und weil der Server dann mit dessen Zugangsdaten läuft, gilt dessen Widerspruch. Dann hilft nur (a). (f) Im Antragspfad wird der Redis-Vorgang vor dem Commit entschieden (wie beim Verbinden). Scheitert der Commit, meldet `pulse-connect` ein Fristende, zu dem es keinen Antrag gibt; nach 72 Stunden beginnt der Betreiber neu. Selten und harmlos, vgl. Nr. 7. (g) **Schon vorher offen, jetzt beworben:** `eigene_instanz_oder_404` (`instance_provisioning.py`) lässt den Besitzer auch einen **gesperrten** Eintrag löschen; das gibt die Adresse frei und umgeht den Riegel `instance_suspended` (Task 1.6). Weil Task 1.11 Löschen als schnellen Weg empfiehlt, sollte `DELETE /me/instances/{id}` für gesperrte Einträge die Adresse behalten oder 409 antworten — eigener kleiner Fix, nicht Teil dieses Plans. (h) Die Zeilensperren in `uebernahme_pruefen` und in der Widerspruchs-Route wirken nur auf Postgres; die Tests laufen auf SQLite und belegen nur die Behandlung des `IntegrityError`. Gegen echte Gleichzeitigkeit ist der Weg damit ungetestet.
 
 ### Neue Namen (Teil B)
 
@@ -15156,7 +15309,7 @@ Entfallen: `jget`, `TOKEN`, Pflicht von `PULSE_BOOTSTRAP_TOKEN` (wird nur noch e
 
 ### Offene Punkte (Teil D)
 
-1. **`pulse-connect` auf einem Bestandsserver (Teil B).** Kommen `PULSE_INSTANCE_ID` und Zugangsdaten aus der Umgebung, wäre ein Verbinden wirkungslos (die Umgebung gewinnt), die Cloud hätte aber den Bestandseintrag soft-gelöscht (der Nachweis gelingt ja), und der Server liefe mit einer gesperrten Nummer weiter (4070). Teil B lässt `pulse-connect` in diesem Fall mit Exit 1 und Anleitung abbrechen (auch mit `--yes`). Der Installer ruft es dort ohnehin nie (Server-Info meldet `verbunden: true`); die Handgriffe in Task 6.3 und in der Anleitung nennen `pulse-connect` zuerst und die `.env` als Ausnahme. Vor dem Landen von Etappe 4 prüfen, dass Etappe 2 so gelandet ist.
+1. **`pulse-connect` auf einem Bestandsserver (Teil B).** Kommen `PULSE_INSTANCE_ID` und Zugangsdaten aus der Umgebung, wäre ein Verbinden wirkungslos (die Umgebung gewinnt), die Cloud hätte den Bestandseintrag aber trotzdem angefasst (der Nachweis gelingt ja): beim selben Konto mit neuem Secret, mit dem der Server aus der Umgebung nicht mehr ankommt, bei einem anderen Konto nach der Widerspruchsfrist (Task 1.11) per Soft-Delete — dann liefe er mit einer gesperrten Nummer weiter (4070). Teil B lässt `pulse-connect` in diesem Fall mit Exit 1 und Anleitung abbrechen (auch mit `--yes`). Der Installer ruft es dort ohnehin nie (Server-Info meldet `verbunden: true`); die Handgriffe in Task 6.3 und in der Anleitung nennen `pulse-connect` zuerst und die `.env` als Ausnahme. Vor dem Landen von Etappe 4 prüfen, dass Etappe 2 so gelandet ist.
 2. **Format von `verbindung.env` (Teil B).** Teil B schreibt `NAME=wert` je Zeile, ohne Anführungszeichen — das liest `zugang_lesen`. Ändert sich das Format, schlägt nur die Prüfung aus der Cloud fehl (der Installer warnt und verweist auf `pulse-doctor`).
 3. **Meldungstext in `10-check-cloud-creds.sh` (Teil B).** Die heutige Meldung verweist auf „https://howispulse.com/self-host/guide → step 1, "Download the .env"“. Teil B ersetzt die Datei vollständig; beim Landen von Etappe 4 prüfen, dass der neue Text nicht mehr auf diesen Schritt verweist (`grep -n "Download the .env" infra/self-host/s6/etc/s6-overlay/scripts/10-check-cloud-creds.sh` → keine Ausgabe).
 4. **Englische Bezeichnung „My servers“ (Teil C).** Teil C legt `eigener_server_meine_server` mit „Meine Server“/„My servers“ an; Task 6.3 benutzt genau diese Wörter. Ändert Teil C sie noch, Task 6.3 angleichen.

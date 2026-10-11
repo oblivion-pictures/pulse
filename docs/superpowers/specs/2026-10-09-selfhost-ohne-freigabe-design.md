@@ -2,7 +2,9 @@
 
 Fassung 2 vom 2026-10-10 (Fassung 1 vom 2026-10-09, Unterschiede in
 Abschnitt 9). Vom Eigentümer im Gespräch entschieden und am 2026-10-10
-freigegeben, einschließlich der Grenzen in E8 und der Namen in Abschnitt 5. Skizzen der Oberfläche
+freigegeben, einschließlich der Grenzen in E8 und der Namen in Abschnitt 5.
+Nachtrag 2026-10-11, ebenfalls vom Eigentümer entschieden: Widerspruchsfrist,
+bevor ein fremdes Konto eine eingetragene Adresse übernimmt (E2). Skizzen der Oberfläche
 und des Ablaufs: https://claude.ai/artifact/RUbfNR22z4nj3KmHwRCwjA. Die
 Übersicht zu Fassung 1 (https://claude.ai/artifact/5PJFE2VeBMrxLXPeeqr9Zt) ist
 in den Teilen Einrichtungscode und Adresse im Ticket überholt.
@@ -78,13 +80,48 @@ neue Angriffsfläche.
 vor dem Eintragen ruft die Cloud `https://<hostname>/.well-known/pulse-verbinden`
 ab und erwartet dort den SHA-256 der Abholkennung (nicht die Kennung selbst). Nur der Server, der den Gerätecode angefragt hat,
 kennt ihn. Das schließt aus, dass jemand eine fremde Adresse für sich
-einträgt und sie damit blockiert, und es macht einen Besitzerwechsel einfach:
-Ist die Adresse schon eingetragen, gewinnt, wer sie nachweislich gerade
-betreibt. Der alte Eintrag wird dann gelöscht (Soft-Delete wie
+einträgt und sie damit blockiert, und es macht einen Besitzerwechsel möglich:
+Ist die Adresse schon eingetragen, gewinnt, wer sie nachweislich betreibt —
+als dasselbe Konto sofort, als fremdes Konto erst nach der Widerspruchsfrist
+(unten). Der alte Eintrag wird dann gelöscht (Soft-Delete wie
 `routes_instance_delete.py`, damit sein noch laufender Server über die
 Sperrliste stehen bleibt). Bestandsserver und Heim-Server lassen sich so nicht
 übernehmen, solange sie unter ihrer Adresse antworten: Sie liefern den Wert
 nicht.
+
+**Widerspruchsfrist (Nachtrag 2026-10-11).** Ein Nachweis gelingt auch dem,
+der die DNS-Einträge einer fremden Domain für ein paar Minuten kontrolliert.
+Ein sofortiger Wechsel würde einen solchen kurzen Angriff dauerhaft machen:
+Der echte Server stünde über die Sperrliste still, auch nachdem das DNS
+repariert ist, und die Mitgliedschaften aller Mitglieder wären weg. Deshalb:
+
+- **Eigenes Konto** (Neuinstallation desselben Besitzers): sofort, der Eintrag
+  wird wiederverwendet. Unverändert.
+- **Fremdes Konto:** Bestätigen legt einen Übernahme-Antrag an. Der bisherige
+  Besitzer bekommt sofort eine Mail und sieht den Antrag unter „Meine Server“
+  mit dem Knopf „Widersprechen“. Die Frist beträgt **72 Stunden**. Danach ruft
+  der neue Betreiber `pulse-connect` erneut auf; die Cloud prüft den Nachweis
+  dann noch einmal. Ein Angreifer bräuchte die Adresse also zu zwei
+  Zeitpunkten, mindestens 72 Stunden auseinander.
+- **Widerspruch:** Der Antrag ist erledigt, und **30 Tage** lang kann kein
+  fremdes Konto die Adresse erneut beanspruchen. Streitfälle (die Domain
+  gehört wirklich jemand Neuem) löst der Cloud-Admin. **Widersprechen kann
+  nur, wessen Server beim Einlegen des Widerspruchs noch unter der Adresse
+  antwortet** (`/.well-known/pulse-server-info` meldet die Nummer seines
+  Eintrags); verschwindet der Server danach, bleibt die Sperre bestehen. Das wehrt den gespiegelten Angriff ab: Wer eine *freie* fremde
+  Adresse kurz kontrolliert, trägt sie ohne Frist als Erster ein; sein
+  Widerspruch gegen den echten Domaininhaber scheitert dann, weil unter der
+  Adresse längst dessen Server antwortet. Ist der eigene Server gerade nicht
+  erreichbar, wiederholt man den Widerspruch später.
+- **Gewollter schneller Wechsel** (Server verkauft oder weitergegeben): Der
+  bisherige Besitzer löscht den Server unter „Meine Server“. Danach ist die
+  Adresse frei, und der neue Besitzer verbindet ohne Frist. Einen eigenen
+  Zustimmen-Knopf gibt es nicht.
+
+Einzelheiten, die der Plan festlegt (Task 1.11, dort als Vorgaben des Plans
+gekennzeichnet): Ein Antrag verfällt, wenn er nicht binnen 7 Tagen nach
+Fristende vollzogen wird; widersprechen geht bis zum Vollzug; auch ein Eintrag
+ohne Besitzer hat die Frist.
 
 **E3 — Ergebnis wie ein freigegebener Server.** Nach dem Abholen hat der
 Server `PULSE_INSTANCE_ID`, `PULSE_INSTANCE_OWNER_ID` (das bestätigende Konto),
@@ -133,9 +170,10 @@ Konto oder einen fremden Server übernimmt man so nicht. Drei Gegenmittel:
    der Hinweis-Mail beim Ändern der E-Mail-Adresse,
    `routes_account_security.py`): Adresse des Servers, Zeitpunkt, „Warst du
    das nicht? Lösche den Server unter Meine Server.“ Ein Fehlschlag beim
-   Versand bricht das Verbinden nicht ab. Wird dabei eine Adresse von einem
-   anderen Konto übernommen (E2), bekommt auch der bisherige Besitzer eine
-   Hinweis-Mail.
+   Versand bricht das Verbinden nicht ab. Beantragt ein anderes Konto die
+   Übernahme einer Adresse (E2), bekommt der bisherige Besitzer sofort eine
+   Mail mit dem Fristende und dem Weg zum Widerspruch, nach dem Vollzug eine
+   zweite.
 3. **Löschen unter „Meine Server“** wirkt auch hier: Eintrag weg, Server aus
    allen Leisten, Zugangsdaten ungültig (Soft-Delete mit Sperrlisten-Eintrag
    wie heute).
@@ -148,7 +186,9 @@ appears in Pulse.“ Englisch, weil Betreiber aus aller Welt kommen. Der
 Installer ruft es am Ende selbst auf; wer mit Compose installiert, ruft es
 einmal von Hand auf (steht in der Compose-Datei und im Container-Log). Ein
 erneuter Aufruf auf einem verbundenen Server fragt nach und verbindet mit
-einem anderen Konto (Besitzerwechsel über E2). Der Anzeigecode wird nie
+einem anderen Konto (Besitzerwechsel über E2, bei einem fremden Konto erst
+nach der Widerspruchsfrist; bis dahin endet `pulse-connect` mit dem Fristende
+und wird danach erneut aufgerufen). Der Anzeigecode wird nie
 geloggt.
 
 **E7 — Kein Kennnummern-Vorrat mehr für neue Server.** Die Cloud vergibt heute
@@ -232,7 +272,9 @@ der Server erscheint in der Leiste. Unverändert gegenüber heute.
   nur sichtbar, wenn das Konto mindestens einen eigenen Server hat. Dahinter
   die Liste mit Diagnose und Löschen (heute `MyInstances`). Die Route
   `/app/server` bleibt als Ziel; der Hinweis „Verlassen geht nicht, lösche den
-  Server“ führt weiter dorthin.
+  Server“ führt weiter dorthin. Liegt für einen eigenen Server ein
+  Übernahme-Antrag vor (E2), zeigt der Eintrag ihn mit Fristende und dem
+  Knopf „Widersprechen“.
 - **Admin-Bereich der Cloud:** Reiter „Anträge“ heißt „Server“, ohne Zähler;
   der Unterreiter „Ausstehend“ entfällt; Einträge aus E1 tragen den Vermerk
   „ohne Freigabe“; „Secret rotieren“ nur bei freigegebenen Einträgen.
@@ -263,7 +305,21 @@ zwei per Installer) und zwei Heim-Server (5, 1). Keine offenen Anträge.
 - **Wer den Code schneller bestätigt, wird Besitzer.** Gleiche Gefahrenklasse
   wie jeder Einmalcode. Gegenmittel: 15 Minuten Gültigkeit, Code nur in der
   Konsole, die Konsole nennt das bestätigende Konto, `pulse-connect` verbindet
-  neu.
+  neu. Seit der Widerspruchsfrist (E2) wirkt das Neuverbinden nicht mehr
+  sofort: Der rechtmäßige Betreiber stellt dann einen Übernahme-Antrag gegen
+  das Konto, das schneller war, und dieses könnte widersprechen. Den Ausweg
+  bietet dann nur der Cloud-Admin. Bewusst in Kauf genommen: Den Code sieht
+  nur, wer die Konsole des Servers sieht.
+- **Gekaperte Adresse** (E2, Nachtrag 2026-10-11): Wer die DNS-Einträge einer
+  fremden Domain zweimal im Abstand von 72 Stunden kontrolliert, während der
+  bisherige Besitzer keine Mails liest, übernimmt weiterhin. Die Frist macht
+  den Angriff sichtbar und abwehrbar, nicht unmöglich. Streitfälle löst der
+  Cloud-Admin, vorerst ohne eigene Oberfläche.
+- **Gespiegelter Angriff** (E2): Wer eine *freie* fremde Adresse kurz
+  kontrolliert, trägt sie ohne Frist ein. Der echte Domaininhaber wartet
+  danach 72 Stunden; widersprechen kann der Eindringling nicht, solange
+  unter der Adresse nicht sein Server antwortet. Bleibt: die 72 Stunden
+  Wartezeit für den Domaininhaber.
 - **`stable` = `edge`** (Phasen-Policy 2026-06-10): Jeder `main`-Push erreicht
   binnen fünf Minuten jeden Server mit Auto-Update. Entschieden am 2026-10-11:
   Die Policy fällt vor dem Landen von Etappe 4 (Plan, Voraussetzung Etappe 4);
@@ -299,8 +355,11 @@ steht in der Git-Geschichte der Datei.
 
 - **auth-svc:** Gerätecode anfragen, bestätigen, abholen; Ablauf nach 15
   Minuten; Abholen nur einmal; Nachweis fehlt oder falsch → kein Eintrag;
-  bestehende Adresse mit gültigem Nachweis → Besitzerwechsel, alter Eintrag
-  gesperrt; Bestandsserver ohne Nachweis → nicht übernehmbar; Anfragen nur mit
+  bestehende Adresse eines anderen Kontos → Übernahme-Antrag statt
+  Besitzerwechsel, Mail an den bisherigen Besitzer, Vollzug erst nach 72
+  Stunden und mit neuem Nachweis, Widerspruch sperrt 30 Tage, Löschen gibt die
+  Adresse sofort frei, eigenes Konto ohne Frist, Widerspruch nur mit eigenem
+  Server unter der Adresse; Bestandsserver ohne Nachweis → nicht übernehmbar; Anfragen nur mit
   der Kennung, nicht mit dem öffentlichen Nachweis; neue Einträge ohne
   Worker-IDs; Grenzen aus E8; `server_verbinden_gesperrt = true` → Bestätigen
   abgelehnt; Hinweis-Mail nach dem Verbinden.
@@ -313,6 +372,7 @@ steht in der Git-Geschichte der Datei.
   „Meine Server“ nur mit eigenem Server.
 - **Manuell:** frischer Testserver mit dem neuen Installer bis „Connected“,
   Server erscheint auf einem zweiten Gerät; Neuinstallation unter derselben
-  Adresse mit anderem Konto (Besitzerwechsel); Compose-Weg; Bestandsserver
+  Adresse mit anderem Konto (Übernahme-Antrag, Mail, Widerspruch unter „Meine
+  Server“; den Vollzug nach 72 Stunden decken die automatischen Tests); Compose-Weg; Bestandsserver
   nach dem Ausrollen (Anmeldung, Besitzer weiterhin Admin, Update läuft
   weiter).
