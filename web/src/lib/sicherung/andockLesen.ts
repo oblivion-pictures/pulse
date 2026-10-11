@@ -82,7 +82,9 @@ async function kanalSeiteFüttern(
 	// Ergänzen, nicht überschreiben (`satz.ts::satzErgaenzen`): ein hier
 	// schon liegender Satz desselben Kontos behält Grabstein, Bearbeitung,
 	// Reaktionen und seine kryptoId — die Sicherung ist eine Kopie von früher.
-	if (saetze.length > 0) await verlaufSaetzeErgaenzen(saetze, kontoId);
+	// Sie darf mehr ergänzen als das Archiv (Anhänge, Antwortbezug): sie
+	// stammt aus eigenen Sätzen, beschreiben kann sie nur dieses Konto.
+	if (saetze.length > 0) await verlaufSaetzeErgaenzen(saetze, kontoId, 'sicherung');
 	// Grabsteine NACH den sichtbaren Sätzen: was diese Seite gerade abgelegt
 	// hat, kann ein Stein mit Autor und Kennung noch treffen. Sie werden
 	// NICHT als Satz angelegt — fehlt jeder Treffer, bleibt es ein stiller

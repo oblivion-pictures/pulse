@@ -81,7 +81,9 @@ function beispielSatz(felder: Record<string, unknown> = {}) {
 
 test('satzErgaenzen: ein Grabstein bleibt einer, auch gegen einen reicheren Nachschub', () => {
   const stein = { ...beispielSatz(), geloescht: true };
-  assert.equal(satzErgaenzen(stein, beispielSatz({ krypto_id: 'K', attachments: [{ id: 'a1' }] })), null);
+  const reicher = beispielSatz({ krypto_id: 'K', attachments: [{ id: 'a1' }] });
+  assert.equal(satzErgaenzen(stein, reicher, 'sicherung'), null);
+  assert.equal(satzErgaenzen(stein, reicher, 'archiv'), null);
 });
 
 test('satzErgaenzen: Inhalt, Bearbeitung und Reaktionen des liegenden Satzes gewinnen', () => {
@@ -90,24 +92,31 @@ test('satzErgaenzen: Inhalt, Bearbeitung und Reaktionen des liegenden Satzes gew
     reaktionen: [{ emoji: 'x', userId: '9' }]
   };
   const neu = beispielSatz({ content: 'alt', krypto_id: 'K' });
-  const ergebnis = satzErgaenzen(liegend, neu);
-  assert.ok(ergebnis);
-  assert.equal(ergebnis.inhalt, 'bearbeitet');
-  assert.equal(ergebnis.bearbeitetAm, '2026-10-11T00:00:00Z');
-  assert.deepEqual(ergebnis.reaktionen, [{ emoji: 'x', userId: '9' }]);
-  assert.equal(ergebnis.kryptoId, 'K', 'die fehlende Kennung kommt dazu');
+  for (const herkunft of ['sicherung', 'archiv'] as const) {
+    const ergebnis = satzErgaenzen(liegend, neu, herkunft);
+    assert.ok(ergebnis, herkunft);
+    assert.equal(ergebnis.inhalt, 'bearbeitet');
+    assert.equal(ergebnis.bearbeitetAm, '2026-10-11T00:00:00Z');
+    assert.deepEqual(ergebnis.reaktionen, [{ emoji: 'x', userId: '9' }]);
+    assert.equal(ergebnis.kryptoId, 'K', 'die fehlende Kennung kommt dazu');
+  }
 });
 
 test('satzErgaenzen: die Kennung des liegenden Satzes wird nicht überschrieben, verschluesselt bleibt an', () => {
   // Der Archiv-Nachschub kam blind über einen Empfangs-Satz und nahm ihm die
   // kryptoId — mit ihr die Duplikat-Erkennung und den Lesestand-Anker.
   const liegend = beispielSatz({ krypto_id: 'K', verschluesselt: true });
-  assert.equal(satzErgaenzen(liegend, beispielSatz({ verschluesselt: false })), null);
+  assert.equal(satzErgaenzen(liegend, beispielSatz({ verschluesselt: false }), 'sicherung'), null);
+  assert.equal(satzErgaenzen(liegend, beispielSatz({ krypto_id: 'X' }), 'archiv'), null);
 });
 
-test('satzErgaenzen: fehlende Anhänge kommen dazu, bekannte nicht doppelt', () => {
+test('satzErgaenzen: aus der eigenen Sicherung kommen fehlende Anhänge dazu, bekannte nicht doppelt', () => {
   const liegend = beispielSatz({ attachments: [{ id: 'a1' }] });
-  const ergebnis = satzErgaenzen(liegend, beispielSatz({ attachments: [{ id: 'a1' }, { id: 'a2' }] }));
+  const ergebnis = satzErgaenzen(
+    liegend,
+    beispielSatz({ attachments: [{ id: 'a1' }, { id: 'a2' }] }),
+    'sicherung'
+  );
   assert.ok(ergebnis);
   assert.deepEqual(
     ergebnis.anhaenge.map((a) => (a as { id: string }).id),
@@ -115,10 +124,47 @@ test('satzErgaenzen: fehlende Anhänge kommen dazu, bekannte nicht doppelt', () 
   );
 });
 
+// Fund 2 der Gegenprüfung (2026-10-12): eine Archiv-Zeile kann jedes
+// Kanalmitglied einliefern, und den Autor nennt sie selbst. Der Partner
+// liefert eine Zeile mit Kennung und Namen MEINER Nachricht ein, dazu sein
+// Bild und einen Antwortbezug — auf meinem Gerät liegt die echte Nachricht
+// unter demselben Schlüssel.
+test('satzErgaenzen: fremde Anhänge aus dem Archiv landen nicht an der eigenen Nachricht', () => {
+  const meine = beispielSatz({ author_id: 'ich', content: 'echt', verschluesselt: true });
+  const gefaelscht = beispielSatz({
+    author_id: 'ich',
+    content: 'gefälscht',
+    krypto_id: '42',
+    verschluesselt: true,
+    reply_to_id: 'fremder-bezug',
+    attachments: [{ id: 'bild-des-partners', verschluesselt: true, schluessel: 'x' }]
+  });
+  const ergebnis = satzErgaenzen(meine, gefaelscht, 'archiv');
+  // Höchstens die Kennung kommt dazu — sie ist hier die eigene ID.
+  assert.ok(ergebnis);
+  assert.deepEqual(ergebnis, { ...meine, kryptoId: '42' });
+  assert.deepEqual(ergebnis.anhaenge, []);
+  assert.equal(ergebnis.antwortAufId, null);
+  assert.equal(ergebnis.inhalt, 'echt');
+  // Kennt der liegende Satz die Kennung schon, gibt es gar nichts zu schreiben.
+  assert.equal(satzErgaenzen({ ...meine, kryptoId: '42' }, gefaelscht, 'archiv'), null);
+});
+
+test('satzErgaenzen: das Archiv schaltet einen Klartext-Satz nicht auf verschlüsselt', () => {
+  // `verschluesselt` entscheidet, welcher Weg Löschen und Bearbeiten nimmt
+  // (Server-Route oder Aktions-Umschlag) — eine fremde Zeile stellt ihn nicht um.
+  const klartext = beispielSatz({ krypto_id: '42' });
+  assert.equal(satzErgaenzen(klartext, beispielSatz({ krypto_id: '42', verschluesselt: true }), 'archiv'), null);
+});
+
 test('satzErgaenzen: ein anderer Autor unter demselben Schlüssel überschreibt nichts', () => {
-  assert.equal(satzErgaenzen(beispielSatz(), beispielSatz({ author_id: '8', krypto_id: 'K', content: 'fremd' })), null);
+  const fremd = beispielSatz({ author_id: '8', krypto_id: 'K', content: 'fremd' });
+  assert.equal(satzErgaenzen(beispielSatz(), fremd, 'sicherung'), null);
+  assert.equal(satzErgaenzen(beispielSatz(), fremd, 'archiv'), null);
 });
 
 test('satzErgaenzen: nichts Neues heißt nichts zu schreiben', () => {
-  assert.equal(satzErgaenzen(beispielSatz({ krypto_id: 'K' }), beispielSatz({ krypto_id: 'K' })), null);
+  const satz = beispielSatz({ krypto_id: 'K' });
+  assert.equal(satzErgaenzen(satz, beispielSatz({ krypto_id: 'K' }), 'sicherung'), null);
+  assert.equal(satzErgaenzen(satz, beispielSatz({ krypto_id: 'K' }), 'archiv'), null);
 });

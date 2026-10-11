@@ -180,7 +180,9 @@ export function verlaufSpeichern(kanalId: string, nachrichten: unknown[]): Promi
  * (`archiv/lesen.ts`). Dessen Zeilen kennen weder Löschung noch Bearbeitung
  * noch Reaktionen (der Server hat dafür keine Spalte, `routes/archiv.py`);
  * blind abgelegt, holte jede Sitzung Gelöschtes zurück und nahm Bearbeitungen
- * und Reaktionen wieder weg. Wirft nie, wie `verlaufSpeichern`.
+ * und Reaktionen wieder weg. Ergänzt wird dabei höchstens die Kennung — eine
+ * Archiv-Zeile kann jedes Kanalmitglied einliefern (`Nachschub`). Wirft nie,
+ * wie `verlaufSpeichern`.
  */
 export function verlaufErgaenzen(kanalId: string, nachrichten: unknown[]): Promise<number> {
   if (!istLokalerKanal(kanalId)) return Promise.resolve(0);
@@ -188,7 +190,7 @@ export function verlaufErgaenzen(kanalId: string, nachrichten: unknown[]): Promi
   if (kontoId === null) return Promise.resolve(0);
   const saetze = baueSaetze(kanalId, nachrichten, kontoId);
   if (saetze.length === 0) return Promise.resolve(0);
-  return verlaufSaetzeErgaenzen(saetze, kontoId)
+  return verlaufSaetzeErgaenzen(saetze, kontoId, 'archiv')
     .then((anzahl) => {
       verlaufZustand.erholt();
       return anzahl;

@@ -19,7 +19,7 @@ import {
   medienZeilenAusSatz
 } from './schema';
 import { mitVerbindung } from './verbindung';
-import { sortierSchluessel, satzErgaenzen } from './satz';
+import { sortierSchluessel, satzErgaenzen, type Nachschub } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
 import { trifftFrame } from '../krypto/loeschZiel';
 
@@ -77,10 +77,15 @@ export function verlaufPutSaetze(saetze: Satz[]): Promise<void> {
  *
  * Ein Satz eines FREMDEN Kontos unter demselben Schlüssel wird wie bisher
  * überschrieben — an dieser Stelle ändert sich gegenüber `verlaufPutSaetze`
- * nur der Fall „eigener Satz liegt schon da". Ergebnis: wie viele Sätze
- * geschrieben wurden.
+ * nur der Fall „eigener Satz liegt schon da". `herkunft` sagt, wie viel der
+ * Nachschub dabei ergänzen darf (`satz.ts::Nachschub`). Ergebnis: wie viele
+ * Sätze geschrieben wurden.
  */
-export function verlaufSaetzeErgaenzen(saetze: Satz[], kontoId: string): Promise<number> {
+export function verlaufSaetzeErgaenzen(
+  saetze: Satz[],
+  kontoId: string,
+  herkunft: Nachschub
+): Promise<number> {
   if (saetze.length === 0) return Promise.resolve(0);
   return mitVerbindung(
     (db) =>
@@ -95,7 +100,7 @@ export function verlaufSaetzeErgaenzen(saetze: Satz[], kontoId: string): Promise
             const vorhanden = getReq.result as Satz | undefined;
             const satz =
               vorhanden !== undefined && gehoertZuKonto(vorhanden, kontoId)
-                ? satzErgaenzen(vorhanden, neu)
+                ? satzErgaenzen(vorhanden, neu, herkunft)
                 : neu;
             if (satz === null) return;
             store.put(satz);

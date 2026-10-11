@@ -186,6 +186,20 @@ function anhangId(anhang: unknown): string | null {
 }
 
 /**
+ * Woher ein Nachschub kommt — und damit, wie viel er an einem liegenden Satz
+ * ergänzen darf (`satzErgaenzen`):
+ *
+ *   - `sicherung`: die eigene Sicherung im eigenen Laufwerk. Geschrieben hat
+ *     sie nur dieses Konto, verschlüsselt mit seinem eigenen Schlüssel; was
+ *     sie über eine Nachricht weiß, stammt aus einem früheren eigenen Satz.
+ *   - `archiv`: das Server-Archiv. Jedes Mitglied des Kanals darf dort Zeilen
+ *     einliefern, und den Autor nennt die Zeile nur in ihrer eigenen Nutzlast
+ *     (`archiv/zeile.ts`). Eine Zeile mit dem Namen einer fremden Nachricht
+ *     ist deshalb eine Behauptung, kein Nachweis.
+ */
+export type Nachschub = 'sicherung' | 'archiv';
+
+/**
  * Führt einen neu ankommenden Satz mit dem zusammen, der unter demselben
  * Schlüssel schon liegt — für die Wege, die einen fremden Bestand
  * NACHLIEFERN (Sicherungs-Wiederherstellung, Server-Archiv), nicht für den
@@ -206,15 +220,37 @@ function anhangId(anhang: unknown): string | null {
  *   - Inhalt, Bearbeitung, Reaktionen, Zustellstand: der liegende gewinnt —
  *     er ist auf diesem Gerät gepflegt worden, der Nachschub ist eine Kopie
  *     von früher.
- *   - `kryptoId` und Antwortbezug: der liegende, sonst der neue.
- *     `verschluesselt`: wenn einer von beiden es ist.
- *   - Anhänge, die der liegende nicht kennt (nach ID), kommen dazu.
+ *   - `kryptoId`: der liegende, sonst der neue.
+ *   - Nur aus der eigenen Sicherung (`herkunft === 'sicherung'`): der
+ *     Antwortbezug (der liegende, sonst der neue), `verschluesselt` (wenn
+ *     einer von beiden es ist) und Anhänge, die der liegende nicht kennt
+ *     (nach ID).
+ *
+ * **Warum das Archiv nur die Kennung ergänzen darf.** Ein Satz im Archiv
+ * nennt seinen Autor selbst, und einliefern darf jedes Kanalmitglied. Die
+ * erste Fassung dieser Funktion (2026-10-11, nie ausgeliefert) hängte die
+ * Anhänge und den Antwortbezug einer solchen Zeile an den liegenden Satz
+ * desselben Autors: der Partner lieferte eine Zeile mit der Kennung und dem
+ * Namen MEINER Nachricht ein, und auf meinem Gerät zeigte meine Nachricht
+ * danach sein Bild (`krypto/anhangHolen.ts`), und die nächste Erstsicherung
+ * schrieb es als meines in die Sicherung. Die Kennung dagegen ändert nichts,
+ * was angezeigt wird: eine Archiv-Zeile führt ihre eigene ID als Kennung
+ * (`archiv/zeile.ts::leseZeilenKlar`), und bei gleichem Schlüssel ist das
+ * dieselbe ID wie die des liegenden Satzes.
  *
  * Ergänzen löscht nie: ein neuer Satz mit `geloescht` hebt den liegenden
  * nicht auf (die Lösch-Wege laufen über `verlaufMarkiereGeloescht`).
  */
-export function satzErgaenzen<S extends Satz>(vorhanden: S, neu: Satz): S | null {
+export function satzErgaenzen<S extends Satz>(
+  vorhanden: S,
+  neu: Satz,
+  herkunft: Nachschub
+): S | null {
   if (vorhanden.geloescht || vorhanden.autorId !== neu.autorId) return null;
+  const kryptoId = vorhanden.kryptoId ?? neu.kryptoId;
+  if (herkunft === 'archiv') {
+    return kryptoId === vorhanden.kryptoId ? null : { ...vorhanden, kryptoId };
+  }
   // Altsätze können Felder vermissen, die es bei ihrer Ablage noch nicht gab.
   const liegend = vorhanden.anhaenge ?? [];
   const bekannt = new Set(liegend.map(anhangId));
@@ -222,7 +258,6 @@ export function satzErgaenzen<S extends Satz>(vorhanden: S, neu: Satz): S | null
     const id = anhangId(a);
     return id !== null && !bekannt.has(id);
   });
-  const kryptoId = vorhanden.kryptoId ?? neu.kryptoId;
   const antwortAufId = vorhanden.antwortAufId ?? neu.antwortAufId;
   const verschluesselt = vorhanden.verschluesselt || neu.verschluesselt;
   if (
