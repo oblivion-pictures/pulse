@@ -15,17 +15,22 @@ import { readFileSync } from 'node:fs';
  * Verdrahtung, deren Fehlen den Zombie-Zustand erzeugt:
  *
  * - `renewSession` behandelt 401 vom `/session/renew` wie `doRefresh` den
- *   abgelehnten `/refresh`: Tokens löschen + `session_expired`-Marker
- *   (der schlägt auf der Login-Seite als Toast durch).
+ *   abgelehnten `/refresh`: Tokens löschen (`sitzungTotRaeumen`, das dabei
+ *   auch die Gerätetoken abmeldet) + `session_expired`-Marker (der schlägt
+ *   auf der Login-Seite als Toast durch).
  * - `cookieFetch` meldet ab, wenn der Renew scheiterte UND die Tokens weg
  *   sind — und nur dann; mit Tokens ist der Fehler transient (offline),
  *   und die bewusste Gnadenfrist von `doRefresh` bleibt unangetastet.
  */
 
 const quelle = readFileSync(new URL('../src/lib/api/cookie-client.ts', import.meta.url), 'utf8');
+const client = readFileSync(new URL('../src/lib/api/client.ts', import.meta.url), 'utf8');
 
 test('renewSession räumt bei abgelehntem Bearer die Session weg (wie doRefresh)', () => {
-  assert.match(quelle, /if \(resp\.status === 401\) \{[\s\S]*?clearTokens\(\);[\s\S]*?pulse\.session_expired/);
+  assert.match(
+    quelle,
+    /if \(resp\.status === 401\) \{[\s\S]*?sitzungTotRaeumen\(\);[\s\S]*?pulse\.session_expired/
+  );
 });
 
 test('cookieFetch meldet ab, wenn Renew scheiterte und die Tokens weg sind', () => {
@@ -46,4 +51,19 @@ test('mit vorhandenen Tokens bleibt der 401 transient — keine Abmeldung', () =
   const abmeldeBlock = quelle.match(/if \(typeof window[\s\S]*?signOut\(\)[\s\S]*?\n    \}/);
   assert.ok(abmeldeBlock, 'Abmelde-Block nicht gefunden');
   assert.match(abmeldeBlock[0], /!loadTokens\(\)/);
+});
+
+test('Sitzung tot: ZUERST die Gerätetoken abmelden, DANN die Anmeldung löschen (iOS-Bughunt 2, C2)', () => {
+  // Umgekehrt lief das DELETE ohne Ausweis ins 401, und ein verlorenes
+  // Telefon bekam weiter Banner und Anrufe.
+  const block = client.match(/export function sitzungTotRaeumen\(\)[\s\S]*?\n\}/);
+  assert.ok(block, 'sitzungTotRaeumen nicht gefunden');
+  const lesen = block[0].indexOf('loadTokens()?.access_token');
+  const abmelden = block[0].indexOf('geraetetokenAbmelden(bearer)');
+  const loeschen = block[0].indexOf('clearTokens()');
+  assert.ok(lesen >= 0 && abmelden > lesen && loeschen > abmelden, block[0]);
+});
+
+test('doRefresh räumt eine endgültig abgelehnte Sitzung über sitzungTotRaeumen', () => {
+  assert.match(client, /resp\.status === 401 \|\| resp\.status === 403\) \{\s*sitzungTotRaeumen\(\);/);
 });

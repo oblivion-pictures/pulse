@@ -19,8 +19,8 @@
  * 60-s-Admin-Polls (Anträge/Beschwerden) würden endlos 401 feuern.
  */
 
-import { AUTH_BASE, getCloudBearer, parseResponse } from './client';
-import { clearTokens, loadTokens } from './storage';
+import { AUTH_BASE, getCloudBearer, parseResponse, sitzungTotRaeumen } from './client';
+import { loadTokens } from './storage';
 import { safeParse, extractDetail } from './parse';
 
 /**
@@ -46,7 +46,7 @@ export async function renewSession(): Promise<boolean> {
         // Session definitiv tot, Tokens weg + Marker für den Login-Toast.
         // Kein 403-Fall: der (Preemptive-)E-Mail-Gate-Bounce darf hier nicht
         // ausgelöst werden.
-        clearTokens();
+        sitzungTotRaeumen();
         if (typeof sessionStorage !== 'undefined') {
           sessionStorage.setItem('pulse.session_expired', '1');
         }

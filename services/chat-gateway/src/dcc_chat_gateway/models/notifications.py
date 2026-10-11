@@ -85,6 +85,10 @@ class FcmToken(Base):
     erstellt_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    #: Anmelde-Kette, unter der das Gerät den Token angemeldet hat (Claim
+    #: ``kette``, Migration 0102). Endet sie, fällt die Zeile
+    #: (``push_widerruf.py``). ``NULL``: vor der Migration angemeldet.
+    kette: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class VoipToken(Base):
@@ -114,6 +118,8 @@ class VoipToken(Base):
     erstellt_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    #: Wie bei ``FcmToken.kette``.
+    kette: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 __all__ = ["FcmToken", "VoipToken", "WebPushSubscription"]

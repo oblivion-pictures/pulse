@@ -14,11 +14,14 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+import jwt
+from dcc_shared.anmeldeketten import CLAIM as ANMELDEKETTE_CLAIM
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 
-from dcc_auth.browser_sessions import revoke_all_for_user
+from dcc_auth import ketten_ende
+from dcc_auth.browser_sessions import COOKIE_NAME, revoke_all_for_user
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
 from dcc_auth.email import (
@@ -43,6 +46,7 @@ from dcc_auth.schemas import (
     TokensOut,
 )
 from dcc_auth.security import JwtSigner, hash_password, verify_password
+from dcc_auth.session_link import parse_sid
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +99,8 @@ async def change_password(
     # reicht nur noch ueber die Anmelde-Kette, und das frische Paar beginnt eine
     # eigene (s. ``refresh_kette``). Der Satz bleibt trotzdem stehen, damit
     # niemand den heutigen Grund fuer den alten haelt.
+    ketten = await _ketten_des_kontos(session, current.id)
+    eigene = await _eigene_ketten(request, session, signer)
     await session.execute(
         delete(RefreshToken).where(RefreshToken.user_id == current.id)
     )
@@ -102,7 +108,7 @@ async def change_password(
 
     # ...then re-arm THIS client with a fresh token pair + session cookie, so the
     # password change doesn't immediately log the active device out.
-    return await _login_abschliessen(
+    tokens = await _login_abschliessen(
         session,
         current,
         signer=signer,
@@ -112,6 +118,38 @@ async def change_password(
         acr="0",
         user_agent=user_agent,
     )
+    # Die übrigen Geräte sind abgemeldet — ihre Gerätetoken mit (iOS-Bughunt 2,
+    # C2). Die Kette DIESES Geräts bleibt aussen vor: es bleibt angemeldet, und
+    # seine Token lösten sich sonst bis zum nächsten App-Start auf.
+    await ketten_ende.melden(request, user_id=current.id, ketten=ketten - eigene)
+    return tokens
+
+
+async def _ketten_des_kontos(session, user_id: int) -> set[str]:
+    zeilen = await session.execute(
+        select(RefreshToken.family_id).where(RefreshToken.user_id == user_id)
+    )
+    return {str(k) for k in zeilen.scalars() if k is not None}
+
+
+async def _eigene_ketten(request: Request, session, signer: JwtSigner) -> set[str]:
+    """Die Kette(n) des Aufrufers: aus dem Bearer-Token, sonst über das
+    Session-Cookie (``refresh_tokens.session_id``, Migration 0049)."""
+    kopf = request.headers.get("authorization", "")
+    if kopf.lower().startswith("bearer "):
+        token = kopf.split(" ", 1)[1].strip()
+        try:
+            kette = signer.decode(token, expected_type="access").get(ANMELDEKETTE_CLAIM)
+        except jwt.PyJWTError:
+            kette = None
+        return {kette} if isinstance(kette, str) else set()
+    sid = parse_sid(request.cookies.get(COOKIE_NAME))
+    if sid is None:
+        return set()
+    zeilen = await session.execute(
+        select(RefreshToken.family_id).where(RefreshToken.session_id == sid)
+    )
+    return {str(k) for k in zeilen.scalars() if k is not None}
 
 
 @router.post("/me/email/change", status_code=status.HTTP_204_NO_CONTENT)

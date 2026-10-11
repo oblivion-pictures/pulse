@@ -21,22 +21,34 @@ damit dieselben zwei Rennen:
 
 Diese Rechnung einmal zu haben ist der ganze Zweck: eine Kopie für den
 VoIP-Token hätte beim nächsten Fund genau eine der beiden Stellen geheilt.
+
+Seit dem 2026-10-11 tragen beide Tabellen zusätzlich ``kette`` (Migration
+0102, iOS-Bughunt 2, C2): die Anmelde-Kette, deren Ende die Zeile löscht.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from dcc_shared.anmeldeketten import CLAIM as ANMELDEKETTE_CLAIM
 from fastapi import HTTPException, status
 from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 
 # ``modell`` ist nur ``type[Any]``, und das ist kein Versehen: die geforderte
-# Form (``user_id``, ``geraet_id``, ``token`` und ein Keyword-Konstruktor über
-# alle drei) steht im Modulkopf. Ein ``Protocol`` dafür wäre hier eine
+# Form (``user_id``, ``geraet_id``, ``token``, ``kette`` und ein Keyword-Konstruktor
+# über alle vier) steht im Modulkopf. Ein ``Protocol`` dafür wäre hier eine
 # Zusicherung ohne Prüfung — der Dienst fährt nur Ruff, keinen Typprüfer, und
 # der Keyword-Konstruktor eines SQLAlchemy-Modells lässt sich im Protocol
 # ohnehin nicht ausdrücken.
+
+
+def kette_des_aufrufers(payload: dict[str, Any]) -> str | None:
+    """Die Anmelde-Kette aus dem Zugriffs-Token (iOS-Bughunt 2, C2) — oder
+    ``None``, wenn das Token keine trägt (vor der Änderung ausgestellt, oder
+    eine Self-Host-Sitzung). Begründung in ``dcc_shared.anmeldeketten``."""
+    kette = payload.get(ANMELDEKETTE_CLAIM)
+    return kette if isinstance(kette, str) and 0 < len(kette) <= 64 else None
 
 
 async def _zeile_des_geraets(
@@ -56,12 +68,17 @@ async def upsert(
     geraet_id: str,
     token: str,
     konflikt_detail: str,
+    kette: str | None = None,
 ) -> None:
     """Token dieses Geräts speichern oder auffrischen.
 
     ``konflikt_detail`` ist der ``detail``-Text eines 409 — er bleibt je
     Tabelle eigen, damit ein Klient am Fehler erkennt, WELCHE Registrierung
     belegt ist.
+
+    ``kette``: die Anmelde-Kette dieser Anmeldung (:func:`kette_des_aufrufers`).
+    Die jüngste Anmeldung gewinnt — ein Gerät, das sich neu anmeldet, hängt
+    seine Token damit an die neue Kette.
     """
     await session.execute(
         delete(modell).where(
@@ -72,8 +89,9 @@ async def upsert(
     vorhanden = await _zeile_des_geraets(session, modell, user_id, geraet_id)
     if vorhanden is not None:
         vorhanden.token = token
+        vorhanden.kette = kette
     else:
-        session.add(modell(user_id=user_id, geraet_id=geraet_id, token=token))
+        session.add(modell(user_id=user_id, geraet_id=geraet_id, token=token, kette=kette))
     try:
         await session.commit()
         return
@@ -89,6 +107,7 @@ async def upsert(
         # scheitern statt Erfolg behaupten; der App-Start wiederholt.
         raise HTTPException(status.HTTP_409_CONFLICT, detail=konflikt_detail) from None
     uebrig.token = token
+    uebrig.kette = kette
     try:
         await session.commit()
     except IntegrityError:

@@ -27,6 +27,7 @@ from fastapi import (
 )
 from sqlalchemy import or_, select, update
 
+from dcc_auth import ketten_ende
 from dcc_auth.browser_sessions import revoke_all_for_user
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
@@ -217,6 +218,9 @@ async def password_reset(
     await rewrap_nach_reset(session, user.id, payload.new_password)
 
     await session.commit()
+    # Ein Reset ist, was man tut, WEIL man sich kompromittiert glaubt: alle
+    # Ketten sind zu Ende, und mit ihnen jeder Gerätetoken (iOS-Bughunt 2, C2).
+    await ketten_ende.melden(request, user_id=user.id, alle=True)
     return MessageOut(detail="ok")
 
 

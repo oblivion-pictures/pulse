@@ -61,6 +61,7 @@ async def token_speichern(
         geraet_id=payload.geraet_id,
         token=payload.token,
         konflikt_detail="voip_token_belegt",
+        kette=geraetetoken.kette_des_aufrufers(current.payload),
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

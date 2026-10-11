@@ -1,5 +1,5 @@
 import { me } from '$lib/api/auth';
-import { isDefinitiveAuthError, currentAccessToken } from '$lib/api/client';
+import { isDefinitiveAuthError, currentAccessToken, sitzungTotRaeumen } from '$lib/api/client';
 import { clearTokens, loadTokens } from '$lib/api/storage';
 import { clearVoiceResume } from '$lib/voice/resume';
 import { readState } from './readState.svelte';
@@ -166,7 +166,9 @@ class AuthStore {
         // die Browser-seitige `sub.unsubscribe()` (der eigentliche Schutz
         // für den nächsten Nutzer) läuft unabhängig davon.
         void import('$lib/notifications/pushSubscribe').then((m) => m.unsubscribeUser());
-        clearTokens();
+        // Tokens löschen — und FCM- und VoIP-Token mit dem vorher gesicherten
+        // Zugriffs-Token abmelden, solange es noch gilt (iOS-Bughunt 2, C2).
+        sitzungTotRaeumen();
         this.user = null;
       } else {
         // Transient (offline / Deploy-5xx), auch nach den Retries noch nicht
@@ -410,8 +412,9 @@ class AuthStore {
     // VoIP-Token liegen seit dem 2026-10-11 IMMER in der Cloud (Bughunt T2),
     // also mit dem Cloud-Token, auch wenn gerade ein Self-Host aktiv ist.
     const cloudBearer = currentAccessToken() ?? undefined;
-    void import('$lib/platform/fcm').then((m) => m.abmeldeFcmToken(cloudBearer));
-    void import('$lib/platform/voipToken').then((m) => m.voipTokenAbmelden(cloudBearer));
+    void import('$lib/platform/geraetetokenAbmelden').then((m) =>
+      m.geraetetokenAbmelden(cloudBearer)
+    );
     void import('$lib/platform/schnellwahl').then((m) => m.schnellwahlLeeren());
     // **Gespräch und Sprachkanal gehören dem Abgemeldeten.** Bis zum
     // 2026-10-11 räumte nur der Abmelde-Knopf im Fussbereich den Kanal ab —

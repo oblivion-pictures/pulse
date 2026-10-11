@@ -26,6 +26,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select, update as sa_update
 
+from dcc_auth import ketten_ende
 from dcc_auth.browser_sessions import COOKIE_NAME
 from dcc_auth.db import SessionDep
 from dcc_auth.models import RefreshToken, User, UserSession
@@ -148,6 +149,8 @@ async def revoke_session(
             now=now,
         )
     await session.commit()
+    # Gerätetoken des beendeten Telefons mit beenden (iOS-Bughunt 2, C2).
+    await ketten_ende.melden(request, user_id=current.id, ketten=[rt.family_id])
     return None
 
 
@@ -177,14 +180,14 @@ async def revoke_all_sessions(
     )
     rows = (await session.execute(stmt)).scalars().all()
 
-    revoked = 0
+    beendet: list[RefreshToken] = []
     for rt in rows:
         stored_ua = rt.user_agent or None
         is_current = rt.ip_hash == current_ip_hash and stored_ua == incoming_ua
         if is_current:
             continue
         rt.revoked_at = now
-        revoked += 1
+        beendet.append(rt)
 
     # Also revoke the *browser-session* cookies (user_sessions), not just the
     # refresh tokens — otherwise a stolen pulse_session cookie survives
@@ -209,4 +212,5 @@ async def revoke_all_sessions(
     )
 
     await session.commit()
-    return SessionsRevokeAllOut(revoked_count=revoked)
+    await ketten_ende.melden(request, user_id=current.id, ketten=[rt.family_id for rt in beendet])
+    return SessionsRevokeAllOut(revoked_count=len(beendet))

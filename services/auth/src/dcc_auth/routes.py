@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 
 from dcc_shared.snowflake import INT64_MAX, INT64_MIN
 
+from dcc_auth import ketten_ende
 from dcc_auth.browser_sessions import (
     COOKIE_NAME,
     REFRESH_COOKIE_NAME,
@@ -187,14 +188,16 @@ async def _issue_tokens(
     neu auf, ihn dauerhaft zu speichern.
     """
     blocked = await _email_gate_blocked(session, user)
+    refresh, jti, exp_ts = signer.issue_refresh(user.id)
+    kette = (vorgaenger.family_id if vorgaenger is not None else None) or jti
     access = signer.issue_access(
         user.id,
         user.username,
         is_admin=user.is_admin,
         is_owner=user.is_owner,
         email_blocked=blocked,
+        kette=kette,
     )
-    refresh, jti, exp_ts = signer.issue_refresh(user.id)
     # ``last_used_at`` starts at issue time so the sessions list can sort
     # consistently by liveness; ``/refresh`` keeps it fresh on every rotation.
     now = datetime.now(tz=UTC)
@@ -206,7 +209,7 @@ async def _issue_tokens(
         ip_hash=ip_hash,
         last_used_at=now,
         session_id=as_sid(session_id),  # type: ignore[arg-type]
-        family_id=(vorgaenger.family_id if vorgaenger is not None else None) or jti,
+        family_id=kette,
         nachgereicht=(vorgaenger.nachgereicht if vorgaenger is not None else 0),
     )
     session.add(rt)
@@ -821,6 +824,7 @@ async def refresh(
         if rt.revoked_at is None:
             rt.revoked_at = now
             await session.commit()
+            await ketten_ende.melden(request, user_id=user.id, ketten=[rt.family_id])
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="account disabled")
 
     # Ablauf und Kontostand werden VOR dieser Weiche geprueft, damit sie fuer
@@ -873,6 +877,7 @@ async def refresh(
                     is_admin=user.is_admin,
                     is_owner=user.is_owner,
                     email_blocked=await _email_gate_blocked(session, user),
+                    kette=nachfolger.family_id,
                 ),
                 refresh_token="" if via_cookie else nachfolger_token,
             )
@@ -893,6 +898,12 @@ async def refresh(
             ereignis=befund.ereignis,
         )
         await session.commit()
+        # Mit der Kette enden die Gerätetoken, die unter ihr angemeldet wurden
+        # (iOS-Bughunt 2, C2) — sonst zeigte ein gestohlenes Telefon weiter
+        # Banner und klingelte.
+        await ketten_ende.melden(
+            request, user_id=rt.user_id, ketten=[z.family_id for z in betroffen]
+        )
         # Die Kette ist tot — ein Refresh-Cookie, der auf sie zeigt, muss mit
         # sterben, sonst haemmert der Browser bei jedem Request gegen 401.
         # (Header-IN-der-Exception, s. oben — das injizierte Response-Objekt
@@ -948,6 +959,7 @@ async def logout(
             decoded = None
 
     committed = False
+    beendet: RefreshToken | None = None
     if decoded is not None:
         try:
             jti = uuid.UUID(decoded["jti"])
@@ -965,6 +977,7 @@ async def logout(
                 # gültig und könnte weiter Geräte-Zertifikate ausstellen.
                 await revoke_sessions_of_tokens(session, [rt], now=rt.revoked_at)
                 committed = True
+                beendet = rt
 
     # --- Revoke browser session cookie (if present) ---
     raw_cookie = request.cookies.get(COOKIE_NAME)
@@ -985,6 +998,8 @@ async def logout(
 
     if committed:
         await session.commit()
+    if beendet is not None:
+        await ketten_ende.melden(request, user_id=beendet.user_id, ketten=[beendet.family_id])
 
     clear_session_cookie(response)
     clear_refresh_cookie(response)

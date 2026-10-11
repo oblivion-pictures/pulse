@@ -23,9 +23,10 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select, update
 
+from dcc_auth import ketten_ende
 from dcc_auth.db import SessionDep
 from dcc_auth.models import (
     AdminAuditLog,
@@ -135,6 +136,7 @@ async def list_users(
 async def patch_user(
     user_id: int,
     payload: UserAdminPatch,
+    request: Request,
     session: SessionDep,
     actor: Annotated[User, Depends(_require_admin)],
 ):
@@ -157,6 +159,7 @@ async def patch_user(
         )
 
     changes: dict[str, Any] = {}
+    gesperrt = False
 
     if payload.is_admin is not None and payload.is_admin != user.is_admin:
         if not payload.is_admin and user.id == actor.id:
@@ -183,6 +186,7 @@ async def patch_user(
         changes["disabled"] = {"from": user.disabled, "to": payload.disabled}
         user.disabled = payload.disabled
         if payload.disabled:
+            gesperrt = True
             now = datetime.now(UTC)
             await session.execute(
                 update(RefreshToken)
@@ -230,6 +234,10 @@ async def patch_user(
         )
         await session.commit()
         await session.refresh(user)
+    if gesperrt:
+        # Jede Kette des Kontos ist zu Ende — mit ihr die Gerätetoken
+        # (iOS-Bughunt 2, C2).
+        await ketten_ende.melden(request, user_id=user.id, alle=True)
 
     return user
 

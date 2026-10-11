@@ -224,7 +224,7 @@ async function doRefresh(intendedRefreshToken: string): Promise<Tokens | null> {
   // Token ungültig / revoked / Family-Reuse) killt die Session. 5xx/429/408
   // sind transient (Service-Neustart im Deploy) → Tokens behalten, retrien.
   if (resp.status === 401 || resp.status === 403) {
-    clearTokens();
+    sitzungTotRaeumen();
     _refreshLocked = true;
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.setItem('pulse.session_expired', '1');
@@ -232,6 +232,21 @@ async function doRefresh(intendedRefreshToken: string): Promise<Tokens | null> {
     return null;
   }
   throw new NetworkError(resp.status, `refresh failed transiently (${resp.status})`);
+}
+
+/**
+ * Die Cloud-Sitzung ist endgültig tot: ZUERST das Zugriffs-Token für die
+ * Abmeldung der Gerätetoken sichern, DANN die Anmeldung löschen (iOS-Bughunt 2,
+ * C2). Die Abmeldung selbst läuft erst nach dem Löschen (dynamischer Import),
+ * aber mit dem gesicherten Token; ohne es lief sie ohne Ausweis ins Leere —
+ * Begründung in `platform/geraetetokenAbmelden.ts`. Mitgegeben wird es nur,
+ * solange es noch gilt; ein abgelaufenes brächte nur ein 401.
+ */
+export function sitzungTotRaeumen(): void {
+  const zugriff = loadTokens()?.access_token;
+  const bearer = zugriff && !isAccessExpired(zugriff, 5) ? zugriff : undefined;
+  void import('$lib/platform/geraetetokenAbmelden').then((m) => m.geraetetokenAbmelden(bearer));
+  clearTokens();
 }
 
 export function resetRefreshLock(): void {

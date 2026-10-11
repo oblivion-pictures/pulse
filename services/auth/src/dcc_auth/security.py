@@ -13,6 +13,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
+from dcc_shared.anmeldeketten import CLAIM as ANMELDEKETTE_CLAIM
 
 from dcc_auth.config import get_settings
 
@@ -141,6 +142,7 @@ class JwtSigner:
         is_admin: bool = False,
         is_owner: bool = False,
         email_blocked: bool = False,
+        kette: object | None = None,
     ) -> str:
         now = int(time.time())
         payload: dict[str, Any] = {
@@ -169,6 +171,12 @@ class JwtSigner:
         # know about SMTP state themselves.
         if email_blocked:
             payload["email_blocked"] = True
+        # ``kette`` = die Anmelde-Kette (``refresh_tokens.family_id``). Der
+        # chat-gateway legt sie neben den Gerätetoken eines Telefons ab und
+        # löscht diese, wenn die Kette endet (``dcc_shared.anmeldeketten``,
+        # iOS-Bughunt 2, C2). Fehlt sie, bleibt der Token ungebunden.
+        if kette is not None:
+            payload[ANMELDEKETTE_CLAIM] = str(kette)
         return self._sign(payload)
 
     def issue_refresh(self, user_id: int) -> tuple[str, uuid.UUID, int]:

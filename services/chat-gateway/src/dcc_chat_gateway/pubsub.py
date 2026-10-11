@@ -17,6 +17,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from typing import Any
 
+from dcc_shared.anmeldeketten import KANAL as ANMELDEKETTEN_KANAL
 from dcc_shared.events import _EventBase
 from fastapi import WebSocket
 from redis.asyncio import Redis
@@ -276,14 +277,16 @@ class ConnectionManager(
         # Plus the single voice-presence event channel, the guild-lifecycle
         # event channel, the HQ-stream-state event channel, and the watch-party
         # event channel.
-        await self._pubsub.subscribe(
+        fixed_channels = (
             VOICE_EVENTS_CHANNEL,
             GUILD_EVENTS_CHANNEL,
             STREAM_EVENTS_CHANNEL,
             WATCH_EVENTS_CHANNEL,
             USER_EVENTS_CHANNEL,
             ADMIN_EVENTS_CHANNEL,
+            ANMELDEKETTEN_KANAL,
         )
+        await self._pubsub.subscribe(*fixed_channels)
         # Re-subscribe any plugin channels that were registered at startup.
         # This is idempotent (Redis ignores duplicate subscribes) and ensures
         # plugin messages are not lost after a listener crash + restart.
@@ -300,7 +303,8 @@ class ConnectionManager(
         # rather than wedging startup. No real traffic can be in the buffer
         # yet (nothing has published at lifespan-start), so we never drop a
         # message here.
-        acks_expected = 1 + 6 + len(self._plugin_channels)  # psubscribe + fixed + plugins
+        # psubscribe + fixed + plugins
+        acks_expected = 1 + len(fixed_channels) + len(self._plugin_channels)
         acks_seen = 0
         empty_polls = 0
         while acks_seen < acks_expected and empty_polls < 3:
