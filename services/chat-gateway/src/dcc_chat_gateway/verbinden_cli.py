@@ -300,7 +300,7 @@ def container_neustarten() -> None:
     except OSError:
         erfolgreich = False
     if not erfolgreich:
-        print(texte.NEUSTART_VON_HAND, flush=True)
+        _drucke(texte.NEUSTART_VON_HAND)
 
 
 def frage_im_terminal(frage: str) -> bool:

@@ -14,6 +14,7 @@ import logging
 import re
 from pathlib import Path
 
+from dcc_chat_gateway.config import Settings
 from dcc_chat_gateway.owner_admin_log import log_owner_konfiguration
 
 log = logging.getLogger(__name__)
@@ -35,12 +36,13 @@ NICHT_VERBUNDEN_HINWEIS = (
 
 _NACHWEIS_FORM = re.compile(r"[0-9a-f]{64}")
 #: Der Nachweis ist 64 Zeichen und ein Zeilenende (65 Byte); die Luft darüber
-#: deckt ``\r\n`` und etwas Leerraum. Länger ist keiner — und die anonyme Route
-#: liest nie mehr als dies, egal was in der Datei steht.
+#: deckt ``\r\n`` und etwas Leerraum. Länger ist keiner. Gelesen wird ein Byte
+#: mehr als dies (genug, um „zu lang“ zu erkennen) und nie weiter, egal was in
+#: der Datei steht — die Route ist anonym.
 _NACHWEIS_MAX_BYTE = 130
 
 
-def ist_verbunden(settings) -> bool:
+def ist_verbunden(settings: Settings) -> bool:
     """Ein Self-Host ohne Instanz-Nummer ist noch mit keinem Konto verbunden.
 
     Die Cloud gilt immer als verbunden — sie ist die Gegenstelle.
@@ -53,8 +55,8 @@ def nachweis_lesen(verzeichnis: Path) -> str | None:
 
     Eine Datei mit anderem Inhalt liefert ``None`` statt ihres Inhalts: die
     Route ist anonym und soll nichts ausliefern, was nicht genau die erwartete
-    Form hat. Gelesen werden höchstens ``_NACHWEIS_MAX_BYTE`` Byte; eine längere
-    Datei ist keine Nachweis-Datei.
+    Form hat. Gelesen wird höchstens ein Byte über ``_NACHWEIS_MAX_BYTE`` hinaus;
+    eine längere Datei ist keine Nachweis-Datei.
     """
     try:
         with open(verzeichnis / NACHWEIS_DATEI, "rb") as datei:
@@ -67,7 +69,7 @@ def nachweis_lesen(verzeichnis: Path) -> str | None:
     return wert if _NACHWEIS_FORM.fullmatch(wert) else None
 
 
-def melde_verbindungsstand(settings) -> None:
+def melde_verbindungsstand(settings: Settings) -> None:
     """Einmal je Start sagen, wem der Server gehört — oder dass noch niemandem.
 
     Ein unverbundener Server bekäme von ``log_owner_konfiguration`` die Warnung,

@@ -13,7 +13,7 @@ nützt: der Hash öffnet nichts — anfragen und abholen kann nur, wer die Kennu
 selbst hat (deshalb schickt ``pulse-connect`` beim Anfragen die Kennung und
 nicht den Hash, Vertrag Nachtrag 2).
 Ohne Datei — der Normalfall, auch auf jedem Bestandsserver — antwortet die
-Route 404. Keine Bremse: eine Antwort kostet das Lesen von höchstens 130 Byte
+Route 404. Keine Bremse: eine Antwort kostet das Lesen von höchstens 131 Byte
 (die Datei hat 65; ``verbindung.nachweis_lesen`` liest nie mehr), ohne
 Datenbank und ohne Redis.
 
