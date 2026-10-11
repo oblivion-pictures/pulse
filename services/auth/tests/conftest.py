@@ -154,3 +154,31 @@ async def client(app) -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest_asyncio.fixture
+async def redis_echt() -> AsyncIterator:
+    """Ein echter Redis-Klient für den Verbinden-Vorgang (``verbinden.py``).
+
+    Die übrigen auth-Tests kommen mit Attrappen aus, weil sie nur ``get``/
+    ``set``/``publish`` brauchen. Der Vorgang hängt dagegen an Redis-Semantik,
+    die eine Attrappe nur behaupten könnte: Ablaufzeiten, ``SET NX``,
+    ``GETDEL`` und WATCH/MULTI. ``REDIS_URL`` setzt das Gate (seriell
+    ``:6380/1``, parallel ein eigener Server je Worker, Wurzel-``conftest.py``).
+    Geräumt werden nur die eigenen Schlüssel — DB 1 teilen sich im seriellen
+    Lauf alle Dienste.
+    """
+    from redis.asyncio import Redis
+
+    klient = Redis.from_url(
+        os.environ.get("REDIS_URL", "redis://127.0.0.1:6380/1"), decode_responses=True
+    )
+
+    async def _raeumen() -> None:
+        async for schluessel in klient.scan_iter(match="auth:verbinden:*"):
+            await klient.delete(schluessel)
+
+    await _raeumen()
+    yield klient
+    await _raeumen()
+    await klient.aclose()
