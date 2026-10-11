@@ -258,6 +258,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         injectSafeAreaInsets()
         schriftKategorieMelden()
         privacySchutz(false)
+        // DM-Banner im Vordergrund unterdrücken (iOS-Bughunt 2, C1); warum hier
+        // und nicht beim Start, steht an `MitteilungImVordergrund`.
+        MitteilungImVordergrund.einhaengen(
+            (window?.rootViewController as? CAPBridgeViewController)?.bridge?.notificationRouter)
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

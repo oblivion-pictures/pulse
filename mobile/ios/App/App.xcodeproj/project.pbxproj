@@ -82,6 +82,7 @@
 		7E22E0000000000000000213 /* SpracheLiveAktivitaet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010A /* SpracheLiveAktivitaet.swift */; };
 		A1B2C3D4E5F60718000001C5 /* SpracheLiveAktivitaetKnoepfe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001C4 /* SpracheLiveAktivitaetKnoepfe.swift */; };
 		7E22E0000000000000000214 /* UngelesenPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010B /* UngelesenPlugin.swift */; };
+		A1B2C3D4E5F60718000001D1 /* MitteilungImVordergrund.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001D0 /* MitteilungImVordergrund.swift */; };
 		7E22E0000000000000000215 /* SpracheLiveAktivitaetProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010C /* SpracheLiveAktivitaetProbe.swift */; };
 		7E22E0000000000000000216 /* UngelesenProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010D /* UngelesenProbe.swift */; };
 		7E22E0000000000000000217 /* Befehlskette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010E /* Befehlskette.swift */; };
@@ -170,6 +171,7 @@
 		7E22E000000000000000010A /* SpracheLiveAktivitaet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheLiveAktivitaet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000001C4 /* SpracheLiveAktivitaetKnoepfe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheLiveAktivitaetKnoepfe.swift; sourceTree = "<group>"; };
 		7E22E000000000000000010B /* UngelesenPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UngelesenPlugin.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001D0 /* MitteilungImVordergrund.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MitteilungImVordergrund.swift; sourceTree = "<group>"; };
 		7E22E000000000000000010C /* SpracheLiveAktivitaetProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheLiveAktivitaetProbe.swift; sourceTree = "<group>"; };
 		7E22E000000000000000010D /* UngelesenProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UngelesenProbe.swift; sourceTree = "<group>"; };
 		7E22E000000000000000010E /* Befehlskette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Befehlskette.swift; sourceTree = "<group>"; };
@@ -310,6 +312,7 @@
 				A1B2C3D4E5F60718000001C4 /* SpracheLiveAktivitaetKnoepfe.swift */,
 				7E22E000000000000000010C /* SpracheLiveAktivitaetProbe.swift */,
 				7E22E000000000000000010B /* UngelesenPlugin.swift */,
+				A1B2C3D4E5F60718000001D0 /* MitteilungImVordergrund.swift */,
 				7E22E000000000000000010D /* UngelesenProbe.swift */,
 				A1B2C3D4E5F60718293A4B5D /* PrivacyInfo.xcprivacy */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -625,6 +628,7 @@
 				7E22E0000000000000000213 /* SpracheLiveAktivitaet.swift in Sources */,
 				A1B2C3D4E5F60718000001C5 /* SpracheLiveAktivitaetKnoepfe.swift in Sources */,
 				7E22E0000000000000000214 /* UngelesenPlugin.swift in Sources */,
+				A1B2C3D4E5F60718000001D1 /* MitteilungImVordergrund.swift in Sources */,
 				7E22E0000000000000000215 /* SpracheLiveAktivitaetProbe.swift in Sources */,
 				7E22E0000000000000000216 /* UngelesenProbe.swift in Sources */,
 				7E22E0000000000000000217 /* Befehlskette.swift in Sources */,
