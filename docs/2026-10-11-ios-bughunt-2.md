@@ -296,3 +296,43 @@ die Android-Hülle fehlen noch in den Lizenzhinweisen.
 **Beim Landen auf `main`:** neben T1 hängt jetzt `0102_geraetetoken_kette` an
 `0101_voip_tokens`; `services/**` ist geändert, die Windows-Server-App braucht
 deshalb einen Versions-Bump.
+
+---
+
+## Nachprüfung der Fix-Runden (2026-10-11)
+
+Ein weiterer Lauf über `e6143f5b..e5db5db6` fand neun Restfunde (S1–S5 Web-Start, Push,
+Backend; R1–R4 Hülle und Anrufe), gegengeprüft wie oben. Behoben in `dd1233de..c7379486` (Start-Beitritte `dd1233de`, Plakette `c27462ba`,
+Anrufe `cfcdc18a`, VoIP-Anmeldung `e65a990f`, XCUITests `c7379486`); nicht auf den
+Dev-Stack ausgeliefert:
+
+| Fund | Schwere | Was jetzt gilt | Beleg |
+|---|---|---|---|
+| S1 | mittel | Die Weiterleitung von `/app` auf das Auto-Connect-Ziel (und die des Auto-Connects selbst) ist eine eigene Herkunft `weiterleitung` — die Kanal-Route tritt dort nicht bei; der Beitritt gehört dem Auto-Connect mit seinen Riegeln. `/login?redirect=` landet als `aussen`. | Unit-Test `start-beitritt.test.ts` |
+| S2 | niedrig | Die Hülle meldet mit dem PushKit-Token die Fähigkeit `dm_vordergrund`; nur solche Geräte bekommen DMs ohne Frische-Prüfung. Gespeichert in Redis je Gerät (keine Migration), bei jeder Anmeldung gesetzt oder gelöscht. | `test_fcm.py` (alter Bau ohne Fähigkeit, Anmeldung setzt/löscht) |
+| S3 | niedrig | Der PushKit-Token wird neu gemeldet, sobald sich Token, Anmelde-Kette oder Fähigkeiten ändern: beim Start, bei jeder Rückkehr in den Vordergrund und nach einem Passwortwechsel. | `voip-meldung.test.ts` |
+| S4 | niedrig | Nach `verwerfen` (in der Hülle aufgelegt) tritt auch der Auto-Connect in diesem Start nicht bei. | `start-beitritt.test.ts` |
+| S5 | niedrig | Eine wiederholte 0 geht durch die Drossel; ein 429 sperrt das Melden eine Fensterlänge (60 s) und meldet dann nach. | `badgeDrossel.test.ts` |
+| R1 | mittel | Ein klingelnder Eintrag DESSELBEN Kanals gilt bei einem neuen Klingel-Push als abgelöst (`.abloesen`): erst beendet, dann der neue gemeldet. Anrufe aus anderen Kanälen bleiben `besetzt` (A5). | Simulator, `-PulseAnrufPushProbe 1` (`abloesung`): CallKit nimmt den neuen sofort an, 0 Fehler |
+| R2 | niedrig | `ohneRaumPlan`: klingelnd ohne Kontext → ablehnen statt auflegen. | `anruf-bughunt2.test.ts` |
+| R3 | niedrig, am Code bestätigt | Schliesst die Hülle einen Anruf selbst (Abbruch-Push, Ablösung), meldet sie `beendet`; das Web räumt ab, ohne den Server zu rufen. `beenden` nimmt dafür eine `callId` und beendet nur diesen Anruf. | `anruf-bughunt2.test.ts` (Text-Vertrag), Simulator-Bau |
+| R4 | niedrig | Ein angenommener Anruf, dessen Raum nach 60 s nicht begann, endet in der Hülle (`.failed`, Web bekommt `ablehnen`). `alleinGelassen` hängt am Raum und taugt dafür nicht. | nur Simulator-Bau; am Gerät nicht auslösbar ohne eingefrorene Oberfläche |
+
+**R1, die Server-Alternative, und warum sie es nicht wurde.** Den ausstehenden Abbruch vor
+einem neuen Klingeln an dieselben Geräte sofort zu senden, hätte (1) die Reihenfolge an APNs
+gehängt, die Apple nicht zusagt — ein vertauschter Abbruch liesse den Rückruf weiter als
+besetzt fallen; (2) die 2-s-Frist für Quittungen umgangen und damit das Aufblitzen aus A6 für
+jede wache Oberfläche zurückgebracht; (3) Zustand über Anrufe hinweg im Prozess verlangt
+(`_im_hintergrund` ist je Anruf verkettet). Die Ablösung in der Hülle hängt an nichts davon.
+Apples Regel bleibt gewahrt: jeder Push meldet weiter genau einmal (Probe: „genau eine Meldung
+im selben Lauf"). Preis, als Produktfrage notiert: zwei echte, gleichzeitig klingelnde Anrufe
+DESSELBEN Kanals (ein Gruppenkanal, zwei Anrufer) — der ältere verschwindet hier still, am
+Server klingelt er für die anderen weiter.
+
+**Dazu, aus der Abnahme-Checkliste:** Prüfräume (`probe`, `probe-…`) nimmt der
+Start-Abgleich aus (Checkliste 0.8); die Sprachkanal-XCUITests prüfen den nativen Raum
+(Kennungen `sprache.*`, im Simulator gebaut, nicht gefahren); die Roadmap behauptet nicht mehr,
+`[PulseUngelesen]` erscheine im Betrieb.
+
+**Beim Landen auf `main`** zusätzlich: `services/**` ist wieder geändert (Windows-Server-App:
+Bump). Keine neue Migration.
