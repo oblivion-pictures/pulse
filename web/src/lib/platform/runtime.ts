@@ -43,9 +43,11 @@ export const isServerApp = (): boolean =>
  *
  * Deliberately narrowed against iOS (seit es auch eine iOS-Hülle gibt,
  * 2026-10-05): `isNativePlatform()` alone would fire inside the iOS wrapper
- * too, where none of the Android Java plugins exist. All Android-only gates
- * (FCM, AudioRoute, ShareReceiver, back button, audio-device curation) keep
- * working unchanged — they now just stop short of iOS.
+ * too, where none of the Android Java plugins exist. The Android-only gates
+ * (AudioRoute, back button, audio-device curation) keep working unchanged —
+ * they just stop short of iOS. FCM and ShareReceiver stood in this list
+ * until their iOS counterparts landed; `fcm.ts` and `shareEmpfang.ts` now
+ * gate on both.
  */
 export const isCapacitorAndroid = (): boolean =>
   capNativePlatform() && !isIosUserAgent();
