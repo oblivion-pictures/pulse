@@ -32,8 +32,10 @@ public class AnrufPlugin: CAPPlugin, CAPBridgedPlugin {
     public override func load() {
         Anrufverwaltung.geteilt.bruecke = self
         Anrufverwaltung.geteilt.starten()
+        // Über `ereignisMelden`: der Raum meldet auch von LiveKits Fäden
+        // (B6, Begründung in `Befehlskette.swift`).
         AnrufRaum.geteilt.melde = { [weak self] name, nutzlast in
-            self?.notifyListeners(name, data: nutzlast)
+            self?.ereignisMelden(name, nutzlast)
         }
     }
 
@@ -65,7 +67,7 @@ public class AnrufPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let token else { return }
         // `retainUntilConsumed`: der Token kann vor dem ersten Hörer kommen —
         // der Push-Registry antwortet beim Start, die WebView lädt erst.
-        notifyListeners("voipToken", data: ["token": token], retainUntilConsumed: true)
+        ereignisMelden("voipToken", ["token": token], aufbewahren: true)
     }
 
     func aktionMelden(aktion: String, kennung: String, kontext: [String: String]) {
@@ -74,6 +76,6 @@ public class AnrufPlugin: CAPPlugin, CAPBridgedPlugin {
         // die Annahme verloren und der Nutzer stünde in einem stummen Anruf.
         var daten: [String: Any] = ["aktion": aktion, "callId": kennung]
         for (schluessel, wert) in kontext { daten[schluessel] = wert }
-        notifyListeners("aktion", data: daten, retainUntilConsumed: true)
+        ereignisMelden("aktion", daten, aufbewahren: true)
     }
 }

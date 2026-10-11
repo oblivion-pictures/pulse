@@ -152,7 +152,9 @@ function webSessionTyp(typ: 'ambient' | 'auto'): void {
  * ein Abbruch von aussen ebenso (M1).
  *
  * **Halter sind der Sprachkanal und der Anruf** (Etappe 4) — als Menge
- * (`nativeTonHalter.ts`), damit das Auflegen dem Kanal nichts wegnimmt.
+ * (`nativeTonHalter.ts`), damit das Auflegen dem Kanal nichts wegnimmt —,
+ * dazu nach einem Neuladen der Vorhalt bis zum Abgleich (`spracheVorhalt.ts`,
+ * Bughunt 2, B4).
  */
 const halter = new TonHalter((gehalten) => {
   webSessionTyp(gehalten ? 'ambient' : 'auto');
@@ -162,8 +164,8 @@ const halter = new TonHalter((gehalten) => {
 
 /** Einen nativen Raum anmelden oder abmelden. `'sprachkanal'` läuft über
  *  `raumBeginnt`/`raumEndet` unten; der Anruf meldet sich hier direkt
- *  (`anrufe/nativerAnrufRaum.ts`). */
-export function nativerTonHalten(wer: 'sprachkanal' | 'anruf', an: boolean): void {
+ *  (`anrufe/nativerAnrufRaum.ts`), `'vorhalt'` aus `spracheVorhalt.ts`. */
+export function nativerTonHalten(wer: 'sprachkanal' | 'anruf' | 'vorhalt', an: boolean): void {
   halter.setzen(wer, an);
 }
 

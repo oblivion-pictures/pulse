@@ -23,10 +23,13 @@ import {
 } from '$lib/platform/iosSprache';
 import {
   abgleichEntscheiden,
+  pausenWunsch,
   routeZeigtKanal,
   teilnehmerAusHuelle,
-  verbindungAusHuelle
+  verbindungAusHuelle,
+  type NutzerWahl
 } from './nativAbgleich';
+import { spracheVorhaltLoesen } from '$lib/platform/spracheVorhalt';
 import { NativeBefehle, type NativeHaken, type NativerWirt } from './nativeBefehle';
 import type { VoiceResume } from './resume';
 import type { StartAbgleich } from './startBeitritt';
@@ -67,6 +70,8 @@ export class NativerRaum {
   /** Die Sitzung der Hülle, in der dieser Spiegel steht (s. `sitzung` in
    *  `SpracheRaum.swift`). */
   #sitzung: number | undefined;
+  /** Hinter dem Getter `pausenWunsch` (B3). */
+  #pause: NutzerWahl | null = null;
 
   constructor(wirt: NativerWirt, haken: NativeHaken) {
     this.#wirt = wirt;
@@ -152,6 +157,20 @@ export class NativerRaum {
     aktuell: () => boolean
   ): Promise<StartAbgleich> {
     if (!nativerSprachwegDa()) return 'nichts';
+    try {
+      return await this.#abgleichen(resume, aktiverServer, aktuell);
+    } finally {
+      // Der Schutz seit dem Laden der Seite (B4, `spracheRaumVorhalten`)
+      // endet hier — übernommen hält ihn ab jetzt der Raum selbst.
+      spracheVorhaltLoesen();
+    }
+  }
+
+  async #abgleichen(
+    resume: VoiceResume | null,
+    aktiverServer: string,
+    aktuell: () => boolean
+  ): Promise<StartAbgleich> {
     const z = await spracheZustand().catch(() => null);
     if (!aktuell()) return 'ueberholt';
     const abgleich = abgleichEntscheiden({ huelle: z, resume, aktiverServer });
@@ -200,7 +219,16 @@ export class NativerRaum {
     this.ansichtOffen = false;
     this.#steht = false;
     this.#sitzung = undefined;
+    this.#pause = null;
     this.befehle.erzwungenVergessen();
+  }
+
+  /** Was der Nutzer will, solange ein Anruf den Kanal anhält
+   *  (`nativAbgleich.ts::pausenWunsch`; `null` ohne Pause oder Angabe). Der
+   *  Store gibt es statt des wirksamen Stands weiter, wo eine WAHL weiterreist:
+   *  in einen neuen Kanal und in den Eintrag fürs Wiederaufnehmen (B3). */
+  get pausenWunsch(): NutzerWahl | null {
+    return this.#pause;
   }
 
   /** Die native Kanalansicht zeigen — vom Griff in der Leiste und nach einem
@@ -273,6 +301,7 @@ export class NativerRaum {
     w.isCameraOn = z.kamera ?? false;
     if (z.kameraVorn !== undefined) w.cameraFacing = z.kameraVorn ? 'user' : 'environment';
     w.deafened = z.taub ?? taubVorgabe;
+    this.#pause = pausenWunsch(z);
     this.#teilnehmer(z.teilnehmer);
   }
 
@@ -327,12 +356,19 @@ export class NativerRaum {
   #eigenerZustand(e: NativerEigenerZustand): void {
     if (!this.#steht) return;
     const w = this.#wirt;
-    const vorher = { mikro: w.micEnabled, taub: w.deafened };
+    const vorher = { mikro: w.micEnabled, taub: w.deafened, pause: this.#pause };
     w.micEnabled = e.mikro;
     if (e.kamera !== undefined) w.isCameraOn = e.kamera;
     if (e.kameraVorn !== undefined) w.cameraFacing = e.kameraVorn ? 'user' : 'environment';
     if (e.taub !== undefined) w.deafened = e.taub;
-    if (vorher.mikro !== w.micEnabled || vorher.taub !== w.deafened) this.#haken.melden();
+    this.#pause = pausenWunsch(e);
+    // Auch ein geänderter Wunsch während der Pause muss in den Eintrag fürs
+    // Wiederaufnehmen — der wirksame Stand ändert sich dabei nicht (B3).
+    const pauseAnders =
+      vorher.pause?.mikro !== this.#pause?.mikro || vorher.pause?.taub !== this.#pause?.taub;
+    if (vorher.mikro !== w.micEnabled || vorher.taub !== w.deafened || pauseAnders) {
+      this.#haken.melden();
+    }
   }
 
   /** Knöpfe der nativen Ansicht, deren Regeln hier liegen — dieselben

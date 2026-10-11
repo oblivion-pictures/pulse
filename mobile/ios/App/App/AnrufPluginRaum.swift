@@ -59,18 +59,10 @@ extension AnrufPlugin {
         for feld in ["art", "kanalId", "rolle", "gegenstelle"] {
             if let wert = call.getString(feld) { kontext[feld] = wert }
         }
-        Task {
-            do {
-                try await AnrufRaum.geteilt.nacheinander {
-                    try await AnrufRaum.geteilt.beitreten(
-                        kennung: kennung, wsUrl: wsUrl, token: token, schluessel: schluessel,
-                        stumm: stumm, kontext: kontext)
-                }
-                call.resolve(AnrufRaum.geteilt.zustand())
-            } catch {
-                NSLog("[PulseAnruf] Beitritt fehlgeschlagen: %@", error.localizedDescription)
-                call.reject("anruf_beitritt_fehlgeschlagen", nil, error)
-            }
+        befehl(call, "beitritt") {
+            try await AnrufRaum.geteilt.beitreten(
+                kennung: kennung, wsUrl: wsUrl, token: token, schluessel: schluessel,
+                stumm: stumm, kontext: kontext)
         }
     }
 
@@ -98,14 +90,16 @@ extension AnrufPlugin {
         call.resolve(AnrufRaum.geteilt.zustand())
     }
 
-    /// **Laut scheitern** — wie `SprachePlugin.befehl`.
+    /// **Laut scheitern, und synchron einreihen** — wie `SprachePlugin.befehl`
+    /// (B5). Der Fehlercode bleibt `anruf_<name>_fehlgeschlagen`, für den
+    /// Beitritt also `anruf_beitritt_fehlgeschlagen` wie bisher.
     private func befehl(_ call: CAPPluginCall, _ name: String,
                         _ arbeit: @escaping () async throws -> Void) {
-        Task {
-            do {
-                try await AnrufRaum.geteilt.nacheinander(arbeit)
+        AnrufRaum.geteilt.einreihen(arbeit) { ergebnis in
+            switch ergebnis {
+            case .success:
                 call.resolve(AnrufRaum.geteilt.zustand())
-            } catch {
+            case .failure(let error):
                 NSLog("[PulseAnruf] %@ FEHLER: %@", name, error.localizedDescription)
                 call.reject("anruf_\(name)_fehlgeschlagen", nil, error)
             }

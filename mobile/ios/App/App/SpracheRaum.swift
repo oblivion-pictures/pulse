@@ -51,7 +51,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     /// Reicht einen Knopfdruck der nativen Ansicht an die Oberfläche weiter.
     /// `false`, wenn dort gerade niemand zuhört — dann handelt die Hülle
     /// selbst (s. `wunsch`). Wird vom Plugin gesetzt.
-    var wunschAnWeb: ((Wunsch, Bool) -> Bool)?
+    var wunschAnWeb: ((Wunsch, Bool) async -> Bool)?
 
     /// Der LiveKit-Raum. **Setzen nur in dieser Datei** (`private(set)` ist in
     /// Swift datei-weit) — gelesen wird er auch vom Zustandsteil und von der
@@ -139,6 +139,12 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     /// `nochAktuell`).
     func nacheinander<T>(_ arbeit: @escaping () async throws -> T) async throws -> T {
         try await kette.nacheinander(arbeit)
+    }
+
+    /// Wie `nacheinander`, eingereiht schon beim Ruf (`Befehlskette`, B5).
+    func einreihen<T>(_ arbeit: @escaping () async throws -> T,
+                      fertig: @escaping (Result<T, Error>) -> Void) {
+        kette.einreihen(arbeit, fertig: fertig)
     }
 
     /// Ein Ereignis an die Oberfläche — und an die Live Activity, die aus

@@ -87,6 +87,12 @@ final class AnrufRaum: NSObject, @unchecked Sendable {
         try await kette.nacheinander(arbeit)
     }
 
+    /// Wie `SpracheRaum.einreihen` (B5).
+    func einreihen<T>(_ arbeit: @escaping () async throws -> T,
+                      fertig: @escaping (Result<T, Error>) -> Void) {
+        kette.einreihen(arbeit, fertig: fertig)
+    }
+
     // MARK: - Beitreten und Verlassen
 
     func beitreten(kennung neu: String, wsUrl: String, token: String, schluessel: Data?,
@@ -177,10 +183,7 @@ final class AnrufRaum: NSObject, @unchecked Sendable {
     /// Vom Stummschalter im CallKit-Bildschirm. Ein Fehlschlag wird gemeldet,
     /// nicht geworfen — CallKit wartet auf keine Antwort.
     func mikrofonVonCallKit(stumm: Bool) {
-        Task {
-            try? await nacheinander { try await self.stummSchalten(stumm) }
-            self.schicke()
-        }
+        einreihen({ try await self.stummSchalten(stumm) }) { _ in self.schicke() }
     }
 
     func kamera(_ an: Bool) async throws {

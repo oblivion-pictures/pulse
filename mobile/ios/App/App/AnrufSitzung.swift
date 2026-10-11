@@ -243,8 +243,12 @@ extension Anrufverwaltung {
         }
     }
 
+    /// **Synchron eingereiht** (B5): ein „an" und gleich danach ein „aus"
+    /// (Anruf im selben Augenblick angenommen und beendet) kamen aus zwei
+    /// Tasks ohne Reihenfolge — überholte das „aus", blieb der Kanal für
+    /// immer angehalten.
     private func kanalPause(_ an: Bool) {
-        Task { try? await SpracheRaum.geteilt.nacheinander { await SpracheRaum.geteilt.anrufPause(an) } }
+        SpracheRaum.geteilt.einreihen({ await SpracheRaum.geteilt.anrufPause(an) }) { _ in }
     }
 
     static func routeJetzt() -> String {

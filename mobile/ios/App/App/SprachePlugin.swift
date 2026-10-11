@@ -34,22 +34,26 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     public override func load() {
+        // **Alle Ereignisse über `ereignisMelden`** — sie kommen auch von
+        // LiveKits Fäden, und Capacitors Hörer-Tabelle verträgt das nicht
+        // (Begründung dort, `Befehlskette.swift`; Bughunt 2, B6).
         SpracheRaum.geteilt.melde = { [weak self] name, nutzlast in
-            self?.notifyListeners(name, data: nutzlast)
+            self?.ereignisMelden(name, nutzlast)
         }
         // Die Ansicht meldet ihr Schliessen auf demselben Weg. Sie kennt die
         // Brücke nicht — sie ruft einen Abschluss, und der sitzt hier.
         SpracheAnsichtHalter.geteilt.geschlossen = { [weak self] in
-            self?.notifyListeners("ansichtGeschlossen", data: [:])
+            self?.ereignisMelden("ansichtGeschlossen", [:])
         }
         // Knöpfe der Ansicht, deren Regeln das Web kennt (`SpracheRaum.wunsch`).
         // **`hasListeners` ist die Frage „hört die Oberfläche gerade zu?"** —
         // Capacitor räumt alle Hörer bei jeder Navigation der WebView ab
         // (`CapacitorBridge.reset`), ein Reload hinterlässt also keine toten.
+        // Frage und Meldung laufen in EINEM Schritt auf der Brücke
+        // (`meldenFallsGehoert`): beide Rufer sind `async` ohne Akteur, ihr
+        // Faden läse die Tabelle sonst neben der Brücke — das Rennen aus B6.
         SpracheRaum.geteilt.wunschAnWeb = { [weak self] wunsch, an in
-            guard let self, self.hasListeners("wunsch") else { return false }
-            self.notifyListeners("wunsch", data: ["aktion": wunsch.rawValue, "an": an])
-            return true
+            await self?.meldenFallsGehoert("wunsch", ["aktion": wunsch.rawValue, "an": an]) ?? false
         }
     }
 
@@ -57,13 +61,17 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
     /// `SpracheRaum.nacheinander`) und mit dem Zustand danach beantworten.
     /// **Laut scheitern:** ein verschluckter Fehlschlag ist hier der teuerste
     /// Zustand — die Oberfläche hielte etwas für geschaltet, das es nicht ist.
+    ///
+    /// **Eingereiht wird HIER, synchron** — Capacitor ruft die Methoden der
+    /// Reihe nach auf seiner seriellen Warteschlange, und genau in dieser
+    /// Reihenfolge stehen die Befehle danach in der Kette (B5).
     private func befehl(_ call: CAPPluginCall, _ name: String,
                         _ arbeit: @escaping () async throws -> Void) {
-        Task {
-            do {
-                try await SpracheRaum.geteilt.nacheinander(arbeit)
+        SpracheRaum.geteilt.einreihen(arbeit) { ergebnis in
+            switch ergebnis {
+            case .success:
                 call.resolve(SpracheRaum.geteilt.zustand())
-            } catch {
+            case .failure(let error):
                 NSLog("[PulseSprache] %@ FEHLER: %@", name, error.localizedDescription)
                 call.reject("sprache_\(name)_fehlgeschlagen", nil, error)
             }
@@ -85,7 +93,8 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
         let (je, gesamt) = Self.hoerwunsch(call)
         // In der Kette: ein Mikrofon-Befehl, der während des Aufbaus kommt,
         // wartet auf den Raum, statt auf dem alten oder keinem zu landen. Die
-        // Brücken-Warteschlange hält das NICHT — der Aufbau läuft im `Task`.
+        // Brücken-Warteschlange allein hält das NICHT — der Aufbau läuft
+        // asynchron; sie legt nur die Reihenfolge des Einreihens fest.
         befehl(call, "beitritt") {
             try await SpracheRaum.geteilt.beitreten(
                 wsUrl: wsUrl, token: token, kanalId: kanalId, kanalName: kanalName,

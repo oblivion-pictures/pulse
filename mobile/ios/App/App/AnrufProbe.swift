@@ -155,6 +155,7 @@ import LiveKit
             // 2026-10-11 freigab (`letzterAnrufVorbei`).
             soll("ohne CallKit: Kanal angehalten", sprache.anrufPausiert)
             soll("ohne CallKit: Kanal meldet sich taub", sprache.zustand()["taub"] as? Bool == true)
+            await wunschNebenDerPause(sprache)
             soll("ohne CallKit: Hörmuschel-Wunsch des Anrufs gilt",
                  AudioManager.shared.isSpeakerOutputPreferred == false)
 
@@ -185,6 +186,23 @@ import LiveKit
                  AudioManager.shared.isSpeakerOutputPreferred == true)
             soll("Ende: ein Push danach klingelt nicht",
                  await klingelPush(k) == .meldenUndSofortBeenden)
+        }
+
+        /// Bughunt 2, B3: neben dem wirksamen Stand der Pause reist die WAHL
+        /// des Nutzers — gelesen an `zustand()`, wie das Web sie bekommt.
+        @MainActor private static func wunschNebenDerPause(_ sprache: SpracheRaum) async {
+            let z = sprache.zustand()
+            soll("B3: pausiert und wirksam taub, gewählt NICHT taub",
+                 z["pausiert"] as? Bool == true && z["taub"] as? Bool == true
+                     && z["taubWunsch"] as? Bool == false)
+            soll("B3: der Mikrofon-Wunsch reist mit", z["mikroWunsch"] is Bool)
+            try? await sprache.nacheinander { await sprache.taubStellen(true) }
+            soll("B3: Taubstellen während der Pause ändert die Wahl",
+                 sprache.zustand()["taubWunsch"] as? Bool == true)
+            try? await sprache.nacheinander { await sprache.taubStellen(false) }
+            let zurueck = sprache.zustand()
+            soll("B3: und zurück", zurueck["taubWunsch"] as? Bool == false
+                     && zurueck["taub"] as? Bool == true)
         }
 
         // MARK: - 3. Der CallKit-Weg

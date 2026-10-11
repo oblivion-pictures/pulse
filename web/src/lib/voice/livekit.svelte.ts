@@ -51,6 +51,7 @@ import { currentServerUserId } from '$lib/stores/currentServerUser';
 import { guilds } from '$lib/stores/guilds.svelte';
 import { activeServer } from '$lib/stores/active-server.svelte';
 import { saveVoiceResume, clearVoiceResume, type VoiceResume } from './resume';
+import { AbbauWache } from './abbauWache';
 import { gateway } from '$lib/ws/connection';
 import { sounds } from '$lib/sounds/engine';
 import { toast } from 'svelte-sonner';
@@ -60,6 +61,7 @@ import { istAblehnung, standMerken } from '$lib/platform/berechtigung.svelte';
 import { isMobile } from '$lib/platform/runtime';
 import { nativerSprachwegBefund } from '$lib/platform/iosSprache';
 import { NativerRaum } from './nativerRaum.svelte';
+import type { NutzerWahl } from './nativAbgleich';
 import type { StartAbgleich } from './startBeitritt';
 import { melde } from '$lib/diagnose/app-diagnose';
 import { setVoiceActive, maybeSendAudioDiagnostic } from '$lib/platform/audioRoute';
@@ -143,6 +145,9 @@ class VoiceRoom {
   joinStartedAt = 0;
 
   participants = $state<VoiceParticipant[]>([]);
+
+  /** Ein laufendes natives Auflegen (B2, `abbauWache.ts`). */
+  #nativAbbau = new AbbauWache();
 
   /** Der native Weg (iOS-Hülle) — eigene Datei, s. `nativerRaum.svelte.ts`.
    *  Die Haken sind die privaten Stellen dieses Stores, die er braucht. */
@@ -427,6 +432,9 @@ class VoiceRoom {
     // a deafen across a channel switch (teardown wipes it) or a reload-resume
     // (opts.micBeforeDeafen — otherwise un-deafen would always stay muted).
     let micBeforeDeafen = opts.micBeforeDeafen ?? false;
+    // B2: ein natives Auflegen läuft noch — erst danach beitreten, sonst
+    // räumt sein spätes `#teardown` diesen Beitritt ab (`abbauWache.ts`).
+    if (this.#nativAbbau.laeuft) await this.#nativAbbau.abwarten();
     // **`this.nativ` muss hier mitgeprüft werden.** Auf dem nativen Weg
     // bleibt `#room` für immer leer — der Wächter griff dort also NIE. Folge:
     // ein Kanalwechsel auf iOS lief ohne `disconnect({reason:'user'})`, also
@@ -439,9 +447,12 @@ class VoiceRoom {
       // Channel switch keeps the user's mute/deafen choice (Discord-style) —
       // #teardown resets both, so fold them into opts before disconnecting.
       micBeforeDeafen = this.#micEnabledBeforeDeafen;
+      // Hält ein Anruf den nativen Kanal an, reist die WAHL des Nutzers mit,
+      // nicht das „stumm und taub" der Pause (B3, `nativAbgleich.ts`).
+      const wahl = this.#wahl();
       opts = {
-        startMuted: opts.startMuted ?? !this.micEnabled,
-        startDeafened: opts.startDeafened ?? this.deafened,
+        startMuted: opts.startMuted ?? !wahl.mikro,
+        startDeafened: opts.startDeafened ?? wahl.taub,
       };
       // Switching channels = user-driven leave of the old one. End any
       // hosted watch party there.
@@ -814,13 +825,16 @@ class VoiceRoom {
       }
     }
     if (nativ) {
-      try {
-        await this.#nativ.verlassen();
-      } finally {
-        // Auch wenn die Hülle sich beschwert: die Oberfläche muss zurück.
-        // Ein Nutzer, der nicht auflegen kann, ist der schlimmere Zustand.
-        this.#teardown();
-      }
+      // In der Wache: ein `connect` wartet, bis auch `#teardown` durch ist (B2).
+      await this.#nativAbbau.fahren(async () => {
+        try {
+          await this.#nativ.verlassen();
+        } finally {
+          // Auch wenn die Hülle sich beschwert: die Oberfläche muss zurück.
+          // Ein Nutzer, der nicht auflegen kann, ist der schlimmere Zustand.
+          this.#teardown();
+        }
+      });
       return;
     }
     // Nur noch fuer den Typpruefer: ohne Raum UND ohne nativen Weg ist oben
@@ -2089,18 +2103,25 @@ class VoiceRoom {
    * No-op when we are not currently connected to a voice channel — the
    * gateway only accepts state for a valid voice channel id. */
   /** Persist enough to auto-rejoin this channel after a reload (voice-resume).
-   *  Mirrors the current mute/deafen so the restored session matches. No-op
+   *  Mirrors the chosen mute/deafen (`#wahl`) so the restored session matches. No-op
    *  when not in a channel. */
   #saveResume(): void {
     if (!this.channelId) return;
+    const wahl = this.#wahl();
     saveVoiceResume({
       serverId: activeServer.serverId,
       channelId: this.channelId,
       channelName: this.channelName ?? '',
-      muted: !this.micEnabled,
-      deafened: this.deafened,
+      muted: !wahl.mikro,
+      deafened: wahl.taub,
       micBeforeDeafen: this.#micEnabledBeforeDeafen,
     });
+  }
+
+  /** Was der Nutzer für Mikrofon und Mithören GEWÄHLT hat — während einer
+   *  Anruf-Pause nicht dasselbe wie der wirksame Stand (B3). */
+  #wahl(): NutzerWahl {
+    return this.#nativ.pausenWunsch ?? { mikro: this.micEnabled, taub: this.deafened };
   }
 
   #publishSelfState(): void {

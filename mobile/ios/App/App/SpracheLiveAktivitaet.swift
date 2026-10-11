@@ -298,7 +298,7 @@ extension SpracheRaum {
     /// nicht zu (WebContent abgestürzt), merkt sich die Hülle das Auflegen
     /// selbst (`vomNutzerAufgelegt`, B1).
     private func verlassenAusAktivitaet() async {
-        _ = wunschAnWeb?(.auflegen, true)
+        _ = await wunschAnWeb?(.auflegen, true)
         await vomNutzerAufgelegt()
         melden("verbindung", ["zustand": "disconnected"])
     }

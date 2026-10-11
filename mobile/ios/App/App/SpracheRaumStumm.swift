@@ -55,6 +55,20 @@ extension SpracheRaum {
     /// hängen die Lautstärken (`SpracheRaumTaub.swift`) und die Meldung.
     var wirksamTaub: Bool { taub || anrufPausiert }
 
+    /// **Der Wunsch reist neben dem wirksamen Stand** — in `zustand()` und
+    /// `eigenerZustand` (iOS-Bughunt 2 vom 2026-10-11, B3). Während der Pause
+    /// melden `mikro` und `taub` „zu" und „taub"; so sehen es die anderen im
+    /// Kanal, und so soll es sein. Das Web übernahm den Stand aber als WAHL
+    /// des Nutzers: ein Kanalwechsel während des Anrufs trug „stumm und taub"
+    /// in den neuen Kanal, und dort blieb es nach dem Auflegen. Ausserhalb der
+    /// Pause sagen die Felder nichts Neues (`mikroWunsch` folgt dann nicht
+    /// jeder Moderation) — das Web liest sie nur, solange `pausiert` gilt
+    /// (`voice/nativAbgleich.ts::pausenWunsch`). Eine ältere Hülle schickt sie
+    /// nicht; das heisst dort „unbekannt".
+    var wunschFelder: [String: Any] {
+        ["mikroWunsch": mikroWunsch, "taubWunsch": taub]
+    }
+
     // MARK: - Anruf-Pause
 
     /// Den Kanal für einen Anruf anhalten oder ihn wieder freigeben. Gerufen

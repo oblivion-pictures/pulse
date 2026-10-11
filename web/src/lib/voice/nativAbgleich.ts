@@ -98,6 +98,45 @@ export function vomNutzerAufgelegt(h: { sitzung?: number; aufgelegtSitzung?: num
 }
 
 /**
+ * Hält die Hülle einen Raum? Ihr `zustand()` meldet `kanalId` genau so lange,
+ * wie der Raum steht (`SpracheRaum.raumLoesen` leert beides zusammen) — auch
+ * während eines Wiederaufbaus, wenn `verbunden` falsch ist.
+ */
+export function huelleHaeltRaum(z: { kanalId?: string } | null): boolean {
+  return Boolean(z?.kanalId);
+}
+
+/** Was der Nutzer für Mikrofon und Mithören gewählt hat (B3). */
+export interface NutzerWahl {
+  mikro: boolean;
+  taub: boolean;
+}
+
+/**
+ * **Was der Nutzer während einer Anruf-Pause WILL** — oder `null`, wenn keine
+ * Pause läuft oder die Hülle es nicht sagt (iOS-Bughunt 2 vom 2026-10-11, B3).
+ *
+ * Hält ein Direktanruf den Kanal an, melden `mikro` und `taub` den WIRKSAMEN
+ * Stand: zu und taub. So sehen es die anderen im Kanal, und das ist richtig.
+ * Als Wahl des Nutzers gelesen trug er sich aber weiter — ein Kanalwechsel
+ * während des Anrufs trat „stumm und taub" bei, und das blieb nach dem
+ * Auflegen; ebenso der Eintrag fürs Wiederaufnehmen. Wer weitergibt, was der
+ * Nutzer gewählt hat, fragt deshalb zuerst hier.
+ *
+ * **Ein fehlendes Feld heisst „unbekannt"** — eine ältere Hülle schickt keins,
+ * und dann bleibt es beim wirksamen Stand wie bisher.
+ */
+export function pausenWunsch(z: {
+  pausiert?: boolean;
+  mikroWunsch?: boolean;
+  taubWunsch?: boolean;
+}): NutzerWahl | null {
+  if (z.pausiert !== true) return null;
+  if (typeof z.mikroWunsch !== 'boolean' || typeof z.taubWunsch !== 'boolean') return null;
+  return { mikro: z.mikroWunsch, taub: z.taubWunsch };
+}
+
+/**
  * Schaut der Nutzer gerade auf diesen Kanal? Genau dann — und nur dann —
  * legt sich die native Kanalansicht nach einem Beitritt darüber.
  *

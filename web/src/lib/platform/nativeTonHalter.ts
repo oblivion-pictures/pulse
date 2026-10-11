@@ -6,7 +6,9 @@
  * nativen Session die Routen-Hoheit, Messung an `webSessionTyp` in
  * `iosSprache.ts`), und `iosTon` fasst die Session nicht an (Bughunt
  * 2026-10-11, K2). Bis Etappe 4 gab es genau einen Halter, den Sprachkanal;
- * mit dem nativen Anruf sind es zwei, und sie laufen unabhängig. Mit einem
+ * mit dem nativen Anruf kam ein zweiter, mit dem Vorhalt nach einem Neuladen
+ * ein dritter (Bughunt 2, B4, `spracheVorhalt.ts`), und sie laufen
+ * unabhängig. Mit einem
  * Schalter nähme das Auflegen dem Kanal WebKits Erklärung weg — dieselbe
  * Fehlerklasse, gegen die `iosTon.ts` seine Quellen als Menge führt.
  *

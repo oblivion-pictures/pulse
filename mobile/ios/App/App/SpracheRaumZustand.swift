@@ -10,7 +10,7 @@ import LiveKit
 extension SpracheRaum {
     func zustand() -> [String: Any] {
         let session = AVAudioSession.sharedInstance()
-        return [
+        let felder: [String: Any] = [
             "verbunden": raum?.connectionState == .connected,
             "kanalId": kanalId ?? "",
             // Für den Abgleich nach einem Reload: die frische Oberfläche kennt
@@ -58,6 +58,7 @@ extension SpracheRaum {
             // keinen Eingang, und „aktiv?" fragt `AVAudioSession` nicht ab.
             "eingaenge": session.currentRoute.inputs.map { $0.portType.rawValue }
         ]
+        return felder.merging(wunschFelder) { $1 }
     }
 
     func optionenNamen() -> [String] {
@@ -193,7 +194,7 @@ extension SpracheRaum {
             "pausiert": anrufPausiert,
             "lautsprecher": AudioManager.shared.isSpeakerOutputPreferred,
             "route": routeJetzt()
-        ])
+        ].merging(wunschFelder) { $1 })
     }
 }
 

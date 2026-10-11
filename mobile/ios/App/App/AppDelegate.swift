@@ -181,6 +181,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             SprachePlugin.probeAusStartargumenten()
             AnrufProbe.ausStartargumenten()
             AnrufPushProbe.ausStartargumenten()
+            BrueckeProbe.ausStartargumenten()
             SpracheAnsichtProbe.ausStartargumenten()
             WiedergabebegrenzerProbe.ausStartargumenten()
             ShareReceiverProbe.ausStartargumenten()

@@ -61,6 +61,12 @@ export interface NativerZustand {
    *  Mikrofon zu, Ton aus, bis aufgelegt ist. Ein Mikrofon- oder Taub-Befehl
    *  ändert dann nur, was danach gilt. */
   pausiert?: boolean;
+  /** Was nach der Pause gilt — die WAHL des Nutzers neben dem wirksamen
+   *  Stand (`SpracheRaumStumm.swift::wunschFelder`, Bughunt 2, B3). Nur
+   *  während `pausiert` aussagekräftig; eine ältere Hülle schickt sie nicht
+   *  („unbekannt", `voice/nativAbgleich.ts::pausenWunsch`). */
+  mikroWunsch?: boolean;
+  taubWunsch?: boolean;
   /** Steht die native Kanalansicht gerade? Entscheidet, ob die Web-Leiste den
    *  Griff „zurück in den Kanal" anbietet. */
   ansichtOffen?: boolean;
@@ -101,6 +107,9 @@ export interface NativerEigenerZustand {
   kameraVorn?: boolean;
   taub?: boolean;
   pausiert?: boolean;
+  /** Wie in `NativerZustand` (B3). */
+  mikroWunsch?: boolean;
+  taubWunsch?: boolean;
 }
 
 /** Was die Oberfläche hören will — der Befehl `lautstaerken`. */

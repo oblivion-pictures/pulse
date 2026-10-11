@@ -34,6 +34,7 @@
   import { ungeleseneNachrichten } from '$lib/navigation/abzeichen.svelte';
   import { voice } from '$lib/voice/livekit.svelte';
   import { startBeitritteAusfuehren } from '$lib/voice/startBeitritte';
+  import { spracheRaumVorhalten } from '$lib/platform/spracheVorhalt';
   import { netzwacheStarten } from '$lib/ws/netzwache';
   import { schriftGroesseVerfolgen } from '$lib/platform/schriftGroesse';
   import { voipTokenVerfolgen } from '$lib/platform/voipToken';
@@ -213,6 +214,9 @@
     // Externe Links (_blank) in der Hülle ins System-Browser-Blatt lenken.
     externeLinksAbriss = installiereExterneLinks();
     tiefenlinkAbriss = installiereUniversalLinks();
+    // iOS: ein Sprachraum, der das Neuladen überlebt hat, ist ab jetzt
+    // geschützt, nicht erst ab seiner Übernahme (B4, `spracheVorhalt.ts`).
+    void spracheRaumVorhalten();
     await auth.hydrate();
     if (!auth.isAuthenticated) {
       await goto('/login', { replaceState: true });

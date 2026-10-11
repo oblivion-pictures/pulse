@@ -210,7 +210,7 @@ extension SpracheRaum {
     /// **Hört dort niemand zu** (Prüfpfad, Oberfläche lädt gerade neu), tut die
     /// Hülle es selbst — ein Knopf, der nichts tut, ist schlimmer als keiner.
     func wunsch(_ w: Wunsch, an: Bool) async throws {
-        if wunschAnWeb?(w, an) == true {
+        if await wunschAnWeb?(w, an) == true {
             if w == .auflegen { auflegenAbsichern() }
             return
         }
