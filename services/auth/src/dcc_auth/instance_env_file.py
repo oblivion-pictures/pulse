@@ -5,9 +5,11 @@ Eigenes Modul, damit die Vorlage als zusammenhängender Text lesbar bleibt
 Self-Hoster herunterlädt, steht hier wörtlich.
 
 Die Var-Namen MÜSSEN exakt die sein, die der Container liest
-(``10-check-cloud-creds.sh`` / ``07-render-env.sh``): ``PULSE_CLOUD_CLIENT_*``
-(nicht ``PULSE_INSTANCE_CLIENT_*``) plus ``PULSE_INSTANCE_OWNER_ID``,
-``PULSE_HOSTNAME`` und ``PULSE_ADMIN_EMAIL``. Worker-IDs tauchen NICHT auf
+(``07-render-env.sh``; ``10-check-cloud-creds.sh`` verlangt davon nur noch
+``PULSE_HOSTNAME``): ``PULSE_CLOUD_CLIENT_*`` (nicht ``PULSE_INSTANCE_CLIENT_*``)
+plus ``PULSE_INSTANCE_OWNER_ID``, ``PULSE_HOSTNAME`` und ``PULSE_ADMIN_EMAIL``.
+Ein falsch benannter Wert bricht den Start nicht mehr ab, er lässt den Server
+unverbunden — er nimmt dann niemanden auf (``pulse-connect`` verbindet ihn). Worker-IDs tauchen NICHT auf
 (der Single-Container nutzt feste interne IDs).
 """
 

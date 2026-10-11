@@ -691,8 +691,9 @@ async function main() {
   freePorts([8001, 8002, 8003, 8004, 8005]);
 
   // PULSE_INSTANCE_MODE=cloud: lokales Dev verhält sich wie howispulse.com.
-  // Ohne das greift der Default `self-host` → chat-gateway crasht beim Start
-  // und auth-svc blockt POST /register. (Begründung ausführlich in dev-up.fish.)
+  // Ohne das greift der Default `self-host` → chat-gateway läuft als
+  // unverbundener Self-Host (POST /session → 503) und auth-svc blockt
+  // POST /register. (Begründung ausführlich in dev-up.fish.)
   const commonEnv = {
     REDIS_URL: freshEnv.REDIS_URL || 'redis://localhost:6380/0',
     AUTH_JWKS_URL: 'http://127.0.0.1:8001/.well-known/jwks.json',

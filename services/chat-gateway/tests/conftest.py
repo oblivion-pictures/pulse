@@ -60,9 +60,13 @@ _TEST_SETTINGS = chat_cfg.Settings(
     ),
     auth_jwks_url="http://stub/jwks",
     database_schema="main",
-    # A valid "approved self-host" config: non-zero instance id satisfies the
-    # lifespan fail-fast guard (which prevents identical pairwise-subs across
-    # self-hosts) while keeping the default self-host mode the other tests rely on.
+    # Der Normalfall: ein VERBUNDENER Self-Host (Instanz-Nummer != 0, siehe
+    # ``verbindung.ist_verbunden``) im Standardmodus, den die übrigen Tests
+    # voraussetzen. Die Nummer selbst trägt nichts (nachgemessen 2026-10-12: mit 0
+    # bleibt die ganze Suite grün) — sie soll aber den Regelfall abbilden, damit ein
+    # neuer Test nicht versehentlich gegen einen unverbundenen Server läuft
+    # (``POST /session`` → 503). Tests des unverbundenen Zustands setzen 0 selbst
+    # (``test_start_ohne_verbindung.py``).
     pulse_instance_id=100,
 )
 

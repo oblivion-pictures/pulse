@@ -58,7 +58,7 @@ Zwei fertige Compose-Varianten (auch ohne Repo-Clone beziehbar — URLs in
   exponiert nur `127.0.0.1:8080` (setzt `PULSE_TLS_MODE=behind-proxy` selbst).
 
 ```bash
-cp .env.example .env      # 6 Pflicht-Vars eintragen (.env-Download via "Meine Instanzen")
+cp .env.example .env      # PULSE_HOSTNAME eintragen (.env-Download via "Meine Instanzen" bringt alles mit)
 docker compose up -d      # bzw. docker compose -f docker-compose.behind-proxy.yml up -d
 ```
 
@@ -271,7 +271,7 @@ infra/self-host/
 │       │   └── Caddyfile.template  # auto-TLS, security headers, /api/* + WHEP + /pulse-attachments/* routing
 │       └── scripts/                # cont-init steps — Ausführungsreihenfolge regelt cont-init-main.sh, nicht die Dateinummer
 │           ├── cont-init-main.sh
-│           ├── 10-check-cloud-creds.sh  # FIRST (fail-fast bei fehlenden Env-Vars)
+│           ├── 10-check-cloud-creds.sh  # FIRST (fail-fast ohne PULSE_HOSTNAME)
 │           ├── 01-init-data-dirs.sh
 │           ├── 03-init-secrets.sh
 │           ├── 02-init-postgres.sh

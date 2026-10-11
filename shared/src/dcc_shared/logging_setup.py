@@ -13,8 +13,10 @@ Die Folge war nicht bloss unschön, sie hat Geld gekostet: die Diagnose, die am
 beantworten (``dcc_chat_gateway.owner_admin_log``), schreibt ihre beiden
 aussagekräftigen Zeilen mit ``log.info`` — und war damit **unsichtbar**.
 Sichtbar blieb allein die ``log.warning`` für „OWNER_ID nicht gesetzt", also
-ausgerechnet der Fall, den ``10-check-cloud-creds.sh`` schon beim Start
-abfängt. Zwei Meldungen desselben Fehlers später hatte immer noch niemand die
+ausgerechnet der Fall, den ``10-check-cloud-creds.sh`` damals schon beim Start
+abfing (seit 2026-10 verlangt es nur noch ``PULSE_HOSTNAME``; ein unverbundener
+Server meldet statt dieser Warnung den ``pulse-connect``-Hinweis,
+``dcc_chat_gateway.verbindung``). Zwei Meldungen desselben Fehlers später hatte immer noch niemand die
 Zeile gesehen.
 
 Nachgemessen (nicht vermutet): nach ``dictConfig(uvicorn.config.LOGGING_CONFIG)``

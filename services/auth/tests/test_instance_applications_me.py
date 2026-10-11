@@ -480,7 +480,8 @@ async def test_snippet_happy_path(client, alice_cookie, alice_instance):
     assert "text/plain" in r.headers["content-type"]
     body = r.text
     # Var-Namen MÜSSEN exakt die sein, die der allinone-Container liest
-    # (10-check-cloud-creds.sh / 07-render-env.sh) — sonst startet er nicht.
+    # (07-render-env.sh) — sonst nimmt der Server niemanden auf (er startet seit
+    # 2026-10 trotzdem, unverbunden; 10-check-cloud-creds.sh verlangt nur noch die Adresse).
     assert f"PULSE_INSTANCE_ID={alice_instance.id}" in body
     assert f"PULSE_CLOUD_CLIENT_ID={alice_instance.client_id}" in body
     assert f"PULSE_INSTANCE_OWNER_ID={alice_instance.registered_by}" in body
