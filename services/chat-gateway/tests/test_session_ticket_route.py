@@ -337,3 +337,15 @@ async def test_der_betreiber_ist_vom_bann_ausgenommen(
     await _bannen(session_factory, NUTZER)
     r = await client.post("/session", json={"ticket": ticket_bauer()})
     assert r.status_code == 200, r.text
+
+
+@pytest.mark.asyncio
+async def test_unverbundener_server_nimmt_niemanden_auf(
+    client, ticket_bauer, _isolate_chat_settings
+):
+    """Spec 2026-10-09, E4: ohne Verbindung keine Sitzung — mit dem Grund, den
+    die App dem Betreiber übersetzen kann, nicht mit ``ticket_wrong_audience``."""
+    _isolate_chat_settings.pulse_instance_id = 0
+    r = await client.post("/session", json={"ticket": ticket_bauer()})
+    assert r.status_code == 503
+    assert r.json() == {"detail": "nicht_verbunden"}

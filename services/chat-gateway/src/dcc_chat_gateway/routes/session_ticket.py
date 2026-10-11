@@ -24,6 +24,7 @@ from dcc_chat_gateway.routes.gates import enforce_ban_gate, enforce_join_gate
 from dcc_chat_gateway.session_tokens import issue_session_token
 from dcc_chat_gateway.suspend_poller import raise_if_suspended
 from dcc_chat_gateway.ticket_pruefung import TicketFehler, pruefe_ticket
+from dcc_chat_gateway.verbindung import ist_verbunden
 
 router = APIRouter(tags=["self-host"])
 
@@ -88,13 +89,13 @@ async def sitzung_aus_ticket(
 
     await raise_if_suspended(redis)
 
-    # Ohne Instanz-Kennung kann kein Ticket passen (``aud`` wäre "0"). Ohne
-    # diesen Riegel meldete die Anmeldung ``ticket_wrong_audience``, und dessen
-    # Text schickt den Betreiber in seine Serverliste — statt zur fehlenden
-    # Zeile in seiner ``.env``. Genau die Sorte Fehlleitung, gegen die dieser
-    # Umbau gebaut ist.
-    if settings.pulse_instance_mode == "self-host" and not settings.pulse_instance_id:
-        raise HTTPException(status_code=503, detail="instance_id_unconfigured")
+    # Ein Server, der noch mit keinem Pulse-Konto verbunden ist, nimmt niemanden
+    # auf (Spec 2026-10-09, E4). Ohne Instanz-Kennung könnte ohnehin kein Ticket
+    # passen (``aud`` wäre "0"); ohne diesen Riegel meldete die Anmeldung
+    # ``ticket_wrong_audience``, und dessen Text schickt in die Serverliste statt
+    # zur Abhilfe: ``pulse-connect`` auf dem Server.
+    if not ist_verbunden(settings):
+        raise HTTPException(status_code=503, detail="nicht_verbunden")
 
     try:
         daten = await pruefe_ticket(

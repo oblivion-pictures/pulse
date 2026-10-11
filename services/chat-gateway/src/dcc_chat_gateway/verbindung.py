@@ -10,8 +10,13 @@ Werkzeug ``pulse-connect`` (``verbinden_cli.py``). Die Dateien liegen in
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
+
+from dcc_chat_gateway.owner_admin_log import log_owner_konfiguration
+
+log = logging.getLogger(__name__)
 
 #: Eine Zeile, 64 Hex-Zeichen: der SHA-256 der Abholkennung. Liegt nur, solange
 #: ``pulse-connect`` auf die Bestätigung wartet.
@@ -19,6 +24,14 @@ NACHWEIS_DATEI = "verbinden-nachweis"
 #: Die abgeholten Zugangsdaten (0600). Gelesen von 07-render-env.sh, nicht von
 #: den Diensten selbst — die sehen nur ``/etc/pulse/env.sh``.
 VERBINDUNG_DATEI = "verbindung.env"
+
+#: Englisch, weil die Zeile im Log fremder Betreiber steht (Regel aus
+#: ``owner_admin_log.py``). Der Befehl ist derselbe, den Installer und
+#: Compose-Datei nennen.
+NICHT_VERBUNDEN_HINWEIS = (
+    "This server is not connected to a Pulse account yet. "
+    "Run: docker exec -it pulse pulse-connect"
+)
 
 _NACHWEIS_FORM = re.compile(r"[0-9a-f]{64}")
 
@@ -43,3 +56,16 @@ def nachweis_lesen(verzeichnis: Path) -> str | None:
     except (OSError, UnicodeDecodeError):
         return None
     return wert if _NACHWEIS_FORM.fullmatch(wert) else None
+
+
+def melde_verbindungsstand(settings) -> None:
+    """Einmal je Start sagen, wem der Server gehört — oder dass noch niemandem.
+
+    Ein unverbundener Server bekäme von ``log_owner_konfiguration`` die Warnung,
+    ``PULSE_INSTANCE_OWNER_ID`` fehle. Das stimmt, nennt aber die falsche
+    Abhilfe: eine Zeile in der ``.env`` statt ``pulse-connect``.
+    """
+    if ist_verbunden(settings):
+        log_owner_konfiguration(settings)
+    else:
+        log.warning(NICHT_VERBUNDEN_HINWEIS)
