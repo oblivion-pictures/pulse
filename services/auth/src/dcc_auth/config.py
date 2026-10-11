@@ -156,7 +156,9 @@ class Settings(BaseSettings):
     # — ein Betreiber braucht einen Aufruf je Installation. ``abholen`` fragt
     # ``pulse-connect`` alle 5 s ab (12/min); 30 lassen Luft für einen
     # zweiten Server hinter derselben Adresse. ``bestaetigen`` gilt je Konto
-    # für Ansehen und Entscheiden zusammen (zwei Aufrufe je Server).
+    # für Ansehen und Entscheiden zusammen (zwei Aufrufe je Server); den
+    # Topf teilt sich auch der Widerspruch gegen einen Übernahme-Antrag
+    # (``routes_uebernahme.py``).
     rate_limit_verbinden_start: str = "10/hour"
     rate_limit_verbinden_abholen: str = "30/minute"
     rate_limit_verbinden_bestaetigen: str = "20/hour"

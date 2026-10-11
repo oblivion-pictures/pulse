@@ -29,8 +29,9 @@ from redis.exceptions import WatchError
 
 #: Gültigkeit eines Codes in Sekunden (E1: 15 Minuten).
 GUELTIG_S = 900
-#: Abstand, in dem der Server abholen soll. Die Bremse in ``config.py``
-#: (``rate_limit_verbinden_abholen``) lässt das Doppelte zu.
+#: Abstand, in dem der Server abholen soll (5 s = 12 Abfragen je Minute). Die
+#: Bremse in ``config.py`` (``rate_limit_verbinden_abholen``, 30 je Minute)
+#: lässt das 2,5-Fache zu.
 ABSTAND_S = 5
 
 # Crockford-Base32: ohne I, L, O, U — nichts, was sich beim Abtippen mit einer

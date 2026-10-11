@@ -86,9 +86,9 @@ class InstanceOut(BaseModel):
     # das Admin-UI blendet sie in "Self-Host-Instanzen" aus (sie leben im
     # App-Hosting-Anträge-Tab). Ohne das Feld konnte es nicht unterscheiden.
     origin: str = "vps"
-    # Eintrag aus dem Verbinden per Gerätecode (Migration 0056). Die Oberfläche
-    # zeigt den Vermerk „ohne Freigabe“ und bietet „Secret rotieren“ nur
-    # freigegebenen Einträgen an.
+    # Eintrag aus dem Verbinden per Gerätecode (Migration 0056). Das Feld ist
+    # für die Admin-Oberfläche da; deren Anzeige (Vermerk „ohne Freigabe“,
+    # „Secret rotieren“ nur für freigegebene Einträge) folgt in Etappe 5.
     ohne_freigabe: bool = False
 
 

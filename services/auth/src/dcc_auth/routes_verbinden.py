@@ -7,7 +7,8 @@ Betreibers (Spec
 1. ``POST /selfhost/verbinden/start`` — anonym, vom Server (``pulse-connect``).
 2. ``POST /me/selfhost/verbinden/vorgang`` — angemeldet, die Bestätigungsseite.
 3. ``POST /me/selfhost/verbinden/entscheidung`` — angemeldet, „Verbinden“/„Abbrechen“.
-4. ``POST /selfhost/verbinden/abholen`` — anonym, vom Server, bis 200/403/410.
+4. ``POST /selfhost/verbinden/abholen`` — anonym, vom Server: 202 bis zur Entscheidung,
+   dann 200/403/409/410.
 
 Die beiden anonymen Routen vertrauen dem Aufrufer nichts an, was er nicht
 schon hat: Der Start verlangt die Abholkennung (die Cloud prüft ihren Hash
@@ -265,7 +266,8 @@ async def verbinden_entscheiden(
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="instance_suspended") from None
     except IntegrityError:
         # Ein gleichzeitiger Klick auf denselben Code hat die Adresse schon
-        # eingetragen und gewinnt.
+        # eingetragen und gewinnt; ebenso ein Antrags-``flush`` aus
+        # ``uebernahme_pruefen``, der auch im letzten Versuch scheitert.
         await db.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="unbekannt") from None
 
