@@ -388,7 +388,13 @@ export default async function globalSetup() {
     // erst gerendert und `dropbox.spec.ts` läuft in einen Timeout.
     CLOUD_DM_ATTACHMENTS_ENABLED: 'true',
     CLOUD_DROPBOX_ENABLED: 'true',
-    CLOUD_ATTACHMENT_MIME_PREFIXES: ''
+    CLOUD_ATTACHMENT_MIME_PREFIXES: '',
+    // Presign-Host = der Host, den der Vite-Proxy (`/pulse-attachments`,
+    // changeOrigin) beim Objektspeicher einsetzt — wie in `dev-up.fish`.
+    // Garage prüft den signierten Host streng; mit der config.py-Vorgabe
+    // `localhost:9000` antwortete jeder Upload aus der Suite 403
+    // (iOS-Bughunt 2, E2). Gewinnt gegen einen Wert aus `.env`, wie dort.
+    S3_PUBLIC_ENDPOINT: 'http://127.0.0.1:9000'
   };
 
   // Apply migrations + truncate so every test run starts clean.

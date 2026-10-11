@@ -19,7 +19,11 @@
 set -u
 cd "$(dirname "$0")/.."
 
-python3 - "$@" <<'PY'
+# PYTHONUTF8=1: Python im UTF-8-Modus — Dateien UND Ausgabe. Unter Windows
+# liest Python sonst mit der Systemkodierung (cp1252), und die Zeichen der
+# Ausgabe (✓/✗/„") können den Lauf mit einem Kodierfehler abbrechen, obwohl
+# nichts fehlt (iOS-Bughunt 2, E4 — gefolgert, unter Windows nicht gefahren).
+PYTHONUTF8=1 python3 - "$@" <<'PY'
 import pathlib, re, sys
 
 def tag_ende(s, start):
@@ -40,7 +44,7 @@ treffer = []
 geprueft = 0
 for ort in ORTE:
     for p in sorted(pathlib.Path(ort).rglob("*.svelte")):
-        s = p.read_text()
+        s = p.read_text(encoding="utf-8")
         for m in re.finditer(r"<(button|Button)\b", s):
             geprueft += 1
             ende = tag_ende(s, m.start())

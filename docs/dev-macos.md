@@ -26,7 +26,9 @@ indem beide Dienste **nativ** statt im Container laufen.
 
 Zwei Compose-Aufsätze ersetzen Host-Networking durch veröffentlichte Ports
 (nur auf `127.0.0.1` — der Stack soll nicht im WLAN stehen) und mounten je
-eine angepasste Konfiguration:
+eine angepasste Konfiguration. **`scripts/dev-up.fish` nimmt beide auf macOS
+seit dem 2026-10-11 von selbst mit**; davor stellte jeder Lauf die Container
+auf die Haupt-Datei zurück. Für den Einzelstart:
 
     # LiveKit
     docker compose -f docker-compose.yml -f docker-compose.mac.yml \

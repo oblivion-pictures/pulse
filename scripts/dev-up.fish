@@ -92,8 +92,19 @@ end
 
 # --- Container --------------------------------------------------------------
 
+# macOS: LiveKit und MediaMTX laufen nur mit den Aufsätzen `*.mac.yml`
+# (docs/dev-macos.md) — Host-Networking meint auf Docker Desktop die Linux-VM.
+# Ohne sie stellte jeder Lauf hier die Container auf die Haupt-Datei zurück,
+# und Sprachkanal und Übertragungen waren wieder tot (iOS-Bughunt 2, E5).
+# Ein Aufruf für beide Projekte: die Dateinamen gelten im jeweiligen
+# Verzeichnis (Wurzel bzw. `streaming/server`), und beide tragen ihren Aufsatz.
+set -l compose docker compose
+if test (uname) = Darwin
+    set compose docker compose -f docker-compose.yml -f docker-compose.mac.yml
+end
+
 _info "Container starten (Postgres + Redis + Garage + LiveKit)"
-docker compose --profile voice up -d >/dev/null 2>&1; or _die "docker compose root failed"
+$compose --profile voice up -d >/dev/null 2>&1; or _die "docker compose root failed"
 
 # Garage-Bootstrap (Bucket + Key, idempotent) — das dxflrs-Image hat keine
 # Shell, darum host-seitig per exec (Bughunt-Entscheidung 4.1). Fehler sind
@@ -150,7 +161,7 @@ else if not diff -q (grep -vE '^\s*(#|$)' mediamtx.yml.template | psub) \
     _warn "mediamtx.yml weicht von mediamtx.yml.template ab — Unterschiede prüfen:"
     _warn "  diff streaming/server/mediamtx.yml.template streaming/server/mediamtx.yml"
 end
-docker compose up -d mediamtx >/dev/null 2>&1; or _die "docker compose mediamtx failed"
+$compose up -d mediamtx >/dev/null 2>&1; or _die "docker compose mediamtx failed"
 cd $repo_root
 end
 

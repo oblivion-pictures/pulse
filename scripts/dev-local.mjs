@@ -26,10 +26,10 @@
 // MediaMTX' auth-hook ebenfalls (`localhost:8005` — der native Prozess IST der
 // Host, der Kommentar im Template gilt unverändert). Docker bleibt für das,
 // was es gut kann: die drei zustandslosen Infra-Container (Postgres, Redis,
-// MinIO) im Bridge-Netz.
+// Garage) im Bridge-Netz.
 //
 //   Rollenverteilung auf Windows:
-//     Docker Desktop : postgres :5434, redis :6380, minio :9000/9001
+//     Docker Desktop : postgres :5434, redis :6380, garage :9000
 //     nativ          : livekit :7880-7892, mediamtx :1936/8889/8890/8189/9997
 //     uv             : auth :8001, chat :8002, voice :8003, media :8004, hook :8005
 //     node           : vite :5173, electron
@@ -435,10 +435,14 @@ function lanIp() {
 // --- Docker / Migrationen --------------------------------------------------------
 
 async function containersUp(env) {
-  info('Container starten (Postgres + Redis + MinIO)');
+  info('Container starten (Postgres + Redis + Garage)');
   // Explizite Dienstliste statt --profile voice: LiveKit läuft hier nativ, der
   // profile-gestaffelte Container aus docker-compose.yml würde nur Port-Konflikte bauen.
-  const res = spawnSync(dockerCmd, ['compose', 'up', '-d', 'postgres', 'redis', 'minio', 'minio-init'], {
+  // Garage statt MinIO seit dem 2026-09-21 (docker-compose.yml). Bis zum
+  // 2026-10-11 stand hier noch `minio`/`minio-init` — Dienste, die es nicht
+  // mehr gibt; `compose up` bricht an einem unbekannten Dienst ab (gefolgert,
+  // unter Windows nicht gefahren).
+  const res = spawnSync(dockerCmd, ['compose', 'up', '-d', 'postgres', 'redis', 'garage'], {
     cwd: REPO,
     encoding: 'utf8',
     shell: WIN,
@@ -458,11 +462,38 @@ async function containersUp(env) {
     );
     if (probe.status === 0) {
       ok('Container up (Postgres healthy)');
+      garageEinrichten();
       return;
     }
     await new Promise((r) => setTimeout(r, 500));
   }
   die('Postgres wurde nicht healthy — docker logs dcc_night_postgres ansehen');
+}
+
+/**
+ * Bucket, Schlüssel und CORS-Regel in Garage anlegen — idempotent, über
+ * dasselbe Skript wie `dev-up.fish` (`scripts/dev-garage-init.sh`). Das Image
+ * hat keine Shell, deshalb läuft es auf dem Host; unter Windows braucht es
+ * dafür `sh` aus Git for Windows im PATH. Scheitert es, startet der Stack
+ * trotzdem — nur Anhänge gehen dann nicht.
+ */
+function garageEinrichten() {
+  const res = spawnSync('sh', ['scripts/dev-garage-init.sh'], {
+    cwd: REPO,
+    stdio: 'ignore',
+    env: dockerEnv()
+  });
+  if (res.status === 0) ok('Garage eingerichtet (Bucket, Schlüssel)');
+  else warn('Garage-Bootstrap scheiterte (sh aus Git for Windows im PATH?) — Anhänge erst nach erneutem Start');
+}
+
+/** Die Garage-Zugangsdaten, die `dev-garage-init.sh` ablegt — leer, solange es
+ *  nicht gelaufen ist (dann gelten die Vorgaben aus .env/config.py). */
+function garageZugang() {
+  const zugang = readEnvFile(path.join(REPO, '.garage-dev-credentials'));
+  return zugang.GARAGE_S3_KEY
+    ? { S3_ACCESS_KEY: zugang.GARAGE_S3_KEY, S3_SECRET_KEY: zugang.GARAGE_S3_SECRET }
+    : {};
 }
 
 function runMigrations(env) {
@@ -518,9 +549,9 @@ function down() {
   // per Port geht es nicht (Electron horcht auf keinem). Best-effort über den
   // Fenster-Titel geht nicht ohne mehr Aufwand; wer Electron mit startet,
   // schließt es einfach — Strg+C räumt den Baum über den Task-Exit mit auf.
-  info('Container stoppen (Postgres / Redis / MinIO)');
+  info('Container stoppen (Postgres / Redis / Garage)');
   if (findDocker()) {
-    spawnSync(dockerCmd, ['compose', 'stop', 'postgres', 'redis', 'minio', 'minio-init'], {
+    spawnSync(dockerCmd, ['compose', 'stop', 'postgres', 'redis', 'garage'], {
       cwd: REPO,
       stdio: 'ignore',
       shell: WIN,
@@ -683,7 +714,11 @@ async function main() {
   info('MediaMTX starten (nativ, :1936/:8889/:8890/:9997)');
   startDetached('mediamtx', mediamtx, [path.join(LOCAL_DIR, 'mediamtx.yml')], { cwd: REPO });
 
-  containersUp(freshEnv);
+  // `await`: erst wenn Postgres steht und Garage eingerichtet ist, geht es
+  // weiter — Migrationen brauchen das eine, `garageZugang` unten die
+  // Zugangsdatei, die das andere beim ersten Lauf erst schreibt. Bis zum
+  // 2026-10-11 fehlte das `await`, und beides lief davor.
+  await containersUp(freshEnv);
   runMigrations(freshEnv);
 
   // --- Uvicorns ---
@@ -703,7 +738,13 @@ async function main() {
     // ohne diese Zeilen wären Ablage und DM-Anhänge tot).
     CLOUD_DM_ATTACHMENTS_ENABLED: 'true',
     CLOUD_DROPBOX_ENABLED: 'true',
-    CLOUD_ATTACHMENT_MIME_PREFIXES: ''
+    CLOUD_ATTACHMENT_MIME_PREFIXES: '',
+    // Garage-Zugang und der signierte Host — wie in dev-up.fish: Garage prüft
+    // den Host streng, und der Vite-Proxy (`/pulse-attachments`, changeOrigin)
+    // setzt genau diesen ein. Mit der config.py-Vorgabe `localhost:9000`
+    // antwortete jeder Upload 403 (iOS-Bughunt 2, E2).
+    ...garageZugang(),
+    S3_PUBLIC_ENDPOINT: 'http://127.0.0.1:9000'
   };
   const pgEnv = {
     POSTGRES_PASSWORD: freshEnv.POSTGRES_PASSWORD,
@@ -825,7 +866,7 @@ async function main() {
       '═══════════════════════════════════════════════',
       `  Oberfläche:   http://127.0.0.1:${vitePort}   (lokal, mit HMR)`,
       `  Backend:      lokal — auth :8001, chat :8002, voice :8003, media :8004, hook :8005`,
-      `  Infra:        postgres :${pgEnv.POSTGRES_PORT}  redis :6380  minio :9000  livekit :7880  mediamtx :8889`,
+      `  Infra:        postgres :${pgEnv.POSTGRES_PORT}  redis :6380  garage :9000  livekit :7880  mediamtx :8889`,
       '',
       `  Handy im LAN: PULSE_WEB_HOST=0.0.0.0 setzen, dann http://${lan}:${vitePort} vom Handy`,
       '                (Streaming klappt vom Handy; Voice bräuchte echte LiveKit-Keys — Dev-Keys gelten nur lokal)',
