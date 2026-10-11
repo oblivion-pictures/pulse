@@ -7421,6 +7421,14 @@ Zweig: `git checkout main && git pull --ff-only && git checkout -b feat/selfhost
 
 **Voraussetzung für das Landen (nicht für das Bauen):** Etappen 0–3 sind live — das Bild `ghcr.io/oblivion-pictures/pulse:stable` entsteht (Etappe 0), die Cloud kennt `/selfhost/verbinden/*` (Etappe 1), das Bild bringt `pulse-connect`, die Nachweis-Route und `verbunden` in der Server-Info mit (Etappe 2), `https://howispulse.com/verbinden` steht (Etappe 3). Task 4.4 prüft das, bevor das Paket öffentlich wird.
 
+**Zweite Voraussetzung: `:stable` bedeutet Releases** (Eigentümer, 2026-10-11). Heute setzt jeder `main`-Push auch `:stable` (`PHASEN-POLICY` im edge-Zweig von „Compute version + tags“ in `.github/workflows/allinone.yml`). Ab Etappe 4 ziehen Unbekannte `:stable`; bliebe es dabei, bekäme jeder fremde Server jeden Push binnen Minuten. Vorher, als eigener kleiner Zweig nach Etappe 0:
+
+1. In `allinone.yml` die Zeile `"${IMAGE}:stable"` im edge-Zweig samt `PHASEN-POLICY`-Kommentar entfernen und den Kopfkommentar (Trigger 1 und der Absatz `PHASEN-POLICY`) nachziehen.
+2. Ein erstes Release taggen (`vX.Y.Z`; der Workflow reagiert auf `v*.*.*`). Am 2026-10-11 gab es keinen einzigen `v`-Tag — ohne ihn bliebe `:stable` nach Schritt 1 auf dem letzten `main`-Push stehen.
+3. Bestand durchgehen. **Bewusst auf `:edge`** bleiben Atrium und `selfhost.unicutmedia.com` (Eigentümer). Auf `:edge` stehen aber auch Server, die das nicht gewählt haben: alles, was der Installer vor Etappe 4 eingerichtet hat (alte Vorgabe in `web/static/install.sh`, sofern `PULSE_IMAGE` nicht gesetzt war), und container-basierte Heim-Server der Server-App (`DEFAULT_IMAGE` in `desktop/electron/localBackend/containerEnv.ts`). Wer davon auf `:stable` soll, wird umgestellt. Die Vorgabe der Server-App ist eine eigene Entscheidung (Änderung unter `desktop/electron/**` → Versionssprung).
+
+Task 4.4 Step 1 prüft Schritt 1 und 2.
+
 **Kein Changelog-Eintrag.** `web/static/install.sh`, `infra/`, `docs/` stehen in `NON_USER_FACING` (`scripts/check-changelog.sh`, Zeile 27). Die neuen Testdateien unter `web/test/` stehen dort nicht (das Muster kennt nur `/tests/`) — `check-changelog.sh` druckt deshalb beim Push eine Warnung; sie hält nichts auf (`exit 0`). Für Nutzer sichtbar wird der neue Weg erst mit dem Einstieg in der App (Etappe 5, Teil C); dort gehört der Eintrag hin.
 
 **Zur Größe:** `web/static/install.sh` ist eine einzige Datei, weil `curl … | bash` nichts nachladen kann. Sie hatte vorher 1374 Zeilen und hat danach 1591; die Größen-Policy (`PLAN.md` §12.1) greift bei diesem Skript wie bisher nicht.
@@ -10399,9 +10407,7 @@ mirror only serves servers set up before October 2026: it gates access
 per-instance via their `PULSE_CLOUD_CLIENT_ID`/`PULSE_CLOUD_CLIENT_SECRET`
 (`docker login registry.howispulse.com`), and their update scripts keep pulling
 from it. New servers pull from GHCR. Both `:edge` (every `main` push) and
-`:stable` exist on both; during the current early/security phase every `main`
-push tags **both** identically (see the `PHASEN-POLICY` comment in
-`allinone.yml`) — they diverge once real tagged releases start. The installer
+`:stable` (tagged releases `vX.Y.Z` only) exist on both. The installer
 (`web/static/install.sh`) and the Compose files use `:stable`; the installer
 takes another image via `PULSE_IMAGE`.
 ```
@@ -10559,6 +10565,14 @@ Run: `gh repo view oblivion-pictures/pulse --json visibility -q .visibility`
 Expected: `PUBLIC`. `infra/prod/DEPLOY.md` (Abschnitt Registry) hält fest, dass ein mit einem **privaten** Repo verknüpftes Paket nicht öffentlich sein kann; ist das Repo privat, hier anhalten und mit dem Eigentümer klären.
 
 Im Browser (Eigentümer): `https://howispulse.com/verbinden` zeigt das Eingabefeld für den Code (Etappe 3).
+
+Run: `git fetch -q origin && git show origin/main:.github/workflows/allinone.yml | grep -cF '"${IMAGE}:stable"'`
+
+Expected: `1` (nur noch im Release-Zweig). `2` heißt: die Phasen-Policy steht noch, jeder `main`-Push setzt `:stable` — hier anhalten (Voraussetzung am Kopf von Etappe 4).
+
+Run: `git ls-remote --tags origin 'v*.*.*' | grep -vcF -e '-'`
+
+Expected: mindestens `1`. `0` heißt: `:stable` zeigt auf keinen bewusst gewählten Stand — hier anhalten. (Das `grep` zählt Vorabversionen wie `v1.0.0-rc1` nicht mit; sie setzen `:stable` nicht.)
 
 - [ ] **Step 2: Paket öffentlich stellen (Eigentümer, im Browser).** `https://github.com/orgs/oblivion-pictures/packages/container/package/pulse` → *Package settings* → *Danger Zone* → *Change visibility* → *Public* → Paketnamen zur Bestätigung eintippen. **Endgültig.** Nur dieses eine Paket; die Cloud-Pakete `pulse-auth`, `pulse-chat-gateway`, `pulse-voice-signaling`, `pulse-media-svc`, `pulse-mediamtx-auth-hook`, `pulse-relay-frps-plugin`, `pulse-web` bleiben privat (Spec §7).
 
@@ -15150,7 +15164,7 @@ Entfallen: `jget`, `TOKEN`, Pflicht von `PULSE_BOOTSTRAP_TOKEN` (wird nur noch e
 6. **TURN-Relay-Ports im Installer.** Die Compose-Dateien veröffentlichen `49160-49200/udp` (Bughunt 2026-09-20), `build_run_args` im Installer nicht, und `check_ports` prüft sie nicht. Lag schon vorher so; eigener Fix, nicht Teil dieses Plans.
 7. **Server-App-Texte.** `desktop/electron/server.html:114` („Token aus „Meine Instanzen““), `desktop/electron/server.js:562` und `desktop/electron/serverProvision.ts:378` verweisen auf „Meine Instanzen“; das Token-Feld der Server-App setzt einen in der App erzeugten Bootstrap-Token voraus, den es nach Etappe 5 nicht mehr gibt (die Server-App holt ihn selbst, das Feld ist nur Rückfall). Änderungen an `desktop/electron/**` erreichen Windows-Nutzer nur mit Versionssprung — beim nächsten ohnehin fälligen Server-App-Release mitziehen, keinen eigenen Sprung dafür.
 8. **`check-changelog.sh` kennt `web/test/` nicht.** Testdateien dort lösen die Changelog-Warnung aus. Harmlos; ein Eintrag `^web/test/` in `NON_USER_FACING` wäre eine eigene Kleinigkeit.
-9. **`stable` = `edge`** (Spec §8): Jeder `main`-Push erreicht ab Etappe 4 binnen Minuten auch fremde Server mit Auto-Update. Organisation mit Zwei-Faktor-Pflicht (Etappe 0) ist die einzige Sicherung davor.
+9. **`stable` = `edge`** (Spec §8): **Entschieden 2026-10-11** — wird vor dem Landen von Etappe 4 aufgehoben (zweite Voraussetzung am Kopf von Etappe 4, geprüft in Task 4.4 Step 1). Bis dahin nicht akut: `:stable` ziehen nur freigegebene Server bekannter Betreiber. Schon heute offen ist der Heim-Server-Weg der Server-App, dessen Container-Variante `:edge` zieht (am 2026-10-09 gab es insgesamt zwei Heim-Server). Die Zwei-Faktor-Pflicht der Organisation (Etappe 0) bleibt zusätzlich nötig: wer die Organisation übernimmt, erreicht weiterhin jeden Auto-Updater.
 10. **Repo-Sichtbarkeit.** `infra/prod/DEPLOY.md` behauptet, ein mit einem privaten Repo verknüpftes Paket könne nicht öffentlich sein. Task 4.4 Step 1 hält an, wenn das Repo privat ist.
 11. **`admin:events` ohne Absender.** Nach Task 6.1 veröffentlicht niemand mehr auf `admin:events`; der Weiterleiter im chat-gateway bleibt als allgemeiner Mechanismus stehen.
 12. **Probe-Konten und Probe-Adresse.** Task 4.4 braucht zwei Test-Konten und eine eigene Domain außerhalb von `howispulse.com`; welche, entscheidet der Eigentümer.

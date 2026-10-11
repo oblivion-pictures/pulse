@@ -265,7 +265,10 @@ zwei per Installer) und zwei Heim-Server (5, 1). Keine offenen Anträge.
   Konsole, die Konsole nennt das bestätigende Konto, `pulse-connect` verbindet
   neu.
 - **`stable` = `edge`** (Phasen-Policy 2026-06-10): Jeder `main`-Push erreicht
-  binnen fünf Minuten jeden Server mit Auto-Update, künftig auch fremde.
+  binnen fünf Minuten jeden Server mit Auto-Update. Entschieden am 2026-10-11:
+  Die Policy fällt vor dem Landen von Etappe 4 (Plan, Voraussetzung Etappe 4);
+  danach bewegt sich `:stable` nur noch mit getaggten Releases. Bewusst auf
+  `:edge` bleiben Atrium und `selfhost.unicutmedia.com`.
 - **Organisations-Sicherheit:** Wer das GitHub-Konto der Organisation
   übernimmt, erreicht jeden Auto-Updater. Zwei-Faktor-Pflicht für Mitglieder
   der Organisation einschalten (Etappe 0).
