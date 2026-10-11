@@ -187,7 +187,7 @@ services:
   # ── migrations (run once, then exit) ───────────────────────────────────────
   migrate-auth:
     <<: *logging
-    image: ghcr.io/oblivion8282-1337/pulse-auth:latest
+    image: ghcr.io/oblivion-pictures/pulse-auth:latest
     container_name: pulse_migrate_auth
     env_file: .env
     working_dir: /app/services/auth
@@ -202,7 +202,7 @@ services:
 
   migrate-chat:
     <<: *logging
-    image: ghcr.io/oblivion8282-1337/pulse-chat-gateway:latest
+    image: ghcr.io/oblivion-pictures/pulse-chat-gateway:latest
     container_name: pulse_migrate_chat
     env_file: .env
     working_dir: /app/services/chat-gateway
@@ -218,7 +218,7 @@ services:
   # ── backend services ───────────────────────────────────────────────────────
   auth:
     <<: *app-common
-    image: ghcr.io/oblivion8282-1337/pulse-auth:latest
+    image: ghcr.io/oblivion-pictures/pulse-auth:latest
     container_name: pulse_auth
     depends_on:
       postgres: { condition: service_healthy }
@@ -240,7 +240,7 @@ services:
 
   chat-gateway:
     <<: *app-common
-    image: ghcr.io/oblivion8282-1337/pulse-chat-gateway:latest
+    image: ghcr.io/oblivion-pictures/pulse-chat-gateway:latest
     container_name: pulse_chat_gateway
     depends_on:
       postgres: { condition: service_healthy }
@@ -261,7 +261,7 @@ services:
 
   voice-signaling:
     <<: *app-common
-    image: ghcr.io/oblivion8282-1337/pulse-voice-signaling:latest
+    image: ghcr.io/oblivion-pictures/pulse-voice-signaling:latest
     container_name: pulse_voice_signaling
     depends_on:
       redis: { condition: service_healthy }
@@ -285,7 +285,7 @@ services:
 
   media-svc:
     <<: *app-common
-    image: ghcr.io/oblivion8282-1337/pulse-media-svc:latest
+    image: ghcr.io/oblivion-pictures/pulse-media-svc:latest
     container_name: pulse_media_svc
     depends_on:
       redis: { condition: service_healthy }
@@ -303,7 +303,7 @@ services:
 
   mediamtx-auth-hook:
     <<: *app-common
-    image: ghcr.io/oblivion8282-1337/pulse-mediamtx-auth-hook:latest
+    image: ghcr.io/oblivion-pictures/pulse-mediamtx-auth-hook:latest
     container_name: pulse_mediamtx_auth_hook
     depends_on:
       redis: { condition: service_healthy }
@@ -319,7 +319,7 @@ services:
 
   relay-frps-plugin:
     <<: *app-common
-    image: ghcr.io/oblivion8282-1337/pulse-relay-frps-plugin:latest
+    image: ghcr.io/oblivion-pictures/pulse-relay-frps-plugin:latest
     container_name: pulse_relay_frps_plugin
     environment:
       AUTH_SVC_URL: http://auth:8000
@@ -352,7 +352,7 @@ services:
   # ── web (SvelteKit SPA + nginx reverse-proxy) ──────────────────────────────
   web:
     <<: *app-common
-    image: ghcr.io/oblivion8282-1337/pulse-web:latest
+    image: ghcr.io/oblivion-pictures/pulse-web:latest
     container_name: pulse_web
     depends_on:
       auth: { condition: service_started }

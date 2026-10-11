@@ -48,6 +48,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           path-to-signatures: 'signatures/version1/cla.json'
-          path-to-document: 'https://github.com/oblivion8282-1337/pulse/blob/main/CLA.md'
+          path-to-document: 'https://github.com/oblivion-pictures/pulse/blob/main/CLA.md'
           branch: 'cla-signaturen'
           allowlist: 'oblivion8282-1337,*[bot]'

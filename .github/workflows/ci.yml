@@ -307,8 +307,8 @@ jobs:
             PULSE_BUILD_VERSION=${{ steps.sha.outputs.short }}
           push: true
           tags: |
-            ghcr.io/oblivion8282-1337/pulse-${{ matrix.name }}:latest
-            ghcr.io/oblivion8282-1337/pulse-${{ matrix.name }}:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/oblivion-pictures/pulse-${{ matrix.name }}:latest
+            ghcr.io/oblivion-pictures/pulse-${{ matrix.name }}:sha-${{ steps.sha.outputs.short }}
           # Der Commit steht als OCI-Label IM Image, nicht nur als Tag daneben.
           # Der Updater auf dem VPS (`infra/prod/pulse-update.sh`) liest ihn aus
           # dem gezogenen Image aus und liefert nur aus, wenn alle sieben Images

@@ -5,7 +5,7 @@
 # Single container that runs every Pulse-Backend-Service + embedded
 # Postgres/Redis + LiveKit + MediaMTX + coturn + Caddy under s6-overlay as
 # process supervisor. Distribution target:
-#   ghcr.io/oblivion8282-1337/pulse-allinone:stable
+#   ghcr.io/oblivion-pictures/pulse:stable
 #
 # Build (from repo root):
 #   docker build -f infra/self-host/Dockerfile \
@@ -207,7 +207,7 @@ RUN cargo build --release --locked \
 # Tag aus dem ARG nimmt (in einem `COPY --from=<literal>` wuerde er nicht
 # aufgeloest). Das Bild ist `FROM scratch` und traegt genau die Binaerdatei.
 ARG PULSE_MEDIAMTX_TAG
-FROM ghcr.io/oblivion8282-1337/pulse-mediamtx:${PULSE_MEDIAMTX_TAG} AS mediamtx-fork
+FROM ghcr.io/oblivion-pictures/pulse-mediamtx:${PULSE_MEDIAMTX_TAG} AS mediamtx-fork
 
 FROM debian:bookworm-slim AS binaries
 ARG S6_OVERLAY_VERSION
@@ -318,7 +318,7 @@ FROM debian:bookworm-slim AS runtime
 ARG PULSE_VERSION
 ARG PYTHON_VERSION
 
-LABEL org.opencontainers.image.source="https://github.com/oblivion8282-1337/pulse" \
+LABEL org.opencontainers.image.source="https://github.com/oblivion-pictures/pulse" \
       org.opencontainers.image.title="Pulse Self-Host All-in-One" \
       org.opencontainers.image.description="Single-container Pulse Self-Host (all services + Postgres + Redis + LiveKit + MediaMTX + Garage + coturn + Caddy)" \
       org.opencontainers.image.version="${PULSE_VERSION}" \

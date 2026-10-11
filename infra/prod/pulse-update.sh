@@ -24,7 +24,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"   # ~/pulse/infra/prod (where docker-compose.yml + .env live)
 
-# Services tracking ghcr.io/oblivion8282-1337/pulse-*:latest — the Watchtower
+# Services tracking ghcr.io/oblivion-pictures/pulse-*:latest — the Watchtower
 # scope, plus the two migrate one-shots. Keep in sync with docker-compose.yml:
 # every service WITHOUT `labels: *pinned-labels` belongs here.
 APP_SERVICES=(
@@ -35,13 +35,13 @@ APP_SERVICES=(
 # The distinct image refs behind those services (migrate-* reuse the auth/chat
 # images, so this is 6 refs, not 8). Used to gate on real changes.
 APP_IMAGES=(
-  ghcr.io/oblivion8282-1337/pulse-auth:latest
-  ghcr.io/oblivion8282-1337/pulse-chat-gateway:latest
-  ghcr.io/oblivion8282-1337/pulse-voice-signaling:latest
-  ghcr.io/oblivion8282-1337/pulse-media-svc:latest
-  ghcr.io/oblivion8282-1337/pulse-mediamtx-auth-hook:latest
-  ghcr.io/oblivion8282-1337/pulse-relay-frps-plugin:latest
-  ghcr.io/oblivion8282-1337/pulse-web:latest
+  ghcr.io/oblivion-pictures/pulse-auth:latest
+  ghcr.io/oblivion-pictures/pulse-chat-gateway:latest
+  ghcr.io/oblivion-pictures/pulse-voice-signaling:latest
+  ghcr.io/oblivion-pictures/pulse-media-svc:latest
+  ghcr.io/oblivion-pictures/pulse-mediamtx-auth-hook:latest
+  ghcr.io/oblivion-pictures/pulse-relay-frps-plugin:latest
+  ghcr.io/oblivion-pictures/pulse-web:latest
 )
 
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }

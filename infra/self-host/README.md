@@ -11,7 +11,7 @@ docs (Cloud-approval, DNS, port-forwarding) land in `docs/self-host-guide.html` 
 written in Phase 6.B.
 
 **Two registries, one image.** `.github/workflows/allinone.yml` builds and
-pushes to `ghcr.io/oblivion8282-1337/pulse-allinone` first, then its `merge`
+pushes to `ghcr.io/oblivion-pictures/pulse` first, then its `merge`
 job mirrors every tag (`imagetools create`) to `registry.howispulse.com/pulse-allinone`
 under the identical tag name. **Operators pull from `registry.howispulse.com`,
 never from GHCR** — the `pulse-*` GHCR packages are private, while
@@ -110,7 +110,7 @@ in `/data/jwt_keys/` and persisted across container restarts.
 | s6-overlay | v3.2.0.2 | github.com/just-containers/s6-overlay | SHA-256 pinned per artifact |
 | Caddy | v2.8.4 | github.com/caddyserver/caddy | SHA-256 pinned per artifact |
 | LiveKit | v1.13.3 | github.com/livekit/livekit | SHA-256 pinned per artifact |
-| MediaMTX | 1.19.1-pulse7 (Pulse-Fork) | ghcr.io/oblivion8282-1337/pulse-mediamtx | Registry-Digest |
+| MediaMTX | 1.19.1-pulse7 (Pulse-Fork) | ghcr.io/oblivion-pictures/pulse-mediamtx | Registry-Digest |
 | Garage | v1.1.0 | dxflrs/garage (Docker Hub) | pinned image tag — the binary is copied into our image (`garage-upstream` stage) |
 | frp (frpc) | 0.69.1 | github.com/fatedier/frp | SHA-256 pinned per artifact |
 | Postgres | 15 (Debian Bookworm) | apt | — (Debian-signed package) |
