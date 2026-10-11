@@ -151,6 +151,15 @@ class Settings(BaseSettings):
     rate_limit_server_ticket: str = "60/minute"
     rate_limit_bootstrap_mint: str = "20/minute"
     rate_limit_bootstrap_redeem: str = "10/minute"
+    # Verbinden per Gerätecode (routes_verbinden.py, Spec 2026-10-09 E8).
+    # ``start`` ist anonym und lässt die Cloud einen fremden Rechner abfragen
+    # — ein Betreiber braucht einen Aufruf je Installation. ``abholen`` fragt
+    # ``pulse-connect`` alle 5 s ab (12/min); 30 lassen Luft für einen
+    # zweiten Server hinter derselben Adresse. ``bestaetigen`` gilt je Konto
+    # für Ansehen und Entscheiden zusammen (zwei Aufrufe je Server).
+    rate_limit_verbinden_start: str = "10/hour"
+    rate_limit_verbinden_abholen: str = "30/minute"
+    rate_limit_verbinden_bestaetigen: str = "20/hour"
     # Selbstbedienungs-Registrierung (Heim-Server, Entscheidung 2026-09-27):
     # pro Konto hart auf 1 Instanz gedeckelt, das Limit schuetzt nur vor
     # Create/Delete-Churn.
@@ -335,6 +344,9 @@ class Settings(BaseSettings):
         "rate_limit_user_search",
         "rate_limit_bootstrap_mint",
         "rate_limit_bootstrap_redeem",
+        "rate_limit_verbinden_start",
+        "rate_limit_verbinden_abholen",
+        "rate_limit_verbinden_bestaetigen",
         "rate_limit_instance_create",
         "rate_limit_relay_tls_check",
         "rate_limit_reachability_probe",
