@@ -36,7 +36,7 @@
   // nur dort liegt ein natives Routing-Plugin darunter. Die Weiche steht hier
   // und nicht in der Komponente, damit es EINE Stelle mit dieser Bedingung
   // gibt. Auf iOS stehen im Menü nur Lautsprecher und Hörmuschel, die
-  // Gerätewahl bleibt dem System (Begründung: audioRoute.ts::iosWegZuWahl).
+  // Gerätewahl bleibt dem System (Begründung: audioRoute.ts::listAudioRoutes).
   //
   // Der Stand lebt im geteilten audioRouteState, deshalb genügt hier ein
   // Auffrischen beim Mount: Einstellungen und Menü sehen jede Änderung der

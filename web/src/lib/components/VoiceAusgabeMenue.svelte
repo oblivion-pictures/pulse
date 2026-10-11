@@ -13,19 +13,27 @@
 
   **Der AirPlay-Eintrag führt aus der App heraus**, anders als die drei
   darüber: er öffnet Apples eigenen Dialog. Das ist Absicht und steht in
-  `audioRoute.ts::iosWegZuWahl` begründet — eine App-eigene Geräteliste wäre
+  `audioRoute.ts::listAudioRoutes` begründet — eine App-eigene Geräteliste wäre
   auf iOS eine zweite, schlechtere Bedienung derselben Sache. Geht der Dialog
   nicht auf, erscheint der Hinweis aufs Kontrollzentrum; ein Knopf, der still
   nichts tut, wäre die schlechtere Antwort (Begründung an der nativen Methode).
+
+  **Das gerade spielende Gerät steht trotzdem da** (iOS, `liste.aktiv`): mit
+  Namen und dem Zeichen seiner Art (`platform/iosAusgang.ts`). Wählbar ist es
+  hier nicht, das bleibt dem System — aber wohin der Ton geht, muss man sehen.
 -->
 <script lang="ts">
   import AirplayIcon from '@lucide/svelte/icons/airplay';
   import BluetoothIcon from '@lucide/svelte/icons/bluetooth';
+  import CarIcon from '@lucide/svelte/icons/car';
   import EarIcon from '@lucide/svelte/icons/ear';
+  import HeadphonesIcon from '@lucide/svelte/icons/headphones';
+  import SpeakerIcon from '@lucide/svelte/icons/speaker';
   import Volume2Icon from '@lucide/svelte/icons/volume-2';
   import { Button } from '$lib/components/ui/button';
   import { m } from '$lib/paraglide/messages.js';
   import { airplayMoeglich, airplayOeffnen, type AudioRoute } from '$lib/platform/audioRoute';
+  import type { AusgangArt } from '$lib/platform/iosAusgang';
   import { audioRouteState } from '$lib/platform/audioRouteState.svelte';
   import { isCapacitorIOS } from '$lib/platform/runtime';
   import { nativerSprachwegDa } from '$lib/platform/iosSprache';
@@ -62,6 +70,25 @@
 
   const eintrag = 'text-text flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm';
   const aktuell = $derived(audioRouteState.liste?.current);
+  /** iOS: das gerade spielende fremde Gerät. Android wählt seine Geräte in der
+   *  Liste darunter und kennt dieses Feld nicht. */
+  const aktiv = $derived(audioRouteState.liste?.aktiv);
+
+  const ZEICHEN: Record<AusgangArt, typeof BluetoothIcon> = {
+    funk: BluetoothIcon,
+    kabel: HeadphonesIcon,
+    airplay: AirplayIcon,
+    auto: CarIcon,
+    sonst: SpeakerIcon
+  };
+  /** Ohne `aktiv` (Android) bleibt es beim Bluetooth-Zeichen, wie bisher. */
+  const GeraetZeichen = $derived(aktiv ? ZEICHEN[aktiv.art] : BluetoothIcon);
+  /** `portName` ist bei iOS kein optionales Feld; der Rückfall ist
+   *  nur dafür da, dass nie eine leere Zeile steht. */
+  const aktivName = $derived(
+    aktiv?.name.trim() ||
+      (aktiv?.art === 'funk' ? m.voice_bar_route_name_bt() : m.voice_bar_route_menu())
+  );
 
   /**
    * **Die Hörmuschel ist auf iOS nicht erreichbar — am 2026-10-10 am Gerät
@@ -112,7 +139,7 @@
     data-testid="voice-audio-route-toggle"
     aria-label={m.voice_bar_route_menu()}
   >
-    {#if aktuell === 'earpiece'}<EarIcon class={iconCls} />{:else if aktuell === 'device'}<BluetoothIcon
+    {#if aktuell === 'earpiece'}<EarIcon class={iconCls} />{:else if aktuell === 'device'}<GeraetZeichen
         class={iconCls}
       />{:else}<Volume2Icon class={iconCls} />{/if}
   </Button>
@@ -121,6 +148,16 @@
       class="bg-bg-panel border-border absolute bottom-full left-1/2 z-30 mb-2 w-52 -translate-x-1/2 rounded-xl border p-1 shadow-lg"
       data-testid="voice-audio-route-menu"
     >
+      {#if aktiv}
+        <div
+          class="{eintrag} bg-bg-hover font-semibold"
+          aria-current="true"
+          data-testid="voice-audio-route-aktiv"
+        >
+          <GeraetZeichen class="size-4" />
+          <span class="truncate">{aktivName}</span>
+        </div>
+      {/if}
       {#if hoermuschelMoeglich}
         <button
           class="{eintrag} {aktuell === 'earpiece' ? 'bg-bg-hover font-semibold' : ''}"
