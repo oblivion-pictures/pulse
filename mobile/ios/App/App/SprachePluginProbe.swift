@@ -87,6 +87,13 @@ import UIKit
                 // zu erledigen statt sie zu glauben.
                 let warten = teile.count > 2 ? (Double(teile[2]) ?? 3) : 3
                 try? await Task.sleep(nanoseconds: UInt64(warten * 1_000_000_000))
+                // Hat der Server das Token inzwischen erneuert? Daran hängt,
+                // dass die Hülle kein eigenes `tokenErneuern` braucht (Entwurf
+                // §4, Nachtrag). Mit über fünf Minuten Wartezeit zeigt es diese
+                // Zeile — ausgegeben wird nur, OB es wechselte, nie das Token.
+                let erneuert = SpracheRaum.geteilt.raum?.token.map { $0 != teile[1] }
+                NSLog("[PulseSprache] Probe TOKEN nach %.0f s erneuert: %@", warten,
+                      erneuert.map { $0 ? "ja" : "nein" } ?? "kein Raum")
 
                 // **Die Ansicht zuerst, dann der Rest.** Sie ist das, was ein
                 // Simulator-Lauf wirklich zeigen kann (Mikrofon und Kamera hat
