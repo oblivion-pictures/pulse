@@ -62,6 +62,22 @@ async def _read_party(r, cid, pid=_PID):
     return json.loads(raw) if raw is not None else None
 
 
+def _kanal_id() -> str:
+    """Zufällige, aber GÜLTIGE Kanal-ID für die Tests, die Redis direkt befüllen.
+
+    Snowflakes sind positive int64: ``parse_snowflake_int`` (``routes/_deps.py``,
+    int64-Klemme seit 2026-09-21) weist alles ab ``2**63`` als „malformed“ ab,
+    und die Handler verwerfen die Op dann still (``handle_leave``,
+    ``handle_heartbeat``) oder antworten mit 4012 (``handle_join``). Bis zum
+    2026-10-12 zogen die Tests aus ``10**18 .. 10**19 - 1``; davon liegen 8,6 %
+    oberhalb der Klemme. Fünf Tests fielen dann um, zwei liefen grün, ohne den
+    Handler je zu erreichen. Die Datei allein war in 8 von 20 Läufen rot, mit
+    wechselndem Testnamen — es sah aus wie Flackern unter Last und hing an
+    keiner Last, sondern nur an der gezogenen Zahl.
+    """
+    return str(random.randint(10**18, 2**63 - 1))
+
+
 # =============================================================================
 # 1. parse_source
 # =============================================================================
@@ -955,7 +971,7 @@ async def test_cleanup_on_disconnect_schedules_end_not_promote(redis, monkeypatc
 
     monkeypatch.setattr(watchkeys, "WATCH_HOST_GRACE_S", 0)
     uid = random.randint(1, 1_000_000)
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     host_ws = _ErrWS(redis, mgr)  # same instance is redis source + registry key
     await mgr.watch_join(cid, _PID, str(uid), host_ws, now_ms=1000)
@@ -979,7 +995,7 @@ async def test_cleanup_on_disconnect_ends_when_solo(redis, monkeypatch):
 
     monkeypatch.setattr(watchkeys, "WATCH_HOST_GRACE_S", 0)
     uid = random.randint(1, 1_000_000)
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     host_ws = _ErrWS(redis, mgr)
     await mgr.watch_join(cid, _PID, str(uid), host_ws, now_ms=1000)
@@ -998,7 +1014,7 @@ async def test_cleanup_on_disconnect_multitab_keeps_party(redis):
     from dcc_chat_gateway.security import AuthenticatedUser
 
     uid = random.randint(1, 1_000_000)
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     tab1 = _ErrWS(redis, mgr)
     tab2 = _ErrWS(redis, mgr)
@@ -1028,7 +1044,7 @@ async def test_detach_sibling_socket_keeps_party_when_main_leaves(redis):
     from dcc_chat_gateway.security import AuthenticatedUser
 
     uid = random.randint(1, 1_000_000)
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     main_ws = _ErrWS(redis, mgr)  # main window (anchor)
     popup_ws = _ErrWS(redis, mgr)  # detached popup, same user
@@ -1046,6 +1062,10 @@ async def test_detach_sibling_socket_keeps_party_when_main_leaves(redis):
         new = await _read_party(redis, cid)
         assert new["host_user_id"] == str(uid)  # party intact, still hosted by uid
         assert str(uid) in await mgr.watchers(cid, _PID)  # popup socket still a watcher
+        # Der Leave muss tatsächlich gewirkt haben — sonst stünden alle Zeilen
+        # darüber auch ohne jeden Handler-Aufruf (so geschehen bei ungültiger
+        # Kanal-ID, s. ``_kanal_id``).
+        assert mgr._watchers[(cid, _PID)][str(uid)].sockets == {popup_ws}
     finally:
         await redis.delete(f"watch:channel-{cid}")
 
@@ -1060,7 +1080,7 @@ async def test_watch_leave_after_party_end_is_clean_noop(redis):
     from dcc_chat_gateway.security import AuthenticatedUser
 
     uid = random.randint(1, 1_000_000)
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     main_ws = _ErrWS(redis, mgr)
     await mgr.watch_join(cid, _PID, str(uid), main_ws, now_ms=1000)  # phantom anchor
@@ -1287,7 +1307,7 @@ def test_promoted_state_swaps_host_and_refreshes_position():
 async def test_promote_or_end_promotes_oldest_other_watcher(redis):
     from dcc_chat_gateway.routes.watch_handoff import promote_or_end
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     host_ws = object()
     await mgr.watch_join(cid, _PID, "111", host_ws, now_ms=1000)
@@ -1308,7 +1328,7 @@ async def test_promote_or_end_promotes_oldest_other_watcher(redis):
 async def test_promote_or_end_deletes_when_no_watchers_left(redis):
     from dcc_chat_gateway.routes.watch_handoff import promote_or_end
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     await _seed_party(redis, cid, _state(host="111"))
     await promote_or_end(redis, mgr, cid, _PID, "111")
@@ -1319,7 +1339,7 @@ async def test_promote_or_end_deletes_when_no_watchers_left(redis):
 async def test_promote_or_end_noop_for_non_host_departure(redis):
     from dcc_chat_gateway.routes.watch_handoff import promote_or_end
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     await mgr.watch_join(cid, _PID, "111", object(), now_ms=1000)
     await mgr.watch_join(cid, _PID, "222", object(), now_ms=2000)
@@ -1367,7 +1387,7 @@ async def test_handoff_to_valid_target_swaps_host(redis, _handoff_member_ok):
     from dcc_chat_gateway.routes import watch_handoff
     from dcc_chat_gateway.security import AuthenticatedUser
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     await mgr.watch_join(cid, _PID, "111", object(), now_ms=1000)
     await mgr.watch_join(cid, _PID, "222", object(), now_ms=2000)
@@ -1391,7 +1411,7 @@ async def test_handoff_to_non_watcher_errors_4018(redis, _handoff_member_ok):
     from dcc_chat_gateway.routes import watch_handoff
     from dcc_chat_gateway.security import AuthenticatedUser
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     await mgr.watch_join(cid, _PID, "111", object(), now_ms=1000)
     await _seed_party(redis, cid, _state(host="111"))
@@ -1414,7 +1434,7 @@ async def test_handoff_by_non_host_errors_4015(redis, _handoff_member_ok):
     from dcc_chat_gateway.routes import watch_handoff
     from dcc_chat_gateway.security import AuthenticatedUser
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     await mgr.watch_join(cid, _PID, "111", object(), now_ms=1000)
     await mgr.watch_join(cid, _PID, "222", object(), now_ms=2000)
@@ -1438,7 +1458,7 @@ async def test_handoff_non_member_errors_4004(redis):
     from dcc_chat_gateway.routes import watch_handoff
     from dcc_chat_gateway.security import AuthenticatedUser
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     await mgr.watch_join(cid, _PID, "111", object(), now_ms=1000)
     await _seed_party(redis, cid, _state(host="111"))
@@ -1475,8 +1495,7 @@ async def test_handle_join_registers_and_broadcasts(redis):
 
     mgr.broadcast_watchers = _rec  # type: ignore[method-assign]
 
-    cid_int = random.randint(10**18, 10**19 - 1)
-    cid = str(cid_int)
+    cid = _kanal_id()
     uid = random.randint(1, 1_000_000)
 
     ws = _ErrWS(redis, mgr)
@@ -1518,7 +1537,7 @@ async def test_heartbeat_rejects_out_of_range_position(redis):
     from dcc_chat_gateway.routes import ws_watch
     from dcc_chat_gateway.security import AuthenticatedUser
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     # updated_at far in the past so the debounce wouldn't block a valid write.
     await _seed_party(
         redis, cid, _state(host="111", position=5.0, updated_at=watchkeys.now_ms() - 60_000)
@@ -1551,7 +1570,7 @@ async def test_heartbeat_drops_stale_source_epoch(redis):
     from dcc_chat_gateway.routes import ws_watch
     from dcc_chat_gateway.security import AuthenticatedUser
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     # Party is now on its second clip (epoch 1), freshly reset to position 0.
     await _seed_party(
         redis,
@@ -1592,7 +1611,7 @@ async def test_heartbeat_drops_stale_source_epoch(redis):
 async def test_grace_expires_ends_party(redis, monkeypatch):
     """Host gone, no reconnect within the grace → party ends."""
     monkeypatch.setattr(watchkeys, "WATCH_HOST_GRACE_S", 0)
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     await _seed_party(redis, cid, _state(host="111"))
     try:
@@ -1607,7 +1626,7 @@ async def test_grace_expires_ends_party(redis, monkeypatch):
 async def test_host_reconnect_within_grace_cancels_end(redis):
     """Host rejoins as a watcher before the grace expires → timer cancelled,
     party intact."""
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     await _seed_party(redis, cid, _state(host="111"))
     try:
@@ -1631,7 +1650,7 @@ async def test_host_reconnect_within_grace_cancels_end(redis):
 async def test_end_if_host_deletes_for_host(redis):
     from dcc_chat_gateway.routes.watch_handoff import end_if_host
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     await _seed_party(redis, cid, _state(host="111"))
     await end_if_host(redis, cid, _PID, "111")
     assert await _read_party(redis, cid) is None
@@ -1641,7 +1660,7 @@ async def test_end_if_host_deletes_for_host(redis):
 async def test_end_if_host_noop_for_viewer(redis):
     from dcc_chat_gateway.routes.watch_handoff import end_if_host
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     await _seed_party(redis, cid, _state(host="111"))
     try:
         await end_if_host(redis, cid, _PID, "222")  # viewer leaving
@@ -1656,7 +1675,7 @@ async def test_end_or_grace_if_host_schedules_for_host(redis, monkeypatch):
     from dcc_chat_gateway.routes.watch_handoff import end_or_grace_if_host
 
     monkeypatch.setattr(watchkeys, "WATCH_HOST_GRACE_S", 0)
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     await _seed_party(redis, cid, _state(host="111"))
     try:
@@ -1671,7 +1690,7 @@ async def test_end_or_grace_if_host_schedules_for_host(redis, monkeypatch):
 async def test_end_or_grace_if_host_noop_for_viewer(redis):
     from dcc_chat_gateway.routes.watch_handoff import end_or_grace_if_host
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     await _seed_party(redis, cid, _state(host="111"))
     try:
@@ -1696,7 +1715,7 @@ async def test_handle_leave_host_ends_immediately(redis):
     from dcc_chat_gateway.security import AuthenticatedUser
 
     uid = random.randint(1, 1_000_000)
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     host_ws = _ErrWS(redis, mgr)
     await mgr.watch_join(cid, _PID, str(uid), host_ws, now_ms=1000)
@@ -1720,7 +1739,7 @@ async def test_handle_leave_viewer_keeps_party(redis):
     from dcc_chat_gateway.routes import ws_watch
     from dcc_chat_gateway.security import AuthenticatedUser
 
-    cid = str(random.randint(10**18, 10**19 - 1))
+    cid = _kanal_id()
     mgr = _reg_mgr()
     host_ws = _ErrWS(redis, mgr)
     viewer_ws = _ErrWS(redis, mgr)
@@ -1735,5 +1754,8 @@ async def test_handle_leave_viewer_keeps_party(redis):
         )
         new = await _read_party(redis, cid)
         assert new["host_user_id"] == "111"
+        # Belegt, dass der Leave den Handler erreicht hat (s. ``_kanal_id``):
+        # die Party unberührt zu finden gelänge auch ohne ihn.
+        assert await mgr.watchers(cid, _PID) == ["111"]
     finally:
         await redis.delete(f"watch:channel-{cid}")
