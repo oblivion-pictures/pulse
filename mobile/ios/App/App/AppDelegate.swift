@@ -180,6 +180,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             SpracheAnsichtProbe.ausStartargumenten()
             WiedergabebegrenzerProbe.ausStartargumenten()
             ShareReceiverProbe.ausStartargumenten()
+            SpracheBildImBildProbe.ausStartargumenten()
         #endif
         // Schnellwahl beim KALTSTART: iOS legt die Wahl in die
         // `launchOptions` und ruft `performActionFor` dann NICHT. Wer nur den

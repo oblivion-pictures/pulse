@@ -202,6 +202,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         try await nochAktuell(r)
         schickeTeilnehmer()
         schickeEigenen()
+        await MainActor.run { SpracheBildImBild.geteilt.raumDa(r) }
     }
 
     /// Steht `r` noch als laufender Raum? Wenn nicht, hat ein Verlassen ihn
@@ -226,6 +227,8 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // Der Begrenzer gehört zum Sprachkanal; der nächste Beitritt hängt ihn
         // wieder ein, wenn die Einstellung es will (`SpracheRaumTaub.swift`).
         tonFaden.async { Self.begrenzerSetzen(false) }
+        // Das Bild-in-Bild-Fenster zeigt diesen Raum — es geht mit ihm.
+        DispatchQueue.main.async { SpracheBildImBild.geteilt.raumWeg(r) }
     }
 
     /// `sitzung`: nur verlassen, wenn genau dieser Beitritt noch läuft. `nil`

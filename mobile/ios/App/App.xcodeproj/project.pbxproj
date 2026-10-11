@@ -27,6 +27,9 @@
 		A1B2C3D4E5F60718000001A7 /* Wiedergabebegrenzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001A8 /* Wiedergabebegrenzer.swift */; };
 		A1B2C3D4E5F60718000001A9 /* WiedergabebegrenzerProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001AA /* WiedergabebegrenzerProbe.swift */; };
 		A1B2C3D4E5F6071800000185 /* SpracheAnsicht.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071800000186 /* SpracheAnsicht.swift */; };
+		A1B2C3D4E5F60718000001B0 /* SpracheBildImBild.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001B1 /* SpracheBildImBild.swift */; };
+		A1B2C3D4E5F60718000001B2 /* SpracheBildImBildInhalt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001B3 /* SpracheBildImBildInhalt.swift */; };
+		A1B2C3D4E5F60718000001B4 /* SpracheBildImBildProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001B5 /* SpracheBildImBildProbe.swift */; };
 		A1B2C3D4E5F6071800000187 /* SpracheKachel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071800000188 /* SpracheKachel.swift */; };
 		A1B2C3D4E5F6071800000189 /* SpracheSteuerleiste.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607180000018A /* SpracheSteuerleiste.swift */; };
 		A1B2C3D4E5F607180000018B /* SpracheAnsichtHalter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607180000018C /* SpracheAnsichtHalter.swift */; };
@@ -93,6 +96,9 @@
 		A1B2C3D4E5F60718000001A8 /* Wiedergabebegrenzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wiedergabebegrenzer.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000001AA /* WiedergabebegrenzerProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiedergabebegrenzerProbe.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071800000186 /* SpracheAnsicht.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheAnsicht.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001B1 /* SpracheBildImBild.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheBildImBild.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001B3 /* SpracheBildImBildInhalt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheBildImBildInhalt.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001B5 /* SpracheBildImBildProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheBildImBildProbe.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071800000188 /* SpracheKachel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheKachel.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F607180000018A /* SpracheSteuerleiste.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheSteuerleiste.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F607180000018C /* SpracheAnsichtHalter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheAnsichtHalter.swift; sourceTree = "<group>"; };
@@ -216,6 +222,9 @@
 				A1B2C3D4E5F60718000001A8 /* Wiedergabebegrenzer.swift */,
 				A1B2C3D4E5F60718000001AA /* WiedergabebegrenzerProbe.swift */,
 				A1B2C3D4E5F6071800000186 /* SpracheAnsicht.swift */,
+				A1B2C3D4E5F60718000001B1 /* SpracheBildImBild.swift */,
+				A1B2C3D4E5F60718000001B3 /* SpracheBildImBildInhalt.swift */,
+				A1B2C3D4E5F60718000001B5 /* SpracheBildImBildProbe.swift */,
 				A1B2C3D4E5F6071800000188 /* SpracheKachel.swift */,
 				A1B2C3D4E5F607180000018A /* SpracheSteuerleiste.swift */,
 				A1B2C3D4E5F607180000018C /* SpracheAnsichtHalter.swift */,
@@ -458,6 +467,9 @@
 				A1B2C3D4E5F60718000001A7 /* Wiedergabebegrenzer.swift in Sources */,
 				A1B2C3D4E5F60718000001A9 /* WiedergabebegrenzerProbe.swift in Sources */,
 				A1B2C3D4E5F6071800000185 /* SpracheAnsicht.swift in Sources */,
+				A1B2C3D4E5F60718000001B0 /* SpracheBildImBild.swift in Sources */,
+				A1B2C3D4E5F60718000001B2 /* SpracheBildImBildInhalt.swift in Sources */,
+				A1B2C3D4E5F60718000001B4 /* SpracheBildImBildProbe.swift in Sources */,
 				A1B2C3D4E5F6071800000187 /* SpracheKachel.swift in Sources */,
 				A1B2C3D4E5F6071800000189 /* SpracheSteuerleiste.swift in Sources */,
 				A1B2C3D4E5F607180000018B /* SpracheAnsichtHalter.swift in Sources */,

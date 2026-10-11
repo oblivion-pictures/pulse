@@ -111,6 +111,8 @@ struct SpracheAnsicht: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            // System-Bild-in-Bild (Punkt 29) — nur, wo das Gerät es kann.
+            SpracheBildImBildKnopf(fehlerMelden: { self.fehler = $0 })
         }
         .padding(.trailing, 16)
         .padding(.top, 4)
@@ -164,6 +166,8 @@ struct SpracheAnsicht: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
         }
+        // Das Bild-in-Bild-Fenster wächst aus dieser Fläche heraus.
+        .background(SpracheBildImBildAnker())
     }
 
     /// **Bis zwei Kacheln EINE Spalte, darüber so viele wie hineinpassen.**
