@@ -1,9 +1,14 @@
 # Pulse fork of MediaMTX
 
-A patched MediaMTX image, built as a multi-stage Dockerfile, published to
-`ghcr.io/oblivion8282-1337/pulse-mediamtx:<tag>`, consumed by both
-`streaming/server/docker-compose.yml` (dev) and `infra/prod/docker-compose.yml`
-(prod).
+A patched MediaMTX image, built as a multi-stage Dockerfile. Since the move to
+the organisation (October 2026) it is published to
+`ghcr.io/oblivion-pictures/pulse-mediamtx:<tag>` and copied into the self-host
+image (`infra/self-host/Dockerfile`). `streaming/server/docker-compose.yml`
+(dev), `infra/dev-remote/docker-compose.yml` and `infra/prod/docker-compose.yml`
+(prod) still pin the copy built before the move under
+`ghcr.io/oblivion8282-1337/pulse-mediamtx`. At the next new tag — even a mere
+`PULSE_REVISION` bump — namespace and tag change together in all three files
+(order rules in the Dockerfile header).
 
 ## What it does
 
@@ -68,8 +73,8 @@ Testserver von Hand versorgt wird.
 `.github/workflows/mediamtx-fork.yml` rebuilds the image when anything under
 `infra/mediamtx-fork/` changes on `main`. It pushes two tags to GHCR:
 
-- `ghcr.io/oblivion8282-1337/pulse-mediamtx:1.19.1-pulse7` — version pin (MediaMTX-Fassung + unser Patch-Stand, s. `PULSE_REVISION` im Dockerfile)
-- `ghcr.io/oblivion8282-1337/pulse-mediamtx:latest`        — rolling
+- `ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse7` — version pin (MediaMTX-Fassung + unser Patch-Stand, s. `PULSE_REVISION` im Dockerfile)
+- `ghcr.io/oblivion-pictures/pulse-mediamtx:latest`        — rolling
 
 Both compose files reference the version-pinned tag. The image sets no labels
 on purpose: Watchtower is gone project-wide (it mounted the Docker socket),

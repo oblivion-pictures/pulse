@@ -10,8 +10,12 @@
 # Output: two tags pushed to GHCR (Version und Patch-Stand liest der Lauf aus
 # dem Dockerfile, das die Quelle der Wahrheit bleibt — der Tag unten ist der
 # Stand vom 2026-09-03 und altert hier, nicht dort)
-#   ghcr.io/oblivion8282-1337/pulse-mediamtx:1.19.1-pulse7  ← what compose pins
-#   ghcr.io/oblivion8282-1337/pulse-mediamtx:latest        ← rolling, unused
+#   ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse7  ← copied by infra/self-host/Dockerfile
+#   ghcr.io/oblivion-pictures/pulse-mediamtx:latest        ← rolling, unused
+# (Seit dem Umzug in die Organisation, Oktober 2026. Die drei Compose-Dateien
+# pinnen noch das vorher gebaute Bild unter ghcr.io/oblivion8282-1337/; beim
+# nächsten neuen Tag wechseln Namensraum und Tag dort zugleich — Reihenfolge
+# im Kopf von infra/mediamtx-fork/Dockerfile.)
 #
 # Build time: ~3 min cold, ~30 s with the gha cache warm.
 #
@@ -98,7 +102,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/oblivion8282-1337/pulse-mediamtx:${{ steps.ver.outputs.tag }}
-            ghcr.io/oblivion8282-1337/pulse-mediamtx:latest
+            ghcr.io/oblivion-pictures/pulse-mediamtx:${{ steps.ver.outputs.tag }}
+            ghcr.io/oblivion-pictures/pulse-mediamtx:latest
           cache-from: type=gha,scope=mediamtx-fork
           cache-to: type=gha,mode=max,scope=mediamtx-fork
