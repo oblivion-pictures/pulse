@@ -55,6 +55,11 @@
 		     ohne Fehlermeldung, der Push verschwindet einfach. -->
 		<string>voip</string>
 	</array>
+	<!-- Live Activity „Im Sprachkanal" (Roadmap Punkt 28). Ohne diesen Eintrag
+	     lehnt ActivityKit jede Anforderung ab; die Darstellung liegt in der
+	     Widget-Erweiterung (WidgetExtension/SpracheAktivitaetWidget.swift). -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

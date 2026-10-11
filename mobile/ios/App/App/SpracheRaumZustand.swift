@@ -179,11 +179,11 @@ extension SpracheRaum {
     }
 
     func schickeTeilnehmer() {
-        melde?("teilnehmer", ["liste": teilnehmerListe()])
+        melden("teilnehmer", ["liste": teilnehmerListe()])
     }
 
     func schickeEigenen() {
-        melde?("eigenerZustand", [
+        melden("eigenerZustand", [
             "mikro": raum?.localParticipant.isMicrophoneEnabled() ?? false,
             "kamera": raum?.localParticipant.isCameraEnabled() ?? false,
             "kameraVorn": kameraVorn,
@@ -216,7 +216,7 @@ extension SpracheRaum: RoomDelegate {
               from alt: ConnectionState) {
         NSLog("[PulseSprache] Verbindung %@ → %@", "\(alt)", "\(state)")
         guard room === raum else { return }
-        melde?("verbindung", ["zustand": Self.verbindungsName(state)])
+        melden("verbindung", ["zustand": Self.verbindungsName(state)])
         if state == .connected { schickeTeilnehmer() }
     }
 
@@ -227,7 +227,7 @@ extension SpracheRaum: RoomDelegate {
         // Raum selbst ab, auch die Ansicht (`raumAbgerissen`) — die Oberfläche
         // kann gerade eingefroren sein und erst später davon erfahren.
         raumAbgerissen(room)
-        melde?("verbindung", ["zustand": "disconnected",
+        melden("verbindung", ["zustand": "disconnected",
                               "fehler": error?.localizedDescription ?? NSNull()])
     }
 
@@ -235,7 +235,7 @@ extension SpracheRaum: RoomDelegate {
         NSLog("[PulseSprache] Verbinden fehlgeschlagen: %@",
               error?.localizedDescription ?? "unbekannt")
         guard room === raum else { return }
-        melde?("verbindung", ["zustand": "disconnected",
+        melden("verbindung", ["zustand": "disconnected",
                               "fehler": error?.localizedDescription ?? "unbekannt"])
     }
 
@@ -346,7 +346,7 @@ extension SpracheRaum: RoomDelegate {
     /// braucht, zeichnet ihn nativ — das tut `SpracheKachel`.
     func room(_ room: Room, didUpdateSpeakingParticipants participants: [Participant]) {
         guard room === raum else { return }
-        melde?("sprechen", [
+        melden("sprechen", [
             "sprechen": participants.compactMap { $0.identity?.stringValue }
         ])
     }

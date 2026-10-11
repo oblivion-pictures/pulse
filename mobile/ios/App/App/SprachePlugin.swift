@@ -77,6 +77,9 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let kanalId = call.getString("kanalId") ?? ""
         let kanalName = call.getString("kanalName") ?? ""
+        // Nur für die Live Activity (`SpracheLiveAktivitaet`). Eine ältere
+        // Web-App schickt das Feld nicht; die Aktivität zeigt dann nur den Kanal.
+        let communityName = call.getString("communityName") ?? ""
         let stumm = call.getBool("startStumm") ?? false
         let taub = call.getBool("startTaub") ?? false
         let (je, gesamt) = Self.hoerwunsch(call)
@@ -86,7 +89,8 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
         befehl(call, "beitritt") {
             try await SpracheRaum.geteilt.beitreten(
                 wsUrl: wsUrl, token: token, kanalId: kanalId, kanalName: kanalName,
-                stumm: stumm, taubStart: taub, lautstaerken: je, gesamt: gesamt)
+                communityName: communityName, stumm: stumm, taubStart: taub,
+                lautstaerken: je, gesamt: gesamt)
         }
     }
 
@@ -141,6 +145,8 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
         let taub = Set(call.getArray("taub", String.self) ?? [])
         DispatchQueue.main.async {
             SpracheStand.geteilt.erzwungenSetzen(stumm: stumm, taub: taub)
+            // Die Live Activity bietet ohne Freigabe keinen Mikrofon-Knopf an.
+            SpracheLiveAktivitaet.anstossen()
             call.resolve(SpracheRaum.geteilt.zustand())
         }
     }

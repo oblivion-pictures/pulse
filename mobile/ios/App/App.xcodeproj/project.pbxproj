@@ -67,6 +67,24 @@
 		7E11E0000000000000000078 /* ShareReceiverProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000059 /* ShareReceiverProbe.swift */; };
 		7E11E0000000000000000079 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000050 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7E11E000000000000000007A /* TeilenUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E000000000000000005A /* TeilenUITests.swift */; };
+		7E22E0000000000000000200 /* PulseWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000101 /* PulseWidgets.swift */; };
+		7E22E0000000000000000201 /* UngelesenWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000102 /* UngelesenWidget.swift */; };
+		7E22E0000000000000000202 /* SpracheAktivitaetWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000103 /* SpracheAktivitaetWidget.swift */; };
+		7E22E0000000000000000203 /* SpracheAktivitaetTeile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000104 /* SpracheAktivitaetTeile.swift */; };
+		7E22E0000000000000000204 /* SpracheAktivitaetDaten.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000107 /* SpracheAktivitaetDaten.swift */; };
+		7E22E0000000000000000205 /* SpracheAktivitaetAbsichten.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000108 /* SpracheAktivitaetAbsichten.swift */; };
+		7E22E0000000000000000206 /* UngelesenAblage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000109 /* UngelesenAblage.swift */; };
+		7E22E0000000000000000210 /* SpracheAktivitaetDaten.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000107 /* SpracheAktivitaetDaten.swift */; };
+		7E22E0000000000000000211 /* SpracheAktivitaetAbsichten.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000108 /* SpracheAktivitaetAbsichten.swift */; };
+		7E22E0000000000000000212 /* UngelesenAblage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000109 /* UngelesenAblage.swift */; };
+		7E22E0000000000000000213 /* SpracheLiveAktivitaet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010A /* SpracheLiveAktivitaet.swift */; };
+		7E22E0000000000000000214 /* UngelesenPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010B /* UngelesenPlugin.swift */; };
+		7E22E0000000000000000215 /* SpracheLiveAktivitaetProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010C /* SpracheLiveAktivitaetProbe.swift */; };
+		7E22E0000000000000000216 /* UngelesenProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010D /* UngelesenProbe.swift */; };
+		7E22E0000000000000000217 /* Befehlskette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010E /* Befehlskette.swift */; };
+		7E22E0000000000000000207 /* AppGruppe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000056 /* AppGruppe.swift */; };
+		7E22E0000000000000000220 /* WidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000100 /* WidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		7E22E0000000000000000221 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010F /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -136,6 +154,22 @@
 		7E11E0000000000000000054 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7E11E0000000000000000055 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		7E11E000000000000000005A /* TeilenUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenUITests.swift; sourceTree = "<group>"; };
+		7E22E0000000000000000100 /* WidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E22E0000000000000000101 /* PulseWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseWidgets.swift; sourceTree = "<group>"; };
+		7E22E0000000000000000102 /* UngelesenWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UngelesenWidget.swift; sourceTree = "<group>"; };
+		7E22E0000000000000000103 /* SpracheAktivitaetWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheAktivitaetWidget.swift; sourceTree = "<group>"; };
+		7E22E0000000000000000104 /* SpracheAktivitaetTeile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheAktivitaetTeile.swift; sourceTree = "<group>"; };
+		7E22E0000000000000000107 /* SpracheAktivitaetDaten.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheAktivitaetDaten.swift; sourceTree = "<group>"; };
+		7E22E0000000000000000108 /* SpracheAktivitaetAbsichten.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheAktivitaetAbsichten.swift; sourceTree = "<group>"; };
+		7E22E0000000000000000109 /* UngelesenAblage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UngelesenAblage.swift; sourceTree = "<group>"; };
+		7E22E000000000000000010A /* SpracheLiveAktivitaet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheLiveAktivitaet.swift; sourceTree = "<group>"; };
+		7E22E000000000000000010B /* UngelesenPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UngelesenPlugin.swift; sourceTree = "<group>"; };
+		7E22E000000000000000010C /* SpracheLiveAktivitaetProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheLiveAktivitaetProbe.swift; sourceTree = "<group>"; };
+		7E22E000000000000000010D /* UngelesenProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UngelesenProbe.swift; sourceTree = "<group>"; };
+		7E22E000000000000000010E /* Befehlskette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Befehlskette.swift; sourceTree = "<group>"; };
+		7E22E0000000000000000105 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7E22E0000000000000000106 /* WidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WidgetExtension.entitlements; sourceTree = "<group>"; };
+		7E22E000000000000000010F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -146,6 +180,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				7E11E0000000000000000079 /* ShareExtension.appex in Embed Foundation Extensions */,
+				7E22E0000000000000000220 /* WidgetExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -175,6 +210,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7E22E0000000000000000021 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -187,6 +229,7 @@
 				A1B2C3D4E5F6071800000007 /* AppUITests */,
 				7E11E0000000000000000040 /* ShareExtension */,
 				7E11E0000000000000000041 /* Gemeinsam */,
+				7E22E0000000000000000040 /* WidgetExtension */,
 
 			);
 			sourceTree = "<group>";
@@ -206,6 +249,7 @@
 				504EC3041FED79650016851F /* App.app */,
 				A1B2C3D4E5F6071800000002 /* AppUITests.xctest */,
 				7E11E0000000000000000050 /* ShareExtension.appex */,
+				7E22E0000000000000000100 /* WidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -253,6 +297,11 @@
 				A1B2C3D4E5F6071800000132 /* SperrePlugin.swift */,
 				7E11E0000000000000000058 /* ShareReceiverPlugin.swift */,
 				7E11E0000000000000000059 /* ShareReceiverProbe.swift */,
+				7E22E000000000000000010E /* Befehlskette.swift */,
+				7E22E000000000000000010A /* SpracheLiveAktivitaet.swift */,
+				7E22E000000000000000010C /* SpracheLiveAktivitaetProbe.swift */,
+				7E22E000000000000000010B /* UngelesenPlugin.swift */,
+				7E22E000000000000000010D /* UngelesenProbe.swift */,
 				A1B2C3D4E5F60718293A4B5D /* PrivacyInfo.xcprivacy */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
@@ -285,8 +334,25 @@
 			children = (
 				7E11E0000000000000000056 /* AppGruppe.swift */,
 				7E11E0000000000000000057 /* TeilenAblage.swift */,
+				7E22E0000000000000000107 /* SpracheAktivitaetDaten.swift */,
+				7E22E0000000000000000108 /* SpracheAktivitaetAbsichten.swift */,
+				7E22E0000000000000000109 /* UngelesenAblage.swift */,
 			);
 			path = Gemeinsam;
+			sourceTree = "<group>";
+		};
+		7E22E0000000000000000040 /* WidgetExtension */ = {
+			isa = PBXGroup;
+			children = (
+				7E22E0000000000000000101 /* PulseWidgets.swift */,
+				7E22E0000000000000000102 /* UngelesenWidget.swift */,
+				7E22E0000000000000000103 /* SpracheAktivitaetWidget.swift */,
+				7E22E0000000000000000104 /* SpracheAktivitaetTeile.swift */,
+				7E22E0000000000000000105 /* Info.plist */,
+				7E22E0000000000000000106 /* WidgetExtension.entitlements */,
+				7E22E000000000000000010F /* PrivacyInfo.xcprivacy */,
+			);
+			path = WidgetExtension;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -305,6 +371,7 @@
 			);
 			dependencies = (
 				7E11E0000000000000000031 /* PBXTargetDependency */,
+				7E22E0000000000000000031 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -349,6 +416,23 @@
 			productReference = 7E11E0000000000000000050 /* ShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		7E22E0000000000000000010 /* WidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E22E0000000000000000011 /* Build configuration list for PBXNativeTarget "WidgetExtension" */;
+			buildPhases = (
+				7E22E0000000000000000020 /* Sources */,
+				7E22E0000000000000000021 /* Frameworks */,
+				7E22E0000000000000000022 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WidgetExtension;
+			productName = WidgetExtension;
+			productReference = 7E22E0000000000000000100 /* WidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXContainerItemProxy section */
@@ -366,6 +450,13 @@
 			remoteGlobalIDString = 7E11E0000000000000000010;
 			remoteInfo = ShareExtension;
 		};
+		7E22E0000000000000000030 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E22E0000000000000000010;
+			remoteInfo = WidgetExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXTargetDependency section */
@@ -379,6 +470,11 @@
 			target = 7E11E0000000000000000010 /* ShareExtension */;
 			targetProxy = 7E11E0000000000000000030 /* PBXContainerItemProxy */;
 		};
+		7E22E0000000000000000031 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7E22E0000000000000000010 /* WidgetExtension */;
+			targetProxy = 7E22E0000000000000000030 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
@@ -389,6 +485,9 @@
 				LastUpgradeCheck = 0920;
 				TargetAttributes = {
 					7E11E0000000000000000010 = {
+						CreatedOnToolsVersion = 2600.0;
+					};
+					7E22E0000000000000000010 = {
 						CreatedOnToolsVersion = 2600.0;
 					};
 					A1B2C3D4E5F6071800000001 = {
@@ -423,6 +522,7 @@
 				504EC3031FED79650016851F /* App */,
 				A1B2C3D4E5F6071800000001 /* AppUITests */,
 				7E11E0000000000000000010 /* ShareExtension */,
+				7E22E0000000000000000010 /* WidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -449,6 +549,14 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E22E0000000000000000022 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E22E0000000000000000221 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -500,6 +608,14 @@
 				7E11E0000000000000000076 /* TeilenAblage.swift in Sources */,
 				7E11E0000000000000000077 /* ShareReceiverPlugin.swift in Sources */,
 				7E11E0000000000000000078 /* ShareReceiverProbe.swift in Sources */,
+				7E22E0000000000000000210 /* SpracheAktivitaetDaten.swift in Sources */,
+				7E22E0000000000000000211 /* SpracheAktivitaetAbsichten.swift in Sources */,
+				7E22E0000000000000000212 /* UngelesenAblage.swift in Sources */,
+				7E22E0000000000000000213 /* SpracheLiveAktivitaet.swift in Sources */,
+				7E22E0000000000000000214 /* UngelesenPlugin.swift in Sources */,
+				7E22E0000000000000000215 /* SpracheLiveAktivitaetProbe.swift in Sources */,
+				7E22E0000000000000000216 /* UngelesenProbe.swift in Sources */,
+				7E22E0000000000000000217 /* Befehlskette.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -521,6 +637,21 @@
 				7E11E0000000000000000072 /* TeilenBild.swift in Sources */,
 				7E11E0000000000000000073 /* AppGruppe.swift in Sources */,
 				7E11E0000000000000000074 /* TeilenAblage.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E22E0000000000000000020 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E22E0000000000000000200 /* PulseWidgets.swift in Sources */,
+				7E22E0000000000000000201 /* UngelesenWidget.swift in Sources */,
+				7E22E0000000000000000202 /* SpracheAktivitaetWidget.swift in Sources */,
+				7E22E0000000000000000203 /* SpracheAktivitaetTeile.swift in Sources */,
+				7E22E0000000000000000204 /* SpracheAktivitaetDaten.swift in Sources */,
+				7E22E0000000000000000205 /* SpracheAktivitaetAbsichten.swift in Sources */,
+				7E22E0000000000000000206 /* UngelesenAblage.swift in Sources */,
+				7E22E0000000000000000207 /* AppGruppe.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -795,6 +926,58 @@
 			};
 			name = Release;
 		};
+		7E22E0000000000000000012 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = WidgetExtension/WidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = WidgetExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.howispulse.app.WidgetExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7E22E0000000000000000013 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = WidgetExtension/WidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = WidgetExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.howispulse.app.WidgetExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -830,6 +1013,15 @@
 			buildConfigurations = (
 				7E11E0000000000000000012 /* Debug */,
 				7E11E0000000000000000013 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E22E0000000000000000011 /* Build configuration list for PBXNativeTarget "WidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E22E0000000000000000012 /* Debug */,
+				7E22E0000000000000000013 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

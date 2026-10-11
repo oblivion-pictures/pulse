@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Gemeinsamer Container mit der App: hier liest das Widget
+	     „Ungelesen" seine Zahl (`Gemeinsam/UngelesenAblage.swift`). Kennung
+	     auch in `Gemeinsam/AppGruppe.swift`, `App/App.entitlements` und
+	     `ShareExtension/ShareExtension.entitlements`. Am Gerät braucht das
+	     eine eigene App-ID mit der Fähigkeit „App Groups" — der Handgriff
+	     steht in docs/plans/ios-roadmap.md, Punkt 28/45. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.howispulse.app</string>
+	</array>
+</dict>
+</plist>

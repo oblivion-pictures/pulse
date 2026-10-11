@@ -43,7 +43,8 @@ import LiveKit
 final class SpracheRaum: NSObject, @unchecked Sendable {
     static let geteilt = SpracheRaum()
 
-    /// Meldet ein Ereignis an die Brücke. Wird vom Plugin gesetzt.
+    /// Meldet ein Ereignis an die Brücke. Wird vom Plugin gesetzt; gerufen
+    /// wird es nur über `melden`.
     var melde: ((String, [String: Any]) -> Void)?
 
     /// Reicht einen Knopfdruck der nativen Ansicht an die Oberfläche weiter.
@@ -136,10 +137,17 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         try await kette.nacheinander(arbeit)
     }
 
+    /// Ein Ereignis an die Oberfläche — und an die Live Activity, die aus
+    /// jeder Meldung den Stand neu am Raum liest (`SpracheLiveAktivitaet`).
+    func melden(_ name: String, _ nutzlast: [String: Any]) {
+        melde?(name, nutzlast)
+        SpracheLiveAktivitaet.anstossen()
+    }
+
     // MARK: - Steuerung
 
     func beitreten(wsUrl: String, token: String, kanalId: String, kanalName: String,
-                   stumm: Bool, taubStart: Bool,
+                   communityName: String = "", stumm: Bool, taubStart: Bool,
                    lautstaerken: [String: Double]? = nil, gesamt: Double? = nil) async throws {
         await verlassen()
         sessionBeobachtenFallsNoetig()
@@ -203,6 +211,8 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         schickeTeilnehmer()
         schickeEigenen()
         await MainActor.run { SpracheBildImBild.geteilt.raumDa(r) }
+        SpracheLiveAktivitaet.beginnen(
+            kanalName: kanalName, communityName: communityName, sitzung: sitzung)
     }
 
     /// Steht `r` noch als laufender Raum? Wenn nicht, hat ein Verlassen ihn
@@ -229,6 +239,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         tonFaden.async { Self.begrenzerSetzen(false) }
         // Das Bild-in-Bild-Fenster zeigt diesen Raum — es geht mit ihm.
         DispatchQueue.main.async { SpracheBildImBild.geteilt.raumWeg(r) }
+        SpracheLiveAktivitaet.beenden(sitzung: sitzung)
     }
 
     /// `sitzung`: nur verlassen, wenn genau dieser Beitritt noch läuft. `nil`
@@ -316,29 +327,5 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         }
         NSLog("[PulseSprache] Ausgabe '%@' gewuenscht", weg)
         schickeEigenen()
-    }
-}
-
-/// Befehle der Reihe nach — für `SpracheRaum` und `AnrufRaum` dieselbe
-/// Mechanik (Begründung an `SpracheRaum.nacheinander`). Jeder Befehl wartet
-/// auf den vorigen; ein Fehlschlag reisst die Kette nicht ab.
-final class Befehlskette: @unchecked Sendable {
-    private let sperre = NSLock()
-    private var letzte: Task<Void, Never>?
-
-    func nacheinander<T>(_ arbeit: @escaping () async throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { fortsetzen in
-            sperre.lock()
-            let vorher = letzte
-            letzte = Task {
-                await vorher?.value
-                do {
-                    fortsetzen.resume(returning: try await arbeit())
-                } catch {
-                    fortsetzen.resume(throwing: error)
-                }
-            }
-            sperre.unlock()
-        }
     }
 }

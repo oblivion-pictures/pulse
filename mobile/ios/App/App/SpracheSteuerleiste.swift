@@ -240,6 +240,6 @@ extension SpracheRaum {
     private func selbstAuflegen() async {
         guard raum != nil else { return }
         await verlassen()
-        melde?("verbindung", ["zustand": "disconnected"])
+        melden("verbindung", ["zustand": "disconnected"])
     }
 }

@@ -2,15 +2,18 @@ import Foundation
 
 /// Der gemeinsame Container der App und ihrer Erweiterungen (App Group).
 ///
-/// **Ein allgemeiner Name, mit Absicht.** Heute legt nur die Teilen-Erweiterung
-/// hier etwas ab (Punkt 41 der iOS-Liste). Widgets und Live Activity (Punkte
-/// 45 und 28) brauchen denselben Container, und eine App Group lässt sich
-/// nachträglich nicht umbenennen, ohne dass beide Profile neu entstehen. Wer
-/// sie hier `…share` genannt hätte, müsste sie für das erste Widget ersetzen.
+/// **Ein allgemeiner Name, mit Absicht.** Zwei Erweiterungen teilen ihn: die
+/// Teilen-Erweiterung legt hier Pakete ab (Punkt 41 der iOS-Liste), das Widget
+/// „Ungelesen“ liest hier seine Zahl (Punkt 45, `UngelesenAblage`). Eine App
+/// Group lässt sich nachträglich nicht umbenennen, ohne dass alle Profile neu
+/// entstehen; wer sie `…share` genannt hätte, hätte sie fürs Widget ersetzen
+/// müssen. Die Live Activity (Punkt 28) braucht den Container NICHT — ihren
+/// Stand trägt ActivityKit von der App zur Erweiterung.
 ///
-/// Die Kennung steht ein zweites Mal in beiden `.entitlements`-Dateien
-/// (`App/App.entitlements`, `ShareExtension/ShareExtension.entitlements`) —
-/// das ist die Stelle, die iOS liest. Wer sie ändert, zieht alle drei mit.
+/// Die Kennung steht ein weiteres Mal in jeder `.entitlements`-Datei
+/// (`App/App.entitlements`, `ShareExtension/ShareExtension.entitlements`,
+/// `WidgetExtension/WidgetExtension.entitlements`) — das ist die Stelle, die
+/// iOS liest. Wer sie ändert, zieht alle vier mit.
 enum AppGruppe {
     static let kennung = "group.com.howispulse.app"
 

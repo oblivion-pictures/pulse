@@ -170,6 +170,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // irgendeine WebView existiert — ein Capacitor-Plugin gibt es dann
         // noch nicht. Begründung im Kopf von `AnrufPlugin.swift`.
         Anrufverwaltung.geteilt.starten()
+        // Knöpfe der Live Activity einhängen und Reste eines früheren Laufs
+        // abräumen — auch hier und nicht im Plugin: iOS startet die App für
+        // einen solchen Knopf im Hintergrund, womöglich ohne WebView.
+        SpracheLiveAktivitaet.einrichten()
         #if DEBUG
             // Prüfpfad für den nativen Sprachweg — tut nichts ohne das
             // Startargument, und existiert in Release-Bauten gar nicht.
@@ -181,6 +185,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             WiedergabebegrenzerProbe.ausStartargumenten()
             ShareReceiverProbe.ausStartargumenten()
             SpracheBildImBildProbe.ausStartargumenten()
+            SpracheLiveAktivitaetProbe.ausStartargumenten()
+            UngelesenProbe.ausStartargumenten()
         #endif
         // Schnellwahl beim KALTSTART: iOS legt die Wahl in die
         // `launchOptions` und ruft `performActionFor` dann NICHT. Wer nur den
@@ -234,6 +240,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationWillResignActive(_ application: UIApplication) {
         privacySchutz(true)
+        Ungelesen.beimVerlassen()
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
@@ -254,6 +261,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationWillTerminate(_ application: UIApplication) {
         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+        SpracheLiveAktivitaet.beimBeendenDerApp()
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {

@@ -8,7 +8,9 @@
 	     Store-Eintrags (Self-Host sammelt der Betreiber des eigenen Servers).
 	     Erfasst ist hier nur die Pflicht-API mit Grund: UserDefaults
 	     (Capacitor-Präferenzen, Push-Badges) — Kategorie CA92.1, Daten der
-	     App selbst. -->
+	     App selbst. Dazu 1C8F.1: die Zahl für das Widget „Ungelesen" liegt
+	     in den UserDefaults der App Group (`Gemeinsam/UngelesenAblage.swift`),
+	     die nur App und eigene Erweiterungen lesen. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
@@ -23,6 +25,7 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+				<string>1C8F.1</string>
 			</array>
 		</dict>
 	</array>
