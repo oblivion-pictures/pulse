@@ -577,9 +577,22 @@ test.describe.serial('Watch Party E2E', () => {
     await wsSend(alicePage, 'wpmain', { op: 'watch_join', channel_id: cid, party_id: detachPid });
 
     // Popup window: same user, sibling socket joins and takes over.
+    //
+    // Der Gateway liest die Frames eines Sockets erst nach dessen `ready` und
+    // arbeitet sie der Reihe nach ab — ein `pong` hinter dem `watch_join`
+    // beweist also, dass der Join im Register steht. Bis zum 2026-10-11 wartete
+    // der Test hier auf ein `watch_watchers` mit Alice darin; das schickt aber
+    // schon der Join des Hauptfensters an den frisch registrierten
+    // Popup-Socket, VOR dessen `ready` (gemessen: `hello, watch_watchers,
+    // ready`). Der Test ging dann weiter, bevor der Popup beigetreten war, das
+    // Hauptfenster war beim Verlassen der letzte Socket der Gastgeberin, und
+    // der Server beendete die Party. Ob das zuschlug, war reine Zeitfrage: auf
+    // `main` 4 von 4 grün, auf `feat/ios` 2 von 2 rot, bei gleicher
+    // `ready`-Dauer (je ~30–60 ms).
     await wsOpen(alicePage, 'wppopup');
     await wsSend(alicePage, 'wppopup', { op: 'watch_join', channel_id: cid, party_id: detachPid });
-    await wsWaitFor(alicePage, 'wppopup', 'watch_watchers', aliceUserId);
+    await wsSend(alicePage, 'wppopup', { op: 'ping' });
+    await wsWaitFor(alicePage, 'wppopup', 'pong');
 
     // Main window leaves (reattach / main-window close). With the popup holding
     // the watcher anchor, the party survives — host stays Alice, not ended.
