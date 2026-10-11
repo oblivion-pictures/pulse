@@ -63,11 +63,19 @@ async def nachweis_lesen(klient: httpx.AsyncClient, ziel: Ziel, erwartet: str) -
     try:
         async with asyncio.timeout(FRIST_S):
             async with klient.stream(
-                "GET", ziel.url(PFAD), headers=ziel.kopf(), extensions=ziel.sni
+                "GET",
+                ziel.url(PFAD),
+                headers=ziel.kopf({"Accept-Encoding": "identity"}),
+                extensions=ziel.sni,
             ) as antwort:
                 if antwort.status_code != 200:
                     return "kein_nachweis"
-                async for stueck in antwort.aiter_bytes():
+                # Roh lesen, nicht entpackt: ``aiter_bytes`` liefert erst, was
+                # httpx aus einem Stück schon entpackt hat, und ein Unbekannter
+                # packt 64 MiB Nullen in 64 KiB — der Speicher wäre belegt,
+                # ehe die Grenze unten greift. Ein komprimierter Körper ist
+                # damit schlicht kein JSON und endet als ``kein_nachweis``.
+                async for stueck in antwort.aiter_raw():
                     roh += stueck
                     if len(roh) > _HOECHSTENS_BYTES:
                         return "kein_nachweis"

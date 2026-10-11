@@ -9,8 +9,11 @@ Tests sie einzeln.
 from __future__ import annotations
 
 import asyncio
+import gzip
 import hashlib
+import inspect
 import ssl
+import tracemalloc
 
 import httpx
 import pytest
@@ -26,8 +29,35 @@ def _ziel() -> Ziel:
     return Ziel("pulse.example.com", "203.0.113.7")
 
 
+class _Stuecke(httpx.AsyncByteStream):
+    """Antwortkörper in festen Stücken, so wie httpcore ihn vom Netz liest;
+    zählt mit, wie viel davon die Cloud tatsächlich abgeholt hat."""
+
+    def __init__(self, stuecke: list[bytes]) -> None:
+        self._stuecke = stuecke
+        self.abgeholt = 0
+
+    async def __aiter__(self):
+        for stueck in self._stuecke:
+            self.abgeholt += len(stueck)
+            yield stueck
+
+
 def _klient(handler) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    async def als_strom(request: httpx.Request) -> httpx.Response:
+        antwort = handler(request)
+        if inspect.isawaitable(antwort):
+            antwort = await antwort
+        if not antwort.is_stream_consumed:
+            return antwort
+        # ``httpx.Response(content=…)`` liest den Körper schon im Konstruktor;
+        # ein echter Transport liefert ihn dagegen als ungelesenen Strom, und
+        # genau den liest ``nachweis_lesen`` roh. Also wie das Netz ausliefern.
+        return httpx.Response(
+            antwort.status_code, headers=antwort.headers, stream=_Stuecke([antwort.content])
+        )
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(als_strom))
 
 
 def _antwort(antwort: httpx.Response):
@@ -94,6 +124,53 @@ async def test_kein_nachweis(antwort):
 def test_klient_folgt_keinen_weiterleitungen():
     # Eine Weiterleitung ins Innere der Cloud umginge die geprüfte Adresse.
     assert vn._klient().follow_redirects is False
+
+
+async def test_anfrage_verbittet_sich_jede_kompression():
+    gesehen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        gesehen.append(request)
+        return httpx.Response(200, json={"nachweis": _ERWARTET})
+
+    assert await _lesen(handler) is None
+    # httpx schickt von sich aus "gzip, deflate"; der Unbekannte soll gar nicht
+    # erst die Wahl haben, die Grössengrenze durch Entpacken zu umgehen.
+    (anfrage,) = gesehen
+    assert anfrage.headers["accept-encoding"] == "identity"
+
+
+async def test_komprimierte_antwort_gilt_nicht():
+    # Auch wenn der Server trotz "identity" komprimiert: gelesen wird, was auf
+    # der Leitung liegt, und das ist kein JSON.
+    gepackt = gzip.compress(b'{"nachweis": "' + _ERWARTET.encode() + b'"}')
+    antwort = httpx.Response(200, headers={"Content-Encoding": "gzip"}, stream=_Stuecke([gepackt]))
+    assert await _lesen(_antwort(antwort)) == "kein_nachweis"
+
+
+async def test_gzip_bombe_wird_nicht_entpackt():
+    # 64 MiB Nullen packen auf rund 64 KiB. Entpackte die Cloud jedes Stück,
+    # das sie liest, hätte das erste (16 KiB gepackt, rund 16 MiB entpackt)
+    # den Speicher schon gefüllt, ehe die Grössengrenze greift.
+    gepackt = gzip.compress(bytes(64 * 1024 * 1024), compresslevel=9)
+    stuecke = [gepackt[i : i + 16384] for i in range(0, len(gepackt), 16384)]
+    koerper = _Stuecke(stuecke)
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"Content-Encoding": "gzip"}, stream=koerper)
+
+    tracemalloc.start()
+    try:
+        befund = await _lesen(handler)
+        _, spitze = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert befund == "kein_nachweis"
+    # Gelesen wird bis über die Grenze und dann nicht weiter: höchstens die
+    # 4 KiB plus das Stück, das sie überschritten hat.
+    assert koerper.abgeholt <= vn._HOECHSTENS_BYTES + 16384
+    assert spitze < 1024 * 1024, f"Speicherspitze {spitze / 1024 / 1024:.1f} MiB"
 
 
 async def test_zertifikat_wird_erkannt():
