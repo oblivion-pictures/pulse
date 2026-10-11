@@ -91,6 +91,8 @@ class Berechtigungsblatt {
   /** Offenes Blatt, oder `null`. Die Komponente rendert daran. */
   offen = $state<Berechtigung | null>(null);
   #loesen: ((weiter: boolean) => void) | null = null;
+  /** Wurde das offene Blatt von seinem Aufrufer zurückgezogen (`abbrechen`)? */
+  #zurueckgezogen = false;
 
   /**
    * Vor dem System-Dialog aufrufen. Löst `true` auf, wenn der Aufrufer den
@@ -122,6 +124,10 @@ class Berechtigungsblatt {
     });
     this.offen = null;
     this.#loesen = null;
+    const zurueckgezogen = this.#zurueckgezogen;
+    this.#zurueckgezogen = false;
+    // Ein zurückgezogenes Blatt ist keine Antwort des Nutzers — nichts merken.
+    if (zurueckgezogen) return false;
     // Nur ANLASSLOSE Ablehnungen werden gemerkt — bei Mikrofon und Kamera ist
     // „später" das Abbrechen der Handlung, nicht das Ablehnen der Erklärung
     // (Begründung an `ablehnungMerken`). Gemerkt wird der ZEITPUNKT: das
@@ -133,6 +139,23 @@ class Berechtigungsblatt {
   /** Von der Komponente gerufen. */
   antworten(weiter: boolean): void {
     this.#loesen?.(weiter);
+  }
+
+  /**
+   * Das offene Blatt dieser Art zurückziehen, weil die Handlung, die es
+   * geöffnet hat, verschwunden ist (iOS-Bughunt 2, F7). Der wartende Aufrufer
+   * bekommt `false`, und gemerkt wird nichts — der Nutzer hat nicht
+   * geantwortet.
+   *
+   * Ohne das blieb die Kamera-Erklärung stehen, nachdem die Kamera-Ansicht
+   * darunter schon weg war (Android: die Zurück-Taste schliesst die Ansicht,
+   * nicht das Blatt). Ein „Erlauben" öffnete danach Kamera und Mikrofon für
+   * eine Ansicht, die es nicht mehr gab.
+   */
+  abbrechen(art: Berechtigung): void {
+    if (this.offen !== art || !this.#loesen) return;
+    this.#zurueckgezogen = true;
+    this.#loesen(false);
   }
 }
 

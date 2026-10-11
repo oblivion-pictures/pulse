@@ -34,3 +34,16 @@ test('zweimal fragen gibt es nicht', () => {
 		false
 	);
 });
+
+test('ohne Plugin im Bau wird nicht gefragt — und es gilt nicht als gefragt (F8)', () => {
+	// iOS-Bughunt 2, F8: ein älterer Bau ohne ReviewPlugin verbrauchte die
+	// einzige Frage, bevor er sie stellen konnte.
+	assert.equal(
+		sollFragen({ gesendet: SENDUNGEN_BIS_ZUR_FRAGE, bereitsGefragt: false, pluginDa: false }),
+		false
+	);
+	assert.equal(
+		sollFragen({ gesendet: SENDUNGEN_BIS_ZUR_FRAGE, bereitsGefragt: false, pluginDa: true }),
+		true
+	);
+});

@@ -1,3 +1,4 @@
+import { huelleKennt } from './huelleKann';
 import { isCapacitorIOS } from './runtime';
 import { sollFragen } from './bewertungRegel';
 import { sendungZaehlen } from './eigeneSendungen';
@@ -68,7 +69,10 @@ export function sendungGezaehlt(): void {
   // Android. Die Bewertungsfrage selbst bleibt iOS-eigen.
   const gesendet = sendungZaehlen();
   if (!isCapacitorIOS()) return;
-  if (!sollFragen({ gesendet, bereitsGefragt: bereitsGefragt() })) return;
+  // Erst fragen, ob der Bau fragen KANN — sonst verbrauchte ein älterer Bau
+  // ohne Plugin die einzige Frage (F8, s. `bewertungRegel.ts`).
+  const pluginDa = huelleKennt('ReviewPlugin', 'anfragen');
+  if (!sollFragen({ gesendet, bereitsGefragt: bereitsGefragt(), pluginDa })) return;
   // Erst merken, dann fragen: bricht der Aufruf ab, soll er trotzdem nicht
   // bei der nächsten Nachricht wieder kommen.
   merkeGefragt();

@@ -349,7 +349,14 @@
     }
   });
 
+  /** Hochgezählt im Abbau des `open`-Effekts, also bei jedem Wechsel von
+   *  `open` und beim Abbau der Komponente. Ein `starten`, das über ein
+   *  `await` hinweg seinen Lauf verloren hat, gehört zu einer Ansicht, die
+   *  nicht mehr steht (iOS-Bughunt 2, F7). */
+  let lauf = 0;
+
   async function starten(): Promise<void> {
+    const meinLauf = lauf;
     fehler = false;
     liveLaeuft = false;
     ersteFrameDa = false;
@@ -361,7 +368,11 @@
     // `platform/berechtigungRegel.ts`. „Später" bricht hier ab, ohne den
     // System-Dialog zu öffnen: eine einmal verweigerte Kamera-Erlaubnis wäre
     // auf iOS dauerhaft weg.
-    if (!(await berechtigungsblatt.fragen('kamera', standLesen('kamera')))) {
+    const weiter = await berechtigungsblatt.fragen('kamera', standLesen('kamera'));
+    // Die Ansicht ist inzwischen zu: nichts mehr öffnen, auch kein Schliessen
+    // melden — das tat ihr Abbau schon.
+    if (meinLauf !== lauf) return;
+    if (!weiter) {
       // „Später" heisst hier: die Kamera gar nicht öffnen. Also SCHLIESSEN —
       // ein blosses `return` liess die Lade-Fläche stehen („Kamera startet …"),
       // weil sie an `!liveLaeuft && !fehler` hängt und beides falsch blieb.
@@ -372,11 +383,18 @@
     }
     try {
       stream?.getTracks().forEach((t) => t.stop());
-      stream = await navigator.mediaDevices.getUserMedia({
+      const neu = await navigator.mediaDevices.getUserMedia({
         // Ton immer mit — der Video-Modus braucht ihn, Foto ignoriert ihn.
         video: { facingMode: nutzeFront ? 'user' : 'environment' },
         audio: true
       });
+      // Während des System-Dialogs geschlossen: Kamera und Mikrofon sofort
+      // wieder freigeben, sonst liefen sie ohne Ansicht weiter (F7).
+      if (meinLauf !== lauf) {
+        neu.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      stream = neu;
       // Der Zugriff hat geklappt — also liegt die Erlaubnis vor, und zwar für
       // beides: der Aufruf oben verlangt Bild UND Ton. Gemerkt, damit die
       // Vorerklärung nicht bei jedem Öffnen wiederkommt (es gibt in einer
@@ -633,6 +651,10 @@
       });
     return () => {
       untrack(() => {
+        // Ein laufendes `starten` verliert seinen Lauf, und eine noch offene
+        // Kamera-Erklärung geht mit der Ansicht (F7).
+        lauf += 1;
+        berechtigungsblatt.abbrechen('kamera');
         if (nimmtAuf) rekorder?.stop();
         cancelAnimationFrame(zeichenRahmen);
         clearInterval(rekordTimer);

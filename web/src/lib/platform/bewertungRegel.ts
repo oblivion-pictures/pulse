@@ -22,9 +22,19 @@ export interface Bewertungsstand {
   gesendet: number;
   /** Wurde schon einmal gefragt? */
   bereitsGefragt: boolean;
+  /** Kann der installierte Bau überhaupt fragen (`ReviewPlugin.anfragen`)?
+   *  Fehlt die Angabe, gilt ja — so riefen es die Aufrufer vor F8. */
+  pluginDa?: boolean;
 }
 
+/**
+ * **Ohne Plugin wird nicht gefragt — und das zählt nicht als gefragt**
+ * (iOS-Bughunt 2, F8). Bis zum 2026-10-11 merkte sich die Web-App „gefragt",
+ * bevor sie wusste, ob die Hülle die Frage stellen kann. Ein älterer Bau ohne
+ * `ReviewPlugin` verbrauchte die einzige Frage damit wortlos, und nach dem
+ * Update kam sie nie.
+ */
 export function sollFragen(stand: Bewertungsstand): boolean {
-  if (stand.bereitsGefragt) return false;
+  if (stand.bereitsGefragt || stand.pluginDa === false) return false;
   return stand.gesendet >= SENDUNGEN_BIS_ZUR_FRAGE;
 }

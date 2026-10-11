@@ -1077,6 +1077,16 @@ export class GatewayConnection {
       } catch {
         /* schliesst schon */
       }
+      // **Und sofort neu wählen, nicht erst auf das `close` warten**
+      // (iOS-Bughunt 2, F6). Der Socket steht jetzt in CLOSING; sein `close`
+      // kommt erst mit dem Ende des Schliess-Handschlags, und der endet auf
+      // totem Netz nie — es sei denn, WebKit gibt auf, nach ungemessener
+      // Zeit. Bis dahin stand die App nach dem Aufwachen ohne Verbindung da.
+      // Die zweite Prüfung sieht den Socket im Abbau und verbindet sofort
+      // (`wachentscheid.ts`, CLOSING → `sofort-verbinden`); `connect` hängt
+      // ihn dabei ab. Die Frist liegt über dem Mindestabstand zweier
+      // Prüfungen, der greift hier also nicht.
+      this.wachPruefen();
     }, WS_WACH_FRIST_MS);
   }
 

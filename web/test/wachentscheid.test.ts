@@ -1,5 +1,7 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { WS_WACH_FRIST_MS } from '../src/lib/api/constants.ts';
 import {
   GESCHLOSSEN,
   MINDESTABSTAND_MS,
@@ -54,4 +56,22 @@ test('die drei Ausloeser beim Entsperren feuern gemeinsam — nur der erste zaeh
     wachEntscheid(lage({ seitLetzterPruefungMs: MINDESTABSTAND_MS })),
     'sofort-verbinden'
   );
+});
+
+test('nach dem Schliessen eines toten Sockets wählt die Weckprüfung sofort neu (F6)', () => {
+  // iOS-Bughunt 2, F6: die Prüfung schloss den toten Socket und wartete auf
+  // dessen `close` — das auf totem Netz ungemessen lange ausbleibt. Sie ruft
+  // sich danach selbst noch einmal; dieser zweite Ruf muss am Socket im Abbau
+  // neu verbinden, und die Frist muss über dem Mindestabstand liegen, sonst
+  // schluckte der zweite Ruf sich selbst.
+  assert.ok(WS_WACH_FRIST_MS > MINDESTABSTAND_MS);
+  assert.equal(
+    wachEntscheid(lage({ bereit: SCHLIESST, seitLetzterPruefungMs: WS_WACH_FRIST_MS })),
+    'sofort-verbinden'
+  );
+  const quelle = readFileSync(
+    new URL('../src/lib/ws/gateway-connection.ts', import.meta.url),
+    'utf8'
+  );
+  assert.match(quelle, /ws\.close\(\);[\s\S]*?\}\s*\/\/[\s\S]*?this\.wachPruefen\(\);\s*\}, WS_WACH_FRIST_MS\);/);
 });
