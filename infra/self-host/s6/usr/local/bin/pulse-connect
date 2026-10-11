@@ -1,0 +1,19 @@
+#!/bin/sh
+# pulse-connect — diesen Server mit einem Pulse-Konto verbinden.
+#   docker exec -it pulse pulse-connect [--no-restart] [--yes]
+#
+# Dieselbe Umgebung wie der chat-gateway (s6-rc.d/chat-gateway/run): die Dienste
+# lesen ausschliesslich /etc/pulse/env.sh, und nur dort stehen die Werte aus
+# /data/pulse/verbindung.env (07-render-env.sh). Die Logik steht in
+# services/chat-gateway/src/dcc_chat_gateway/verbinden_cli.py.
+#
+# Bewusst OHNE gosu: der Neustart am Ende (/run/s6/basedir/bin/halt) braucht
+# root. Warum die Dateien trotzdem für den Dienst lesbar bleiben, steht im Kopf
+# von verbinden_cli.py.
+set -eu
+if [ ! -r /etc/pulse/env.sh ]; then
+    echo "pulse-connect: the server is still starting. Wait a moment and try again." >&2
+    exit 1
+fi
+. /etc/pulse/env.sh
+exec /opt/pulse/venv/bin/python3 -m dcc_chat_gateway.verbinden_cli "$@"
