@@ -65,6 +65,8 @@
 		7E11E0000000000000000074 /* TeilenAblage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000057 /* TeilenAblage.swift */; };
 		7E11E0000000000000000075 /* AppGruppe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000056 /* AppGruppe.swift */; };
 		7E11E0000000000000000076 /* TeilenAblage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000057 /* TeilenAblage.swift */; };
+		A1B2C3D4E5F60718000001D3 /* TeilenWettlauf.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001D2 /* TeilenWettlauf.swift */; };
+		A1B2C3D4E5F60718000001D4 /* TeilenWettlauf.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001D2 /* TeilenWettlauf.swift */; };
 		7E11E0000000000000000077 /* ShareReceiverPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000058 /* ShareReceiverPlugin.swift */; };
 		7E11E0000000000000000078 /* ShareReceiverProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000059 /* ShareReceiverProbe.swift */; };
 		7E11E0000000000000000079 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000050 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -155,6 +157,7 @@
 		7E11E0000000000000000053 /* TeilenBild.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenBild.swift; sourceTree = "<group>"; };
 		7E11E0000000000000000056 /* AppGruppe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGruppe.swift; sourceTree = "<group>"; };
 		7E11E0000000000000000057 /* TeilenAblage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenAblage.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001D2 /* TeilenWettlauf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenWettlauf.swift; sourceTree = "<group>"; };
 		7E11E0000000000000000058 /* ShareReceiverPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareReceiverPlugin.swift; sourceTree = "<group>"; };
 		7E11E0000000000000000059 /* ShareReceiverProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareReceiverProbe.swift; sourceTree = "<group>"; };
 		7E11E0000000000000000054 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -346,6 +349,7 @@
 			children = (
 				7E11E0000000000000000056 /* AppGruppe.swift */,
 				7E11E0000000000000000057 /* TeilenAblage.swift */,
+				A1B2C3D4E5F60718000001D2 /* TeilenWettlauf.swift */,
 				7E22E0000000000000000107 /* SpracheAktivitaetDaten.swift */,
 				7E22E0000000000000000108 /* SpracheAktivitaetAbsichten.swift */,
 				7E22E0000000000000000109 /* UngelesenAblage.swift */,
@@ -620,6 +624,7 @@
 				A1B2C3D4E5F6071800000131 /* SperrePlugin.swift in Sources */,
 				7E11E0000000000000000075 /* AppGruppe.swift in Sources */,
 				7E11E0000000000000000076 /* TeilenAblage.swift in Sources */,
+				A1B2C3D4E5F60718000001D3 /* TeilenWettlauf.swift in Sources */,
 				7E11E0000000000000000077 /* ShareReceiverPlugin.swift in Sources */,
 				7E11E0000000000000000078 /* ShareReceiverProbe.swift in Sources */,
 				7E22E0000000000000000210 /* SpracheAktivitaetDaten.swift in Sources */,
@@ -653,6 +658,7 @@
 				7E11E0000000000000000072 /* TeilenBild.swift in Sources */,
 				7E11E0000000000000000073 /* AppGruppe.swift in Sources */,
 				7E11E0000000000000000074 /* TeilenAblage.swift in Sources */,
+				A1B2C3D4E5F60718000001D4 /* TeilenWettlauf.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

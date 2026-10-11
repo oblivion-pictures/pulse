@@ -10,9 +10,16 @@ import UniformTypeIdentifiers
 /// genauso, als `EXTRA_TEXT`. Mehr lässt die Aktivierungsregel in der
 /// `Info.plist` gar nicht erst herein (ein Bild, eine Adresse, Text).
 enum TeilenEinsammeln {
-    enum Ausgang { case abgelegt, nichtsBrauchbares, fehlgeschlagen }
+    enum Ausgang {
+        case abgelegt, nichtsBrauchbares, fehlgeschlagen
+        /// Frist oder Abbruch haben vorher entschieden (`TeilenWettlauf`) —
+        /// es wurde nichts abgelegt, und die Karte hat darauf schon reagiert.
+        case ueberholt
+    }
 
-    static func einsammelnUndAblegen(_ eingaben: [Any]) async -> Ausgang {
+    /// Abgelegt wird nur, wenn `wettlauf` es noch zulässt: ist die Frist um
+    /// oder hat der Nutzer abgebrochen, bleibt die Ablage leer.
+    static func einsammelnUndAblegen(_ eingaben: [Any], wettlauf: TeilenWettlauf) async -> Ausgang {
         var texte: [String] = []
         var bild: TeilenBild.Kodiert?
         for case let eintrag as NSExtensionItem in eingaben {
@@ -35,6 +42,10 @@ enum TeilenEinsammeln {
         // Text) — einmal genügt, Reihenfolge wie angeboten.
         var gesehen = Set<String>()
         let text = texte.filter { gesehen.insert($0).inserted }.joined(separator: "\n")
+        // Auch „nichts brauchbar" ist ein Ergebnis, das erst gelten darf, wenn
+        // Frist und Abbruch nicht schon entschieden haben — sonst überschriebe
+        // es die Karte der Frist, oder zeigte etwas nach einem Abbruch.
+        guard wettlauf.entscheiden(.fertig) else { return .ueberholt }
         guard !text.isEmpty || bild != nil else { return .nichtsBrauchbares }
 
         let paket = GeteiltesPaket(

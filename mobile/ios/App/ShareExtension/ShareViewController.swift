@@ -25,6 +25,14 @@ final class ShareViewController: UIViewController {
     private let knopf = UIButton(type: .system)
     private let rad = UIActivityIndicatorView(style: .large)
     private var beendet = false
+    /// Steht ein Ergebnis auf der Karte? Bis dahin bricht der Knopf ab.
+    private var ergebnisSteht = false
+    private let wettlauf = TeilenWettlauf()
+
+    /// So lange darf das Einsammeln dauern (iOS-Bughunt 2, D3). **Gesetzt,
+    /// nicht gemessen** — grosszügig, weil ein Foto aus iCloud erst geladen
+    /// werden muss; wer nicht warten will, hat den Knopf „Abbrechen“.
+    private static let frist: TimeInterval = 60
 
     /// Die Markenfarbe der App (`SpracheFarben.marke`), hier nachgestellt:
     /// die Erweiterung ist ein eigenes Programm und sieht den App-Code nicht.
@@ -53,11 +61,14 @@ final class ShareViewController: UIViewController {
         super.viewDidLoad()
         aufbauen()
         Task { await uebergeben() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.frist) { [weak self] in
+            self?.fristAbgelaufen()
+        }
     }
 
     private func uebergeben() async {
-        let ausgang = await TeilenEinsammeln.einsammelnUndAblegen(extensionContext?.inputItems ?? [])
-        rad.stopAnimating()
+        let ausgang = await TeilenEinsammeln.einsammelnUndAblegen(
+            extensionContext?.inputItems ?? [], wettlauf: wettlauf)
         switch ausgang {
         case .abgelegt:
             zeigen(symbol: "checkmark.circle.fill", farbe: Self.marke,
@@ -75,23 +86,56 @@ final class ShareViewController: UIViewController {
                        : NSLocalizedString("Konnte nicht an Pulse übergeben werden", comment: "Teilen"),
                    hinweis: NSLocalizedString("Pulse nimmt Text, Links und ein Bild entgegen.", comment: "Teilen"),
                    knopf: NSLocalizedString("Schließen", comment: "Teilen"))
+        case .ueberholt:
+            // Frist oder Abbruch waren schneller: die Frist steht schon auf
+            // der Karte, ein Abbruch hat sie geschlossen.
+            break
         }
     }
 
-    @objc private func beenden() {
+    /// **Abbruch und Frist** (iOS-Bughunt 2, D3). Bis dahin zeigte die Karte
+    /// beim Laden nur ein Rad, ohne Knopf: lud ein Anbieter nie zu Ende, kam
+    /// man aus der Karte nicht heraus. Was zuerst kommt — das Ergebnis der
+    /// Arbeit, die Frist, der Abbruch —, entscheidet `TeilenWettlauf`; die
+    /// anderen tun danach nichts.
+    private func fristAbgelaufen() {
+        guard wettlauf.entscheiden(.abgelaufen) else { return }
+        NSLog("[PulseTeilen] Frist abgelaufen, nichts abgelegt")
+        zeigen(symbol: "exclamationmark.triangle.fill", farbe: .systemOrange,
+               titel: NSLocalizedString("Konnte nicht an Pulse übergeben werden", comment: "Teilen"),
+               hinweis: NSLocalizedString("Das Laden hat zu lange gedauert. Versuche es noch einmal.",
+                                          comment: "Teilen"),
+               knopf: NSLocalizedString("Schließen", comment: "Teilen"))
+    }
+
+    @objc private func knopfGetippt() {
+        if ergebnisSteht {
+            beenden()
+            return
+        }
+        // Noch beim Laden: abbrechen — es sei denn, die Arbeit ist schon
+        // fertig; dann steht das Ergebnis gleich da.
+        guard wettlauf.entscheiden(.abgebrochen) else { return }
+        beendet = true
+        extensionContext?.cancelRequest(
+            withError: NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError))
+    }
+
+    private func beenden() {
         guard !beendet else { return }
         beendet = true
         extensionContext?.completeRequest(returningItems: nil)
     }
 
     private func zeigen(symbol: String, farbe: UIColor, titel text: String, hinweis zeile: String, knopf beschriftung: String) {
+        rad.stopAnimating()
         zeichen.image = UIImage(systemName: symbol)
         zeichen.tintColor = farbe
         zeichen.isHidden = false
         titel.text = text
         hinweis.text = zeile
         knopf.setTitle(beschriftung, for: .normal)
-        knopf.isHidden = false
+        ergebnisSteht = true
         // Der Wechsel von „Wird übergeben …“ auf das Ergebnis geschieht ohne
         // Zutun des Nutzers; VoiceOver auf die neue Zeile setzen, damit er
         // ihn hört (aus Apples Doku gefolgert, mit VoiceOver nicht geprüft).
@@ -117,8 +161,10 @@ final class ShareViewController: UIViewController {
         hinweis.font = .preferredFont(forTextStyle: .subheadline)
         hinweis.textColor = .secondaryLabel
         knopf.titleLabel?.font = .preferredFont(forTextStyle: .headline)
-        knopf.isHidden = true
-        knopf.addTarget(self, action: #selector(beenden), for: .touchUpInside)
+        // Schon beim Laden da, als „Abbrechen“ (D3); `zeigen` macht daraus
+        // den Knopf zum Ergebnis.
+        knopf.setTitle(NSLocalizedString("Abbrechen", comment: "Teilen"), for: .normal)
+        knopf.addTarget(self, action: #selector(knopfGetippt), for: .touchUpInside)
         rad.startAnimating()
 
         let stapel = UIStackView(arrangedSubviews: [rad, zeichen, titel, hinweis, knopf])

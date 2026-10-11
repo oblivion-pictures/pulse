@@ -27,7 +27,36 @@ import WebKit
     enum ShareReceiverProbe {
         static func ausStartargumenten() {
             guard let art = UserDefaults.standard.string(forKey: "PulseTeilenProbe") else { return }
+            if art == "wettlauf" {
+                Task.detached { await wettlauf() }
+                return
+            }
             Task { @MainActor in await fahren(ablegen: art == "ablegen") }
+        }
+
+        /// `-PulseTeilenProbe wettlauf` (iOS-Bughunt 2, D3): Ergebnis, Frist und
+        /// Abbruch der Teilen-Erweiterung — genau einer entscheidet, auch wenn
+        /// alle drei gleichzeitig kommen. Braucht keine WebView.
+        private static func wettlauf() async {
+            let eins = TeilenWettlauf()
+            soll("D3: die Frist schlägt eine spätere Arbeit", eins.entscheiden(.abgelaufen)
+                && !eins.entscheiden(.fertig) && !eins.entscheiden(.abgebrochen))
+            let zwei = TeilenWettlauf()
+            soll("D3: eine fertige Arbeit schlägt Frist und Abbruch", zwei.entscheiden(.fertig)
+                && !zwei.entscheiden(.abgelaufen) && !zwei.entscheiden(.abgebrochen))
+            var abweichungen = 0
+            for _ in 0 ..< 2000 {
+                let w = TeilenWettlauf()
+                let gewonnen = await withTaskGroup(of: Bool.self) { gruppe in
+                    for a in [TeilenWettlauf.Ausgang.fertig, .abgelaufen, .abgebrochen] {
+                        gruppe.addTask { w.entscheiden(a) }
+                    }
+                    return await gruppe.reduce(0) { $0 + ($1 ? 1 : 0) }
+                }
+                if gewonnen != 1 { abweichungen += 1 }
+            }
+            soll("D3: 2000 Läufe mit drei gleichzeitigen Entscheidern, je genau einer gewinnt "
+                + "(\(abweichungen) Abweichungen)", abweichungen == 0)
         }
 
         private static func soll(_ was: String, _ ist: Bool) {
