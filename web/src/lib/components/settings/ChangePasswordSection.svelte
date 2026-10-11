@@ -43,10 +43,12 @@
     busy = true;
     try {
       await changePassword(current, next);
-      // Dieses Gerät hat jetzt eine neue Anmelde-Kette — der PushKit-Token
-      // zieht mit, sonst hinge er an der alten, deren Ende niemand meldet
-      // (Nachprüfung der Fix-Runden, S3). Ausserhalb von iOS ein No-op.
+      // Dieses Gerät hat jetzt eine neue Anmelde-Kette, die alte ist am Server
+      // gelöscht — beide Gerätetoken ziehen mit (S3 für PushKit, Nachtrag zu
+      // C2 für FCM). Sonst hingen sie an der alten, und der Abgleich des
+      // Servers löschte sie als beendet. Ausserhalb der Hülle ein No-op.
       void import('$lib/platform/voipToken').then((m) => m.voipTokenNachmelden());
+      void import('$lib/platform/fcm').then((m) => m.fcmTokenNachmelden());
       // Archiv-Schlüssel unter das neue Passwort neu wickeln (Übergabe §5) —
       // best-effort: schlägt es fehl, öffnet der nächste Login den alten
       // Wrap nicht und das Archiv richtet sich neu ein (Verlust nur lokal).

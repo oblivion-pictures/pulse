@@ -127,6 +127,19 @@ function gildeVonKanal(kanalId: string): string | null {
 let anmeldenNachErlaubnis: (() => void) | null = null;
 
 /**
+ * Den Token unter der Anmelde-Kette melden, die das Gerät JETZT trägt — nach
+ * einem Passwortwechsel zu rufen (Nachtrag zu iOS-Bughunt 2, C2). Der Wechsel
+ * gibt diesem Gerät eine neue Kette und löscht die alte am Server; bis zur
+ * nächsten Rückkehr in den Vordergrund hinge die Zeile an der alten, und der
+ * Abgleich des chat-gateway (`geraetetoken_abgleich.py`) löschte sie als
+ * beendet — ein Gerät, das angemeldet bleibt, bekäme keine Banner mehr.
+ * Gegenstück zu `voipTokenNachmelden` (S3). Ohne Hülle ein No-op.
+ */
+export function fcmTokenNachmelden(): void {
+  anmeldenNachErlaubnis?.();
+}
+
+/**
  * Beim App-Start verkabeln (app/+layout.svelte): Token holen + melden,
  * Tap-Listener registrieren. Best-effort in jedem Schritt — ohne Firebase-
  * Konfiguration, vor der Anmeldung oder ohne erteilte Berechtigung bleibt

@@ -10,10 +10,13 @@
  *  - **S3 — die Kette.** Der Server hängt die Zeile an die Anmelde-Kette des
  *    Aufrufers (`_geraetetoken.py`, iOS-Bughunt 2, C2) und löscht sie, wenn
  *    die Kette endet. Ein Passwortwechsel am Telefon gibt diesem Gerät eine
- *    NEUE Kette und lässt die alte stehen, ohne ihr Ende zu melden
+ *    NEUE Kette und meldet das Ende der alten bewusst nicht
  *    (`routes_account_security.py`). Die Zeile blieb an der alten — und ein
  *    späterer Widerruf der neuen (Telefon verloren) liess das Telefon weiter
- *    mit dem Namen des Anrufers klingeln.
+ *    mit dem Namen des Anrufers klingeln. Seit dem Abgleich der Gerätetoken
+ *    (Nachtrag zu C2, `geraetetoken_abgleich.py`) wiegt die Neumeldung
+ *    doppelt: die alte Kette gilt dort als beendet, und ohne Neumeldung
+ *    löschte der Server die Zeile eines Geräts, das angemeldet bleibt.
  *  - **S2 — die Fähigkeiten.** Nur eine Hülle mit
  *    `MitteilungImVordergrund.swift` unterdrückt DM-Banner, solange die App
  *    vorn ist; nur an sie darf der Server DMs ohne Frische-Prüfung pushen
