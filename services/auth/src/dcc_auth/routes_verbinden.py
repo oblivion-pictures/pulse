@@ -281,6 +281,11 @@ async def verbinden_abholen(payload: AbholenEin, request: Request, db: SessionDe
         raise HTTPException(status.HTTP_410_GONE, detail="abgelaufen")
     if vorgang.status == "abgelehnt":
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="abgelehnt")
+    # Zwischen Lesen und Entnehmen kann der entschiedene Vorgang abgelaufen
+    # sein und ein neuer Start mit derselben Kennung einen frischen angelegt
+    # haben: der wartet noch und hat keine Instanz.
+    if vorgang.status != "bestaetigt" or vorgang.instance_id is None:
+        raise HTTPException(status.HTTP_410_GONE, detail="abgelaufen")
 
     instanz = await db.get(RegisteredInstance, int(vorgang.instance_id), with_for_update=True)
     # Zwischen Klick und Abholen gesperrt, gelöscht oder übernommen, oder der
