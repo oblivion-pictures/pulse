@@ -115,9 +115,10 @@ class InstanceOut(BaseModel):
     id: str  # Snowflake-String-API
     hostname: str
     client_id: str
-    worker_id_chat: int
-    worker_id_voice: int
-    worker_id_media: int
+    # ``None`` für Einträge ab Migration 0056 (verbundene und neue Heim-Server).
+    worker_id_chat: int | None
+    worker_id_voice: int | None
+    worker_id_media: int | None
     status: Literal["active", "suspended"]
     # vps = klassischer Self-Host, app_host = Ein-Knopf-Container aus der App.
     # Das Frontend blendet app_host-Instanzen aus "Meine Instanzen" aus.
@@ -152,6 +153,8 @@ class InstanceOut(BaseModel):
     # gestoppten aus. VPS-Instanzen melden sich nicht beim Telefonbuch —
     # dort bleibt das Feld ``None`` (= unbekannt, NICHT ausblenden).
     online: bool | None = None
+    # Eintrag aus dem Verbinden per Gerätecode statt aus einem Antrag.
+    ohne_freigabe: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +206,7 @@ def _instance_to_out(
         set_up=set_up,
         anzeigename=inst.anzeigename,
         online=inst.online_gemeldet if inst.origin == "app_host" else None,
+        ohne_freigabe=inst.ohne_freigabe,
     )
 
 
@@ -215,10 +219,11 @@ async def _versorgte_instanzen(db, instanz_ids: list[int]) -> set[int]:
     """Welche dieser Instanzen haben ihre Zugangsdaten schon bekommen?
 
     Dieselbe Frage wie ``bootstrap_redeemed`` — nur für viele Instanzen auf
-    einmal, weil die Liste sie sonst einzeln stellen müsste (N+1). Und wie
-    dort zählen BEIDE Wege: das eingelöste Installer-Token und der
-    ``.env``-Download. Ein bloss ausgestelltes Token zählt nicht; wer den
-    Befehl nie ausgeführt hat, hat nichts eingerichtet.
+    einmal, weil die Liste sie sonst einzeln stellen müsste (N+1). Es zählen
+    DREI Wege: das eingelöste Installer-Token, der ``.env``-Download und seit
+    Migration 0056 das Abholen beim Verbinden per Gerätecode
+    (``verbunden_at``). Ein bloss ausgestelltes Token oder ein bestätigter,
+    aber nie abgeholter Code zählt nicht; dort läuft noch kein Server.
 
     Der Klient hängt daran, ob er den Server in seine Leiste aufnimmt: bis
     2026-08-27 tat er das, sobald die Instanz genehmigt war — der Nutzer sah
@@ -240,7 +245,8 @@ async def _versorgte_instanzen(db, instanz_ids: list[int]) -> set[int]:
         await db.execute(
             select(RegisteredInstance.id).where(
                 RegisteredInstance.id.in_(instanz_ids),
-                RegisteredInstance.env_file_downloaded_at.is_not(None),
+                RegisteredInstance.env_file_downloaded_at.is_not(None)
+                | RegisteredInstance.verbunden_at.is_not(None),
             )
         )
     ).scalars().all()
