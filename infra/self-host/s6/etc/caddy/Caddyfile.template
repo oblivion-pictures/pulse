@@ -141,6 +141,18 @@
             }
         }
 
+        # pulse-verbinden trägt beim Verbinden mit einem Pulse-Konto den
+        # Nachweis, dass dieser Server unter seiner Adresse läuft (pulse-connect,
+        # Spec 2026-10-09 E2). Die Cloud ruft ihn von aussen ab; ohne diese Zeile
+        # bekäme sie statt des Nachweises die leere SPA-Seite. Ebenfalls
+        # chat-gateway.
+        handle /.well-known/pulse-verbinden {
+            reverse_proxy 127.0.0.1:8002 {
+                header_up Host {host}
+                header_up X-Forwarded-For {remote_host}
+            }
+        }
+
         # chat-gateway (8002)
         handle_path /api/chat/* {
             reverse_proxy 127.0.0.1:8002 {

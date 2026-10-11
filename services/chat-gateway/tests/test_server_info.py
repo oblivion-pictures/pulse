@@ -5,6 +5,7 @@ Coverage:
 2. self-host mode with real instance_id: instance_id as string.
 3. cloud mode: instance_id=null regardless of instance_id setting.
 4. Response carries server_version and pulse_oidc_issuer.
+5. verbunden: false only for a self-host without instance id (Spec 2026-10-09, E4).
 """
 
 from __future__ import annotations
@@ -123,3 +124,18 @@ async def test_server_info_build_version_aus_der_umgebung(client, monkeypatch):
     assert koerper["build_version"] == "48c405a"
     # Die handgesetzte Kompatibilitaets-Nummer bleibt unangetastet daneben.
     assert koerper["server_version"] == __version__
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("modus", "instanz", "erwartet"),
+    [("self-host", 0, False), ("self-host", 123456789, True), ("cloud", 0, True)],
+)
+async def test_server_info_meldet_ob_verbunden(client, modus, instanz, erwartet):
+    """Ein unverbundener Self-Host sagt es von sich aus (Spec 2026-10-09, E4) —
+    wer die Server-Info liest, erkennt daran, dass ``pulse-connect`` noch fehlt."""
+    mock_settings = _make_settings(pulse_instance_mode=modus, pulse_instance_id=instanz)
+    with patch("dcc_chat_gateway.routes.server_info.get_settings", return_value=mock_settings):
+        r = await client.get("/.well-known/pulse-server-info")
+    assert r.status_code == 200
+    assert r.json()["verbunden"] is erwartet

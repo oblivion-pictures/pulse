@@ -240,6 +240,12 @@ class Settings(BaseSettings):
     pulse_cloud_client_id: str = ""
     pulse_cloud_client_secret: str = ""
 
+    # Verbinden mit einem Pulse-Konto (pulse-connect, Spec 2026-10-09 E4/E6):
+    # hier liegen während des Verbindens der Nachweis (``verbinden-nachweis``)
+    # und danach die abgeholten Zugangsdaten (``verbindung.env``).
+    # 07-render-env.sh setzt den Pfad im Container aus PULSE_DATA_PATH.
+    pulse_verbinden_dir: str = "/data/pulse"
+
     # Public web-app origin (this instance's own). Used to build user-facing
     # links inside messages — e.g. the rejoin invite in the unban DM, which the
     # client renders as a join card. Shared ``APP_BASE_URL`` env with auth-svc's
