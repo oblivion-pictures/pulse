@@ -141,6 +141,8 @@ class UserAdminOut(BaseModel):
     is_owner: bool = False
     disabled: bool
     self_host_enabled: bool = False
+    # Riegel „Darf Server verbinden“ (Migration 0056, Spec 2026-10-09 E8).
+    server_verbinden_gesperrt: bool = False
     created_at: datetime
 
     @field_serializer("id")
@@ -154,6 +156,7 @@ class UserAdminPatch(BaseModel):
     is_admin: bool | None = None
     disabled: bool | None = None
     self_host_enabled: bool | None = None
+    server_verbinden_gesperrt: bool | None = None
 
 
 class AuthSettingsOut(BaseModel):
