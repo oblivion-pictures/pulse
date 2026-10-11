@@ -60,7 +60,7 @@ Versionen, die der Stack erwartet (Stand 2026-05-27):
 ## 1. Repo + Branch
 
 ```fish
-git clone https://github.com/oblivion8282-1337/pulse.git
+git clone https://github.com/oblivion-pictures/pulse.git
 cd pulse
 ```
 

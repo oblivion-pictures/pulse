@@ -1,12 +1,12 @@
 # Pulse Self-Host All-in-One Image — build & publish to GHCR.
 #
 # Output:
-#   ghcr.io/oblivion8282-1337/pulse-allinone:edge          (rolling, every main push)
-#   ghcr.io/oblivion8282-1337/pulse-allinone:stable        (latest release)
-#   ghcr.io/oblivion8282-1337/pulse-allinone:vX.Y.Z        (immutable, exact)
-#   ghcr.io/oblivion8282-1337/pulse-allinone:vX.Y          (rolling minor)
-#   ghcr.io/oblivion8282-1337/pulse-allinone:vX            (rolling major)
-#   ghcr.io/oblivion8282-1337/pulse-allinone:sha-<short>   (every build, for forensics)
+#   ghcr.io/oblivion-pictures/pulse:edge          (rolling, every main push)
+#   ghcr.io/oblivion-pictures/pulse:stable        (latest release)
+#   ghcr.io/oblivion-pictures/pulse:vX.Y.Z        (immutable, exact)
+#   ghcr.io/oblivion-pictures/pulse:vX.Y          (rolling minor)
+#   ghcr.io/oblivion-pictures/pulse:vX            (rolling major)
+#   ghcr.io/oblivion-pictures/pulse:sha-<short>   (every build, for forensics)
 #
 # Trigger options (all do the same build, different tags applied):
 #   1. push to main         → :edge + :stable + :sha-<short>   (PHASEN-POLICY, s.u.)
@@ -73,7 +73,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE: ghcr.io/oblivion8282-1337/pulse-allinone
+  IMAGE: ghcr.io/oblivion-pictures/pulse
 
 jobs:
   # ── 1. Version + Tags einmal zentral berechnen ────────────────────────────
@@ -324,11 +324,21 @@ jobs:
           SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
         run: |
           set -euo pipefail
-          SRC="ghcr.io/oblivion8282-1337/pulse-allinone:sha-${SHORT_SHA}"
+          SRC="${IMAGE}:sha-${SHORT_SHA}"
           # Registry-Tags aus den GHCR-Tags ableiten (nur der Image-Prefix ändert
-          # sich; die Tags selbst bleiben identisch).
+          # sich; die Tags selbst bleiben identisch). Der Spiegelname bleibt
+          # ``pulse-allinone``, obwohl das GHCR-Bild seit dem Umzug in die
+          # Organisation ``pulse`` statt ``pulse-allinone`` heisst: die
+          # Bestandsserver ziehen ihn, und
+          # auth-svc erzwingt ihn (routes_registry_auth.py). Stimmt das Muster
+          # nicht, bliebe REG_TAGS gleich GHCR_TAGS und der Spiegel verhungerte
+          # still — deshalb die Prüfung direkt danach.
           REG_TAGS="$(printf '%s\n' "${GHCR_TAGS}" \
-            | sed 's|^ghcr.io/oblivion8282-1337/pulse-allinone|registry.howispulse.com/pulse-allinone|')"
+            | sed "s|^${IMAGE}:|registry.howispulse.com/pulse-allinone:|")"
+          case "$REG_TAGS" in
+            *registry.howispulse.com/pulse-allinone:*) ;;
+            *) echo "::error::Spiegel-Tags nicht abgeleitet: $REG_TAGS"; exit 1 ;;
+          esac
           ARGS=()
           while IFS= read -r t; do [ -n "$t" ] && ARGS+=(-t "$t"); done <<< "$REG_TAGS"
           TAG_COUNT=$(( ${#ARGS[@]} / 2 ))

@@ -65,7 +65,7 @@ kommerziellen Gebrauch gestattet.
 > General Public License v3.0 (AGPL-3.0-only) — sie darf von jedermann genutzt,
 > geändert und weitergegeben werden, sofern die Lizenzbedingungen eingehalten
 > werden; wer sie als Netzdienst betreibt, muss seinen Nutzern den Quellcode
-> anbieten (AGPL §13). Quellcode: github.com/oblivion8282-1337/pulse. Dies
+> anbieten (AGPL §13). Quellcode: github.com/oblivion-pictures/pulse. Dies
 > betrifft den Quellcode, nicht die Betreiber-Inhalte dieser Website.
 
 ---

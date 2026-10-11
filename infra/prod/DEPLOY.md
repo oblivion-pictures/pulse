@@ -11,7 +11,7 @@ is one Docker Compose project (`name: pulse`) in `~/pulse/infra/prod/`.
 > onwards had been using the netcup address for months, so reading only the top
 > of this file got you the wrong machine.
 
-App images (`ghcr.io/oblivion8282-1337/pulse-*`) are built by
+App images (`ghcr.io/oblivion-pictures/pulse-*`) are built by
 `.github/workflows/ci.yml` on every push to `main` and auto-pulled on the server
 by a **user crontab** running `infra/prod/pulse-update.sh` every 5 min (scoped
 pull+`up -d` of the app services + migrate one-shots). postgres / redis / garage /
@@ -393,7 +393,7 @@ hat die `/registry/token`-Route, compose kennt den `registry`-Service).
    > docker buildx imagetools create \
    >   -t registry.howispulse.com/pulse-allinone:edge \
    >   -t registry.howispulse.com/pulse-allinone:stable \
-   >   ghcr.io/oblivion8282-1337/pulse-allinone:edge
+   >   ghcr.io/oblivion-pictures/pulse:edge
    > ```
    >
    > **Prüfen, ob es wieder passieren würde** — ein Trockenlauf sagt es sofort:

@@ -4,7 +4,7 @@
 > Pulse-Anwendungen (Desktop unter Windows/macOS/Linux) gebündelt oder
 > dynamisch eingebunden werden, sowie die damit verbundenen Lizenzpflichten.
 > Keine Rechtsberatung. Pulse selbst steht unter der
-> [GNU AGPL v3.0](https://github.com/oblivion8282-1337/pulse/blob/main/LICENSE)
+> [GNU AGPL v3.0](https://github.com/oblivion-pictures/pulse/blob/main/LICENSE)
 > (AGPL-3.0-only); der vollständige Lizenztext liegt als `LICENSE` im
 > Quellcode-Repository.
 
@@ -156,7 +156,7 @@ STAP-A-Paketen die Länge, nachdem ein Paket mit überzähligem Byte den
 Empfangs-Task abstürzen ließ. Dieser Hinweis erfüllt Apache-2.0 §4(b); die
 Patch-Dateien liegen mitsamt eigener Lizenzdatei im öffentlichen
 Quellcode-Repository unter
-[`streaming/pulse-player/patches/`](https://github.com/oblivion8282-1337/pulse/tree/main/streaming/pulse-player/patches).
+[`streaming/pulse-player/patches/`](https://github.com/oblivion-pictures/pulse/tree/main/streaming/pulse-player/patches).
 
 Für die eigentlichen FFmpeg-Bibliotheken gilt auch hier, was oben steht: Es wird
 ein LGPL-Build dynamisch eingebunden und als eigene, austauschbare Datei
