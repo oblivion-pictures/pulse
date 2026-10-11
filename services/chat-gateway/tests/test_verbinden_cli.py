@@ -8,7 +8,9 @@ der Test schaut — ein echtes ``halt`` beendete den Container, nicht den Test.
 
 from __future__ import annotations
 
+import errno
 import json
+import os
 import stat
 from pathlib import Path
 
@@ -94,13 +96,13 @@ def _nein(_frage: str) -> bool:
     return False
 
 
-def _lauf(tmp_path, cloud, *, instanz_id=0, rueckfrage=_nein, neustart=None):
+def _lauf(tmp_path, cloud, *, verzeichnis=None, instanz_id=0, rueckfrage=_nein, neustart=None):
     zeilen: list[str] = []
     uhr = Uhr()
     umgebung = Umgebung(
         hostname=HOST,
         cloud_origin=CLOUD,
-        verzeichnis=tmp_path,
+        verzeichnis=verzeichnis or tmp_path,
         instanz_id=instanz_id,
         modus="self-host",
     )
@@ -383,3 +385,149 @@ def test_strg_c_raeumt_den_nachweis_weg(tmp_path):
         _lauf(tmp_path, abbruch_beim_abholen)
     assert not (tmp_path / NACHWEIS_DATEI).exists()
     assert not (tmp_path / VERBINDUNG_DATEI).exists()
+
+
+# ── Härtung: Platte, kaputte Antworten, Abstand, Neustart ─────────────────
+
+
+def test_verzeichnis_nicht_anlegbar_ohne_traceback(tmp_path):
+    (tmp_path / "datei").write_text("")  # darunter lässt sich nichts anlegen
+    cloud = Cloud(tmp_path)
+    code, text, _ = _lauf(tmp_path, cloud, verzeichnis=tmp_path / "datei" / "pulse")
+    assert code == 1
+    assert cloud.pfade == []  # nichts verbraucht, die Cloud wurde nie gefragt
+    assert "Could not write to" in text
+    assert "no code was used up" in text
+
+
+def test_nachweis_nicht_schreibbar_ohne_traceback(tmp_path):
+    (tmp_path / NACHWEIS_DATEI).mkdir()  # os.replace auf ein Verzeichnis scheitert immer
+    cloud = Cloud(tmp_path)
+    code, text, _ = _lauf(tmp_path, cloud)
+    assert code == 1
+    assert cloud.pfade == []
+    assert "Could not write to" in text
+    assert "no code was used up" in text
+    # Auch das Aufräumen scheitert hier (unlink auf ein Verzeichnis) — und schweigt;
+    # die Nachbardatei bleibt nicht liegen.
+    assert [p.name for p in tmp_path.iterdir()] == [NACHWEIS_DATEI]
+
+
+def test_platte_voll_nach_dem_abholen_nennt_die_folge(tmp_path, monkeypatch):
+    """Die Cloud hat das Secret da schon rotiert: der Betreiber muss wissen, dass
+    er nach dem Platzschaffen erneut verbinden muss — nicht bloss „Fehler“."""
+    echt = os.replace
+
+    def voll(quelle, ziel):
+        if Path(ziel).name == VERBINDUNG_DATEI:
+            raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+        echt(quelle, ziel)
+
+    monkeypatch.setattr(os, "replace", voll)
+    cloud = Cloud(tmp_path, abholen=[(200, ZUGANG)])
+    neustarts: list[str] = []
+    code, text, _ = _lauf(tmp_path, cloud, neustart=lambda: neustarts.append("halt"))
+
+    assert code == 1
+    assert "already issued new credentials" in text
+    assert "No space left on device" in text
+    assert "run pulse-connect again" in text
+    assert ZUGANG["client_secret"] not in text
+    assert neustarts == []
+    # Weder Nachweis noch Zwischendatei noch halbe verbindung.env bleiben liegen.
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_verbindung_env_nicht_schreibbar_ohne_traceback(tmp_path):
+    (tmp_path / VERBINDUNG_DATEI).mkdir()
+    cloud = Cloud(tmp_path, abholen=[(200, ZUGANG)])
+    code, text, _ = _lauf(tmp_path, cloud)
+    assert code == 1
+    assert "already issued new credentials" in text
+    assert not (tmp_path / NACHWEIS_DATEI).exists()
+
+
+def test_aufraeumen_darf_den_erfolg_nicht_verdecken(tmp_path, monkeypatch):
+    echt = Path.unlink
+
+    def verweigert(self, missing_ok=False):
+        if self.name == NACHWEIS_DATEI:
+            raise PermissionError(errno.EROFS, os.strerror(errno.EROFS))
+        return echt(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", verweigert)
+    cloud = Cloud(tmp_path, abholen=[(200, ZUGANG)])
+    code, _text, _ = _lauf(tmp_path, cloud)
+    assert code == 0
+    assert (tmp_path / VERBINDUNG_DATEI).exists()
+
+
+@pytest.mark.parametrize("koerper", [[], "text", None, 42])
+def test_abholen_mit_kaputtem_koerper(tmp_path, koerper):
+    """Ein 200, dessen Körper kein Objekt ist, ist keine Ausnahme wert."""
+    cloud = Cloud(tmp_path, abholen=[(200, koerper)])
+    code, text, _ = _lauf(tmp_path, cloud)
+    assert code == 1
+    assert "cannot use" in text
+    assert "Run pulse-connect again" in text
+    assert not (tmp_path / VERBINDUNG_DATEI).exists()
+    assert not (tmp_path / NACHWEIS_DATEI).exists()
+
+
+def test_abholen_mit_antwort_ohne_json(tmp_path):
+    def kaputt(request: httpx.Request) -> httpx.Response:
+        if request.url.path == ABHOLEN:
+            return httpx.Response(200, content=b"<html>Bad Gateway</html>")
+        return Cloud(tmp_path)(request)
+
+    code, text, _ = _lauf(tmp_path, kaputt)
+    assert code == 1
+    assert "cannot use" in text
+    assert not (tmp_path / NACHWEIS_DATEI).exists()
+
+
+def test_abholen_mit_fehlendem_pflichtfeld(tmp_path):
+    ohne = {k: v for k, v in ZUGANG.items() if k != "client_secret"}
+    cloud = Cloud(tmp_path, abholen=[(200, ohne)])
+    code, text, _ = _lauf(tmp_path, cloud)
+    assert code == 1
+    assert "cannot use" in text
+    assert "Run pulse-connect again" in text
+    assert not (tmp_path / VERBINDUNG_DATEI).exists()
+
+
+def test_abstand_der_cloud_wird_gedeckelt(tmp_path):
+    """Die Cloud nennt den Abstand; eine Stunde Schlaf wäre mehr als die ganze
+    Wartezeit (und liefe über die 15 Minuten hinaus)."""
+    cloud = Cloud(tmp_path, start=(201, {**VORGANG, "abstand_s": 3600}))
+    code, _text, uhr = _lauf(tmp_path, cloud)
+    assert code == 2
+    assert max(uhr.schlaefe) <= 60
+    assert uhr.jetzt <= 900
+
+
+def test_letzter_schlaf_endet_mit_der_frist(tmp_path):
+    cloud = Cloud(tmp_path, start=(201, {**VORGANG, "gueltig_s": 100, "abstand_s": 60}))
+    code, _text, uhr = _lauf(tmp_path, cloud)
+    assert code == 2
+    assert uhr.schlaefe == [60, 40]
+
+
+def test_auch_die_pause_nach_429_endet_mit_der_frist(tmp_path):
+    cloud = Cloud(
+        tmp_path,
+        start=(201, {**VORGANG, "gueltig_s": 100, "abstand_s": 60}),
+        abholen=[(429, {"detail": "zu viele"})],
+    )
+    code, _text, uhr = _lauf(tmp_path, cloud)
+    assert code == 2
+    assert uhr.jetzt <= 100
+
+
+def test_neustart_nennt_den_handgriff_fuer_den_fall_dass_er_nicht_zurueckkommt(tmp_path):
+    """Ohne ``--restart`` bleibt der Container nach ``halt`` gestoppt."""
+    cloud = Cloud(tmp_path, abholen=[(200, ZUGANG)])
+    code, text, _ = _lauf(tmp_path, cloud, neustart=lambda: None)
+    assert code == 0
+    assert "Restarting the server" in text
+    assert "If it does not come back by itself, start it again: docker start pulse" in text

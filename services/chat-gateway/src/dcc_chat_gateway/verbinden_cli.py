@@ -40,7 +40,6 @@ Neustart: es gibt nichts anzuwenden).
 from __future__ import annotations
 
 import argparse
-import hashlib
 import os
 import re
 import secrets
@@ -55,12 +54,24 @@ import httpx
 
 from dcc_chat_gateway import config as chat_config
 from dcc_chat_gateway import verbinden_texte as texte
+from dcc_chat_gateway.verbinden_hilfen import (
+    anzeigbar,
+    entferne_still,
+    grund,
+    lies_verbindung,
+    nachweis_aus_kennung,
+    schreibe_atomar,
+)
 from dcc_chat_gateway.verbindung import NACHWEIS_DATEI, VERBINDUNG_DATEI
 
-#: Beendet den Container sauber; die Regel ``unless-stopped`` holt ihn zurück.
+#: Beendet den Container sauber; eine Neustart-Regel (``unless-stopped``) holt ihn
+#: zurück, ohne sie bleibt er stehen (``texte.NEUSTART`` nennt den Handgriff).
 HALT = "/run/s6/basedir/bin/halt"
 #: Spec E8: ein Gerätecode gilt 15 Minuten, auch wenn die Cloud mehr nennt.
 HOECHSTENS_S = 900
+#: Der Abstand zwischen zwei Abfragen kommt von der Cloud; über diese Grenze
+#: hinaus schliefe ``pulse-connect`` an der Frist vorbei.
+ABSTAND_HOECHSTENS_S = 60
 ANFRAGE_FRIST_S = 15.0
 #: Erlaubte Zeichen in ``verbindung.env``. 07-render-env.sh weist alles andere
 #: ab (``*[!A-Za-z0-9._@+-]*``) — beide Stellen synchron halten.
@@ -94,43 +105,6 @@ class _Vorgang:
     link: str
     gueltig_s: int
     abstand_s: int
-
-
-def nachweis_aus_kennung(kennung: str) -> str:
-    """SHA-256 der Abholkennung, hex, klein — dieselbe Rechnung wie
-    ``dcc_auth.verbinden.nachweis_aus_kennung`` (Prüfstein im Test)."""
-    return hashlib.sha256(kennung.encode("utf-8")).hexdigest()
-
-
-def lies_verbindung(verzeichnis: Path) -> dict[str, str]:
-    """Die Schlüssel aus ``verbindung.env``; leer, wenn es keine gibt."""
-    try:
-        zeilen = (verzeichnis / VERBINDUNG_DATEI).read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return {}
-    return dict(zeile.split("=", 1) for zeile in zeilen if "=" in zeile)
-
-
-def _schreibe_atomar(ziel: Path, inhalt: str, modus: int) -> None:
-    """Erst eine Nachbardatei, dann umbenennen: ein Abbruch mittendrin hinterlässt
-    nie eine halbe ``verbindung.env``, die 07-render-env.sh dann läse."""
-    zwischen = ziel.with_name(f".{ziel.name}.{os.getpid()}.tmp")
-    fd = os.open(zwischen, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, modus)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as datei:
-            datei.write(inhalt)
-            datei.flush()
-            os.fsync(datei.fileno())
-        os.chmod(zwischen, modus)  # die umask darf den Modus nicht verändern
-        os.replace(zwischen, ziel)
-    except BaseException:
-        zwischen.unlink(missing_ok=True)
-        raise
-
-
-def _anzeigbar(text: str) -> str:
-    """Steuerzeichen aus Cloud-Text entfernen, bevor er im Terminal landet."""
-    return "".join(zeichen for zeichen in text if zeichen.isprintable())
 
 
 def _vorpruefung(umgebung: Umgebung, rueckfrage: Callable[[str], bool]) -> None:
@@ -181,10 +155,10 @@ def _starten(umgebung: Umgebung, client: httpx.Client, kennung: str) -> _Vorgang
     try:
         daten = antwort.json()
         return _Vorgang(
-            code=_anzeigbar(str(daten["code"])),
-            link=_anzeigbar(str(daten["link"])),
+            code=anzeigbar(str(daten["code"])),
+            link=anzeigbar(str(daten["link"])),
             gueltig_s=min(int(daten["gueltig_s"]), HOECHSTENS_S),
-            abstand_s=max(1, int(daten["abstand_s"])),
+            abstand_s=min(max(1, int(daten["abstand_s"])), ABSTAND_HOECHSTENS_S),
         )
     except (ValueError, KeyError, TypeError):
         raise _Abbruch(1, texte.UNERWARTET.format(status=201)) from None
@@ -214,25 +188,37 @@ def _abholen(
 ) -> dict:
     url = f"{umgebung.cloud_origin}/api/auth/selfhost/verbinden/abholen"
     ende = uhr() + vorgang.gueltig_s
+
+    def warten() -> None:  # nie über die Frist hinaus
+        schlafen(max(0.0, min(vorgang.abstand_s, ende - uhr())))
+
     while uhr() < ende:
-        schlafen(vorgang.abstand_s)
+        warten()
         try:
             antwort = client.post(url, json={"kennung": kennung})
         except httpx.HTTPError:
             continue  # Netzaussetzer: weiter warten, die Frist läuft mit
         if antwort.status_code == 200:
-            try:
-                return antwort.json()
-            except ValueError:
-                raise _Abbruch(1, texte.UNERWARTET.format(status=200)) from None
+            return _zugang_aus(antwort)
         if antwort.status_code in (403, 409):
             _entschieden(umgebung, antwort)
         if antwort.status_code == 410:
             break
         if antwort.status_code == 429:
-            schlafen(vorgang.abstand_s)
+            warten()
         # 202 heißt „wartet“, ebenso alles Unbekannte (502 beim Deploy der Cloud).
     raise _Abbruch(2, texte.ABGELAUFEN)
+
+
+def _zugang_aus(antwort: httpx.Response) -> dict:
+    """Der Körper eines 200 von ``abholen``: ein Objekt, sonst Abbruch."""
+    try:
+        daten = antwort.json()
+    except ValueError:
+        daten = None
+    if not isinstance(daten, dict):
+        raise _Abbruch(1, texte.ZUGANG_UNBRAUCHBAR)
+    return daten
 
 
 def _verbindung_env(zugang: dict) -> str:
@@ -246,12 +232,21 @@ def _verbindung_env(zugang: dict) -> str:
     zeilen = []
     for name, wert, form in pflicht:
         if not isinstance(wert, str) or not form.fullmatch(wert):
-            raise _Abbruch(1, texte.UNERWARTET.format(status=200))
+            raise _Abbruch(1, texte.ZUGANG_UNBRAUCHBAR)
         zeilen.append(f"{name}={wert}")
     mail = zugang.get("admin_email")
     if isinstance(mail, str) and "@" in mail and _WERT.fullmatch(mail):
         zeilen.append(f"PULSE_ADMIN_EMAIL={mail}")
     return "\n".join(zeilen) + "\n"
+
+
+def _ablegen(ziel: Path, inhalt: str, modus: int, vorlage: str) -> None:
+    """Schreiben; ein ``OSError`` (Platte voll, keine Rechte) wird zur Meldung."""
+    try:
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        schreibe_atomar(ziel, inhalt, modus)
+    except OSError as fehler:
+        raise _Abbruch(1, vorlage.format(pfad=ziel, grund=grund(fehler))) from None
 
 
 def _drucke(text: str) -> None:
@@ -274,22 +269,23 @@ def verbinden(
         ausgabe(texte.BEGINN.format(host=umgebung.hostname))
         kennung = secrets.token_urlsafe(32)
         nachweis_datei = umgebung.verzeichnis / NACHWEIS_DATEI
-        umgebung.verzeichnis.mkdir(parents=True, exist_ok=True)
         try:
             # VOR der Anfrage: die Cloud ruft den Nachweis sofort von außen ab.
-            _schreibe_atomar(nachweis_datei, nachweis_aus_kennung(kennung) + "\n", 0o644)
+            nachweis = nachweis_aus_kennung(kennung) + "\n"
+            _ablegen(nachweis_datei, nachweis, 0o644, texte.DATEN_NICHT_BESCHREIBBAR)
             vorgang = _starten(umgebung, client, kennung)
             minuten = vorgang.gueltig_s // 60
             ausgabe(texte.ANLEITUNG.format(link=vorgang.link, code=vorgang.code, minuten=minuten))
             zugang = _abholen(umgebung, client, kennung, vorgang, schlafen, uhr)
-            inhalt = _verbindung_env(zugang)
-            _schreibe_atomar(umgebung.verzeichnis / VERBINDUNG_DATEI, inhalt, 0o600)
+            # Scheitert das Speichern, ist das Secret in der Cloud schon rotiert.
+            ziel = umgebung.verzeichnis / VERBINDUNG_DATEI
+            _ablegen(ziel, _verbindung_env(zugang), 0o600, texte.ZUGANG_NICHT_GESPEICHERT)
         finally:
-            nachweis_datei.unlink(missing_ok=True)
+            entferne_still(nachweis_datei)
     except _Abbruch as abbruch:
         ausgabe(abbruch.meldung)
         return abbruch.exit_code
-    besitzer = _anzeigbar(str(zugang.get("owner_name") or "your account"))
+    besitzer = anzeigbar(str(zugang.get("owner_name") or "your account"))
     ausgabe(texte.VERBUNDEN.format(besitzer=besitzer))
     if neustart is not None:
         ausgabe(texte.NEUSTART)
