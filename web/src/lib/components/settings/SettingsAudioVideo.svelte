@@ -60,12 +60,16 @@
   // Standalone mic test: runs while this tab is open and we're NOT in a voice
   // channel, so the level meter moves and "hear yourself" works without joining.
   // In a channel, voice.localMic* is the live source and the test stays off.
+  // Auf iOS auch nicht, solange die Hülle das Mikrofon hält (`micTest.gesperrt`).
   async function startTest() {
     await micTest.start(settings.audio.inputDeviceId, settings.audio.outputDeviceId);
+    // Auch das Auffrischen nicht: ohne erteilte Erlaubnis holt sich LiveKit die
+    // Gerätenamen über ein eigenes `getUserMedia` (`DeviceManager.getDevices`).
+    if (micTest.gesperrt) return;
     await voice.refreshDevices(); // populate the pickers now that we have a grant
   }
   $effect(() => {
-    if (voice.connected) {
+    if (voice.connected || micTest.gesperrt) {
       micTest.stop();
       return;
     }

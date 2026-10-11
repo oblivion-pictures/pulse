@@ -10,6 +10,12 @@
  * Only runs while the audio settings tab is open and the user is NOT connected
  * to a voice channel — once in a channel, `voice.localMic*`/`localSend*` are the
  * live sources and this stays torn down (never two mic streams at once).
+ *
+ * **Auf iOS zusätzlich nie, solange die Hülle einen Raum hält** (`gesperrt`).
+ * „Nicht verbunden" reicht dort nicht: während Aufbau und Wiederaufbau des
+ * nativen Raums ist `voice.connected` falsch, und ein nativer Anruf setzt es nie
+ * — der Test öffnete dann ein WebKit-Mikrofon neben LiveKits Aufnahme, und iOS
+ * nähme der Hülle die Session weg (Begründung in `mikrofonBeiDerHuelle.ts`).
  */
 import { Track } from 'livekit-client';
 import { createSendProcessor, type SendProcessorHandle, type SendProcessorMode } from './noiseFilter';
@@ -17,6 +23,10 @@ import { LocalMicAnalyser } from './localMicAnalyser';
 import { settings } from '$lib/stores/settings.svelte';
 import { applySinkId } from '$lib/audio/applySinkId';
 import { ballistics, ClipHold, LEVEL_DECAY, PEAK_DECAY } from './meter';
+import {
+  mikrofonBeiDerHuelle,
+  mikrofonBeiDerHuelleBeobachten
+} from '$lib/platform/mikrofonBeiDerHuelle';
 
 class MicTest {
   level = $state(0);
@@ -28,6 +38,9 @@ class MicTest {
   /** True while the loopback is audible. Off by default — feedback risk on speakers. */
   monitor = $state(false);
   active = $state(false);
+  /** Die iOS-Hülle hält das Mikrofon (nativer Sprachkanal oder Anruf): kein
+   *  Test. Reaktiv, damit die Einstellungen ihn danach wieder anwerfen. */
+  gesperrt = $state(mikrofonBeiDerHuelle());
 
   #raw = new LocalMicAnalyser(
     (n) => (this.level = n),
@@ -42,10 +55,21 @@ class MicTest {
   /** Invalidates an in-flight async start() when a newer start/stop supersedes it. */
   #gen = 0;
 
+  constructor() {
+    // Ein Raum, der WÄHREND des Tests beginnt (angenommener Anruf, Beitritt
+    // über die Leiste), nimmt ihm das Mikrofon sofort ab. `stop()` macht auch
+    // einen noch laufenden `start()` ungültig.
+    mikrofonBeiDerHuelleBeobachten((an) => {
+      this.gesperrt = an;
+      if (an) this.stop();
+    });
+  }
+
   /** (Re)acquire the mic on `deviceId` and start metering. Tears down any prior
    *  graph first, so it doubles as "switch device" / "switch mode". */
   async start(deviceId: string, outputId: string): Promise<void> {
     this.stop();
+    if (this.gesperrt) return;
     const gen = ++this.#gen;
     let stream: MediaStream;
     try {

@@ -20,6 +20,7 @@ import { registerPlugin } from '@capacitor/core';
 import { isCapacitorIOS } from './runtime';
 import { tonNativerRaum } from './iosTon';
 import { TonHalter } from './nativeTonHalter';
+import { mikrofonBeiDerHuelleMelden } from './mikrofonBeiDerHuelle';
 import { mitFrist, SPRACHE_FRIST_KETTE_MS, SPRACHE_FRIST_SOFORT_MS } from './brueckenFrist';
 import type {
   AnsichtThema,
@@ -139,12 +140,12 @@ function webSessionTyp(typ: 'ambient' | 'auto'): void {
 }
 
 /**
- * **Ein nativer Raum steht — für WebKits Session UND für unsere eigene
- * Session-Steuerung, an EINER Stelle.**
+ * **Ein nativer Raum steht — alles, was daran hängt, an EINER Stelle.**
  *
- * Zwei Dinge gelten genau so lange, wie die Hülle einen Raum hält: WebKits
- * Session ist `ambient` (s. `webSessionTyp`), und `iosTon` fasst die Session
- * nicht an, weil sie LiveKit gehört (`tonNativerRaum`, Bughunt K2). Bis zum
+ * Drei Dinge gelten genau so lange, wie die Hülle einen Raum hält: WebKits
+ * Session ist `ambient` (s. `webSessionTyp`), `iosTon` fasst die Session
+ * nicht an, weil sie LiveKit gehört (`tonNativerRaum`, Bughunt K2), und die
+ * WebView öffnet kein Mikrofon (`mikrofonBeiDerHuelle.ts`). Bis zum
  * 2026-10-11 hing nur das Erste hier, und es kippte nicht in allen Fällen
  * zurück: ein gescheiterter Beitritt liess WebKit auf `ambient` stehen (M2),
  * ein Abbruch von aussen ebenso (M1).
@@ -155,6 +156,7 @@ function webSessionTyp(typ: 'ambient' | 'auto'): void {
 const halter = new TonHalter((gehalten) => {
   webSessionTyp(gehalten ? 'ambient' : 'auto');
   tonNativerRaum(gehalten);
+  mikrofonBeiDerHuelleMelden(gehalten);
 });
 
 /** Einen nativen Raum anmelden oder abmelden. `'sprachkanal'` läuft über
