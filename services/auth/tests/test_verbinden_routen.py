@@ -18,7 +18,10 @@ from sqlalchemy import select
 from dcc_auth import routes_verbinden
 from dcc_auth.models import User
 from dcc_auth.models_instances import RegisteredInstance, UserInstanceMembership
+from dcc_auth.routes_suspended_instances import _BODY_KEY, _ETAG_KEY
 from dcc_auth.security import verify_password
+from dcc_auth.verbinden import vorgang_entscheiden
+from dcc_auth.verbinden_eintrag import instanz_verbinden
 
 _KENNUNG = "abholkennung-fuer-den-test-mit-genug-zeichen-0123"
 _NACHWEIS = hashlib.sha256(_KENNUNG.encode()).hexdigest()
@@ -84,6 +87,34 @@ async def _entscheiden(client, konto: dict, code: str, aktion: str):
         json={"code": code, "aktion": aktion},
         headers={"Cookie": konto["cookie"]},
     )
+
+
+async def _eintrag(session_factory, besitzer: int, iid: int, status: str = "active") -> None:
+    """Ein schon bestehender Eintrag unter ``_HOST``."""
+    async with session_factory() as s:
+        s.add(
+            RegisteredInstance(
+                id=iid,
+                hostname=_HOST,
+                client_id=f"vorhanden-{iid}",
+                client_secret="$argon2id$v=19$m=65536,t=3,p=4$x",
+                status=status,
+                origin="vps",
+                registered_by=besitzer,
+            )
+        )
+        await s.commit()
+
+
+async def _eintraege(session_factory) -> list[RegisteredInstance]:
+    async with session_factory() as s:
+        return list(
+            (
+                await s.execute(
+                    select(RegisteredInstance).where(RegisteredInstance.hostname == _HOST)
+                )
+            ).scalars()
+        )
 
 
 def test_code_steht_in_keinem_pfad():
@@ -309,19 +340,11 @@ async def test_unbrauchbare_adressen(client, mit_redis, nachweis, hostname, deta
 async def test_uebernahme_einer_fremden_adresse(client, session_factory, mit_redis, nachweis):
     alt = await _konto(client, "altbesitzer")
     neu = await _konto(client, "neubesitzer")
-    async with session_factory() as s:
-        s.add(
-            RegisteredInstance(
-                id=961000,
-                hostname=_HOST,
-                client_id="alt-client",
-                client_secret="$argon2id$v=19$m=65536,t=3,p=4$x",
-                status="active",
-                origin="vps",
-                registered_by=alt["id"],
-            )
-        )
-        await s.commit()
+    await _eintrag(session_factory, alt["id"], 961000)
+    # Was die Sperrliste zwischengespeichert hat; der alte Server steht erst
+    # still, wenn die Self-Hosts beim nächsten Abruf die neue Liste bekommen.
+    await mit_redis.set(_ETAG_KEY, "alt", ex=60)
+    await mit_redis.set(_BODY_KEY, "{}", ex=60)
 
     code = (await _start(client)).json()["code"]
     r = await _entscheiden(client, neu, code, "verbinden")
@@ -329,6 +352,8 @@ async def test_uebernahme_einer_fremden_adresse(client, session_factory, mit_red
     assert r.json()["instance_id"] != "961000"
     async with session_factory() as s:
         assert (await s.get(RegisteredInstance, 961000)).status == "deleted"
+    assert await mit_redis.get(_ETAG_KEY) is None
+    assert await mit_redis.get(_BODY_KEY) is None
 
 
 async def test_zweiter_start_derselben_kennung_liefert_denselben_code(
@@ -370,3 +395,155 @@ async def test_bremse_je_konto(client, mit_redis, nachweis):
     codes = [(await _ansehen(client, konto, code)).status_code for _ in range(21)]
     assert codes[:20] == [200] * 20
     assert codes[20] == 429
+
+
+async def test_anderer_tab_gewinnt(client, session_factory, mit_redis, nachweis, monkeypatch):
+    """Zwei Klicks auf denselben Code: entschieden wird er genau einmal. Der
+    zweite hat seinen Eintrag schon vorbereitet, wenn er merkt, dass er zu spät
+    ist — dann darf davon nichts bleiben und die Antwort darf nichts versprechen.
+
+    Der Gewinner läuft hier mitten in der Prüfung von aussen durch, also nach
+    dem Lesen des Vorgangs und vor dessen Entscheidung durch den Verlierer."""
+    konto = await _konto(client, "zweitab")
+    code = (await _start(client)).json()["code"]
+    gewinner = {}
+    pruefung = routes_verbinden.nachweis_pruefen
+
+    async def mit_anderem_tab(hostname: str, erwartet: str) -> str | None:
+        befund = await pruefung(hostname, erwartet)
+        async with session_factory() as s:
+            user = await s.get(User, konto["id"])
+            verbunden = await instanz_verbinden(s, user, hostname)
+            gewinner["iid"] = str(verbunden.instanz.id)
+            assert await vorgang_entscheiden(
+                mit_redis, erwartet, "bestaetigt", instance_id=gewinner["iid"], user_id="1"
+            )
+            await s.commit()
+        return befund
+
+    monkeypatch.setattr(routes_verbinden, "nachweis_pruefen", mit_anderem_tab)
+
+    r = await _entscheiden(client, konto, code, "verbinden")
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == "unbekannt"
+    # Nur der Eintrag des Gewinners, und der Server bekommt dessen Ergebnis.
+    (eintrag,) = await _eintraege(session_factory)
+    assert str(eintrag.id) == gewinner["iid"]
+    r = await _abholen(client)
+    assert r.status_code == 200, r.text
+    assert r.json()["instance_id"] == gewinner["iid"]
+
+
+async def test_gleichzeitig_eingetragene_adresse_ist_unbekannt(
+    client, session_factory, mit_redis, nachweis, monkeypatch
+):
+    """Die Adresse ist eindeutig: wer nach einem gleichzeitigen Klick
+    zweimal einträgt, scheitert an der Datenbank, nicht an der Prüfung davor."""
+    konto = await _konto(client, "gleichzeitig")
+    code = (await _start(client)).json()["code"]
+    await _eintrag(session_factory, konto["id"], 962100)
+
+    async def kollidiert(db, user, hostname):
+        db.add(
+            RegisteredInstance(
+                id=962101,
+                hostname=hostname,
+                client_id="doppelt",
+                client_secret="$argon2id$v=19$m=65536,t=3,p=4$x",
+                status="active",
+                origin="vps",
+                registered_by=user.id,
+            )
+        )
+        await db.flush()
+        raise AssertionError("die eindeutige Adresse hätte den Eintrag abweisen müssen")
+
+    monkeypatch.setattr(routes_verbinden, "instanz_verbinden", kollidiert)
+
+    r = await _entscheiden(client, konto, code, "verbinden")
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == "unbekannt"
+    assert [e.id for e in await _eintraege(session_factory)] == [962100]
+    # Nicht entschieden: der Code bleibt für den Klick offen, der gewonnen hat.
+    assert (await _abholen(client)).status_code == 202
+
+
+async def test_gesperrter_eintrag_wird_nicht_uebernommen(
+    client, session_factory, mit_redis, nachweis
+):
+    """Sonst käme man durch Neuverbinden aus einer Sperre heraus."""
+    alt = await _konto(client, "gesperrtalt")
+    neu = await _konto(client, "neuversuch")
+    await _eintrag(session_factory, alt["id"], 962200, status="suspended")
+    code = (await _start(client)).json()["code"]
+
+    r = await _entscheiden(client, neu, code, "verbinden")
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"] == "instance_suspended"
+    (eintrag,) = await _eintraege(session_factory)
+    assert (eintrag.id, eintrag.status, eintrag.registered_by) == (962200, "suspended", alt["id"])
+    assert (await _abholen(client)).status_code == 202
+
+
+@pytest.mark.parametrize("zustand", ["deleted", "suspended", "ohne_besitzer", "verschwunden"])
+async def test_abholen_nach_veraenderung_des_eintrags(
+    client, session_factory, mit_redis, nachweis, zustand
+):
+    """Zwischen Klick und Abholen können Minuten liegen. Was sich bis dahin
+    geändert hat, bekommt keine Zugangsdaten mehr."""
+    konto = await _konto(client, "abholer")
+    code = (await _start(client)).json()["code"]
+    r = await _entscheiden(client, konto, code, "verbinden")
+    assert r.status_code == 200, r.text
+    iid = int(r.json()["instance_id"])
+
+    async with session_factory() as s:
+        inst = await s.get(RegisteredInstance, iid)
+        if zustand == "ohne_besitzer":
+            inst.registered_by = None
+        elif zustand == "verschwunden":
+            await s.execute(
+                UserInstanceMembership.__table__.delete().where(
+                    UserInstanceMembership.instance_id == iid
+                )
+            )
+            await s.delete(inst)
+        else:
+            inst.status = zustand
+        await s.commit()
+
+    r = await _abholen(client)
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"] == "abgelaufen"
+    async with session_factory() as s:
+        inst = await s.get(RegisteredInstance, iid)
+    assert inst is None or inst.verbunden_at is None
+
+
+async def test_abholen_trifft_auf_frischen_vorgang(client, mit_redis, nachweis, monkeypatch):
+    """Der entschiedene Vorgang läuft zwischen Lesen und Entnehmen ab, und ein
+    neuer Start mit derselben Kennung legt einen frischen an. Der wartet noch
+    und hat keine Instanz — das ist ein Ende, kein Fehler."""
+    assert (await _start(client)).status_code == 201
+    gelesen = routes_verbinden.vorgang_per_nachweis
+
+    async def als_entschieden_gelesen(redis, nachweis_hash):
+        vorgang = await gelesen(redis, nachweis_hash)
+        return vorgang.model_copy(update={"status": "bestaetigt", "instance_id": "123"})
+
+    monkeypatch.setattr(routes_verbinden, "vorgang_per_nachweis", als_entschieden_gelesen)
+
+    r = await _abholen(client)
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"] == "abgelaufen"
+
+
+async def test_bestaetigt_ohne_instanz_ist_abgelaufen(client, mit_redis, nachweis):
+    assert (await _start(client)).status_code == 201
+    assert await vorgang_entscheiden(
+        mit_redis, _NACHWEIS, "bestaetigt", instance_id=None, user_id="1"
+    )
+
+    r = await _abholen(client)
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"] == "abgelaufen"
