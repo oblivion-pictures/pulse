@@ -172,9 +172,10 @@ export type MedienZeile = {
 };
 
 /** Die Index-Zeilen der Anhaenge EINES Satzes — der Zweit-Schreibweg in
- *  `verlaufPutSaetze`. Reine Rechnung (importfrei, Node-testbar). Fail-closed
- *  wie `zuSatz`: ein Anhang ohne kennbaren `id`-String wird uebersprungen,
- *  statt Muell in den Index zu legen. Grabstein-Saetze liefern bewusst keine
+ *  `verlaufPutSaetze` und `verlaufSaetzeErgaenzen`. Reine Rechnung
+ *  (importfrei, Node-testbar). Fail-closed wie `zuSatz`: ein Anhang ohne
+ *  kennbaren `id`-String wird uebersprungen, statt Muell in den Index zu
+ *  legen. Grabstein-Saetze liefern bewusst keine
  *  Zeilen — ein geloeschtes Medium ist keins mehr, und der Server liefert
  *  seine Zeile ebenfalls nicht mehr. */
 export function medienZeilenAusSatz(satz: Satz): MedienZeile[] {

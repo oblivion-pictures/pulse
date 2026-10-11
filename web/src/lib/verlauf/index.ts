@@ -47,6 +47,7 @@
 import { zuSatz, sortierSchluessel, satzZuNachricht, type SatzAlsNachricht } from './satz';
 import {
   verlaufPutSaetze,
+  verlaufSaetzeErgaenzen,
   verlaufMarkiereGeloescht,
   verlaufSatzUmschreiben,
   verlaufLesenSaetze,
@@ -166,6 +167,31 @@ export function verlaufSpeichern(kanalId: string, nachrichten: unknown[]): Promi
       // (er war voruebergehend) — sonst klebte der Auskleber fuer immer.
       verlaufZustand.erholt();
       return saetze.length;
+    })
+    .catch((err) => {
+      verlaufZustand.melde(err);
+      return 0;
+    });
+}
+
+/**
+ * Wie `verlaufSpeichern`, aber ein liegender Satz desselben Kontos wird ERGÄNZT
+ * statt überschrieben (`satz.ts::satzErgaenzen`) — für das Server-Archiv
+ * (`archiv/lesen.ts`). Dessen Zeilen kennen weder Löschung noch Bearbeitung
+ * noch Reaktionen (der Server hat dafür keine Spalte, `routes/archiv.py`);
+ * blind abgelegt, holte jede Sitzung Gelöschtes zurück und nahm Bearbeitungen
+ * und Reaktionen wieder weg. Wirft nie, wie `verlaufSpeichern`.
+ */
+export function verlaufErgaenzen(kanalId: string, nachrichten: unknown[]): Promise<number> {
+  if (!istLokalerKanal(kanalId)) return Promise.resolve(0);
+  const kontoId = aktuellesKonto();
+  if (kontoId === null) return Promise.resolve(0);
+  const saetze = baueSaetze(kanalId, nachrichten, kontoId);
+  if (saetze.length === 0) return Promise.resolve(0);
+  return verlaufSaetzeErgaenzen(saetze, kontoId)
+    .then((anzahl) => {
+      verlaufZustand.erholt();
+      return anzahl;
     })
     .catch((err) => {
       verlaufZustand.melde(err);

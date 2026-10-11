@@ -26,7 +26,10 @@
  * die Ausnahme: seine Zeilen tragen den Autor nur in der verschlüsselten
  * Nutzlast, und jedes Kanalmitglied darf Zeilen einliefern (`archiv/zeile.ts`,
  * Server `routes/archiv.py`) — dort trennt die Bindung verschiedene Autoren,
- * erkennt aber keinen gefälschten.
+ * erkennt aber keinen gefälschten. Ein gefälschter Archiv-Satz kann auf
+ * einem Gerät erscheinen, das unter seinem Schlüssel nichts liegen hat;
+ * einen liegenden Satz desselben Kontos überschreibt er nicht
+ * (`satz.ts::satzErgaenzen`).
  *
  * **Grabsteine werden NICHT über diese Regel aufgelöst.** Ein Grabstein-Rahmen
  * der Sicherung trägt eine lokale ID und (ältere Fassungen) keinen Autor; er

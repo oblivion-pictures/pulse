@@ -15,28 +15,39 @@ import {
   STORE_ANHAENGE,
   STORE_MEDIEN,
   INDEX_KANAL,
-  type AnhangBytes,
-  type MedienZeile,
   type Satz,
   medienZeilenAusSatz
 } from './schema';
 import { mitVerbindung } from './verbindung';
-import { sortierSchluessel } from './satz';
+import { sortierSchluessel, satzErgaenzen } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
 import { trifftFrame } from '../krypto/loeschZiel';
+
+// Medien-Index und Anhang-Bytes liegen in `dbAnhaenge.ts`; die Aufrufer
+// importieren sie weiter von hier.
+export {
+  medienLesen,
+  medienIdVorhanden,
+  medienSchreiben,
+  anhangBytesSichern,
+  anhangBytesLesen,
+  anhangBytesLoeschen
+} from './dbAnhaenge';
 
 /** Legt mehrere Sätze in einer einzigen Transaktion ab (put = Upsert über den
  *  Primärschlüssel — ein Grabstein überschreibt seine frühere Fassung).
  *
  *  Zweit-Schreibweg `medien` (Stufe B1): die Anhänge eines Satzes wandern
  *  als Index-Zeilen (`schema.ts::MedienZeile`) mit in dieselbe Transaktion.
- *  Das MUSS hier passieren und nirgends sonst — `verlaufPutSaetze` ist die
- *  einzige Schreibpforte aller Wege (WS, Nachladen, Krypto-Empfang,
- *  `archivRueckweg`), der Medien-Index baut sich damit überall automatisch
- *  mit auf, ohne eigenen Code je Weg. Grabstein-Sätze liefern keine Zeilen
- *  (`medienZeilenAusSatz`); bestehende Index-Zeilen bleiben bei einem
- *  Grabstein stehen (der Nachzug darf sie weiter zeigen — der Server hat die
- *  Zeile ohnehin weggeräumt, sie ist hier der letzte Rest, bis B2 das aufräumt). */
+ *  Das MUSS in den Schreibpforten passieren und nirgends sonst —
+ *  `verlaufPutSaetze` (WS, Nachladen, Krypto-Empfang, Kopplung) und
+ *  `verlaufSaetzeErgaenzen` (Sicherung, Server-Archiv, seit 2026-10-11)
+ *  legen die Zeilen beide in derselben Transaktion an, der Medien-Index baut
+ *  sich damit überall automatisch mit auf, ohne eigenen Code je Weg.
+ *  Grabstein-Sätze liefern keine Zeilen (`medienZeilenAusSatz`); bestehende
+ *  Index-Zeilen bleiben bei einem Grabstein stehen (der Nachzug darf sie
+ *  weiter zeigen — der Server hat die Zeile ohnehin weggeräumt, sie ist hier
+ *  der letzte Rest, bis B2 das aufräumt). */
 export function verlaufPutSaetze(saetze: Satz[]): Promise<void> {
   if (saetze.length === 0) return Promise.resolve();
   return mitVerbindung(
@@ -50,6 +61,50 @@ export function verlaufPutSaetze(saetze: Satz[]): Promise<void> {
           for (const zeile of medienZeilenAusSatz(satz)) medien.put(zeile);
         }
         tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      })
+  );
+}
+
+/**
+ * Wie `verlaufPutSaetze`, aber ein schon liegender Satz wird ERGÄNZT statt
+ * überschrieben (`satz.ts::satzErgaenzen`) — für die Wege, die fremden
+ * Bestand nachliefern: Sicherungs-Wiederherstellung (`sicherung/andock.ts`)
+ * und Server-Archiv (`archiv/lesen.ts` über `verlauf/index.ts`). Lesen und
+ * Schreiben in EINER Transaktion (Muster `verlaufSatzUmschreiben`): zwischen
+ * dem Blick auf den liegenden Satz und dem Schreiben darf kein Grabstein und
+ * keine Bearbeitung dazwischenfahren, die das Schreiben dann überginge.
+ *
+ * Ein Satz eines FREMDEN Kontos unter demselben Schlüssel wird wie bisher
+ * überschrieben — an dieser Stelle ändert sich gegenüber `verlaufPutSaetze`
+ * nur der Fall „eigener Satz liegt schon da". Ergebnis: wie viele Sätze
+ * geschrieben wurden.
+ */
+export function verlaufSaetzeErgaenzen(saetze: Satz[], kontoId: string): Promise<number> {
+  if (saetze.length === 0) return Promise.resolve(0);
+  return mitVerbindung(
+    (db) =>
+      new Promise<number>((resolve, reject) => {
+        const tx = db.transaction([STORE_NACHRICHTEN, STORE_MEDIEN], 'readwrite');
+        const store = tx.objectStore(STORE_NACHRICHTEN);
+        const medien = tx.objectStore(STORE_MEDIEN);
+        let geschrieben = 0;
+        for (const neu of saetze) {
+          const getReq = store.get(neu.schluessel);
+          getReq.onsuccess = () => {
+            const vorhanden = getReq.result as Satz | undefined;
+            const satz =
+              vorhanden !== undefined && gehoertZuKonto(vorhanden, kontoId)
+                ? satzErgaenzen(vorhanden, neu)
+                : neu;
+            if (satz === null) return;
+            store.put(satz);
+            for (const zeile of medienZeilenAusSatz(satz)) medien.put(zeile);
+            geschrieben++;
+          };
+          getReq.onerror = () => reject(getReq.error);
+        }
+        tx.oncomplete = () => resolve(geschrieben);
         tx.onerror = () => reject(tx.error);
       })
   );
@@ -264,109 +319,6 @@ export function verlaufAlleLesen(kontoId: string): Promise<Satz[]> {
   );
 }
 
-/**
- * Der geraeteweite Medien-Index dieses Kontos, neueste zuerst — fuer das
- * Medien-Archiv-Blatt (`MedienArchivSheet.svelte`), ein Lesezugriff
- * neben `verlaufAlleLesen`. Konto-gefiltert wie jeder Lesepfad
- * (`kontoFilter.ts`, fail-closed).
- *
- * Sortierung in JS ueber die Snowflake (Zeitordnung), nicht per
- * Store-Cursor: der Primaerschluessel sortiert nur lexikografisch, und
- * Snowflakes verschiedener Ziffernlaengen (der Generator-Epoch ist jung,
- * die IDs wachsen in die naechste Stelle hinein) wuerden dabei verkehrt
- * herum liegen. ponytail: Voller Scan wie `verlaufAlleLesen` — der Speicher
- * traegt nur Metadaten-Zeilen eines Kontos, keine Bytes.
- */
-export function medienLesen(kontoId: string): Promise<MedienZeile[]> {
-  return mitVerbindung(
-    (db) =>
-      new Promise<MedienZeile[]>((resolve, reject) => {
-        const tx = db.transaction(STORE_MEDIEN, 'readonly');
-        const zeilen: MedienZeile[] = [];
-        const req = tx.objectStore(STORE_MEDIEN).openCursor();
-        req.onsuccess = () => {
-          const cursor = req.result;
-          if (!cursor) {
-            zeilen.sort((a, b) => (BigInt(a.id) > BigInt(b.id) ? -1 : BigInt(a.id) < BigInt(b.id) ? 1 : 0));
-            resolve(zeilen);
-            return;
-          }
-          const zeile = cursor.value as MedienZeile;
-          if (gehoertZuKonto(zeile, kontoId)) zeilen.push(zeile);
-          cursor.continue();
-        };
-        req.onerror = () => reject(req.error);
-      })
-  );
-}
-
-/** Liegt unter dieser Anhang-ID schon eine Index-Zeile DES Kontos? — die
- *  Overlap-Frage des Nachzugs (`medienNachzug.ts`): der erste lokal
- *  bekannte Anhang beendet den Lauf, alles Dahinter ist ohnehin lokal. */
-export function medienIdVorhanden(id: string, kontoId: string): Promise<boolean> {
-  return mitVerbindung(
-    (db) =>
-      new Promise<boolean>((resolve, reject) => {
-        const tx = db.transaction(STORE_MEDIEN, 'readonly');
-        const req = tx.objectStore(STORE_MEDIEN).get(id);
-        req.onsuccess = () => {
-          const zeile = req.result as MedienZeile | undefined;
-          resolve(zeile !== undefined && gehoertZuKonto(zeile, kontoId));
-        };
-        req.onerror = () => reject(req.error);
-      })
-  );
-}
-
-/** Upsert mehrerer Index-Zeilen in einer Transaktion — der Schreibweg des
- *  Nachzugs (`put` ueberschreibt gefahrlos, dieselbe Semantik wie in
- *  `verlaufPutSaetze`). */
-export function medienSchreiben(zeilen: MedienZeile[]): Promise<void> {
-  if (zeilen.length === 0) return Promise.resolve();
-  return mitVerbindung(
-    (db) =>
-      new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE_MEDIEN, 'readwrite');
-        const store = tx.objectStore(STORE_MEDIEN);
-        for (const zeile of zeilen) store.put(zeile);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      })
-  );
-}
-
-/**
- * Legt die entschluesselten Bytes eines Anhangs ab (Etappe E). `put` =
- * Upsert — ein zweiter Empfang derselben Kennung ueberschreibt gefahrlos.
- *
- * Der Aufrufer MUSS auf das Ergebnis warten, BEVOR er quittiert: nach der
- * Quittung gibt es die Bytes nirgends mehr (s. `schema.ts::AnhangBytes`).
- */
-export function anhangBytesSichern(eintrag: AnhangBytes): Promise<void> {
-  return mitVerbindung(
-    (db) =>
-      new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE_ANHAENGE, 'readwrite');
-        tx.objectStore(STORE_ANHAENGE).put(eintrag);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      })
-  );
-}
-
-/** Die abgelegten Bytes eines Anhangs, oder `undefined`. */
-export function anhangBytesLesen(id: string): Promise<AnhangBytes | undefined> {
-  return mitVerbindung(
-    (db) =>
-      new Promise<AnhangBytes | undefined>((resolve, reject) => {
-        const tx = db.transaction(STORE_ANHAENGE, 'readonly');
-        const req = tx.objectStore(STORE_ANHAENGE).get(id);
-        req.onsuccess = () => resolve(req.result as AnhangBytes | undefined);
-        req.onerror = () => reject(req.error);
-      })
-  );
-}
-
 /** Die Anhang-IDs eines Satzes, oder `[]` — für den Grabstein-Weg, der die
  *  zugehörigen Anhang-Dateien aus Archiv und Geräte-Cache mitentfernen muss.
  *  Wirft nie. */
@@ -437,21 +389,6 @@ export function verlaufSatzIdsFuerFrame(
           cursor.continue();
         };
         req.onerror = () => reject(req.error);
-      })
-  );
-}
-
-/** Entfernt die Bytes eines Anhangs — fuer einen abgebrochenen oder aus dem
- *  Verfasser-Fenster wieder entfernten Upload. Ohne das bliebe die Datei
- *  eines nie abgeschickten Anhangs dauerhaft auf dem Geraet liegen. */
-export function anhangBytesLoeschen(id: string): Promise<void> {
-  return mitVerbindung(
-    (db) =>
-      new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE_ANHAENGE, 'readwrite');
-        tx.objectStore(STORE_ANHAENGE).delete(id);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
       })
   );
 }

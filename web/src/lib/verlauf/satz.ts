@@ -177,3 +177,67 @@ export function satzZuNachricht(satz: Satz): SatzAlsNachricht {
     attachments: verschluesselteAnhaenge(satz.anhaenge ?? [])
   };
 }
+
+/** Die Anhang-ID eines abgelegten Anhangs, sonst `null` (Altbestand ohne
+ *  Objektform oder ID). */
+function anhangId(anhang: unknown): string | null {
+  const id = (anhang as { id?: unknown } | null)?.id;
+  return typeof id === 'string' ? id : null;
+}
+
+/**
+ * Führt einen neu ankommenden Satz mit dem zusammen, der unter demselben
+ * Schlüssel schon liegt — für die Wege, die einen fremden Bestand
+ * NACHLIEFERN (Sicherungs-Wiederherstellung, Server-Archiv), nicht für den
+ * Empfang. Gibt die zu schreibende Fassung zurück, oder `null`, wenn der
+ * liegende Satz so bleiben soll.
+ *
+ * **Ergänzen, nicht ersetzen, und nicht überspringen.** Bis 2026-10-11
+ * schrieben beide Wege blind über den Schlüssel (`verlaufPutSaetze`): ein
+ * Archiv-Satz ohne Löschung, Bearbeitung und Reaktionen überschrieb die
+ * lokale Fassung — Gelöschtes kam zurück, Bearbeitungen und Reaktionen
+ * waren weg, und ein Empfangs-Satz verlor seine `kryptoId`. Ein bloßes
+ * Überspringen vorhandener Sätze ließe dagegen liegen, was der Nachschub
+ * wirklich mehr weiß (die Kennung, einen Anhang).
+ *
+ *   - Ein Grabstein bleibt einer — der Nachschub kann ihn nicht aufheben.
+ *   - Ein anderer Autor unter demselben Schlüssel ist nicht dieselbe
+ *     Nachricht; der liegende Satz bleibt unangetastet.
+ *   - Inhalt, Bearbeitung, Reaktionen, Zustellstand: der liegende gewinnt —
+ *     er ist auf diesem Gerät gepflegt worden, der Nachschub ist eine Kopie
+ *     von früher.
+ *   - `kryptoId` und Antwortbezug: der liegende, sonst der neue.
+ *     `verschluesselt`: wenn einer von beiden es ist.
+ *   - Anhänge, die der liegende nicht kennt (nach ID), kommen dazu.
+ *
+ * Ergänzen löscht nie: ein neuer Satz mit `geloescht` hebt den liegenden
+ * nicht auf (die Lösch-Wege laufen über `verlaufMarkiereGeloescht`).
+ */
+export function satzErgaenzen<S extends Satz>(vorhanden: S, neu: Satz): S | null {
+  if (vorhanden.geloescht || vorhanden.autorId !== neu.autorId) return null;
+  // Altsätze können Felder vermissen, die es bei ihrer Ablage noch nicht gab.
+  const liegend = vorhanden.anhaenge ?? [];
+  const bekannt = new Set(liegend.map(anhangId));
+  const fehlend = neu.anhaenge.filter((a) => {
+    const id = anhangId(a);
+    return id !== null && !bekannt.has(id);
+  });
+  const kryptoId = vorhanden.kryptoId ?? neu.kryptoId;
+  const antwortAufId = vorhanden.antwortAufId ?? neu.antwortAufId;
+  const verschluesselt = vorhanden.verschluesselt || neu.verschluesselt;
+  if (
+    fehlend.length === 0 &&
+    kryptoId === vorhanden.kryptoId &&
+    antwortAufId === vorhanden.antwortAufId &&
+    verschluesselt === vorhanden.verschluesselt
+  ) {
+    return null;
+  }
+  return {
+    ...vorhanden,
+    kryptoId,
+    antwortAufId,
+    verschluesselt,
+    anhaenge: [...liegend, ...fehlend]
+  };
+}

@@ -25,7 +25,7 @@ import { kanalSchluesselHolen } from './kanalSchluessel';
 import { entschluesseleZeile } from './krypto';
 import { leseZeilenKlar } from './zeile';
 import { archivPaar } from './konto';
-import { verlaufSpeichern } from '$lib/verlauf';
+import { verlaufErgaenzen } from '$lib/verlauf';
 
 const SEITEN_GROESSE = 500;
 
@@ -77,7 +77,9 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 				}
 			}
 			if (nachrichten.length > 0) {
-				gesamt += await verlaufSpeichern(kanalId, nachrichten);
+				// Ergänzen, nicht überschreiben: die Zeile kennt keine Löschung,
+				// Bearbeitung oder Reaktion — der lokale Satz schon.
+				gesamt += await verlaufErgaenzen(kanalId, nachrichten);
 			}
 			// Server liefert aufsteigend — die ERSTE Id ist die älteste der Seite.
 			lesestand.set(kanalId, zeilen[0].id);

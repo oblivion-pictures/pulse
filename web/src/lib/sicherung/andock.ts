@@ -39,7 +39,13 @@ import type { Message } from '../api/types.ts';
 import { ausWire, NUTZLAST_FASSUNG, type AblageNachricht } from '../ablage/nutzlast.ts';
 import type { AblageAdapter } from '../ablage/adapter.ts';
 import { openIdentityDb, idbPutIdentity, idbGetIdentity } from '../identity/idb-shared.ts';
-import { verlaufAlleLesen, anhangBytesLesen, verlaufPutSaetze, verlaufMarkiereGeloescht, verlaufSatzAnhangIds } from '../verlauf/db.ts';
+import {
+	verlaufAlleLesen,
+	anhangBytesLesen,
+	verlaufSaetzeErgaenzen,
+	verlaufMarkiereGeloescht,
+	verlaufSatzAnhangIds,
+} from '../verlauf/db.ts';
 import { aktuellesKonto } from '../verlauf/konto.ts';
 import { sortierSchluessel, zuSatz } from '../verlauf/satz.ts';
 import { verschlüsseleEintrag } from './krypto.ts';
@@ -395,11 +401,13 @@ async function kanalSeiteFüttern(
 	}
 	const sichtbar = eintraege.filter((e) => e.nachricht.geloescht !== true);
 	const saetze = eintraegeZuSaetze(sichtbar, kontoId);
-	if (saetze.length > 0) await verlaufPutSaetze(saetze);
+	// Ergänzen, nicht überschreiben (`satz.ts::satzErgaenzen`): ein hier
+	// schon liegender Satz desselben Kontos behält Grabstein, Bearbeitung,
+	// Reaktionen und seine kryptoId — die Sicherung ist eine Kopie von früher.
+	if (saetze.length > 0) await verlaufSaetzeErgaenzen(saetze, kontoId);
 	// Lesestand erst NACH erfolgreichem Ablegen anheben — ein Fehler mid-run
-	// lässt den nächsten Lauf dieselbe Seite noch einmal lesen (Upsert über
-	// die Nachrichten-Ids; dem Gerät bereits bekannte Zeilen bleiben
-	// unangetastet).
+	// lässt den nächsten Lauf dieselbe Seite noch einmal lesen (Ergänzen
+	// über die Nachrichten-Ids ist wiederholbar).
 	await lesestandSchreiben(kontoId, kanalId, lesestand);
 	return { anzahl: saetze.length, erschoepft };
 }

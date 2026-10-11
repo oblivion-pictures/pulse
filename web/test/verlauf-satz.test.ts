@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { zuSatz, sortierSchluessel } from '../src/lib/verlauf/satz.ts';
+import { zuSatz, sortierSchluessel, satzErgaenzen } from '../src/lib/verlauf/satz.ts';
 
 test('Sortierschluessel ordnet nach Nachrichten-ID, nicht als Zahl', () => {
   // Snowflakes sind Zeichenketten, weil sie als Zahl nicht exakt sind. Ein
@@ -57,4 +57,68 @@ test('eine geloeschte Nachricht bleibt als Grabstein', () => {
   }, 'konto-a');
   assert.ok(satz);
   assert.equal(satz.geloescht, true);
+});
+
+// ── satzErgaenzen (2026-10-11): Nachschub ergänzt, ersetzt nicht ─────────────
+
+function beispielSatz(felder: Record<string, unknown> = {}) {
+  const s = zuSatz(
+    'k1',
+    {
+      id: '42',
+      author_id: '7',
+      content: 'hallo',
+      created_at: '2026-10-10T00:00:00Z',
+      edited_at: null,
+      attachments: [],
+      ...felder
+    },
+    'konto-a'
+  );
+  assert.ok(s);
+  return s;
+}
+
+test('satzErgaenzen: ein Grabstein bleibt einer, auch gegen einen reicheren Nachschub', () => {
+  const stein = { ...beispielSatz(), geloescht: true };
+  assert.equal(satzErgaenzen(stein, beispielSatz({ krypto_id: 'K', attachments: [{ id: 'a1' }] })), null);
+});
+
+test('satzErgaenzen: Inhalt, Bearbeitung und Reaktionen des liegenden Satzes gewinnen', () => {
+  const liegend = {
+    ...beispielSatz({ content: 'bearbeitet', edited_at: '2026-10-11T00:00:00Z' }),
+    reaktionen: [{ emoji: 'x', userId: '9' }]
+  };
+  const neu = beispielSatz({ content: 'alt', krypto_id: 'K' });
+  const ergebnis = satzErgaenzen(liegend, neu);
+  assert.ok(ergebnis);
+  assert.equal(ergebnis.inhalt, 'bearbeitet');
+  assert.equal(ergebnis.bearbeitetAm, '2026-10-11T00:00:00Z');
+  assert.deepEqual(ergebnis.reaktionen, [{ emoji: 'x', userId: '9' }]);
+  assert.equal(ergebnis.kryptoId, 'K', 'die fehlende Kennung kommt dazu');
+});
+
+test('satzErgaenzen: die Kennung des liegenden Satzes wird nicht überschrieben, verschluesselt bleibt an', () => {
+  // Der Archiv-Nachschub kam blind über einen Empfangs-Satz und nahm ihm die
+  // kryptoId — mit ihr die Duplikat-Erkennung und den Lesestand-Anker.
+  const liegend = beispielSatz({ krypto_id: 'K', verschluesselt: true });
+  assert.equal(satzErgaenzen(liegend, beispielSatz({ verschluesselt: false })), null);
+});
+
+test('satzErgaenzen: fehlende Anhänge kommen dazu, bekannte nicht doppelt', () => {
+  const liegend = beispielSatz({ attachments: [{ id: 'a1' }] });
+  const ergebnis = satzErgaenzen(liegend, beispielSatz({ attachments: [{ id: 'a1' }, { id: 'a2' }] }));
+  assert.ok(ergebnis);
+  assert.deepEqual(
+    ergebnis.anhaenge.map((a) => (a as { id: string }).id),
+    ['a1', 'a2']
+  );
+});
+
+test('satzErgaenzen: ein anderer Autor unter demselben Schlüssel überschreibt nichts', () => {
+  assert.equal(satzErgaenzen(beispielSatz(), beispielSatz({ author_id: '8', krypto_id: 'K', content: 'fremd' })), null);
+});
+
+test('satzErgaenzen: nichts Neues heißt nichts zu schreiben', () => {
+  assert.equal(satzErgaenzen(beispielSatz({ krypto_id: 'K' }), beispielSatz({ krypto_id: 'K' })), null);
 });
