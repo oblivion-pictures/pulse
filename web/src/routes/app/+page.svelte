@@ -18,6 +18,7 @@
   import { erstelleCommunity } from '$lib/guilds/erstellen';
   import { navDrawer } from '$lib/stores/navDrawer.svelte';
   import { voiceAutoConnect } from '$lib/voice/autoconnect.svelte';
+  import { weiterleiten } from '$lib/navigation/navigationsHerkunft';
   import DMChannelList from '$lib/components/DMChannelList.svelte';
   import type { DMChannel } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
@@ -68,10 +69,15 @@
     // der User will seinen gewählten Voice-Channel sofort sehen. Der
     // eigentliche Voice-Join läuft unabhängig davon im Layout
     // (autoConnectIfConfigured) — hier geht es nur um die Ansicht.
+    // **Als Weiterleitung, nicht als Tipp** (S1): sonst träte die Kanal-Route
+    // am Handy selbst bei, auch dort, wo der Auto-Connect mit Absicht nicht
+    // beitritt (schon auf einem anderen Gerät im Kanal, Tab im Hintergrund).
     const auto = voiceAutoConnect.validTarget();
     if (auto?.guildId && guilds.list.some((g) => g.id === auto.guildId)) {
       navDrawer.open = true;
-      void goto(`/app/guilds/${auto.guildId}/channels/${auto.channelId}`, { replaceState: true });
+      void weiterleiten(`/app/guilds/${auto.guildId}/channels/${auto.channelId}`, {
+        replaceState: true
+      });
       return;
     }
     void goto('/app/friends', { replaceState: true });

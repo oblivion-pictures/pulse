@@ -19,7 +19,9 @@
  *     Ein Ziel von aussen (D1) und die erste Seite des Dokuments tragen ihn
  *     nicht.
  *  3. **Die Hülle widerspricht nicht**: hat der Nutzer dort selbst aufgelegt,
- *     während die Seite tot war, ist der Resume-Eintrag überholt (B1).
+ *     während die Seite tot war, ist der Resume-Eintrag überholt (B1) — und
+ *     der Auto-Connect tritt in diesem Start auch nicht bei (S4). Hält sie
+ *     den Raum eines Prüfpfads, bleibt er unangetastet (`istPruefraum`).
  */
 
 import type { Herkunft } from '$lib/navigation/herkunft';
@@ -75,6 +77,8 @@ export type ResumePlan =
  *    gelöscht, sonst träte das NÄCHSTE Neuladen wieder bei.
  *  - `ueberholt` oder schon im Kanal: ein Tipp während der Abfrage hat
  *    gewonnen. Der Eintrag bleibt — der neue Beitritt schreibt seinen eigenen.
+ *  - `pruefraum`: die Hülle hält den Raum eines Prüfpfads. Ein Beitritt
+ *    räumte ihn ab (`SpracheRaum.beitreten`); der Eintrag bleibt stehen.
  *  - sonst (`nichts`, `verlassen`): der Eintrag entscheidet, und zwar nur im
  *    selben Server-Kontext (andere Token-/Mitgliedschafts-Welt).
  *
@@ -88,7 +92,12 @@ export function resumePlan(z: {
   imKanal: boolean;
 }): ResumePlan {
   if (z.abgleich === 'verwerfen') return { beitreten: false, eintragLoeschen: true };
-  if (z.abgleich === 'uebernehmen' || z.abgleich === 'ueberholt' || z.imKanal) {
+  if (
+    z.abgleich === 'uebernehmen' ||
+    z.abgleich === 'ueberholt' ||
+    z.abgleich === 'pruefraum' ||
+    z.imKanal
+  ) {
     return { beitreten: false, eintragLoeschen: false };
   }
   const r = z.resume;
@@ -103,4 +112,21 @@ export function resumePlan(z: {
       micBeforeDeafen: r.micBeforeDeafen
     }
   };
+}
+
+/**
+ * Darf der Auto-Connect nach dem Abgleich noch beitreten? `null`: es gab
+ * keinen Abgleich (schon im Kanal — dann tut der Auto-Connect ohnehin nichts).
+ *
+ * **Nicht nach `verwerfen`** (Nachprüfung der Fix-Runden, S4). Der Nutzer hat
+ * in der Hülle selbst aufgelegt, während die Oberfläche tot war; B1 löschte
+ * dafür den Resume-Eintrag, aber der Auto-Connect lief danach unbeirrt los
+ * und trat demselben Kanal wieder bei — nur eben auf dem anderen Weg. Gilt
+ * für diesen Start; der nächste Kaltstart fragt neu.
+ *
+ * **Nicht über einen Prüfraum** (`pruefraum`): `SpracheRaum.beitreten` räumte
+ * ihn ab, und der Prüfpfad liefe ins Leere.
+ */
+export function autoConnectNachAbgleich(abgleich: StartAbgleich | null): boolean {
+  return abgleich !== 'verwerfen' && abgleich !== 'pruefraum';
 }

@@ -1,5 +1,5 @@
 import { goto, onNavigate } from '$app/navigation';
-import { herkunftEinordnen, type Herkunft } from './herkunft';
+import { herkunftEinordnen, type Herkunft, type Marke } from './herkunft';
 
 /**
  * Die Herkunft der letzten Navigation — die Regel und ihre Begründung stehen
@@ -17,7 +17,7 @@ import { herkunftEinordnen, type Herkunft } from './herkunft';
 /** Bis zur ersten Navigation in der App ist die gezeigte Seite die erste des
  *  Dokuments. Für sie ruft SvelteKit `onNavigate` nicht. */
 let aktuell: Herkunft = 'start';
-let aussenZiel: string | null = null;
+let marke: Marke | null = null;
 
 export function navigationsHerkunft(): Herkunft {
   return aktuell;
@@ -31,13 +31,13 @@ export function navigationsHerkunft(): Herkunft {
  */
 export function navigationsHerkunftVerfolgen(): void {
   onNavigate((nav) => {
-    aktuell = herkunftEinordnen(nav.type, nav.to?.url.pathname ?? '', aussenZiel);
+    aktuell = herkunftEinordnen(nav.type, nav.to?.url.pathname ?? '', marke);
     // **Die Marke gilt genau für die nächste Navigation.** Startet zwischen
     // Marke und Landung eine zweite, bricht SvelteKit die erste ab und ruft
     // `onNavigate` nur für die zweite: liegt die auf einem anderen Pfad, ist
     // sie richtig `app`, und eine liegengebliebene Marke darf keine spätere
     // Navigation auf demselben Pfad falsch einordnen.
-    aussenZiel = null;
+    marke = null;
   });
 }
 
@@ -47,6 +47,19 @@ export function navigationsHerkunftVerfolgen(): void {
  * die Folgen eines Tipps in der App (kein Beitritt zum Sprachkanal, D1).
  */
 export function vonAussenOeffnen(ziel: string): Promise<void> {
-  aussenZiel = ziel;
+  marke = { ziel, herkunft: 'aussen' };
   return goto(ziel);
+}
+
+/**
+ * Eine Weiterleitung, die die App selbst auslöst — kein Tipp, also auch kein
+ * Beitritt der Kanal-Route (S1, Begründung in `herkunft.ts`). `optionen`
+ * gehen unverändert an `goto` (`replaceState` für die Startseite).
+ */
+export function weiterleiten(
+  ziel: string,
+  optionen?: Parameters<typeof goto>[1]
+): Promise<void> {
+  marke = { ziel, herkunft: 'weiterleitung' };
+  return goto(ziel, optionen);
 }

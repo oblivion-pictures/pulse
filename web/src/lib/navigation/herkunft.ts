@@ -26,18 +26,34 @@
  *               (`navigationsHerkunft.ts::vonAussenOeffnen`).
  *  - `zurueck` — Zurück/Vor im Verlauf. Kein Tipp auf den Kanal: wer nach
  *               dem Auflegen zurückwischt, will nicht wieder hinein.
+ *  - `weiterleitung` — eine Navigation, die die App selbst auslöst, ohne
+ *               dass jemand getippt hat (`navigationsHerkunft.ts::weiterleiten`):
+ *               die Startseite `/app`, die auf das Auto-Connect-Ziel
+ *               weiterleitet, und der Auto-Connect selbst. Nachprüfung der
+ *               Fix-Runden, S1: die Weiterleitung von `/app` war ein `goto`
+ *               und galt damit als Tipp — die Kanal-Route trat nach dem Tor
+ *               bei, auch dort, wo der Auto-Connect mit Absicht NICHT
+ *               beigetreten war (schon auf einem anderen Gerät im Kanal,
+ *               Tab im Hintergrund). Der Beitritt gehört dann allein ihm.
  *
  * Importfrei, damit Nodes Testläufer die Einordnung prüfen kann (CLAUDE.md,
  * `pnpm test:unit`-Falle).
  */
 
-export type Herkunft = 'start' | 'app' | 'aussen' | 'zurueck';
+export type Herkunft = 'start' | 'app' | 'aussen' | 'zurueck' | 'weiterleitung';
+
+/** Ein Ziel, das für die nächste Navigation angemeldet wurde, und als was
+ *  es landen soll (`navigationsHerkunft.ts`). */
+export interface Marke {
+  ziel: string;
+  herkunft: 'aussen' | 'weiterleitung';
+}
 
 /**
  * Eine Navigation einordnen. `typ` ist SvelteKits `navigation.type`
  * (`link`, `goto`, `popstate`, `form`; `enter` gibt es nur beim ersten
- * Laden), `zielPfad` der Pfad, auf dem sie landet, `aussenZiel` das Ziel,
- * das zuletzt als „von aussen" angemeldet wurde.
+ * Laden), `zielPfad` der Pfad, auf dem sie landet, `marke` das Ziel, das
+ * zuletzt als „von aussen" oder als Weiterleitung angemeldet wurde.
  *
  * Verglichen wird nur der Pfad: Query und Anker ändern nicht, auf welchem
  * Bildschirm man landet.
@@ -45,11 +61,11 @@ export type Herkunft = 'start' | 'app' | 'aussen' | 'zurueck';
 export function herkunftEinordnen(
   typ: string,
   zielPfad: string,
-  aussenZiel: string | null
+  marke: Marke | null
 ): Herkunft {
   if (typ === 'enter') return 'start';
   if (typ === 'popstate') return 'zurueck';
-  if (aussenZiel !== null && nurPfad(aussenZiel) === zielPfad) return 'aussen';
+  if (marke !== null && nurPfad(marke.ziel) === zielPfad) return marke.herkunft;
   return 'app';
 }
 

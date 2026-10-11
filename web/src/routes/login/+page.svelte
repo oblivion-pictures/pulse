@@ -23,6 +23,7 @@
   import { startProfileRefresh } from '$lib/identity/profile-refresh.svelte';
   import { isElectron } from '$lib/platform/runtime';
   import { joinGuildByInvite } from '$lib/guilds/joinByInvite';
+  import { vonAussenOeffnen } from '$lib/navigation/navigationsHerkunft';
 
   type Step = 'credentials' | 'mfa';
 
@@ -100,8 +101,7 @@
     // Format: `?pendingAddress=<handle>` oder `?pendingAddress=<handle>&pendingHost=<fqdn>`
     const pendingHandle = page.url.searchParams.get('pendingAddress');
     if (!pendingHandle) {
-      const redirect = safeRedirect(page.url.searchParams.get('redirect'));
-      await goto(redirect);
+      await zumZiel();
       return;
     }
     const pendingHost = page.url.searchParams.get('pendingHost') ?? null;
@@ -115,7 +115,16 @@
       // Best-effort: bei Fehler normal nach /app weiterleiten
     }
 
-    await goto(safeRedirect(page.url.searchParams.get('redirect')));
+    await zumZiel();
+  }
+
+  /** Nach der Anmeldung weiter. **Ein `redirect` kommt von aussen** — kein
+   *  Teil der App baut ihn —, und landet deshalb auch so: ein Link auf einen
+   *  Sprachkanal öffnet die Seite, ohne beizutreten (S1, D1,
+   *  `navigation/herkunft.ts`). */
+  function zumZiel(): Promise<void> {
+    const ziel = page.url.searchParams.get('redirect');
+    return ziel ? vonAussenOeffnen(safeRedirect(ziel)) : goto('/app');
   }
 
   async function submit(e: Event) {

@@ -3,7 +3,7 @@ import { appSperre } from '$lib/platform/appSperre.svelte';
 import { autoConnectIfConfigured } from './autoconnect.svelte';
 import { voice } from './livekit.svelte';
 import { clearVoiceResume, loadVoiceResume } from './resume';
-import { resumePlan } from './startBeitritt';
+import { autoConnectNachAbgleich, resumePlan, type StartAbgleich } from './startBeitritt';
 import { startTor } from './startTor.svelte';
 
 /**
@@ -16,7 +16,9 @@ import { startTor } from './startTor.svelte';
  *  2. **Abgleich und Wiederaufnehmen** — die Hülle zuerst fragen, dann
  *     entscheidet der Resume-Eintrag. „Resume gewinnt" gegen den
  *     Auto-Connect: er trägt den echten letzten Zustand.
- *  3. **Auto-Connect**, falls konfiguriert.
+ *  3. **Auto-Connect**, falls konfiguriert — nicht, wenn der Nutzer in der
+ *     Hülle aufgelegt hat oder sie einen Prüfraum hält
+ *     (`autoConnectNachAbgleich`, S4).
  *  4. **Das Tor öffnen** (`startTor`) — erst jetzt darf die Kanal-Route
  *     selbst beitreten. Bis zum 2026-10-11 lief sie schon während Schritt 2
  *     los, sah „nicht verbunden" und verdrängte einen überlebenden nativen
@@ -29,8 +31,8 @@ export async function startBeitritteAusfuehren(): Promise<void> {
   startTor.schliessen();
   try {
     await appSperre.entsperrt();
-    await resumeVoiceIfPending();
-    await autoConnectIfConfigured();
+    const abgleich = await resumeVoiceIfPending();
+    if (autoConnectNachAbgleich(abgleich)) await autoConnectIfConfigured();
   } finally {
     startTor.oeffnen();
   }
@@ -42,6 +44,9 @@ export async function startBeitritteAusfuehren(): Promise<void> {
  * liegt): war der User vor einem Reload in einem Voice-Channel,
  * automatisch zurückverbinden — inkl. Mute/Deafen. Quelle ist der
  * sessionStorage-Eintrag aus `resume.ts`.
+ *
+ * Gibt das Ergebnis des Abgleichs zurück (`null`, wenn er gar nicht lief) —
+ * daran entscheidet `startBeitritteAusfuehren`, ob der Auto-Connect noch darf.
  *
  * Sicherheits-/Korrektheits-Gates (`startBeitritt.ts::resumePlan`):
  *  - kein Rejoin, wenn schon (ver)bunden — auch nicht, wenn das ein Tipp
@@ -58,9 +63,9 @@ export async function startBeitritteAusfuehren(): Promise<void> {
  * + bestehender Unblock-Pfad in der UI). Der eigene Mic-Publish braucht keine
  * Geste, wenn die Berechtigung schon erteilt war.
  */
-export async function resumeVoiceIfPending(): Promise<void> {
+export async function resumeVoiceIfPending(): Promise<StartAbgleich | null> {
   const r = loadVoiceResume();
-  if (voice.connected || voice.connecting) return;
+  if (voice.connected || voice.connecting) return null;
   // iOS: hält die Hülle den Raum noch, wird er übernommen statt neu
   // betreten — oder verlassen, wenn ihn nichts bestätigt (`nativAbgleich.ts`).
   // Läuft auch OHNE Eintrag: gerade ein Raum ohne ihn darf nicht unsichtbar
@@ -74,7 +79,7 @@ export async function resumeVoiceIfPending(): Promise<void> {
   });
   if (!plan.beitreten) {
     if (plan.eintragLoeschen) clearVoiceResume();
-    return;
+    return abgleich;
   }
   try {
     await voice.connect(plan.kanalId, plan.kanalName, plan.optionen);
@@ -82,4 +87,5 @@ export async function resumeVoiceIfPending(): Promise<void> {
     // Channel weg / Token verweigert → stale Resume entfernen (keine Schleife).
     clearVoiceResume();
   }
+  return abgleich;
 }

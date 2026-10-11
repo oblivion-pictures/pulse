@@ -42,8 +42,28 @@ export function verbindungAusHuelle(roh: string): HuellenVerbindung | null {
 }
 
 /** Was nach einem Reload mit einem Raum geschieht, den die Hülle noch hält
- *  — oder mit dem Resume-Eintrag, wenn sie keinen mehr hält (`verwerfen`). */
-export type Abgleich = 'nichts' | 'uebernehmen' | 'verlassen' | 'verwerfen';
+ *  — oder mit dem Resume-Eintrag, wenn sie keinen mehr hält (`verwerfen`).
+ *  `pruefraum`: die Hülle hält den Raum eines DEBUG-Prüfpfads, und den lässt
+ *  die Seite stehen (`istPruefraum`). */
+export type Abgleich = 'nichts' | 'uebernehmen' | 'verlassen' | 'verwerfen' | 'pruefraum';
+
+/**
+ * **Hält die Hülle den Raum eines Prüfpfads?** Die DEBUG-Prüfpfade
+ * (`SprachePluginProbe.swift`, `AnrufProbe.swift` …) treten mit der
+ * Kanal-Kennung `probe` bzw. `probe-kanal` bei — ohne Oberfläche und ohne
+ * Eintrag fürs Wiederaufnehmen. Ohne diese Ausnahme verliess der
+ * Start-Abgleich ihren Raum wenige Sekunden nach dem Start wie jeden
+ * unbestätigten (Abnahme-Checkliste vom 2026-10-11, Abschnitt 0.8), und
+ * jeder Prüfpfad mit Sprachraum lief ins Leere.
+ *
+ * **Eine Ausnahme NUR für Prüfräume.** Echte Kanäle tragen Snowflake-Kennungen
+ * aus Ziffern, und die Oberfläche tritt nie mit etwas anderem bei; ein
+ * Release-Bau hat die Prüfpfade gar nicht. Für jeden anderen Raum gilt die
+ * Regel oben unverändert.
+ */
+export function istPruefraum(kanalId: string): boolean {
+  return kanalId === 'probe' || kanalId.startsWith('probe-');
+}
 
 /**
  * Übernehmen oder verlassen? (Entwurf §5: „Ein Reload der Web-App darf den
@@ -72,6 +92,7 @@ export function abgleichEntscheiden(z: {
 }): Abgleich {
   if (!z.huelle) return 'nichts';
   if (!z.huelle.kanalId) return vomNutzerAufgelegt(z.huelle) ? 'verwerfen' : 'nichts';
+  if (istPruefraum(z.huelle.kanalId)) return 'pruefraum';
   if (!z.resume) return 'verlassen';
   if (z.resume.serverId !== z.aktiverServer) return 'verlassen';
   if (z.resume.channelId !== z.huelle.kanalId) return 'verlassen';
