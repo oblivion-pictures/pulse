@@ -547,3 +547,97 @@ async def test_bestaetigt_ohne_instanz_ist_abgelaufen(client, mit_redis, nachwei
     r = await _abholen(client)
     assert r.status_code == 410, r.text
     assert r.json()["detail"] == "abgelaufen"
+
+
+async def test_hinweis_mail_nach_dem_verbinden(client, mit_redis, nachweis, monkeypatch):
+    """Gegenmittel gegen untergeschobene Links (Entwurf E5): wer einen fremden
+    Link bestätigt hat, erfährt es spätestens aus seinem Postfach."""
+    gesendet: list[tuple[str, str, str]] = []
+
+    async def mitschreiben(to, subject, body_plain, session=None):
+        gesendet.append((to, subject, body_plain))
+
+    monkeypatch.setattr(routes_verbinden, "send_email", mitschreiben)
+    konto = await _konto(client, "postfach")
+
+    abgelehnt = (await _start(client)).json()["code"]
+    assert (await _entscheiden(client, konto, abgelehnt, "ablehnen")).status_code == 200
+    assert gesendet == []
+
+    await _abholen(client)  # räumt den abgelehnten Vorgang
+    code = (await _start(client)).json()["code"]
+    assert (await _entscheiden(client, konto, code, "verbinden")).status_code == 200
+
+    ((an, betreff, text),) = gesendet
+    assert an == "postfach@dcc-test.example.com"
+    assert betreff == "Pulse: Ein Server wurde mit deinem Konto verbunden"
+    assert _HOST in text
+    assert "UTC" in text
+    assert "Warst du das nicht? Lösche den Server in Pulse unter Meine Server." in text
+    assert code not in text and code.replace("-", "") not in text
+
+
+async def test_versandfehler_bricht_das_verbinden_nicht_ab(
+    client, mit_redis, nachweis, monkeypatch
+):
+    import smtplib
+
+    async def kaputt(*_a, **_k):
+        raise smtplib.SMTPException("relay down")
+
+    monkeypatch.setattr(routes_verbinden, "send_email", kaputt)
+    konto = await _konto(client, "ohnepost")
+    code = (await _start(client)).json()["code"]
+
+    r = await _entscheiden(client, konto, code, "verbinden")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "verbunden"
+    assert (await _abholen(client)).status_code == 200
+
+
+async def test_uebernahme_schreibt_dem_vorbesitzer(
+    client, session_factory, mit_redis, nachweis, monkeypatch
+):
+    """Bei einer Übernahme ist der alte Eintrag weg und der alte Server steht
+    still — sein Besitzer soll das nicht erst am toten Server merken."""
+    gesendet: list[tuple[str, str, str]] = []
+
+    async def mitschreiben(to, subject, body_plain, session=None):
+        gesendet.append((to, subject, body_plain))
+
+    monkeypatch.setattr(routes_verbinden, "send_email", mitschreiben)
+    alt = await _konto(client, "vorbesitzer")
+    neu = await _konto(client, "nachfolger")
+    async with session_factory() as s:
+        s.add(
+            RegisteredInstance(
+                id=962000,
+                hostname=_HOST,
+                client_id="vb-client",
+                client_secret="$argon2id$v=19$m=65536,t=3,p=4$x",
+                status="active",
+                origin="vps",
+                registered_by=alt["id"],
+            )
+        )
+        await s.commit()
+
+    code = (await _start(client)).json()["code"]
+    assert (await _entscheiden(client, neu, code, "verbinden")).status_code == 200
+    an_vorbesitzer = [m for m in gesendet if m[0] == "vorbesitzer@dcc-test.example.com"]
+    ((_, betreff, text),) = an_vorbesitzer
+    assert betreff == "Pulse: Dein Server wurde mit einem anderen Konto verbunden"
+    assert _HOST in text and "UTC" in text
+    assert "Wer den Server unter dieser Adresse betreibt, hat ihn neu verbunden." in text
+    assert "prüfe, wer Zugriff auf den Rechner und die Domain hat." in text
+    assert [m[0] for m in gesendet].count("nachfolger@dcc-test.example.com") == 1
+
+    # Derselbe Besitzer verbindet denselben Server neu (zweiter Lauf von
+    # pulse-connect): kein Besitzerwechsel, also keine zweite Mail an den
+    # Vorbesitzer.
+    code = (await _start(client, kennung="zweite-abholkennung-fuer-denselben-server")).json()[
+        "code"
+    ]
+    assert (await _entscheiden(client, neu, code, "verbinden")).status_code == 200
+    assert [m[0] for m in gesendet].count("vorbesitzer@dcc-test.example.com") == 1
+    assert [m[0] for m in gesendet].count("nachfolger@dcc-test.example.com") == 2

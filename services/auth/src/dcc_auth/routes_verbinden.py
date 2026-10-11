@@ -34,6 +34,7 @@ from dcc_shared.hostname import normalisiere_hostname
 
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
+from dcc_auth.email import compose_verbinden_hinweis, compose_verbinden_uebernahme, send_email
 from dcc_auth.models import User
 from dcc_auth.models_instances import RegisteredInstance
 from dcc_auth.routes import _check_rate, _consume_token, _parse_rule
@@ -144,6 +145,21 @@ async def _offener_vorgang(redis, roh: str) -> tuple[str, Vorgang]:
     return treffer
 
 
+async def _hinweis_mail(db, empfaenger: User, mail: tuple[str, str]) -> None:
+    """Gegenmittel gegen untergeschobene Links (Entwurf E5) — an den, der
+    bestätigt hat, und bei einer Übernahme an den bisherigen Besitzer.
+
+    Ein Fehlschlag beim Versand bricht nichts ab — der Server ist zu diesem
+    Zeitpunkt schon eingetragen, und ein 500 hiesse für den Betreiber „hat
+    nicht geklappt“, obwohl es geklappt hat.
+    """
+    betreff, text = mail
+    try:
+        await send_email(empfaenger.email, betreff, text, session=db)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("verbinden_hinweis_mail_fehlgeschlagen user_id=%s: %s", empfaenger.id, exc)
+
+
 def _nachweis_fehlt(befund: str) -> HTTPException:
     return HTTPException(
         status.HTTP_409_CONFLICT, detail={"code": "nachweis_fehlt", "befund": befund}
@@ -245,6 +261,7 @@ async def verbinden_entscheiden(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="unbekannt")
     await db.commit()
 
+    jetzt = datetime.now(UTC)
     if verbunden.abgeloest is not None:
         await suspended_list_add(redis, verbunden.abgeloest)
         # warning, weil ``info`` in der Cloud unsichtbar ist (logging_setup.py):
@@ -255,6 +272,15 @@ async def verbinden_entscheiden(
             verbunden.abgeloest,
             instanz_id,
         )
+        # Der Soft-Delete lässt ``registered_by`` stehen: der bisherige
+        # Besitzer ist bekannt, solange er sein Konto nicht gelöscht hat.
+        alt = await db.get(RegisteredInstance, verbunden.abgeloest)
+        vorbesitzer = await db.get(User, alt.registered_by) if alt.registered_by else None
+        if vorbesitzer is not None:
+            await _hinweis_mail(
+                db, vorbesitzer, compose_verbinden_uebernahme(vorgang.hostname, jetzt)
+            )
+    await _hinweis_mail(db, user, compose_verbinden_hinweis(vorgang.hostname, jetzt))
     return EntscheidungAus(status="verbunden", hostname=vorgang.hostname, instance_id=instanz_id)
 
 
