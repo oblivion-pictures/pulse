@@ -1,4 +1,4 @@
-import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { test, expect, type Page, type BrowserContext, type Route } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -18,9 +18,16 @@ import { E2E_DB } from './_db';
  *   2. Alice meldet ab, ihre lokalen Datenbanken werden gelöscht — das ist
  *      das „andere/frische Gerät": neue Geräteschlüssel, leerer Verlauf.
  *      Das Postfach kann nichts mehr liefern (der Umschlag für das alte
- *      Gerät ist quittiert/gelöscht) — das ARCHIV ist der einzige Weg.
+ *      Gerät ist quittiert/gelöscht).
  *   3. Alice verbindet das Laufwerk, gibt das Sicherungs-Passwort ein —
- *      und die Nachricht ist wieder da, inklusive Toast.
+ *      und die Nachricht ist wieder da, inklusive Toast. Die Leseroute des
+ *      SERVER-Archivs ist dabei gesperrt (`archivLesenSperren`): seit
+ *      90a4aa65 füllt es den Verlauf eines Frischgeräts ebenfalls, und ohne
+ *      Sperre bewiese der Schritt nichts mehr über die Sicherung.
+ *   4. Noch ein Frischgerät, diesmal mit Archiv UND Sicherung: die Nachricht
+ *      steht genau einmal da. Genau so entstand die Doppelzeile vom
+ *      2026-10-11 — die Archiv-Kopie (lokale ID K) und die Kopie des alten
+ *      Geräts (Zustellungs-ID D, Kennung K) galten als zwei Nachrichten.
  *
  * **Warum ein fake Ordner über einen HTTP-Speicher:** Der Nextcloud-Weg ist
  * lokal durch den SSRF-Wächter blockiert (`ablage_ssrf.py` verweigert
@@ -346,6 +353,7 @@ test.describe.serial('Sicherung: Gerätewechsel über das Archiv (2026-09-10)', 
   let bobPage: Page;
   let dmChannelId = '';
   let speicher: Awaited<ReturnType<typeof starteSpeicher>>;
+  let archivSperre: Awaited<ReturnType<typeof archivLesenSperren>> | undefined;
 
   test.beforeAll(async ({ browser }) => {
     speicher = await starteSpeicher();
@@ -430,36 +438,16 @@ test.describe.serial('Sicherung: Gerätewechsel über das Archiv (2026-09-10)', 
   });
 
   test('Abmelden und lokales Abräumen — das Archiv bleibt, der Rest ist weg', async () => {
-    await alicePage.getByTestId('user-footer-trigger').click();
-    await alicePage.getByTestId('sign-out').click();
-    await alicePage.waitForURL(/\/login/);
-
-    // „Frisches Gerät": Identität (Geräteschlüssel!), Sicherungs-Zwischen-
-    // lager und lokaler Verlauf löschen. Nur der „Ordner" (HTTP-Speicher)
-    // überlebt — wie ein Laufwerk, das nicht mitgelöscht wird.
-    await alicePage.evaluate(
-      () =>
-        new Promise<void>((aufgeloest) => {
-          let rest = 3;
-          const fertig = () => (--rest === 0 && aufgeloest());
-          for (const name of ['pulse-identity', 'pulse-sicherung', 'pulse-verlauf']) {
-            const anfrage = indexedDB.deleteDatabase(name);
-            anfrage.onsuccess = fertig;
-            anfrage.onerror = fertig;
-            anfrage.onblocked = fertig;
-          }
-        })
-    );
-    // Der Token muss auch weg — sonst loggt der Wiedereinstieg still ein.
-    await alicePage.evaluate(() => localStorage.clear());
+    await abmeldenUndAbraeumen(alicePage);
     expect(speicher.namen().some((n) => n === 'key.puls')).toBe(true);
   });
 
   test('Wiedereinstieg: Passwort oeffnet das Archiv, Toast meldet die Wiederherstellung', async () => {
+    // Nur die Sicherung darf die Nachricht zurückbringen: das Server-Archiv
+    // ist gesperrt (s. Modulkopf, Schritt 3), der alte Umschlag war ans alte
+    // Gerät adressiert und ist längst quittiert.
+    archivSperre = await archivLesenSperren(aliceCtx);
     await login(alicePage, ALICE.username, ALICE.password);
-    // Der Kanal ist lokal leer — die Nachricht kann NUR aus dem Archiv
-    // kommen (der alte Umschlag war ans alte Geraet adressiert und ist
-    // längst quittiert).
     await alicePage.goto(`/app/@me/${dmChannelId}`);
     await expect(
       alicePage.locator('[data-testid="message-content"]', { hasText: 'vom anderen rechner' })
@@ -471,14 +459,92 @@ test.describe.serial('Sicherung: Gerätewechsel über das Archiv (2026-09-10)', 
     ).toBeVisible({ timeout: 20_000 });
 
     // Und der Bestand ist wirklich im Verlauf: Kanal neu oeffnen zeigt die
-    // Nachricht — ohne Postfach, nur aus der Sicherung.
+    // Nachricht — ohne Postfach und ohne Server-Archiv, nur aus der Sicherung.
     await alicePage.goto('/app/@me');
     await alicePage.goto(`/app/@me/${dmChannelId}`);
     await expect(
       alicePage.locator('[data-testid="message-content"]', { hasText: 'vom anderen rechner' })
-    ).toBeVisible({ timeout: 15_000 });
+    ).toHaveCount(1, { timeout: 15_000 });
+    // Die Sperre hat wirklich gegriffen — sonst prüfte der Schritt nichts.
+    expect(archivSperre.gesperrt()).toBeGreaterThan(0);
+  });
+
+  test('Archiv UND Sicherung auf einem Frischgerät: die Nachricht steht genau einmal da', async () => {
+    test.setTimeout(120_000);
+    const zeile = alicePage.locator('[data-testid="message-content"]', {
+      hasText: 'vom anderen rechner'
+    });
+    await abmeldenUndAbraeumen(alicePage);
+    await archivSperre?.aufheben();
+    await login(alicePage, ALICE.username, ALICE.password);
+
+    // Erst das Server-Archiv allein: die Archiv-Kopie unter der lokalen ID K
+    // liegt jetzt lokal, BEVOR die Sicherung geöffnet ist.
+    await alicePage.goto(`/app/@me/${dmChannelId}`);
+    await expect(zeile).toBeVisible({ timeout: 20_000 });
+
+    // Dann die Sicherung öffnen: Erstsicherung (spiegelt die Archiv-Kopie)
+    // und Wiederherstellung (bringt die Kopie des alten Geräts unter der
+    // Zustellungs-ID D).
+    await sicherungEinrichten(alicePage, SICHERUNGS_PASSWORT, false);
+    await expect(
+      alicePage.getByText(/Nachricht(?:en)? aus der Sicherung wiederhergestellt/)
+    ).toBeVisible({ timeout: 20_000 });
+
+    await alicePage.goto('/app/@me');
+    await alicePage.goto(`/app/@me/${dmChannelId}`);
+    await expect(zeile.first()).toBeVisible({ timeout: 15_000 });
+    // Archiv-Nachzug und Sicherungs-Seite laufen beim Öffnen nebenher.
+    // `toHaveCount(1)` ist schon bei der ersten Zeile erfüllt und sähe eine
+    // Zweitzeile nicht, die erst danach nachkommt — deshalb eine feste
+    // Wartezeit davor (kein Ereignis, auf das gewartet würde).
+    await alicePage.waitForTimeout(3_000);
+    await expect(zeile).toHaveCount(1);
   });
 });
+
+/** Abmelden und das „frische Gerät" herstellen: Identität (Geräteschlüssel!),
+ *  Sicherungs-Zwischenlager und lokaler Verlauf weg. Nur der „Ordner"
+ *  (HTTP-Speicher) überlebt — wie ein Laufwerk, das nicht mitgelöscht wird. */
+async function abmeldenUndAbraeumen(page: Page): Promise<void> {
+  await page.getByTestId('user-footer-trigger').click();
+  await page.getByTestId('sign-out').click();
+  await page.waitForURL(/\/login/);
+  await page.evaluate(
+    () =>
+      new Promise<void>((aufgeloest) => {
+        let rest = 3;
+        const fertig = () => (--rest === 0 && aufgeloest());
+        for (const name of ['pulse-identity', 'pulse-sicherung', 'pulse-verlauf']) {
+          const anfrage = indexedDB.deleteDatabase(name);
+          anfrage.onsuccess = fertig;
+          anfrage.onerror = fertig;
+          anfrage.onblocked = fertig;
+        }
+      })
+  );
+  // Der Token muss auch weg — sonst loggt der Wiedereinstieg still ein.
+  await page.evaluate(() => localStorage.clear());
+}
+
+/** Sperrt die Leseroute des Server-Archivs (`GET /api/chat/archiv/<kanal>`,
+ *  `api/archiv.ts::archivSeite`) — sie liefert eine leere Seite, als wäre
+ *  das Archiv ausgelesen. Schlüssel- und Pubkey-Routen bleiben offen: der
+ *  Sendeweg braucht sie, und ein fehlender Schlüssel-Wrap brächte den
+ *  Klienten dazu, einen neuen anzulegen. */
+async function archivLesenSperren(
+  ctx: BrowserContext
+): Promise<{ gesperrt: () => number; aufheben: () => Promise<void> }> {
+  let gesperrt = 0;
+  const leseroute = (url: URL) => /^\/api\/chat\/archiv\/\d+$/.test(url.pathname);
+  const sperre = async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    gesperrt++;
+    await route.fulfill({ json: [] });
+  };
+  await ctx.route(leseroute, sperre);
+  return { gesperrt: () => gesperrt, aufheben: () => ctx.unroute(leseroute, sperre) };
+}
 
 /* ————————————————————————————————————————————————————————————————
  * Zwei EIGENE Geräte spiegeln in dieselbe Sicherung (2026-10-13).

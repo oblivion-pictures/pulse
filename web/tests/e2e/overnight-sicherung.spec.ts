@@ -1,4 +1,4 @@
-import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { test, expect, type Page, type BrowserContext, type Route } from '@playwright/test';
 import { createServer } from 'node:http';
 
 /**
@@ -15,6 +15,12 @@ import { createServer } from 'node:http';
  * Das Passwort wird zwischendurch GEÄNDERT — die Wiederherstellung im
  * Gerätewechsel-Test muss deshalb das NEUE Passwort benutzen und beweist
  * damit, dass der Re-Wrap im geteilten Archiv gelandet ist.
+ *
+ * Im Gerätewechsel-Test ist die Leseroute des SERVER-Archivs gesperrt
+ * (`archivLesenSperren`): seit 90a4aa65 füllt es den Verlauf eines
+ * Frischgeräts ebenfalls, und ohne Sperre bewiese der Test nicht mehr, dass
+ * die SICHERUNG die Nachricht zurückbringt. Den Fall „Archiv und Sicherung
+ * zusammen" prüft `sicherung-geraetewechsel.spec.ts`.
  */
 
 const ts = Date.now();
@@ -357,6 +363,26 @@ async function sicherungEinrichten(page: Page, passwort: string, bestaetigen: bo
   await expect(page.getByTestId('sicherung-status')).toHaveText('Aktiv', { timeout: 15_000 });
 }
 
+/** Sperrt die Leseroute des Server-Archivs (`GET /api/chat/archiv/<kanal>`,
+ *  `api/archiv.ts::archivSeite`) — sie liefert eine leere Seite, als wäre
+ *  das Archiv ausgelesen. Schlüssel- und Pubkey-Routen bleiben offen: der
+ *  Sendeweg braucht sie, und ein fehlender Schlüssel-Wrap brächte den
+ *  Klienten dazu, einen neuen anzulegen. Kopie aus
+ *  `sicherung-geraetewechsel.spec.ts` (die Specs teilen keine Helfer). */
+async function archivLesenSperren(
+  ctx: BrowserContext
+): Promise<{ gesperrt: () => number; aufheben: () => Promise<void> }> {
+  let gesperrt = 0;
+  const leseroute = (url: URL) => /^\/api\/chat\/archiv\/\d+$/.test(url.pathname);
+  const sperre = async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    gesperrt++;
+    await route.fulfill({ json: [] });
+  };
+  await ctx.route(leseroute, sperre);
+  return { gesperrt: () => gesperrt, aufheben: () => ctx.unroute(leseroute, sperre) };
+}
+
 test.describe.serial('Overnight T17 — Sicherung', () => {
   let aliceCtx: BrowserContext;
   let alicePage: Page;
@@ -492,9 +518,12 @@ test.describe.serial('Overnight T17 — Sicherung', () => {
     );
     await alicePage.evaluate(() => localStorage.clear());
 
+    // Nur die Sicherung darf die Nachricht zurückbringen: das Server-Archiv
+    // ist gesperrt (s. Modulkopf), der alte Umschlag war ans alte Gerät
+    // adressiert und ist längst quittiert.
+    const sperre = await archivLesenSperren(aliceCtx);
     await login(alicePage, ALICE);
     await onboardingWegklicken(alicePage);
-    // Der Kanal ist lokal leer — die Nachricht kann NUR aus dem Archiv kommen.
     await alicePage.goto(`/app/@me/${dmChannelId}`);
     await expect(
       alicePage.locator('[data-testid="message-content"]', { hasText: KLARTEXT })
@@ -505,12 +534,16 @@ test.describe.serial('Overnight T17 — Sicherung', () => {
       alicePage.getByText(/Nachricht(?:en)? aus der Sicherung wiederhergestellt/)
     ).toBeVisible({ timeout: 20_000 });
 
-    // Und der Bestand ist wirklich da: Kanal neu öffnen zeigt die Nachricht.
+    // Und der Bestand ist wirklich da: Kanal neu öffnen zeigt die Nachricht
+    // — ohne Postfach und ohne Server-Archiv, nur aus der Sicherung.
     await alicePage.goto('/app/@me');
     await alicePage.goto(`/app/@me/${dmChannelId}`);
     await expect(
       alicePage.locator('[data-testid="message-content"]', { hasText: KLARTEXT })
-    ).toBeVisible({ timeout: 15_000 });
+    ).toHaveCount(1, { timeout: 15_000 });
+    // Die Sperre hat wirklich gegriffen — sonst prüfte der Test nichts.
+    expect(sperre.gesperrt()).toBeGreaterThan(0);
+    await sperre.aufheben();
   });
 
   test('Backup entfernen → Status zeigt "Nicht aktiv"', async () => {
