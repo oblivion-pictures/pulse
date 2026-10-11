@@ -102,9 +102,7 @@ class RegisteredInstance(Base):
     # Wann der Server seine Zugangsdaten abgeholt hat
     # (``POST /selfhost/verbinden/abholen``). Erst ab da zählt er als
     # eingerichtet — vorher stünde er mit totem Status-Punkt in der Leiste.
-    verbunden_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    verbunden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     registrar: Mapped["User | None"] = relationship("User", foreign_keys=[registered_by])
@@ -371,9 +369,7 @@ class Complaint(Base):
 
 #: Ein Antrag ist offen, solange weder widersprochen, vollzogen noch verfallen.
 #: Wortgleich in Migration 0057.
-_UEBERNAHME_OFFEN = (
-    "widersprochen_at IS NULL AND vollzogen_at IS NULL AND verfallen_at IS NULL"
-)
+_UEBERNAHME_OFFEN = "widersprochen_at IS NULL AND vollzogen_at IS NULL AND verfallen_at IS NULL"
 
 
 class InstanzUebernahme(Base):

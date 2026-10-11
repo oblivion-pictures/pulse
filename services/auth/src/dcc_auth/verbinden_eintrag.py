@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dcc_shared.hostname import normalisiere_hostname
 
+from dcc_auth.config import Settings
 from dcc_auth.models import User
 from dcc_auth.models_instances import RegisteredInstance, UserInstanceMembership
 from dcc_auth.routes_instance_delete import soft_delete_instance
@@ -58,7 +59,7 @@ class Verbunden(NamedTuple):
     abgeloest: int | None
 
 
-def adresse_gesperrt(hostname: str, settings) -> bool:
+def adresse_gesperrt(hostname: str, settings: Settings) -> bool:
     """Adressen unter den eigenen Domains bekommen keinen Eintrag.
 
     Sonst könnte jemand eine Relay-Subdomain belegen, bevor sie vergeben ist,
@@ -88,15 +89,22 @@ async def aktive_gemietete_server(db: AsyncSession, user_id: int) -> int:
     ).scalar_one()
 
 
+async def eintrag_sperren(db: AsyncSession, hostname: str) -> RegisteredInstance | None:
+    """Der Eintrag unter der Adresse, mit gesperrter Zeile.
+
+    Die Übernahme-Prüfung (``verbinden_uebernahme.py``) und der Vollzug hier
+    sperren damit dieselbe Zeile wie der Widerspruch (``routes_uebernahme.py``,
+    über ``eigene_instanz_oder_404``) — so kreuzen sich die drei nicht.
+    """
+    ergebnis = await db.execute(
+        select(RegisteredInstance).where(RegisteredInstance.hostname == hostname).with_for_update()
+    )
+    return ergebnis.scalars().first()
+
+
 async def instanz_verbinden(db: AsyncSession, user: User, hostname: str) -> Verbunden:
     """Eintrag für ``hostname`` mit ``user`` als Besitzer — ohne Commit."""
-    vorhanden = (
-        await db.execute(
-            select(RegisteredInstance)
-            .where(RegisteredInstance.hostname == hostname)
-            .with_for_update()
-        )
-    ).scalars().first()
+    vorhanden = await eintrag_sperren(db, hostname)
 
     if vorhanden is not None and vorhanden.status == "suspended":
         raise InstanzGesperrt

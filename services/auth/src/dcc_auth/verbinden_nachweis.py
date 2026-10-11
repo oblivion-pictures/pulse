@@ -104,11 +104,14 @@ async def nachweis_lesen(klient: httpx.AsyncClient, ziel: Ziel, erwartet: str) -
         gemeldet = json.loads(roh)["nachweis"]
     except (ValueError, KeyError, TypeError):
         return "kein_nachweis"
-    if not isinstance(gemeldet, str) or not _HEX64.fullmatch(gemeldet.strip().lower()):
+    if not isinstance(gemeldet, str):
+        return "kein_nachweis"
+    gemeldet = gemeldet.strip().lower()
+    if not _HEX64.fullmatch(gemeldet):
         return "kein_nachweis"
     # Kein Vergleich in konstanter Zeit nötig: der Wert ist öffentlich, er
     # steht ja unter der Adresse für jeden lesbar.
-    if gemeldet.strip().lower() != erwartet:
+    if gemeldet != erwartet:
         return "falscher_wert"
     return None
 

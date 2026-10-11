@@ -131,6 +131,28 @@ def _nachweis_fehlt(befund: str) -> HTTPException:
     )
 
 
+async def _uebernahme_nachbereiten(
+    db, redis, hostname: str, alte_instanz_id: int, neue_instanz_id: str, jetzt: datetime
+) -> None:
+    """Nach dem Commit einer Übernahme: Sperrliste, Log, Hinweis an den
+    bisherigen Besitzer."""
+    await suspended_list_add(redis, alte_instanz_id)
+    # warning, weil ``info`` in der Cloud unsichtbar ist (logging_setup.py):
+    # wer später fragt, warum sein Server stillsteht, findet es hier.
+    log.warning(
+        "verbinden_uebernahme hostname=%s alt=%s neu=%s",
+        hostname,
+        alte_instanz_id,
+        neue_instanz_id,
+    )
+    # Der Soft-Delete lässt ``registered_by`` stehen: der bisherige Besitzer
+    # ist bekannt, solange er sein Konto nicht gelöscht hat.
+    alt = await db.get(RegisteredInstance, alte_instanz_id)
+    vorbesitzer = await db.get(User, alt.registered_by) if alt.registered_by else None
+    if vorbesitzer is not None:
+        await hinweis_mail(db, vorbesitzer, compose_verbinden_uebernahme(hostname, jetzt))
+
+
 @router.post(
     "/selfhost/verbinden/start", response_model=StartAus, status_code=status.HTTP_201_CREATED
 )
@@ -200,7 +222,7 @@ async def verbinden_entscheiden(
 
     if payload.aktion == "ablehnen":
         if not await vorgang_entscheiden(
-            redis, nachweis, "abgelehnt", instance_id=None, user_id=str(user.id)
+            redis, nachweis, "abgelehnt", instance_id=None, user_id=str(user_id)
         ):
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="unbekannt")
         return EntscheidungAus(status="abgelehnt")
@@ -246,23 +268,9 @@ async def verbinden_entscheiden(
 
     jetzt = datetime.now(UTC)
     if verbunden.abgeloest is not None:
-        await suspended_list_add(redis, verbunden.abgeloest)
-        # warning, weil ``info`` in der Cloud unsichtbar ist (logging_setup.py):
-        # wer später fragt, warum sein Server stillsteht, findet es hier.
-        log.warning(
-            "verbinden_uebernahme hostname=%s alt=%s neu=%s",
-            vorgang.hostname,
-            verbunden.abgeloest,
-            instanz_id,
+        await _uebernahme_nachbereiten(
+            db, redis, vorgang.hostname, verbunden.abgeloest, instanz_id, jetzt
         )
-        # Der Soft-Delete lässt ``registered_by`` stehen: der bisherige
-        # Besitzer ist bekannt, solange er sein Konto nicht gelöscht hat.
-        alt = await db.get(RegisteredInstance, verbunden.abgeloest)
-        vorbesitzer = await db.get(User, alt.registered_by) if alt.registered_by else None
-        if vorbesitzer is not None:
-            await hinweis_mail(
-                db, vorbesitzer, compose_verbinden_uebernahme(vorgang.hostname, jetzt)
-            )
     await hinweis_mail(db, user, compose_verbinden_hinweis(vorgang.hostname, jetzt))
     return EntscheidungAus(status="verbunden", hostname=vorgang.hostname, instance_id=instanz_id)
 
@@ -272,7 +280,9 @@ async def verbinden_entscheiden(
     response_model=VerbindenZugangOut,
     responses={202: {"description": "noch nicht entschieden"}},
 )
-async def verbinden_abholen(payload: AbholenEin, request: Request, db: SessionDep):
+async def verbinden_abholen(
+    payload: AbholenEin, request: Request, db: SessionDep
+) -> VerbindenZugangOut | JSONResponse:
     settings = get_settings()
     await _check_rate(request, "verbinden_abholen", settings.rate_limit_verbinden_abholen)
     redis = await _redis(request)

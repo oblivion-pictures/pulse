@@ -58,9 +58,7 @@ async def widerspruch_einlegen(instance_id: str, request: Request, db: SessionDe
     # zu ``FRIST_S``.
     await db.rollback()
     if await server_info_instanz(hostname) != str(iid):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, detail={"code": "widerspruch_ohne_server"}
-        )
+        raise HTTPException(status.HTTP_409_CONFLICT, detail={"code": "widerspruch_ohne_server"})
 
     # Dieselbe Zeile sperrt der Vollzug (``uebernahme_pruefen``): Widerspruch
     # und Übernahme kreuzen sich nicht. Ist der Antrag inzwischen vollzogen,
