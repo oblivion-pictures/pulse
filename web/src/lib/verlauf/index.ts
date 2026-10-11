@@ -52,7 +52,7 @@ import {
   verlaufLesenSaetze,
   verlaufSatzVorhanden,
   verlaufSatzAnhangIds,
-  verlaufSatzIdFuerKryptoId,
+  verlaufSatzIdsFuerFrame,
   anhangBytesLoeschen,
   verlaufKanalVergessen
 } from './db';
@@ -247,25 +247,44 @@ function sicherungGrabstein(kanalId: string, nachrichtId: string): void {
  * am WS keine volle Nachricht (nur `channel_id`+`id`) — deshalb kein Umweg
  * über `verlaufSpeichern`/`zuSatz`, sondern direkt über den Schlüssel.
  * Wirft nie: siehe Kommentar oben.
+ *
+ * `autorId` setzt nur der Lösch-Frame (`krypto/empfangen.ts`): dann zählt
+ * die Löschung nur, wenn der lokale Satz von genau diesem Autor stammt, und
+ * erst NACH dem gelungenen Grabstein wandern Anhang-Bytes und
+ * Sicherungs-Grabstein mit — ein Stein in der Sicherung lässt sich nicht
+ * zurücknehmen, er darf nicht auf eine bloße Behauptung hin entstehen.
+ * Ohne `autorId` (eigene Löschung, Server-Ereignis) bleibt es beim
+ * bisherigen Ablauf.
  */
-export function verlaufNachrichtGeloescht(kanalId: string, nachrichtId: string): void {
+export function verlaufNachrichtGeloescht(
+  kanalId: string,
+  nachrichtId: string,
+  autorId?: string
+): void {
   if (!istLokalerKanal(kanalId)) return;
   const kontoId = aktuellesKonto();
   // Die lokalen Anhang-Bytes der Nachricht wandern mit — gelöscht heißt
-  // gelöscht, auch im Geräte-Cache.
-  if (kontoId !== null) {
-    void verlaufSatzAnhangIds(kanalId, nachrichtId, kontoId)
-      .then((ids) => Promise.all(ids.map((id) => anhangBytesLoeschen(id))))
-      .catch(() => {});
-  }
-  // Erst in die Sicherung — sie braucht weder Konto noch lokalen Satz, nur
-  // die Id. Nur gespiegelte Kanäle (E2EE-Weg) kommen hier überhaupt durch.
-  sicherungGrabstein(kanalId, nachrichtId);
+  // gelöscht, auch im Geräte-Cache. Danach in die Sicherung — sie braucht
+  // weder Konto noch lokalen Satz, nur die Id. Nur gespiegelte Kanäle
+  // (E2EE-Weg) kommen dort überhaupt durch.
+  const folgen = (): void => {
+    if (kontoId !== null) {
+      void verlaufSatzAnhangIds(kanalId, nachrichtId, kontoId)
+        .then((ids) => Promise.all(ids.map((id) => anhangBytesLoeschen(id))))
+        .catch(() => {});
+    }
+    sicherungGrabstein(kanalId, nachrichtId);
+  };
+  if (autorId === undefined) folgen();
   if (kontoId === null) return;
-  void verlaufMarkiereGeloescht(sortierSchluessel(kanalId, nachrichtId), kontoId).catch((err) => {
-    verlaufZustand.melde(err);
-    /* wirft nie nach aussen — s. Kommentar oben */
-  });
+  void verlaufMarkiereGeloescht(sortierSchluessel(kanalId, nachrichtId), kontoId, autorId)
+    .then((markiert) => {
+      if (markiert && autorId !== undefined) folgen();
+    })
+    .catch((err) => {
+      verlaufZustand.melde(err);
+      /* wirft nie nach aussen — s. Kommentar oben */
+    });
 }
 
 /**
@@ -306,7 +325,7 @@ export function verlaufLesen(
 /**
  * Wendet EINE Reaktion (eigene oder per Umschlag empfangene) auf den Satz
  * `nachrichtId` an — `nachrichtId` ist die LOKALE ID; eine kanonische ID aus
- * einem Umschlag loest der Aufrufer vorher auf (`verlaufLokaleIdFuerKryptoId`,
+ * einem Umschlag loest der Aufrufer vorher auf (`verlaufLokaleIdsFuerFrame`,
  * s. `krypto/empfangen.ts`). Gibt die neue Anzeige-Form zurueck, oder `null`,
  * wenn nichts geschrieben wurde: kein solcher Satz, Grabstein, fremdes
  * Konto, oder der Umschlag aenderte nichts (doppelt angekommen, s.
@@ -382,25 +401,25 @@ export function verlaufSchonAbgelegt(kanalId: string, nachrichtId: string): Prom
 }
 
 /**
- * Die lokale ID des Satzes, der `kryptoId` als Absender-ID fuehrt — fuer den
- * Loesch-Frame (`krypto/loeschZiel.ts`): die Anzeige kennt nur die geladenen
- * Nachrichten, der Verlauf auch die aelteren. `autorId` muss der Absender des
- * Loesch-Frames sein: es gilt dieselbe Schranke wie in der Anzeige, sonst
- * loeschte ein Frame ueber den Verlauf genau das, was er ueber die geladene
- * Liste nicht darf. Wirft nie; `null` heisst „kein solcher Satz auf diesem
- * Geraet".
+ * Die lokalen IDs aller Sätze, die ein Frame mit `frameId` trifft — für den
+ * Lösch-, Reaktions- und Bearbeitungs-Frame (`krypto/loeschZiel.ts`): die
+ * Anzeige kennt nur die geladenen Nachrichten, der Verlauf auch die
+ * aelteren. `autorId` muss beim Lösch-Frame dessen Absender sein: es gilt
+ * dieselbe Schranke wie in der Anzeige (`trifftFrame`), sonst loeschte ein
+ * Frame ueber den Verlauf genau das, was er ueber die geladene Liste nicht
+ * darf. Wirft nie; leer heisst „kein solcher Satz auf diesem Geraet".
  */
-export function verlaufLokaleIdFuerKryptoId(
+export function verlaufLokaleIdsFuerFrame(
   kanalId: string,
-  kryptoId: string,
+  frameId: string,
   autorId?: string
-): Promise<string | null> {
-  if (!istLokalerKanal(kanalId)) return Promise.resolve(null);
+): Promise<string[]> {
+  if (!istLokalerKanal(kanalId)) return Promise.resolve([]);
   const kontoId = aktuellesKonto();
-  if (kontoId === null) return Promise.resolve(null);
-  return verlaufSatzIdFuerKryptoId(kanalId, kryptoId, kontoId, autorId).catch((err) => {
+  if (kontoId === null) return Promise.resolve([]);
+  return verlaufSatzIdsFuerFrame(kanalId, frameId, kontoId, autorId).catch((err) => {
     verlaufZustand.melde(err);
-    return null;
+    return [];
   });
 }
 

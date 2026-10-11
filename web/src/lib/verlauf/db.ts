@@ -23,6 +23,7 @@ import {
 import { mitVerbindung } from './verbindung';
 import { sortierSchluessel } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
+import { trifftFrame } from '../krypto/loeschZiel';
 
 /** Legt mehrere Sätze in einer einzigen Transaktion ab (put = Upsert über den
  *  Primärschlüssel — ein Grabstein überschreibt seine frühere Fassung).
@@ -65,22 +66,37 @@ export function verlaufPutSaetze(saetze: Satz[]): Promise<void> {
  * ANDEREN Konto (`kontoFilter.ts::gehoertZuKonto`), bleibt er unangetastet —
  * ein fremder Grabstein waere selbst ein Schreibzugriff auf Daten, die dieses
  * Konto nicht sehen darf.
+ *
+ * `autorId` (2026-10-11): gesetzt, wenn die Löschung von einem Lösch-Frame
+ * kommt — dann trifft sie nur einen Satz DIESES Autors, geprüft in derselben
+ * Transaktion, in der geschrieben wird. Der Aufrufer bekommt seine Ziele
+ * schon gebunden (`krypto/loeschZiel.ts`); die Prüfung hier ist die zweite
+ * Wand, damit kein künftiger Aufrufer den Rückfall wieder einbaut, der am
+ * 2026-10-11 fremde Lösch-Frames auf eigene Nachrichten durchließ.
+ *
+ * Ergebnis: ob ein Grabstein gesetzt wurde.
  */
-export function verlaufMarkiereGeloescht(schluessel: string, kontoId: string): Promise<void> {
+export function verlaufMarkiereGeloescht(
+  schluessel: string,
+  kontoId: string,
+  autorId?: string
+): Promise<boolean> {
   return mitVerbindung(
     (db) =>
-      new Promise<void>((resolve, reject) => {
+      new Promise<boolean>((resolve, reject) => {
         const tx = db.transaction(STORE_NACHRICHTEN, 'readwrite');
         const store = tx.objectStore(STORE_NACHRICHTEN);
+        let markiert = false;
         const getReq = store.get(schluessel);
         getReq.onsuccess = () => {
           const satz = getReq.result as Satz | undefined;
-          if (satz && !satz.geloescht && gehoertZuKonto(satz, kontoId)) {
-            store.put({ ...satz, geloescht: true });
-          }
+          if (!satz || satz.geloescht || !gehoertZuKonto(satz, kontoId)) return;
+          if (autorId !== undefined && satz.autorId !== autorId) return;
+          store.put({ ...satz, geloescht: true });
+          markiert = true;
         };
         getReq.onerror = () => reject(getReq.error);
-        tx.oncomplete = () => resolve();
+        tx.oncomplete = () => resolve(markiert);
         tx.onerror = () => reject(tx.error);
       })
   );
@@ -382,40 +398,41 @@ export function verlaufSatzAnhangIds(
   );
 }
 
-/** Die lokale Nachrichten-ID des Satzes, der `kryptoId` als Absender-ID
- *  fuehrt — fuer den Loesch-Frame (`krypto/loeschZiel.ts`, s. dortigen
- *  Modulkopf): ein empfangener Satz liegt unter der Zustellungs-ID, der
- *  Frame nennt die Absender-ID. Bereichs-Cursor ueber den Kanal wie in
- *  `verlaufLesenSaetze`; `null`, wenn kein Satz dieses Kontos sie traegt. */
-export function verlaufSatzIdFuerKryptoId(
+/** Die lokalen Nachrichten-IDs aller Sätze, die ein Frame mit `frameId`
+ *  trifft — für Lösch-, Reaktions- und Bearbeitungs-Frames (s.
+ *  `krypto/loeschZiel.ts`): ein empfangener Satz liegt unter der
+ *  Zustellungs-ID und führt die Frame-ID als `kryptoId`, der eigene Satz
+ *  des Verfassers (oder eine Archiv-Kopie) trägt sie als `nachrichtId`.
+ *  Dieselbe Regel wie für die geladene Anzeige (`trifftFrame`), mit
+ *  Autor-Bindung, sobald `autorId` gesetzt ist. Bereichs-Cursor über den
+ *  Kanal wie in `verlaufLesenSaetze`; leer, wenn kein Satz dieses Kontos
+ *  getroffen wird. */
+export function verlaufSatzIdsFuerFrame(
   kanalId: string,
-  kryptoId: string,
+  frameId: string,
   kontoId: string,
   autorId?: string
-): Promise<string | null> {
+): Promise<string[]> {
   const bereich = IDBKeyRange.bound(
     sortierSchluessel(kanalId, ''),
     sortierSchluessel(kanalId, OBERE_ID)
   );
   return mitVerbindung(
     (db) =>
-      new Promise<string | null>((resolve, reject) => {
+      new Promise<string[]>((resolve, reject) => {
         const tx = db.transaction(STORE_NACHRICHTEN, 'readonly');
+        const treffer: string[] = [];
         const req = tx.objectStore(STORE_NACHRICHTEN).openCursor(bereich);
         req.onsuccess = () => {
           const cursor = req.result;
           if (!cursor) {
-            resolve(null);
+            resolve(treffer);
             return;
           }
           const satz = cursor.value as Satz;
-          if (
-            satz.kryptoId === kryptoId &&
-            (autorId === undefined || satz.autorId === autorId) &&
-            gehoertZuKonto(satz, kontoId)
-          ) {
-            resolve(satz.nachrichtId);
-            return;
+          const kandidat = { id: satz.nachrichtId, kryptoId: satz.kryptoId, autorId: satz.autorId };
+          if (trifftFrame(frameId, kandidat, autorId) && gehoertZuKonto(satz, kontoId)) {
+            treffer.push(satz.nachrichtId);
           }
           cursor.continue();
         };

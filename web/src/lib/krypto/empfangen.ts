@@ -122,11 +122,11 @@ import type { Message } from '../api/types';
 import {
   verlaufSpeichernPflicht,
   verlaufNachrichtGeloescht,
-  verlaufLokaleIdFuerKryptoId,
+  verlaufLokaleIdsFuerFrame,
   verlaufBearbeitungAnwenden,
   verlaufReaktionAnwenden
 } from '../verlauf';
-import { lokaleIdsFuerLoeschung } from './loeschZiel';
+import { frameZiele } from './loeschZiel';
 import { messages } from '../stores/messages.svelte';
 import { auth } from '../stores/auth.svelte';
 import { verlaufZustand } from '../verlauf/zustand.svelte';
@@ -156,20 +156,23 @@ function cloudRoute(): { serverId?: string } {
 }
 
 /**
- * Welche LOKALEN Saetze eine kanonische Frame-ID trifft (Loesch- und
- * Reaktions-Umschlag): erst die geladene Anzeige (`loeschZiel.ts`), dann der
- * Verlauf — die Nachricht kann aelter sein als das, was gerade geladen ist.
- * Leer = auf diesem Geraet unbekannt.
+ * Welche LOKALEN Saetze eine kanonische Frame-ID trifft (Loesch-, Reaktions-
+ * und Bearbeitungs-Umschlag): die geladene Anzeige UND der Verlauf — die
+ * Nachricht kann aelter sein als das, was gerade geladen ist (Regel in
+ * `loeschZiel.ts::frameZiele`). Leer = auf diesem Geraet nichts, was dieser
+ * Frame treffen darf.
  */
-async function lokaleZielIds(
+function lokaleZielIds(
   channelId: string,
   kanonischeId: string,
   absenderUserId?: string
 ): Promise<string[]> {
-  const geladen = lokaleIdsFuerLoeschung(kanonischeId, messages.for(channelId), absenderUserId);
-  if (geladen.length > 0) return geladen;
-  const imVerlauf = await verlaufLokaleIdFuerKryptoId(channelId, kanonischeId, absenderUserId);
-  return imVerlauf === null ? [] : [imVerlauf];
+  return frameZiele(
+    kanonischeId,
+    messages.for(channelId),
+    () => verlaufLokaleIdsFuerFrame(channelId, kanonischeId, absenderUserId),
+    absenderUserId
+  );
 }
 
 async function postfachZyklus(): Promise<Message[]> {
@@ -242,15 +245,22 @@ async function postfachZyklus(): Promise<Message[]> {
       //
       // Der Frame nennt die ABSENDER-ID; hier liegt die Nachricht unter der
       // Zustellungs-ID mit der Absender-ID als `krypto_id` (s.
-      // `loeschZiel.ts`, aufgeloest in `lokaleZielIds` — mit Absender-Bindung:
-      // nur der Verfasser darf seine Sätze löschen (Bughunt 2026-09-23, s.
-      // `loeschZiel.ts`). Ohne Treffer bleibt der Frame-Wert selbst stehen:
-      // der Grabstein auf eine unbekannte ID ist wirkungslos, der Frame wird
-      // trotzdem quittiert, denn eine Nachricht, die nie ankam, kann auch
-      // nicht stehen bleiben.
-      let ziele = await lokaleZielIds(ergebnis.channelId, ergebnis.nachrichtId, ergebnis.absenderUserId);
-      if (ziele.length === 0) ziele = [ergebnis.nachrichtId];      for (const lokaleId of ziele) {
-        verlaufNachrichtGeloescht(ergebnis.channelId, lokaleId);
+      // `loeschZiel.ts`, aufgeloest in `lokaleZielIds`) — mit Absender-
+      // Bindung: nur der Verfasser darf seine Sätze löschen (Bughunt
+      // 2026-09-23). Ohne Treffer passiert NICHTS: bis 2026-10-11 ging der
+      // Grabstein dann auf die Frame-ID selbst, und genau so löschte ein
+      // fremder Frame die eigene Nachricht des Empfängers, die bei ihm unter
+      // dieser ID liegt (Begründung in `loeschZiel.ts::frameZiele`). Der
+      // Frame wird trotzdem quittiert — eine Nachricht, die hier nicht
+      // liegt, kann auch nicht stehen bleiben. `verlaufNachrichtGeloescht`
+      // prüft den Autor ein zweites Mal, in der Schreib-Transaktion.
+      const ziele = await lokaleZielIds(
+        ergebnis.channelId,
+        ergebnis.nachrichtId,
+        ergebnis.absenderUserId
+      );
+      for (const lokaleId of ziele) {
+        verlaufNachrichtGeloescht(ergebnis.channelId, lokaleId, ergebnis.absenderUserId);
         messages.remove(ergebnis.channelId, lokaleId);
       }
       schonQuittierbar.push(ergebnis.id);
