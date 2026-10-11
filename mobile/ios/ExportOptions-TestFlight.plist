@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!-- Export eines Archivs an TestFlight (Punkt 46 der iOS-Liste), benutzt von
+     `.github/workflows/ios-build.yml` (Job `testflight`).
+
+     ACHTUNG: `destination = upload` lädt hoch. Wer diese Datei lokal an
+     `xcodebuild -exportArchive` gibt, schickt den Bau an App Store Connect —
+     für einen Export ohne Upload `destination` auf `export` stellen.
+
+     Die Schlüssel stehen so in `xcodebuild -help` (Xcode 26.3). -->
+<dict>
+	<!-- Nicht `app-store`: das führt `xcodebuild -help` nur noch als
+	     „deprecated: use app-store-connect“. -->
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>upload</string>
+	<key>teamID</key>
+	<string>6FRUC2UST8</string>
+	<!-- Automatisch: Profile holt bzw. erzeugt xcodebuild über den API-Schlüssel
+	     (`-allowProvisioningUpdates`). Was das am Konto verändert, steht in
+	     docs/plans/ios-roadmap.md, Punkt 46. -->
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<!-- NEIN, obwohl Apple JA vorgibt: sonst darf Xcode die Build-Nummer beim
+	     Hochladen selbst setzen, und hochgeladen wäre ein anderer Bau als der,
+	     den `ios-release-check.sh --produkt` im Archiv geprüft hat (gleiche
+	     Nummer in App UND beiden Erweiterungen). Die Nummer setzt der Workflow. -->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<!-- Symbole mitschicken: ohne sie sind Absturzberichte aus TestFlight
+	     nicht lesbar. -->
+	<key>uploadSymbols</key>
+	<true/>
+</dict>
+</plist>

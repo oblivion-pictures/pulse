@@ -1,0 +1,383 @@
+name: ios-build
+
+# iOS-Hülle (Punkt 46 der iOS-Liste, docs/plans/ios-roadmap.md). Zwei Bahnen:
+#
+#   A  `simulator` (+ `web-unit`) — ohne Secrets. Bereitet die Hülle vor
+#      (`scripts/ios-huelle-vorbereiten.sh`: `cap sync ios` + die eigenen
+#      Swift-Plugins in `packageClassList`), prüft die Quellen
+#      (`scripts/ios-release-check.sh`), baut das Schema `App` samt Teilen- und
+#      Widget-Erweiterung für den Simulator und prüft dann das GEBAUTE Bündel
+#      (`--produkt`). Dazu die Node-Unit-Tests von web/, die sonst in keinem
+#      Workflow laufen (nur lokal in scripts/gate.sh).
+#   B  `testflight` — Archiv, Export, Upload an App Store Connect. Nur auf
+#      ausdrücklichen Wunsch (Run workflow → Häkchen „testflight“), nur von
+#      main, nur wenn ALLE fünf IOS_*-Secrets gesetzt sind. Fehlt eines, meldet
+#      `testflight-vorpruefung` das als Hinweis und B wird übersprungen — grau,
+#      nicht rot. Liste, Herkunft und Rolle der Secrets: Roadmap, Punkt 46.
+#
+# WARUM DER VORBEREITUNGS-SCHRITT KEIN BEIWERK IST. Ohne ihn baut die Hülle
+# trotzdem grün — `cap sync` setzt `packageClassList` auf die npm-Plugins, die
+# eigenen Plugins fehlen, und erst am Gerät fällt auf, dass sie nichts tun.
+# Auf einem frischen Klon (also hier IMMER) ist die Datei gitignored und fehlt.
+# Lokal nachgestellt am 2026-10-11: Bau grün, `--produkt` rot mit allen elf
+# Plugins. Deshalb prüft diese Bahn das Bündel, nicht nur die Quellen.
+#
+# AUSLÖSER: Push auf main mit Pfad-Filter, und „Run workflow“. Bewusst KEIN
+# pull_request und kein anderer Zweig — ein Push auf feat/ios startet hier
+# nichts. `workflow_dispatch` geht erst, wenn diese Datei auf main liegt; der
+# erste Lauf ist damit der Push, mit dem sie dort landet (nur Bahn A).
+#
+# ACTIONS AUF COMMIT-SHA GEPINNT, der Tag steht als Kommentar daneben —
+# anders als in den übrigen Workflows (dort `@v4`). Grund: Bahn B hat die
+# Signierschlüssel und den API-Schlüssel im Job, und ein verschobener oder
+# kompromittierter Tag liefe mit ihnen. Die Signier-Identitäten importiert
+# deshalb auch keine Fremd-Action, sondern `security` selbst. Heben:
+# `git ls-remote https://github.com/<besitzer>/<action> refs/tags/<tag>`
+# (bei einem annotierten Tag den Eintrag mit `^{}` nehmen).
+#
+# KOSTEN: das Repo ist öffentlich, Standard-Runner (auch macOS) kosten dann
+# nichts. In einem privaten Repo zählte eine macOS-Minute zehnfach; Richtwerte
+# je Lauf in der Roadmap, Punkt 46.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/ios/**'
+      - 'mobile/capacitor.config.json'
+      - 'mobile/package.json'
+      - 'mobile/package-lock.json'
+      - 'mobile/www/**'
+      - 'scripts/ios-*.sh'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch:
+    inputs:
+      testflight:
+        description: 'Zusätzlich archivieren und an TestFlight hochladen (nur von main, braucht die IOS_*-Secrets)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Ein laufender Upload wird nicht abgebrochen (wie mac-build/android-build).
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    # Ausdrücklich bash: erst dann setzt Actions `-eo pipefail` — eine Pipe in
+    # `tee` verschluckte sonst den Fehlercode der Tests.
+    shell: bash
+
+env:
+  # Dieselbe Fassung, mit der die Bahn lokal belegt ist (2026-10-11). Fehlt sie
+  # auf dem Runner, bricht „Xcode wählen“ mit der Liste der vorhandenen ab —
+  # sichtbar, statt still mit einer anderen zu bauen.
+  XCODE_VERSION: '26.3'
+  TEAM_ID: 6FRUC2UST8
+  # Build-Nummer: steigt mit jedem Lauf, ein Wiederholungsversuch desselben
+  # Laufs bekommt eine eigene (57.1 → 57.2 → 58.1; Apple vergleicht die Teile
+  # als Zahlen). Von der Kommandozeile gilt sie für JEDES Target — App und
+  # beide Erweiterungen tragen damit dieselbe, was Apple für eingebettete
+  # Erweiterungen verlangt. Belegt wird das am gebauten Bündel
+  # (`ios-release-check.sh --produkt`), nicht an den Quellen.
+  BAUNUMMER: ${{ github.run_number }}.${{ github.run_attempt }}
+  PROJEKT: mobile/ios/App/App.xcodeproj
+
+jobs:
+  web-unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (= v4.4.0)
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4 (= v4.3.0); pnpm-Version aus package.json "packageManager"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 (= v4.4.0)
+        with:
+          # Wie der frontend-Job in ci.yml (und das Produktions-Image).
+          node-version: '25'
+          cache: pnpm
+      - name: Abhängigkeiten
+        run: pnpm install --frozen-lockfile
+      # Das WASM-Paket des Krypto-Kerns wird hier NICHT gebaut (dafür bräuchte
+      # es Rust, wasm-pack und eine vierte Stelle für dessen Versions-Pin, s.
+      # ci.yml). Dessen Grenz-Tests überspringen sich dann selbst — der
+      # nächste Schritt schreibt die Zahl in die Zusammenfassung, damit ein
+      # übersprungener Test nicht wie ein grüner aussieht.
+      - name: Node-Unit-Tests (web)
+        working-directory: web
+        run: pnpm test:unit | tee "$RUNNER_TEMP/web-unit.txt"
+      - name: Übersprungene Tests ausweisen
+        if: always()
+        run: |
+          zeile=$(grep -E '^(ℹ|#) (tests|pass|fail|skipped) [0-9]+' "$RUNNER_TEMP/web-unit.txt" | tr '\n' ' ' || true)
+          uebersprungen=$(grep -Eo '^(ℹ|#) skipped [0-9]+' "$RUNNER_TEMP/web-unit.txt" | grep -Eo '[0-9]+$' || echo '?')
+          {
+            echo "### Node-Unit-Tests (web)"
+            echo "${zeile:-keine Zusammenfassung gefunden}"
+            echo
+            echo "**Übersprungen: ${uebersprungen}** — erwartet sind die WASM-Grenz-Tests des Krypto-Kerns (Paket hier nicht gebaut)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=web-Unit-Tests::${uebersprungen} übersprungen (WASM-Paket hier nicht gebaut)"
+
+  simulator:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (= v4.4.0)
+
+      - name: Xcode wählen
+        run: |
+          app="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::Xcode ${XCODE_VERSION} fehlt auf diesem Runner — XCODE_VERSION anheben und lokal nachbauen. Vorhanden:"
+            ls -d /Applications/Xcode_*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$app/Contents/Developer"
+          xcodebuild -version
+
+      # Node 22 wie die anderen App-Bauten (android/win/mac). Die Hülle hat ihr
+      # eigenes npm-Lockfile, sie ist nicht Teil des pnpm-Workspaces.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 (= v4.4.0)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Abhängigkeiten der Hülle
+        run: npm ci --prefix mobile --no-audit --no-fund
+
+      - name: Hülle vorbereiten (cap sync + eigene Plugins)
+        run: bash scripts/ios-huelle-vorbereiten.sh
+
+      # `cap sync` schreibt auch Eingechecktes (CapApp-SPM/Package.swift). Ändert
+      # es dort etwas, baute diese Bahn einen anderen Stand als den im Repo —
+      # meist ein Capacitor-Update in package.json ohne neues `cap sync`.
+      - name: Eingechecktes unverändert
+        run: |
+          if ! git diff --exit-code -- mobile; then
+            echo "::error::cap sync hat eingecheckte Dateien geändert (Diff oben) — lokal npm ci --prefix mobile && bash scripts/ios-huelle-vorbereiten.sh, Ergebnis committen."
+            exit 1
+          fi
+
+      - name: Release-Vorprüfung (Quellen)
+        run: bash scripts/ios-release-check.sh
+
+      - name: SwiftPM-Cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4 (= v4.3.0)
+        with:
+          path: ~/spm-quellen
+          key: ios-spm-${{ runner.os }}-${{ hashFiles('mobile/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'mobile/ios/App/CapApp-SPM/Package.swift') }}
+          restore-keys: ios-spm-${{ runner.os }}-
+
+      # Release, weil das ausgeliefert wird (die Prüfpfade `*Probe.swift` stehen
+      # hinter `#if DEBUG` und fallen dort weg). `-disableAutomaticPackageResolution`:
+      # es gilt Package.resolved, wie eingecheckt — passt es nicht, wird es rot
+      # statt still neu aufgelöst. Nur arm64 (der Runner), ohne Index und dSYM:
+      # der Lauf prüft das Bauen, nicht die Fehlersuche.
+      - name: Simulator-Bau (Schema App, Release, mit beiden Erweiterungen)
+        run: |
+          xcodebuild build -quiet \
+            -project "$PROJEKT" -scheme App -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -clonedSourcePackagesDirPath "$HOME/spm-quellen" \
+            -disableAutomaticPackageResolution \
+            ARCHS=arm64 COMPILER_INDEX_STORE_ENABLE=NO DEBUG_INFORMATION_FORMAT=dwarf \
+            CURRENT_PROJECT_VERSION="$BAUNUMMER"
+
+      - name: Release-Vorprüfung (gebautes Bündel)
+        run: bash scripts/ios-release-check.sh --produkt "$RUNNER_TEMP/dd/Build/Products/Release-iphonesimulator/App.app"
+
+      # XCUITests laufen hier NICHT. Sechs der sieben brauchen den Dev-Stack
+      # und ein angemeldetes Konto; der siebte (TeilenUITests) braucht kein
+      # Backend, bedient aber Safari über deutsche Beschriftungen und ist auf
+      # einem frischen Simulator nicht belegt. Roadmap, Punkt 46.
+
+  # Bahn B, Vorprüfung — auf Linux, damit für ein „übersprungen“ kein
+  # macOS-Runner anläuft. Secrets dürfen in einem Job-`if` nicht stehen, also
+  # fällt die Entscheidung hier und reist als Ausgabe weiter.
+  testflight-vorpruefung:
+    if: github.event_name == 'workflow_dispatch' && inputs.testflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      bereit: ${{ steps.pruefen.outputs.bereit }}
+    steps:
+      - id: pruefen
+        env:
+          # Nur ob gesetzt, nie der Wert.
+          HAT_ASC_KEY: ${{ secrets.IOS_ASC_KEY_P8_BASE64 != '' }}
+          HAT_ASC_KEY_ID: ${{ secrets.IOS_ASC_KEY_ID != '' }}
+          HAT_ASC_ISSUER: ${{ secrets.IOS_ASC_ISSUER_ID != '' }}
+          HAT_P12: ${{ secrets.IOS_SIGNING_P12_BASE64 != '' }}
+          HAT_P12_PW: ${{ secrets.IOS_SIGNING_P12_PASSWORD != '' }}
+        run: |
+          fehlt=""
+          [ "$HAT_ASC_KEY" = true ]    || fehlt="$fehlt IOS_ASC_KEY_P8_BASE64"
+          [ "$HAT_ASC_KEY_ID" = true ] || fehlt="$fehlt IOS_ASC_KEY_ID"
+          [ "$HAT_ASC_ISSUER" = true ] || fehlt="$fehlt IOS_ASC_ISSUER_ID"
+          [ "$HAT_P12" = true ]        || fehlt="$fehlt IOS_SIGNING_P12_BASE64"
+          [ "$HAT_P12_PW" = true ]     || fehlt="$fehlt IOS_SIGNING_P12_PASSWORD"
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::notice title=TestFlight übersprungen::Hochgeladen wird nur von main, nicht von $GITHUB_REF."
+            echo "bereit=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$fehlt" ]; then
+            echo "::notice title=TestFlight übersprungen::Es fehlen die Secrets:$fehlt — Handgriff: docs/plans/ios-roadmap.md, Punkt 46."
+            echo "bereit=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "bereit=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Bahn B. Signiert AUTOMATISCH über den API-Schlüssel: xcodebuild legt dabei
+  # fehlende App-IDs und Profile im Konto an bzw. aktualisiert sie
+  # (`-allowProvisioningUpdates`, „will create and update profiles, app IDs,
+  # and certificates“). Zertifikate soll es NICHT anlegen — deshalb kommen die
+  # Signier-Identitäten aus IOS_SIGNING_P12_*: ohne mitgebrachten privaten
+  # Schlüssel legt automatische Signierung auf einem frischen Runner bei JEDEM
+  # Lauf ein neues Entwicklungszertifikat an (so in Apples Entwicklerforen für
+  # CI berichtet, hier nicht erprobt). Nichts an diesem Job ist lokal belegt.
+  testflight:
+    needs: [simulator, testflight-vorpruefung]
+    if: needs.testflight-vorpruefung.outputs.bereit == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (= v4.4.0)
+
+      - name: Xcode wählen
+        run: |
+          app="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::Xcode ${XCODE_VERSION} fehlt auf diesem Runner. Vorhanden:"
+            ls -d /Applications/Xcode_*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$app/Contents/Developer"
+          xcodebuild -version
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 (= v4.4.0)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Abhängigkeiten der Hülle
+        run: npm ci --prefix mobile --no-audit --no-fund
+      - name: Hülle vorbereiten (cap sync + eigene Plugins)
+        run: bash scripts/ios-huelle-vorbereiten.sh
+      - name: Eingechecktes unverändert
+        run: git diff --exit-code -- mobile
+      - name: Release-Vorprüfung (Quellen)
+        run: bash scripts/ios-release-check.sh
+
+      - name: SwiftPM-Cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4 (= v4.3.0)
+        with:
+          path: ~/spm-quellen
+          key: ios-spm-${{ runner.os }}-${{ hashFiles('mobile/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'mobile/ios/App/CapApp-SPM/Package.swift') }}
+          restore-keys: ios-spm-${{ runner.os }}-
+
+      # Erwartet EIN .p12 mit BEIDEN Identitäten samt privatem Schlüssel:
+      # „Apple Development“ (automatische Signierung archiviert damit) und
+      # „Apple Distribution“ (damit signiert der Export für App Store Connect
+      # neu). Mit `security` direkt und NICHT über eine Fremd-Action (mac-build
+      # nimmt `apple-actions/import-codesign-certs`): die Signierschlüssel
+      # sollen keinen fremden Code sehen, der an einem verschiebbaren Tag hängt.
+      # Befehle aus GitHubs Anleitung „Installing an Apple certificate on macOS
+      # runners for Xcode development“; abweichend davon ersetzt die Suchliste
+      # die vorhandenen Schlüsselbunde nicht, sondern stellt sich davor. Der
+      # Schlüsselbund verschwindet im letzten Schritt wieder.
+      #
+      # Fehlt eine der beiden Identitäten, bricht der Schritt ab, BEVOR
+      # xcodebuild das Konto erreicht: automatische Signierung legte sonst
+      # still ein neues Zertifikat an (s. Kopf dieses Jobs).
+      - name: Signier-Identitäten importieren
+        env:
+          P12_B64: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
+          P12_PW: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
+        run: |
+          kc="$RUNNER_TEMP/pulse-signieren.keychain-db"
+          kc_pw=$(openssl rand -hex 24)
+          printf '%s' "$P12_B64" | base64 -d > "$RUNNER_TEMP/signieren.p12"
+          security create-keychain -p "$kc_pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kc_pw" "$kc"
+          security import "$RUNNER_TEMP/signieren.p12" -P "$P12_PW" -A -t cert -f pkcs12 -k "$kc"
+          rm -f "$RUNNER_TEMP/signieren.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "$kc_pw" "$kc" > /dev/null
+          # Vorn in die Suchliste, die vorhandenen Schlüsselbunde dahinter behalten.
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          # Nur die Art ausgeben, nicht den Namen — die Logs sind öffentlich.
+          # Ohne `-v`: geprüft wird, ob die Identität DA ist. `-v` zeigte nur
+          # vertrauenswürdige, und fehlt dem Runner ein Apple-Zwischenzertifikat,
+          # hiesse es hier „fehlt“, obwohl sie im .p12 steckt — das meldet
+          # xcodebuild genauer.
+          ids=$(security find-identity -p codesigning "$kc")
+          for art in "Apple Development" "Apple Distribution"; do
+            if grep -q "\"$art: " <<< "$ids"; then
+              echo "  ✓ $art"
+            else
+              echo "::error::Im .p12 fehlt die Identität „$art“ — sonst legte xcodebuild ein neues Zertifikat im Konto an. Handgriff: docs/plans/ios-roadmap.md, Punkt 46."
+              exit 1
+            fi
+          done
+
+      - name: API-Schlüssel ablegen
+        env:
+          ASC_KEY_B64: ${{ secrets.IOS_ASC_KEY_P8_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.IOS_ASC_KEY_ID }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_KEY_B64" | base64 -d > "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+
+      - name: Archiv bauen (automatisch signiert)
+        env:
+          ASC_KEY_ID: ${{ secrets.IOS_ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.IOS_ASC_ISSUER_ID }}
+        run: |
+          xcodebuild archive -quiet \
+            -project "$PROJEKT" -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Pulse.xcarchive" \
+            -clonedSourcePackagesDirPath "$HOME/spm-quellen" \
+            -disableAutomaticPackageResolution \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CURRENT_PROJECT_VERSION="$BAUNUMMER"
+
+      # Hochgeladen wird genau dieses Archiv — also wird genau dieses geprüft:
+      # Adresse, eigene Plugins, Privacy Manifest, und dass beide Erweiterungen
+      # die Nummer der App tragen.
+      - name: Release-Vorprüfung (Archiv)
+        run: bash scripts/ios-release-check.sh --produkt "$RUNNER_TEMP/Pulse.xcarchive/Products/Applications/App.app"
+
+      - name: Export und Upload an App Store Connect
+        env:
+          ASC_KEY_ID: ${{ secrets.IOS_ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.IOS_ASC_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Pulse.xcarchive" \
+            -exportOptionsPlist mobile/ios/ExportOptions-TestFlight.plist \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          app="$RUNNER_TEMP/Pulse.xcarchive/Products/Applications/App.app/Info.plist"
+          version=$(plutil -extract CFBundleShortVersionString raw -o - "$app")
+          {
+            echo "### TestFlight"
+            echo "Hochgeladen: **${version} (${BAUNUMMER})**. Bis der Bau in TestFlight erscheint, verarbeitet App Store Connect ihn noch."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: API-Schlüssel und Schlüsselbund entfernen
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP/signieren.p12"
+          security delete-keychain "$RUNNER_TEMP/pulse-signieren.keychain-db" 2>/dev/null || true
