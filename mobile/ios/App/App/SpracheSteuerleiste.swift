@@ -76,14 +76,14 @@ struct SpracheSteuerleiste: View {
             knopf(
                 symbol: mikroOffen ? "mic.fill" : "mic.slash.fill",
                 an: mikroOffen, warnend: !mikroOffen, gesperrt: zwang.stumm,
-                beschriftung: mikroBeschriftung(erzwungen: zwang.stumm)
+                beschriftung: mikroBeschriftung(erzwungen: zwang.stumm), kennung: "sprache.mikrofon"
             ) {
                 SpracheRaum.geteilt.wunschEinreihen(.mikrofon, an: !mikroAn, fertig: gemeldet("mikrofon"))
             }
             knopf(
                 symbol: stand.taub ? "speaker.slash.fill" : "headphones",
                 an: false, warnend: stand.taub, gesperrt: zwang.taub,
-                beschriftung: taubBeschriftung(erzwungen: zwang.taub)
+                beschriftung: taubBeschriftung(erzwungen: zwang.taub), kennung: "sprache.taub"
             ) {
                 SpracheRaum.geteilt.wunschEinreihen(.taub, an: !stand.taub, fertig: gemeldet("taub"))
             }
@@ -92,7 +92,8 @@ struct SpracheSteuerleiste: View {
                 an: kameraAn, warnend: false,
                 beschriftung: kameraAn
                     ? NSLocalizedString("Kamera ausschalten", comment: "Sprachkanal")
-                    : NSLocalizedString("Kamera einschalten", comment: "Sprachkanal")
+                    : NSLocalizedString("Kamera einschalten", comment: "Sprachkanal"),
+                kennung: "sprache.kamera"
             ) {
                 // Der Stand wird erst in der Kette gelesen: zwei schnelle
                 // Tipps schalten so an und wieder aus, nicht zweimal an.
@@ -105,7 +106,8 @@ struct SpracheSteuerleiste: View {
                 an: !lautsprecher, warnend: false,
                 beschriftung: lautsprecher
                     ? NSLocalizedString("Auf Hörmuschel umschalten", comment: "Sprachkanal")
-                    : NSLocalizedString("Auf Lautsprecher umschalten", comment: "Sprachkanal")
+                    : NSLocalizedString("Auf Lautsprecher umschalten", comment: "Sprachkanal"),
+                kennung: "sprache.ausgabe"
             ) {
                 let neu = !lautsprecher
                 SpracheRaum.geteilt.ausgabe(neu ? "lautsprecher" : "hoermuschel")
@@ -113,7 +115,8 @@ struct SpracheSteuerleiste: View {
             }
             knopf(
                 symbol: "phone.down.fill", an: false, warnend: true,
-                beschriftung: NSLocalizedString("Auflegen", comment: "Sprachkanal")
+                beschriftung: NSLocalizedString("Auflegen", comment: "Sprachkanal"),
+                kennung: "sprache.auflegen"
             ) {
                 // **Auflegen bleibt ausserhalb der Kette**, wie `verlassen`:
                 // es darf nicht hinter einem hängenden Befehl warten
@@ -143,6 +146,7 @@ struct SpracheSteuerleiste: View {
         warnend: Bool,
         gesperrt: Bool = false,
         beschriftung: String,
+        kennung: String,
         tun: @escaping () -> Void
     ) -> some View {
         Button(action: tun) {
@@ -163,6 +167,9 @@ struct SpracheSteuerleiste: View {
         }
         .disabled(gesperrt)
         .accessibilityLabel(beschriftung)
+        // Für die XCUITests (`AppUITests/UITests.swift`): die Beschriftung
+        // ist übersetzt und wechselt mit dem Zustand, die Kennung nicht.
+        .accessibilityIdentifier(kennung)
     }
 
     /// Das Ende eines Knopfdrucks, der Arbeit anstösst. **Jeder Fehlschlag wird

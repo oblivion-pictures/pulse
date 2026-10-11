@@ -99,6 +99,7 @@ struct SpracheAnsicht: View {
             }
             .accessibilityLabel(
                 NSLocalizedString("Kanalansicht schliessen", comment: "Sprachkanal"))
+            .accessibilityIdentifier("sprache.schliessen")
             VStack(alignment: .leading, spacing: 1) {
                 Text(kanalName.isEmpty
                     ? NSLocalizedString("Sprachkanal", comment: "Sprachkanal") : kanalName)
@@ -109,6 +110,8 @@ struct SpracheAnsicht: View {
                     .font(.system(size: 13))
                     .foregroundStyle(SpracheFarben.textMatt)
                     .lineLimit(1)
+                    // Der Zustand des NATIVEN Raums, wie ihn die XCUITests lesen.
+                    .accessibilityIdentifier("sprache.zustand")
             }
             Spacer(minLength: 0)
             // System-Bild-in-Bild (Punkt 29) — nur, wo das Gerät es kann.
