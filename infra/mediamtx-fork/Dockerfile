@@ -1,10 +1,13 @@
 # Pulse-forked MediaMTX image.
 #
 # Pulls the upstream v1.19.1 source, applies the patches/ in alphabetical
-# order, and statically builds a stripped binary. The result is published
-# as ghcr.io/oblivion8282-1337/pulse-mediamtx:<tag> and used in place of
-# `bluenviron/mediamtx:1.19.1` in both the dev (streaming/server/) and
-# prod (infra/prod/) compose files.
+# order, and statically builds a stripped binary. Since the move to the
+# organisation (October 2026) the result is published as
+# ghcr.io/oblivion-pictures/pulse-mediamtx:<tag> and copied into the self-host
+# image (infra/self-host/Dockerfile). The dev, remote-dev and prod compose files
+# use it in place of `bluenviron/mediamtx:1.19.1`, but still pin the copy that
+# was built before the move under ghcr.io/oblivion8282-1337/ — see the order
+# rules below before changing the tag.
 #
 # Bumped 1.17.1 → 1.19.1 (2026-06-16): MediaMTX 1.17.1 took ~7-8s to establish
 # an incoming VideoToolbox-H264 RTMP track (the macOS HQ-streaming sidecar),
@@ -74,6 +77,15 @@ ARG MEDIAMTX_VERSION=1.19.1
 # Erst muss der Workflow das neue Bild GEBAUT haben, danach duerfen die drei
 # Dateien darauf zeigen. Andersherum holen die Server ein Bild, das es noch
 # nicht gibt — und der Streaming-Server laeuft nicht mehr an.
+#
+# **Seit dem Umzug in die Organisation (Oktober 2026) zusaetzlich:** der
+# Workflow baut nur noch unter `ghcr.io/oblivion-pictures/`, die drei
+# Compose-Dateien pinnen aber noch `ghcr.io/oblivion8282-1337/…:1.19.1-pulse7`.
+# Beim naechsten neuen Tag — auch wenn nur `PULSE_REVISION` hochgezaehlt wird —
+# wechseln deshalb Namensraum UND Tag zugleich in allen drei Dateien. Wer nur
+# den Tag aendert, zeigt auf ein Bild, das es unter dem alten Namensraum nie
+# geben wird. Vorher pruefen, dass netcup, der Hetzner-Dev-Stack und die
+# Dev-Rechner die Pakete der Organisation ziehen duerfen.
 #
 # `1.19.1-pulse5` bleibt in der Registry unangetastet und ist damit weiterhin
 # der Rueckweg; welche der beiden Fassungen dort liegt, ist die zuletzt
