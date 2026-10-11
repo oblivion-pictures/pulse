@@ -229,6 +229,42 @@ def compose_email_change_notice(old_email: str, new_email: str) -> tuple[str, st
     return subject, body
 
 
+def compose_verbinden_hinweis(hostname: str, zeitpunkt: datetime) -> tuple[str, str]:
+    """Hinweis nach dem Verbinden eines Servers mit dem Konto (Entwurf
+    2026-10-09, E5): Wer einen ihm untergeschobenen Link bestätigt hat,
+    erfährt es spätestens hier. Kein Code, keine Kennung im Text."""
+    subject = "Pulse: Ein Server wurde mit deinem Konto verbunden"
+    body = (
+        f"Hallo,\n\n"
+        f"dein Pulse-Konto wurde soeben mit einem Server verbunden:\n\n"
+        f"  Adresse:   {hostname}\n"
+        f"  Zeitpunkt: {zeitpunkt.astimezone(UTC):%Y-%m-%d %H:%M} UTC\n\n"
+        f"Der Server erscheint jetzt unter Meine Server und in der Leiste\n"
+        f"deiner Geräte.\n\n"
+        f"Warst du das nicht? Lösche den Server in Pulse unter Meine Server.\n"
+    )
+    return subject, body
+
+
+def compose_verbinden_uebernahme(hostname: str, zeitpunkt: datetime) -> tuple[str, str]:
+    """Hinweis an den bisherigen Besitzer, wenn ein anderes Konto seine
+    Adresse übernommen hat (Entwurf 2026-10-09, E2). Die Cloud weiss nur,
+    dass unter der Adresse jetzt ein Server läuft, der den Nachweis liefert —
+    nicht, wer davorsitzt. Der Text behauptet deshalb nichts darüber."""
+    subject = "Pulse: Dein Server wurde mit einem anderen Konto verbunden"
+    body = (
+        f"Hallo,\n\n"
+        f"dein Server wurde soeben mit einem anderen Pulse-Konto verbunden:\n\n"
+        f"  Adresse:   {hostname}\n"
+        f"  Zeitpunkt: {zeitpunkt.astimezone(UTC):%Y-%m-%d %H:%M} UTC\n\n"
+        f"Dein bisheriger Eintrag ist damit gelöscht und erscheint nicht mehr\n"
+        f"unter Meine Server.\n\n"
+        f"Wer den Server unter dieser Adresse betreibt, hat ihn neu verbunden.\n"
+        f"Warst du das nicht, prüfe, wer Zugriff auf den Rechner und die Domain hat.\n"
+    )
+    return subject, body
+
+
 async def issue_verification_email(session: AsyncSession, user: User) -> None:
     """Invalidate prior open verify-tokens, issue a fresh one, send the mail.
 
