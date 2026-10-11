@@ -42,6 +42,9 @@ def test_gueltige_adressen(roh, erwartet):
         "a..b.org",
         "bücher.de",
         "x" * 250 + ".org",
+        # Jedes Label ist gültig (60 Zeichen), erst die Gesamtlänge (308 > 253)
+        # macht den Namen ungültig — das deckt allein die Längenprüfung ab.
+        pytest.param(".".join(["a" * 60] * 5) + ".org", id="gesamtlaenge-308"),
     ],
 )
 def test_ungueltige_adressen(roh):
