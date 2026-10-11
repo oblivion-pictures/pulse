@@ -34,6 +34,10 @@ NICHT_VERBUNDEN_HINWEIS = (
 )
 
 _NACHWEIS_FORM = re.compile(r"[0-9a-f]{64}")
+#: Der Nachweis ist 64 Zeichen und ein Zeilenende (65 Byte); die Luft darüber
+#: deckt ``\r\n`` und etwas Leerraum. Länger ist keiner — und die anonyme Route
+#: liest nie mehr als dies, egal was in der Datei steht.
+_NACHWEIS_MAX_BYTE = 130
 
 
 def ist_verbunden(settings) -> bool:
@@ -49,11 +53,16 @@ def nachweis_lesen(verzeichnis: Path) -> str | None:
 
     Eine Datei mit anderem Inhalt liefert ``None`` statt ihres Inhalts: die
     Route ist anonym und soll nichts ausliefern, was nicht genau die erwartete
-    Form hat.
+    Form hat. Gelesen werden höchstens ``_NACHWEIS_MAX_BYTE`` Byte; eine längere
+    Datei ist keine Nachweis-Datei.
     """
     try:
-        wert = (verzeichnis / NACHWEIS_DATEI).read_text(encoding="ascii").strip()
+        with open(verzeichnis / NACHWEIS_DATEI, "rb") as datei:
+            roh = datei.read(_NACHWEIS_MAX_BYTE + 1)  # ein Byte mehr: „zu lang“ erkennen
+        wert = roh.decode("ascii").strip()
     except (OSError, UnicodeDecodeError):
+        return None
+    if len(roh) > _NACHWEIS_MAX_BYTE:
         return None
     return wert if _NACHWEIS_FORM.fullmatch(wert) else None
 
