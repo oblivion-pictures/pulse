@@ -155,6 +155,9 @@ class InstanceOut(BaseModel):
     online: bool | None = None
     # Eintrag aus dem Verbinden per Gerätecode statt aus einem Antrag.
     ohne_freigabe: bool = False
+    # Ein anderes Konto will diesen eigenen Server übernehmen: Fristende des
+    # lebendigen Antrags (ISO 8601), sonst NULL (verbinden_uebernahme.py).
+    uebernahme_frist_bis: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +171,7 @@ def _instance_to_out(
     membership: UserInstanceMembership | None = None,
     *,
     set_up: bool = False,
+    uebernahme_frist_bis: str | None = None,
 ) -> InstanceOut:
     return InstanceOut(
         id=str(inst.id),
@@ -207,6 +211,7 @@ def _instance_to_out(
         anzeigename=inst.anzeigename,
         online=inst.online_gemeldet if inst.origin == "app_host" else None,
         ohne_freigabe=inst.ohne_freigabe,
+        uebernahme_frist_bis=uebernahme_frist_bis,
     )
 
 
@@ -337,8 +342,18 @@ async def list_my_instances(
     )
     rows = (await db.execute(stmt)).all()
     versorgt = await _versorgte_instanzen(db, [inst.id for inst, _ in rows])
+    # Spät importiert: verbinden_uebernahme → verbinden_eintrag →
+    # routes_instance_delete importiert dieses Modul.
+    from dcc_auth.verbinden_uebernahme import uebernahme_fristen
+
+    # Nur am eigenen Eintrag — widersprechen kann nur der Besitzer.
+    eigene = [inst.id for inst, _ in rows if inst.registered_by == user.id]
+    fristen = await uebernahme_fristen(db, eigene)
     return [
-        _instance_to_out(inst, user.id, membership, set_up=inst.id in versorgt)
+        _instance_to_out(
+            inst, user.id, membership,
+            set_up=inst.id in versorgt, uebernahme_frist_bis=fristen.get(inst.id),
+        )
         for inst, membership in rows
     ]
 

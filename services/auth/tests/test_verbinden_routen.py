@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
 
-from dcc_auth import routes_verbinden
+from dcc_auth import email_verbinden, routes_verbinden, verbinden_uebernahme
 from dcc_auth.models import User
 from dcc_auth.models_instances import RegisteredInstance, UserInstanceMembership
 from dcc_auth.routes_suspended_instances import _BODY_KEY, _ETAG_KEY
@@ -26,6 +27,9 @@ from dcc_auth.verbinden_eintrag import instanz_verbinden
 _KENNUNG = "abholkennung-fuer-den-test-mit-genug-zeichen-0123"
 _NACHWEIS = hashlib.sha256(_KENNUNG.encode()).hexdigest()
 _HOST = "mein.example.org"
+#: Zweiter Lauf von ``pulse-connect`` nach der Widerspruchsfrist — der erste
+#: Vorgang ist da schon als Antrag entschieden.
+_KENNUNG_NACH_DER_FRIST = "abholkennung-nach-der-widerspruchsfrist-0123456"
 
 
 @pytest.fixture
@@ -33,6 +37,19 @@ async def mit_redis(app, redis_echt):
     app.state.redis = redis_echt
     yield redis_echt
     app.state.redis = None
+
+
+@pytest.fixture
+def uhr(monkeypatch):
+    """Die Uhr der Widerspruchsfrist (``verbinden_uebernahme._jetzt``), zum Vorstellen."""
+    stand = SimpleNamespace(jetzt=datetime(2026, 10, 11, 12, 0, tzinfo=UTC))
+
+    def vor(**delta) -> None:
+        stand.jetzt += timedelta(**delta)
+
+    stand.vor = vor
+    monkeypatch.setattr(verbinden_uebernahme, "_jetzt", lambda: stand.jetzt)
+    return stand
 
 
 @pytest.fixture
@@ -337,7 +354,9 @@ async def test_unbrauchbare_adressen(client, mit_redis, nachweis, hostname, deta
     assert nachweis.aufrufe == []
 
 
-async def test_uebernahme_einer_fremden_adresse(client, session_factory, mit_redis, nachweis):
+async def test_uebernahme_einer_fremden_adresse(
+    client, session_factory, mit_redis, nachweis, uhr
+):
     alt = await _konto(client, "altbesitzer")
     neu = await _konto(client, "neubesitzer")
     await _eintrag(session_factory, alt["id"], 961000)
@@ -346,9 +365,21 @@ async def test_uebernahme_einer_fremden_adresse(client, session_factory, mit_red
     await mit_redis.set(_ETAG_KEY, "alt", ex=60)
     await mit_redis.set(_BODY_KEY, "{}", ex=60)
 
+    # Ein fremdes Konto bekommt die Adresse erst nach der Widerspruchsfrist
+    # (verbinden_uebernahme.py); bis dahin bleibt alles, wie es ist.
     code = (await _start(client)).json()["code"]
     r = await _entscheiden(client, neu, code, "verbinden")
     assert r.status_code == 200, r.text
+    assert r.json()["status"] == "uebernahme_beantragt"
+    async with session_factory() as s:
+        assert (await s.get(RegisteredInstance, 961000)).status == "active"
+    assert await mit_redis.get(_ETAG_KEY) == "alt"
+
+    uhr.vor(hours=72)
+    code = (await _start(client, kennung=_KENNUNG_NACH_DER_FRIST)).json()["code"]
+    r = await _entscheiden(client, neu, code, "verbinden")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "verbunden"
     assert r.json()["instance_id"] != "961000"
     async with session_factory() as s:
         assert (await s.get(RegisteredInstance, 961000)).status == "deleted"
@@ -557,7 +588,7 @@ async def test_hinweis_mail_nach_dem_verbinden(client, mit_redis, nachweis, monk
     async def mitschreiben(to, subject, body_plain, session=None):
         gesendet.append((to, subject, body_plain))
 
-    monkeypatch.setattr(routes_verbinden, "send_email", mitschreiben)
+    monkeypatch.setattr(email_verbinden, "send_email", mitschreiben)
     konto = await _konto(client, "postfach")
 
     abgelehnt = (await _start(client)).json()["code"]
@@ -585,7 +616,7 @@ async def test_versandfehler_bricht_das_verbinden_nicht_ab(
     async def kaputt(*_a, **_k):
         raise smtplib.SMTPException("relay down")
 
-    monkeypatch.setattr(routes_verbinden, "send_email", kaputt)
+    monkeypatch.setattr(email_verbinden, "send_email", kaputt)
     konto = await _konto(client, "ohnepost")
     code = (await _start(client)).json()["code"]
 
@@ -596,16 +627,17 @@ async def test_versandfehler_bricht_das_verbinden_nicht_ab(
 
 
 async def test_uebernahme_schreibt_dem_vorbesitzer(
-    client, session_factory, mit_redis, nachweis, monkeypatch
+    client, session_factory, mit_redis, nachweis, uhr, monkeypatch
 ):
     """Bei einer Übernahme ist der alte Eintrag weg und der alte Server steht
-    still — sein Besitzer soll das nicht erst am toten Server merken."""
+    still — sein Besitzer soll das nicht erst am toten Server merken. Schon
+    den Antrag erfährt er, damit er in der Frist widersprechen kann."""
     gesendet: list[tuple[str, str, str]] = []
 
     async def mitschreiben(to, subject, body_plain, session=None):
         gesendet.append((to, subject, body_plain))
 
-    monkeypatch.setattr(routes_verbinden, "send_email", mitschreiben)
+    monkeypatch.setattr(email_verbinden, "send_email", mitschreiben)
     alt = await _konto(client, "vorbesitzer")
     neu = await _konto(client, "nachfolger")
     async with session_factory() as s:
@@ -622,25 +654,38 @@ async def test_uebernahme_schreibt_dem_vorbesitzer(
         )
         await s.commit()
 
+    def betreffe(an: str) -> list[str]:
+        return [m[1] for m in gesendet if m[0] == f"{an}@dcc-test.example.com"]
+
     code = (await _start(client)).json()["code"]
-    assert (await _entscheiden(client, neu, code, "verbinden")).status_code == 200
-    an_vorbesitzer = [m for m in gesendet if m[0] == "vorbesitzer@dcc-test.example.com"]
-    ((_, betreff, text),) = an_vorbesitzer
-    assert betreff == "Pulse: Dein Server wurde mit einem anderen Konto verbunden"
+    r = await _entscheiden(client, neu, code, "verbinden")
+    assert r.json()["status"] == "uebernahme_beantragt", r.text
+    assert betreffe("vorbesitzer") == ["Pulse: Jemand möchte deinen Server übernehmen"]
+    # Das antragstellende Konto erfährt es erst beim Vollzug.
+    assert betreffe("nachfolger") == []
+
+    uhr.vor(hours=72)
+    code = (await _start(client, kennung=_KENNUNG_NACH_DER_FRIST)).json()["code"]
+    r = await _entscheiden(client, neu, code, "verbinden")
+    assert r.json()["status"] == "verbunden", r.text
+    vollzug = "Pulse: Dein Server wurde mit einem anderen Konto verbunden"
+    assert betreffe("vorbesitzer") == ["Pulse: Jemand möchte deinen Server übernehmen", vollzug]
+    ((_, _, text),) = [m for m in gesendet if m[1] == vollzug]
     assert _HOST in text and "UTC" in text
     assert "Wer den Server unter dieser Adresse betreibt, hat ihn neu verbunden." in text
     assert "prüfe, wer Zugriff auf den Rechner und die Domain hat." in text
-    assert [m[0] for m in gesendet].count("nachfolger@dcc-test.example.com") == 1
+    hinweis = "Pulse: Ein Server wurde mit deinem Konto verbunden"
+    assert betreffe("nachfolger") == [hinweis]
 
-    # Derselbe Besitzer verbindet denselben Server neu (zweiter Lauf von
-    # pulse-connect): kein Besitzerwechsel, also keine zweite Mail an den
+    # Derselbe Besitzer verbindet denselben Server neu (dritter Lauf von
+    # pulse-connect): kein Besitzerwechsel, also keine weitere Mail an den
     # Vorbesitzer.
     code = (await _start(client, kennung="zweite-abholkennung-fuer-denselben-server")).json()[
         "code"
     ]
     assert (await _entscheiden(client, neu, code, "verbinden")).status_code == 200
-    assert [m[0] for m in gesendet].count("vorbesitzer@dcc-test.example.com") == 1
-    assert [m[0] for m in gesendet].count("nachfolger@dcc-test.example.com") == 2
+    assert len(betreffe("vorbesitzer")) == 2
+    assert betreffe("nachfolger") == [hinweis, hinweis]
 
 
 async def test_abholen_meldet_den_server_an_die_geraete_des_besitzers(

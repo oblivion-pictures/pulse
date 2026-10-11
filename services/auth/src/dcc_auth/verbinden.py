@@ -40,7 +40,12 @@ _VERWECHSLUNG = str.maketrans({"O": "0", "I": "1", "L": "1"})
 _CODE_LAENGE = 8
 _PRAEFIX = "auth:verbinden:"
 
-Status = Literal["wartet", "bestaetigt", "abgelehnt"]
+#: ``uebernahme_*``: die Adresse gehört einem anderen Konto, und statt eines
+#: Eintrags entstand ein Antrag bzw. greift eine Sperre (Widerspruchsfrist,
+#: ``verbinden_uebernahme.py``). ``pulse-connect`` erfährt es beim Abholen.
+Status = Literal[
+    "wartet", "bestaetigt", "abgelehnt", "uebernahme_beantragt", "uebernahme_gesperrt"
+]
 
 
 class VorgangLaeuft(Exception):
@@ -54,6 +59,10 @@ class Vorgang(BaseModel):
     instance_id: str | None = None
     user_id: str | None = None
     gueltig_bis: str
+    #: ISO 8601 — Fristende eines Übernahme-Antrags, bei ``uebernahme_gesperrt``
+    #: das Sperrende. Mit Vorgabe, damit Vorgänge von vor dem Ausrollen lesbar
+    #: bleiben.
+    frist_bis: str | None = None
 
 
 def _vorgang_schluessel(nachweis: str) -> str:
@@ -147,6 +156,7 @@ async def vorgang_entscheiden(
     *,
     instance_id: str | None,
     user_id: str | None,
+    frist_bis: str | None = None,
 ) -> bool:
     """Setzt das Ergebnis, aber nur aus ``wartet`` heraus — ``True`` bei Erfolg.
 
@@ -166,7 +176,12 @@ async def vorgang_entscheiden(
             if vorgang.status != "wartet":
                 return False
             neu = vorgang.model_copy(
-                update={"status": status, "instance_id": instance_id, "user_id": user_id}
+                update={
+                    "status": status,
+                    "instance_id": instance_id,
+                    "user_id": user_id,
+                    "frist_bis": frist_bis,
+                }
             )
             pipe.multi()
             pipe.set(schluessel, neu.model_dump_json(), xx=True, keepttl=True)

@@ -160,6 +160,13 @@ class Settings(BaseSettings):
     rate_limit_verbinden_start: str = "10/hour"
     rate_limit_verbinden_abholen: str = "30/minute"
     rate_limit_verbinden_bestaetigen: str = "20/hour"
+    # Widerspruchsfrist, bevor ein fremdes Konto eine eingetragene Adresse
+    # übernimmt (verbinden_uebernahme.py, Spec 2026-10-09 E2, Nachtrag
+    # 2026-10-11): 72 h Frist und 30 Tage Sperre nach einem Widerspruch
+    # (Eigentümer); ein Antrag verfällt 7 Tage nach Fristende (Plan).
+    verbinden_uebernahme_frist_s: int = 259200
+    verbinden_uebernahme_sperre_s: int = 2592000
+    verbinden_uebernahme_verfall_s: int = 604800
     # Selbstbedienungs-Registrierung (Heim-Server, Entscheidung 2026-09-27):
     # pro Konto hart auf 1 Instanz gedeckelt, das Limit schuetzt nur vor
     # Create/Delete-Churn.

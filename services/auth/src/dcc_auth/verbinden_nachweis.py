@@ -14,7 +14,8 @@ Unbekannten einen fremden Rechner auf. Deshalb dieselbe Absicherung wie bei
 der Erreichbarkeitsprüfung: erst auflösen und private Netze verwerfen
 (``pruefe_dns``), dann an die geprüfte IP verbinden (``Ziel``), Zertifikat
 voll geprüft, keine Weiterleitungen, und die Antwort nur bis zu einer festen
-Grösse lesen.
+Grösse lesen. Denselben Weg nimmt ``server_info_instanz`` für den Widerspruch
+gegen einen Übernahme-Antrag.
 """
 
 from __future__ import annotations
@@ -30,10 +31,11 @@ from dcc_auth.selfhost_probe import pruefe_dns
 from dcc_auth.selfhost_probe_dienst import Ziel
 
 PFAD = "/.well-known/pulse-verbinden"
+SERVER_INFO_PFAD = "/.well-known/pulse-server-info"
 #: Ganze Prüfung höchstens so lange — ein Betreiber wartet im Terminal darauf.
 FRIST_S = 8.0
-# Die echte Antwort hat unter 100 Bytes. Mehr liest die Cloud von einem
-# Unbekannten nicht.
+# Der echte Nachweis hat unter 100 Bytes, die Server-Info wenige hundert.
+# Mehr liest die Cloud von einem Unbekannten nicht.
 _HOECHSTENS_BYTES = 4096
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 
@@ -57,28 +59,44 @@ def _zertifikatsfehler(exc: BaseException) -> bool:
     return False
 
 
+class _Unbrauchbar(Exception):
+    """Antwort da, aber nicht 200 oder über der Grössengrenze."""
+
+
+async def _koerper_lesen(klient: httpx.AsyncClient, ziel: Ziel, pfad: str) -> bytes:
+    """Den Antwortkörper roh und gedeckelt — für jeden Abruf hier derselbe Weg.
+
+    Wirft ``_Unbrauchbar`` oder den Netz- bzw. Zeitfehler; was daraus folgt,
+    entscheidet der Aufrufer.
+    """
+    roh = bytearray()
+    async with asyncio.timeout(FRIST_S):
+        async with klient.stream(
+            "GET",
+            ziel.url(pfad),
+            headers=ziel.kopf({"Accept-Encoding": "identity"}),
+            extensions=ziel.sni,
+        ) as antwort:
+            if antwort.status_code != 200:
+                raise _Unbrauchbar
+            # Roh lesen, nicht entpackt: ``aiter_bytes`` liefert erst, was
+            # httpx aus einem Stück schon entpackt hat, und ein Unbekannter
+            # packt 64 MiB Nullen in 64 KiB — der Speicher wäre belegt, ehe
+            # die Grenze unten greift. Ein komprimierter Körper ist damit
+            # schlicht kein JSON.
+            async for stueck in antwort.aiter_raw():
+                roh += stueck
+                if len(roh) > _HOECHSTENS_BYTES:
+                    raise _Unbrauchbar
+    return bytes(roh)
+
+
 async def nachweis_lesen(klient: httpx.AsyncClient, ziel: Ziel, erwartet: str) -> str | None:
     """``None`` = in Ordnung, sonst der Befund."""
-    roh = bytearray()
     try:
-        async with asyncio.timeout(FRIST_S):
-            async with klient.stream(
-                "GET",
-                ziel.url(PFAD),
-                headers=ziel.kopf({"Accept-Encoding": "identity"}),
-                extensions=ziel.sni,
-            ) as antwort:
-                if antwort.status_code != 200:
-                    return "kein_nachweis"
-                # Roh lesen, nicht entpackt: ``aiter_bytes`` liefert erst, was
-                # httpx aus einem Stück schon entpackt hat, und ein Unbekannter
-                # packt 64 MiB Nullen in 64 KiB — der Speicher wäre belegt,
-                # ehe die Grenze unten greift. Ein komprimierter Körper ist
-                # damit schlicht kein JSON und endet als ``kein_nachweis``.
-                async for stueck in antwort.aiter_raw():
-                    roh += stueck
-                    if len(roh) > _HOECHSTENS_BYTES:
-                        return "kein_nachweis"
+        roh = await _koerper_lesen(klient, ziel, PFAD)
+    except _Unbrauchbar:
+        return "kein_nachweis"
     except Exception as exc:  # noqa: BLE001 — jeder Fehler hier ist ein Befund
         return "zertifikat" if _zertifikatsfehler(exc) else "nicht_erreichbar"
 
@@ -108,3 +126,25 @@ async def nachweis_pruefen(hostname: str, erwartet: str) -> str | None:
         return "nicht_erreichbar"
     async with _klient() as klient:
         return await nachweis_lesen(klient, Ziel(hostname, dns.adressen[0]), erwartet)
+
+
+async def server_info_instanz(hostname: str) -> str | None:
+    """Welche Instanz meldet sich unter dieser Adresse (``instance_id`` aus
+    ``/.well-known/pulse-server-info``)? ``None`` bei jedem Fehler, bei
+    fehlendem Feld und bei allem, was keine Zeichenkette ist.
+
+    Für den Widerspruch gegen einen Übernahme-Antrag (``routes_uebernahme.py``):
+    widersprechen kann nur, wessen Server noch unter der Adresse antwortet.
+    Der Aufruf geht auf Zuruf eines angemeldeten Kontos an einen fremden
+    Rechner, also derselbe abgesicherte Weg wie beim Nachweis.
+    """
+    dns = await pruefe_dns(hostname)
+    if not dns.ok:
+        return None
+    try:
+        async with _klient() as klient:
+            roh = await _koerper_lesen(klient, Ziel(hostname, dns.adressen[0]), SERVER_INFO_PFAD)
+        gemeldet = json.loads(roh)["instance_id"]
+    except Exception:  # noqa: BLE001 — jeder Fehler heisst hier „kein Beleg“
+        return None
+    return gemeldet if isinstance(gemeldet, str) else None
