@@ -1,8 +1,9 @@
 """FCM-Push (Firebase Cloud Messaging) für die Android-App (Übergabe P0.1).
 
 Ein inhaltsfreier Benachrichtigungskanal neben dem Web-Push aus
-:mod:`dcc_chat_gateway.push`: eine neue DM an einen Empfänger OHNE offene
-WebSocket-Verbindung wird als Systemmeldung auf dem Android-Gerät sichtbar.
+:mod:`dcc_chat_gateway.push`: eine neue DM wird als Systemmeldung auf dem
+Telefon sichtbar — auf iOS immer, auf Android nur ohne offene
+WebSocket-Verbindung (wer bekommt was: :mod:`dcc_chat_gateway.fcm_empfaenger`).
 Die Nutzlast trägt deshalb nur Absendername und Kanalkennung — niemals
 Nachrichtentext (derselbe Riegel wie ``fan_out_dm_push_encrypted``).
 
@@ -31,6 +32,7 @@ from sqlalchemy import delete, select
 from dcc_chat_gateway import badgezaehler
 from dcc_chat_gateway.config import get_settings
 from dcc_chat_gateway.db import SessionLocal
+from dcc_chat_gateway.fcm_empfaenger import empfangende_geraete, ios_geraete
 from dcc_chat_gateway.models import FcmToken
 
 # Nur für die Typangabe von ``_build_dm_message``: zur Laufzeit lädt diese
@@ -227,11 +229,12 @@ async def fan_out_fcm_dm_push(
     manager: Any | None = None,
     hat_anhang: bool = False,
 ) -> int:
-    """Inhaltsfreien FCM-Push an offline DM-Empfänger ausliefern.
+    """Inhaltsfreien FCM-Push an die DM-Empfänger ausliefern.
 
-    Offline = keine offene WebSocket-Verbindung: wer online ist, bekommt die
-    Nachricht live über den WS (``dm_bump``), und eine zusätzliche
-    Systemmeldung wäre doppelt. Der Check läuft über
+    Wer einen bekommt, entscheidet :func:`empfangende_geraete`: iOS-Geräte
+    immer, Android-Geräte nur ohne offene WebSocket des Kontos — wer dort
+    online ist, bekommt die Nachricht live über den WS (``dm_bump``), und eine
+    zusätzliche Systemmeldung wäre doppelt. Der Check läuft über
     ``ConnectionManager.user_socket_count``; ohne ``manager`` (Tests, pfad-
     lose Aufrufe) gilt jeder Empfänger als offline.
 
@@ -242,12 +245,9 @@ async def fan_out_fcm_dm_push(
         return 0
     if ensure_fcm() is None:
         return 0
-    if manager is not None:
-        recipient_ids = {
-            uid for uid in recipient_ids if manager.user_socket_count(uid) == 0
-        }
-        if not recipient_ids:
-            return 0
+
+    def wach(uid: int) -> bool:
+        return manager is not None and manager.user_socket_count(uid) > 0
 
     payload = {
         "type": "dm",
@@ -261,7 +261,12 @@ async def fan_out_fcm_dm_push(
             ergebnis = await session.execute(
                 select(FcmToken).where(FcmToken.user_id.in_(list(recipient_ids)))
             )
-            rows = ergebnis.scalars().all()
+            alle = ergebnis.scalars().all()
+            rows = empfangende_geraete(
+                alle,
+                ios_geraete=await ios_geraete(session, {r.user_id for r in alle}),
+                wach=wach,
+            )
             if not rows:
                 return 0
             # Icon-Badge: EINMAL je Konto hochzählen, nicht je Gerätezeile —

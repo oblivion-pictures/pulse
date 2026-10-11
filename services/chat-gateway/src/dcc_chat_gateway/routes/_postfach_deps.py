@@ -37,10 +37,15 @@ from dcc_chat_gateway.security import AuthenticatedUser
 
 class KanalZugriff(NamedTuple):
     """Ergebnis von ``_channel_zugriff_pruefen``: die Konten, an die
-    zugestellt werden darf, plus die Kanalart — s. Modul-Docstring."""
+    zugestellt werden darf, plus die Kanalart — s. Modul-Docstring.
+
+    ``ist_ablage`` trennt den Ablage-Kanal von der privaten Gruppe (beide
+    ``ist_dm=False``). Gebraucht wird es für die Mitteilung: ein Ablage-Kanal
+    ist ein Community-Kanal und bekommt keinen DM-Push (iOS-Bughunt 2, C4)."""
 
     teilnehmer: set[int]
     ist_dm: bool
+    ist_ablage: bool = False
 
 
 async def _channel_zugriff_pruefen(
@@ -138,7 +143,7 @@ async def _channel_zugriff_pruefen(
         sichtbar_fuer = await members_who_can_view(session, channel.guild_id, channel_id)
         if user.id not in sichtbar_fuer:
             raise HTTPException(status_code=403, detail="channel_not_accessible")
-        return KanalZugriff(teilnehmer=sichtbar_fuer, ist_dm=False)
+        return KanalZugriff(teilnehmer=sichtbar_fuer, ist_dm=False, ist_ablage=True)
 
     # ``resolve_channel_for_user`` kennt private Gruppen nicht (und soll es
     # vorerst auch nicht, s. Modulkopf von ``private_gruppen_zugriff.py``) —

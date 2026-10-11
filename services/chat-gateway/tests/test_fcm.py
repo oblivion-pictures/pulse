@@ -12,7 +12,7 @@ import random
 
 import pytest
 
-from dcc_chat_gateway.models import FcmToken
+from dcc_chat_gateway.models import FcmToken, VoipToken
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -204,3 +204,71 @@ async def test_push_raeumt_tote_tokens(client, session_factory, monkeypatch):
         assert (
             await s.execute(select(FcmToken).where(FcmToken.user_id == 444))
         ).scalar_one_or_none() is None
+
+
+# ---------------------------------------------------------------------------
+# iOS-Bughunt 2, C1: iOS-Geräte ohne Frische-Prüfung
+
+
+async def test_ios_geraet_bekommt_den_push_trotz_frischer_websocket(
+    client, session_factory, _fcm_sender
+):
+    """Ein eben weggestecktes iPhone hält bis zu 95 s eine „frische"
+    Verbindung, deren JS schon eingefroren ist. Bisher fiel die DM dann ohne
+    Mitteilung durch. iOS-Geräte (erkannt am PushKit-Token desselben Geräts)
+    bekommen den Push jetzt immer, Android-Geräte desselben Kontos nicht."""
+    import dcc_chat_gateway.fcm as fcm_mod
+
+    async with session_factory() as s:
+        s.add(FcmToken(user_id=555, geraet_id="iphone", token="tok-iphone"))
+        s.add(VoipToken(user_id=555, geraet_id="iphone", token="voip-iphone"))
+        s.add(FcmToken(user_id=555, geraet_id="pixel", token="tok-pixel"))
+        await s.commit()
+
+    n = await fcm_mod.fan_out_fcm_dm_push(
+        recipient_ids={555},
+        author_name="Anna",
+        channel_id=42,
+        manager=_ManagerStub({555: 1}),
+    )
+    assert n == 1
+    assert [tok for tok, _p in _fcm_sender] == ["tok-iphone"]
+
+
+async def test_ohne_websocket_bekommen_beide_geraete_den_push(
+    client, session_factory, _fcm_sender
+):
+    import dcc_chat_gateway.fcm as fcm_mod
+
+    async with session_factory() as s:
+        s.add(FcmToken(user_id=556, geraet_id="iphone", token="tok-iphone-2"))
+        s.add(VoipToken(user_id=556, geraet_id="iphone", token="voip-iphone-2"))
+        s.add(FcmToken(user_id=556, geraet_id="pixel", token="tok-pixel-2"))
+        await s.commit()
+
+    n = await fcm_mod.fan_out_fcm_dm_push(
+        recipient_ids={556},
+        author_name="Anna",
+        channel_id=42,
+        manager=_ManagerStub({}),
+    )
+    assert n == 2
+    assert sorted(tok for tok, _p in _fcm_sender) == ["tok-iphone-2", "tok-pixel-2"]
+
+
+def test_auswahl_regel_ohne_datenbank():
+    """Die Regel selbst: iOS immer, alles andere nur ohne wache Verbindung.
+    Ein VoIP-Token eines ANDEREN Geräts macht ein Gerät nicht zum iOS-Gerät."""
+    from types import SimpleNamespace
+
+    from dcc_chat_gateway.fcm_empfaenger import empfangende_geraete
+
+    zeilen = [
+        SimpleNamespace(user_id=1, geraet_id="ios", token="a"),
+        SimpleNamespace(user_id=1, geraet_id="android", token="b"),
+        SimpleNamespace(user_id=2, geraet_id="android", token="c"),
+    ]
+    gewaehlt = empfangende_geraete(
+        zeilen, ios_geraete={(1, "ios"), (2, "ios")}, wach=lambda uid: uid == 1
+    )
+    assert [z.token for z in gewaehlt] == ["a", "c"]

@@ -1688,3 +1688,35 @@ async def test_steuer_umschlaege_loesen_keine_mitteilung_aus(
     assert r.status_code == 200, r.text
     assert r.json()["zustellungen_angelegt"] == 1
     assert len(pushes) == erwartet
+
+
+@pytest.mark.asyncio
+async def test_ablage_kanal_loest_keinen_dm_push_aus(
+    client, app, session_factory, _auth_signer, monkeypatch
+):
+    """iOS-Bughunt 2, C4: ein Umschlag in einen Ablage-Kanal meldete „Neue
+    Direktnachricht", zählte die Plakette hoch, und der Tipp suchte unter
+    ``/app/@me`` eine DM, die es nicht gibt. Ein Ablage-Kanal ist ein
+    Community-Kanal — kein DM-Push. Zugestellt wird trotzdem."""
+    import dcc_chat_gateway.routes.postfach as postfach_mod
+
+    pushes: list[set[int]] = []
+
+    async def _push(**kwargs):
+        pushes.append(kwargs["recipient_ids"])
+
+    monkeypatch.setattr(postfach_mod, "fan_out_dm_push_encrypted", _push)
+    t_a, _uid_a = await _register(_auth_signer)
+    _t_b, uid_b = await _register(_auth_signer)
+    gid, cid = await _guild_mit_kanal(client, t_a, ablage=True)
+    await _guild_mitglied_hinzufuegen(session_factory, gid, uid_b)
+    pk_b = _make_device()
+    await _bundel_seeden(session_factory, user_id=uid_b, device_pubkey=pk_b)
+
+    r = await _einliefern(
+        client, token=t_a, channel_id=cid,
+        nutzlasten=[{"art": 2, "daten": _b64_unpadded(b"ablage"), "empfaenger": [pk_b]}],
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["zustellungen_angelegt"] == 1
+    assert pushes == []

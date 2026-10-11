@@ -396,7 +396,11 @@ async def postfach_einliefern(
     # Umschlaege (Reaktion, Bearbeitung, Loeschung, Schluessel) markiert der
     # Klient mit ``benachrichtigen: false`` — sie wecken niemanden und zaehlen
     # die Plakette am Icon nicht hoch (Begruendung am Feld in ``schemas.py``).
-    if push_empfaenger and body.benachrichtigen:
+    # Ein Ablage-Kanal bekommt KEINEN Push (iOS-Bughunt 2, C4): er kam als
+    # „Neue Direktnachricht" an, zählte die Plakette hoch, und der Tipp fand unter
+    # ``/app/@me`` keine DM. Ob er eine eigene Mitteilung bekommen soll, ist
+    # eine Produktfrage. Der Weckruf oben bleibt.
+    if push_empfaenger and body.benachrichtigen and not zugriff.ist_ablage:
         await fan_out_dm_push_encrypted(
             recipient_ids=push_empfaenger,
             author_name=user.username,

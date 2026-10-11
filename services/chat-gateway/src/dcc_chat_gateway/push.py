@@ -375,6 +375,7 @@ async def fan_out_dm_push(
     ``manager`` (ConnectionManager) gates the FCM leg: Android-Geräte des
     Empfängers bekommen den System-Push nur, wenn KEINE offene WebSocket-
     Verbindung besteht (Übergabe P0.1) — wer online ist, hat den WS-Weg.
+    iOS-Geräte bekommen ihn immer (``fcm_empfaenger.py``, iOS-Bughunt 2, C1).
     """
     payload = {
         "type": "dm",
