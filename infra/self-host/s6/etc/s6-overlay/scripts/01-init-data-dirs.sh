@@ -19,12 +19,18 @@ mkdir -p \
     "${DATA}/garage/data" \
     "${DATA}/uploads" \
     "${DATA}/uploads/avatars" \
-    "${DATA}/uploads/guild-icons"
+    "${DATA}/uploads/guild-icons" \
+    "${DATA}/pulse"
 
 chown -R pulse:pulse "${DATA}"
 chmod 0700 "${DATA}"
 chmod 0700 "${DATA}/pg" "${DATA}/redis" "${DATA}/jwt_keys" "${DATA}/coturn" "${DATA}/garage"
 chmod 0750 "${DATA}/uploads"
+# pulse-connect legt hier Nachweis und Zugangsdaten ab (verbinden_cli.py). Es
+# läuft als root; lesen muss den Nachweis der chat-gateway als pulse — deshalb
+# gehört das Verzeichnis pulse, und das chown -R oben zieht die Dateien beim
+# nächsten Start nach.
+chmod 0700 "${DATA}/pulse"
 
 # Also chown runtime state dirs (recreated empty on container restart)
 mkdir -p /var/run/pulse /var/log/pulse
