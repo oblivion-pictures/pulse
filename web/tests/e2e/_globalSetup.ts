@@ -363,6 +363,18 @@ export default async function globalSetup() {
     // production stays on the default 5/min.
     RATE_LIMIT_REGISTER: '1000/minute',
     RATE_LIMIT_LOGIN: '1000/minute',
+    // Der Konto-Eimer (10/min, zusätzlich zum IP-Eimer) gilt auch für die
+    // Namensauflösung `GET /users?ids=` — und die läuft bei JEDEM vollen
+    // Seitenaufbau neu, weil der Nutzer-Cache nur im Speicher lebt. Ein Spec,
+    // der ein Konto in kurzer Folge per `goto` durch mehrere Seiten schickt,
+    // reisst die Grenze: die elfte Auflösung binnen einer Minute antwortet 429,
+    // die Zeile zeigt „…" statt des Namens, und ein Locator auf den Namen
+    // läuft ins Leere. Gemessen in `overnight-friends.spec.ts`: Alice braucht
+    // dort 10 bis 11 Auflösungen, und rot war der Lauf bei 11 (gezählt auf
+    // `main`; auf `feat/ios` stand die 429 im Trace des roten Laufs). Mit der
+    // Lockerung 5 von 5 grün, ohne sie 3 von 5. Im Betrieb bleibt der Eimer
+    // bei 10/min.
+    RATE_LIMIT_PER_ACCOUNT: '1000/minute',
     // Host-disconnect grace: 30s in prod, 1s in E2E so the "party ends after a
     // host disconnect" assertion resolves fast.
     WATCH_HOST_GRACE_S: '1',
