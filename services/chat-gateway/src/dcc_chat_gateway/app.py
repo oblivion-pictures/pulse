@@ -17,6 +17,7 @@ from dcc_chat_gateway import s3
 from dcc_chat_gateway.cleanup import cleanup_loop as push_cleanup_loop
 from dcc_chat_gateway.cloud_policy_poller import cloud_policy_poller_loop
 from dcc_chat_gateway.config import get_settings
+from dcc_chat_gateway.geraetetoken_abgleich import abgleich_loop as geraetetoken_abgleich_loop
 from dcc_chat_gateway.jwks_poller import jwks_poller_loop
 from dcc_chat_gateway.db import engine
 from dcc_chat_gateway.jwks_pinning import jwks_retry_loop
@@ -224,6 +225,7 @@ async def lifespan(app: FastAPI):
     jwks_retry: asyncio.Task | None = None
     remote_audit: asyncio.Task | None = None
     anzeigename_task: asyncio.Task | None = None
+    token_abgleich: asyncio.Task | None = None
     owns_manager = False
     if getattr(app.state, "skip_redis", False):
         # Tests pre-wire connection_manager onto the app — leave it alone.
@@ -276,6 +278,12 @@ async def lifespan(app: FastAPI):
         # Rauswurf/Bann trennen zusaetzlich sofort (remote_guard).
         remote_audit = asyncio.create_task(
             remote_perm_audit_loop(manager), name="dcc-remote-perm-audit"
+        )
+        # Gerätetoken gegen die lebenden Anmelde-Ketten — holt nach, was die
+        # Meldung auf ``auth:ketten_ende`` verpasst (geraetetoken_abgleich.py).
+        token_abgleich = asyncio.create_task(
+            geraetetoken_abgleich_loop(lambda: _routes_ws_ops.SessionLocal()),
+            name="dcc-geraetetoken-abgleich",
         )
         # JWKS-Poller — holt die oeffentlichen Cloud-Schluessel alle 30 s.
         # Ohne sie kann ein Self-Host kein Serverticket pruefen; faellt der
@@ -400,6 +408,7 @@ async def lifespan(app: FastAPI):
                 supervisor, reaper, push_cleanup, idle_sweeper, stale_ws_reaper,
                 voice_pull_reaper, jwks_poller, suspend_poller, cloud_policy_task,
                 jwks_retry, dropbox_sweep_task, remote_audit, anzeigename_task,
+                token_abgleich,
             )
             for task in bg_tasks:
                 if task is None:

@@ -288,10 +288,11 @@ Riegel für DM-Banner (C1), der Android-Download (F2).
 
 **Offen geblieben:** verschlüsselte Anhänge unter Android (der Klartext liegt
 nur als `blob:` vor, die Hülle verwirft das — vor dem Branch schon so);
-`MainActivity` speichert Downloads ohne Dateinamen; ein `auth:ketten_ende`
+`MainActivity` speichert Downloads ohne Dateinamen; WebRTC-Unterbibliotheken,
+Rust-Crates in livekit-uniffi und die Android-Hülle fehlen noch in den
+Lizenzhinweisen. (Bis zum Nachtrag unten stand hier auch: ein `auth:ketten_ende`
 während eines Gateway-Neustarts geht verloren, eine still abgelaufene Kette
-meldet niemand; WebRTC-Unterbibliotheken, Rust-Crates in livekit-uniffi und
-die Android-Hülle fehlen noch in den Lizenzhinweisen.
+meldet niemand.)
 
 **Beim Landen auf `main`:** neben T1 hängt jetzt `0102_geraetetoken_kette` an
 `0101_voip_tokens`; `services/**` ist geändert, die Windows-Server-App braucht
@@ -336,3 +337,33 @@ Start-Abgleich aus (Checkliste 0.8); die Sprachkanal-XCUITests prüfen den nativ
 
 **Beim Landen auf `main`** zusätzlich: `services/**` ist wieder geändert (Windows-Server-App:
 Bump). Keine neue Migration.
+
+---
+
+## Nachtrag zu C2: Abgleich der Gerätetoken (2026-10-11)
+
+Die beiden Lücken aus C2 — ein Kettenende, das während eines Gateway-Neustarts
+kommt, und eine Kette, die nur abläuft — schliesst ein Abgleich: der chat-gateway
+fragt auth-svc 60 s nach dem Start und danach alle 15 min, welche Ketten seiner
+FCM- und PushKit-Zeilen zu Ende sind (`POST /internal/ketten/stand`,
+`geraetetoken_abgleich.py` ↔ `routes_ketten_stand.py`, Form in
+`dcc_shared/anmeldeketten.py`), und löscht deren Zeilen. Die Meldung über Redis
+bleibt der schnelle Weg.
+
+- **Zu Ende** heisst: kein Refresh-Token der Kette lebt mehr (widerrufen,
+  abgelaufen oder gelöscht — der Passwortwechsel löscht), **und** auth-svc
+  kennt das Konto. Ein falsches oder leeres auth-svc antwortet deshalb
+  `unbekannt`, und nichts fällt.
+- **Fail-open:** jeder Ausfall (Netz, Status, unlesbare Antwort) löscht nichts.
+- **Zeilen ohne Kette** fragt der Abgleich gar nicht; sie fallen weiter nur
+  unter eine Meldung `alle`.
+- **Passwortwechsel auf dem eigenen Gerät:** dessen alte Kette ist gelöscht,
+  also beendet. Damit der Abgleich nicht den FCM-Token des Geräts löscht, das
+  gerade weiterläuft, meldet die Oberfläche ihn nach dem Wechsel neu
+  (`fcmTokenNachmelden`, wie S3 für PushKit).
+- Keine Migration, keine neue Variable; braucht `INTERNAL_SERVICE_SECRET` (ohne
+  läuft der Abgleich nicht und sagt es beim Start).
+
+Beleg: `test_ketten_stand.py` (auth), `test_geraetetoken_abgleich.py`
+(chat-gateway), `test_anmeldeketten.py` (Form), `passwortwechsel-nachmelden.test.ts`.
+**Beim Landen:** `services/**` geändert — Windows-Server-App: Bump.

@@ -140,6 +140,9 @@ def _no_cloud_polling(monkeypatch):
 
     monkeypatch.setattr(chat_app, "cloud_policy_poller_loop", _inert)
     monkeypatch.setattr(chat_app, "jwks_poller_loop", _inert)
+    # Fragt auth-svc (AUTH_SVC_URL) — eigene Abdeckung in
+    # test_geraetetoken_abgleich.py, über ``abgleich_einmal`` direkt.
+    monkeypatch.setattr(chat_app, "geraetetoken_abgleich_loop", _inert)
 
 
 @pytest_asyncio.fixture

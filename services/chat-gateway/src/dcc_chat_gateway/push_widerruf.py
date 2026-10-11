@@ -7,6 +7,10 @@ unter diesen Ketten angemeldet wurden (``fcm_tokens.kette``/``voip_tokens.kette`
 Migration 0102). Ohne das zeigte ein verlorenes Telefon nach dem Widerruf
 weiter Banner mit Absendernamen und klingelte mit dem Namen des Anrufers.
 
+Die Meldung ist flüchtig: was während eines Neustarts kommt, hört hier
+niemand, und eine Kette, die nur abläuft, meldet niemand. Beides holt
+``geraetetoken_abgleich.py`` nach — mit derselben Löschfunktion wie hier.
+
 Registriert sich beim Import als Kanal-Handler; eingebunden über
 ``pubsub_channel_handlers`` (Seiteneffekt-Import, wie ``pubsub_channel_guild``).
 """

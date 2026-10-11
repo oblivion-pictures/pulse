@@ -33,6 +33,7 @@ from dcc_auth.routes_experimental_logs import router as experimental_logs_router
 from dcc_auth.routes_instance_applications import router as instance_applications_router
 from dcc_auth.routes_instance_delete import router as instance_delete_router
 from dcc_auth.routes_instance_membership import router as instance_membership_router
+from dcc_auth.routes_ketten_stand import router as ketten_stand_router
 from dcc_auth.routes_profile import router as profile_router
 from dcc_auth.routes_reachability import router as reachability_router
 from dcc_auth.routes_recovery import router as recovery_router
@@ -300,6 +301,7 @@ def create_app() -> FastAPI:
     app.include_router(selfhost_diagnose_router)
     app.include_router(registry_auth_router)
     app.include_router(gast_ticket_router)
+    app.include_router(ketten_stand_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

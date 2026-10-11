@@ -8,7 +8,10 @@ angemeldet wurden — Begründung und Nachrichtenform in
 und ein Telefon verlöre seine Mitteilungen für eine Sitzung, die weiterlebt.
 
 **Best-effort**, wie ``admin_events``: ohne Redis oder bei einem Fehler bleibt
-der Widerruf gültig, nur die Gerätetoken bleiben stehen (der Stand von vorher).
+der Widerruf gültig, nur die Gerätetoken bleiben vorerst stehen. Nachgeholt
+wird das — wie jede Meldung, die der chat-gateway verpasst, und jede Kette,
+die nur abläuft — von seinem Abgleich (``geraetetoken_abgleich.py``), der
+hier ``routes_ketten_stand`` fragt.
 """
 
 from __future__ import annotations
