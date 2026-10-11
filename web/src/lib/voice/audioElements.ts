@@ -5,8 +5,10 @@ import { applySinkId } from '$lib/audio/applySinkId';
 import type { SpatialLayout } from './spatial/layout';
 import { loadResonance } from './spatial/resonanceLoader';
 import { SpatialScene, resolveQuality } from './spatial/spatialScene';
+import { fehlerName, wiedergabeFehlschlag } from './wiedergabeAblehnung';
+import { begrenzerAbgleichen, graphTrennen, kompressorAbgleichen } from './tonKette';
 
-interface AudioNodeBundle {
+export interface AudioNodeBundle {
   /** Null on the mobile path — there the `<audio>` element is the audible
    *  source and no Web Audio graph is built. */
   source: MediaStreamAudioSourceNode | null;
@@ -58,12 +60,6 @@ interface AudioNodeBundle {
  * +12 dB only compensated the Chromium level loss through
  * MediaStreamAudioSourceNode, which isn't in play here).
  */
-/** Name eines abgelehnten Promise, robust gegen alles, was kein Error ist. */
-function fehlerName(e: unknown): string {
-  const n = (e as { name?: unknown } | null)?.name;
-  return typeof n === 'string' && n ? n : 'unbekannt';
-}
-
 export class RemoteAudioElements {
   /** Mobile devices play through the <audio> element; desktop uses Web Audio. */
   #mobile = isMobile();
@@ -166,7 +162,7 @@ export class RemoteAudioElements {
       this.#nodes.set(sid, node);
       this.#indexUser(userId, sid);
       const p = anchor.play();
-      if (p) void p.catch((fehler: unknown) => this.#wiedergabeFehlschlag(anchor, fehler, onBlocked));
+      if (p) void p.catch((fehler: unknown) => wiedergabeFehlschlag(anchor, fehler, onBlocked));
       return;
     }
 
@@ -192,38 +188,10 @@ export class RemoteAudioElements {
     }
   }
 
-  /**
-   * Eine abgelehnte `play()` deuten — und nur im echten Fall sperren.
-   *
-   * **Bis zum 2026-10-10 galt JEDE Ablehnung als Autoplay-Sperre**, und die
-   * Oberflaeche sagte dazu „Dein Browser blockiert die automatische
-   * Wiedergabe". Das traf oft nicht zu: wir setzen `autoplay = true` UND rufen
-   * `play()`, und wenn die implizite Wiedergabe und dieser Ruf einander
-   * ueberholen, wirft WebKit regulaer `AbortError`. Eine Sperre ist allein
-   * `NotAllowedError`.
-   *
-   * Alles andere bekommt genau einen zweiten Anlauf — die Ueberholung ist
-   * voruebergehend. Erst wenn auch der scheitert, gilt es als Sperre, und der
-   * NAME reist mit, damit die naechste Fehlersuche nicht wieder bei null
-   * anfaengt.
-   */
-  #wiedergabeFehlschlag(
-    anchor: HTMLAudioElement,
-    fehler: unknown,
-    onBlocked: (grund: string) => void,
-  ): void {
-    const name = fehlerName(fehler);
-    if (name === 'NotAllowedError') {
-      onBlocked(name);
-      return;
-    }
-    void anchor.play().catch((zweiter: unknown) => onBlocked(`${name} → ${fehlerName(zweiter)}`));
-  }
-
   detach(sid: string): void {
     const node = this.#nodes.get(sid);
     if (!node) return;
-    this.#disconnectGraph(node);
+    graphTrennen(node);
     node.anchor.srcObject = null;
     node.anchor.remove();
     this.#nodes.delete(sid);
@@ -303,7 +271,7 @@ export class RemoteAudioElements {
     }));
     const spatialMode = this.#spatialMode;
     this.#teardownSpatial();
-    for (const n of this.#nodes.values()) this.#disconnectGraph(n);
+    for (const n of this.#nodes.values()) graphTrennen(n);
     this.#nodes.clear();
     this.#userSids.clear();
     // Swap in the fresh context *before* closing the old one: a concurrent
@@ -360,17 +328,6 @@ export class RemoteAudioElements {
     this.#ctx = null;
   }
 
-  /** Disconnect every node of `node`'s graph (source → compressor → gain →
-   *  limiter). Shared by `detach` (full teardown, anchor goes too) and the
-   *  output-device rebuild (graph swap that keeps the anchor + decoder alive).
-   *  Idempotent. */
-  #disconnectGraph(node: AudioNodeBundle): void {
-    try { node.source?.disconnect(); } catch { /* already gone */ }
-    try { node.compressor?.disconnect(); } catch { /* already gone */ }
-    try { node.gain?.disconnect(); } catch { /* already gone */ }
-    try { node.limiter?.disconnect(); } catch { /* already gone */ }
-  }
-
   /** Build + register one desktop Web Audio node (source → [compressor] → gain →
    *  [limiter] → spatial|destination) for `stream`, reusing `anchor` as the
    *  muted decoder-keepalive. Shared by attach() and the output-device rebuild
@@ -405,22 +362,6 @@ export class RemoteAudioElements {
   #elementVolume(userId: string): number {
     const mult = (this.#userVolumes.get(userId) ?? 1) * this.#masterVolume;
     return Math.max(0, Math.min(1, mult));
-  }
-
-  /** Create a DynamicsCompressorNode with the given parameter set. Shared by the
-   *  >100 % boost compressor and the playback peak limiter — both are
-   *  DynamicsCompressorNodes differing only in their parameter values. */
-  #makeCompressor(
-    ctx: AudioContext,
-    cfg: { threshold: number; knee: number; ratio: number; attack: number; release: number }
-  ): DynamicsCompressorNode {
-    const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = cfg.threshold;
-    comp.knee.value = cfg.knee;
-    comp.ratio.value = cfg.ratio;
-    comp.attack.value = cfg.attack;
-    comp.release.value = cfg.release;
-    return comp;
   }
 
   /** Apply the current volume state to one node: mobile sets the element
@@ -458,18 +399,7 @@ export class RemoteAudioElements {
     if (!ctx || !node.gain || !node.source) return;
     node.gain.gain.value = this.#computeGain(node.userId);
     const needsCompressor = (this.#userVolumes.get(node.userId) ?? 1) > 1;
-    if (needsCompressor && !node.compressor) {
-      try { node.source.disconnect(node.gain); } catch { /* already detached */ }
-      const comp = this.#makeCompressor(ctx, RemoteAudioElements.COMPRESSOR);
-      node.source.connect(comp);
-      comp.connect(node.gain);
-      node.compressor = comp;
-    } else if (!needsCompressor && node.compressor) {
-      try { node.source.disconnect(node.compressor); } catch { /* */ }
-      try { node.compressor.disconnect(); } catch { /* */ }
-      node.compressor = null;
-      node.source.connect(node.gain);
-    }
+    kompressorAbgleichen(ctx, node, node.source, node.gain, needsCompressor, RemoteAudioElements.COMPRESSOR);
     this.#applyLimiterTail(node, ctx);
   }
 
@@ -480,18 +410,7 @@ export class RemoteAudioElements {
   #applyLimiterTail(node: AudioNodeBundle, ctx: AudioContext): void {
     if (!node.gain) return;
     const dest = this.#outputTarget(node, ctx);
-    if (this.#limiterEnabled && !node.limiter) {
-      try { node.gain.disconnect(dest); } catch { /* not connected */ }
-      const lim = this.#makeCompressor(ctx, RemoteAudioElements.LIMITER);
-      node.gain.connect(lim);
-      lim.connect(dest);
-      node.limiter = lim;
-    } else if (!this.#limiterEnabled && node.limiter) {
-      try { node.gain.disconnect(node.limiter); } catch { /* */ }
-      try { node.limiter.disconnect(); } catch { /* */ }
-      node.limiter = null;
-      node.gain.connect(dest);
-    }
+    begrenzerAbgleichen(ctx, node, node.gain, this.#limiterEnabled, dest, RemoteAudioElements.LIMITER);
   }
 
   /** Where a node's chain tail should terminate: the participant's Resonance
