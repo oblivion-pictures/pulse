@@ -144,13 +144,15 @@ async def patch_user(
 
     # Owner-Schutz: der Betreiber kann von niemandem (auch keinem Zweit-Admin)
     # entmachtet (is_admin→false), gesperrt (disabled→true) oder in seinen
-    # Self-Host-Rechten beschnitten (self_host_enabled→false) werden. Sonst
-    # könnte ein Admin den Owner ausschalten und sich selbst die Owner-Rechte
-    # (Self-Host-/App-Host-Genehmigung) verschaffen.
+    # Self-Host-Rechten beschnitten (self_host_enabled→false,
+    # server_verbinden_gesperrt→true) werden. Sonst könnte ein Admin den Owner
+    # ausschalten und sich selbst die Owner-Rechte (Self-Host-/App-Host-
+    # Genehmigung) verschaffen.
     if user.is_owner and (
         payload.is_admin is False
         or payload.disabled is True
         or payload.self_host_enabled is False
+        or payload.server_verbinden_gesperrt is True
     ):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, detail="cannot demote or ban the owner"
@@ -219,6 +221,16 @@ async def patch_user(
     if payload.self_host_enabled is not None and payload.self_host_enabled != user.self_host_enabled:
         changes["self_host_enabled"] = {"from": user.self_host_enabled, "to": payload.self_host_enabled}
         user.self_host_enabled = payload.self_host_enabled
+
+    neu_gesperrt = payload.server_verbinden_gesperrt
+    if neu_gesperrt is not None and neu_gesperrt != user.server_verbinden_gesperrt:
+        # Wirkt nur auf künftiges Verbinden (routes_verbinden.py). Schon
+        # verbundene Server laufen weiter; die stoppt die Instanz-Sperre.
+        changes["server_verbinden_gesperrt"] = {
+            "from": user.server_verbinden_gesperrt,
+            "to": neu_gesperrt,
+        }
+        user.server_verbinden_gesperrt = neu_gesperrt
 
     if changes:
         _audit(

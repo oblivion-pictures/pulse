@@ -390,3 +390,52 @@ async def test_list_users_rejects_unknown_filter(client, admin_token):
     headers = {"Authorization": f"Bearer {admin_token}"}
     r = await client.get("/admin/users?filter=bogus", headers=headers)
     assert r.status_code == 422
+
+
+# ─── Riegel „Darf Server verbinden“ (Spec 2026-10-09, E8) ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_admin_sperrt_das_verbinden_von_servern(client, admin_token, session_factory):
+    await _register_user(client, username="bob", email="bob@example.com")
+    async with session_factory() as s:
+        bob_id = (await s.execute(select(User.id).where(User.username == "bob"))).scalar_one()
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    rows = (await client.get("/admin/users", headers=headers)).json()
+    assert next(u for u in rows if u["username"] == "bob")["server_verbinden_gesperrt"] is False
+
+    r = await client.patch(
+        f"/admin/users/{bob_id}", json={"server_verbinden_gesperrt": True}, headers=headers
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["server_verbinden_gesperrt"] is True
+    async with session_factory() as s:
+        assert (await s.get(User, bob_id)).server_verbinden_gesperrt is True
+
+    eintraege = (await client.get("/admin/audit-log", headers=headers)).json()
+    (eintrag,) = [
+        e for e in eintraege if e["action"] == "user.patch" and int(e["target_id"]) == bob_id
+    ]
+    assert eintrag["payload"] == {"server_verbinden_gesperrt": {"from": False, "to": True}}
+
+
+@pytest.mark.asyncio
+async def test_owner_darf_nicht_vom_verbinden_ausgesperrt_werden(
+    client, admin_token, session_factory
+):
+    await _register_user(client, username="bob", email="bob@example.com")
+    await _promote(session_factory, "bob")
+    bob_token = await _login(client, username_or_email="bob")
+    async with session_factory() as s:
+        alice_id = (
+            await s.execute(select(User.id).where(User.username == "alice"))
+        ).scalar_one()
+
+    r = await client.patch(
+        f"/admin/users/{alice_id}",
+        json={"server_verbinden_gesperrt": True},
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert r.status_code == 400
+    assert "owner" in r.json()["detail"]
