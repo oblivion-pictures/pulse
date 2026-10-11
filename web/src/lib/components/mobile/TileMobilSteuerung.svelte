@@ -33,6 +33,7 @@
   import MessageSquareIcon from '@lucide/svelte/icons/message-square';
   import ListVideoIcon from '@lucide/svelte/icons/list-video';
   import { m } from '$lib/paraglide/messages.js';
+  import BildImBildKnopf from '$lib/stream/components/BildImBildKnopf.svelte';
 
   let {
     testidPrefix,
@@ -53,7 +54,9 @@
     queueOpen = false,
     onToggleQueue,
     onHide,
-    onToggleFullscreen
+    onToggleFullscreen,
+    /** Das Video der Kachel — für das System-Bild-in-Bild. */
+    video = null
   }: {
     testidPrefix: string;
     isFullscreen?: boolean;
@@ -71,6 +74,7 @@
     onToggleQueue?: () => void;
     onHide?: () => void;
     onToggleFullscreen: () => void;
+    video?: HTMLVideoElement | null;
   } = $props();
 
   // Am Handy wird die Lautstärke IMMER auf 5er gerastert — angezeigt UND
@@ -103,12 +107,14 @@
 
 <!-- Oben rechts: die Seitenpanel-Schalter. Sie sind die einzige Möglichkeit,
      die Overlays für Chat und Warteschlange am Telefon zu öffnen — ohne sie
-     ist deren Markup toter Code. -->
-{#if onToggleChat || onToggleQueue}
+     ist deren Markup toter Code. Davor das System-Bild-in-Bild, das sich
+     selbst ausblendet, wo es nicht trägt. -->
+{#if onToggleChat || onToggleQueue || video}
   <div
     class="absolute top-2 z-30 flex items-center gap-2 {fadeClass}"
     style="right: calc(0.5rem + var(--safe-right))"
   >
+    <BildImBildKnopf {video} klasse={RUND} pipHide testid={`${testidPrefix}-pip-float`} />
     {#if onToggleQueue}
       <button
         type="button"

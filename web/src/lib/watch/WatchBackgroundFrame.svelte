@@ -11,7 +11,8 @@
   * hold BOTH ends of a diagonal (top-left + bottom-right OR top-right +
     bottom-left) and pinch → resizes it (smaller and bigger, any corner pair),
   * a single tap toggles the floating controls — close (X) top-left, back to
-    channel (fullscreen) bottom-right — which auto-hide after HUD_HIDE_MS.
+    channel (fullscreen) bottom-right, system picture-in-picture top-right
+    where it works (`EckfensterSteuerung`) — which auto-hide after HUD_HIDE_MS.
   The tile's own floating buttons are hidden via `[data-pip-hide]` (app.css)
   so exactly ONE set of controls exists.
 
@@ -25,9 +26,6 @@
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
-  import XIcon from '@lucide/svelte/icons/x';
-  import { m } from '$lib/paraglide/messages.js';
   import { viewport } from '$lib/stores/viewport.svelte';
   import {
     abstand,
@@ -38,6 +36,7 @@
     MARGIN,
     TAP_TOLERANZ
   } from './eckfensterGesten';
+  import EckfensterSteuerung from './EckfensterSteuerung.svelte';
 
   let {
     rect,
@@ -94,7 +93,13 @@
   // Pinch-Start: Abstand der beiden Finger + Fenstergröße + Mittelpunkt.
   let pinch: { dist: number; w: number; h: number; cx: number; cy: number } | null = null;
 
+  // Das Video im Fenster, gelesen beim Einblenden der Steuerung — der Rahmen
+  // kennt seinen Inhalt nur als Snippet (HQ-Stream: ein `<video>`;
+  // Watch-Party: ein iframe, dann `null` und kein Bild-in-Bild-Knopf).
+  let eckVideo = $state<HTMLVideoElement | null>(null);
+
   function hudZeigen(): void {
+    eckVideo = frameEl.querySelector('video');
     hud = true;
     if (hudTimer) clearTimeout(hudTimer);
     hudTimer = setTimeout(() => (hud = false), HUD_HIDE_MS);
@@ -228,45 +233,9 @@
 
     <!-- Die Steuerung liegt NEBEN der Greiffläche, nicht darin: mit Maus ist
          die Fläche nur der Streifen oben, die Knöpfe gehören aber an die Ecken
-         des ganzen Fensters. `pointer-events-none` auf der Ebene, `auto` auf
-         den Knöpfen — so bleibt der abgedunkelte Grund durchlässig: bei Touch
-         zählt ein Tipp darauf weiter als Tipp auf die Greiffläche, mit Maus
-         bleibt die Bedienleiste der Kachel darunter klickbar. -->
+         des ganzen Fensters (Durchlässigkeit: s. `EckfensterSteuerung`). -->
     {#if hud}
-      <div class="pointer-events-none absolute inset-0 z-20 bg-black/40">
-        <!-- Schließen oben links -->
-        {#if onClose}
-          <button
-            type="button"
-            class="pointer-events-auto absolute top-1 left-1 z-20 flex size-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
-            onpointerdown={(e) => e.stopPropagation()}
-            onclick={() => {
-              hud = false;
-              onClose?.();
-            }}
-            data-testid="pip-close"
-            aria-label={m.tile_shell_hide_tile()}
-            title={m.tile_shell_hide_tile()}
-          >
-            <XIcon class="size-4" />
-          </button>
-        {/if}
-        <!-- Vollbild (zurück zum Kanal) unten rechts -->
-        <button
-          type="button"
-          class="pointer-events-auto absolute right-1 bottom-1 z-20 flex size-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
-          onpointerdown={(e) => e.stopPropagation()}
-          onclick={() => {
-            hud = false;
-            onReturn();
-          }}
-          data-testid="pip-return"
-          aria-label={m.watch_pip_return()}
-          title={m.watch_pip_return()}
-        >
-        <Maximize2Icon class="size-4" />
-      </button>
-      </div>
+      <EckfensterSteuerung {onReturn} {onClose} video={eckVideo} ausblenden={() => (hud = false)} />
     {/if}
   {/if}
 </div>

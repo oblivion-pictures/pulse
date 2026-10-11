@@ -330,6 +330,7 @@
           {onToggleQueue}
           {onHide}
           onToggleFullscreen={toggleFs}
+          {video}
         />
       {/if}
 
