@@ -1,8 +1,9 @@
 # Drittanbieter-Software
 
 > **Hinweis:** Diese Seite listet die Drittanbieter-Bibliotheken, die in den
-> Pulse-Anwendungen (Desktop unter Windows/macOS/Linux, die iOS-App) gebündelt
-> oder eingebunden werden, sowie die damit verbundenen Lizenzpflichten.
+> Pulse-Anwendungen (Desktop unter Windows/macOS/Linux, die iOS-App und die
+> Android-App) gebündelt oder eingebunden werden, sowie die damit verbundenen
+> Lizenzpflichten.
 > Keine Rechtsberatung. Pulse selbst steht unter der
 > [GNU AGPL v3.0](https://github.com/oblivion8282-1337/pulse/blob/main/LICENSE)
 > (AGPL-3.0-only); der vollständige Lizenztext liegt als `LICENSE` im
@@ -219,6 +220,65 @@ gehört nicht zum App-Paket.
     (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+### Im WebRTC-Framework eingebaute Bibliotheken
+
+Das WebRTC-Framework der iOS-App enthält weitere Bibliotheken, die fest in sein
+Programm einkompiliert sind. Dem Framework liegt außer dem WebRTC-Lizenztext
+oben keine Aufstellung dazu bei. Die folgende Liste ist deshalb aus dem
+Programm des Frameworks selbst abgelesen und eine Untergrenze, keine
+vollständige Aufzählung.
+
+| Bibliothek | Lizenz |
+|---|---|
+| [BoringSSL](https://boringssl.googlesource.com/boringssl) (Verschlüsselung) | Apache-2.0 |
+| [Opus](https://opus-codec.org/) (Audio) | BSD-3-Clause; dazu gebührenfreie Patentlizenzen, im Lizenztext genannt |
+| [libvpx](https://chromium.googlesource.com/webm/libvpx) (VP8/VP9-Video), Version 1.16.0 | BSD-3-Clause; dazu eine Patent-Zusage (WebM Project) |
+| [libaom](https://aomedia.googlesource.com/aom/) (AV1-Kodierung) | BSD-2-Clause; dazu die Alliance-for-Open-Media-Patentlizenz 1.0 |
+| [dav1d](https://code.videolan.org/videolan/dav1d) (AV1-Dekodierung) | BSD-2-Clause |
+| [libyuv](https://chromium.googlesource.com/libyuv/libyuv/) (Umrechnung von Bildformaten) | BSD-3-Clause |
+| [libsrtp](https://github.com/cisco/libsrtp) (verschlüsselte Medienübertragung) | BSD-3-Clause |
+| [Abseil](https://github.com/abseil/abseil-cpp) | Apache-2.0 |
+| libc++abi (LLVM-Laufzeit) | Apache-2.0 mit LLVM-Ausnahmen |
+
+Die Lizenzangaben stammen aus der Lizenzliste von Chromium 150 (Electron 43),
+derselben Versionslinie wie das Framework; sie benennen die Lizenzen der
+jeweiligen Projekte, nicht die der Quellen im iOS-Programm selbst. Die
+Lizenztexte der BSD-lizenzierten Bibliotheken stehen in der Datei
+[`THIRD-PARTY-NOTICES.md`](https://github.com/oblivion8282-1337/pulse/blob/main/THIRD-PARTY-NOTICES.md)
+im öffentlichen Quellcode-Repository; die Apache-2.0-Texte werden dort wie bei
+den übrigen Apache-Komponenten nicht wiederholt.
+
+### Rust-Bibliotheken in livekit-uniffi
+
+livekit-uniffi (Apache-2.0) ist in Rust geschrieben und enthält seinerseits
+Rust-Bibliotheken. Dem Paket liegt keine Lizenzliste dazu bei, und eine eigene
+Aufstellung steht noch aus; sie ist deshalb hier nicht enthalten.
+
+## Android-App
+
+Die Android-App ist wie die iOS-App eine Capacitor-Hülle; die Web-App selbst
+lädt sie vom Server, sie gehört nicht zum App-Paket. Der eigene native Code der
+Hülle steht unter der AGPL. Eingebunden sind:
+
+| Komponente | Version | Lizenz |
+|---|---|---|
+| [Capacitor](https://github.com/ionic-team/capacitor) (Android) | 8.4.0 | MIT |
+| Capacitor-Plugins `@capacitor/app` 8.1.1 und `camera` 8.2.5 | siehe links | MIT |
+| `@capacitor-firebase/messaging` | 8.5.2 | Apache-2.0 |
+
+Weitere Capacitor-Plugins (`@capacitor/browser` 8.0.5, `haptics` 8.0.2,
+`keyboard` 8.0.6, `status-bar` 8.0.4 und `@capawesome/capacitor-badge` 8.0.3,
+alle MIT) sind im Projekt vorgesehen, aber in der Android-Konfiguration noch
+nicht eingetragen.
+
+Die Android-Bibliotheken aus dem Maven-Katalog, die diese Bestandteile
+mitbringen, sind noch nicht auf ihre Lizenzen geprüft; ihre Aufstellung steht
+aus. Es sind, einschließlich der noch nicht eingetragenen Plugins: AndroidX
+(AppCompat, CoordinatorLayout, Core, Core-SplashScreen, Activity, Fragment,
+WebKit, ExifInterface, Browser), Material Components, Gson, Apache Cordova,
+Firebase Cloud Messaging für Android, die Ionic-Kamerabibliothek
+`ioncamera-android` und ShortcutBadger — dazu deren weitere Abhängigkeiten.
+
 ## Web-Krypto-Kern (WASM)
 
 Die Ende-zu-Ende-verschlüsselten Direktnachrichten kapseln
@@ -244,4 +304,4 @@ Server aus, damit kein Browser eines Besuchers Google Fonts kontaktiert.
 
 ---
 
-Stand: 11. Oktober 2026 (iOS-App ergänzt)
+Stand: 11. Oktober 2026 (iOS-App, WebRTC-Bibliotheken und Android-App ergänzt)
