@@ -67,10 +67,12 @@ test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
     KANAL,
     AUTOR
   );
+  // Der Absender reist mit: nur seine eigenen Sätze darf er umschreiben.
   assert.deepEqual(bearbeitung, {
     art: 'bearbeitung',
     id: ZUSTELLUNG,
     channelId: KANAL,
+    autorId: AUTOR,
     ziel: 'nachricht-9',
     inhalt: 'Neuer Text'
   });

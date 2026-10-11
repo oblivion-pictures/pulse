@@ -130,7 +130,16 @@ export type ZustellungOffenErgebnis =
       emoji: string;
       entfernen: boolean;
     }
-  | { art: 'bearbeitung'; id: string; channelId: string; ziel: string; inhalt: string }
+  /** Bearbeitungs-Umschlag: `autorId` ist der Absender — nur seine eigenen
+   *  Sätze darf er umschreiben (s. `empfangen.ts`). */
+  | {
+      art: 'bearbeitung';
+      id: string;
+      channelId: string;
+      autorId: string;
+      ziel: string;
+      inhalt: string;
+    }
   /** Anruf-Schluessel-Frame (E2EE-Anrufe): `anrufId` + LiveKit-E2EE-Schluessel
    *  (`schluessel`, 32 Bytes base64). Der Aufrufer reicht beides an den
    *  Anruf-Store weiter und quittiert direkt — nichts abzulegen. */

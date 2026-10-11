@@ -326,7 +326,15 @@ export type RahmenErgebnis =
       emoji: string;
       entfernen: boolean;
     }
-  | { art: 'bearbeitung'; id: string; channelId: string; ziel: string; inhalt: string }
+  | {
+      art: 'bearbeitung';
+      id: string;
+      channelId: string;
+      /** Wer bearbeitet — nur seine eigenen Sätze darf er umschreiben. */
+      autorId: string;
+      ziel: string;
+      inhalt: string;
+    }
   | {
       art: 'anrufSchluessel';
       id: string;
@@ -367,6 +375,7 @@ export function rahmenAusNutzlast(
       art: 'bearbeitung',
       id,
       channelId,
+      autorId,
       ziel: gelesen.bearbeitung.ziel,
       inhalt: gelesen.bearbeitung.inhalt
     };

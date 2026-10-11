@@ -43,10 +43,12 @@ type AnzeigeKandidat = { id: string; krypto_id?: string; author_id?: string };
  * prüfte den Autor, die andere suchte nur über `kryptoId` und fand den
  * eigenen Satz des Verfassers (Frame-ID = lokale `id`) nie.
  *
- * Ohne `absenderUserId` sucht die Regel ohne Autor-Bindung — das dürfen nur
- * Aktions-Frames, die nichts löschen (Reaktion/Bearbeitung). Ohne bekannten
- * Autor am Satz trifft ein gebundener Frame nie: „im Zweifel löschen" ist bei
- * einem Vorgang ohne Rückweg die falsche Richtung.
+ * Ohne `absenderUserId` sucht die Regel ohne Autor-Bindung — das darf nur
+ * der Reaktions-Frame: reagieren darf jeder auf jede Nachricht, und eine
+ * Reaktion ändert die Nachricht selbst nicht. Lösch- und Bearbeitungs-Frame
+ * binden an den Absender (`empfangen.ts`). Ohne bekannten Autor am Satz
+ * trifft ein gebundener Frame nie: „im Zweifel löschen" ist bei einem
+ * Vorgang ohne Rückweg die falsche Richtung.
  */
 export function trifftFrame(
   frameId: string,

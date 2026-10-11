@@ -292,7 +292,13 @@ async function postfachZyklus(): Promise<Message[]> {
       // same-cycle ist die Reihenfolge garantiert, cross-cycle sortiert der
       // Server; ein bearbeitetAm-Vergleich waere der Ausbau, falls je
       // ueberholende Frames beobachtet werden.
-      for (const lokaleId of await lokaleZielIds(ergebnis.channelId, ergebnis.ziel)) {
+      //
+      // Mit Absender-Bindung wie beim Lösch-Frame (2026-10-12): ohne sie
+      // schrieb der Gesprächspartner den Text MEINER eigenen Nachricht auf
+      // meinem Gerät um — er kennt ihre ID, bei mir ist sie die lokale `id`
+      // — und die Anzeige schrieb mir Worte zu, die ich nie geschrieben habe.
+      const ziele = await lokaleZielIds(ergebnis.channelId, ergebnis.ziel, ergebnis.autorId);
+      for (const lokaleId of ziele) {
         const bearbeitetAm = new Date().toISOString();
         if (await verlaufBearbeitungAnwenden(ergebnis.channelId, lokaleId, ergebnis.inhalt, bearbeitetAm)) {
           messages.bearbeiteInhalt(ergebnis.channelId, lokaleId, ergebnis.inhalt, bearbeitetAm);

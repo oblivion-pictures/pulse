@@ -142,3 +142,15 @@ test('trifftFrame: Autor-Bindung greift auf beiden Formen, ohne Bindung nur die 
   // Ohne bekannten Autor trifft ein gebundener Frame nie.
   assert.equal(trifftFrame('meine-1', { id: 'meine-1' }, ICH), false);
 });
+
+test('Bearbeitung mit Absender-Bindung: der Partner schreibt meine eigene Nachricht nicht um', async () => {
+  // Derselbe Weg wie beim Lösch-Frame (`empfangen.ts` reicht beim
+  // Bearbeitungs-Frame seit 2026-10-12 den Absender mit). Geprüft wird hier
+  // nur die Zielauflösung; dass `empfangen.ts` den Absender tatsächlich
+  // übergibt, deckt dieser Test nicht ab — die Datei lädt unter Nodes
+  // Läufer nicht.
+  const geladen = [{ id: 'meine-1', author_id: ICH }];
+  const imVerlauf = verlaufMit([{ id: 'meine-1', kryptoId: null, autorId: ICH }]);
+  assert.deepEqual(await frameZiele('meine-1', geladen, imVerlauf('meine-1', PARTNER), PARTNER), []);
+  assert.deepEqual(await frameZiele('meine-1', geladen, imVerlauf('meine-1', ICH), ICH), ['meine-1']);
+});
