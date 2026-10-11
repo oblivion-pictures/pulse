@@ -17,28 +17,20 @@ Sicherheitsmodell
 
 from __future__ import annotations
 
-import asyncio
-import secrets
 from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from pydantic import BaseModel
 from sqlalchemy import select
 
 from dcc_auth.bootstrap import TOKEN_PREFIX, hash_bootstrap_token
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
-from dcc_auth.models import User
-from dcc_auth.models_instances import (
-    InstanceBootstrapToken,
-    RegisteredInstance,
-    UserInstanceMembership,
-)
+from dcc_auth.models_instances import InstanceBootstrapToken, RegisteredInstance
 from dcc_auth.relay import allocate_relay_subdomain, generate_relay_token, hash_relay_token
 from dcc_auth.routes import _check_rate
 from dcc_auth.routes_admin_instances import _require_cloud
-from dcc_auth.security import hash_password
+from dcc_auth.zugangsdaten import ZugangsdatenOut, zugangsdaten_ausgeben
 
 # Bootstrap-Tokens werden ausschließlich von der Cloud geminted → der Redeem
 # ergibt nur auf der Cloud Sinn. Auf Self-Host-Deploys 403 (Defense-in-Depth,
@@ -46,14 +38,10 @@ from dcc_auth.security import hash_password
 router = APIRouter(tags=["self-host"], dependencies=[Depends(_require_cloud)])
 
 
-class BootstrapCredsOut(BaseModel):
-    instance_id: str
-    owner_user_id: str
-    hostname: str
-    client_id: str
-    client_secret: str
-    cloud_origin: str
-    admin_email: str | None = None
+class BootstrapCredsOut(ZugangsdatenOut):
+    """Die gemeinsamen Felder (``zugangsdaten.py``) plus die Relay-Felder, die
+    nur der Weg über das Installer-Token kennt."""
+
     relay_subdomain: str | None = None
     relay_server_addr: str | None = None
     relay_tunnel_token: str | None = None
@@ -109,8 +97,7 @@ async def redeem_bootstrap_token(
 
     # Token verbrennen + Secret rotieren (Klartext nur in der Antwort).
     row.consumed_at = now
-    new_secret = secrets.token_urlsafe(32)
-    instance.client_secret = await asyncio.to_thread(hash_password, new_secret)
+    zugang = await zugangsdaten_ausgeben(db, instance, settings)
 
     # ②a Relay-Provisionierung: nur wenn ein Relay-Server konfiguriert ist UND
     # das Provisioning nicht abgeschaltet wurde (PULSE_RELAY_PROVISION_ENABLED
@@ -138,36 +125,10 @@ async def redeem_bootstrap_token(
         relay_token_plain = generate_relay_token()
         instance.relay_tunnel_token_hash = hash_relay_token(relay_token_plain)
 
-    owner = await db.get(User, instance.registered_by)
-    admin_email = owner.email if owner is not None else None
-
-    # Owner-Membership in der Cloud tracken (= Account-basierte Server-Liste,
-    # ersetzt den Zero-Knowledge-Vault). Die Genehmigung legt sie bereits an;
-    # bei wiederholtem Redeem (oder einem vor diesem Fix genehmigten Antrag)
-    # existiert sie ggf. schon → nur einfügen, wenn noch keine da ist (ein
-    # blindes INSERT würde am Composite-PK mit IntegrityError crashen).
-    existing_membership = await db.get(
-        UserInstanceMembership, (instance.registered_by, instance.id)
-    )
-    if existing_membership is None:
-        db.add(
-            UserInstanceMembership(
-                user_id=instance.registered_by,
-                instance_id=instance.id,
-                role="owner",
-            )
-        )
-
     await db.commit()
 
     return BootstrapCredsOut(
-        instance_id=str(instance.id),
-        owner_user_id=str(instance.registered_by),
-        hostname=instance.hostname,
-        client_id=instance.client_id,
-        client_secret=new_secret,
-        cloud_origin=settings.pulse_oidc_issuer,
-        admin_email=admin_email,
+        **zugang.model_dump(),
         relay_subdomain=relay_subdomain,
         # Ohne Provisioning auch keine Server-Adresse — der Container soll die
         # frpc-Unit gar nicht erst konfigurieren (sie schläft ohne die Vars).
