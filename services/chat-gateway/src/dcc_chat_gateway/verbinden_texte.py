@@ -86,6 +86,23 @@ VORGANG_LAEUFT = (
     "browser or wait up to 15 minutes, then run pulse-connect again."
 )
 UNERWARTET = "Unexpected answer from the Pulse cloud (HTTP {status}). Nothing changed."
+ZUGANG_UNBRAUCHBAR = (
+    "The Pulse cloud sent credentials this server cannot use. Nothing changed here. "
+    "The code is used up. Run pulse-connect again."
+)
+DATEN_NICHT_BESCHREIBBAR = (
+    "Could not write to {pfad} ({grund}). Nothing changed and no code was used up.\n"
+    "Check the free space and the permissions of the data volume, then run pulse-connect again."
+)
+#: Die Cloud hat das Secret beim Abholen schon rotiert — ohne den Hinweis auf den
+#: neuen Lauf bliebe der Betreiber bei „Platte voll“ stehen und wüsste nicht, dass
+#: ein zweiter Versuch einen neuen Code braucht.
+ZUGANG_NICHT_GESPEICHERT = (
+    "The Pulse cloud has already issued new credentials for this server, but they could "
+    "not be saved to {pfad} ({grund}).\n"
+    "Free some space on the data volume (or fix its permissions), then run pulse-connect "
+    "again to get fresh ones. Nothing was applied to this server."
+)
 ABGELEHNT = "The connection was declined in the browser. Nothing changed."
 UEBERNAHME_BEANTRAGT = (
     "The account that confirmed this code does not own {host} in Pulse. A takeover "
@@ -101,7 +118,12 @@ UEBERNAHME_GESPERRT = (
 ABGELAUFEN = "The code expired before it was confirmed. Run pulse-connect again."
 
 VERBUNDEN = "Connected to {besitzer}. Your server now appears in Pulse."
-NEUSTART = "Restarting the server to apply the connection. It is back in about a minute."
+#: Wer den Container ohne Neustart-Regel gestartet hat (``docker run`` ohne
+#: ``--restart``), findet ihn nach ``halt`` gestoppt vor und muss ihn selbst starten.
+NEUSTART = (
+    "Restarting the server to apply the connection. It is back in about a minute.\n"
+    "If it does not come back by itself, start it again: docker start pulse"
+)
 NEUSTART_VON_HAND = "Could not restart by itself. On the host, run: docker restart pulse"
 ABGEBROCHEN = "\nCancelled. Nothing changed."
 
