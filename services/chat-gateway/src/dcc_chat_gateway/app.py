@@ -6,7 +6,6 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Annotated
-from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI, Header, Request
@@ -22,11 +21,7 @@ from dcc_chat_gateway.jwks_poller import jwks_poller_loop
 from dcc_chat_gateway.db import engine
 from dcc_chat_gateway.jwks_pinning import jwks_retry_loop
 from dcc_chat_gateway.owner_admin_log import log_owner_konfiguration
-from dcc_chat_gateway.plugins import (
-    ensure_hello_in_allowlist,
-    list_allowed_names,
-    load_all_with_allowlist,
-)
+from dcc_chat_gateway.plugin_start import plugins_laden
 from dcc_chat_gateway.plugins.permissions import log_startup_mode_warning
 from dcc_chat_gateway.presence_status import idle_sweeper_loop
 from dcc_chat_gateway.pubsub import ConnectionManager
@@ -34,7 +29,9 @@ from dcc_chat_gateway.remote_guard import remote_perm_audit_loop
 from dcc_chat_gateway.push import ensure_vapid
 from dcc_chat_gateway.routes import router
 from dcc_chat_gateway.routes.attachments import reaper_loop as attachments_reaper
+from dcc_chat_gateway.start_riegel import pruefe_startbedingungen
 from dcc_chat_gateway.suspend_poller import suspend_poller_loop
+from dcc_chat_gateway.validierungs_log import registriere_422_log
 from dcc_chat_gateway.voice_pull_cleanup import voice_pull_reaper_loop
 from dcc_shared.logging_setup import konfiguriere_logging
 from dcc_shared.singleworker import assert_single_worker
@@ -56,49 +53,6 @@ _SHUTDOWN_TASK_TIMEOUT_S = 5
 # Backoff used by the pubsub supervisor between restart attempts.
 _SUPERVISOR_BACKOFF = [1.0, 2.0, 5.0, 10.0, 30.0]
 _SUPERVISOR_POLL_SECONDS = 5.0
-
-# Field-name blacklist for the 422 raw-body echo. Any key matching
-# one of these (case-insensitive, substring) gets redacted from
-# the logged payload so a future endpoint that carries a real
-# secret in the body doesn't leak it via the 422 path.
-_REDACT_KEY_SUBSTR = (
-    "token",
-    "secret",
-    "password",
-    "passwd",
-    "key",
-    "auth",
-    "session",
-    "cookie",
-    "bearer",
-    "csrf",
-    "pin",
-    "otp",
-    "2fa",
-    "mfa",
-    "recovery",
-    "credential",
-    "private",
-)
-
-
-def _redact(obj):
-    """Recursive redactor for the 422 raw-body echo. Module-level
-    so tests can import it directly (the handler itself is
-    closure-captured inside ``create_app``)."""
-    if isinstance(obj, dict):
-        return {
-            k: (
-                "[redacted]"
-                if any(s in k.lower() for s in _REDACT_KEY_SUBSTR)
-                else _redact(v)
-            )
-            for k, v in obj.items()
-        }
-    if isinstance(obj, list):
-        return [_redact(v) for v in obj]
-    return obj
-
 
 async def _supervise_pubsub(manager: ConnectionManager) -> None:
     """Restart the ConnectionManager's listener if it dies.
@@ -123,84 +77,14 @@ async def _supervise_pubsub(manager: ConnectionManager) -> None:
             log.exception("pubsub restart failed; will retry")
 
 
-# MinIO default credentials are well-known (ship in the dev compose + .env.example)
-# — running them against a NON-LOCAL S3 endpoint lets anyone read/write the
-# attachments bucket. Local dev (endpoint on localhost) stays allowed + warns.
-_MINIO_DEFAULT_KEY = "minioadmin"
-_LOCAL_S3_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "host.docker.internal"})
-
-
-def _s3_endpoint_is_local(url: str) -> bool:
-    """True wenn der S3-Endpoint auf einen lokalen Host zeigt (Dev-Setup)."""
-    return (urlsplit(url).hostname or "") in _LOCAL_S3_HOSTS
-
-
-def _enforce_s3_secret_guard(settings) -> None:  # noqa: ANN001
-    """Fail-fast bei MinIO-Default-Credentials gegen einen nicht-lokalen Endpoint.
-
-    ``minioadmin/minioadmin`` ist öffentlich bekannt (steht im dev-compose +
-    .env.example) — wer damit gegen ein NICHT lokales MinIO/S3 startet, erlaubt
-    jedem Lese-/Schreibzugriff auf den Attachments-Bucket. Lokales Dev (Endpoint
-    auf localhost) bleibt erlaubt und warnt nur. Analog zum LiveKit-devkey-Guard
-    in voice-signaling.
-    """
-    dev_creds = _MINIO_DEFAULT_KEY in (settings.s3_access_key, settings.s3_secret_key)
-    if not dev_creds:
-        return
-    local = _s3_endpoint_is_local(settings.s3_internal_endpoint) and _s3_endpoint_is_local(
-        settings.s3_public_endpoint
-    )
-    if local:
-        log.warning(
-            "using MinIO default credentials (minioadmin) — "
-            "set S3_ACCESS_KEY/S3_SECRET_KEY in production"
-        )
-        return
-    raise RuntimeError(
-        "MinIO default credentials (minioadmin/minioadmin) with a non-local S3 "
-        f"endpoint (internal={settings.s3_internal_endpoint!r}, "
-        f"public={settings.s3_public_endpoint!r}) — anyone could read/write the "
-        "attachments bucket. Set S3_ACCESS_KEY/S3_SECRET_KEY."
-    )
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Security-Scan 2026-09-18: s. dcc_shared/singleworker.py — der chat-gateway
     # trägt die meisten In-Prozess-Limiter (messages, invites, ablage …).
     assert_single_worker("chat-gateway")
     settings = get_settings()
-    # Fail fast: a self-host must have PULSE_INSTANCE_ID set to a non-zero value.
-    # Without it every instance would compute the same pairwise-subs (DE 11 A.13).
-    # Skip in test mode (skip_redis=True) so unit tests with default settings pass.
-    if (
-        not getattr(app.state, "skip_redis", False)
-        and settings.pulse_instance_mode == "self-host"
-        and settings.pulse_instance_id == 0
-    ):
-        raise RuntimeError(
-            "PULSE_INSTANCE_ID must be set to a non-zero value on a self-host. "
-            "Set PULSE_INSTANCE_ID in your .env file to the Snowflake-ID assigned "
-            "by the Cloud at approval time."
-        )
-    # Fail-fast: Daten aus der Pseudonym-Zeit. Ein Self-Host aktualisiert sich
-    # unbeaufsichtigt alle fuenf Minuten; ohne diesen Riegel liefe er nach dem
-    # Update still halb kaputt an. Details in ``altbestand_riegel``.
-    if not getattr(app.state, "skip_redis", False) and settings.pulse_instance_mode == "self-host":
-        from dcc_chat_gateway.altbestand_riegel import pruefe_altbestand
-        from dcc_chat_gateway.db import SessionLocal
-
-        await pruefe_altbestand(SessionLocal)
-    # Fail-fast: der .env.example-Platzhalter ist öffentlich bekannt — damit zu
-    # starten hieße, die internen Service-zu-Service-Endpoints mit einem
-    # allgemein bekannten "Secret" zu schützen. Leer = deaktiviert, ok.
-    if settings.internal_service_secret == "__CHANGE_ME__":
-        raise RuntimeError(
-            "INTERNAL_SERVICE_SECRET is still the .env.example placeholder __CHANGE_ME__ — "
-            "set a real secret (same value on auth-svc/voice-signaling) or leave it unset."
-        )
-    # Fail-fast: MinIO-Default-Credentials gegen einen nicht-lokalen S3-Endpoint.
-    _enforce_s3_secret_guard(settings)
+    # Startverweigerungen (Instanz-ID, Altbestand, Platzhalter-Secret, MinIO-Default)
+    await pruefe_startbedingungen(settings, skip_redis=getattr(app.state, "skip_redis", False))
     # Resolve / auto-generate the Web-Push VAPID keypair. Logs the
     # *public* half (the browser needs it; not secret) on first call;
     # NEVER logs the private PEM. ``ensure_vapid`` is idempotent so
@@ -353,50 +237,8 @@ async def lifespan(app: FastAPI):
         log_owner_konfiguration(settings)
         # Plugin-System: log startup warning if permission mode is not 'strict'.
         log_startup_mode_warning()
-        # Plugin-System: Allowlist-gegateter Load.
-        # 1. Self-Heal: ``hello`` muss immer in der Allowlist sein.
-        # 2. Allowlist-Snapshot aus der DB lesen.
-        # 3. Plugin-Loader mit Snapshot aufrufen — nur erlaubte Plugins
-        #    werden aktiviert; entdeckte aber nicht-erlaubte bleiben für
-        #    die Admin-API sichtbar.
-        # Snapshot landet auf ``app.state.plugin_allowlist`` (frozenset),
-        # damit der WS-Op-Gate ohne DB-Hit pro Op prüfen kann.
-        # Errors pro Plugin werden geloggt; die Lifespan startet auch
-        # bei Plugin-Fehlern durch. Mode für den Permission-Gate (intern):
-        # ``$PULSE_PLUGIN_PERMISSIONS`` — siehe ``plugins.permissions``.
-        # Den Plugin-Loader auf demselben SessionLocal laufen lassen,
-        # den der WS-Op-Pfad nutzt. Tests patchen ``routes.ws_ops.SessionLocal``
-        # auf eine file-backed DB; der direkte Import ``dcc_chat_gateway.db.
-        # SessionLocal`` würde die Memory-DB-Factory einsammeln (die nie
-        # gepatched wird) — Lifespan würde scheitern und die Allowlist
-        # bliebe leer. Same indirection as ``manager.set_session_factory``
-        # weiter oben.
-        try:
-            async with _routes_ws_ops.SessionLocal() as session:
-                await ensure_hello_in_allowlist(session)
-                allowed = await list_allowed_names(session)
-            app.state.plugin_allowlist = frozenset(allowed)
-            result = load_all_with_allowlist(allowed)
-            # Plugin-System PR3: Plugins können eigene Pub/Sub-Channels
-            # deklarieren (``[plugin.uses].channels`` im Manifest).
-            # ConnectionManager subscribt seine Built-ins bei ``start()`` —
-            # die Plugin-Channels werden hier nachgereicht, damit der
-            # ``_listen``-Loop sie auch empfängt.
-            extra_channels: list[str] = []
-            for manifest in result.loaded:
-                extra_channels.extend(manifest.uses.channels)
-            if extra_channels and manager is not None:
-                try:
-                    await manager.subscribe_plugin_channels(
-                        list(dict.fromkeys(extra_channels))
-                    )
-                except Exception:  # noqa: BLE001
-                    log.exception(
-                        "plugin channel subscribe failed; broadcasts may not reach clients"
-                    )
-        except Exception:  # noqa: BLE001
-            log.exception("plugin loader failed; continuing without plugins")
-            app.state.plugin_allowlist = frozenset()
+        # Plugin-System: Allowlist-gegateter Load (Details in ``plugin_start``).
+        await plugins_laden(app, manager, lambda: _routes_ws_ops.SessionLocal())
     try:
         yield
     finally:
@@ -469,51 +311,7 @@ def create_app(*, skip_redis: bool = False) -> FastAPI:
     install_access_log_redaction()
     app = FastAPI(title="dcc-chat-gateway", version="0.1.0", lifespan=lifespan)
 
-    # Validation-error log: every 422 carries away the offending body
-    # so a future bug report can read it from the container log without
-    # reproducing. Bound to 1 KiB to avoid log floods from abusive
-    # clients; the FastAPI ``RequestValidationError`` fires before the
-    # route handler runs, so we still see the unmodified raw payload.
-    import json as _json
-
-    import structlog as _sl
-    from fastapi.exceptions import RequestValidationError
-
-    @app.exception_handler(RequestValidationError)
-    async def _log_422(request, exc: RequestValidationError):
-        try:
-            raw = (await request.body()).decode(errors="replace")[:1024]
-        except Exception:  # noqa: BLE001
-            raw = "<unreadable>"
-        # Try to redact sensitive fields before logging. The body
-        # might not be JSON (e.g. multipart upload-url cancel) — in
-        # that case we fall back to a truncated raw echo. The 1 KiB
-        # cap from before is preserved so abusive clients can't
-        # flood the log.
-        logged_body: str | dict | list = "<non-json>"
-        try:
-            parsed = _json.loads(raw)
-            logged_body = _redact(parsed)
-        except Exception:  # noqa: BLE001 — not JSON, keep raw
-            # Bughunt Runde 33: Nicht-JSON nie roh echoen — das ist
-            # kuenftig form-encoded Passwort-/Code-Sendepfad (und jeder
-            # unauthentifizierte Klient konnte beliebige Bytes ins Log
-            # druecken). Nur Laenge + sichere Kennung loggen.
-            logged_body = f"<non-json {len(raw)} bytes>"
-
-        _sl.get_logger("dcc_chat_gateway").warning(
-            "request_validation_error",
-            method=request.method,
-            path=request.url.path,
-            errors=_json.loads(_json.dumps(exc.errors(), default=str))[:6],
-            raw_body=logged_body,
-        )
-        # Re-raise as the default 422 — FastAPI's own handler takes over.
-        from fastapi.responses import JSONResponse
-        return JSONResponse(
-            status_code=422,
-            content={"detail": _json.loads(_json.dumps(exc.errors(), default=str))},
-        )
+    registriere_422_log(app)
     app.state.skip_redis = skip_redis
     # Default-Snapshot, damit Tests ohne Lifespan (REST-only-Fixture)
     # ein definiertes ``plugin_allowlist`` lesen können. Die Lifespan
