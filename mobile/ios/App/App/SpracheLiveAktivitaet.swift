@@ -294,10 +294,12 @@ extension SpracheRaum {
     /// bekommt den Wunsch deshalb zuerst und arbeitet ihn ab, sobald es läuft.
     /// Die Reihenfolge der Meldungen ist dabei tragend: käme `disconnected`
     /// zuerst an, räumte das Web ab wie nach einem Netzabbruch und behielte
-    /// den Eintrag — der nächste Reload träte wieder bei.
+    /// den Eintrag — der nächste Reload träte wieder bei. Hört das Web gar
+    /// nicht zu (WebContent abgestürzt), merkt sich die Hülle das Auflegen
+    /// selbst (`vomNutzerAufgelegt`, B1).
     private func verlassenAusAktivitaet() async {
         _ = wunschAnWeb?(.auflegen, true)
-        await verlassen()
+        await vomNutzerAufgelegt()
         melden("verbindung", ["zustand": "disconnected"])
     }
 }

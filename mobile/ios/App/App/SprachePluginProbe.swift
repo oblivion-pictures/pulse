@@ -1,3 +1,4 @@
+import Capacitor
 import LiveKit
 import UIKit
 
@@ -32,6 +33,12 @@ import UIKit
             // nach, mit Soll/Ist im Log (`pruefenDurchfahren` unten).
             if teile.count > 3, teile[3] == "pruefen" {
                 Task { await pruefenDurchfahren(wsUrl: teile[0], token: teile[1]) }
+                return
+            }
+            // `neuladen` / `aufgelegt`: der Abgleich nach einem Neuladen, mit
+            // der echten Oberfläche (`abgleichProbe` unten).
+            if teile.count > 3, teile[3] == "neuladen" || teile[3] == "aufgelegt" {
+                Task { await abgleichProbe(wsUrl: teile[0], token: teile[1], art: teile[3]) }
                 return
             }
             // **Jeder Schritt meldet sich einzeln, und ein Fehlschlag haelt die
@@ -342,7 +349,81 @@ import UIKit
             await warten(1)
             NSLog("[PulseSprache] Pruefung AUFLEGEN SOLL raum=nil IST %@",
                   raum.raum == nil ? "nil" : "STEHT")
+            await aufgelegtPruefen(raum, beitritt: { await beitritt(taub: false) })
             NSLog("[PulseSprache] Pruefung ENDE")
+        }
+
+        /// Bughunt 2 vom 2026-10-11, N1 und B1 — **der Abgleich nach einem
+        /// Neuladen, mit der Oberfläche, die gerade geladen ist.** Der Raum
+        /// entsteht hier (ohne Anmeldung), stumm und taub; was die Oberfläche
+        /// danach tut, steht in ihrem eigenen Protokoll (Capacitor reicht
+        /// `console.log` ins Gerätelog) und an den `Verbindung`-Zeilen des
+        /// Delegaten — ein Neubeitritt zeigte dort `connecting → connected`
+        /// und eine höhere Sitzung.
+        ///
+        ///  - `neuladen`: Raum halten, nach 15 s die WebView neu laden wie
+        ///    Capacitor nach einem WebContent-Absturz (N1).
+        ///  - `aufgelegt`: gleich wieder auflegen, in der Hülle, ohne Hörer im
+        ///    Web (B1).
+        static func abgleichProbe(wsUrl: String, token: String, art: String) async {
+            let raum = SpracheRaum.geteilt
+            do {
+                try await raum.nacheinander {
+                    try await raum.beitreten(wsUrl: wsUrl, token: token, kanalId: "probe",
+                                             kanalName: "Probe", stumm: true, taubStart: true)
+                }
+            } catch {
+                NSLog("[PulseSprache] Abgleich-Probe BEITRITT fehlgeschlagen: %@",
+                      error.localizedDescription)
+                return
+            }
+            NSLog("[PulseSprache] Abgleich-Probe BEITRITT sitzung=%ld", raum.sitzung)
+            if art == "aufgelegt" {
+                try? await raum.wunsch(.auflegen, an: true)
+                NSLog("[PulseSprache] Abgleich-Probe AUFGELEGT in der Huelle: raum=%@ %@",
+                      raum.raum == nil ? "nil" : "STEHT", aufgelegtFeld(raum))
+                return
+            }
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            let ausgeloest = await MainActor.run { () -> Bool in
+                let wurzel = UIApplication.shared.connectedScenes
+                    .compactMap { ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } }
+                    .first?.rootViewController as? CAPBridgeViewController
+                guard let web = wurzel?.webView else { return false }
+                web.reload()
+                return true
+            }
+            let vorher = raum.sitzung
+            NSLog("[PulseSprache] Abgleich-Probe NEULADEN ausgeloest=%@ sitzung=%ld",
+                  ausgeloest ? "ja" : "NEIN", vorher)
+            try? await Task.sleep(nanoseconds: 20_000_000_000)
+            NSLog("[PulseSprache] Abgleich-Probe NACH NEULADEN SOLL raum steht, sitzung %ld IST raum=%@ sitzung=%ld",
+                  vorher, raum.raum == nil ? "WEG" : "steht", raum.sitzung)
+        }
+
+        /// Bughunt 2 vom 2026-10-11, B1: „Sitzung N vom Nutzer aufgelegt" steht
+        /// im Zustand — und NUR für ein Auflegen in der Hülle, nur bis zum
+        /// nächsten Beitritt. Gelesen wird `zustand()`, genau das, was das Web
+        /// nach einem Neuladen bekommt.
+        private static func aufgelegtPruefen(
+            _ raum: SpracheRaum, beitritt: () async -> Bool
+        ) async {
+            NSLog("[PulseSprache] Pruefung B1a SOLL aufgelegtSitzung=%ld (Huelle) IST %@",
+                  raum.sitzung, aufgelegtFeld(raum))
+            guard await beitritt() else { return }
+            NSLog("[PulseSprache] Pruefung B1b SOLL alt (%ld < sitzung %ld) IST %@",
+                  raum.sitzung - 1, raum.sitzung, aufgelegtFeld(raum))
+            // Ein Verlassen aus der Oberfläche ist kein Auflegen in der Hülle:
+            // das Web räumt seinen Eintrag dann selbst.
+            await raum.verlassen()
+            NSLog("[PulseSprache] Pruefung B1c SOLL weiter alt (%ld) nach Web-Verlassen IST %@",
+                  raum.sitzung - 1, aufgelegtFeld(raum))
+        }
+
+        /// `aufgelegtSitzung` aus `zustand()`, so wie das Web es bekommt — für
+        /// die Log-Zeilen beider Proben oben; `fehlt`, wenn der Schlüssel fehlt.
+        private static func aufgelegtFeld(_ raum: SpracheRaum) -> String {
+            "\(raum.zustand()["aufgelegtSitzung"] ?? "fehlt")"
         }
     }
 #endif

@@ -36,7 +36,8 @@ import LiveKit
 /// Hauptthread. Geprüft sind davon zwei Dinge — `hoerwunsch` liegt hinter
 /// `tonFaden` (s. `SpracheRaumTaub.swift`), die Kette hinter der Sperre in
 /// `Befehlskette`. Die übrigen Felder (`raum`, `kanalId`, `kanalName`,
-/// `kameraVorn`, `taub`, `anrufPausiert`, `mikroWunsch`, `sitzung`, `melde`)
+/// `kameraVorn`, `taub`, `anrufPausiert`, `mikroWunsch`, `sitzung`,
+/// `aufgelegtSitzung`, `melde`)
 /// sind kleine Werte, die ein Befehl setzt und andere lesen; sie sind NICHT
 /// synchronisiert, und das ist der Grund für `unchecked`. Wer auf Swift 6
 /// geht, muss sie wirklich absichern.
@@ -65,6 +66,9 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     /// nichts. Ohne sie räumte ein überholter Beitritt im Web den NEUEREN Raum
     /// ab (Bughunt 2026-10-11, M6), denn `verlassen` traf das gemeinsame Feld.
     private(set) var sitzung = 0
+    /// Die Sitzung, die der Nutzer in der HÜLLE aufgelegt hat (Ansicht, Live
+    /// Activity) — Begründung an `vomNutzerAufgelegt`.
+    private(set) var aufgelegtSitzung: Int?
     /// Welche Kamera läuft. **Gemerkt statt abgefragt**, weil die Abfrage am
     /// Aufnehmer hängt (`CameraCapturer.position`) und der zwischen
     /// „aus" und „an" gar nicht existiert — ein Wunsch, der das Ausschalten
@@ -260,6 +264,20 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // sähe wie eine Nutzergeste aus.
         await MainActor.run { SpracheAnsichtHalter.geteilt.schliessen(melden: false) }
         await r.disconnect()
+    }
+
+    /// Auflegen auf einen Knopf der HÜLLE hin, und es sich merken. Nach einem
+    /// WebContent-Absturz hört drüben niemand zu, das `disconnected` geht ins
+    /// Leere, und das Neuladen trat mit dem stehengebliebenen Resume-Eintrag
+    /// wieder bei (Bughunt 2 vom 2026-10-11, B1). `zustand()` meldet die
+    /// Sitzung; stimmt sie mit `sitzung` überein, verwirft das Web den
+    /// Eintrag. Ein Abriss von aussen (`raumAbgerissen`) zählt bewusst nicht:
+    /// dorthin soll das Neuladen zurückkehren.
+    func vomNutzerAufgelegt() async {
+        guard raum != nil else { return }
+        let gemeint = sitzung
+        await verlassen()
+        aufgelegtSitzung = gemeint
     }
 
     /// Der Raum ist von aussen weggebrochen (Netz, Server, Rauswurf) — von

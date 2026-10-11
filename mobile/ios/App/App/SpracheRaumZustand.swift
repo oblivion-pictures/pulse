@@ -18,6 +18,8 @@ extension SpracheRaum {
             // Verlassen nicht sagen, WELCHEN Raum sie meint.
             "kanalName": kanalName,
             "sitzung": sitzung,
+            // In der Hülle aufgelegt (B1) — `SpracheRaum.vomNutzerAufgelegt`.
+            "aufgelegtSitzung": aufgelegtSitzung ?? NSNull(),
             "teilnehmer": teilnehmerListe(),
             "mikro": raum?.localParticipant.isMicrophoneEnabled() ?? false,
             // Kamera- und Taub-Stand gehören in dasselbe Vollbild: nach einem

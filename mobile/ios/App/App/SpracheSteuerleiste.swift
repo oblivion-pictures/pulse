@@ -239,7 +239,7 @@ extension SpracheRaum {
     /// einem Abbruch von aussen.
     private func selbstAuflegen() async {
         guard raum != nil else { return }
-        await verlassen()
+        await vomNutzerAufgelegt()
         melden("verbindung", ["zustand": "disconnected"])
     }
 }
