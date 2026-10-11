@@ -1,10 +1,18 @@
-"""Heim-Server läuft / läuft nicht / heißt jetzt so — an jedes Mitglied.
+"""Ereignisse rund um die Server einer Person — an genau ein Konto.
 
-Publiziert von auth-svc (``instance_status.py``) auf ``user:events``, je
-Mitglied einmal (Routing über ``_target_user_id``). Die Server-Leiste blendet
-einen gestoppten Heim-Server aus und zeigt den Anzeigenamen statt der
-Relay-Adresse; ohne dieses Ereignis sähe sie beides erst beim nächsten Laden
-von ``/me/instances``.
+Publiziert von auth-svc auf ``user:events`` (Routing über
+``_target_user_id``):
+
+* ``instance_status`` (``instance_status.py``, je Mitglied): Heim-Server läuft
+  / läuft nicht / heißt jetzt so. Die Server-Leiste blendet einen gestoppten
+  Heim-Server aus und zeigt den Anzeigenamen statt der Relay-Adresse.
+* ``instanz_verbunden`` (``routes_verbinden.py``, an den Besitzer): ein
+  Server wurde per Gerätecode mit dem Konto verbunden und hat seine
+  Zugangsdaten abgeholt (Spec 2026-10-09, E3). Die Geräte laden
+  ``/me/instances`` neu und nehmen ihn in die Leiste.
+
+Ohne diese Ereignisse sähe die Leiste beides erst beim nächsten Laden von
+``/me/instances``.
 """
 
 from __future__ import annotations
@@ -25,3 +33,16 @@ class InstanceStatusEvent(_EventBase):
 
     op: Literal["instance_status"] = "instance_status"
     data: InstanceStatusData
+
+
+class InstanzVerbundenData(_EventBase):
+    # Nur die Nummer: die Geräte holen alles Weitere über ``/me/instances``,
+    # das dieselben Rechte prüft wie jede andere Abfrage der Liste.
+    instance_id: str
+
+
+class InstanzVerbundenEvent(_EventBase):
+    """``op="instanz_verbunden"`` — ein Server ist mit deinem Konto verbunden."""
+
+    op: Literal["instanz_verbunden"] = "instanz_verbunden"
+    data: InstanzVerbundenData

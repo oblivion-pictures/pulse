@@ -24,6 +24,8 @@ from typing import Literal
 
 from fastapi import Request
 
+from dcc_shared.events.instances import InstanzVerbundenData, InstanzVerbundenEvent
+
 log = logging.getLogger(__name__)
 
 ADMIN_EVENTS_CHANNEL = "admin:events"
@@ -75,4 +77,22 @@ async def publish_application_decided(
             },
             "_target_user_id": str(user_id),
         },
+    )
+
+
+async def publish_instanz_verbunden(request: Request, *, user_id: int, instance_id: int) -> None:
+    """Meldet dem Besitzer, dass ein Server mit seinem Konto verbunden ist und
+    seine Zugangsdaten abgeholt hat — seine offenen Geräte nehmen ihn sofort
+    in die Leiste (Spec 2026-10-09, E3).
+
+    Gebaut aus dem Modell statt als Wörterbuch: der chat-gateway verwirft im
+    strikten Modus jede Form, die das Register nicht annimmt. Best-effort wie
+    alles hier — ein verlorenes Ereignis kostet nur die Sofortigkeit, das
+    Abholen ist da schon geschehen.
+    """
+    ereignis = InstanzVerbundenEvent(data=InstanzVerbundenData(instance_id=str(instance_id)))
+    await _publish(
+        request,
+        USER_EVENTS_CHANNEL,
+        {**ereignis.model_dump(mode="json"), "_target_user_id": str(user_id)},
     )

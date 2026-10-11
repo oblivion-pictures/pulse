@@ -33,6 +33,8 @@ this registry.
       guild name + private ban reason so the client can tell you)
     - ``guild_ban_lifted`` (your ban was lifted — carries a one-click
       rejoin invite)
+    - ``instanz_verbunden`` (auth-svc: a server was connected to your account
+      and fetched its credentials — devices reload ``/me/instances``)
 
 * ``guild:events`` (wide broadcast; listener filters by guild membership):
     - ``channel_created`` / ``channel_updated`` / ``channel_deleted``
@@ -70,7 +72,7 @@ from __future__ import annotations
 
 from dcc_shared.events._base import _EventBase
 from dcc_shared.events.applications import ApplicationDecidedEvent
-from dcc_shared.events.instances import InstanceStatusEvent
+from dcc_shared.events.instances import InstanceStatusEvent, InstanzVerbundenEvent
 from dcc_shared.events.chat import (
     GruppeLesestandEvent,
     GruppeNeuEvent,
@@ -197,6 +199,7 @@ EVENT_REGISTRY: dict[str, type[_EventBase]] = {
     "mention_added": MentionAddedEvent,
     "application_decided": ApplicationDecidedEvent,
     "instance_status": InstanceStatusEvent,
+    "instanz_verbunden": InstanzVerbundenEvent,
     "friend_request_received": FriendRequestReceivedEvent,
     "friend_request_accepted": FriendRequestAcceptedEvent,
     "friend_request_declined": FriendRequestDeclinedEvent,
@@ -285,6 +288,7 @@ __all__ = [
     # friends
     "ApplicationDecidedEvent",
     "InstanceStatusEvent",
+    "InstanzVerbundenEvent",
     "FriendRemovedEvent",
     "FriendRequestAcceptedEvent",
     "FriendRequestCancelledEvent",
