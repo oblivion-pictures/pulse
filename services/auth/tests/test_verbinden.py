@@ -17,6 +17,70 @@ from dcc_auth import verbinden as v
 _NACHWEIS = hashlib.sha256(b"kennung-fuer-den-test").hexdigest()
 
 
+class _GleichzeitigLesen:
+    """Erzwingt die Verschränkung, die ``asyncio.gather`` von selbst nicht liefert.
+
+    Gegen einen echten Redis laufen gleichzeitig gestartete Aufrufe praktisch
+    nacheinander durch; eine Lese-Schreib-Lücke bliebe dabei unsichtbar. Dieser
+    Mantel hält deshalb jeden Aufrufer nach seinem ``get`` (am Klienten wie in
+    einer Pipeline) an, bis ``parteien`` Aufrufer gelesen haben. Erst dann geht
+    es ans Schreiben. Ohne WATCH/MULTI läsen dadurch alle denselben Zustand
+    ``wartet`` und alle gewännen.
+    """
+
+    def __init__(self, redis, parteien: int) -> None:
+        self._redis = redis
+        self._offen = parteien
+        self._alle_da = asyncio.Event()
+
+    @property
+    def alle_haben_gelesen(self) -> bool:
+        return self._alle_da.is_set()
+
+    async def nach_dem_lesen(self) -> None:
+        self._offen -= 1
+        if self._offen <= 0:
+            self._alle_da.set()
+        # Die Frist verhindert ein Hängen, falls weniger Aufrufer lesen als gedacht;
+        # ``alle_haben_gelesen`` zeigt dann, dass die Verschränkung nicht griff.
+        try:
+            await asyncio.wait_for(self._alle_da.wait(), timeout=2)
+        except TimeoutError:
+            pass
+
+    async def get(self, schluessel):
+        wert = await self._redis.get(schluessel)
+        await self.nach_dem_lesen()
+        return wert
+
+    def pipeline(self, *args, **kwargs):
+        return _GleichzeitigLesenPipeline(self._redis.pipeline(*args, **kwargs), self)
+
+    def __getattr__(self, name):
+        return getattr(self._redis, name)
+
+
+class _GleichzeitigLesenPipeline:
+    def __init__(self, pipe, haltepunkt: _GleichzeitigLesen) -> None:
+        self._pipe = pipe
+        self._haltepunkt = haltepunkt
+
+    async def __aenter__(self):
+        await self._pipe.__aenter__()
+        return self
+
+    async def __aexit__(self, *ausnahme):
+        return await self._pipe.__aexit__(*ausnahme)
+
+    async def get(self, schluessel):
+        wert = await self._pipe.get(schluessel)
+        await self._haltepunkt.nach_dem_lesen()
+        return wert
+
+    def __getattr__(self, name):
+        return getattr(self._pipe, name)
+
+
 def test_code_hat_acht_zeichen_aus_dem_crockford_alphabet():
     codes = {v.neuer_code() for _ in range(200)}
     assert len(codes) > 190
@@ -66,12 +130,14 @@ async def test_anlegen_und_finden(redis_echt):
 
 
 async def test_beide_schluessel_laufen_nach_15_minuten_ab(redis_echt):
+    assert v.GUELTIG_S == 900
     vorgang = await v.vorgang_anlegen(redis_echt, "frist.example.org", _NACHWEIS)
     for schluessel in (
         f"auth:verbinden:vorgang:{_NACHWEIS}",
         f"auth:verbinden:code:{vorgang.code}",
     ):
-        assert 0 < await redis_echt.ttl(schluessel) <= v.GUELTIG_S
+        # Gerade angelegt: die Restlaufzeit liegt knapp unter der vollen Frist.
+        assert v.GUELTIG_S - 5 < await redis_echt.ttl(schluessel) <= v.GUELTIG_S
 
 
 async def test_zweites_anlegen_derselben_kennung_liefert_denselben_code(redis_echt):
@@ -97,6 +163,10 @@ async def test_entschiedener_vorgang_wird_nicht_neu_ausgegeben(redis_echt):
 
 async def test_entscheiden_geht_genau_einmal(redis_echt):
     await v.vorgang_anlegen(redis_echt, "einmal.example.org", _NACHWEIS)
+    # Die Restfrist künstlich verkürzen: nur so ist sichtbar, ob die Entscheidung
+    # sie unangetastet lässt oder auf die volle Frist zurücksetzt.
+    schluessel = f"auth:verbinden:vorgang:{_NACHWEIS}"
+    assert await redis_echt.expire(schluessel, 100)
     assert await v.vorgang_entscheiden(
         redis_echt, _NACHWEIS, "bestaetigt", instance_id="42", user_id="7"
     )
@@ -105,8 +175,8 @@ async def test_entscheiden_geht_genau_einmal(redis_echt):
     )
     vorgang = await v.vorgang_per_nachweis(redis_echt, _NACHWEIS)
     assert (vorgang.status, vorgang.instance_id, vorgang.user_id) == ("bestaetigt", "42", "7")
-    # Die Frist läuft weiter; eine Entscheidung verlängert sie nicht.
-    assert 0 < await redis_echt.ttl(f"auth:verbinden:vorgang:{_NACHWEIS}") <= v.GUELTIG_S
+    # Eine Entscheidung verlängert die Frist nicht.
+    assert 0 < await redis_echt.ttl(schluessel) <= 100
 
 
 async def test_entscheiden_ohne_vorgang_ist_false(redis_echt):
@@ -116,27 +186,42 @@ async def test_entscheiden_ohne_vorgang_ist_false(redis_echt):
 
 
 async def test_gleichzeitiges_entscheiden_hat_genau_einen_gewinner(redis_echt):
+    """Alle fünf lesen ``wartet``, bevor einer schreibt — nur WATCH/MULTI trennt sie."""
     await v.vorgang_anlegen(redis_echt, "rennen.example.org", _NACHWEIS)
+    verschraenkt = _GleichzeitigLesen(redis_echt, parteien=5)
     ergebnisse = await asyncio.gather(
         *(
             v.vorgang_entscheiden(
-                redis_echt, _NACHWEIS, "bestaetigt", instance_id=str(i), user_id=str(i)
+                verschraenkt, _NACHWEIS, "bestaetigt", instance_id=str(i), user_id=str(i)
             )
             for i in range(5)
         )
     )
+    assert verschraenkt.alle_haben_gelesen
     assert sorted(ergebnisse) == [False, False, False, False, True]
+    # Gespeichert ist die Entscheidung des Gewinners, keine Mischung.
+    gewinner = str(ergebnisse.index(True))
+    vorgang = await v.vorgang_per_nachweis(redis_echt, _NACHWEIS)
+    assert (vorgang.status, vorgang.instance_id, vorgang.user_id) == (
+        "bestaetigt",
+        gewinner,
+        gewinner,
+    )
 
 
 async def test_entnehmen_raeumt_beide_schluessel_und_geht_nur_einmal(redis_echt):
+    """Beide Aufrufer würden denselben Vorgang lesen — nur ``GETDEL`` gibt ihn einmal her."""
     vorgang = await v.vorgang_anlegen(redis_echt, "weg.example.org", _NACHWEIS)
+    verschraenkt = _GleichzeitigLesen(redis_echt, parteien=2)
     entnommen, nochmal = await asyncio.gather(
-        v.vorgang_entnehmen(redis_echt, _NACHWEIS),
-        v.vorgang_entnehmen(redis_echt, _NACHWEIS),
+        v.vorgang_entnehmen(verschraenkt, _NACHWEIS),
+        v.vorgang_entnehmen(verschraenkt, _NACHWEIS),
     )
     assert [entnommen, nochmal].count(None) == 1
+    assert (entnommen or nochmal) == vorgang
     assert await v.vorgang_per_code(redis_echt, vorgang.code) is None
     assert await redis_echt.exists(f"auth:verbinden:code:{vorgang.code}") == 0
+    assert await redis_echt.exists(f"auth:verbinden:vorgang:{_NACHWEIS}") == 0
 
 
 async def test_fremder_code_trifft_keinen_vorgang(redis_echt):
