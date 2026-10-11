@@ -302,7 +302,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     ///
     /// **Ausschalten heisst ZURÜCKNEHMEN, nicht stummschalten** — der genaue
     /// Gegensatz zum Mikrofon, aus zwei Gründen, die beide schon im Web-Weg
-    /// stehen (`livekit.svelte.ts::setCamera`): ein nur gemutetes Video lässt
+    /// stehen (`eigeneKamera.ts::kameraSetzen`): ein nur gemutetes Video lässt
     /// den `track_unpublished`-Webhook aus (das CAM-Zeichen bliebe bei allen
     /// an), und die Kamera des Geräts liefe samt Leuchte weiter.
     func kamera(_ an: Bool) async throws {
