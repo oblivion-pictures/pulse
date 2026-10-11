@@ -16,6 +16,7 @@
  * Feld vermerkt.
  */
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import type { AnrufOhneRaum } from '$lib/anrufe/ohneRaumPlan';
 
 /** Was mit einer Aktion aus der nativen Anzeige kommt. */
 export interface AnrufAktion {
@@ -65,6 +66,10 @@ export interface AnrufRaumZustand {
   /** Was das Web beim Beitritt mitgab — für die Übernahme nach einem
    *  Reload. */
   kontext: { art?: string; kanalId?: string; rolle?: string; gegenstelle?: string };
+  /** Nur in `raumZustand`: ein Anruf, den die Hülle führt, für den aber noch
+   *  kein Raum begann (A10, `anrufe/ohneRaumPlan.ts`). `null` ohne; eine
+   *  ältere Hülle schickt das Feld nicht. */
+  ohneRaum?: AnrufOhneRaum | null;
 }
 
 export interface AnrufNativPlugin {

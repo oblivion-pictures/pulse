@@ -73,6 +73,22 @@ export function anrufAuflegen(callId: string, bearer?: string): Promise<void> {
   }, cloudRoute());
 }
 
+/**
+ * **Dieses Gerät hat das Ende eines Anrufs, der hier noch klingelte** — und
+ * CallKit schon geschlossen. Der Server schickt ihm dann keinen Abbruch-Push
+ * mehr (iOS-Bughunt 2 vom 2026-10-11, A6; `anruf_push.ende_gesehen`): der
+ * fände keinen Anruf, müsste nach Apples Regel neu gemeldet und sofort beendet
+ * werden, und ein zweiter Anrufbildschirm blitzte auf. Nur iOS — nur dort
+ * gibt es einen Abbruch-Push zu sparen.
+ */
+export function anrufEndeGesehen(callId: string): Promise<void> {
+  if (!isCapacitorIOS()) return Promise.resolve();
+  return request<void>(`/anrufe/${encodeURIComponent(callId)}/ende-gesehen`, {
+    method: 'POST',
+    ...handelndesGeraet()
+  }, cloudRoute());
+}
+
 type AnrufTokenResponse = {
   token: string;
   ws_url: string;

@@ -20,10 +20,10 @@
 
 import { getAnrufToken } from '$lib/api/anrufe';
 import { m } from '$lib/paraglide/messages.js';
-import type { AnrufEndgrund } from '$lib/platform/anrufNativ';
+import type { AnrufEndgrund, AnrufRaumZustand } from '$lib/platform/anrufNativ';
 import { toast } from 'svelte-sonner';
 import type { AnrufMedien, AnrufMedienHaken, LaufenderAnruf } from './anrufMedien';
-import { nativerAnrufweg, nativesGespraech } from './anrufHuelle';
+import { nativerAnrufweg } from './anrufHuelle';
 import { AnrufSchluesselBund } from './anrufSchluesselweg';
 import { NativerAnrufRaum } from './nativerAnrufRaum';
 import { WebAnrufRaum } from './webAnrufRaum';
@@ -116,12 +116,11 @@ export abstract class AnrufMedienZustand {
    * Nach einem Reload: läuft nativ noch ein Gespräch, übernimmt die Seite es
    * — sonst stünde das Telefonat ohne Overlay da, und auflegen ginge nur
    * noch über den System-Bildschirm. Dieselbe Klasse wie beim Kanal
-   * (Bughunt E5, `voice/nativAbgleich.ts`).
+   * (Bughunt E5, `voice/nativAbgleich.ts`). Gefragt wird in
+   * `anrufHuelle.ts::nativAufnehmen`; hier steht `z` schon fest.
    */
-  async nativUebernehmen(): Promise<void> {
+  nativUebernehmen(z: AnrufRaumZustand): void {
     if (this.aktiv) return;
-    const z = await nativesGespraech();
-    if (!z || this.aktiv) return;
     const k = z.kontext;
     this.aktiv = {
       id: z.kennung,

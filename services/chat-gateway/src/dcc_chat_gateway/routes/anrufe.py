@@ -71,7 +71,7 @@ class AnrufOut(BaseModel):
 
 
 class AnrufAktionIn(BaseModel):
-    """Optionaler Rumpf von annehmen/ablehnen/auflegen.
+    """Optionaler Rumpf von annehmen/ablehnen/auflegen und ende-gesehen.
 
     ``geraet_id`` ist die Push-Kennung des HANDELNDEN Geräts (dieselbe, mit
     der es seinen VoIP-Token angemeldet hat). Dort ist der Anruf schon zu —

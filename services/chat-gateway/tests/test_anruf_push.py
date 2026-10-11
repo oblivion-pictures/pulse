@@ -62,6 +62,9 @@ def apple(monkeypatch):
 
     monkeypatch.setattr(apns_voip, "zugang_aus_einstellungen", lambda _e: object())
     monkeypatch.setattr(apns_voip, "senden", _senden)
+    # Die Frist für Quittungen (A6) prüfen die Tests unten eigens; hier zählt,
+    # wer den Abbruch bekommt, nicht wann.
+    monkeypatch.setattr(anruf_push, "ABBRUCH_FRIST_S", 0)
     return gesendet
 
 
@@ -223,6 +226,84 @@ async def test_ohne_apns_schluessel_passiert_nichts_und_nichts_fliegt(
     call_id = await _anrufen(client, heads_a, "dm", dm)
     r = await client.post(f"/anrufe/{call_id}/auflegen", headers=heads_a)
     assert r.status_code == 204
+
+
+# MARK: - Die Quittung des Endes (iOS-Bughunt 2, A6)
+
+
+@pytest.mark.asyncio
+async def test_quittiertes_ende_spart_den_abbruch_der_rest_bekommt_ihn_nach_der_frist(
+    client, _auth_signer, friend_pair, apple, monkeypatch
+):
+    """Die wache Oberfläche hat das Ende über die WebSocket und schliesst
+    CallKit selbst; ein Abbruch-Push dorthin fände nichts und liesse nach
+    Apples Regel einen zweiten Anrufbildschirm aufblitzen. Das eingefrorene
+    Zweit-iPhone quittiert nicht und bekommt ihn — erst nach der Frist."""
+    monkeypatch.setattr(anruf_push, "ABBRUCH_FRIST_S", 0.3)
+    heads_a, uid_a = _konto(_auth_signer)
+    heads_b, uid_b = _konto(_auth_signer)
+    await _iphone(client, heads_b, uid_b, "b1")
+    b2 = await _iphone(client, heads_b, uid_b, "b2")
+    dm = await _dm(client, friend_pair, heads_a, uid_a, uid_b)
+    call_id = await _anrufen(client, heads_a, "dm", dm)
+    await _gesendet(apple)
+
+    r = await client.post(f"/anrufe/{call_id}/auflegen", json={"geraet_id": "a1"}, headers=heads_a)
+    assert r.status_code == 204
+    r = await client.post(
+        f"/anrufe/{call_id}/ende-gesehen", json={"geraet_id": "b1"}, headers=heads_b
+    )
+    assert r.status_code == 204
+    assert apple == [], "vor der Frist geht kein Abbruch hinaus"
+    assert await _gesendet(apple) == [(b2, "abbruch")]
+
+
+@pytest.mark.asyncio
+async def test_zweitgeraet_quittiert_die_annahme_und_bekommt_keinen_abbruch(
+    client, _auth_signer, friend_pair, apple, monkeypatch
+):
+    monkeypatch.setattr(anruf_push, "ABBRUCH_FRIST_S", 0.3)
+    heads_a, uid_a = _konto(_auth_signer)
+    heads_b, uid_b = _konto(_auth_signer)
+    await _iphone(client, heads_b, uid_b, "b1")
+    await _iphone(client, heads_b, uid_b, "b2")
+    dm = await _dm(client, friend_pair, heads_a, uid_a, uid_b)
+    call_id = await _anrufen(client, heads_a, "dm", dm)
+    await _gesendet(apple)
+
+    r = await client.post(f"/anrufe/{call_id}/annehmen", json={"geraet_id": "b1"}, headers=heads_b)
+    assert r.status_code == 204
+    r = await client.post(
+        f"/anrufe/{call_id}/ende-gesehen", json={"geraet_id": "b2"}, headers=heads_b
+    )
+    assert r.status_code == 204
+    assert await _gesendet(apple) == []
+
+
+@pytest.mark.asyncio
+async def test_quittung_ohne_geraet_ist_folgenlos_und_nur_fuer_teilnehmer(
+    client, _auth_signer, friend_pair, apple
+):
+    """Ältere Klienten quittieren nicht (kein Rumpf) — dann geht der Abbruch
+    wie bisher. Wer nicht am Anruf teilnimmt, erfährt nicht einmal, dass es
+    ihn gibt."""
+    heads_a, uid_a = _konto(_auth_signer)
+    heads_b, uid_b = _konto(_auth_signer)
+    heads_x, _ = _konto(_auth_signer)
+    b1 = await _iphone(client, heads_b, uid_b, "b1")
+    dm = await _dm(client, friend_pair, heads_a, uid_a, uid_b)
+    call_id = await _anrufen(client, heads_a, "dm", dm)
+    await _gesendet(apple)
+
+    r = await client.post(
+        f"/anrufe/{call_id}/ende-gesehen", json={"geraet_id": "b1"}, headers=heads_x
+    )
+    assert r.status_code == 404
+    r = await client.post(f"/anrufe/{call_id}/ende-gesehen", headers=heads_b)
+    assert r.status_code == 204
+    r = await client.post(f"/anrufe/{call_id}/auflegen", json={"geraet_id": "a1"}, headers=heads_a)
+    assert r.status_code == 204
+    assert await _gesendet(apple) == [(b1, "abbruch")]
 
 
 # MARK: - Wer überhaupt anrufen darf (T3)

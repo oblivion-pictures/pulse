@@ -19,7 +19,7 @@
  */
 
 import type { AnrufArt } from '$lib/api/anrufe';
-import { anrufAnnehmen, anrufAblehnen, anrufAuflegen, anrufStarten } from '$lib/api/anrufe';
+import { anrufAnnehmen, anrufAblehnen, anrufAuflegen, anrufEndeGesehen, anrufStarten } from '$lib/api/anrufe';
 import { sounds } from '$lib/sounds/engine';
 import { toast } from 'svelte-sonner';
 import { formatiereDauer } from '$lib/attachments/aufnahmeKern';
@@ -111,10 +111,14 @@ export class AnrufStore extends AnrufMedienZustand {
   }
 
   /** Eingehender Ruf aus dem WS-Event `call_klingelt` — den Namen der
-   *  Gegenstelle löst der Handler über den Nutzer-Cache auf. */
+   *  Gegenstelle löst der Handler über den Nutzer-Cache auf. `ton: false`,
+   *  wenn die Hülle den Anruf schon zeigt (kalt angenommen, nach einem Neuladen):
+   *  CallKit klingelt dort selbst oder das Gespräch läuft, und WebKits DM-Ton
+   *  zöge die Session an sich, bevor `ambient` gilt (Bughunt 2, A9). */
   eingehend(
     evt: { call_id: string; art: string; channel_id: string; einleiter_id: string },
-    gegenstelle: string
+    gegenstelle: string,
+    { ton = true }: { ton?: boolean } = {}
   ): void {
     // Dieselbe Lieferung kann über beide Verbindungen kommen (Hintergrund-
     // Cloud + aktiv) — ein zweiter Lauf desselben call_id darf nichts tun,
@@ -136,7 +140,7 @@ export class AnrufStore extends AnrufMedienZustand {
     };
     this.anrufBeginnt();
     this.medienWaehlen();
-    sounds.play('notification.dm');
+    if (ton) sounds.play('notification.dm');
     this.#klingelWeckerPlanen();
     // Sperrbildschirm (Anrufe-Epic E): nativ Full-Screen-Notification zeigen.
     void nativAnkommen(evt.call_id, gegenstelle);
@@ -152,8 +156,14 @@ export class AnrufStore extends AnrufMedienZustand {
     this.aktiv = { ...anruf, gegenstelle };
     this.#klingelWeckerLoeschen();
     const medien = this.medien ?? this.medienWaehlen();
+    // **Nach jedem `await` zuerst fragen, ob es den Anruf noch gibt**
+    // (Bughunt 2, A4). Überholte das Ende die Annahme, nahm die Hülle danach
+    // trotzdem an — WebKit blieb bis zum Neuladen auf `ambient`, und bei
+    // CallKit begann ein Gespräch, das nichts mehr beendete.
+    const nochDa = () => this.aktiv?.id === anruf.id;
     try {
       await anrufAnnehmen(anruf.id);
+      if (!nochDa()) return;
       if (medien.nativ) {
         // Nativ trägt CallKit das Gespräch — auch ein hier angenommenes.
         // Die Hülle nimmt dort mit an und übernimmt die Session.
@@ -164,12 +174,13 @@ export class AnrufStore extends AnrufMedienZustand {
         // die Session solange für CallKits und übersprang das Aktivieren.
         await nativBeenden('anderswo-angenommen');
       }
+      if (!nochDa()) return;
       if (e2eeFaehig(anruf.art)) {
         // Fail-closed auf den Schlüssel des Anrufers warten.
         this.schluesselWarten = true;
         const schluessel = await this.schluessel.abwarten(anruf.id);
         this.schluesselWarten = false;
-        if (this.aktiv?.id !== anruf.id) return; // inzwischen beendet — Abbau lief
+        if (!nochDa()) return; // inzwischen beendet — Abbau lief
         if (schluessel === null) {
           // Kein Schlüssel, kein Anruf — NICHT unverschlüsselt weitermachen.
           toast.error(m.anruf_schluessel_fehlt());
@@ -181,6 +192,8 @@ export class AnrufStore extends AnrufMedienZustand {
       await this.verbinden();
     } catch (e) {
       // Annahme fehlgeschlagen (Anruf inzwischen vorbei?) — sauber abräumen.
+      // Schon abgeräumt: schweigen, ein `aufräumen` träfe womöglich den nächsten.
+      if (!nochDa()) return;
       fehlerMelden(m.anruf_aktion_fehlgeschlagen(), e);
       this.aufräumen('fehler');
     }
@@ -252,6 +265,7 @@ export class AnrufStore extends AnrufMedienZustand {
     }
     toast.info(m.anruf_anderes_geraet_angenommen());
     this.aufräumen('anderswo-angenommen');
+    void anrufEndeGesehen(callId).catch(() => {});
   }
 
   /** Vom WS-Handler: `call_abgelehnt` beim Rufenden — UI-Info, das Ende
@@ -269,6 +283,11 @@ export class AnrufStore extends AnrufMedienZustand {
     if (!anruf || anruf.id !== callId) return;
     this.#systemzeilen.hinterlassen(anruf, grund, dauerSek);
     this.aufräumen(grund === 'verpasst' ? 'verpasst' : 'gegenseite');
+    // Klingelte es hier noch, ist CallKit jetzt zu: dem Server quittieren,
+    // damit kein Abbruch-Push mehr kommt (A6, `anrufEndeGesehen`).
+    if (anruf.rolle === 'eingehend' && anruf.zustand === 'klingelt') {
+      void anrufEndeGesehen(callId).catch(() => {});
+    }
     if (anruf.rolle === 'eingehend' && grund === 'verpasst') {
       toast.error(m.anruf_verpasst());
     } else if (grund === 'aufgelegt' && dauerSek > 0) {
@@ -324,5 +343,5 @@ export class AnrufStore extends AnrufMedienZustand {
 export const anrufe = new AnrufStore();
 
 // Die native Anzeige (Android: Notification, iOS: CallKit) anbinden — und
-// nach einem Reload ein Gespräch übernehmen, das die Hülle noch hält.
+// nach einem Reload aufnehmen, was die Hülle noch hält.
 nativAnbinden(anrufe);

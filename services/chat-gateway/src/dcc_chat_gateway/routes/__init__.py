@@ -16,6 +16,7 @@ from dcc_chat_gateway.routes import (
     admin_diagnose_paket,
     admin_members,
     admin_plugins,
+    anruf_quittung,
     anrufe,
     archiv,
     attachments,
@@ -189,6 +190,7 @@ router.include_router(fcm.router)
 router.include_router(voip.router)
 router.include_router(meine_anhaenge.router)
 router.include_router(anrufe.router)
+router.include_router(anruf_quittung.router)
 router.include_router(archiv.router)
 router.include_router(presence.router)
 router.include_router(reports.router)

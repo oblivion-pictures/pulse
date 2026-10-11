@@ -34,7 +34,12 @@ Daraus folgen die zwei Hälften dieses Moduls:
   keins davon zweimal. Welche das waren, steht je Anruf in Redis
   (:func:`klingeln` schreibt, :func:`abbrechen` liest und trägt aus). Wer
   nicht geklingelt hat, bekommt keinen Abbruch; wer selbst gehandelt hat
-  (``ausser``), auch nicht — sein Anruf ist dort schon zu.
+  (``ausser``), auch nicht — sein Anruf ist dort schon zu. **Wer das Ende
+  quittiert hat, ebenso nicht** (:func:`ende_gesehen`, iOS-Bughunt 2, A6): die
+  wache Oberfläche hört es über die WebSocket und schliesst CallKit selbst;
+  der Push fand dort keinen Anruf mehr, musste nach Apples Regel als neuer
+  gemeldet und sofort beendet werden, und ein zweiter Anrufbildschirm
+  blitzte auf (auf Hüllen vor ``9184816d`` ein Verstoss).
 
 **Gesendet wird im Hintergrund** (Bughunt T17): ein APNs-Rundlauf dauert, und
 bis zum 2026-10-11 hing er im Anfragepfad von ``POST /anrufe`` — solange
@@ -68,6 +73,12 @@ GEKLINGELT_PRAEFIX = "anruf:voip:geklingelt:"
 #: beim Ende — falls seine Oberfläche dann eingefroren ist, ist das der einzige
 #: Weg, der den CallKit-Anruf dort schliesst.
 GEKLINGELT_HALTBARKEIT_S = 12 * 60 * 60
+
+#: So lange wartet ein Abbruch auf Quittungen (:func:`ende_gesehen`).
+#: **Gesetzt, nicht gemessen** (WebSocket → Oberfläche → POST, ein Rundlauf).
+#: Länger klingelt nur ein Telefon, dessen Oberfläche nicht quittiert, also
+#: eingefroren ist. Eine verspätete Quittung kostet nur das Aufblitzen.
+ABBRUCH_FRIST_S = 2.0
 
 
 @dataclass(frozen=True)
@@ -294,33 +305,50 @@ async def abbrechen(
     abgenommen wurde, weiss eine Hülle mit eingefrorener Oberfläche nichts
     davon. Wer einen Abbruch bekommen hat, wird ausgetragen — ein zweiter
     fände keinen Anruf mehr (s. Modulkopf). Das handelnde Gerät wird STILL
-    ausgetragen: nach einer Annahme läuft dort das Gespräch, und ein Abbruch
-    an dessen Ende käme in den häufigsten Fall — beide Oberflächen wach, das
-    Ende längst über die WebSocket da — und fände keinen Anruf mehr. Ist die
-    Oberfläche dort eingefroren, schliesst die Hülle das Gespräch selbst, wenn
-    die Gegenseite den Raum verlässt (``AnrufRaum.swift``).
+    ausgetragen, und zwar sofort: nach einer Annahme läuft dort das Gespräch,
+    und ein Abbruch an dessen Ende käme in den häufigsten Fall — beide
+    Oberflächen wach, das Ende längst über die WebSocket da — und fände keinen
+    Anruf mehr. Ist die Oberfläche dort eingefroren, schliesst die Hülle das
+    Gespräch selbst, wenn die Gegenseite den Raum verlässt (``AnrufRaum.swift``).
+
+    **Wer sonst noch klingelt, wird erst nach :data:`ABBRUCH_FRIST_S` gelesen** —
+    wer bis dahin quittiert (:func:`ende_gesehen`, A6), bekommt keinen Abbruch.
     """
     zugang = apns_voip.zugang_aus_einstellungen(get_settings())
     if zugang is None:
         return
-    geklingelt = await _geklingelt(redis, call_id)
-    gewaehlt = auswaehlen(geklingelt, nur_konten=nur_konten, ausser=ausser)
-    selbst = [g for g in geklingelt if g.kennung == ausser]
-    await _austragen(redis, call_id, gewaehlt + selbst)
-    if not gewaehlt:
-        return
-    _im_hintergrund(
-        call_id,
-        _senden(zugang, gewaehlt, {"art": "abbruch", "call_id": call_id}, session_factory),
-    )
+    if ausser is not None:
+        selbst = [g for g in await _geklingelt(redis, call_id) if g.kennung == ausser]
+        await _austragen(redis, call_id, selbst)
+
+    async def nach_der_frist() -> None:
+        await asyncio.sleep(ABBRUCH_FRIST_S)
+        geklingelt = await _geklingelt(redis, call_id)
+        gewaehlt = auswaehlen(geklingelt, nur_konten=nur_konten, ausser=ausser)
+        await _austragen(redis, call_id, gewaehlt)
+        if gewaehlt:
+            nutzlast = {"art": "abbruch", "call_id": call_id}
+            await _senden(zugang, gewaehlt, nutzlast, session_factory)
+
+    _im_hintergrund(call_id, nach_der_frist())
+
+
+async def ende_gesehen(*, redis: Any, call_id: str, geraet: tuple[int, str]) -> None:
+    """Die Oberfläche dieses Geräts hat das Ende des Anrufs (A6): austragen,
+    damit ein Abbruch in seiner Frist es nicht mehr findet. Ein Gerät, das gar
+    nicht geklingelt hat, ist kein Fehler. Löst nie aus."""
+    geraete = [g for g in await _geklingelt(redis, call_id) if g.kennung == geraet]
+    await _austragen(redis, call_id, geraete)
 
 
 __all__ = [
+    "ABBRUCH_FRIST_S",
     "GEKLINGELT_HALTBARKEIT_S",
     "GEKLINGELT_PRAEFIX",
     "Geraet",
     "abbrechen",
     "auswaehlen",
+    "ende_gesehen",
     "hintergrund_abwarten",
     "klingeln",
     "schluessel",

@@ -18,16 +18,12 @@ import { toast } from 'svelte-sonner';
 
 import { anrufAblehnen, anrufAuflegen } from '$lib/api/anrufe';
 import { m } from '$lib/paraglide/messages.js';
-import {
-  anrufNativ,
-  type AnrufAktion,
-  type AnrufEndgrund,
-  type AnrufRaumZustand
-} from '$lib/platform/anrufNativ';
+import { anrufNativ, type AnrufAktion, type AnrufEndgrund } from '$lib/platform/anrufNativ';
 import { nativerAnrufwegDa } from '$lib/platform/anrufNativWeiche';
 import { mitFrist, SPRACHE_FRIST_SOFORT_MS } from '$lib/platform/brueckenFrist';
 import { isCapacitorAndroid, isCapacitorIOS } from '$lib/platform/runtime';
 import type { AnrufStore } from './anruf.svelte';
+import { ohneRaumPlan } from './ohneRaumPlan';
 
 /** Gibt es hier überhaupt eine native Anrufanzeige? An EINER Stelle, weil
  *  die Antwort drei Riegel in dieser Datei bedient — ein Riegel, der die
@@ -72,20 +68,38 @@ export async function nativBeenden(grund: AnrufEndgrund): Promise<void> {
   }
 }
 
-/** Ein Gespräch, das die Hülle noch hält (nach einem Reload) — oder `null`. */
-export async function nativesGespraech(): Promise<AnrufRaumZustand | null> {
-  if (!nativerAnrufweg()) return null;
+/**
+ * **Nach einem Reload aufnehmen, was die Hülle noch hält.** Ein Gespräch mit
+ * Raum übernimmt die Seite (`nativUebernehmen`); einen Anruf ohne Raum
+ * (`ohneRaum`) zeigt sie wieder an, setzt seine Annahme fort oder beendet ihn
+ * (`ohneRaumPlan.ts`, Bughunt 2, A10). Ein Ereignis, das inzwischen den
+ * Zustand gesetzt hat (eine aufbewahrte Aktion), gewinnt.
+ */
+async function nativAufnehmen(anrufe: AnrufStore): Promise<void> {
+  if (anrufe.aktiv || !nativerAnrufweg()) return;
   const z = await mitFrist(anrufNativ.raumZustand(), SPRACHE_FRIST_SOFORT_MS, 'raumZustand')
     .catch(() => null);
-  if (!z || !z.kennung || z.zustand === 'disconnected') return null;
-  return z;
+  if (!z || anrufe.aktiv) return;
+  if (z.kennung && z.zustand !== 'disconnected') {
+    anrufe.nativUebernehmen(z);
+    return;
+  }
+  const plan = ohneRaumPlan(z.ohneRaum);
+  if (!plan) return;
+  if (plan.tun === 'beenden') {
+    void anrufAuflegen(plan.kennung).catch(() => {});
+    void nativBeenden('fehler');
+    return;
+  }
+  anrufe.eingehend(plan.anruf, plan.name, { ton: false });
+  if (plan.tun === 'annehmen') void anrufe.annehmen(plan.name);
 }
 
 /**
  * Die native Anzeige an den Anruf-Zustand anbinden (`anruf.svelte.ts`, beim
  * Laden): Annehmen/Ablehnen/Auflegen kommen als `aktion`-Ereignis
- * (`nativeAktionVerarbeiten`), und nach einem Reload übernimmt die Seite ein
- * Gespräch, das die Hülle noch hält (`nativUebernehmen`).
+ * (`nativeAktionVerarbeiten`), und nach einem Reload nimmt die Seite auf, was
+ * die Hülle noch hält (`nativAufnehmen`).
  *
  * **Der Riegel ist PFLICHT:** der Web-Stub von registerPlugin wirft beim
  * addListener ("not implemented on web") und riss sonst das komplette Boot
@@ -94,7 +108,7 @@ export async function nativesGespraech(): Promise<AnrufRaumZustand | null> {
 export function nativAnbinden(anrufe: AnrufStore): void {
   if (!nativeHuelle()) return;
   void anrufNativ.addListener('aktion', (daten) => nativeAktionVerarbeiten(anrufe, daten));
-  if (nativerAnrufweg()) void anrufe.nativUebernehmen();
+  void nativAufnehmen(anrufe);
 }
 
 /**
@@ -113,6 +127,7 @@ function nativeAktionVerarbeiten(anrufe: AnrufStore, daten: AnrufAktion): void {
   // mit, also wird der Zustand hier nachgezogen — erst danach annehmen.
   // `anruf_art` ist `dm`/`gruppe`; bis zum 2026-10-11 stand hier ein
   // Rückfall auf das ungültige `audio` (Bughunt G3).
+  // Ohne DM-Ton: CallKit hat schon geklingelt und angenommen (A9).
   if (!anruf && aktion === 'annehmen' && daten.channel_id) {
     anrufe.eingehend(
       {
@@ -121,7 +136,8 @@ function nativeAktionVerarbeiten(anrufe: AnrufStore, daten: AnrufAktion): void {
         channel_id: daten.channel_id,
         einleiter_id: daten.einleiter_id ?? ''
       },
-      daten.einleiter_name ?? 'Pulse'
+      daten.einleiter_name ?? 'Pulse',
+      { ton: false }
     );
     anruf = anrufe.aktiv;
   }
