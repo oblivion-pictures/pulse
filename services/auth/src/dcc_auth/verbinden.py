@@ -43,9 +43,7 @@ _PRAEFIX = "auth:verbinden:"
 #: ``uebernahme_*``: die Adresse gehört einem anderen Konto, und statt eines
 #: Eintrags entstand ein Antrag bzw. greift eine Sperre (Widerspruchsfrist,
 #: ``verbinden_uebernahme.py``). ``pulse-connect`` erfährt es beim Abholen.
-Status = Literal[
-    "wartet", "bestaetigt", "abgelehnt", "uebernahme_beantragt", "uebernahme_gesperrt"
-]
+Status = Literal["wartet", "bestaetigt", "abgelehnt", "uebernahme_beantragt", "uebernahme_gesperrt"]
 
 
 class VorgangLaeuft(Exception):

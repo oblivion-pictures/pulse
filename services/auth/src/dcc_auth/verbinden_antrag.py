@@ -16,6 +16,7 @@ import logging
 from datetime import datetime
 
 from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from dcc_auth.email_verbinden import compose_uebernahme_beantragt, hinweis_mail
 from dcc_auth.models import User
@@ -27,7 +28,12 @@ log = logging.getLogger(__name__)
 
 
 async def antrag_gestellt(
-    db, redis, nachweis: str, user_id: int, hostname: str, antrag: UebernahmeBeantragt
+    db: AsyncSession,
+    redis,
+    nachweis: str,
+    user_id: int,
+    hostname: str,
+    antrag: UebernahmeBeantragt,
 ) -> EntscheidungAus:
     """Statt eines Eintrags steht ein Antrag; committet ihn, wenn genau dieser
     Aufruf den Vorgang entschieden hat (wie beim Verbinden)."""
@@ -62,7 +68,7 @@ async def antrag_gestellt(
 
 
 async def uebernahme_gesperrt(
-    db, redis, nachweis: str, user_id: int, hostname: str, bis: datetime
+    db: AsyncSession, redis, nachweis: str, user_id: int, hostname: str, bis: datetime
 ) -> HTTPException:
     """Nach einem Widerspruch oder neben dem lebendigen Antrag eines anderen
     Kontos — die Ausnahme, die die Route wirft.

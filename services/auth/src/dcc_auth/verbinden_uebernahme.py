@@ -29,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dcc_auth.config import get_settings
+from dcc_auth.config import Settings, get_settings
 from dcc_auth.models import User
 from dcc_auth.models_instances import InstanzUebernahme, RegisteredInstance
 from dcc_auth.snowflake import next_id
@@ -37,6 +37,7 @@ from dcc_auth.verbinden_eintrag import (
     HOECHSTENS_SERVER,
     ZuVieleServer,
     aktive_gemietete_server,
+    eintrag_sperren,
 )
 
 #: So oft liest ``uebernahme_pruefen`` nach einem gleichzeitig geschriebenen
@@ -103,7 +104,9 @@ def _lebendig(antrag: InstanzUebernahme, jetzt: datetime, verfall: timedelta) ->
     )
 
 
-async def uebernahme_pruefen(db: AsyncSession, user: User, hostname: str, settings) -> None:
+async def uebernahme_pruefen(
+    db: AsyncSession, user: User, hostname: str, settings: Settings
+) -> None:
     """Darf ``instanz_verbinden`` für ``user`` unter ``hostname`` laufen?
 
     Kehrt zurück, wenn ja: Adresse frei, eigener Eintrag, gesperrter Eintrag
@@ -126,26 +129,17 @@ async def uebernahme_pruefen(db: AsyncSession, user: User, hostname: str, settin
     return await _pruefen(db, user_id, hostname, settings)
 
 
-async def _pruefen(db: AsyncSession, user_id: int, hostname: str, settings) -> None:
+async def _pruefen(db: AsyncSession, user_id: int, hostname: str, settings: Settings) -> None:
     jetzt = _jetzt()
     verfall = timedelta(seconds=settings.verbinden_uebernahme_verfall_s)
-    # Dieselbe Zeile sperren der Vollzug (``instanz_verbinden``) und der
-    # Widerspruch — so kreuzen sich die beiden nicht.
-    eintrag = (
-        await db.execute(
-            select(RegisteredInstance)
-            .where(RegisteredInstance.hostname == hostname)
-            .with_for_update()
-        )
-    ).scalars().first()
+    eintrag = await eintrag_sperren(db, hostname)
     if eintrag is None or eintrag.status != "active" or eintrag.registered_by == user_id:
         return
 
-    antraege = (
-        await db.execute(
-            select(InstanzUebernahme).where(InstanzUebernahme.alte_instanz_id == eintrag.id)
-        )
-    ).scalars().all()
+    ergebnis = await db.execute(
+        select(InstanzUebernahme).where(InstanzUebernahme.alte_instanz_id == eintrag.id)
+    )
+    antraege = ergebnis.scalars().all()
     lebendig = next((a for a in antraege if _lebendig(a, jetzt, verfall)), None)
     eigener = lebendig is not None and lebendig.neues_konto_id == user_id
     if eigener and jetzt >= _utc(lebendig.frist_bis):

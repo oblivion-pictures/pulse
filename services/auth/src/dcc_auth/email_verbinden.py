@@ -11,13 +11,19 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from dcc_auth.email import send_email
 from dcc_auth.models import User
 
 log = logging.getLogger(__name__)
 
 
-async def hinweis_mail(db, empfaenger: User, mail: tuple[str, str]) -> None:
+def _utc_minute(zeitpunkt: datetime) -> str:
+    return f"{zeitpunkt.astimezone(UTC):%Y-%m-%d %H:%M} UTC"
+
+
+async def hinweis_mail(db: AsyncSession, empfaenger: User, mail: tuple[str, str]) -> None:
     """Gegenmittel gegen untergeschobene Links (Entwurf E5) — an den, der
     bestätigt hat, und bei einer Übernahme an den bisherigen Besitzer.
 
@@ -41,7 +47,7 @@ def compose_verbinden_hinweis(hostname: str, zeitpunkt: datetime) -> tuple[str, 
         f"Hallo,\n\n"
         f"dein Pulse-Konto wurde soeben mit einem Server verbunden:\n\n"
         f"  Adresse:   {hostname}\n"
-        f"  Zeitpunkt: {zeitpunkt.astimezone(UTC):%Y-%m-%d %H:%M} UTC\n\n"
+        f"  Zeitpunkt: {_utc_minute(zeitpunkt)}\n\n"
         f"Der Server erscheint jetzt unter Meine Server und in der Leiste\n"
         f"deiner Geräte.\n\n"
         f"Warst du das nicht? Lösche den Server in Pulse unter Meine Server.\n"
@@ -59,7 +65,7 @@ def compose_verbinden_uebernahme(hostname: str, zeitpunkt: datetime) -> tuple[st
         f"Hallo,\n\n"
         f"dein Server wurde soeben mit einem anderen Pulse-Konto verbunden:\n\n"
         f"  Adresse:   {hostname}\n"
-        f"  Zeitpunkt: {zeitpunkt.astimezone(UTC):%Y-%m-%d %H:%M} UTC\n\n"
+        f"  Zeitpunkt: {_utc_minute(zeitpunkt)}\n\n"
         f"Dein bisheriger Eintrag ist damit gelöscht und erscheint nicht mehr\n"
         f"unter Meine Server.\n\n"
         f"Wer den Server unter dieser Adresse betreibt, hat ihn neu verbunden.\n"
@@ -79,8 +85,8 @@ def compose_uebernahme_beantragt(hostname: str, frist_bis: datetime) -> tuple[st
         f"ein anderes Pulse-Konto hat soeben beantragt, deinen Server mit sich\n"
         f"zu verbinden:\n\n"
         f"  Adresse:   {hostname}\n"
-        f"  Zeitpunkt: {datetime.now(UTC):%Y-%m-%d %H:%M} UTC\n"
-        f"  Fristende: {frist_bis.astimezone(UTC):%Y-%m-%d %H:%M} UTC\n\n"
+        f"  Zeitpunkt: {_utc_minute(datetime.now(UTC))}\n"
+        f"  Fristende: {_utc_minute(frist_bis)}\n\n"
         f"Bis zum Fristende geschieht nichts. Danach kann das andere Konto den\n"
         f"Server mit sich verbinden, und dein Eintrag wird gelöscht.\n\n"
         f"Hast du den Server nicht abgegeben? Widersprich unter Meine Server.\n"

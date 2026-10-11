@@ -351,8 +351,11 @@ async def list_my_instances(
     fristen = await uebernahme_fristen(db, eigene)
     return [
         _instance_to_out(
-            inst, user.id, membership,
-            set_up=inst.id in versorgt, uebernahme_frist_bis=fristen.get(inst.id),
+            inst,
+            user.id,
+            membership,
+            set_up=inst.id in versorgt,
+            uebernahme_frist_bis=fristen.get(inst.id),
         )
         for inst, membership in rows
     ]
