@@ -1,8 +1,8 @@
 # Drittanbieter-Software
 
 > **Hinweis:** Diese Seite listet die Drittanbieter-Bibliotheken, die in den
-> Pulse-Anwendungen (Desktop unter Windows/macOS/Linux) gebündelt oder
-> dynamisch eingebunden werden, sowie die damit verbundenen Lizenzpflichten.
+> Pulse-Anwendungen (Desktop unter Windows/macOS/Linux, die iOS-App) gebündelt
+> oder eingebunden werden, sowie die damit verbundenen Lizenzpflichten.
 > Keine Rechtsberatung. Pulse selbst steht unter der
 > [GNU AGPL v3.0](https://github.com/oblivion8282-1337/pulse/blob/main/LICENSE)
 > (AGPL-3.0-only); der vollständige Lizenztext liegt als `LICENSE` im
@@ -162,6 +162,63 @@ Für die eigentlichen FFmpeg-Bibliotheken gilt auch hier, was oben steht: Es wir
 ein LGPL-Build dynamisch eingebunden und als eigene, austauschbare Datei
 ausgeliefert.
 
+## iOS-App
+
+Die iOS-App (eine Capacitor-Hülle) bettet die folgenden nativen Bestandteile
+ein oder bindet sie statisch ein; die Web-App selbst lädt sie vom Server, sie
+gehört nicht zum App-Paket.
+
+| Komponente | Version | Lizenz | Einbindung |
+|---|---|---|---|
+| [LiveKit Swift SDK](https://github.com/livekit/client-sdk-swift) | 2.17.0 | Apache-2.0, mit `NOTICE`-Datei (unten) | statisch eingebunden |
+| nanopb-Laufzeit, im LiveKit-SDK enthalten | 0.4.9.1 | zlib | statisch eingebunden |
+| [WebRTC](https://webrtc.org/), als `LiveKitWebRTC.framework` aus [webrtc-xcframework](https://github.com/livekit/webrtc-xcframework) | 150.7871.2 | WebRTC: BSD-3-Clause (Text unten); die Verpackung als xcframework: MIT | eingebettetes Framework |
+| [livekit-uniffi](https://github.com/livekit/livekit-uniffi-xcframework) | 0.1.9 | Apache-2.0 | eingebettetes Framework |
+| [Capacitor](https://github.com/ionic-team/capacitor-swift-pm) | 8.5.2 | MIT | eingebettete Frameworks |
+| Capacitor-Plugins `@capacitor/app` 8.1.1, `browser` 8.0.5, `camera` 8.2.5, `haptics` 8.0.2, `keyboard` 8.0.6, `status-bar` 8.0.4 | siehe links | MIT | statisch eingebunden |
+| [ion-ios-camera](https://github.com/ionic-team/ion-ios-camera) (über `@capacitor/camera`) | 2.0.0 | MIT | eingebettetes Framework |
+| `@capawesome/capacitor-badge` | 8.0.3 | MIT | statisch eingebunden |
+| `@capacitor-firebase/messaging` | 8.5.2 | Apache-2.0 | statisch eingebunden |
+| [Firebase iOS SDK](https://github.com/firebase/firebase-ios-sdk) (Core, Installations, Messaging) | 12.19.2 | Apache-2.0 | statisch eingebunden |
+| [GoogleDataTransport](https://github.com/google/GoogleDataTransport) | 10.1.1 | Apache-2.0 | statisch eingebunden |
+| [GoogleUtilities](https://github.com/google/GoogleUtilities) | 8.1.4 | Apache-2.0; der Teil `IsAppEncrypted` MIT, Copyright (c) 2017 Landon J. Fuller | statisch eingebunden |
+| [Promises](https://github.com/google/promises) | 2.4.1 | Apache-2.0 | statisch eingebunden |
+| [nanopb](https://github.com/firebase/nanopb) (Firebase) | 2.30910.1 | zlib | statisch eingebunden |
+
+**Hinweis aus der `NOTICE`-Datei von LiveKit:** „Copyright 2023 LiveKit, Inc."
+
+**WebRTC** — Lizenztext, wie er dem Framework beiliegt:
+
+    Copyright (c) 2011, The WebRTC project authors. All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
+
+      * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+      * Redistributions in binary form must reproduce the above copyright
+        notice, this list of conditions and the following disclaimer in
+        the documentation and/or other materials provided with the
+        distribution.
+
+      * Neither the name of Google nor the names of its contributors may
+        be used to endorse or promote products derived from this software
+        without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 ## Web-Krypto-Kern (WASM)
 
 Die Ende-zu-Ende-verschlüsselten Direktnachrichten kapseln
@@ -187,4 +244,4 @@ Server aus, damit kein Browser eines Besuchers Google Fonts kontaktiert.
 
 ---
 
-Stand: 2. Oktober 2026 (Lizenz-Rückkehr zu AGPL-3.0)
+Stand: 11. Oktober 2026 (iOS-App ergänzt)

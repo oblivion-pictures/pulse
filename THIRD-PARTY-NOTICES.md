@@ -221,6 +221,78 @@ build — see `streaming/pulse-player/Cargo.toml` and `README.md`.
 The AV1 RTP depacketizer in `src/depacket/av1.rs` is Pulse's own code, written
 because the `rtp` crate ships only an AV1 payloader.
 
+## iOS app (`mobile/ios/`)
+
+The iOS shell (Capacitor) embeds or statically links the native components
+below; the web app itself is loaded from the server and is not part of the app
+bundle. Versions come from
+`mobile/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`
+and the installed npm packages under `mobile/node_modules`; licences were read
+from the SwiftPM checkouts and binary artefacts on 2026-10-11. Only products
+that are actually linked are listed: the package graph of `firebase-ios-sdk`
+also resolves Analytics, App Check, gRPC, abseil, leveldb, gtm-session-fetcher
+and the Google Ads on-device-conversion SDK — none of them is linked (checked
+against the products of a Debug simulator build).
+
+| Component | Version | License | Shipped as |
+|---|---|---|---|
+| [LiveKit Swift SDK](https://github.com/livekit/client-sdk-swift) | 2.17.0 | Apache-2.0, with a `NOTICE` file (below) | statically linked |
+| nanopb runtime, vendored in the LiveKit SDK (`CLiveKitProto`) | 0.4.9.1 | zlib | statically linked |
+| [WebRTC](https://webrtc.org/), as `LiveKitWebRTC.framework` from [webrtc-xcframework](https://github.com/livekit/webrtc-xcframework) | 150.7871.2 | WebRTC: BSD-3-Clause (text below); the xcframework packaging: MIT | embedded framework |
+| [livekit-uniffi](https://github.com/livekit/livekit-uniffi-xcframework) (`RustLiveKitUniFFI.framework`) | 0.1.9 | Apache-2.0 | embedded framework |
+| [Capacitor](https://github.com/ionic-team/capacitor-swift-pm) (`Capacitor`, `Cordova`) | 8.5.2 | MIT | embedded frameworks |
+| Capacitor plugins `@capacitor/app` 8.1.1, `browser` 8.0.5, `camera` 8.2.5, `haptics` 8.0.2, `keyboard` 8.0.6, `status-bar` 8.0.4 | see left | MIT | statically linked |
+| [ion-ios-camera](https://github.com/ionic-team/ion-ios-camera) (`IONCameraLib`, via `@capacitor/camera`) | 2.0.0 | MIT | embedded framework |
+| `@capawesome/capacitor-badge` | 8.0.3 | MIT | statically linked |
+| `@capacitor-firebase/messaging` | 8.5.2 | Apache-2.0 | statically linked |
+| [Firebase iOS SDK](https://github.com/firebase/firebase-ios-sdk) (FirebaseCore, FirebaseCoreInternal, FirebaseInstallations, FirebaseMessaging) | 12.19.2 | Apache-2.0 | statically linked |
+| [GoogleDataTransport](https://github.com/google/GoogleDataTransport) | 10.1.1 | Apache-2.0 | statically linked |
+| [GoogleUtilities](https://github.com/google/GoogleUtilities) | 8.1.4 | Apache-2.0; its `third_party/IsAppEncrypted` is MIT, Copyright (c) 2017 Landon J. Fuller | statically linked |
+| [Promises](https://github.com/google/promises) (`FBLPromises`) | 2.4.1 | Apache-2.0 | statically linked |
+| [nanopb](https://github.com/firebase/nanopb) (Firebase) | 2.30910.1 | zlib | statically linked |
+
+**LiveKit `NOTICE`** (Apache-2.0 §4(d)): "Copyright 2023 LiveKit, Inc." —
+followed in the file by the Apache-2.0 licence header, nothing else.
+
+**WebRTC** — the licence text as it ships in `LiveKitWebRTC.xcframework/LICENSE`
+(BSD-3-Clause requires it with every binary redistribution):
+
+    Copyright (c) 2011, The WebRTC project authors. All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
+
+      * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+      * Redistributions in binary form must reproduce the above copyright
+        notice, this list of conditions and the following disclaimer in
+        the documentation and/or other materials provided with the
+        distribution.
+
+      * Neither the name of Google nor the names of its contributors may
+        be used to endorse or promote products derived from this software
+        without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+**Open, not covered by this pass.** (1) The libraries compiled into the WebRTC
+binary (BoringSSL, libopus, libvpx, libyuv and others) and the Rust crates
+inside livekit-uniffi: neither xcframework ships their notices, and they are
+not enumerated here. (2) The Android shell (`mobile/android/`) ships Capacitor
+and Firebase for Android and has no entry in this file yet.
+
 ## Web crypto core (WASM, `krypto/pulse-krypto/`)
 
 The end-to-end-encrypted DM crypto core wraps
@@ -274,4 +346,4 @@ outstanding audit.
 
 ---
 
-Stand / last updated: 2. Oktober 2026 (Lizenz-Rückkehr zu AGPL-3.0)
+Stand / last updated: 11. Oktober 2026 (iOS-App ergänzt)
