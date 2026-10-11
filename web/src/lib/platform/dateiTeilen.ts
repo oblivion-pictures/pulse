@@ -1,5 +1,6 @@
 /**
- * Anhänge speichern — Web-Share mit Dateien auf Touch-Geräten, Anker sonst.
+ * Anhänge speichern — Web-Share mit Dateien auf Touch-Geräten, Anker sonst;
+ * auf Android für echte Adressen der Anker zum Download-Manager (F2).
  *
  * WARUM: In der iOS-WKWebView gibt es keinen Download-Manager — der bisherige
  * `<a download>`-Trick erzeugt dort nur eine Warnung und speichert nichts.
@@ -35,6 +36,8 @@ import { devS3Url } from '$lib/api/devS3Url';
 // Reiner Kern in eigenem, importfreiem Modul — nur so erreicht ihn Nodes
 // Testläufer (diese Datei hier zieht `devS3Url` über den $lib-Alias nach).
 import { dateiNameOderErsatz } from './dateinameErsatz';
+import { isCapacitorAndroid } from './runtime';
+import { androidLaedtDirekt } from './speicherWeg';
 
 /**
  * Stellt `quelle` als Datei bereit und reicht sie weiter: über das native
@@ -51,6 +54,13 @@ export async function dateiTeilenOderLaden(
 ): Promise<void> {
   try {
     const name = dateiNameOderErsatz(dateiname);
+    // Android: eine echte Adresse direkt als Anker an den Download-Manager
+    // der Hülle — ein geholter Blob käme dort nie an (iOS-Bughunt 2, F2,
+    // Begründung in `speicherWeg.ts`).
+    if (isCapacitorAndroid() && androidLaedtDirekt(quelle)) {
+      ankerKlicken(devS3Url(quelle), name, true);
+      return;
+    }
     const antwort = await fetch(devS3Url(quelle));
     // Abgelaufene Presigned-URL? Der Fehlerkörper wäre sonst die „Datei“.
     if (!antwort.ok) throw new Error(`dateiTeilen: HTTP ${antwort.status}`);
@@ -76,15 +86,27 @@ export async function dateiTeilenOderLaden(
     // Anker-Fallback: der bewährte Trick auf Desktop/Electron. Die Objekt-
     // URL gehört dieser Funktion und wird nach der Frist selbst freigegeben.
     const adresse = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = adresse;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    ankerKlicken(adresse, name, false);
     setTimeout(() => URL.revokeObjectURL(adresse), 10_000);
   } catch {
     // Hol-Fehler (Netz, HTTP, revokete blob:-Adresse) — still, wie bisher
     // bei `blob === null`.
   }
+}
+
+/** Ein unsichtbarer Anker, einmal geklickt. `neuesFenster`: so stand der
+ *  Anker vor 2026-10-06 in den Anhang-Karten (`target="_blank"` neben
+ *  `download`), und so erreichte er auf Android den Download-Manager — laut
+ *  Bughunt; welches der beiden Attribute es dort trägt, ist nicht gemessen. */
+function ankerKlicken(adresse: string, name: string, neuesFenster: boolean): void {
+  const a = document.createElement('a');
+  a.href = adresse;
+  a.download = name;
+  if (neuesFenster) {
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+  }
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
