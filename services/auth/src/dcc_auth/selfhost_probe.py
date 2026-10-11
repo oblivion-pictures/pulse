@@ -30,6 +30,8 @@ import socket
 import ssl
 from dataclasses import dataclass, field
 
+from dcc_auth.dns_ausfuehrer import BegrenzterAusfuehrer
+
 # Jeder einzelne Schritt hat eine Grenze; die Route deckelt zusätzlich das Ganze.
 FRIST_S = 5.0
 
@@ -105,18 +107,26 @@ class Schritt:
 # ---------------------------------------------------------------------------
 
 
-async def pruefe_dns(host: str) -> Schritt:
+async def pruefe_dns(host: str, ausfuehrer: BegrenzterAusfuehrer | None = None) -> Schritt:
     """Löst den Namen auf und verwirft nicht-öffentliche Antworten.
 
     Ein Eintrag, der ins private Netz zeigt, ist entweder Fehlkonfiguration
     oder ein Versuch, die Cloud zu einer Verbindung ins eigene Innere zu
     bewegen. Beides endet hier.
+
+    Ohne ``ausfuehrer`` läuft die Auflösung im Standard-Ausführer des Loops.
+    Aufrufer, die anonym ausgelöst werden können (``verbinden_nachweis.py``),
+    geben einen eigenen, begrenzten mit; ist der gesättigt, steigt
+    ``dns_ausfuehrer.Ausgelastet`` auf — es ist keine Auskunft über den Namen.
     """
     try:
         async with asyncio.timeout(FRIST_S):
-            treffer = await asyncio.get_running_loop().getaddrinfo(
-                host, None, type=socket.SOCK_STREAM
-            )
+            if ausfuehrer is None:
+                treffer = await asyncio.get_running_loop().getaddrinfo(
+                    host, None, type=socket.SOCK_STREAM
+                )
+            else:
+                treffer = await ausfuehrer.getaddrinfo(host)
     except (TimeoutError, socket.gaierror, OSError):
         return Schritt("dns", False, "name_unbekannt")
 

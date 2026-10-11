@@ -27,17 +27,26 @@ import ssl
 
 import httpx
 
+from dcc_auth.dns_ausfuehrer import BegrenzterAusfuehrer
 from dcc_auth.selfhost_probe import pruefe_dns
 from dcc_auth.selfhost_probe_dienst import Ziel
 
 PFAD = "/.well-known/pulse-verbinden"
 SERVER_INFO_PFAD = "/.well-known/pulse-server-info"
-#: Ganze Prüfung höchstens so lange — ein Betreiber wartet im Terminal darauf.
+#: Der Abruf (HTTP-Teil) höchstens so lange — ein Betreiber wartet im Terminal
+#: darauf. Die Namensauflösung davor hat ihre eigene Frist (``selfhost_probe.FRIST_S``,
+#: bis zu 5 s), die Prüfung kann also insgesamt länger dauern.
 FRIST_S = 8.0
 # Der echte Nachweis hat unter 100 Bytes, die Server-Info wenige hundert.
 # Mehr liest die Cloud von einem Unbekannten nicht.
 _HOECHSTENS_BYTES = 4096
 _HEX64 = re.compile(r"[0-9a-f]{64}")
+# Die Namensauflösung der anonym auslösbaren Prüfungen läuft in einem eigenen
+# kleinen Pool und nie im Standard-Ausführer, der auch Argon2 rechnet
+# (``dns_ausfuehrer.py``). Vier Plätze: eine Auflösung dauert Millisekunden,
+# nur ein absichtlich langsamer Name hält einen länger. Ist alles belegt,
+# steigt ``Ausgelastet`` auf, und die Routen antworten 503.
+_DNS = BegrenzterAusfuehrer(plaetze=4, name="verbinden-dns")
 
 
 def _klient() -> httpx.AsyncClient:
@@ -123,8 +132,11 @@ async def nachweis_pruefen(hostname: str, erwartet: str) -> str | None:
     Eine Adresse, die ins private Netz zeigt, heisst nach aussen schlicht
     ``nicht_erreichbar`` — der anonyme Aufrufer soll aus dem Befund nichts
     über das Netz der Cloud lernen.
+
+    Wirft ``Ausgelastet``, wenn alle Plätze des Auflösungs-Pools belegt sind;
+    das ist kein Befund über die Adresse, die Routen antworten dann 503.
     """
-    dns = await pruefe_dns(hostname)
+    dns = await pruefe_dns(hostname, ausfuehrer=_DNS)
     if not dns.ok:
         return "nicht_erreichbar"
     async with _klient() as klient:
@@ -139,9 +151,11 @@ async def server_info_instanz(hostname: str) -> str | None:
     Für den Widerspruch gegen einen Übernahme-Antrag (``routes_uebernahme.py``):
     widersprechen kann nur, wessen Server noch unter der Adresse antwortet.
     Der Aufruf geht auf Zuruf eines angemeldeten Kontos an einen fremden
-    Rechner, also derselbe abgesicherte Weg wie beim Nachweis.
+    Rechner, also derselbe abgesicherte Weg wie beim Nachweis (und dieselbe
+    Ausnahme ``Ausgelastet``, die hier — anders als jeder Netzfehler — NICHT
+    zu ``None`` wird).
     """
-    dns = await pruefe_dns(hostname)
+    dns = await pruefe_dns(hostname, ausfuehrer=_DNS)
     if not dns.ok:
         return None
     try:
