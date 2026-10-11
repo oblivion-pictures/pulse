@@ -1,8 +1,12 @@
 /**
  * Die reinen Entscheidungen des nativen Sprachwegs auf iOS — ohne Import,
  * damit Nodes Testläufer sie prüfen kann (CLAUDE.md, `pnpm test:unit`-Falle).
- * Verdrahtet werden sie in `nativerRaum.svelte.ts`.
+ * Verdrahtet werden sie in `nativerRaum.svelte.ts`. Die beiden Typ-Importe
+ * unten verschwinden beim Übersetzen und beim Laden unter Node ganz.
  */
+
+import type { NativerTeilnehmer } from '$lib/platform/iosSpracheTypen';
+import type { VoiceParticipant } from './livekit.svelte';
 
 /** Ein Verbindungszustand der Hülle, als schlichtes Wort. */
 export type HuellenVerbindung =
@@ -92,4 +96,24 @@ export function routeZeigtKanal(pfad: string, kanalId: string): boolean {
     teile[3] === 'channels' &&
     teile[4] === kanalId
   );
+}
+
+/**
+ * Ein Teilnehmer der Hülle in der Form des Voice-Stores. **Feld für Feld, kein
+ * Spreizen:** was die Hülle künftig zusätzlich schickt, soll nicht ungefragt
+ * im Store landen. Aus `nativerRaum.svelte.ts` hierher gezogen (Grössen-Policy,
+ * `PLAN.md` §12.1), unverändert.
+ */
+export function teilnehmerAusHuelle(t: NativerTeilnehmer): VoiceParticipant {
+  return {
+    identity: t.identity,
+    name: t.name,
+    userId: t.userId,
+    isLocal: t.isLocal,
+    isSpeaking: t.isSpeaking,
+    audioLevel: t.audioLevel,
+    micMuted: t.micMuted,
+    cameraOn: t.cameraOn,
+    connectionQuality: t.connectionQuality as VoiceParticipant['connectionQuality']
+  };
 }

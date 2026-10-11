@@ -190,7 +190,7 @@ export async function spracheBeitreten(
   kanalName: string,
   startStumm: boolean,
   startTaub: boolean,
-  hoeren?: { je: Record<string, number>; gesamt: number }
+  zusatz?: { je: Record<string, number>; gesamt: number; community?: string }
 ): Promise<NativerZustand> {
   const p = plugin();
   if (!p) throw new Error('SprachePlugin fehlt');
@@ -206,8 +206,9 @@ export async function spracheBeitreten(
       kanalName,
       startStumm,
       startTaub,
-      lautstaerken: hoeren?.je,
-      gesamt: hoeren?.gesamt
+      lautstaerken: zusatz?.je,
+      gesamt: zusatz?.gesamt,
+      communityName: zusatz?.community
     });
   } catch (e) {
     raumEndet(gen);

@@ -21,11 +21,15 @@ import {
   type NativerWunsch,
   type NativerZustand
 } from '$lib/platform/iosSprache';
-import { abgleichEntscheiden, routeZeigtKanal, verbindungAusHuelle } from './nativAbgleich';
+import {
+  abgleichEntscheiden,
+  routeZeigtKanal,
+  teilnehmerAusHuelle,
+  verbindungAusHuelle
+} from './nativAbgleich';
 import { NativeBefehle, type NativeHaken, type NativerWirt } from './nativeBefehle';
 import type { VoiceResume } from './resume';
 import { voiceState } from './state.svelte';
-import type { VoiceParticipant } from './livekit.svelte';
 
 /**
  * Der native Weg auf iOS — die Hülle hält den Raum, der Voice-Store spiegelt
@@ -85,7 +89,8 @@ export class NativerRaum {
     try {
       z = await spracheBeitreten(wsUrl, token, channelId, channelName, opts.stumm, opts.taub, {
         je: $state.snapshot(settings.voice.userVolumes),
-        gesamt: settings.voice.outputVolume
+        gesamt: settings.voice.outputVolume,
+        community: guilds.byId[guilds.guildIdForChannel(channelId) ?? '']?.name
       });
     } catch (e) {
       if (!this.#haken.aktuell(gen)) return;
@@ -335,16 +340,6 @@ export class NativerRaum {
   }
 
   #teilnehmer(liste: NativerTeilnehmer[]): void {
-    this.#wirt.participants = liste.map((t) => ({
-      identity: t.identity,
-      name: t.name,
-      userId: t.userId,
-      isLocal: t.isLocal,
-      isSpeaking: t.isSpeaking,
-      audioLevel: t.audioLevel,
-      micMuted: t.micMuted,
-      cameraOn: t.cameraOn,
-      connectionQuality: t.connectionQuality as VoiceParticipant['connectionQuality']
-    }));
+    this.#wirt.participants = liste.map(teilnehmerAusHuelle);
   }
 }

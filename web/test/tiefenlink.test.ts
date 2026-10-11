@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
+import { aktiverBereich } from '../src/lib/navigation/tabs.ts';
 import { zielPfad, zielPfadIntern } from '../src/lib/platform/tiefenlink.ts';
 
 test('Chat-Adresse wird zum Ziel in der App', () => {
@@ -62,4 +64,18 @@ test('zielPfadIntern weist alles ab, was aus der App herausfuehrt', () => {
   // Relativ, also nicht eindeutig.
   assert.equal(zielPfadIntern('app/@me/1'), null);
   assert.equal(zielPfadIntern(''), null);
+});
+
+test('Widget „Ungelesen“: sein Ziel kommt durch und landet im Bereich Chats', () => {
+  // Die Adresse aus der Swift-Quelle des Widgets, nicht aus einer Abschrift:
+  // ein Tipp darauf geht ueber `appUrlOpen` genau durch `zielPfad`.
+  const swift = readFileSync(
+    new URL('../../mobile/ios/App/WidgetExtension/UngelesenWidget.swift', import.meta.url),
+    'utf8'
+  );
+  const adresse = /URL\(string: "([^"]+)"\)/.exec(swift)?.[1];
+  assert.ok(adresse, 'Adresse im Widget nicht gefunden');
+  const ziel = zielPfad(adresse);
+  assert.equal(ziel, '/app/@me');
+  assert.equal(aktiverBereich(ziel), 'chats');
 });

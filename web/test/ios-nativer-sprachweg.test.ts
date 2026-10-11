@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   abgleichEntscheiden,
   routeZeigtKanal,
+  teilnehmerAusHuelle,
   verbindungAusHuelle
 } from '../src/lib/voice/nativAbgleich.ts';
 import { userIdFromIdentity } from '../src/lib/voice/identity.ts';
@@ -72,4 +73,31 @@ test('Sitzungs-Zusatz: dieselbe Regel, die die Huelle seit 2026-10-11 nachbaut',
   assert.equal(userIdFromIdentity('user-123~XY'), null);
   assert.equal(userIdFromIdentity('gast-5'), null);
   assert.equal(userIdFromIdentity('probe-ios'), null);
+});
+
+test('Teilnehmer der Huelle: Feld fuer Feld, Unbekanntes bleibt draussen', () => {
+  const roh = {
+    identity: 'user-7~ab',
+    name: 'Anna',
+    userId: '7',
+    isLocal: false,
+    isSpeaking: true,
+    audioLevel: 0.4,
+    micMuted: false,
+    cameraOn: true,
+    connectionQuality: 'good',
+    // Ein Feld, das eine kuenftige Huelle mitschicken koennte.
+    kuenftig: 'x'
+  };
+  assert.deepEqual(teilnehmerAusHuelle(roh), {
+    identity: 'user-7~ab',
+    name: 'Anna',
+    userId: '7',
+    isLocal: false,
+    isSpeaking: true,
+    audioLevel: 0.4,
+    micMuted: false,
+    cameraOn: true,
+    connectionQuality: 'good'
+  });
 });

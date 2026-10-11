@@ -1,6 +1,7 @@
 import { request } from '$lib/api/client';
 import { serversStore } from '$lib/api/servers.svelte';
 import { darfMelden, serverStandUnsicher, type Drosselstand } from './badgeDrossel';
+import { ungelesenAblegen, ungelesenLeeren } from './ungelesenWidget';
 
 /** Drosselstand dieser Sitzung — was zuletzt gemeldet wurde und wann. */
 const stand: Drosselstand = { letzterWert: null, letzteZeit: 0, bereit: false };
@@ -30,6 +31,9 @@ let nachmelden = false;
  */
 export function badgeMelden(wert: number): void {
   gerechnet = wert;
+  // Dieselbe Zahl ans Widget „Ungelesen“ (iOS-Hülle) — ungedrosselt, aber
+  // erst, wenn sie etwas bedeutet (`bereit`, s. `badgeDrossel.ts`).
+  if (stand.bereit) ungelesenAblegen(wert);
   const jetzt = Date.now();
   if (!darfMelden(stand, wert, jetzt)) return;
   const vorher = stand.letzterWert;
@@ -58,6 +62,7 @@ export function badgeMelden(wert: number): void {
  */
 export function badgeMeldungFreigeben(): void {
   stand.bereit = true;
+  if (gerechnet !== null) ungelesenAblegen(gerechnet);
   if (!nachmelden) return;
   nachmelden = false;
   serverStandUnsicher(stand);
@@ -83,11 +88,13 @@ export function badgeNachVerbindung(): void {
 
 /** Nach dem Abmelden: der nächste Anmelder soll seinen Stand frisch melden
  *  dürfen, auch wenn er zufällig dieselbe Zahl hat — und erst wieder, wenn
- *  SEINE Lage geladen ist. */
+ *  SEINE Lage geladen ist. Das Widget „Ungelesen“ geht dabei auf 0 (es gehört
+ *  dem Gerät, nicht dem Konto, s. `ungelesenLeeren`). */
 export function badgeMeldungZuruecksetzen(): void {
   stand.letzterWert = null;
   stand.letzteZeit = 0;
   stand.bereit = false;
   gerechnet = null;
   nachmelden = false;
+  ungelesenLeeren();
 }

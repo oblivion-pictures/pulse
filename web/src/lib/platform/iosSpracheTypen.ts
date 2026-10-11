@@ -131,6 +131,12 @@ export interface SprachePlugin {
      *  erste abonnierte Spur richtig klingt. Eine ältere Hülle übergeht sie. */
     lautstaerken?: Record<string, number>;
     gesamt?: number;
+    /** Name der Community — nur für die Live Activity „Im Sprachkanal“
+     *  (`SpracheLiveAktivitaet.swift`); die Hülle kennt keine Communitys.
+     *  Eine ältere Hülle übergeht das Feld, eine neue zeigt ohne es nur den
+     *  Kanal. Kein eigener Befehl: der hielte jeden älteren Bau ganz vom
+     *  nativen Weg fern (`SPRACHE_METHODEN`). */
+    communityName?: string;
   }): Promise<NativerZustand>;
   verlassen(o: { sitzung?: number }): Promise<void>;
   lautstaerken(o: {
