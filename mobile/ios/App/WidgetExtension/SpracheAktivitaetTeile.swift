@@ -114,6 +114,9 @@ struct KanalKopf: View {
 /// Eine Zeile Zustand: was gerade das Wichtigste ist, in dieser Reihenfolge.
 struct Statuszeile: View {
     let stand: SpracheAktivitaet.ContentState
+    /// Die App hat den Stand nicht mehr aufgefrischt (D4) — dann gilt nichts
+    /// von dem, was er sagt.
+    var veraltet = false
 
     var body: some View {
         if let text {
@@ -122,6 +125,7 @@ struct Statuszeile: View {
     }
 
     private var text: String? {
+        if veraltet { return "Stand unklar – App öffnen" }
         if !stand.verbunden { return "Verbindung wird wiederhergestellt …" }
         if stand.pausiert { return "Angehalten, Anruf läuft" }
         if !stand.sprechend.isEmpty {

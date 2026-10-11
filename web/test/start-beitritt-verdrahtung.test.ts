@@ -83,6 +83,7 @@ test('B1: die Hülle meldet das Auflegen, und das Web kennt das Feld', () => {
   assert.match(ios('SpracheRaumZustand.swift'), /"aufgelegtSitzung": aufgelegtSitzung/);
   // Beide Knöpfe der Hülle, die selbst auflegen.
   assert.match(ios('SpracheSteuerleiste.swift'), /await vomNutzerAufgelegt\(\)/);
-  assert.match(ios('SpracheLiveAktivitaet.swift'), /await vomNutzerAufgelegt\(\)/);
+  // Die Knöpfe der Live Activity stehen seit Bughunt 2 (D4/D5) in eigener Datei.
+  assert.match(ios('SpracheLiveAktivitaetKnoepfe.swift'), /await vomNutzerAufgelegt\(\)/);
   assert.match(lies('src/lib/platform/iosSpracheTypen.ts'), /aufgelegtSitzung\?: number \| null/);
 });

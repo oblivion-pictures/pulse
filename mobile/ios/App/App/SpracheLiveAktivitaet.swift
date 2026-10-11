@@ -1,6 +1,7 @@
 import ActivityKit
 import Foundation
 import LiveKit
+import UIKit
 
 /// Die Live Activity „Im Sprachkanal“ (Roadmap Punkt 28): Sperrbildschirm und
 /// Dynamic Island zeigen, in welchem Kanal man sitzt, wer spricht und ob das
@@ -37,6 +38,18 @@ final class SpracheLiveAktivitaet {
     /// werden. Zwei Sekunden halten die Sprechanzeige noch lesbar.
     static let mindestAbstand: TimeInterval = 2
 
+    /// **Ab wann der Stand als veraltet gilt, wenn ihn niemand auffrischt**
+    /// (iOS-Bughunt 2 vom 2026-10-11, D4). Bis dahin trug die Aktivität kein
+    /// `staleDate`: starb die App (Absturz, iOS beendet sie), zeigte der
+    /// Sperrbildschirm „verbunden" weiter — bis ActivityKit sie nach 8 bis
+    /// 12 Stunden selbst abräumt. Der Herzschlag frischt den Stand auf,
+    /// solange der Raum lebt; bleibt er aus, zeigt die Aktivität „Stand
+    /// unklar". Beide Werte gesetzt, nicht gemessen: drei verpasste
+    /// Herzschläge, bevor etwas veraltet heisst.
+    static let haltbarkeit: TimeInterval = 180
+    /// `var`, damit der Prüfpfad ihn verkürzen kann.
+    static var herzschlag: TimeInterval = 60
+
     private var aktivitaet: Activity<SpracheAktivitaet>?
     /// Die Sitzung des Raums (`SpracheRaum.sitzung`), zu dem sie gehört — ein
     /// verspätetes Ende des vorigen Raums darf die neue nicht treffen.
@@ -44,20 +57,32 @@ final class SpracheLiveAktivitaet {
     private var gezeigt: SpracheAktivitaet.ContentState?
     private var zuletzt = Date.distantPast
     private var nachlauf: DispatchWorkItem?
+    private var puls: DispatchWorkItem?
     /// ActivityKit-Rufe der Reihe nach: ein Ende darf eine noch laufende
     /// Aktualisierung nicht überholen, sonst stünde die Aktivität wieder da.
     private var kette: Task<Void, Never>?
+    /// **Ein Beginn, der nicht gelang** (D5) — ActivityKit lässt Aktivitäten
+    /// nur aus dem Vordergrund beginnen, und ein Beitritt kommt auch im
+    /// Hintergrund (Moderator holt einen in seinen Kanal, Wiederaufbau). Bis
+    /// zum 2026-10-11 kam die Aktivität dann nie; seither holt `nachholen`
+    /// sie beim nächsten Wechsel in den Vordergrund nach, solange derselbe
+    /// Raum noch steht.
+    var ausstehend: (kanalName: String, communityName: String, sitzung: Int)?
 
     // MARK: - Einstiege (jeder Faden)
 
-    /// Beim Start der App (`AppDelegate`). Hängt die Knöpfe ein und räumt ab,
-    /// was ein früherer Lauf stehen liess: ein Raum überlebt den Prozess nie,
-    /// eine Aktivität schon (Absturz, Beenden aus dem App-Umschalter).
+    /// Beim Start der App (`AppDelegate`). Hängt die Knöpfe ein, hört auf den
+    /// Wechsel in den Vordergrund (`nachholen`, D5) und räumt ab, was ein
+    /// früherer Lauf stehen liess: ein Raum überlebt den Prozess nie, eine
+    /// Aktivität schon (Absturz, Beenden aus dem App-Umschalter).
     static func einrichten() {
         SpracheAktivitaetSteuerung.ausfuehren = { befehl in
             await SpracheRaum.geteilt.ausLiveAktivitaet(befehl)
         }
         DispatchQueue.main.async { geteilt.alleBeenden("Start der App") }
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in geteilt.nachholen() }
     }
 
     static func beginnen(kanalName: String, communityName: String, sitzung: Int) {
@@ -107,7 +132,8 @@ final class SpracheLiveAktivitaet {
         do {
             let a: Activity<SpracheAktivitaet>
             if #available(iOS 16.2, *) {
-                a = try Activity.request(attributes: form, content: .init(state: stand, staleDate: nil))
+                a = try Activity.request(
+                    attributes: form, content: .init(state: stand, staleDate: Self.veraltetAb()))
             } else {
                 a = try Activity.request(attributes: form, contentState: stand)
             }
@@ -115,12 +141,51 @@ final class SpracheLiveAktivitaet {
             self.sitzung = sitzung
             gezeigt = stand
             zuletzt = Date()
+            pulsPlanen()
             NSLog("[PulseAktivitaet] begonnen (Sitzung %ld): %@", sitzung, Self.beschreibung(stand))
         } catch {
             // Typisch: die App ist nicht im Vordergrund — ActivityKit lässt
-            // Aktivitäten nur von dort beginnen.
-            NSLog("[PulseAktivitaet] Beginnen fehlgeschlagen: %@", error.localizedDescription)
+            // Aktivitäten nur von dort beginnen. Nachgeholt in `nachholen`.
+            ausstehend = (kanalName, communityName, sitzung)
+            NSLog("[PulseAktivitaet] Beginnen fehlgeschlagen, wird nachgeholt: %@",
+                  error.localizedDescription)
         }
+    }
+
+    /// Die App ist wieder vorn (D5): eine Aktivität, die nicht beginnen
+    /// durfte, jetzt beginnen — wenn ihr Raum noch steht.
+    func nachholen() {
+        guard let a = ausstehend else { return }
+        // Ein Versuch je Rückkehr: scheitert er, merkt `beginnen` ihn neu vor.
+        ausstehend = nil
+        let raum = SpracheRaum.geteilt
+        guard Self.nachholenErlaubt(ausstehend: a.sitzung, laufend: raum.sitzung,
+                                    raumDa: raum.raum != nil, aktivitaetDa: aktivitaet != nil)
+        else { return }
+        NSLog("[PulseAktivitaet] Beginn nachgeholt (Sitzung %ld)", a.sitzung)
+        beginnen(kanalName: a.kanalName, communityName: a.communityName, sitzung: a.sitzung)
+    }
+
+    /// D5, als Regel: nur für den Raum, für den sie beginnen sollte, und nur,
+    /// wenn er noch steht und keine Aktivität da ist.
+    static func nachholenErlaubt(ausstehend: Int, laufend: Int, raumDa: Bool,
+                                 aktivitaetDa: Bool) -> Bool {
+        raumDa && ausstehend == laufend && !aktivitaetDa
+    }
+
+    private static func veraltetAb() -> Date { Date().addingTimeInterval(haltbarkeit) }
+
+    /// Der Herzschlag (D4): frischt den Stand auch auf, wenn sich nichts
+    /// ändert — sonst hiesse ein stiller Kanal nach `haltbarkeit` „veraltet".
+    private func pulsPlanen() {
+        puls?.cancel()
+        let arbeit = DispatchWorkItem { [weak self] in
+            guard let self, aktivitaet != nil else { return }
+            aktualisieren(auffrischen: true)
+            pulsPlanen()
+        }
+        puls = arbeit
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.herzschlag, execute: arbeit)
     }
 
     private func anstossen(sofort: Bool) {
@@ -143,13 +208,15 @@ final class SpracheLiveAktivitaet {
         DispatchQueue.main.asyncAfter(deadline: .now() + warten, execute: arbeit)
     }
 
-    private func aktualisieren() {
-        guard let a = aktivitaet, let stand = standJetzt(), stand != gezeigt else { return }
+    /// `auffrischen`: auch ohne Änderung, nur um `staleDate` zu schieben (D4).
+    private func aktualisieren(auffrischen: Bool = false) {
+        guard let a = aktivitaet, let stand = standJetzt(), auffrischen || stand != gezeigt
+        else { return }
         gezeigt = stand
         zuletzt = Date()
         nacheinander {
             if #available(iOS 16.2, *) {
-                await a.update(.init(state: stand, staleDate: nil))
+                await a.update(.init(state: stand, staleDate: Self.veraltetAb()))
             } else {
                 await a.update(using: stand)
             }
@@ -157,6 +224,7 @@ final class SpracheLiveAktivitaet {
     }
 
     private func beenden(sitzung: Int) {
+        if ausstehend?.sitzung == sitzung { ausstehend = nil }
         guard let a = aktivitaet, self.sitzung == sitzung else { return }
         vergessen()
         NSLog("[PulseAktivitaet] beendet (Sitzung %ld)", sitzung)
@@ -178,8 +246,11 @@ final class SpracheLiveAktivitaet {
         aktivitaet = nil
         sitzung = nil
         gezeigt = nil
+        ausstehend = nil
         nachlauf?.cancel()
         nachlauf = nil
+        puls?.cancel()
+        puls = nil
     }
 
     private func nacheinander(_ arbeit: @escaping () async -> Void) {
@@ -232,74 +303,5 @@ final class SpracheLiveAktivitaet {
     static func beschreibung(_ s: SpracheAktivitaet.ContentState) -> String {
         "\(s.teilnehmer) im Kanal, stumm \(s.stumm), taub \(s.taub), pausiert \(s.pausiert), "
             + "gesperrt \(s.gesperrt), verbunden \(s.verbunden), sprechend \(s.sprechend.count + s.weitereSprechend)"
-    }
-}
-
-// MARK: - Die Knöpfe der Aktivität
-
-extension SpracheRaum {
-    /// Ein Knopf der Live Activity (`SpracheMikrofonAbsicht`,
-    /// `SpracheVerlassenAbsicht`), im Prozess der App ausgeführt.
-    ///
-    /// **Anders als die Knöpfe der Kanalansicht fragen sie das Web NICHT
-    /// vorher** (`wunsch` in `SpracheSteuerleiste.swift`). Getippt wird auf dem
-    /// Sperrbildschirm oder in der Dynamic Island — die Oberfläche ist dann in
-    /// aller Regel eingefroren, ihre Hörer stehen aber noch. Ein Wunsch käme
-    /// erst an, wenn die App wieder vorn ist: ein „stumm“, das minutenlang
-    /// nicht wirkt, ist schlimmer als keiner. Die Regeln, die das Web sonst
-    /// prüft, stehen deshalb hier noch einmal, soweit die Hülle sie kennt
-    /// (`mikrofonDarfAn`); das Web erfährt den neuen Stand über die üblichen
-    /// Meldungen und spiegelt ihn, sobald es läuft.
-    func ausLiveAktivitaet(_ befehl: SpracheAktivitaetBefehl) async {
-        guard raum != nil else {
-            // Die Aktivität steht noch, der Raum nicht mehr — etwa nach einem
-            // Absturz, wenn iOS die App nur für diesen Knopf gestartet hat.
-            await MainActor.run { SpracheLiveAktivitaet.geteilt.alleBeenden("Knopf ohne Raum") }
-            return
-        }
-        switch befehl {
-        case .stumm(let stumm):
-            await mikrofonAusAktivitaet(an: !stumm)
-        case .verlassen:
-            await verlassenAusAktivitaet()
-        }
-        SpracheLiveAktivitaet.anstossen(sofort: true)
-    }
-
-    private func mikrofonAusAktivitaet(an: Bool) async {
-        if an, !(await mikrofonDarfAn()) {
-            NSLog("[PulseAktivitaet] Mikrofon an abgelehnt (taub, Anruf oder Moderation)")
-            return
-        }
-        do {
-            try await nacheinander { try await self.mikrofon(an) }
-        } catch {
-            NSLog("[PulseAktivitaet] Mikrofon %@ fehlgeschlagen: %@",
-                  an ? "an" : "aus", error.localizedDescription)
-        }
-    }
-
-    /// Dieselben Riegel wie `toggleMic` im Web (`voice/livekit.svelte.ts`):
-    /// nicht aus dem Taubstellen heraus, nicht gegen die Moderation — und
-    /// nicht während eines Anrufs (dort gälte es ohnehin erst danach).
-    /// Ausschalten ist immer erlaubt.
-    private func mikrofonDarfAn() async -> Bool {
-        guard !wirksamTaub, let ich = raum?.localParticipant else { return false }
-        return await MainActor.run { !SpracheStand.geteilt.erzwungen(fuer: ich).stumm }
-    }
-
-    /// **Erst das Web bitten, dann sofort selbst gehen.** Das Web hat am
-    /// Auflegen Pflichten, die die Hülle nicht kennt (Eintrag fürs
-    /// Wiederaufnehmen löschen, eine gehostete Watch-Party beenden); es
-    /// bekommt den Wunsch deshalb zuerst und arbeitet ihn ab, sobald es läuft.
-    /// Die Reihenfolge der Meldungen ist dabei tragend: käme `disconnected`
-    /// zuerst an, räumte das Web ab wie nach einem Netzabbruch und behielte
-    /// den Eintrag — der nächste Reload träte wieder bei. Hört das Web gar
-    /// nicht zu (WebContent abgestürzt), merkt sich die Hülle das Auflegen
-    /// selbst (`vomNutzerAufgelegt`, B1).
-    private func verlassenAusAktivitaet() async {
-        _ = await wunschAnWeb?(.auflegen, true)
-        await vomNutzerAufgelegt()
-        melden("verbindung", ["zustand": "disconnected"])
     }
 }

@@ -80,6 +80,7 @@
 		7E22E0000000000000000211 /* SpracheAktivitaetAbsichten.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000108 /* SpracheAktivitaetAbsichten.swift */; };
 		7E22E0000000000000000212 /* UngelesenAblage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000109 /* UngelesenAblage.swift */; };
 		7E22E0000000000000000213 /* SpracheLiveAktivitaet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010A /* SpracheLiveAktivitaet.swift */; };
+		A1B2C3D4E5F60718000001C5 /* SpracheLiveAktivitaetKnoepfe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001C4 /* SpracheLiveAktivitaetKnoepfe.swift */; };
 		7E22E0000000000000000214 /* UngelesenPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010B /* UngelesenPlugin.swift */; };
 		7E22E0000000000000000215 /* SpracheLiveAktivitaetProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010C /* SpracheLiveAktivitaetProbe.swift */; };
 		7E22E0000000000000000216 /* UngelesenProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010D /* UngelesenProbe.swift */; };
@@ -167,6 +168,7 @@
 		7E22E0000000000000000108 /* SpracheAktivitaetAbsichten.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheAktivitaetAbsichten.swift; sourceTree = "<group>"; };
 		7E22E0000000000000000109 /* UngelesenAblage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UngelesenAblage.swift; sourceTree = "<group>"; };
 		7E22E000000000000000010A /* SpracheLiveAktivitaet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheLiveAktivitaet.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001C4 /* SpracheLiveAktivitaetKnoepfe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheLiveAktivitaetKnoepfe.swift; sourceTree = "<group>"; };
 		7E22E000000000000000010B /* UngelesenPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UngelesenPlugin.swift; sourceTree = "<group>"; };
 		7E22E000000000000000010C /* SpracheLiveAktivitaetProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheLiveAktivitaetProbe.swift; sourceTree = "<group>"; };
 		7E22E000000000000000010D /* UngelesenProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UngelesenProbe.swift; sourceTree = "<group>"; };
@@ -305,6 +307,7 @@
 				7E11E0000000000000000059 /* ShareReceiverProbe.swift */,
 				7E22E000000000000000010E /* Befehlskette.swift */,
 				7E22E000000000000000010A /* SpracheLiveAktivitaet.swift */,
+				A1B2C3D4E5F60718000001C4 /* SpracheLiveAktivitaetKnoepfe.swift */,
 				7E22E000000000000000010C /* SpracheLiveAktivitaetProbe.swift */,
 				7E22E000000000000000010B /* UngelesenPlugin.swift */,
 				7E22E000000000000000010D /* UngelesenProbe.swift */,
@@ -620,6 +623,7 @@
 				7E22E0000000000000000211 /* SpracheAktivitaetAbsichten.swift in Sources */,
 				7E22E0000000000000000212 /* UngelesenAblage.swift in Sources */,
 				7E22E0000000000000000213 /* SpracheLiveAktivitaet.swift in Sources */,
+				A1B2C3D4E5F60718000001C5 /* SpracheLiveAktivitaetKnoepfe.swift in Sources */,
 				7E22E0000000000000000214 /* UngelesenPlugin.swift in Sources */,
 				7E22E0000000000000000215 /* SpracheLiveAktivitaetProbe.swift in Sources */,
 				7E22E0000000000000000216 /* UngelesenProbe.swift in Sources */,

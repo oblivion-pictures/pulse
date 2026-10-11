@@ -13,7 +13,7 @@ import WidgetKit
 struct SpracheAktivitaetWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: SpracheAktivitaet.self) { kontext in
-            SperrbildAnsicht(form: kontext.attributes, stand: kontext.state)
+            SperrbildAnsicht(form: kontext.attributes, stand: kontext.state, veraltet: veraltet(kontext))
         } dynamicIsland: { kontext in
             let stand = kontext.state
             return DynamicIsland {
@@ -31,7 +31,7 @@ struct SpracheAktivitaetWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 12) {
-                        Statuszeile(stand: stand)
+                        Statuszeile(stand: stand, veraltet: veraltet(kontext))
                             .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.75))
                         Spacer(minLength: 0)
@@ -52,10 +52,21 @@ struct SpracheAktivitaetWidget: Widget {
     }
 }
 
+/// **Hat die App den Stand zu lange nicht aufgefrischt?** (iOS-Bughunt 2 vom
+/// 2026-10-11, D4) Die App schiebt `staleDate` mit jedem Herzschlag nach
+/// vorn (`SpracheLiveAktivitaet.haltbarkeit`); bleibt er aus, ist sie
+/// abgestürzt oder beendet, und „verbunden" wäre eine Behauptung. Vor iOS 16.2
+/// gibt es kein `staleDate`.
+private func veraltet(_ kontext: ActivityViewContext<SpracheAktivitaet>) -> Bool {
+    if #available(iOSApplicationExtension 16.2, *) { return kontext.isStale }
+    return false
+}
+
 /// Der Sperrbildschirm (und das Banner auf Geräten ohne Dynamic Island).
 struct SperrbildAnsicht: View {
     let form: SpracheAktivitaet
     let stand: SpracheAktivitaet.ContentState
+    var veraltet = false
 
     /// Zustand und Sprecher in einer EIGENEN Zeile unter der Kopfzeile: neben
     /// den beiden Knöpfen blieb für „Sprechen: …“ kaum Platz, der zweite Name
@@ -70,7 +81,7 @@ struct SperrbildAnsicht: View {
             }
             HStack(spacing: 8) {
                 TeilnehmerZahl(stand: stand)
-                Statuszeile(stand: stand)
+                Statuszeile(stand: stand, veraltet: veraltet)
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
