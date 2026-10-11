@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dcc_auth import email_verbinden, routes_uebernahme, routes_verbinden, verbinden_uebernahme
 from dcc_auth import verbinden_nachweis as vn
+from dcc_auth.dns_ausfuehrer import Ausgelastet
 from dcc_auth.models import User
 from dcc_auth.models_instances import (
     InstanzUebernahme,
@@ -376,7 +377,7 @@ async def test_widerspruch_ohne_eigenen_server(
 
     if unter_der_adresse == "nicht_erreichbar":
         # Der echte Abruf, nur antwortet unter der Adresse niemand.
-        async def dns(_host):
+        async def dns(_host, *, ausfuehrer):
             return Schritt("dns", True, "aufgeloest", adressen=["203.0.113.7"])
 
         def verweigert(request: httpx.Request) -> httpx.Response:
@@ -401,6 +402,27 @@ async def test_widerspruch_ohne_eigenen_server(
     (antrag,) = await _antraege(session_factory)
     assert _offen(antrag)
     assert (await _meine_server(client, a))[str(_ALT)]["uebernahme_frist_bis"] == frist
+
+
+async def test_widerspruch_bei_vollem_aufloesungs_pool_ist_503(
+    client, session_factory, mit_redis, nachweis, uhr, post, monkeypatch
+):
+    """Kein Befund über den Server: der Antrag bleibt offen."""
+    a = await _konto(client, "hartbedraengt")
+    b = await _konto(client, "ungeduldig")
+    await _eintrag(session_factory, a)
+    await _bestaetigen(client, b)
+
+    async def voll(_host, *, ausfuehrer):
+        raise Ausgelastet
+
+    monkeypatch.setattr(vn, "pruefe_dns", voll)
+    uhr.vor(hours=2)
+    r = await _widersprechen(client, a)
+    assert r.status_code == 503, r.text
+    assert r.json()["detail"] == "verbinden_ausgelastet"
+    (antrag,) = await _antraege(session_factory)
+    assert _offen(antrag)
 
 
 async def test_widerspruch_nach_fristende_solange_nicht_vollzogen(

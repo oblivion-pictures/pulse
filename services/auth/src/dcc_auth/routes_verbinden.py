@@ -37,6 +37,7 @@ from dcc_shared.hostname import normalisiere_hostname
 from dcc_auth.admin_events import publish_instanz_verbunden
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
+from dcc_auth.dns_ausfuehrer import Ausgelastet
 from dcc_auth.email_verbinden import (
     compose_verbinden_hinweis,
     compose_verbinden_uebernahme,
@@ -131,6 +132,22 @@ def _nachweis_fehlt(befund: str) -> HTTPException:
     )
 
 
+def verbinden_ausgelastet() -> HTTPException:
+    """Der Auflösungs-Pool der Prüfungen von aussen ist voll
+    (``dns_ausfuehrer.py``) — kein Befund über die Adresse, später noch einmal."""
+    return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="verbinden_ausgelastet")
+
+
+async def _nachweis_verlangen(hostname: str, nachweis: str) -> None:
+    """Die Prüfung von aussen; jeder Befund ausser „in Ordnung“ ist ein 409."""
+    try:
+        befund = await nachweis_pruefen(hostname, nachweis)
+    except Ausgelastet:
+        raise verbinden_ausgelastet() from None
+    if befund is not None:
+        raise _nachweis_fehlt(befund)
+
+
 async def _uebernahme_nachbereiten(
     db, redis, hostname: str, alte_instanz_id: int, neue_instanz_id: str, jetzt: datetime
 ) -> None:
@@ -171,9 +188,7 @@ async def verbinden_start(payload: StartEin, request: Request) -> StartAus:
     # Schon hier und nicht erst beim Bestätigen: ein Server, den die Cloud
     # nicht erreicht, soll keinen Code verbrauchen, den der Betreiber dann
     # vergeblich bestätigt.
-    befund = await nachweis_pruefen(hostname, nachweis)
-    if befund is not None:
-        raise _nachweis_fehlt(befund)
+    await _nachweis_verlangen(hostname, nachweis)
     try:
         vorgang = await vorgang_anlegen(redis, hostname, nachweis)
     except VorgangLaeuft:
@@ -231,9 +246,7 @@ async def verbinden_entscheiden(
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="verbinden_gesperrt")
     # Zweite Prüfung: zwischen Anfrage und Klick können Minuten liegen. Erst
     # sie macht die Übernahme einer eingetragenen Adresse vertretbar (E2).
-    befund = await nachweis_pruefen(vorgang.hostname, nachweis)
-    if befund is not None:
-        raise _nachweis_fehlt(befund)
+    await _nachweis_verlangen(vorgang.hostname, nachweis)
 
     try:
         # Eine fremde Adresse erst nach der Widerspruchsfrist

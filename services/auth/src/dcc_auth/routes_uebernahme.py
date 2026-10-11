@@ -24,10 +24,11 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from dcc_auth.db import SessionDep
+from dcc_auth.dns_ausfuehrer import Ausgelastet
 from dcc_auth.instance_provisioning import eigene_instanz_oder_404
 from dcc_auth.routes_admin_instances import _require_cloud
 from dcc_auth.routes_instance_applications import _require_user
-from dcc_auth.routes_verbinden import _bremse_je_konto
+from dcc_auth.routes_verbinden import _bremse_je_konto, verbinden_ausgelastet
 from dcc_auth.verbinden_nachweis import server_info_instanz
 from dcc_auth.verbinden_uebernahme import lebendige_uebernahme, widersprechen
 
@@ -57,7 +58,11 @@ async def widerspruch_einlegen(instance_id: str, request: Request, db: SessionDe
     # Weder Transaktion noch Verbindung über den Abruf halten — er dauert bis
     # zu ``FRIST_S``.
     await db.rollback()
-    if await server_info_instanz(hostname) != str(iid):
+    try:
+        gemeldet = await server_info_instanz(hostname)
+    except Ausgelastet:
+        raise verbinden_ausgelastet() from None
+    if gemeldet != str(iid):
         raise HTTPException(status.HTTP_409_CONFLICT, detail={"code": "widerspruch_ohne_server"})
 
     # Dieselbe Zeile sperrt der Vollzug (``uebernahme_pruefen``): Widerspruch

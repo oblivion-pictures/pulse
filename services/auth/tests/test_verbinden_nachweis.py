@@ -204,7 +204,7 @@ async def test_frist(monkeypatch):
 
 
 async def test_adresse_im_privaten_netz_wird_nie_abgefragt(monkeypatch):
-    async def dns(_host):
+    async def dns(_host, *, ausfuehrer):
         return Schritt("dns", False, "zeigt_ins_private_netz", "10.0.0.5")
 
     def darf_nicht():
@@ -216,7 +216,7 @@ async def test_adresse_im_privaten_netz_wird_nie_abgefragt(monkeypatch):
 
 
 async def test_ganzer_weg_ueber_die_aufgeloeste_adresse(monkeypatch):
-    async def dns(_host):
+    async def dns(_host, *, ausfuehrer):
         return Schritt("dns", True, "aufgeloest", adressen=["203.0.113.7"])
 
     gesehen: list[str] = []
@@ -237,7 +237,7 @@ async def test_ganzer_weg_ueber_die_aufgeloeste_adresse(monkeypatch):
 
 
 async def _instanz_unter(monkeypatch, handler) -> str | None:
-    async def dns(_host):
+    async def dns(_host, *, ausfuehrer):
         return Schritt("dns", True, "aufgeloest", adressen=["203.0.113.7"])
 
     monkeypatch.setattr(vn, "pruefe_dns", dns)
@@ -305,7 +305,7 @@ async def test_server_info_frist(monkeypatch):
 
 
 async def test_server_info_im_privaten_netz_wird_nie_abgefragt(monkeypatch):
-    async def dns(_host):
+    async def dns(_host, *, ausfuehrer):
         return Schritt("dns", False, "zeigt_ins_private_netz", "10.0.0.5")
 
     def darf_nicht():
