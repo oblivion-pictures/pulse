@@ -34,6 +34,7 @@ extension Anrufverwaltung: CXProviderDelegate {
         // die Rückgabe es für laufend und den Kanal angehalten.
         if let ohne = ohneCallKitKennung { ohneCallKitBeendet(ohne) }
         sessionZurueckgeben()
+        allesVorbeiPruefen()
     }
 
     public func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
@@ -135,8 +136,10 @@ extension Anrufverwaltung: CXProviderDelegate {
     private func gespraechBeginnen(kennung: String, name: String, phase: Phase,
                                    fertig: @escaping () -> Void) {
         // Auch ein Gespräch ohne CallKit zählt — sonst bekäme es beim zweiten
-        // Tipp auf „Annehmen" einen zweiten Anruf bei CallKit.
-        if fuehrt(kennung) {
+        // Tipp auf „Annehmen" einen zweiten Anruf bei CallKit. **Ein eben
+        // beendetes ebenso** (Bughunt 2, A4): überholte das Ende die Annahme
+        // der Oberfläche, begann hier ein Gespräch, das nichts mehr beendete.
+        if fuehrt(kennung) || istKuerzlichBeendet(kennung) {
             fertig()
             return
         }

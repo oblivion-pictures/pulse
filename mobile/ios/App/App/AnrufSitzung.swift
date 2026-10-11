@@ -63,7 +63,15 @@ extension Anrufverwaltung {
     }
 
     /// `provider(_:didActivate:)`.
+    ///
+    /// **Nur, solange CallKit führt** (A7). Kommt die Aktivierung, nachdem die
+    /// Session schon ans SDK zurückging (Ende vor `didActivate`), gehört sie
+    /// dem Kanal — Kategorie und Maschine hier umzustellen nähme sie ihm.
     func sessionAktiviert() {
+        guard callkitAktiv else {
+            NSLog("[PulseAnruf] didActivate nach der Rückgabe — die Session gehört dem SDK")
+            return
+        }
         sessionAktiv = true
         kategorieSetzen()
         ausgabeAnwenden(lautsprecher: AnrufRaum.geteilt.lautsprecher)
@@ -80,10 +88,44 @@ extension Anrufverwaltung {
     /// `provider(_:didDeactivate:)` — auch mitten im Anruf möglich (ein
     /// Mobilfunk-Gespräch drängt sich dazwischen); dann kommt `didActivate`
     /// wieder.
+    ///
+    /// **Die Maschine sperrt es nur, solange CallKit führt** (Bughunt 2, A7).
+    /// Bis zum 2026-10-11 setzte jedes `didDeactivate` `.none` — auch eines,
+    /// das erst NACH der Rückgabe ans SDK kam (3-s-Notbremse in
+    /// `letzterAnrufVorbei`, Ende vor `didActivate`, `providerDidReset`).
+    /// Dann gehört die Maschine dem Kanal, und der blieb bis zum nächsten
+    /// Anruf taub und stumm.
     func sessionDeaktiviert() {
         sessionAktiv = false
-        try? AudioManager.shared.setEngineAvailability(.none)
+        if callkitAktiv {
+            maschineStellen(.none, "anhalten")
+        } else {
+            NSLog("[PulseAnruf] didDeactivate nach der Rückgabe — die Maschine bleibt dem Kanal")
+        }
         if kennungen.isEmpty { sessionZurueckgeben() }
+    }
+
+    /// **Die Mikrofon-Erlaubnis kam erst nach `didActivate`** (Bughunt 2, A2):
+    /// beim ersten Anruf nach der Installation fragt erst der Beitritt
+    /// (`mikrofonErlaubnisHolen`), und `didActivate` hatte die Maschine da
+    /// schon ohne Eingang freigegeben. Bis zum 2026-10-11 gab niemand die
+    /// Eingabe danach frei — die Gegenseite hörte ein ganzes Gespräch lang
+    /// nichts, und `zustand().mikro` sagte trotzdem „offen". Aus
+    /// `AnrufRaum.beitreten`, auf dem Hauptthread.
+    func nachMikrofonErlaubnis() {
+        guard Self.eingabeNachholen(
+            callkitAktiv: callkitAktiv, sessionAktiv: sessionAktiv, erlaubt: Self.mikrofonErlaubt(),
+            eingabeFrei: AudioManager.shared.engineAvailability.isInputAvailable) else { return }
+        NSLog("[PulseAnruf] Mikrofon erst jetzt erlaubt — Eingabe der Maschine nachträglich frei")
+        maschineStellen(.default, "nach der Erlaubnis freigeben")
+    }
+
+    /// A2, als Regel: nur wenn CallKit die Session führt und aktiviert hat —
+    /// sonst gibt `didActivate` (oder das SDK) frei — und die Eingabe noch
+    /// gesperrt ist.
+    static func eingabeNachholen(callkitAktiv: Bool, sessionAktiv: Bool, erlaubt: Bool,
+                                 eingabeFrei: Bool) -> Bool {
+        callkitAktiv && sessionAktiv && erlaubt && !eingabeFrei
     }
 
     /// Der letzte CallKit-Eintrag ist aus der Buchführung (aus `vergessen`).
@@ -186,6 +228,7 @@ extension Anrufverwaltung {
         if let wunsch = kanalLautsprecher { AudioManager.shared.isSpeakerOutputPreferred = wunsch }
         kanalLautsprecher = nil
         if !callkitAktiv { kanalPause(false) }
+        allesVorbeiPruefen()
     }
 
     /// Ein Ausgabe-Wunsch des KANALS während eines Anrufs ohne CallKit: gemerkt

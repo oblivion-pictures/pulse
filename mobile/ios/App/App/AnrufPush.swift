@@ -20,17 +20,22 @@ extension Anrufverwaltung {
         let name = inhalt["einleiter_name"] as? String ?? "Pulse"
         let art: PushArt = inhalt["art"] as? String == "abbruch" ? .abbruch : .klingeln
         let bekannt = uuid(fuer: kennung)
+        let phase = bekannt.flatMap { phasen[$0] }
         let ausgang = Self.pushAusgang(
-            art: art, bekannt: bekannt, klingelt: bekannt.map { phasen[$0] == .klingelt } ?? false,
+            art: art, bekannt: bekannt, klingelt: phase == .klingelt,
             kuerzlichBeendet: istKuerzlichBeendet(kennung),
-            ohneCallKit: !kennung.isEmpty && ohneCallKitKennung == kennung)
+            ohneCallKit: !kennung.isEmpty && ohneCallKitKennung == kennung,
+            angenommenOhneRaum: phase == .angenommen && !raumBegonnen.contains(kennung),
+            besetzt: besetzt(ausser: kennung))
         NSLog("[PulseAnruf] VoIP-Push %@ %@ → %@", art.rawValue, kennung, "\(ausgang)")
         #if DEBUG
             spur.ausgang = ausgang
         #endif
         // Auch für einen bekannten Anruf: hat ihn die Oberfläche gemeldet
-        // (`ankommen`), bringt erst der Push Kanal und Art mit.
-        if art == .klingeln, ausgang != .meldenUndSofortBeenden {
+        // (`ankommen`), bringt erst der Push Kanal und Art mit. Nicht für
+        // einen, den hier niemand führt — sein Kontext bliebe für immer
+        // liegen (`stillVergessen` räumt nur Gebuchtes).
+        if art == .klingeln, ausgang != .meldenUndSofortBeenden, ausgang != .besetzt {
             kontextMerken(kennung: kennung, inhalt: inhalt)
         }
         switch ausgang {
@@ -44,7 +49,22 @@ extension Anrufverwaltung {
             erneutMelden(uuid, name: name, beenden: true, fertig: fertig)
         case .meldenUndSofortBeenden:
             meldenUndSofortBeenden(name: name, fertig: fertig)
+        case .besetzt:
+            // Als beendet merken: ein späterer Push oder ein `ankommen` der
+            // Oberfläche klingelt dafür nicht mehr. „ablehnen" erreicht den
+            // Server über das Web auch, wenn es gerade eingefroren ist
+            // (aufbewahrt, sobald es wieder läuft); lehnt es selbst schon ab
+            // (`anruf.svelte.ts`, `eingehend`), ist das zweite folgenlos.
+            kuerzlichBeendet[kennung] = Date()
+            bruecke?.aktionMelden(aktion: "ablehnen", kennung: kennung, kontext: [:])
+            meldenUndSofortBeenden(name: name, fertig: fertig)
         }
+    }
+
+    /// Läuft oder klingelt hier ein ANDERER Anruf als `kennung`? (A5)
+    private func besetzt(ausser kennung: String) -> Bool {
+        kennungen.values.contains { $0 != kennung }
+            || (ohneCallKitKennung.map { $0 != kennung } ?? false)
     }
 
     /// Die Oberfläche meldet einen Anruf (`ankommen`): die WebSocket war
@@ -82,14 +102,17 @@ extension Anrufverwaltung {
 
     /// Ein Push für einen Anruf, den CallKit schon führt: mit der BESTEHENDEN
     /// UUID melden. Die erwartete Antwort ist `callUUIDAlreadyExists`, und der
-    /// laufende Anruf bleibt, wie er ist; nur ein klingelnder wird auf einen
-    /// Abbruch hin beendet — nach der Meldung, s. `PushAusgang`.
+    /// laufende Anruf bleibt, wie er ist; nur ein klingelnder (oder ein
+    /// angenommener ohne Raum, A3) wird auf einen Abbruch hin beendet — nach
+    /// der Meldung, s. `PushAusgang`.
     private func erneutMelden(_ uuid: UUID, name: String, beenden: Bool,
                               fertig: @escaping () -> Void) {
         beiCallKitMelden(uuid, name: name, video: false) { folge in
             // Am Gerät der Beleg, dass CallKit das Duplikat erkannt hat.
             NSLog("[PulseAnruf] erneut gemeldet, CallKit: %@", "\(folge)")
-            switch Self.nachErneuterMeldung(folge, beenden: beenden, phase: self.phasen[uuid]) {
+            let raum = self.kennungen[uuid].map { self.raumBegonnen.contains($0) } ?? false
+            switch Self.nachErneuterMeldung(folge, beenden: beenden, phase: self.phasen[uuid],
+                                            raumBegonnen: raum) {
             case .nichts:
                 break
             case .beenden:
@@ -173,7 +196,7 @@ extension Anrufverwaltung {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.klingelFrist, execute: uhr)
     }
 
-    private func istKuerzlichBeendet(_ kennung: String) -> Bool {
+    func istKuerzlichBeendet(_ kennung: String) -> Bool {
         let grenze = Date().addingTimeInterval(-10 * 60)
         kuerzlichBeendet = kuerzlichBeendet.filter { $0.value > grenze }
         return kuerzlichBeendet[kennung] != nil

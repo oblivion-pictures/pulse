@@ -168,19 +168,25 @@ import LiveKit
             soll("ohne CallKit: weiter gebucht, kein CallKit-Eintrag",
                  v.ohneCallKitKennung == k && v.uuid(fuer: k) == nil)
 
+            soll("A10: ein Anruf ohne Raum steht im Zustand",
+                 (v.ohneRaum()?["kennung"] as? String).map { [k, belegt].contains($0) } == true)
             soll("ohne CallKit: Raum entsteht", await beitreten(k, wsUrl, token) == nil)
+            AnrufRaum.geteilt.ausgabe(lautsprecher: true)
             v.beenden(kennung: belegt, grund: .gegenseite)
             await warten(1)
             soll("ohne CallKit: Raum verbunden",
                  AnrufRaum.geteilt.zustand()["zustand"] as? String == "connected")
             soll("fremdes Ende: Gespräch bleibt gebucht, Kanal angehalten",
                  v.ohneCallKitKennung == k && sprache.anrufPausiert)
+            soll("A10: mit Raum steht kein Anruf ohne Raum mehr im Zustand", v.ohneRaum() == nil)
 
             v.beenden(grund: .lokal)
             await warten(1)
             soll("Ende: aus der Buchführung, als kürzlich beendet gemerkt",
                  v.ohneCallKitKennung == nil && v.kuerzlichBeendet[k] != nil)
             soll("Ende: Anruf-Raum weg", AnrufRaum.geteilt.raum == nil)
+            soll("A8: der Lautsprecher des Gesprächs gilt für das nächste nicht",
+                 AnrufRaum.geteilt.lautsprecher == false)
             soll("Ende: Kanal frei", !sprache.anrufPausiert)
             soll("Ende: Kanal-Wunsch Lautsprecher gilt wieder",
                  AudioManager.shared.isSpeakerOutputPreferred == true)
@@ -258,6 +264,39 @@ import LiveKit
             soll("danach: Kanal-Wunsch Hörmuschel gilt",
                  AudioManager.shared.isSpeakerOutputPreferred == false)
             soll("danach: Kanal steht", sprache.zustand()["verbunden"] as? Bool == true)
+            sitzungsRegeln()
+        }
+
+        /// Bughunt 2, A2 und A7 — die Regeln der Session-Übergabe. Ob CallKit
+        /// die Session wirklich aktiviert und man hört, zeigt nur das Gerät;
+        /// hier die Entscheidungen und das Verhalten der echten Funktionen
+        /// ohne CallKit.
+        @MainActor private static func sitzungsRegeln() {
+            // Grundstellung = der Fall, der nachholt; jede Gegenprobe kippt genau einen Wert.
+            func nachholen(callkit: Bool = true, session: Bool = true, erlaubt: Bool = true,
+                           frei: Bool = false) -> Bool {
+                V.eingabeNachholen(callkitAktiv: callkit, sessionAktiv: session, erlaubt: erlaubt,
+                                   eingabeFrei: frei)
+            }
+            soll("A2: Erlaubnis nach didActivate → Eingabe nachträglich frei", nachholen())
+            soll("A2: aber nicht ohne CallKit, vor didActivate, ohne Erlaubnis oder schon frei",
+                 !nachholen(callkit: false) && !nachholen(session: false) && !nachholen(erlaubt: false)
+                     && !nachholen(frei: true))
+            let v = V.geteilt
+            guard !v.callkitAktiv else {
+                soll("A7: CallKit führt noch — sonst nicht prüfbar", false)
+                return
+            }
+            // Ein spätes didActivate/didDeactivate nach der Rückgabe: die
+            // echten Delegat-Wege, wie CallKit sie ruft.
+            v.sessionAktiviert()
+            soll("A7: didActivate nach der Rückgabe übernimmt nichts", !v.sessionAktiv)
+            v.sessionDeaktiviert()
+            let m = AudioManager.shared.engineAvailability
+            soll("A7: didDeactivate nach der Rückgabe lässt die Maschine frei",
+                 m.isInputAvailable && m.isOutputAvailable)
+            soll("A7: Kanal danach weiter verbunden",
+                 SpracheRaum.geteilt.zustand()["verbunden"] as? Bool == true)
         }
     }
 #endif

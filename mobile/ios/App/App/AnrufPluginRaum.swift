@@ -86,8 +86,19 @@ extension AnrufPlugin {
 
     /// Vollbild des Zustands — für eine neu geladene Oberfläche, die ein
     /// laufendes Gespräch übernimmt.
+    ///
+    /// **Dazu `ohneRaum`: ein Anruf, den die Verwaltung führt, für den aber
+    /// noch kein Raum begonnen hat** (Bughunt 2, A10) — ein Reload zwischen
+    /// Annahme und Beitritt, oder während es klingelt. Ohne das Feld fand die
+    /// neue Seite keine Kennung, und das Gespräch stand ohne Oberfläche da.
+    /// `null`, wenn es keinen gibt; eine ältere Hülle schickt das Feld nicht
+    /// („unbekannt"). Auf dem Hauptthread gelesen: dort lebt die Buchführung.
     @objc func raumZustand(_ call: CAPPluginCall) {
-        call.resolve(AnrufRaum.geteilt.zustand())
+        DispatchQueue.main.async {
+            var z = AnrufRaum.geteilt.zustand()
+            z["ohneRaum"] = Anrufverwaltung.geteilt.ohneRaum() ?? NSNull()
+            call.resolve(z)
+        }
     }
 
     /// **Laut scheitern, und synchron einreihen** — wie `SprachePlugin.befehl`

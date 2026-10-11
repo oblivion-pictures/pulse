@@ -120,7 +120,7 @@ final class AnrufRaum: NSObject, @unchecked Sendable {
         mikrofonFehler = nil
         gegenseiteGesehen = false
         // Nur für ein Gespräch, das die Verwaltung führt (`Fehler.keinAnruf`).
-        guard await MainActor.run(body: { Anrufverwaltung.geteilt.fuehrt(neu) }) else {
+        guard await MainActor.run(body: { Anrufverwaltung.geteilt.raumBeginnt(neu) }) else {
             loesen(r)
             NSLog("[PulseAnruf] Beitritt abgewiesen: %@ ist nicht (mehr) gebucht", neu)
             throw Fehler.keinAnruf
@@ -140,6 +140,7 @@ final class AnrufRaum: NSObject, @unchecked Sendable {
         // (`LocalAudioTrack.startCapture`). Die Sperre hebt erst
         // `didActivate` — ohne Erlaubnis dort nur für die Ausgabe.
         await Anrufverwaltung.mikrofonErlaubnisHolen()
+        await MainActor.run { Anrufverwaltung.geteilt.nachMikrofonErlaubnis() }
         do {
             try await r.localParticipant.setMicrophone(enabled: true)
             if stumm { try await stummSchalten(true) }
@@ -218,6 +219,10 @@ final class AnrufRaum: NSObject, @unchecked Sendable {
         Anrufverwaltung.geteilt.ausgabeAnwenden(lautsprecher: an)
         schicke()
     }
+
+    /// Kein Gespräch mehr: der nächste beginnt wieder am Ohr (A8,
+    /// `Anrufverwaltung.allesVorbeiPruefen`). Nur auf dem Hauptthread.
+    func ausgabeVergessen() { lautsprecher = false }
 
     // MARK: - Zustand
 

@@ -51,12 +51,13 @@ import Foundation
             Task { @MainActor in
                 await warten(3)
                 tabelle()
+                AnrufPushProbe2.tabelle()
                 await ablauf()
                 NSLog("[PulseAnruf] PushProbe ENDE, %d Fehler", fehler)
             }
         }
 
-        @MainActor private static func soll(_ was: String, _ ist: Bool) {
+        @MainActor static func soll(_ was: String, _ ist: Bool) {
             if !ist { fehler += 1 }
             NSLog("[PulseAnruf] PushProbe %@ %@", ist ? "OK  " : "FEHL", was)
         }
@@ -125,6 +126,8 @@ import Foundation
             let was: String
             let inhalt: [String: String]
             var ausgang: V.PushAusgang?
+            /// Läuft unmittelbar vor dem Push, im selben Lauf.
+            var vorher: (() -> Void)?
             var folge: V.MeldungsFolge?
             /// Was in der `completion` gelten muss, mit Beschreibung.
             var stand: (String, () -> Bool)?
@@ -178,6 +181,7 @@ import Foundation
             await withCheckedContinuation { (weiter: CheckedContinuation<Void, Never>) in
                 let wecker = Wecker(weiter)
                 for (i, p) in pushes.enumerated() {
+                    p.vorher?()
                     let vorher = v.spur.meldungen
                     v.pushVerarbeiten(p.inhalt) {
                         beobachtet[i].fertig = true
@@ -240,6 +244,7 @@ import Foundation
             await zustellen([Push(
                 was: "Klingeln eines eben beendeten Anrufs", inhalt: klingelPush(k1),
                 ausgang: .meldenUndSofortBeenden, stand: ("klingelt nicht wieder", { v.uuid(fuer: k1) == nil }))])
+            await AnrufPushProbe2.annahmeNachDemEnde(k1)
 
             // T14 wie eben, aber CallKit hat die Meldung der Oberfläche schon
             // beantwortet: die Klingelfrist steht und darf nicht neu kommen.
@@ -301,8 +306,8 @@ import Foundation
 
         /// Ein Gespräch, das die Oberfläche angenommen hat, ohne dass CallKit es
         /// klingeln sah (der Träger aus `gespraechBeginnen`, Phase
-        /// `.angenommen`), dann Klingeln und Abbruch per Push hinterher:
-        /// beides meldet, keins beendet das Gespräch.
+        /// `.angenommen`), dann Pushes hinterher: alle melden; beendet wird es
+        /// nur vom Abbruch ohne begonnenen Raum (A3), von einem zweiten Anruf nie (A5).
         ///
         /// **Nicht über einen angenommenen EINGEHENDEN Anruf**, obwohl das der
         /// häufigere Weg ist: den trennt der Simulator (s. Kopf), bevor die
@@ -337,11 +342,23 @@ import Foundation
                 return true
             }
             let laeuft: () -> Bool = { v.uuid(fuer: k) == u && v.phasen[u] == .angenommen }
+            let zweiter = k + "-zweiter"
+            // Ein Gespräch heisst seit Bughunt 2 (A3): sein Raum hat begonnen.
             let aussagekraeftig = await zustellen([
                 Push(was: "Klingeln für ein laufendes Gespräch", inhalt: klingelPush(k),
-                     ausgang: .erneutMelden(u), folge: .schonBekannt, stand: ("Gespräch läuft weiter", laeuft)),
+                     ausgang: .erneutMelden(u), vorher: { _ = v.raumBeginnt(k) },
+                     folge: .schonBekannt, stand: ("Gespräch läuft weiter", laeuft)),
                 Push(was: "Abbruch für ein laufendes Gespräch", inhalt: abbruchPush(k),
                      ausgang: .erneutMelden(u), folge: .schonBekannt, stand: ("Gespräch läuft weiter", laeuft)),
+                Push(was: "A5: ein zweiter Anruf klingelt während des Gesprächs", inhalt: klingelPush(zweiter),
+                     ausgang: .besetzt, stand: ("abgewiesen und gemerkt, das Gespräch läuft weiter",
+                     { v.uuid(fuer: zweiter) == nil && v.kuerzlichBeendet[zweiter] != nil
+                         && v.kontexte[zweiter] == nil && laeuft() })),
+                Push(was: "A3: Abbruch für einen angenommenen Anruf, dessen Raum nie begann",
+                     inhalt: abbruchPush(k), ausgang: .erneutMeldenUndBeenden(u),
+                     vorher: { _ = v.raumBegonnen.remove(k) }, folge: .schonBekannt,
+                     stand: ("beendet, als kürzlich beendet gemerkt",
+                             { v.uuid(fuer: k) == nil && v.kuerzlichBeendet[k] != nil })),
             ])
             v.beenden(kennung: k, grund: .lokal)
             return aussagekraeftig

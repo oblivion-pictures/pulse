@@ -63,6 +63,12 @@ public final class Anrufverwaltung: NSObject {
     /// einmal klingeln lassen.
     var kuerzlichBeendet: [String: Date] = [:]
     var klingelUhren: [UUID: DispatchWorkItem] = [:]
+    /// Anrufe, für die der native Raum schon begonnen wurde
+    /// (`AnrufRaum.beitreten`). **Unterscheidet ein Gespräch von einer
+    /// Annahme, die der Server nie gesehen hat** (A3, `pushAusgang`), und
+    /// sagt einer neu geladenen Oberfläche, welcher Anruf ohne Raum dasteht
+    /// (A10, `ohneRaum`). Nur auf dem Hauptthread.
+    var raumBegonnen: Set<String> = []
 
     /// **Wie lange es hier höchstens klingelt.** Bis zum 2026-10-11 gab es
     /// keine Grenze: ein Gruppenanruf, den jemand anderes annahm, klingelte
@@ -154,6 +160,14 @@ public final class Anrufverwaltung: NSObject {
         !kennung.isEmpty && (uuid(fuer: kennung) != nil || ohneCallKitKennung == kennung)
     }
 
+    /// Der Raum dieses Gesprächs beginnt — wenn die Verwaltung es führt (aus
+    /// `AnrufRaum.beitreten`). Merkt es in `raumBegonnen`.
+    func raumBeginnt(_ kennung: String) -> Bool {
+        guard fuehrt(kennung) else { return false }
+        raumBegonnen.insert(kennung)
+        return true
+    }
+
     /// Wie das Web ein Ende angestossen hat — bestimmt, was CallKit dem
     /// Anrufverlauf erzählt (und ob überhaupt eine Rückmeldung ans Web geht).
     enum Endgrund: String {
@@ -220,6 +234,17 @@ public final class Anrufverwaltung: NSObject {
     func vergessen(_ uuid: UUID) {
         stillVergessen(uuid)
         if kennungen.isEmpty { letzterAnrufVorbei() }
+        allesVorbeiPruefen()
+    }
+
+    /// **Kein Anruf mehr, auch keiner ohne CallKit:** was nur für ein Gespräch
+    /// galt, fällt weg. Der Lautsprecher-Wunsch überlebte bis zum 2026-10-11
+    /// das Gespräch, und der nächste Anruf begann laut statt am Ohr
+    /// (Bughunt 2, A8).
+    func allesVorbeiPruefen() {
+        guard kennungen.isEmpty, !ohneCallKit else { return }
+        raumBegonnen.removeAll()
+        AnrufRaum.geteilt.ausgabeVergessen()
     }
 
     /// Aus der Buchführung nehmen, OHNE die Session-Folgen von `vergessen` —
@@ -237,6 +262,24 @@ public final class Anrufverwaltung: NSObject {
         phasen[uuid] = nil
         annahmenVomWeb.remove(uuid)
         klingelUhren.removeValue(forKey: uuid)?.cancel()
+    }
+
+    /// Ein Anruf ohne begonnenen Raum (A10, `raumZustand`): Kennung, Phase
+    /// und der Kontext aus dem Push. Ein Gespräch ohne CallKit hat keinen
+    /// Kontext und gilt als angenommen.
+    func ohneRaum() -> [String: Any]? {
+        let kennung: String
+        let phase: Phase
+        if let offen = kennungen.first(where: { !raumBegonnen.contains($0.value) }) {
+            kennung = offen.value
+            phase = phasen[offen.key] ?? .klingelt
+        } else if let k = ohneCallKitKennung, !raumBegonnen.contains(k) {
+            kennung = k
+            phase = .angenommen
+        } else {
+            return nil
+        }
+        return ["kennung": kennung, "phase": "\(phase)", "kontext": kontexte[kennung] ?? [:]]
     }
 
     func melde(_ aktion: String, _ uuid: UUID) {
