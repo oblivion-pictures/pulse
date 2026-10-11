@@ -97,6 +97,16 @@ export interface NativerEigenerZustand {
   pausiert?: boolean;
 }
 
+/** Was die Oberfläche hören will — der Befehl `lautstaerken`. */
+export interface NativerHoerwunsch {
+  /** Faktor je Nutzer-Id, immer die ganze Tabelle. */
+  je: Record<string, number>;
+  gesamt: number;
+  /** Begrenzer am Ende der Wiedergabe (`settings.audio.limiterEnabled`). Eine
+   *  ältere Hülle übergeht das Feld und spielt ohne Begrenzer, wie bisher. */
+  limiter: boolean;
+}
+
 /** Ein Knopf der nativen Ansicht, dessen Regeln im Web liegen
  *  (`SpracheRaum.wunsch` in der Hülle). */
 export interface NativerWunsch {
@@ -126,6 +136,7 @@ export interface SprachePlugin {
   lautstaerken(o: {
     lautstaerken: Record<string, number>;
     gesamt: number;
+    limiter?: boolean;
   }): Promise<NativerZustand>;
   /** Admin-Stumm- und -Taubschaltung im Kanal, je als Liste von Nutzer-Ids —
    *  die ganze Tabelle, wie bei `lautstaerken`. */

@@ -25,6 +25,7 @@ import { mitFrist, SPRACHE_FRIST_KETTE_MS, SPRACHE_FRIST_SOFORT_MS } from './bru
 import type {
   AnsichtThema,
   NativerEigenerZustand,
+  NativerHoerwunsch,
   NativerTeilnehmer,
   NativerWunsch,
   NativerZustand,
@@ -263,16 +264,14 @@ export async function spracheTaub(an: boolean): Promise<NativerZustand | null> {
 
 /**
  * Lautstärke je Nutzer und gesamt — immer die ganze Tabelle (Begründung an
- * `lautstaerken` in `SprachePlugin.swift`). Eine Hülle, die den Befehl nicht
- * kennt, erreicht diese Stelle nicht mehr: die Weiche lässt sie beim Web-Weg
- * (`SPRACHE_METHODEN`).
+ * `lautstaerken` in `SprachePlugin.swift`) —, dazu der Begrenzer am Ende der
+ * Wiedergabe als Feld, das eine ältere Hülle übergeht. Eine Hülle, die den
+ * Befehl nicht kennt, erreicht diese Stelle nicht mehr: die Weiche lässt sie
+ * beim Web-Weg (`SPRACHE_METHODEN`).
  */
-export async function spracheLautstaerken(
-  je: Record<string, number>,
-  gesamt: number
-): Promise<void> {
+export async function spracheLautstaerken(w: NativerHoerwunsch): Promise<void> {
   await rufen('lautstaerken', SPRACHE_FRIST_KETTE_MS, (p) =>
-    p.lautstaerken({ lautstaerken: je, gesamt })
+    p.lautstaerken({ lautstaerken: w.je, gesamt: w.gesamt, limiter: w.limiter })
   );
 }
 

@@ -118,10 +118,17 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
     /// Reihenfolge, die eine Brücke nicht zusagt. Der Entwurf (§4) nannte
     /// `lautstaerke({identitaet, wert})`; der Schlüssel ist hier die Nutzer-Id,
     /// weil die Einstellungen im Web so gespeichert sind.
+    ///
+    /// `limiter` (optional) schaltet den Begrenzer am Ende der Wiedergabe
+    /// (`Wiedergabebegrenzer.swift`). Ein Feld statt einer eigenen Methode: eine
+    /// ältere Hülle übergeht es folgenlos — es bleibt dann, wie es auf dem
+    /// Telefon immer war, ohne Begrenzer —, während eine neue Methode die Weiche
+    /// für jeden älteren Bau ganz auf den Web-Weg zurückwürfe.
     @objc func lautstaerken(_ call: CAPPluginCall) {
         let (je, gesamt) = Self.hoerwunsch(call)
+        let begrenzer = call.getBool("limiter")
         befehl(call, "lautstaerken") {
-            await SpracheRaum.geteilt.hoerwunschSetzen(je: je, gesamt: gesamt)
+            await SpracheRaum.geteilt.hoerwunschSetzen(je: je, gesamt: gesamt, begrenzer: begrenzer)
         }
     }
 

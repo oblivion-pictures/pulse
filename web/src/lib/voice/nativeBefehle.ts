@@ -12,6 +12,8 @@ import {
   spracheTaub,
   spracheZustand
 } from '$lib/platform/iosSprache';
+import type { NativerHoerwunsch } from '$lib/platform/iosSpracheTypen';
+import { settings } from '$lib/stores/settings.svelte';
 import { erzwungenAus, gleichErzwungen, type Erzwungen, type Override } from './erzwungen';
 import { LetzterWunsch } from './letzterWunsch';
 import type { VoiceParticipant } from './livekit.svelte';
@@ -80,8 +82,8 @@ export class NativeBefehle {
   /** Was zuletzt an Admin-Stummschaltung an die Hülle ging (`null`: in
    *  diesem Raum noch nichts). */
   #erzwungen: Erzwungen | null = null;
-  #laut = new LetzterWunsch<{ je: Record<string, number>; gesamt: number }>((w) =>
-    spracheLautstaerken(w.je, w.gesamt).catch((e: unknown) => {
+  #laut = new LetzterWunsch<NativerHoerwunsch>((w) =>
+    spracheLautstaerken(w).catch((e: unknown) => {
       // Ohne Hinweis am Bildschirm: was der Regler bewirkt, hört man selbst,
       // und beim Ziehen kämen die Meldungen im Takt der Frist. Die Konsole
       // landet im Diagnose-Gedächtnis (`diagnose/konsole.ts`).
@@ -190,9 +192,12 @@ export class NativeBefehle {
    * serielle Warteschlange — ihre Verstopfung hat am 2026-10-10 die App
    * einfrieren lassen (`LetzterWunsch`). Eine Hülle, die den Befehl nicht
    * kennt, kommt hier nicht mehr an: die Weiche lässt sie beim Web-Weg.
+   *
+   * Der Begrenzer (`limiter`) reist mit, weil er dieselbe Wiedergabe formt —
+   * gelesen hier aus der Einstellung, damit kein Aufrufer ihn vergisst.
    */
   lautstaerken(je: Record<string, number>, gesamt: number): void {
-    this.#laut.wuenschen({ je, gesamt });
+    this.#laut.wuenschen({ je, gesamt, limiter: settings.audio.limiterEnabled });
   }
 
   /**

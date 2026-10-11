@@ -223,6 +223,9 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         kanalName = ""
         // Was die Moderation in DIESEM Kanal geschaltet hat, gilt im nächsten nicht.
         DispatchQueue.main.async { SpracheStand.geteilt.erzwungenSetzen(stumm: [], taub: []) }
+        // Der Begrenzer gehört zum Sprachkanal; der nächste Beitritt hängt ihn
+        // wieder ein, wenn die Einstellung es will (`SpracheRaumTaub.swift`).
+        tonFaden.async { Self.begrenzerSetzen(false) }
     }
 
     /// `sitzung`: nur verlassen, wenn genau dieser Beitritt noch läuft. `nil`

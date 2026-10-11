@@ -178,6 +178,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             AnrufProbe.ausStartargumenten()
             AnrufPushProbe.ausStartargumenten()
             SpracheAnsichtProbe.ausStartargumenten()
+            WiedergabebegrenzerProbe.ausStartargumenten()
         #endif
         // Schnellwahl beim KALTSTART: iOS legt die Wahl in die
         // `launchOptions` und ruft `performActionFor` dann NICHT. Wer nur den

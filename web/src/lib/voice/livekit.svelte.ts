@@ -1385,6 +1385,9 @@ class VoiceRoom {
    *  Persisting happens in `settings.setLimiterEnabled` — call both. */
   setLimiterEnabled(on: boolean): void {
     this.#audioEls.setLimiterEnabled(on);
+    // iOS, nativer Weg: der Begrenzer sitzt in der Hülle; liest die schon
+    // gespeicherte Einstellung (`Wiedergabebegrenzer.swift`).
+    this.#nativ.hoeren();
   }
 
   /** Live-apply the master playback volume (0..2) to all subscribed tracks.

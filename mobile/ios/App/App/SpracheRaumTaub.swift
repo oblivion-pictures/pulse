@@ -1,3 +1,4 @@
+import Foundation
 import LiveKit
 
 /// Was die Oberfläche hören will. Die Lautstärke JEDER fremden Tonspur ergibt
@@ -40,13 +41,33 @@ extension SpracheRaum {
 
     /// Neuen Wunsch übernehmen und auf alle Spuren anwenden. `nil` lässt den
     /// bisherigen Teil stehen — eine ältere Oberfläche schickt nichts mit.
-    func hoerwunschSetzen(je: [String: Double]?, gesamt: Double?) async {
+    /// `begrenzer` (Einstellung `limiterEnabled`) hängt den
+    /// `Wiedergabebegrenzer` ein oder aus; ohne Angabe bleibt es, wie es ist.
+    /// Eingehängt wird nur, solange ein Raum steht: ein verspäteter Befehl
+    /// nach dem Verlassen hängte ihn sonst ohne Kanal ein — und er begrenzte
+    /// dann einen Anruf, der mit dem Kanal nichts zu tun hat.
+    func hoerwunschSetzen(je: [String: Double]?, gesamt: Double?, begrenzer: Bool? = nil) async {
         await aufTonFaden { [weak self] in
             guard let self else { return }
             if let je { hoerwunsch.je = je }
             if let gesamt { hoerwunsch.gesamt = gesamt }
+            if let begrenzer { Self.begrenzerSetzen(begrenzer && raum != nil) }
             alleSpurenStellen()
         }
+    }
+
+    /// Den Begrenzer am Ende der Wiedergabe ein- oder aushängen. **Nur bei
+    /// einer Änderung:** jedes Setzen hängt ihn bei WebRTC aus und wieder ein
+    /// (`AudioCustomProcessingDelegateAdapter.set`), und das setzt seine
+    /// Hüllkurve mitten im Gespräch zurück. **Nur auf `tonFaden`** — auch das
+    /// Aushängen beim Lösen des Raums (`SpracheRaum.raumLoesen`) reiht sich
+    /// dort ein, damit nie zwei Stellen zugleich am SDK-Feld schreiben.
+    static func begrenzerSetzen(_ an: Bool) {
+        let manager = AudioManager.shared
+        let eingehaengt = manager.renderPreProcessingDelegate != nil
+        guard eingehaengt != an else { return }
+        manager.renderPreProcessingDelegate = an ? Wiedergabebegrenzer.geteilt : nil
+        NSLog("[PulseSprache] Wiedergabe-Begrenzer %@", an ? "an" : "aus")
     }
 
     /// Nach einer Änderung von `taub`.

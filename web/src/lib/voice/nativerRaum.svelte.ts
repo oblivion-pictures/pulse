@@ -38,11 +38,9 @@ import type { VoiceParticipant } from './livekit.svelte';
  *
  * **Was bewusst LEER bleibt:** `cameraTracks`, `screenTracks`,
  * `localCameraTrack` tragen `livekit-client`-Spuren aus einem JS-`Room`, den
- * es hier nicht gibt; die WebView kann native Spuren nicht zeigen. Die
- * Kacheln zeichnet die native Ansicht (`SpracheAnsicht.swift`). Ebenso leer:
- * Geräteliste, Mikrofon-Pegel, Selbst-Mithören — sie hängen an einem
- * Web-Audio-Graphen. Ein Pegel bei 0 wäre eine Falschaussage, ein fehlender
- * ist eine fehlende Funktion.
+ * es hier nicht gibt; die Kacheln zeichnet die native Ansicht
+ * (`SpracheAnsicht.swift`). Ebenso leer: Mikrofon-Pegel und Selbst-Mithören —
+ * sie hängen an einem Web-Audio-Graphen (offen, Todo §1).
  */
 export class NativerRaum {
   /** Läuft der Raum (oder sein Aufbau) nativ? Treibt die Weichen im Store
@@ -198,6 +196,13 @@ export class NativerRaum {
     this.ansichtOffen = z?.ansichtOffen ?? false;
   }
 
+  /** Lautstärken und Begrenzer an die Hülle — nach jedem Ankommen und wenn
+   *  die Begrenzer-Einstellung wechselt (`voice.setLimiterEnabled`). */
+  hoeren(): void {
+    const je = $state.snapshot(settings.voice.userVolumes);
+    if (this.aktiv) this.befehle.lautstaerken(je, settings.voice.outputVolume);
+  }
+
   /** Admin-Stummschaltung im Kanal an die native Ansicht (`nativeBefehle`). */
   erzwungenAbgleichen(): void {
     const kanal = this.#wirt.channelId;
@@ -229,10 +234,7 @@ export class NativerRaum {
     // Eintrag gab es nach einem Reload nichts, woran die Seite den Raum
     // wiedererkannt hätte (Bughunt E5).
     this.#haken.melden();
-    this.befehle.lautstaerken(
-      $state.snapshot(settings.voice.userVolumes),
-      settings.voice.outputVolume
-    );
+    this.hoeren();
     this.erzwungenAbgleichen();
   }
 
@@ -265,11 +267,9 @@ export class NativerRaum {
       teilnehmer: (liste) => this.#teilnehmer(liste),
       sprechen: (identitaeten) => this.#sprechen(identitaeten),
       eigenerZustand: (e) => this.#eigenerZustand(e),
-      // Der Nutzer hat die Ansicht verlassen, nicht den Raum. Die Leiste
+      // Der Nutzer hat die Ansicht verlassen, nicht den Raum — die Leiste
       // bietet daraufhin den Griff zurück an.
-      ansichtGeschlossen: () => {
-        this.ansichtOffen = false;
-      },
+      ansichtGeschlossen: () => void (this.ansichtOffen = false),
       wunsch: (e) => this.#wunsch(e)
     });
   }
