@@ -20,7 +20,6 @@ from dcc_chat_gateway.config import get_settings
 from dcc_chat_gateway.jwks_poller import jwks_poller_loop
 from dcc_chat_gateway.db import engine
 from dcc_chat_gateway.jwks_pinning import jwks_retry_loop
-from dcc_chat_gateway.owner_admin_log import log_owner_konfiguration
 from dcc_chat_gateway.plugins import (
     ensure_hello_in_allowlist,
     list_allowed_names,
@@ -34,6 +33,7 @@ from dcc_chat_gateway.push import ensure_vapid
 from dcc_chat_gateway.routes import router
 from dcc_chat_gateway.routes.attachments import reaper_loop as attachments_reaper
 from dcc_chat_gateway.suspend_poller import suspend_poller_loop
+from dcc_chat_gateway.verbindung import melde_verbindungsstand
 from dcc_chat_gateway.voice_pull_cleanup import voice_pull_reaper_loop
 from dcc_shared.logging_setup import konfiguriere_logging
 from dcc_shared.singleworker import assert_single_worker
@@ -169,19 +169,11 @@ async def lifespan(app: FastAPI):
     # trägt die meisten In-Prozess-Limiter (messages, invites, ablage …).
     assert_single_worker("chat-gateway")
     settings = get_settings()
-    # Fail fast: a self-host must have PULSE_INSTANCE_ID set to a non-zero value.
-    # Without it every instance would compute the same pairwise-subs (DE 11 A.13).
-    # Skip in test mode (skip_redis=True) so unit tests with default settings pass.
-    if (
-        not getattr(app.state, "skip_redis", False)
-        and settings.pulse_instance_mode == "self-host"
-        and settings.pulse_instance_id == 0
-    ):
-        raise RuntimeError(
-            "PULSE_INSTANCE_ID must be set to a non-zero value on a self-host. "
-            "Set PULSE_INSTANCE_ID in your .env file to the Snowflake-ID assigned "
-            "by the Cloud at approval time."
-        )
+    # Ohne PULSE_INSTANCE_ID startet ein Self-Host seit 2026-10 trotzdem (Spec
+    # 2026-10-09, E4): er liefert Nachweis und Server-Info aus und nimmt
+    # niemanden auf, bis ``pulse-connect`` ihn verbindet (``POST /session`` →
+    # 503 ``nicht_verbunden``). Der frühere Abbruch hier schützte die
+    # pairwise-Rechnung, die mit dem Ticket-Weg entfallen ist.
     # Fail-fast: Daten aus der Pseudonym-Zeit. Ein Self-Host aktualisiert sich
     # unbeaufsichtigt alle fuenf Minuten; ohne diesen Riegel liefe er nach dem
     # Update still halb kaputt an. Details in ``altbestand_riegel``.
@@ -282,7 +274,9 @@ async def lifespan(app: FastAPI):
         # geloescht hat. Nur im Self-Host-Modus: in der Cloud gibt es niemanden,
         # der uns sperren koennte. Ohne diese Aufgabe war "Server loeschen" fuer
         # den Betreiber wirkungslos — die Instanz lief unbeirrt weiter
-        # (beobachtet 2026-07-27, s. suspend_poller.py).
+        # (beobachtet 2026-07-27, s. suspend_poller.py). Ein unverbundener
+        # Server (Instanz-Nummer 0) hat noch keinen Eintrag, den man sperren
+        # könnte, und deshalb auch keinen Poller.
         if settings.pulse_instance_mode == "self-host" and settings.pulse_instance_id:
             # Server-Name an die Cloud — beim Start und alle 6 h (instance_name.py).
             from dcc_chat_gateway.instance_name import abgleich_loop
@@ -334,9 +328,10 @@ async def lifespan(app: FastAPI):
                 name="dcc-jwks-retry",
             )
         app.state.jwks_changed_unexpectedly = False
-        # Wem gehoert diese Instanz? Einmal je Start, damit die Antwort auch
-        # dann im Protokoll steht, wenn sich noch niemand angemeldet hat.
-        log_owner_konfiguration(settings)
+        # Wem gehört diese Instanz — oder noch niemandem? Einmal je Start, damit
+        # die Antwort auch dann im Protokoll steht, wenn sich noch niemand
+        # angemeldet hat (verbindung.py).
+        melde_verbindungsstand(settings)
         # Plugin-System: log startup warning if permission mode is not 'strict'.
         log_startup_mode_warning()
         # Plugin-System: Allowlist-gegateter Load.
