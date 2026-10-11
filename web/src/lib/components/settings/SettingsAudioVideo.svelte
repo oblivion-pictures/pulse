@@ -10,9 +10,15 @@
   import Select from '$lib/components/form/Select.svelte';
   import MicGainControl from './MicGainControl.svelte';
   import OutputVolumeControl from './OutputVolumeControl.svelte';
-  import { onDestroy, onMount, untrack } from 'svelte';
+  import PttEinstellung from './PttEinstellung.svelte';
+  import {
+    androidEingaben,
+    androidEingabeWert,
+    routenOptionen,
+    routenWert
+  } from './androidAudioWahl';
+  import { onMount, untrack } from 'svelte';
   import { m } from '$lib/paraglide/messages.js';
-  import { Button } from '$lib/components/ui/button';
   import { isCapacitorIOS } from '$lib/platform/runtime';
   import { tonHqFunkSetzen } from '$lib/platform/iosTon';
 
@@ -26,29 +32,15 @@
     if (!istAndroid) return;
     void audioRouteState.aktualisieren();
   });
-  /** Optionen: Hörmuschel/Lautsprecher fix + jedes verbundene BT-Gerät. */
+  // Optionen und angezeigter Wert: `androidAudioWahl.ts` (importfrei, geprüft).
   let routeOptionen = $derived(
-    audioRouteState.liste
-      ? [
-          { value: 'earpiece', label: m.voice_bar_route_name_hoermuschel() },
-          { value: 'speaker', label: m.voice_bar_route_name_lautsprecher() },
-          ...audioRouteState.liste.devices
-            .filter((d) => d.type.startsWith('BLUETOOTH') || d.type === 'BLE_HEADSET')
-            .map((d) => ({
-              value: 'device:' + d.id,
-              label: d.name && d.name.trim() ? d.name : m.voice_bar_route_name_bt()
-            }))
-        ]
-      : []
+    routenOptionen(audioRouteState.liste, {
+      hoermuschel: m.voice_bar_route_name_hoermuschel(),
+      lautsprecher: m.voice_bar_route_name_lautsprecher(),
+      bt: m.voice_bar_route_name_bt()
+    })
   );
-  /** Der geschlossene Select zeigt das AKTUELLE Ausgabegerät. */
-  let routeWert = $derived.by(() => {
-    if (!audioRouteState.liste) return '';
-    if (audioRouteState.liste.current === 'device') {
-      return 'device:' + audioRouteState.liste.currentDeviceId;
-    }
-    return audioRouteState.liste.current === 'earpiece' ? 'earpiece' : 'speaker';
-  });
+  let routeWert = $derived(routenWert(audioRouteState.liste));
   function onRouteChange(v: string): void {
     if (v.startsWith('device:')) {
       void audioRouteState.geraetWaehlen(Number(v.slice('device:'.length)));
@@ -104,9 +96,6 @@
   // nur diesen einen zweiten Modellfall — die RNNoise-Kette schaltet der
   // NS-Schalter selbst um.
 
-  let listeningForPttKey = $state(false);
-  let pttKeyListener: ((e: KeyboardEvent) => void) | null = null;
-
   function inputInt(e: Event): number | null {
     const val = parseInt((e.currentTarget as HTMLInputElement).value, 10);
     return isNaN(val) ? null : val;
@@ -129,37 +118,6 @@
     const val = inputInt(e);
     if (val !== null) settings.setNoiseGateThresholdDb(val);
   }
-
-  function startPttCapture() {
-    // Doppel-Klick ohne zwischenzeitlichen Tastendruck: den alten Listener
-    // ZUERST entfernen, sonst überschreibt Zeile darunter pttKeyListener und
-    // der alte Closure bleibt im Capture-Phase registriert — schluckt dann
-    // jeden weiteren keydown (preventDefault/stopPropagation) bis Reload.
-    if (pttKeyListener) {
-      window.removeEventListener('keydown', pttKeyListener, true);
-      pttKeyListener = null;
-    }
-    listeningForPttKey = true;
-    const handler = (e: KeyboardEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      settings.setPttKey(e.key);
-      listeningForPttKey = false;
-      // handler direkt entfernen (nicht über die mutable Variable, die schon
-      // auf einen neueren Closure zeigen könnte).
-      window.removeEventListener('keydown', handler, true);
-      pttKeyListener = null;
-    };
-    pttKeyListener = handler;
-    window.addEventListener('keydown', handler, true);
-  }
-
-  onDestroy(() => {
-    if (pttKeyListener) {
-      window.removeEventListener('keydown', pttKeyListener, true);
-      pttKeyListener = null;
-    }
-  });
 
   let spatialDisabled = $derived(isMobile());
 
@@ -190,59 +148,17 @@
     })),
   );
 
-  // Android, Eingabe kuratiert (Nutzerwunsch 2026-10-04): NUR verbundene
-  // Geräte — das Telefonmikrofon plus das BT-Mikrofon, wenn ein BT-Gerät
-  // verbunden ist. Keine Geister-Einträge von bereits getrennten Geräten.
-  let verbundeneBtNamen = $derived(
-    (audioRouteState.liste?.devices ?? [])
-      .filter((d) => d.type.startsWith('BLUETOOTH') || d.type === 'BLE_HEADSET')
-      .map((d) => (d.name && d.name.trim() ? d.name.trim().toLowerCase() : ''))
-      .filter(Boolean)
+  // Android, Eingabe kuratiert auf verbundene Geräte (`androidAudioWahl.ts`).
+  let eingabeOptionenAndroid = $derived(
+    androidEingaben(
+      voice.inputDevices,
+      audioRouteState.liste?.devices ?? [],
+      m.settings_audio_video_microphone()
+    )
   );
-  let eingabeOptionenAndroid = $derived.by(() => {
-    // Chromium labelt BT-Mikrofone generisch („Bluetooth headset") statt mit
-    // dem Produktnamen — erkenne sie am Label-Teil „bluetooth" ODER am
-    // Produktnamen (manche Versionen tragen ihn doch).
-    const btEingaenge = voice.inputDevices.filter(
-      (d) =>
-        d.label &&
-        (d.label.toLowerCase().includes('bluetooth') ||
-          verbundeneBtNamen.some((n) => d.label.toLowerCase().includes(n)))
-    );
-    // Telefonmikrofon = default oder das erste Eingabegerät OHNE BT-Namen.
-    const telefon =
-      voice.inputDevices.find((d) => d.deviceId === 'default') ??
-      voice.inputDevices.find(
-        (d) => !btEingaenge.some((b) => b.deviceId === d.deviceId)
-      );
-    // Anzeige-Name: der hübsche native Produktname (EarFun …), wenn bekannt.
-    const hübsch = (label: string): string => {
-      const treffer = (audioRouteState.liste?.devices ?? []).find(
-        (r) => r.type.startsWith('BLUETOOTH') || r.type === 'BLE_HEADSET'
-      );
-      return treffer?.name && treffer.name.trim() ? treffer.name : label;
-    };
-    const optionen = [];
-    if (telefon) {
-      optionen.push({ value: telefon.deviceId, label: m.settings_audio_video_microphone() });
-    }
-    for (const b of btEingaenge) {
-      optionen.push({
-        value: b.deviceId,
-        label: b.label.toLowerCase().includes('bluetooth') ? hübsch(b.label) : b.label
-      });
-    }
-    return optionen;
-  });
-  /** Geschlossener Select: das aktuell aktive Eingabegerät — und wenn das
-   *  nicht mehr in der kuratierten Liste liegt (BT gerade getrennt), das
-   *  Telefonmikrofon als Default. */
-  let eingabeWertAndroid = $derived.by(() => {
-    if (eingabeOptionenAndroid.some((o) => o.value === voice.selectedInputDeviceId)) {
-      return voice.selectedInputDeviceId;
-    }
-    return eingabeOptionenAndroid[0]?.value ?? '';
-  });
+  let eingabeWertAndroid = $derived(
+    androidEingabeWert(eingabeOptionenAndroid, voice.selectedInputDeviceId)
+  );
   let ausgabeOptionen = $derived(
     voice.outputDevices.map((d) => ({
       value: d.deviceId,
@@ -485,26 +401,5 @@
   </div>
 
   <!-- ===== Feld: Push-to-Talk ===== -->
-  <div class="border-border bg-bg-input/40 flex flex-col gap-4 rounded-2xl border p-4">
-    <label class="flex cursor-pointer items-center justify-between gap-3">
-      <span class="text-text-base text-sm">{m.settings_audio_video_ptt_enable()}</span>
-      <Checkbox
-        checked={settings.voice.pttMode}
-        onchange={(e) => void voice.setPttMode((e.currentTarget as HTMLInputElement).checked)}
-        data-testid="settings-ptt-toggle"
-      />
-    </label>
-    <div class="flex items-center justify-between gap-3">
-      <span class="text-text-base text-sm">{m.settings_audio_video_ptt_key_label()}</span>
-      <Button
-        variant="secondary"
-        size="sm"
-        onclick={startPttCapture}
-        class="uppercase"
-        data-testid="settings-ptt-key"
-      >
-        {listeningForPttKey ? m.settings_audio_video_ptt_press_key() : settings.voice.pttKey}
-      </Button>
-    </div>
-  </div>
+  <PttEinstellung />
 </div>

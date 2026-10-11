@@ -2,7 +2,7 @@
   /**
    * "Tastatur"-Tab im Settings-Dialog. Listet alle ActionDefs aus
    * lib/shortcuts/actions.ts gruppiert nach Kategorie, mit Rebind-Knopf
-   * pro Zeile (Pattern aus SettingsAudioVideo::startPttCapture).
+   * pro Zeile (Pattern aus PttEinstellung::startPttCapture).
    */
   import { Button } from '$lib/components/ui/button/index.js';
   import {
