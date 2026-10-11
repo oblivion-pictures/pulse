@@ -31,6 +31,13 @@ chmod 0750 "${DATA}/uploads"
 # gehört das Verzeichnis pulse, und das chown -R oben zieht die Dateien beim
 # nächsten Start nach.
 chmod 0700 "${DATA}/pulse"
+# Ein Lauf von pulse-connect, den SIGHUP, SIGTERM oder SIGKILL trifft (Terminal
+# zu, docker stop, OOM), lässt den Nachweis liegen — sein finally läuft dann
+# nicht. Der Dienst lieferte ihn weiter unter /.well-known/pulse-verbinden aus,
+# obwohl kein Vorgang mehr zu ihm gehört. Beim Start läuft garantiert kein
+# pulse-connect (docker exec endet mit dem Container), also ist die Datei hier
+# immer ein Rest. Der Name steht auch in verbindung.py (NACHWEIS_DATEI).
+rm -f "${DATA}/pulse/verbinden-nachweis"
 
 # Also chown runtime state dirs (recreated empty on container restart)
 mkdir -p /var/run/pulse /var/log/pulse
