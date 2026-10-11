@@ -79,13 +79,18 @@ extension CAPPlugin {
     /// Meldung in EINEM Schritt auf der Brücke, sonst läse der Faden des
     /// Rufers die Tabelle (B6). `true`, wenn gemeldet wurde.
     func meldenFallsGehoert(_ name: String, _ daten: [String: Any]) async -> Bool {
-        await withCheckedContinuation { antwort in
-            brueckenFaden.async { [weak self] in
-                guard let self, self.hasListeners(name) else {
+        // Den Faden vor dem Einpacken holen — danach fasst der Rufer das
+        // Plugin nicht mehr an (`AufDerBruecke`).
+        let faden = brueckenFaden
+        let fracht = AufDerBruecke((plugin: self, daten: daten))
+        return await withCheckedContinuation { antwort in
+            faden.async {
+                let (plugin, daten) = fracht.wert
+                guard plugin.hasListeners(name) else {
                     antwort.resume(returning: false)
                     return
                 }
-                self.notifyListeners(name, data: daten)
+                plugin.notifyListeners(name, data: daten)
                 antwort.resume(returning: true)
             }
         }
@@ -96,4 +101,19 @@ extension CAPPlugin {
     var brueckenFaden: DispatchQueue {
         (bridge as? CapacitorBridge)?.dispatchQueue ?? DispatchQueue.main
     }
+}
+
+/// Was auf die Brücken-Warteschlange reist und erst dort benutzt wird.
+///
+/// **`@unchecked Sendable` ist hier eine Aussage:** wer etwas hier einpackt,
+/// fasst es auf dem Faden des Rufers nicht mehr an. Prüfen kann der
+/// Übersetzer das nicht — Capacitors Typen (`CAPPlugin`, `CAPPluginCall`) und
+/// `[String: Any]` sind nicht `Sendable`, und dass die Hörer-Tabelle eines
+/// Plugins nur auf `brueckenFaden` angefasst wird, ist eine Regel dieses
+/// Codes (s. `ereignisMelden`), keine des Typsystems. Bis zum 2026-10-11
+/// meldete der Bau an genau diesen Stellen Sendable-Warnungen (Nachzügler aus
+/// Bughunt 2).
+struct AufDerBruecke<Wert>: @unchecked Sendable {
+    let wert: Wert
+    init(_ wert: Wert) { self.wert = wert }
 }

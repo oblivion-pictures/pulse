@@ -365,14 +365,14 @@ public class AudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
         NSLog("[PulseTon] Unterbrechung %@ weiterMoeglich=%@",
               art == .began ? "begonnen" : "beendet",
               String(describing: nutzlast["weiterMoeglich"] ?? "-"))
-        notifyListeners("unterbrechung", data: nutzlast)
+        ereignisMelden("unterbrechung", nutzlast)
     }
 
     /// Headset rein/raus, AirPods verbunden — die Oberfläche soll ihre
     /// Wege-Liste neu holen statt eine veraltete zu zeigen.
     @objc private func routeGewechselt(_ nachricht: Notification) {
         let session = AVAudioSession.sharedInstance()
-        notifyListeners("routeGewechselt", data: [
+        ereignisMelden("routeGewechselt", [
             "aktuell": session.currentRoute.outputs.first?.portType.rawValue ?? "",
             "aktuellName": session.currentRoute.outputs.first?.portName ?? "",
             // **Der Tonweg ist der Teil, auf den es ankommt.** Ohne ihn kann

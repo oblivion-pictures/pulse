@@ -31,6 +31,7 @@ import UIKit
             Task {
                 await reihenfolgePruefen()
                 await hoererRennen(gegenprobe: art == "gegenprobe")
+                await gehoertPruefen()
                 NSLog("[PulseBruecke] Probe ENDE")
             }
         }
@@ -132,7 +133,8 @@ import UIKit
                                   options: [:], success: { _, _ in empfangen.dazu(1) }, error: { _ in })!
                 }
                 for h in neue { p.addEventListener(ereignis, listener: h) }
-                bruecke.async { hoererWechseln(runde + 1, neue) }
+                let naechste = AufDerBruecke(neue)
+                bruecke.async { hoererWechseln(runde + 1, naechste.wert) }
             }
             bruecke.async { hoererWechseln(0, []) }
             // Die fremden Fäden, wie LiveKits Delegaten — je 50 000 Meldungen.
@@ -157,6 +159,38 @@ import UIKit
             soll("B6 (\(gegenprobe ? "Gegenprobe, alter Weg" : "ereignisMelden")): 200 000 Meldungen "
                 + "von vier Fäden neben wechselnden Hörern überlebt, "
                 + "\(empfangen.liste.count) Zustellungen", true)
+        }
+
+        /// `meldenFallsGehoert` — seit dem 2026-10-11 über `AufDerBruecke`
+        /// statt über ein eingefangenes `self` (Sendable-Nachzügler aus
+        /// Bughunt 2): ohne Hörer `false` und nichts gemeldet, mit Hörer
+        /// `true` und genau eine Zustellung.
+        private static func gehoertPruefen() async {
+            guard let p = await plugin() else { return }
+            let empfangen = Mitschrift()
+            let hoerer = CAPPluginCall(callbackId: "probe-gehoert", methodName: "addListener",
+                                       options: [:], success: { _, _ in empfangen.dazu(1) },
+                                       error: { _ in })!
+            let faden = p.brueckenFaden
+            let fracht = AufDerBruecke((plugin: p, hoerer: hoerer))
+            let ohne = await p.meldenFallsGehoert("probe-ungehoert", ["x": 1])
+            await withCheckedContinuation { (fertig: CheckedContinuation<Void, Never>) in
+                faden.async {
+                    fracht.wert.plugin.addEventListener("probe-gehoert", listener: fracht.wert.hoerer)
+                    fertig.resume()
+                }
+            }
+            let mit = await p.meldenFallsGehoert("probe-gehoert", ["x": 2])
+            // `notifyListeners` reicht weiter an den Hauptthread; danach zählen.
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            await withCheckedContinuation { (fertig: CheckedContinuation<Void, Never>) in
+                faden.async {
+                    fracht.wert.plugin.removeEventListener("probe-gehoert", listener: fracht.wert.hoerer)
+                    fertig.resume()
+                }
+            }
+            soll("Nachzügler: meldenFallsGehoert ohne Hörer false, mit Hörer true "
+                + "(\(empfangen.liste.count) Zustellung)", !ohne && mit && empfangen.liste.count == 1)
         }
     }
 #endif

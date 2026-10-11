@@ -37,9 +37,9 @@ final class SpracheStand: ObservableObject {
 /// ist die Web-Leiste nicht erreichbar. Eine Ansicht ohne eigene Knöpfe wäre
 /// also eine, in der man nicht stummschalten kann.
 ///
-/// **Mikrofon, Taub und Auflegen fragen das Web** (`SpracheRaum.wunsch`):
-/// ihre Regeln (Admin-Stummschaltung, Sprechtaste, Watch-Party,
-/// Wiederaufnahme) liegen dort. Bis zum 2026-10-11 fehlten Taub und Auflegen
+/// **Mikrofon, Taub und Auflegen fragen das Web** (`SpracheRaum.wunschEinreihen`
+/// bzw. `wunsch`): ihre Regeln (Admin-Stummschaltung, Sprechtaste,
+/// Watch-Party, Wiederaufnahme) liegen dort. Bis zum 2026-10-11 fehlten Taub und Auflegen
 /// hier ganz, mit einer Begründung, die nicht mehr stimmte — die Brücke hatte
 /// `taub` längst, und „Auflegen gehört dem Web" heisst nicht, dass der Knopf
 /// fehlen muss, sondern dass er das Web bittet. Kamera und Ausgabe schalten
@@ -78,14 +78,14 @@ struct SpracheSteuerleiste: View {
                 an: mikroOffen, warnend: !mikroOffen, gesperrt: zwang.stumm,
                 beschriftung: mikroBeschriftung(erzwungen: zwang.stumm)
             ) {
-                try await SpracheRaum.geteilt.wunsch(.mikrofon, an: !mikroAn)
+                SpracheRaum.geteilt.wunschEinreihen(.mikrofon, an: !mikroAn, fertig: gemeldet("mikrofon"))
             }
             knopf(
                 symbol: stand.taub ? "speaker.slash.fill" : "headphones",
                 an: false, warnend: stand.taub, gesperrt: zwang.taub,
                 beschriftung: taubBeschriftung(erzwungen: zwang.taub)
             ) {
-                try await SpracheRaum.geteilt.wunsch(.taub, an: !stand.taub)
+                SpracheRaum.geteilt.wunschEinreihen(.taub, an: !stand.taub, fertig: gemeldet("taub"))
             }
             knopf(
                 symbol: kameraAn ? "video.fill" : "video.slash.fill",
@@ -94,9 +94,11 @@ struct SpracheSteuerleiste: View {
                     ? NSLocalizedString("Kamera ausschalten", comment: "Sprachkanal")
                     : NSLocalizedString("Kamera einschalten", comment: "Sprachkanal")
             ) {
-                try await SpracheRaum.geteilt.nacheinander {
+                // Der Stand wird erst in der Kette gelesen: zwei schnelle
+                // Tipps schalten so an und wieder aus, nicht zweimal an.
+                SpracheRaum.geteilt.einreihen({
                     try await SpracheRaum.geteilt.kamera(!kameraAn)
-                }
+                }, fertig: gemeldet("kamera"))
             }
             knopf(
                 symbol: lautsprecher ? "speaker.wave.2.fill" : "ear",
@@ -107,13 +109,23 @@ struct SpracheSteuerleiste: View {
             ) {
                 let neu = !lautsprecher
                 SpracheRaum.geteilt.ausgabe(neu ? "lautsprecher" : "hoermuschel")
-                await MainActor.run { lautsprecher = neu }
+                lautsprecher = neu
             }
             knopf(
                 symbol: "phone.down.fill", an: false, warnend: true,
                 beschriftung: NSLocalizedString("Auflegen", comment: "Sprachkanal")
             ) {
-                try await SpracheRaum.geteilt.wunsch(.auflegen, an: true)
+                // **Auflegen bleibt ausserhalb der Kette**, wie `verlassen`:
+                // es darf nicht hinter einem hängenden Befehl warten
+                // (`SpracheRaum.nacheinander`). Ein eigener Task ist hier also
+                // Absicht, keine Reihenfolge-Lücke.
+                Task {
+                    do {
+                        try await SpracheRaum.geteilt.wunsch(.auflegen, an: true)
+                    } catch {
+                        gemeldet("auflegen")(.failure(error))
+                    }
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -131,23 +143,9 @@ struct SpracheSteuerleiste: View {
         warnend: Bool,
         gesperrt: Bool = false,
         beschriftung: String,
-        tun: @escaping () async throws -> Void
+        tun: @escaping () -> Void
     ) -> some View {
-        Button {
-            // **Jeder Fehlschlag wird sichtbar.** Ein verschluckter Fehler ist
-            // hier der teuerste Zustand: der Knopf sähe geschaltet aus, und
-            // nichts hätte sich geändert. Im Simulator ist genau das der
-            // Normalfall (kein Mikrofon, keine Kamera).
-            Task {
-                do {
-                    try await tun()
-                } catch {
-                    NSLog("[PulseSprache] Knopf '%@' fehlgeschlagen: %@",
-                          symbol, error.localizedDescription)
-                    await MainActor.run { fehlerMelden(error.localizedDescription) }
-                }
-            }
-        } label: {
+        Button(action: tun) {
             // Auf Rot und Blau weiss, in Ruhe in der Schriftfarbe des Themas —
             // die dunkle Schrift des hellen Satzes wäre auf Blau unlesbar.
             Image(systemName: symbol)
@@ -165,6 +163,25 @@ struct SpracheSteuerleiste: View {
         }
         .disabled(gesperrt)
         .accessibilityLabel(beschriftung)
+    }
+
+    /// Das Ende eines Knopfdrucks, der Arbeit anstösst. **Jeder Fehlschlag wird
+    /// sichtbar.** Ein verschluckter Fehler ist hier der teuerste Zustand: der
+    /// Knopf sähe geschaltet aus, und nichts hätte sich geändert. Im Simulator
+    /// ist genau das der Normalfall (kein Mikrofon, keine Kamera).
+    ///
+    /// **Eingereiht wird beim Tipp, synchron** (Nachzügler aus Bughunt 2, wie
+    /// B5 für die Brücke): Mikrofon, Taub und Kamera stellen ihre Arbeit über
+    /// `SpracheRaum.einreihen` in die Befehlskette, nicht aus je einem eigenen
+    /// `Task` — zwei solche Tasks starten in keiner zugesagten Reihenfolge.
+    /// Auflegen bleibt bewusst ausserhalb (Begründung am Knopf).
+    private func gemeldet(_ knopf: String) -> (Result<Void, Error>) -> Void {
+        let fehlerMelden = fehlerMelden
+        return { ergebnis in
+            guard case .failure(let fehler) = ergebnis else { return }
+            NSLog("[PulseSprache] Knopf '%@' fehlgeschlagen: %@", knopf, fehler.localizedDescription)
+            DispatchQueue.main.async { fehlerMelden(fehler.localizedDescription) }
+        }
     }
 
     private func hintergrund(an: Bool, warnend: Bool) -> Color {
@@ -219,6 +236,28 @@ extension SpracheRaum {
         case .taub: try await nacheinander { await self.taubStellen(an) }
         case .auflegen: await selbstAuflegen()
         }
+    }
+
+    /// Wie `wunsch` für Mikrofon und Taub, aber schon beim Ruf eingereiht: der
+    /// Wunsch ans Web ist selbst ein Glied der Kette. Zwei schnelle Tipps
+    /// erreichen das Web so in ihrer Reihenfolge, und ein Befehl, den das Web
+    /// daraufhin schickt, reiht sich hinter ihnen ein. Hört das Web nicht zu,
+    /// schaltet die Hülle hier selbst — direkt, denn sie IST schon in der Kette
+    /// (`nacheinander` von hier aus wartete auf sich selbst).
+    ///
+    /// Auflegen gehört nicht hierher, s. `nacheinander`.
+    func wunschEinreihen(_ w: Wunsch, an: Bool, fertig: @escaping (Result<Void, Error>) -> Void) {
+        einreihen({
+            if await self.wunschAnWeb?(w, an) == true {
+                if w == .auflegen { self.auflegenAbsichern() }
+                return
+            }
+            switch w {
+            case .mikrofon: try await self.mikrofon(an)
+            case .taub: await self.taubStellen(an)
+            case .auflegen: await self.selbstAuflegen()
+            }
+        }, fertig: fertig)
     }
 
     /// **Auflegen muss immer gehen.** Antwortet das Web nicht binnen vier

@@ -63,12 +63,12 @@ extension AudioSessionPlugin {
         z.playCommand.isEnabled = true
         z.pauseCommand.isEnabled = true
         z.playCommand.addTarget { [weak self] _ in
-            self?.notifyListeners("fernbefehl", data: ["befehl": "laut"])
+            self?.ereignisMelden("fernbefehl", ["befehl": "laut"])
             MPNowPlayingInfoCenter.default().playbackState = .playing
             return .success
         }
         z.pauseCommand.addTarget { [weak self] _ in
-            self?.notifyListeners("fernbefehl", data: ["befehl": "stumm"])
+            self?.ereignisMelden("fernbefehl", ["befehl": "stumm"])
             MPNowPlayingInfoCenter.default().playbackState = .paused
             return .success
         }

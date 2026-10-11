@@ -195,17 +195,17 @@ struct SpracheAnsicht: View {
 
     /// Front ↔ Rück. Sitzt auf der eigenen Kachel statt in der Knopfreihe
     /// (Begründung an `SpracheSteuerleiste`).
+    ///
+    /// Eingereiht beim Tipp, nicht aus einem eigenen `Task` (Nachzügler aus
+    /// Bughunt 2, s. `SpracheSteuerleiste.gemeldet`).
     private func kameraUmschalten() {
         let sprache = SpracheRaum.geteilt
-        Task {
-            do {
-                try await sprache.nacheinander {
-                    try await sprache.kameraSeite(front: !sprache.kameraVorn)
-                }
-            } catch {
-                await MainActor.run { fehler = error.localizedDescription }
-            }
-        }
+        sprache.einreihen({
+            try await sprache.kameraSeite(front: !sprache.kameraVorn)
+        }, fertig: { ergebnis in
+            guard case .failure(let fehlschlag) = ergebnis else { return }
+            DispatchQueue.main.async { fehler = fehlschlag.localizedDescription }
+        })
     }
 
     /// **Die Reihenfolge wird festgelegt, nicht übernommen.** `remoteParticipants`

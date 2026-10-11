@@ -84,6 +84,6 @@ public class SchnellwahlPlugin: CAPPlugin, CAPBridgedPlugin {
     func zielMelden(_ pfad: String) {
         // Aufbewahrt, weil ein Kaltstart die Wahl liefert, lange bevor die
         // entfernte Web-App geladen ist.
-        notifyListeners("gewaehlt", data: ["pfad": pfad], retainUntilConsumed: true)
+        ereignisMelden("gewaehlt", ["pfad": pfad], aufbewahren: true)
     }
 }
