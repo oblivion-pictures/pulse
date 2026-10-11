@@ -43,7 +43,7 @@
 
 | Etappe | Zweig | Was danach live ist |
 |---|---|---|
-| 0 | `chore/org-umzug-mediamtx`, `chore/org-umzug` | Repo und Bauwege unter `github.com/oblivion-pictures` |
+| 0 | `chore/org-umzug-mediamtx`, `chore/org-umzug` | Repo und Bauwege unter `github.com/oblivion-pictures` — **erledigt 2026-10-11** (PR #533, #534) |
 | 1 | `feat/verbinden-cloud` | Cloud kann Server per Gerätecode verbinden (noch niemand ruft es) |
 | 2 | `feat/verbinden-server` | Image startet unverbunden und bringt `pulse-connect` mit |
 | 3 | `feat/verbinden-seite` | Bestätigungsseite `howispulse.com/verbinden` |
@@ -59,19 +59,28 @@ Ausrollen in genau dieser Reihenfolge. Der Installer (4) druckt den Link auf die
 
 Hintergrund: GitHub verschiebt beim Repo-Umzug Issues, PRs, Secrets und leitet Web- und Git-Adressen um. **Container-Pakete bleiben beim persönlichen Konto**, ihre Verknüpfung fällt weg, und die Workflows des umgezogenen Repos verlieren den Zugriff darauf. Deshalb müssen alle Bauwege auf `ghcr.io/oblivion-pictures/...` schreiben, und die Cloud muss im selben Schritt von dort ziehen.
 
+**Erledigt am 2026-10-11** (Tasks 0.1 bis 0.4, PR #533 und #534). Abweichungen vom Text unten:
+- Die 2FA-Pflicht der Organisation war schon an, Actions waren schon für alle erlaubt; das Repo vergab schon vorher nur Leserechte an den Workflow-Token, die Workflows fordern `packages: write` ausdrücklich an — der Umzug änderte daran nichts. Übertragen per API (`POST /repos/…/transfer`), dafür bekam der `gh`-Token `admin:org` und `read:packages`.
+- GitHub-Apps nur für `pulse`: laut Eigentümer keine. Eine vergessene App lässt sich nachträglich in der Organisation installieren.
+- Task 0.2 zog zusätzlich die Kommentare in `infra/mediamtx-fork/{Dockerfile,README.md}` nach und ergänzte dort die Reihenfolge-Regel: Beim nächsten neuen MediaMTX-Tag (auch nur `PULSE_REVISION`) wechseln Namensraum UND Tag zugleich in allen drei Compose-Dateien, weil der Workflow nur noch unter `oblivion-pictures` baut.
+- Task 0.3 zog zusätzlich `infra/self-host/README.md:113` (Quelle des MediaMTX im Self-Host-Bild) und `CLAUDE.md` nach. Der Prüfbefehl in Step 7 lässt drei Kommentarzeilen ohne `pulse-mediamtx` in derselben Zeile durch — Lücke im Filter, nicht im Stand.
+- Das Gate war zuerst rot (`pnpm check`, `itemSizeEstimate` in `MessageList.svelte`): lokal fehlte der `virtua`-Patch aus dem Pull desselben Tages. `pnpm install --frozen-lockfile` behob es, kein Code betroffen.
+- Ergebnis: alle neuen Pakete unter `ghcr.io/oblivion-pictures/` privat (`pulse`, `pulse-mediamtx`, sieben Cloud-Dienste); Cloud läuft auf den neuen Bildern, MediaMTX unberührt; der Spiegel `registry.howispulse.com` bekam mit dem neuen Token den Stand von #534.
+- Offen: Git-Remote auf Mac und Windows (Task 0.1 Step 6; hier und auf dem Hetzner umgestellt, netcup hat keinen Klon).
+
 ### Task 0.1: Organisation anlegen und Repo übertragen (Eigentümer, im Browser)
 
 **Files:** keine.
 
 - [x] **Step 1: Organisation anlegen.** Erledigt am 2026-10-10: `oblivion-pictures`, Plan *Free*, Kontaktadresse die des Eigentümers, Besitzer `oblivion8282-1337`.
-- [ ] **Step 2: Einstellungen der Organisation.**
+- [x] **Step 2: Einstellungen der Organisation.**
   - *Settings → Authentication security*: „Require two-factor authentication“ einschalten (wer das Organisationskonto übernimmt, erreicht jeden Auto-Updater; Spec §5).
   - *Settings → Actions → General*: „Allow all actions and reusable workflows“ (gebraucht werden u. a. `contributor-assistant`, `dtolnay`, `astral-sh`, `pnpm`, `Swatinem`, `apple-actions`, `android-actions`).
   - *Settings → Packages*: Erstellen öffentlicher **und** privater Pakete erlauben.
   - *Settings → Personal access tokens*: klassische Tokens nicht sperren (der netcup zieht mit einem klassischen `read:packages`-Token).
-- [ ] **Step 3: Installierte GitHub-Apps prüfen.** Persönliches Konto → *Settings → Applications*: Apps mit „selected repositories“, die `pulse` enthalten, nach dem Umzug in der Organisation neu installieren.
-- [ ] **Step 4: Repo übertragen.** `github.com/oblivion8282-1337/pulse` → *Settings → Danger Zone → Transfer* → Ziel `oblivion-pictures`. **Danach nie wieder ein Repo namens `pulse` unter dem persönlichen Konto anlegen** (sonst erlischt die Umleitung).
-- [ ] **Step 5: `REGISTRY_PUSH_TOKEN` neu setzen.** Beim Lesen der netcup-`.env` geriet der Wert am 2026-10-09 in das lokale Protokoll eines Suchlaufs. Neues Passwort für den Registry-Benutzer `pulse-ci` erzeugen (Ablauf in `infra/prod/DEPLOY.md`, Abschnitt Registry), auf dem netcup in `~/pulse/infra/prod/.env` eintragen, im Repo unter *Settings → Secrets → Actions* `REGISTRY_PUSH_TOKEN` ersetzen.
+- [x] **Step 3: Installierte GitHub-Apps prüfen.** Persönliches Konto → *Settings → Applications*: Apps mit „selected repositories“, die `pulse` enthalten, nach dem Umzug in der Organisation neu installieren.
+- [x] **Step 4: Repo übertragen.** `github.com/oblivion8282-1337/pulse` → *Settings → Danger Zone → Transfer* → Ziel `oblivion-pictures`. **Danach nie wieder ein Repo namens `pulse` unter dem persönlichen Konto anlegen** (sonst erlischt die Umleitung).
+- [x] **Step 5: `REGISTRY_PUSH_TOKEN` neu setzen.** Beim Lesen der netcup-`.env` geriet der Wert am 2026-10-09 in das lokale Protokoll eines Suchlaufs. Neues Passwort für den Registry-Benutzer `pulse-ci` erzeugen (Ablauf in `infra/prod/DEPLOY.md`, Abschnitt Registry), auf dem netcup in `~/pulse/infra/prod/.env` eintragen, im Repo unter *Settings → Secrets → Actions* `REGISTRY_PUSH_TOKEN` ersetzen.
 - [ ] **Step 6: Git-Remote auf diesem Rechner umstellen.**
 
 ```bash
@@ -87,13 +96,13 @@ Das Self-Host-Image kopiert MediaMTX aus `ghcr.io/oblivion8282-1337/pulse-mediam
 **Files:**
 - Modify: `.github/workflows/mediamtx-fork.yml:13-14,101-102`
 
-- [ ] **Step 1: Zweig anlegen.**
+- [x] **Step 1: Zweig anlegen.**
 
 ```bash
 git checkout main && git pull --ff-only && git checkout -b chore/org-umzug-mediamtx
 ```
 
-- [ ] **Step 2: Namen umstellen.** In `.github/workflows/mediamtx-fork.yml` jedes `ghcr.io/oblivion8282-1337/pulse-mediamtx` durch `ghcr.io/oblivion-pictures/pulse-mediamtx` ersetzen (Zeilen 13, 14, 101, 102):
+- [x] **Step 2: Namen umstellen.** In `.github/workflows/mediamtx-fork.yml` jedes `ghcr.io/oblivion8282-1337/pulse-mediamtx` durch `ghcr.io/oblivion-pictures/pulse-mediamtx` ersetzen (Zeilen 13, 14, 101, 102):
 
 ```yaml
           tags: |
@@ -101,12 +110,12 @@ git checkout main && git pull --ff-only && git checkout -b chore/org-umzug-media
             ghcr.io/oblivion-pictures/pulse-mediamtx:latest
 ```
 
-- [ ] **Step 3: Prüfen, dass nichts übrig ist.**
+- [x] **Step 3: Prüfen, dass nichts übrig ist.**
 
 Run: `grep -n "oblivion8282-1337" .github/workflows/mediamtx-fork.yml`
 Expected: keine Ausgabe.
 
-- [ ] **Step 4: Commit und landen.** Die Änderung betrifft nur CI (`NON_USER_FACING`), kein Changelog. Der Push auf `main` löst den Fork-Bau aus (Pfad-Filter enthält die Workflow-Datei). Die Cloud bleibt unberührt, weil `infra/prod/docker-compose.yml` den alten Namensraum pinnt.
+- [x] **Step 4: Commit und landen.** Die Änderung betrifft nur CI (`NON_USER_FACING`), kein Changelog. Der Push auf `main` löst den Fork-Bau aus (Pfad-Filter enthält die Workflow-Datei). Die Cloud bleibt unberührt, weil `infra/prod/docker-compose.yml` den alten Namensraum pinnt.
 
 ```bash
 git add .github/workflows/mediamtx-fork.yml
@@ -114,7 +123,7 @@ git commit -m "ci: MediaMTX-Fork baut in den Namensraum oblivion-pictures"
 bash scripts/ship.sh
 ```
 
-- [ ] **Step 5: Auf den grünen Bau warten.**
+- [x] **Step 5: Auf den grünen Bau warten.**
 
 Run: `gh run list --workflow mediamtx-fork.yml --limit 1`
 Expected: `completed  success`. Erst danach Task 0.3.
@@ -130,13 +139,13 @@ Expected: `completed  success`. Erst danach Task 0.3.
 - Modify: `web/src/lib/legal/impressum.md:68`, `web/src/lib/legal/drittanbieter.md:7,159`, `.github/workflows/cla.yml:51`
 - Modify: `infra/self-host/README.md:14`, `infra/prod/DEPLOY.md:14,396`, `docs/ONBOARDING.md:63` (Behauptungen über Bild- und Repo-Adressen)
 
-- [ ] **Step 1: Zweig anlegen.**
+- [x] **Step 1: Zweig anlegen.**
 
 ```bash
 git checkout main && git pull --ff-only && git checkout -b chore/org-umzug
 ```
 
-- [ ] **Step 2: `ci.yml`.** Zeilen 310–311:
+- [x] **Step 2: `ci.yml`.** Zeilen 310–311:
 
 ```yaml
           tags: |
@@ -144,7 +153,7 @@ git checkout main && git pull --ff-only && git checkout -b chore/org-umzug
             ghcr.io/oblivion-pictures/pulse-${{ matrix.name }}:sha-${{ steps.sha.outputs.short }}
 ```
 
-- [ ] **Step 3: `allinone.yml`.** Zeile 76 `IMAGE: ghcr.io/oblivion-pictures/pulse`. Kopfkommentar 4–9 auf `ghcr.io/oblivion-pictures/pulse:…` ziehen. Im Spiegel-Schritt (Zeilen 327–331) die Quelle aus `IMAGE` ableiten und den Spiegelnamen **unverändert `pulse-allinone`** lassen (auth-svc erzwingt ihn in `routes_registry_auth.py:54`, Bestandsserver ziehen ihn):
+- [x] **Step 3: `allinone.yml`.** Zeile 76 `IMAGE: ghcr.io/oblivion-pictures/pulse`. Kopfkommentar 4–9 auf `ghcr.io/oblivion-pictures/pulse:…` ziehen. Im Spiegel-Schritt (Zeilen 327–331) die Quelle aus `IMAGE` ableiten und den Spiegelnamen **unverändert `pulse-allinone`** lassen (auth-svc erzwingt ihn in `routes_registry_auth.py:54`, Bestandsserver ziehen ihn):
 
 ```yaml
         env:
@@ -168,14 +177,14 @@ git checkout main && git pull --ff-only && git checkout -b chore/org-umzug
 
 Prüfen, dass `IMAGE` im Job `merge` als Umgebungsvariable verfügbar ist (`env:` auf Workflow-Ebene, Zeile 76 — ja, dort steht es). Der Rest des Schritts bleibt.
 
-- [ ] **Step 4: Self-Host-Dockerfile.** Zeile 210:
+- [x] **Step 4: Self-Host-Dockerfile.** Zeile 210:
 
 ```dockerfile
 FROM ghcr.io/oblivion-pictures/pulse-mediamtx:${PULSE_MEDIAMTX_TAG} AS mediamtx-fork
 ```
 Zeile 8 (Kopfkommentar) auf `ghcr.io/oblivion-pictures/pulse:stable`, Zeile 321 `org.opencontainers.image.source="https://github.com/oblivion-pictures/pulse"`.
 
-- [ ] **Step 5: Cloud-Compose und Cloud-Updater im Repo.** In `infra/prod/docker-compose.yml` jedes `ghcr.io/oblivion8282-1337/pulse-` **außer** dem Fork `pulse-mediamtx:1.19.1-pulse7` durch `ghcr.io/oblivion-pictures/pulse-` ersetzen (`pulse-mediamtx-auth-hook` zieht mit um). In `infra/prod/pulse-update.sh` den Kommentar in Zeile 27 (`ghcr.io/oblivion-pictures/pulse-*:latest`) und die Liste:
+- [x] **Step 5: Cloud-Compose und Cloud-Updater im Repo.** In `infra/prod/docker-compose.yml` jedes `ghcr.io/oblivion8282-1337/pulse-` **außer** dem Fork `pulse-mediamtx:1.19.1-pulse7` durch `ghcr.io/oblivion-pictures/pulse-` ersetzen (`pulse-mediamtx-auth-hook` zieht mit um). In `infra/prod/pulse-update.sh` den Kommentar in Zeile 27 (`ghcr.io/oblivion-pictures/pulse-*:latest`) und die Liste:
 
 ```bash
 APP_IMAGES=(
@@ -192,17 +201,17 @@ APP_IMAGES=(
 Run: `grep -n "oblivion8282-1337" infra/prod/docker-compose.yml infra/prod/pulse-update.sh`
 Expected: genau eine Zeile, die `pulse-mediamtx:1.19.1-pulse7` (bleibt bis zum nächsten Versionssprung; ein Wechsel erzeugt den MediaMTX-Container neu und reißt Streams ab).
 
-- [ ] **Step 6: Quellcode-Links.** `impressum.md:68`, `drittanbieter.md:7` und `:159`, `cla.yml:51`: `github.com/oblivion8282-1337/pulse` → `github.com/oblivion-pictures/pulse`. **Nicht anfassen:** die Adresse `249562202+oblivion8282-1337@users.noreply.github.com` (CLAUDE.md, `scripts/gate.sh:103`, Patch-Kopf) und `allowlist: 'oblivion8282-1337,*[bot]'` in `cla.yml:53` (Benutzername, bleibt).
+- [x] **Step 6: Quellcode-Links.** `impressum.md:68`, `drittanbieter.md:7` und `:159`, `cla.yml:51`: `github.com/oblivion8282-1337/pulse` → `github.com/oblivion-pictures/pulse`. **Nicht anfassen:** die Adresse `249562202+oblivion8282-1337@users.noreply.github.com` (CLAUDE.md, `scripts/gate.sh:103`, Patch-Kopf) und `allowlist: 'oblivion8282-1337,*[bot]'` in `cla.yml:53` (Benutzername, bleibt).
 
 Run: `grep -rn "github.com/oblivion8282-1337" web/src .github`
 Expected: keine Ausgabe.
 
-- [ ] **Step 7: Behauptungen in der Doku.** `infra/self-host/README.md:14` (`ghcr.io/oblivion8282-1337/pulse-allinone` → `ghcr.io/oblivion-pictures/pulse`), `infra/prod/DEPLOY.md:14` (`ghcr.io/oblivion8282-1337/pulse-*` → `ghcr.io/oblivion-pictures/pulse-*`) und `:396` (`…/pulse-allinone:edge` → `ghcr.io/oblivion-pictures/pulse:edge`), `docs/ONBOARDING.md:63` (Klon-Adresse → `https://github.com/oblivion-pictures/pulse.git`). Datierte Dokumente unter `docs/plans/`, `docs/superpowers/plans/` und `docs/2026-*` sind Historie und bleiben. Die `pulse-mediamtx`-Fundstellen (`infra/self-host/README.md:113`, `infra/mediamtx-fork/*`, `infra/dev-remote/docker-compose.yml:290`, `streaming/server/docker-compose.yml:45`) bleiben bis zum nächsten MediaMTX-Versionssprung auf dem alten Namensraum, wie die Pins.
+- [x] **Step 7: Behauptungen in der Doku.** `infra/self-host/README.md:14` (`ghcr.io/oblivion8282-1337/pulse-allinone` → `ghcr.io/oblivion-pictures/pulse`), `infra/prod/DEPLOY.md:14` (`ghcr.io/oblivion8282-1337/pulse-*` → `ghcr.io/oblivion-pictures/pulse-*`) und `:396` (`…/pulse-allinone:edge` → `ghcr.io/oblivion-pictures/pulse:edge`), `docs/ONBOARDING.md:63` (Klon-Adresse → `https://github.com/oblivion-pictures/pulse.git`). Datierte Dokumente unter `docs/plans/`, `docs/superpowers/plans/` und `docs/2026-*` sind Historie und bleiben. Die `pulse-mediamtx`-Fundstellen (`infra/self-host/README.md:113`, `infra/mediamtx-fork/*`, `infra/dev-remote/docker-compose.yml:290`, `streaming/server/docker-compose.yml:45`) bleiben bis zum nächsten MediaMTX-Versionssprung auf dem alten Namensraum, wie die Pins.
 
 Run: `git grep -n "oblivion8282-1337" -- ':!*.patch' ':!scripts/gate.sh' ':!CLAUDE.md' ':!docs/plans' ':!docs/superpowers/plans' ':!docs/2026-*' | grep -Ev "pulse-mediamtx([: ]|$)" | grep -v "allowlist:"`
 Expected: keine Ausgabe.
 
-- [ ] **Step 8: Gate und Commit.** Der Impressum-Text ist für Nutzer sichtbar, ändert aber nur den Link; kein eigener Changelog-Eintrag.
+- [x] **Step 8: Gate und Commit.** Der Impressum-Text ist für Nutzer sichtbar, ändert aber nur den Link; kein eigener Changelog-Eintrag.
 
 ```bash
 bash scripts/gate.sh
@@ -218,19 +227,19 @@ Erst landen (`bash scripts/ship.sh`), wenn der Eigentümer für Task 0.4 bereits
 
 Zwei Fallen (Inventur 2026-10-09): Wird nur die Compose-Datei umgestellt, hält der Updater alles für „schon ausgeliefert“ und schweigt; wird nur das Skript umgestellt, fehlen die Bilder und er schreibt alle zwei Minuten eine Rückfall-Zeile. **Beide Dateien in einem Schritt.** Die Server-Compose ist vom Repo abgedriftet (Redis `--save ""` fehlt dort) — deshalb nur die Bildzeilen ändern, nicht die ganze Datei kopieren.
 
-- [ ] **Step 1: Warten, bis CI die neuen Bilder gebaut hat.**
+- [x] **Step 1: Warten, bis CI die neuen Bilder gebaut hat.**
 
 Run: `gh run list --workflow ci.yml --limit 1`
 Expected: `completed  success` für den Merge-Commit aus Task 0.3.
 
-- [ ] **Step 2: Abholbarkeit auf dem netcup prüfen (nur lesen).**
+- [x] **Step 2: Abholbarkeit auf dem netcup prüfen (nur lesen).**
 
 ```bash
 ssh michael@159.195.150.54 'docker manifest inspect ghcr.io/oblivion-pictures/pulse-auth:latest >/dev/null && echo OK'
 ```
 Expected: `OK`. Bei `unauthorized`: der klassische Token des Eigentümers braucht Zugriff auf die Organisation (Task 0.1 Step 2).
 
-- [ ] **Step 3: Beide Dateien in einem Zug umstellen** (Caddy-/Inode-Falle beachten: `sed -i` auf Compose ist hier unkritisch, weil Docker die Datei nicht einhängt).
+- [x] **Step 3: Beide Dateien in einem Zug umstellen** (Caddy-/Inode-Falle beachten: `sed -i` auf Compose ist hier unkritisch, weil Docker die Datei nicht einhängt).
 
 ```bash
 ssh michael@159.195.150.54 '
@@ -242,14 +251,14 @@ ssh michael@159.195.150.54 '
 ```
 Expected: nur die `pulse-mediamtx:1.19.1-pulse7`-Zeile.
 
-- [ ] **Step 4: Den nächsten Updater-Lauf beobachten.**
+- [x] **Step 4: Den nächsten Updater-Lauf beobachten.**
 
 ```bash
 ssh michael@159.195.150.54 'sleep 150; tail -n 20 ~/pulse/infra/prod/pulse-update.log'
 ```
 Expected: eine Zeile, die das Ausliefern meldet, danach `docker ps` mit frisch gestarteten `pulse_*`-Diensten; https://howispulse.com lädt.
 
-- [ ] **Step 5: Sicherungskopien entfernen**, wenn die Cloud läuft: `ssh michael@159.195.150.54 'rm ~/pulse/infra/prod/*.vor-umzug'`.
+- [x] **Step 5: Sicherungskopien entfernen**, wenn die Cloud läuft: `ssh michael@159.195.150.54 'rm ~/pulse/infra/prod/*.vor-umzug'`.
 
 ---
 
