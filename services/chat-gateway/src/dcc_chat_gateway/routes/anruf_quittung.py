@@ -1,7 +1,7 @@
 """Die Quittung eines Anruf-Endes (iOS-Bughunt 2 vom 2026-10-11, A6).
 
-Eigene Datei, weil ``anrufe.py`` schon über der Grössen-Policy liegt; die
-Hilfen (Mitgliedschaft, handelndes Gerät, Push-Umfeld) kommen von dort.
+Eigene Datei, weil ``anrufe.py`` über der Grössen-Policy lag; die Hilfen
+(Mitgliedschaft, handelndes Gerät, Push-Umfeld) kommen aus ``anruf_hilfen.py``.
 Warum es die Quittung gibt, steht im Kopf von ``anruf_push.py``.
 """
 
@@ -12,7 +12,7 @@ from fastapi import APIRouter, Request, status
 from dcc_chat_gateway import anruf_push
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.routes._deps import CloudOnly
-from dcc_chat_gateway.routes.anrufe import (
+from dcc_chat_gateway.routes.anruf_hilfen import (
     AktionDep,
     _anruf_als_mitglied,
     _handelndes_geraet,
