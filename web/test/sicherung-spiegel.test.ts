@@ -18,7 +18,7 @@ import { leseSegmentKopf } from '../src/lib/ablage/segment.ts';
 import { leseRahmenFolge } from '../src/lib/ablage/format.ts';
 import {
 	ausWire,
-	NUTZLAST_FASSUNG,
+	grabstein,
 	type AblageNachricht,
 } from '../src/lib/ablage/nutzlast.ts';
 
@@ -32,22 +32,6 @@ function nachricht(id: string, inhalt: string): AblageNachricht {
 		reply_to_id: null,
 		attachments: [],
 	} as unknown as Parameters<typeof ausWire>[0]);
-}
-
-/** Dieselbe Konstruktion wie `andock.ts::sicherungGrabstein` — der Stein
- *  trägt nur die Id, alles andere ist leer. */
-function grabstein(id: string): AblageNachricht {
-	return {
-		fassung: NUTZLAST_FASSUNG,
-		id,
-		autor: '',
-		inhalt: '',
-		zeit: new Date().toISOString(),
-		bearbeitet: null,
-		antwortAuf: null,
-		anhaenge: [],
-		geloescht: true,
-	};
 }
 
 test('schreibrechtHalten (B1) — abgeben beendet den haltenden Callback, die Sperre fällt', async () => {

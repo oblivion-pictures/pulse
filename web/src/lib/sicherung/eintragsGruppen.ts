@@ -28,8 +28,10 @@
  * später noch kommt, und die Ausgabe nennt für jede ihrer lokalen IDs einen
  * Stein: auf dem wiederherstellenden Gerät kann jede davon liegen.
  *
- * Trägt der Stein einen Autor, trifft er nur Gruppen DIESES Autors; ältere
- * Steine tragen keinen (`autor: ''`) und treffen ihre lokale ID wie bisher.
+ * Trägt der Stein einen Autor, trifft er nur Gruppen DIESES Autors, und zu
+ * seinen Ziel-IDs gehört dann auch die Kennung K (unter der die Nachricht
+ * beim Verfasser und im Archiv liegt). Ältere Steine tragen keinen Autor
+ * (`autor: ''`) und treffen nur ihre eigene lokale ID.
  *
  * Importfrei bis auf erweiterungspflichtige Relativpfade (Node-Testläufer).
  */
@@ -48,9 +50,22 @@ interface Gruppe {
 	kanonisch: string | null;
 }
 
-/** Die lokalen IDs, die ein Grabstein-Rahmen trifft — heute seine eigene. */
+/** Die Kennung K eines Steins, der seinen Autor nennt (seit 2026-10-11,
+ *  `ablage/nutzlast.ts::grabstein`), sonst `null`: die Kennung allein wählt
+ *  der Absender frei, erst zusammen mit dem Autor zählt sie. */
+function steinKennung(eintrag: SicherungEintrag): string | null {
+	const { autor, kryptoId } = eintrag.nachricht;
+	return autor !== '' && kryptoId ? kryptoId : null;
+}
+
+/** Die lokalen IDs, die ein Grabstein-Rahmen trifft: seine eigene, und —
+ *  nennt er seinen Autor — auch die Kennung K als LOKALE ID: unter K liegt
+ *  die Nachricht beim Verfasser und im Archiv. Ein Stein ohne Autor nennt
+ *  nur sich selbst. */
 function steinZiele(eintrag: SicherungEintrag): string[] {
-	return [eintrag.nachricht.id];
+	const { id } = eintrag.nachricht;
+	const kennung = steinKennung(eintrag);
+	return kennung !== null && kennung !== id ? [id, kennung] : [id];
 }
 
 function istStein(eintrag: SicherungEintrag): boolean {
@@ -182,6 +197,8 @@ export class EintragsGruppen {
 		const gruppe = this.gruppen.get(ziel)!;
 		if (!istStein(gruppe.eintrag)) gruppe.eintrag = stein;
 		gruppe.autor ||= n.autor;
+		// Die Kennung eines Steins mit Autor gilt wie die eines Rahmens.
+		gruppe.kanonisch ??= steinKennung(stein);
 		for (const id of ziele) {
 			gruppe.lokaleIds.add(id);
 			this.lokaleIdMerken(kanalId, id, ziel);

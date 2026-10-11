@@ -319,35 +319,47 @@ export function verlaufAlleLesen(kontoId: string): Promise<Satz[]> {
   );
 }
 
-/** Die Anhang-IDs eines Satzes, oder `[]` — für den Grabstein-Weg, der die
- *  zugehörigen Anhang-Dateien aus Archiv und Geräte-Cache mitentfernen muss.
- *  Wirft nie. */
-export function verlaufSatzAnhangIds(
+/** Der Satz unter dieser Nachrichten-ID, wenn er diesem Konto gehört —
+ *  sonst `undefined`. */
+export function verlaufSatzLesen(
   kanalId: string,
   nachrichtId: string,
   kontoId: string
-): Promise<string[]> {
+): Promise<Satz | undefined> {
   const schluessel = sortierSchluessel(kanalId, nachrichtId);
   return mitVerbindung(
     (db) =>
-      new Promise<string[]>((resolve, reject) => {
+      new Promise<Satz | undefined>((resolve, reject) => {
         const tx = db.transaction(STORE_NACHRICHTEN, 'readonly');
         const anfrage = tx.objectStore(STORE_NACHRICHTEN).get(schluessel);
         anfrage.onsuccess = () => {
-          const satz = anfrage.result as { anhaenge?: unknown; kontoId?: string } | undefined;
-          if (!satz || satz.kontoId !== kontoId || !Array.isArray(satz.anhaenge)) {
-            resolve([]);
-            return;
-          }
-          resolve(
-            satz.anhaenge
-              .map((a) => (a && typeof a === 'object' && typeof (a as { id?: unknown }).id === 'string' ? (a as { id: string }).id : null))
-              .filter((id): id is string => id !== null)
-          );
+          const satz = anfrage.result as Satz | undefined;
+          resolve(satz !== undefined && gehoertZuKonto(satz, kontoId) ? satz : undefined);
         };
         anfrage.onerror = () => reject(anfrage.error);
       })
   );
+}
+
+/** Die Anhang-IDs eines Satzes, oder `[]` — für den Grabstein-Weg, der die
+ *  zugehörigen Anhang-Dateien aus Archiv und Geräte-Cache mitentfernen muss.
+ *  Ein Anhang ohne `id` als Zeichenkette fällt heraus. */
+export function satzAnhangIds(satz: Satz | undefined): string[] {
+  const anhaenge = satz?.anhaenge;
+  if (!Array.isArray(anhaenge)) return [];
+  return anhaenge.flatMap((a) => {
+    const id = a && typeof a === 'object' ? (a as { id?: unknown }).id : undefined;
+    return typeof id === 'string' ? [id] : [];
+  });
+}
+
+/** `satzAnhangIds` des Satzes unter dieser Nachrichten-ID (`verlaufSatzLesen`). */
+export async function verlaufSatzAnhangIds(
+  kanalId: string,
+  nachrichtId: string,
+  kontoId: string
+): Promise<string[]> {
+  return satzAnhangIds(await verlaufSatzLesen(kanalId, nachrichtId, kontoId));
 }
 
 /** Die lokalen Nachrichten-IDs aller Sätze, die ein Frame mit `frameId`

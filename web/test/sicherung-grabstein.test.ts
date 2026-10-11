@@ -7,9 +7,9 @@ import { erzeugeDek } from '../src/lib/sicherung/krypto.ts';
 import { speicherAdapter } from '../src/lib/ablage/adapter.ts';
 import {
 	ausWire,
+	grabstein,
 	kodiereNachricht,
 	leseNachricht,
-	NUTZLAST_FASSUNG,
 	type AblageNachricht,
 } from '../src/lib/ablage/nutzlast.ts';
 
@@ -23,22 +23,6 @@ function nachricht(id: string, inhalt: string): AblageNachricht {
 		reply_to_id: null,
 		attachments: [],
 	} as unknown as Parameters<typeof ausWire>[0]);
-}
-
-/** Dieselbe Konstruktion wie `andock.ts::sicherungGrabstein` — der Stein
- *  trägt nur die Id, alles andere ist leer. */
-function grabstein(id: string): AblageNachricht {
-	return {
-		fassung: NUTZLAST_FASSUNG,
-		id,
-		autor: '',
-		inhalt: '',
-		zeit: new Date().toISOString(),
-		bearbeitet: null,
-		antwortAuf: null,
-		anhaenge: [],
-		geloescht: true,
-	};
 }
 
 /** Spiegelt die Nachrichten als EIN Gerät in den Kanal-Ordner. */
@@ -139,4 +123,61 @@ test('(c) Ordner-Löschung: nach dem Leeren listet der Basis-Adapter keine Datei
 	assert.ok(rest.includes('key.puls'), 'Schlüssel-Datei bleibt');
 	assert.ok(rest.includes('kanal-y/dev-aaaa1111-seg-000000.puls'), 'fremder Kanal bleibt');
 	assert.ok(dek.length > 0);
+});
+
+// ── Grabstein mit Autor und Kennung (Befund N3, 2026-10-11) ─────────────────
+// Ein Stein auf die Zustellungs-ID D traf die Archiv-Kopie desselben Worts
+// (lokale ID K) nie; jetzt trägt er Autor und Kennung des gelöschten Satzes.
+
+const K = '1760000000000123456';
+const D = '120000000000000001';
+
+/** Die Nachricht unter der lokalen ID K, von `autorId`, auf Wunsch mit
+ *  Kennung (`krypto_id`). */
+function nachrichtK(autorId: string, inhalt: string, kryptoId?: string): AblageNachricht {
+	return ausWire({
+		id: K,
+		author_id: autorId,
+		content: inhalt,
+		created_at: '2026-10-10T10:00:00Z',
+		edited_at: null,
+		reply_to_id: null,
+		attachments: [],
+		krypto_id: kryptoId,
+	} as unknown as Parameters<typeof ausWire>[0]);
+}
+
+test('N3: der Stein trägt Autor und Kennung durch Kodieren und Lesen — ohne Satz bleibt er alt', () => {
+	const neu = leseNachricht(kodiereNachricht(grabstein(D, { autorId: '200', kryptoId: K })));
+	assert.equal(neu.geloescht, true);
+	assert.equal(neu.autor, '200');
+	assert.equal(neu.kryptoId, K);
+	assert.equal(neu.inhalt, '');
+	// Beim Verfasser hat der Satz keine kryptoId — seine ID IST die Kennung.
+	assert.equal(grabstein(K, { autorId: '200', kryptoId: null }).kryptoId, K);
+	const alt = grabstein(D);
+	assert.equal(alt.autor, '');
+	assert.ok(!('kryptoId' in alt), 'ohne lokalen Satz: dieselbe Form wie vor der Erweiterung');
+});
+
+test('N3: ein Stein mit Autor trifft die Verfasser-/Archiv-Kopie K, auch ohne den Rahmen D', async () => {
+	const kanalId = 'kanal-n3';
+	const kopieK = nachrichtK('200', 'gelöscht', K);
+	const { basis, dek } = await gespiegelt(kanalId, [kopieK, grabstein(D, { autorId: '200', kryptoId: K })]);
+	const seite = await leseSicherungKanalSeite(ordnerAdapter(basis, kanalId), dek, {}, 50);
+	assert.equal(seite.eintraege.filter((e) => e.nachricht.geloescht !== true).length, 0);
+	assert.deepEqual(seite.eintraege.map((e) => e.nachricht.id).sort(), [D, K].sort());
+});
+
+test('N3: ein Stein mit fremdem Autor trifft die Kopie K nicht', async () => {
+	// Bob löscht seine eigene Nachricht, die Alices Kennung K trug — Alices
+	// Nachricht K bleibt stehen.
+	const kanalId = 'kanal-n3b';
+	const vonAlice = nachrichtK('200', 'bleibt');
+	const { basis, dek } = await gespiegelt(kanalId, [vonAlice, grabstein(D, { autorId: '300', kryptoId: K })]);
+	const seite = await leseSicherungKanalSeite(ordnerAdapter(basis, kanalId), dek, {}, 50);
+	assert.deepEqual(
+		seite.eintraege.filter((e) => e.nachricht.geloescht !== true).map((e) => e.nachricht.inhalt),
+		['bleibt'],
+	);
 });

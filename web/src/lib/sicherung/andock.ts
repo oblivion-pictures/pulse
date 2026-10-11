@@ -36,7 +36,7 @@
 
 import { SICHERUNG_ENABLED } from '../krypto/schalter.ts';
 import type { Message } from '../api/types.ts';
-import { ausSatz, ausWire, NUTZLAST_FASSUNG, type AblageNachricht } from '../ablage/nutzlast.ts';
+import { ausSatz, ausWire, grabstein, type AblageNachricht } from '../ablage/nutzlast.ts';
 import type { AblageAdapter } from '../ablage/adapter.ts';
 import { openIdentityDb, idbPutIdentity, idbGetIdentity } from '../identity/idb-shared.ts';
 import {
@@ -44,7 +44,9 @@ import {
 	anhangBytesLesen,
 	verlaufSaetzeErgaenzen,
 	verlaufMarkiereGeloescht,
-	verlaufSatzAnhangIds,
+	satzAnhangIds,
+	verlaufSatzIdsFuerFrame,
+	verlaufSatzLesen,
 } from '../verlauf/db.ts';
 import { aktuellesKonto } from '../verlauf/konto.ts';
 import { sortierSchluessel, zuSatz } from '../verlauf/satz.ts';
@@ -259,47 +261,41 @@ export function sicherungSpiegeln(kanalId: string, nachrichten: Message[]): void
  * Spiegelt eine Löschung als Grabstein-Frame in den Kanal-Ordner — der
  * Gegenpol zu `sicherungSpiegeln`: das Archiv soll nicht stärker sein als
  * die App, eine gelöschte Nachricht also auch dort als gelöscht lesbar.
- * Der Stein trägt nur die Id (Inhalt/Autor leer) — der Wiederherstellungs-
- * Leser (`leseSicherungKanalSeite`) erkennt ihn am `geloescht`-Feld und die
- * Andock-Lesewege legen ihn NIE als sichtbaren Satz an. Feuert und vergisst
- * wie der Spiegel-Haken; derselbe Puffer-vor-Spiegel-Weg (Regel 2).
+ * Der Stein trägt die Id und, wo der Satz lokal noch liegt, dessen Autor und
+ * Kennung (`ablage/nutzlast.ts::grabstein`) — keinen Inhalt. Der
+ * Wiederherstellungs-Leser (`leseSicherungKanalSeite`) erkennt ihn am
+ * `geloescht`-Feld und die Andock-Lesewege legen ihn NIE als sichtbaren Satz
+ * an (`steinAnwenden`). Feuert und vergisst wie der Spiegel-Haken; derselbe
+ * Puffer-vor-Spiegel-Weg (Regel 2).
  */
 export function sicherungGrabstein(kanalId: string, nachrichtId: string): void {
 	if (!SICHERUNG_ENABLED) return;
 	void (async () => {
+		const kontoId = aktuellesKonto();
+		const satz =
+			kontoId === null
+				? undefined
+				: await verlaufSatzLesen(kanalId, nachrichtId, kontoId).catch(() => undefined);
 		// Anhänge der gelöschten Nachricht aus ALLEN Zielen entfernen —
 		// gelöscht heißt gelöscht: der Klumpen überlebt die Nachricht nicht
 		// im Archiv (Lücke 2026-09-02: die Bytes-Datei blieb bislang liegen).
 		// Der alte deutsche Dateiname bleibt im Fallback mit drin.
 		try {
-			const kontoId = aktuellesKonto();
-			if (kontoId !== null) {
-				const ids = await verlaufSatzAnhangIds(kanalId, nachrichtId, kontoId);
-				if (ids.length > 0) {
-					const adapter = await adapterLieferant();
-					for (const id of ids) {
-						await adapter.lösche?.(anhangDateiName(id));
-						await adapter.lösche?.(alterAnhangDateiName(id));
-					}
+			const ids = satzAnhangIds(satz);
+			if (ids.length > 0) {
+				const adapter = await adapterLieferant();
+				for (const id of ids) {
+					await adapter.lösche?.(anhangDateiName(id));
+					await adapter.lösche?.(alterAnhangDateiName(id));
 				}
 			}
 		} catch {
 			/* kein Ziel bedienbar — die Datei fällt mit dem Verfall des Postfachs */
 		}
-		const grabstein: AblageNachricht = {
-			fassung: NUTZLAST_FASSUNG,
-			id: nachrichtId,
-			autor: '',
-			inhalt: '',
-			zeit: new Date().toISOString(),
-			bearbeitet: null,
-			antwortAuf: null,
-			anhaenge: [],
-			geloescht: true,
-		};
-		await pufferLegen(kanalId, [grabstein]);
+		const stein = grabstein(nachrichtId, satz);
+		await pufferLegen(kanalId, [stein]);
 		const bereit = await spiegelFallsBereit(kanalId);
-		bereit?.aufnehmen(kanalId, [grabstein]);
+		bereit?.aufnehmen(kanalId, [stein]);
 	})().catch(() => {
 		/* Diagnose-frei nach Absicht — s. Regel 1 im Modulkopf. */
 	});
@@ -359,29 +355,58 @@ async function kanalSeiteFüttern(
 		anzahl,
 	);
 	if (eintraege.length === 0) return { anzahl: 0, erschoepft };
-	// Grabsteine werden NICHT als sichtbarer Satz angelegt — sie markieren
-	// nur einen (etwaigen) lokalen Satz als gelöscht; fehlt er, bleibt es
-	// ein stiller No-Op und der Stein allein wandert nicht in den Verlauf.
-	// ponytail: kam der Stein auf einer FRÜHEREN Seite als die Nachricht
-	// (lesen läuft neu nach alt — selten, aber zwei Geräte-Ketten können
-	// beide Reihenfolge liefern), markiert der No-Op nichts und die Seite
-	// mit der Nachricht legt sie sichtbar an. Konsequent wäre ein
-	// Gelöscht-Merkmal im Lesestand — Upgrade-Pfad dort.
-	for (const stein of eintraege) {
-		if (stein.nachricht.geloescht !== true) continue;
-		await verlaufMarkiereGeloescht(sortierSchluessel(kanalId, stein.nachricht.id), kontoId);
-	}
 	const sichtbar = eintraege.filter((e) => e.nachricht.geloescht !== true);
 	const saetze = eintraegeZuSaetze(sichtbar, kontoId);
 	// Ergänzen, nicht überschreiben (`satz.ts::satzErgaenzen`): ein hier
 	// schon liegender Satz desselben Kontos behält Grabstein, Bearbeitung,
 	// Reaktionen und seine kryptoId — die Sicherung ist eine Kopie von früher.
 	if (saetze.length > 0) await verlaufSaetzeErgaenzen(saetze, kontoId);
+	// Grabsteine NACH den sichtbaren Sätzen: was diese Seite gerade abgelegt
+	// hat, kann ein Stein mit Autor und Kennung noch treffen. Sie werden
+	// NICHT als Satz angelegt — fehlt jeder Treffer, bleibt es ein stiller
+	// No-Op. ponytail: kam der Stein auf einer FRÜHEREN Seite als die
+	// Nachricht (lesen läuft neu nach alt — zwei Geräte-Ketten können beide
+	// Reihenfolgen liefern), markiert er nichts, und die spätere Seite legt
+	// die Nachricht sichtbar an. Dasselbe, wenn das Server-Archiv eine Kopie
+	// erst nach diesem Lauf ablegt. Konsequent wäre ein Gelöscht-Merkmal im
+	// Lesestand — Upgrade-Pfad dort.
+	for (const eintrag of eintraege) {
+		if (eintrag.nachricht.geloescht === true) {
+			await steinAnwenden(kanalId, eintrag.nachricht, kontoId);
+		}
+	}
 	// Lesestand erst NACH erfolgreichem Ablegen anheben — ein Fehler mid-run
 	// lässt den nächsten Lauf dieselbe Seite noch einmal lesen (Ergänzen
 	// über die Nachrichten-Ids ist wiederholbar).
 	await lesestandSchreiben(kontoId, kanalId, lesestand);
 	return { anzahl: saetze.length, erschoepft };
+}
+
+/**
+ * Wendet einen gelesenen Grabstein auf den lokalen Verlauf an: seine lokale
+ * ID — und trägt er Autor und Kennung (`ablage/nutzlast.ts::grabstein`), jeden
+ * lokalen Satz, den ein Lösch-Frame DIESES Autors mit dieser Kennung träfe
+ * (`krypto/loeschZiel.ts::trifftFrame`): die Archiv-Kopie unter K ebenso wie
+ * eine Empfangs-Kopie unter einer anderen Zustellungs-ID. Ohne diesen Schritt
+ * traf ein Stein auf D die Archiv-Kopie K nie (Befund N3). Gebunden an den
+ * Autor, sobald der Stein einen nennt — die Kennung allein wählt der Absender
+ * frei. Ein älterer Stein ohne Autor trifft nur seine ID, wie bisher.
+ */
+async function steinAnwenden(
+	kanalId: string,
+	stein: AblageNachricht,
+	kontoId: string,
+): Promise<void> {
+	const autor = stein.autor !== '' ? stein.autor : undefined;
+	const ziele = new Set([stein.id]);
+	if (autor !== undefined && stein.kryptoId) {
+		for (const id of await verlaufSatzIdsFuerFrame(kanalId, stein.kryptoId, kontoId, autor)) {
+			ziele.add(id);
+		}
+	}
+	for (const id of ziele) {
+		await verlaufMarkiereGeloescht(sortierSchluessel(kanalId, id), kontoId, autor);
+	}
 }
 
 /**

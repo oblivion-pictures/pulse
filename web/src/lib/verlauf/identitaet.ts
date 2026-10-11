@@ -32,9 +32,11 @@
  * (`satz.ts::satzErgaenzen`).
  *
  * **Grabsteine werden NICHT über diese Regel aufgelöst.** Ein Grabstein-Rahmen
- * der Sicherung trägt eine lokale ID und (ältere Fassungen) keinen Autor; er
- * trifft eine Nachricht über ihre lokalen IDs, nie über eine Kennung, die er
- * selbst behauptet (s. `sicherung/eintragsGruppen.ts`).
+ * der Sicherung trifft eine Nachricht über ihre lokalen IDs, nie über diesen
+ * Schlüssel. Ältere Steine tragen nur ihre ID; ein Stein, der seinen Autor
+ * nennt (seit 2026-10-11), zählt seine Kennung zusätzlich als lokale ID —
+ * und trifft damit nur Sätze dieses Autors, genau wie ein Lösch-Frame von
+ * ihm (`sicherung/eintragsGruppen.ts`, `sicherung/andock.ts::steinAnwenden`).
  *
  * Importfrei, damit Nodes eingebauter Testläufer die Datei ohne Bundler prüft
  * (s. CLAUDE.md „Die Falle").

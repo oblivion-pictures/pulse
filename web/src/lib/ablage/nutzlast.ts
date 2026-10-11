@@ -10,10 +10,12 @@
  * (veränderlich — das Log ist append-only).
  *
  * Rein rechnerisch und import-frei bis auf den Typ-Import (wird zur
- * Laufzeit weggeblasen) — Node-Testläufer-regel.
+ * Laufzeit weggeblasen) und die selbst importfreie Kennungs-Regel
+ * (`.ts`-Pfad) — Node-Testläufer-regel.
  */
 
 import type { Message } from '../api/types.ts';
+import { kanonischeId } from '../verlauf/identitaet.ts';
 
 export const NUTZLAST_FASSUNG = 1;
 
@@ -36,8 +38,9 @@ export interface AblageNachricht {
 	antwortAuf: string | null;
 	anhaenge: AblageAnhang[];
 	/** Grabstein: nur bei einem Lösch-Frame `true` (absent = nicht gelöscht).
-	 *  Der Stein trägt nur die Id — Inhalt/Autor bleiben leer. Ältere Container
-	 *  kennen das Feld nicht; der Parser liest es tolerant. */
+	 *  Der Stein trägt die Id, seit 2026-10-11 auch Autor und Kennung (s.
+	 *  `grabstein`); der Inhalt bleibt leer. Ältere Container kennen das Feld
+	 *  nicht; der Parser liest es tolerant. */
 	geloescht?: boolean;
 	/** Die geraeteuebergreifende Autor-ID (`Message.krypto_id`). Jedes Gerät
 	 *  legt dieselbe logische Nachricht unter seiner EIGENEN lokalen Id ab
@@ -130,6 +133,39 @@ export function ausSatz(satz: SatzAusschnitt): AblageNachricht {
 			.filter((a): a is Record<string, unknown> => typeof a === 'object' && a !== null)
 			.map(zuAblageAnhang),
 		...(satz.kryptoId ? { kryptoId: satz.kryptoId } : {}),
+	};
+}
+
+/**
+ * Ein Grabstein-Rahmen (`sicherung/andock.ts::sicherungGrabstein`): die
+ * lokale ID der gelöschten Nachricht, kein Inhalt. Seit 2026-10-11 reisen
+ * Autor und Kennung des gelöschten Satzes mit, wo er lokal noch lag — ohne
+ * sie traf der Stein auf die Zustellungs-ID D die Archiv-Kopie desselben
+ * Worts (lokale ID K) nie, und die gelöschte Nachricht stand nach der
+ * Wiederherstellung wieder da. Kein Formatbruch: `autor` ist ohnehin ein
+ * Pflichtfeld (bisher leer), `kryptoId` ein tolerant gelesenes Zusatzfeld.
+ * Ein älterer Stein trägt beides nicht und trifft weiter nur seine ID.
+ *
+ * Die Kennung ist die kanonische (`verlauf/identitaet.ts::kanonischeId`):
+ * die `kryptoId` eines Empfangs-Satzes, sonst seine eigene ID — beim
+ * Verfasser IST die ID die Kennung, und erst mit ihr trifft der Stein auch
+ * die Empfangs-Kopien derselben Nachricht auf den anderen eigenen Geräten.
+ */
+export function grabstein(
+	id: string,
+	satz?: { autorId: string; kryptoId?: string | null },
+): AblageNachricht {
+	return {
+		fassung: NUTZLAST_FASSUNG,
+		id,
+		autor: satz?.autorId ?? '',
+		inhalt: '',
+		zeit: new Date().toISOString(),
+		bearbeitet: null,
+		antwortAuf: null,
+		anhaenge: [],
+		geloescht: true,
+		...(satz !== undefined ? { kryptoId: kanonischeId(id, satz.kryptoId) } : {}),
 	};
 }
 
