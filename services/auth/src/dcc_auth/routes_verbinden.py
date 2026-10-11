@@ -32,6 +32,7 @@ from sqlalchemy.exc import IntegrityError
 
 from dcc_shared.hostname import normalisiere_hostname
 
+from dcc_auth.admin_events import publish_instanz_verbunden
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
 from dcc_auth.email import compose_verbinden_hinweis, compose_verbinden_uebernahme, send_email
@@ -323,6 +324,7 @@ async def verbinden_abholen(payload: AbholenEin, request: Request, db: SessionDe
     instanz.verbunden_at = datetime.now(UTC)
     besitzer = await db.get(User, instanz.registered_by)
     await db.commit()
+    await publish_instanz_verbunden(request, user_id=instanz.registered_by, instance_id=instanz.id)
     return VerbindenZugangOut(
         **zugang.model_dump(),
         owner_name=besitzer.display_name or besitzer.username,

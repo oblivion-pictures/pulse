@@ -641,3 +641,49 @@ async def test_uebernahme_schreibt_dem_vorbesitzer(
     assert (await _entscheiden(client, neu, code, "verbinden")).status_code == 200
     assert [m[0] for m in gesendet].count("vorbesitzer@dcc-test.example.com") == 1
     assert [m[0] for m in gesendet].count("nachfolger@dcc-test.example.com") == 2
+
+
+async def test_abholen_meldet_den_server_an_die_geraete_des_besitzers(
+    client, mit_redis, nachweis, monkeypatch
+):
+    """Entwurf E3: der Server erscheint in der Leiste ALLER Geräte des
+    Besitzers — offene Geräte erfahren es über ``user:events``, nicht erst
+    beim nächsten Laden von ``/me/instances``."""
+    import json
+
+    from dcc_shared.events import EVENT_REGISTRY
+
+    gesendet: list[tuple[str, dict]] = []
+
+    async def mitschreiben(kanal, nutzlast):
+        gesendet.append((kanal, json.loads(nutzlast)))
+        return 0
+
+    monkeypatch.setattr(mit_redis, "publish", mitschreiben)
+    konto = await _konto(client, "geraete")
+    code = (await _start(client)).json()["code"]
+    iid = (await _entscheiden(client, konto, code, "verbinden")).json()["instance_id"]
+    # Bestätigt heisst noch nicht eingerichtet: erst das Abholen zählt.
+    assert gesendet == []
+
+    assert (await _abholen(client)).status_code == 200
+    ((kanal, nutzlast),) = gesendet
+    assert kanal == "user:events"
+    assert nutzlast.pop("_target_user_id") == str(konto["id"])
+    assert nutzlast == {"op": "instanz_verbunden", "data": {"instance_id": iid}}
+    # Genau diese Prüfung macht der chat-gateway vor der Zustellung
+    # (pubsub_event_validation.py, strikter Modus).
+    EVENT_REGISTRY["instanz_verbunden"].model_validate(nutzlast)
+
+
+async def test_redis_fehler_beim_melden_kostet_das_abholen_nicht(
+    client, mit_redis, nachweis, monkeypatch
+):
+    async def kaputt(*_a, **_k):
+        raise ConnectionError("redis weg")
+
+    monkeypatch.setattr(mit_redis, "publish", kaputt)
+    konto = await _konto(client, "unbeirrt")
+    code = (await _start(client)).json()["code"]
+    assert (await _entscheiden(client, konto, code, "verbinden")).status_code == 200
+    assert (await _abholen(client)).status_code == 200

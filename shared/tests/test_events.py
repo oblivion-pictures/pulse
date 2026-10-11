@@ -164,6 +164,10 @@ _PAYLOADS: dict[str, dict[str, Any]] = {
         "op": "instance_status",
         "data": {"instance_id": "21000000000000077", "online": False, "anzeigename": "Michaels Server"},
     },
+    "instanz_verbunden": {
+        "op": "instanz_verbunden",
+        "data": {"instance_id": "21000000000000078"},
+    },
     "friend_request_received": {
         "op": "friend_request_received",
         "data": {"request_id": "9", "from": "3"},
@@ -553,4 +557,17 @@ def test_registry_keys_match_op_defaults() -> None:
         default = cls.model_fields["op"].default
         assert default == op, (
             f"registry key {op!r} != model default {default!r} for {cls!r}"
+        )
+
+
+def test_instanz_verbunden_traegt_nur_die_nummer() -> None:
+    """auth-svc meldet dem Besitzer einen frisch verbundenen Server
+    (``admin_events.publish_instanz_verbunden``). Der Payload nennt nur die
+    Nummer — die Geräte laden ``/me/instances`` danach selbst."""
+    modell = EVENT_REGISTRY["instanz_verbunden"]
+    evt = modell.model_validate(_PAYLOADS["instanz_verbunden"])
+    assert evt.data.instance_id == "21000000000000078"
+    with pytest.raises(Exception):  # pydantic.ValidationError (extra="forbid")
+        modell.model_validate(
+            {"op": "instanz_verbunden", "data": {"instance_id": "1", "hostname": "x"}}
         )
