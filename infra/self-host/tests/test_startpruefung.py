@@ -24,6 +24,7 @@ SKRIPTE = S6 / "etc/s6-overlay/scripts"
 PRUEFUNG = SKRIPTE / "10-check-cloud-creds.sh"
 RENDER = SKRIPTE / "07-render-env.sh"
 CADDY = SKRIPTE / "09-init-caddy.sh"
+DATENVERZEICHNISSE = SKRIPTE / "01-init-data-dirs.sh"
 TEMPLATE = S6 / "etc/caddy/Caddyfile.template"
 _ALT = (
     "PULSE_HOSTNAME",
@@ -217,3 +218,31 @@ def test_caddy_ohne_env_sh_stirbt_nicht(tmp_path):
     r, text = _caddy(tmp_path, None)
     assert r.returncode == 0, r.stderr
     assert "email {$PULSE_ADMIN_EMAIL}" not in text
+
+
+# ── 01-init-data-dirs.sh: Nachweis eines abgebrochenen pulse-connect ──────
+
+
+def test_start_raeumt_den_liegengebliebenen_nachweis_weg(tmp_path):
+    """SIGHUP/SIGTERM/SIGKILL beim Lauf von pulse-connect lassen den Nachweis
+    liegen (sein ``finally`` läuft dann nicht). Der Name kommt aus dem Code des
+    chat-gateway, nicht aus dem Skript — ein Auseinanderlaufen fiele sonst nie auf."""
+    from dcc_chat_gateway.verbindung import NACHWEIS_DATEI, VERBINDUNG_DATEI
+
+    daten = tmp_path / "data"
+    (daten / "pulse").mkdir(parents=True)
+    (daten / "pulse" / NACHWEIS_DATEI).write_text("ab" * 32 + "\n", encoding="ascii")
+    (daten / "pulse" / VERBINDUNG_DATEI).write_text(ZUGANG, encoding="utf-8")
+    block = _block(DATENVERZEICHNISSE, "# Ein Lauf von pulse-connect", "rm -f")
+    r = _sh(f'set -eu\nDATA="{daten}"\n{block}\n')
+    assert r.returncode == 0, r.stderr
+    assert not (daten / "pulse" / NACHWEIS_DATEI).exists()
+    assert (daten / "pulse" / VERBINDUNG_DATEI).read_text(encoding="utf-8") == ZUGANG
+
+
+def test_start_ohne_nachweis_stirbt_nicht(tmp_path):
+    """Der Normalfall — und ``set -e`` darf an der fehlenden Datei nicht hängen."""
+    daten = tmp_path / "data"
+    (daten / "pulse").mkdir(parents=True)
+    block = _block(DATENVERZEICHNISSE, "# Ein Lauf von pulse-connect", "rm -f")
+    assert _sh(f'set -eu\nDATA="{daten}"\n{block}\n').returncode == 0
