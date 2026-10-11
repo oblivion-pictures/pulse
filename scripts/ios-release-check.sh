@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Release-Vorprüfung der iOS-Hülle (Punkt 14 der iOS-Liste).
+# Release-Vorprüfung der iOS-Hülle (Punkt 14 der iOS-Liste; Schritt 5 seit
+# Punkt 41, der Teilen-Erweiterung).
 #
 # WARUM ALS SKRIPT. Dieselbe Liste stand als Prosa in
 # `docs/plans/ios-roadmap.md`, und sie veraltete genau so, wie dieses Repo es
@@ -66,6 +67,36 @@ echo "── 4. Nichts Lokales im Bundle ──"
 git check-ignore -q web/.cert 2>/dev/null \
   && gut "web/.cert ist gitignored" \
   || schlecht "web/.cert ist NICHT gitignored — mkcert-Zertifikat darf nie mitreisen"
+
+echo "── 5. Erweiterungen tragen die Nummern der App ──"
+# Version und Build-Nummer stehen je Target im Projekt, also mehrfach. Wer sie
+# in Xcode nur bei der App hochsetzt, liefert eine eingebettete Erweiterung mit
+# alten Nummern aus. Der Bau meldet das nur als WARNUNG („must match that of
+# its containing parent app“) und läuft durch — deshalb hier. Aus dem Projekt
+# gelesen, nicht aufgezählt: ein neues Erweiterungs-Target (Widget, Live
+# Activity) wird damit ohne Nachpflege mitgeprüft.
+nummern=$(plutil -convert json -o - mobile/ios/App/App.xcodeproj/project.pbxproj 2>/dev/null | python3 -c '
+import json, sys
+o = json.load(sys.stdin)["objects"]
+for t in o.values():
+    if t.get("isa") == "PBXNativeTarget" and t.get("productType") in (
+            "com.apple.product-type.application", "com.apple.product-type.app-extension"):
+        for k in o[t["buildConfigurationList"]]["buildConfigurations"]:
+            if o[k]["name"] == "Release":
+                s = o[k]["buildSettings"]
+                print(t["name"], s.get("MARKETING_VERSION", "?"), s.get("CURRENT_PROJECT_VERSION", "?"))
+' 2>/dev/null)
+app=$(echo "$nummern" | awk '$1 == "App" { print $2 " (" $3 ")" }')
+if [ -z "$app" ]; then
+  schlecht "Nummern der App nicht lesbar — stimmt der Pfad zum Projekt noch?"
+else
+  while read -r name version bau; do
+    case "$name" in "" | App) continue ;; esac
+    [ "$version ($bau)" = "$app" ] \
+      && gut "$name: $version ($bau) wie die App" \
+      || schlecht "$name: $version ($bau), die App hat $app — beide Targets hochsetzen"
+  done <<< "$nummern"
+fi
 
 echo
 if [ "$fehler" -eq 0 ]; then

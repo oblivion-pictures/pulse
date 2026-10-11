@@ -24,5 +24,15 @@
 	<array>
 		<string>applinks:howispulse.com</string>
 	</array>
+	<!-- Gemeinsamer Container mit der Teilen-Erweiterung (Punkt 41), später
+	     auch mit Widgets und Live Activity — deshalb der allgemeine Name.
+	     Kennung auch in `Gemeinsam/AppGruppe.swift` und
+	     `ShareExtension/ShareExtension.entitlements`. **Am Gerät braucht das
+	     die Fähigkeit „App Groups“ an der App-ID und ein neues Profil** —
+	     der Handgriff steht in docs/plans/ios-roadmap.md, Punkt 41. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.howispulse.app</string>
+	</array>
 </dict>
 </plist>

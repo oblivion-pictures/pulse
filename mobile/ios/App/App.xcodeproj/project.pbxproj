@@ -53,6 +53,17 @@
 		A1B2C3D4E5F6071800000111 /* AnrufPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071800000112 /* AnrufPlugin.swift */; };
 		A1B2C3D4E5F6071800000121 /* SchnellwahlPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071800000122 /* SchnellwahlPlugin.swift */; };
 		A1B2C3D4E5F6071800000131 /* SperrePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071800000132 /* SperrePlugin.swift */; };
+		7E11E0000000000000000070 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000051 /* ShareViewController.swift */; };
+		7E11E0000000000000000071 /* TeilenEinsammeln.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000052 /* TeilenEinsammeln.swift */; };
+		7E11E0000000000000000072 /* TeilenBild.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000053 /* TeilenBild.swift */; };
+		7E11E0000000000000000073 /* AppGruppe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000056 /* AppGruppe.swift */; };
+		7E11E0000000000000000074 /* TeilenAblage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000057 /* TeilenAblage.swift */; };
+		7E11E0000000000000000075 /* AppGruppe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000056 /* AppGruppe.swift */; };
+		7E11E0000000000000000076 /* TeilenAblage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000057 /* TeilenAblage.swift */; };
+		7E11E0000000000000000077 /* ShareReceiverPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000058 /* ShareReceiverPlugin.swift */; };
+		7E11E0000000000000000078 /* ShareReceiverProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000059 /* ShareReceiverProbe.swift */; };
+		7E11E0000000000000000079 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000050 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		7E11E000000000000000007A /* TeilenUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E000000000000000005A /* TeilenUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -108,7 +119,32 @@
 		A1B2C3D4E5F6071800000112 /* AnrufPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnrufPlugin.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071800000122 /* SchnellwahlPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchnellwahlPlugin.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071800000132 /* SperrePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SperrePlugin.swift; sourceTree = "<group>"; };
+		7E11E0000000000000000050 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E11E0000000000000000051 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		7E11E0000000000000000052 /* TeilenEinsammeln.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenEinsammeln.swift; sourceTree = "<group>"; };
+		7E11E0000000000000000053 /* TeilenBild.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenBild.swift; sourceTree = "<group>"; };
+		7E11E0000000000000000056 /* AppGruppe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGruppe.swift; sourceTree = "<group>"; };
+		7E11E0000000000000000057 /* TeilenAblage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenAblage.swift; sourceTree = "<group>"; };
+		7E11E0000000000000000058 /* ShareReceiverPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareReceiverPlugin.swift; sourceTree = "<group>"; };
+		7E11E0000000000000000059 /* ShareReceiverProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareReceiverProbe.swift; sourceTree = "<group>"; };
+		7E11E0000000000000000054 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7E11E0000000000000000055 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
+		7E11E000000000000000005A /* TeilenUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7E11E0000000000000000023 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7E11E0000000000000000079 /* ShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		504EC3011FED79650016851F /* Frameworks */ = {
@@ -126,6 +162,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7E11E0000000000000000021 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -136,6 +179,8 @@
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
 				A1B2C3D4E5F6071800000007 /* AppUITests */,
+				7E11E0000000000000000040 /* ShareExtension */,
+				7E11E0000000000000000041 /* Gemeinsam */,
 
 			);
 			sourceTree = "<group>";
@@ -144,6 +189,7 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F6071800000003 /* UITests.swift */,
+				7E11E000000000000000005A /* TeilenUITests.swift */,
 			);
 			path = AppUITests;
 			sourceTree = "<group>";
@@ -153,6 +199,7 @@
 			children = (
 				504EC3041FED79650016851F /* App.app */,
 				A1B2C3D4E5F6071800000002 /* AppUITests.xctest */,
+				7E11E0000000000000000050 /* ShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -195,6 +242,8 @@
 				A1B2C3D4E5F6071800000112 /* AnrufPlugin.swift */,
 				A1B2C3D4E5F6071800000122 /* SchnellwahlPlugin.swift */,
 				A1B2C3D4E5F6071800000132 /* SperrePlugin.swift */,
+				7E11E0000000000000000058 /* ShareReceiverPlugin.swift */,
+				7E11E0000000000000000059 /* ShareReceiverProbe.swift */,
 				A1B2C3D4E5F60718293A4B5D /* PrivacyInfo.xcprivacy */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
@@ -210,6 +259,27 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		7E11E0000000000000000040 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				7E11E0000000000000000051 /* ShareViewController.swift */,
+				7E11E0000000000000000052 /* TeilenEinsammeln.swift */,
+				7E11E0000000000000000053 /* TeilenBild.swift */,
+				7E11E0000000000000000054 /* Info.plist */,
+				7E11E0000000000000000055 /* ShareExtension.entitlements */,
+			);
+			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+		7E11E0000000000000000041 /* Gemeinsam */ = {
+			isa = PBXGroup;
+			children = (
+				7E11E0000000000000000056 /* AppGruppe.swift */,
+				7E11E0000000000000000057 /* TeilenAblage.swift */,
+			);
+			path = Gemeinsam;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -220,10 +290,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				7E11E0000000000000000023 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				7E11E0000000000000000031 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -251,6 +323,23 @@
 			productReference = A1B2C3D4E5F6071800000002 /* AppUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		7E11E0000000000000000010 /* ShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E11E0000000000000000011 /* Build configuration list for PBXNativeTarget "ShareExtension" */;
+			buildPhases = (
+				7E11E0000000000000000020 /* Sources */,
+				7E11E0000000000000000021 /* Frameworks */,
+				7E11E0000000000000000022 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShareExtension;
+			productName = ShareExtension;
+			productReference = 7E11E0000000000000000050 /* ShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXContainerItemProxy section */
@@ -261,6 +350,13 @@
 			remoteGlobalIDString = 504EC3031FED79650016851F;
 			remoteInfo = App;
 		};
+		7E11E0000000000000000030 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E11E0000000000000000010;
+			remoteInfo = ShareExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXTargetDependency section */
@@ -268,6 +364,11 @@
 			isa = PBXTargetDependency;
 			target = 504EC3031FED79650016851F /* App */;
 			targetProxy = A1B2C3D4E5F6071800000008 /* PBXContainerItemProxy */;
+		};
+		7E11E0000000000000000031 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7E11E0000000000000000010 /* ShareExtension */;
+			targetProxy = 7E11E0000000000000000030 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -278,6 +379,9 @@
 				LastSwiftUpdateCheck = 0920;
 				LastUpgradeCheck = 0920;
 				TargetAttributes = {
+					7E11E0000000000000000010 = {
+						CreatedOnToolsVersion = 2600.0;
+					};
 					A1B2C3D4E5F6071800000001 = {
 						TestTargetID = 504EC3031FED79650016851F;
 						CreatedOnToolsVersion = 2600.0;
@@ -309,6 +413,7 @@
 			targets = (
 				504EC3031FED79650016851F /* App */,
 				A1B2C3D4E5F6071800000001 /* AppUITests */,
+				7E11E0000000000000000010 /* ShareExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -328,6 +433,13 @@
 				A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E11E0000000000000000022 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -372,6 +484,10 @@
 				A1B2C3D4E5F6071800000111 /* AnrufPlugin.swift in Sources */,
 				A1B2C3D4E5F6071800000121 /* SchnellwahlPlugin.swift in Sources */,
 				A1B2C3D4E5F6071800000131 /* SperrePlugin.swift in Sources */,
+				7E11E0000000000000000075 /* AppGruppe.swift in Sources */,
+				7E11E0000000000000000076 /* TeilenAblage.swift in Sources */,
+				7E11E0000000000000000077 /* ShareReceiverPlugin.swift in Sources */,
+				7E11E0000000000000000078 /* ShareReceiverProbe.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -380,6 +496,19 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1B2C3D4E5F6071800000004 /* UITests.swift in Sources */,
+				7E11E000000000000000007A /* TeilenUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E11E0000000000000000020 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E11E0000000000000000070 /* ShareViewController.swift in Sources */,
+				7E11E0000000000000000071 /* TeilenEinsammeln.swift in Sources */,
+				7E11E0000000000000000072 /* TeilenBild.swift in Sources */,
+				7E11E0000000000000000073 /* AppGruppe.swift in Sources */,
+				7E11E0000000000000000074 /* TeilenAblage.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -602,6 +731,58 @@
 			};
 			name = Release;
 		};
+		7E11E0000000000000000012 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.howispulse.app.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7E11E0000000000000000013 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.howispulse.app.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -628,6 +809,15 @@
 			buildConfigurations = (
 				A1B2C3D4E5F607180000000A /* Debug */,
 				A1B2C3D4E5F607180000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E11E0000000000000000011 /* Build configuration list for PBXNativeTarget "ShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E11E0000000000000000012 /* Debug */,
+				7E11E0000000000000000013 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
