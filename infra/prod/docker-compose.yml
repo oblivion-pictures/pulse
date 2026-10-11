@@ -467,6 +467,18 @@ services:
       # naechsten regulaeren Vollbild — belegt an fuenf Verwerfungen mit
       # Zuschauern und null Anforderungen am Sender.
       PULSE_KEYFRAME_ON_DISCARD: "1"
+      # Patch 0008 (2026-10-08), wirksam ab Bild `1.19.1-pulse8`. Begruendung
+      # samt Messung im Dockerfile-Kopf des Forks.
+      #
+      # Tritt ein Zuschauer bei, fordert MediaMTX beim Sender ein Vollbild an.
+      # Vorher fragte nur, wer von sich aus fragt: Chromium tut es, WebKit
+      # (Safari, alles unter iOS) nicht — ein iPhone-Zuschauer ohne Chromium im
+      # Raum sass bei 60 s Vollbild-Abstand bis zu einer Minute vor Schwarz.
+      # Bis zum 2026-10-11 stand der Schalter nur in Dev, macOS und auf dem
+      # Hetzner-Stack; hier lief das pulse8-Bild mit Patch 0008 wirkungslos
+      # (iOS-Bughunt 2, E1). Ein unbekannter Schalter waere auf jedem aelteren
+      # Bild folgenlos — er wartet also auf nichts.
+      PULSE_KEYFRAME_ON_JOIN: "1"
       # Umordnungsfenster fuer BILDspuren, in Paketen (Vorgabe 64 = ~150 ms
       # bei 4 Mbit/s, knapp UNTER der ersten NACK-Nachlieferung von ~160 ms).
       # 128 gibt der Nachlieferung eine zweite Runde und haelt einen echten

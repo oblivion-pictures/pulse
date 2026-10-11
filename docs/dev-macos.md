@@ -68,11 +68,12 @@ Beleg.
 
 Dort muss `v1.19.1-dirty` stehen. „dirty" ist hier das Gütesiegel — es heisst,
 dass die Patches im Baum sind. Ein sauberes `v1.19.1` wäre der Upstream, und
-dem fehlen Vollbild-Rückweg, Bildmarke, Vollbild-nach-Verwurf und FlexFEC.
+dem fehlen Vollbild-Rückweg, Bildmarke, Vollbild-nach-Verwurf,
+Vollbild-beim-Beitritt und FlexFEC.
 
 ## FlexFEC: hier AN, in der Haupt-Datei AUS
 
-Der macOS-Aufsatz fährt den **Produktionssatz** aller acht `PULSE_*`-Schalter
+Der macOS-Aufsatz fährt den **Produktionssatz** aller neun `PULSE_*`-Schalter
 (Eigentümer-Entscheid 2026-10-08) — dieser Stack soll nachstellen, was Nutzer
 erleben.
 

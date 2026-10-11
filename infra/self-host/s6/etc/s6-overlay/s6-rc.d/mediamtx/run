@@ -2,7 +2,7 @@
 # MediaMTX — HQ stream relay (RTMPS→WHEP). authHTTP → mediamtx-auth-hook
 # at 127.0.0.1:8005. Config rendered by cont-init.
 #
-# Vier PULSE_*-Schalter, identisch zur Cloud (infra/prod/docker-compose.yml —
+# Fünf PULSE_*-Schalter, Werte wie in der Cloud (infra/prod/docker-compose.yml —
 # dort je Schalter Begruendung samt Messung): PULSE_KEYFRAME_INTERVAL=0
 # schaltet den fest verdrahteten 2-s-Vollbild-Takt des Forks ab (Fork kennt
 # die Schalter seit PULSE_MEDIAMTX_TAG im Dockerfile, 2026-09-07; ohne ihn
@@ -10,10 +10,15 @@
 # Mit-Ursache des wachsenden Zuschauer-Lags an einem Self-Host, s. Kommentar
 # zu `hls` in 08-init-mediamtx.sh). Dazu wie in der Cloud: AV1-Dependency-
 # Descriptor ueber die Neuverpackung tragen (sonst Vollbilder auf Verdacht),
-# Vollbild erst bei echtem Verwurf anfordern, Umordnungsfenster 128 Pakete.
+# Vollbild erst bei echtem Verwurf anfordern, Vollbild beim Beitritt eines
+# Zuschauers anfordern (WebKit fragt nicht selbst — ein iOS-Zuschauer sass
+# sonst bis zu 60 s vor Schwarz; bis zum 2026-10-11 fehlte der Schalter hier,
+# iOS-Bughunt 2, E1), Umordnungsfenster 128 Pakete. Die FlexFEC-Schalter der
+# Cloud stehen hier nicht.
 exec 2>&1
 PULSE_KEYFRAME_INTERVAL=0 \
 PULSE_DEPENDENCY_DESCRIPTOR=1 \
 PULSE_KEYFRAME_ON_DISCARD=1 \
+PULSE_KEYFRAME_ON_JOIN=1 \
 PULSE_VIDEO_REORDER_BUFFER=128 \
     exec /usr/sbin/gosu pulse /usr/local/bin/mediamtx /etc/mediamtx/mediamtx.yml
