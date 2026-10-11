@@ -215,3 +215,31 @@ test('zwei Geräte spiegeln dieselbe Nachricht — die kryptoId-Verngabelung lie
 	assert.equal(seite.eintraege.length, 1, 'eine logische Nachricht = ein Eintrag');
 	assert.equal(seite.eintraege[0]!.nachricht.kryptoId, 'kanon-1');
 });
+
+test('Verfasser-Kette ohne kryptoId + Empfänger-Kette mit kryptoId: EIN Eintrag (Gerätewechsel, 2026-10-11)', async () => {
+	// Der Fall der Doppelzeile nach Gerätewechsel und Wiederherstellung: das
+	// Gerät des Verfassers spiegelt seine Nachricht unter ihrer eigenen Id
+	// (ohne kryptoId — `senden.ts` setzt keine), das Empfängergerät unter
+	// der Zustellungs-Id mit der Kennung als kryptoId.
+	const kanalId = '779';
+	const dek = erzeugeDek();
+	const basis = speicherAdapter();
+	const verfasser = nachricht('1760000000000123456', 'hallo');
+	const empfang = { ...verfasser, id: '120000000000000001', kryptoId: '1760000000000123456' };
+	const a = new SicherungsSpiegel(ordnerAdapter(basis, kanalId), dek, 'dev-aaaa1111-', {
+		verzoegerungMs: 10,
+		schwelle: 50,
+	});
+	const b = new SicherungsSpiegel(ordnerAdapter(basis, kanalId), dek, 'dev-bbbb2222-', {
+		verzoegerungMs: 10,
+		schwelle: 50,
+	});
+	a.aufnehmen(kanalId, [verfasser]);
+	await a.jetztSpuelen();
+	b.aufnehmen(kanalId, [empfang]);
+	await b.jetztSpuelen();
+	a.beenden();
+	b.beenden();
+	const seite = await leseSicherungKanalSeite(ordnerAdapter(basis, kanalId), dek, {}, Infinity);
+	assert.equal(seite.eintraege.length, 1);
+});

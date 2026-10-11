@@ -404,10 +404,10 @@ export function verlaufSchonAbgelegt(kanalId: string, nachrichtId: string): Prom
  * Die lokalen IDs aller Sätze, die ein Frame mit `frameId` trifft — für den
  * Lösch-, Reaktions- und Bearbeitungs-Frame (`krypto/loeschZiel.ts`): die
  * Anzeige kennt nur die geladenen Nachrichten, der Verlauf auch die
- * aelteren. `autorId` muss beim Lösch-Frame dessen Absender sein: es gilt
- * dieselbe Schranke wie in der Anzeige (`trifftFrame`), sonst loeschte ein
- * Frame ueber den Verlauf genau das, was er ueber die geladene Liste nicht
- * darf. Wirft nie; leer heisst „kein solcher Satz auf diesem Geraet".
+ * älteren. `autorId` muss beim Lösch-Frame dessen Absender sein: es gilt
+ * dieselbe Schranke wie in der Anzeige (`trifftFrame`), sonst löschte ein
+ * Frame über den Verlauf genau das, was er über die geladene Liste nicht
+ * darf. Wirft nie; leer heißt „kein solcher Satz auf diesem Gerät".
  */
 export function verlaufLokaleIdsFuerFrame(
   kanalId: string,
@@ -425,15 +425,16 @@ export function verlaufLokaleIdsFuerFrame(
 
 /** Ein Merge-Posten fuer `zusammenfuegen` — trägt die anzuzeigende Nachricht
  *  als Nutzlast mit, ohne dass die importfreie Merge-Rechnung sie kennen
- *  muss (sie liest nur `id`/`bearbeitetAm`/`geloescht`). */
+ *  muss (sie liest nur die Felder von `Mergeposten`). */
 type Posten = Mergeposten & { nachricht: Message };
 
 function lokalZuPosten(lokal: SatzAlsNachricht[]): Posten[] {
   return lokal.map((n) => ({
     id: n.id,
-    // Die geraeteuebergreifende Autor-ID — der Dedupe-Schluessel gegen
-    // Duplikate aus der Sicherung eines anderen Geraets (s. zusammenfuegen.ts).
+    // Autor + geräteübergreifende Kennung — die Identität gegen Duplikate
+    // aus der Sicherung eines anderen Geräts (s. `identitaet.ts`).
     kryptoId: n.krypto_id ?? null,
+    autorId: n.author_id,
     bearbeitetAm: n.edited_at,
     geloescht: n.deleted_at !== null,
     nachricht: n
@@ -447,6 +448,7 @@ function serverZuPosten(vomServer: Message[]): Posten[] {
   return vomServer.map((n) => ({
     id: n.id,
     kryptoId: n.krypto_id ?? null,
+    autorId: n.author_id,
     bearbeitetAm: n.edited_at ?? null,
     geloescht: false,
     nachricht: n

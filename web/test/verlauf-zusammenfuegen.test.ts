@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 
 import { zusammenfuegen } from '../src/lib/verlauf/zusammenfuegen.ts';
 
-type Posten = { id: string; kryptoId?: string | null; bearbeitetAm: string | null; geloescht: boolean; inhalt: string };
+type Posten = {
+  id: string;
+  kryptoId?: string | null;
+  autorId?: string | null;
+  bearbeitetAm: string | null;
+  geloescht: boolean;
+  inhalt: string;
+};
 
 function posten(id: string, inhalt: string, opts: Partial<Posten> = {}): Posten {
   return { id, inhalt, bearbeitetAm: null, geloescht: false, ...opts };
@@ -142,4 +149,56 @@ test('gleiche id mit kryptoId ueberschreibt weiter (Bearbeitungen unberuehrt)', 
   const ergebnis = zusammenfuegen(lokal, vomServer);
   assert.equal(ergebnis.length, 1);
   assert.equal(ergebnis[0].inhalt, 'neu');
+});
+
+// ── Identität mit Autor-Bindung (2026-10-11) ────────────────────────────────
+// Die Verfasser-Kopie trägt keine kryptoId (ihre id IST die Kennung), die
+// Empfangs-Kopie trägt sie neben der Zustellungs-ID. Bis 2026-10-11 verglich
+// der Merge nur kryptoId mit kryptoId — beide erschienen.
+
+const K = '1760000000000123456';
+const D = '120000000000000001';
+
+test('Verfasser-Kopie (ohne kryptoId) und Empfangs-Kopie desselben Autors erscheinen einmal', () => {
+  const ergebnis = zusammenfuegen(
+    [
+      posten(D, 'hallo', { kryptoId: K, autorId: '200' }),
+      posten(K, 'hallo', { kryptoId: null, autorId: '200' })
+    ],
+    []
+  );
+  assert.equal(ergebnis.length, 1);
+  assert.equal(ergebnis[0].id, D, 'der bereits liegende gewinnt');
+});
+
+test('ein Grabstein auf der ZWEITEN Kopie gewinnt genauso wie auf der ersten', () => {
+  const lokal = [
+    posten(D, 'hallo', { kryptoId: K, autorId: '200' }),
+    posten(K, 'hallo', { kryptoId: K, autorId: '200', geloescht: true })
+  ];
+  const ergebnis = zusammenfuegen(lokal, []);
+  assert.equal(ergebnis.length, 1);
+  assert.equal(ergebnis[0].geloescht, true, 'gelöscht heißt gelöscht, unabhängig von der Reihenfolge');
+  // Und eine spätere Kopie aus der Serverantwort kommt nicht zurück.
+  const mitServer = zusammenfuegen(lokal, [
+    posten('120000000000000099', 'hallo', { kryptoId: K, autorId: '200' })
+  ]);
+  assert.deepEqual(mitServer.map((p) => p.geloescht), [true]);
+});
+
+test('Autor-Bindung: gleiche Kennung eines fremden Autors verdrängt nichts und löscht nichts', () => {
+  // Bob schickt eine Nachricht mit Alices Kennung K und löscht sie wieder —
+  // Alices eigene Nachricht K bleibt stehen.
+  const ergebnis = zusammenfuegen(
+    [
+      posten(K, 'von alice', { autorId: '200' }),
+      posten(D, 'von bob', { kryptoId: K, autorId: '300', geloescht: true })
+    ],
+    []
+  );
+  assert.equal(ergebnis.length, 2);
+  assert.deepEqual(
+    ergebnis.filter((p) => !p.geloescht).map((p) => p.inhalt),
+    ['von alice']
+  );
 });

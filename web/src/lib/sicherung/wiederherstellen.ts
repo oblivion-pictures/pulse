@@ -32,10 +32,9 @@
  *     Cursor beider Art würde entweder Neuankömmlinge oder Seiten-Inhalt
  *     verlieren, weil eine Position allein beides nicht unterscheiden kann.
  *
- *  Zwischen den Grenzen ist geliefert und wird übersprungen. Der Aufrufer
- *  dedupliziert zusätzlich über `verlaufPutSaetze` (Upsert) — dieselbe
- *  Nachricht kann aus zwei Ketten kommen, weil beide Geräte sie empfangen
- *  und spiegeln.
+ *  Zwischen den Grenzen ist geliefert und wird übersprungen. Innerhalb
+ *  eines Laufs legt `eintragsGruppen.ts` dieselbe Nachricht aus mehreren
+ *  Ketten zusammen — beide Geräte empfangen und spiegeln sie.
  *
  * Beschädigte Segmente und unlesbare Nutzlasten sind ein Befund, kein
  * Abbruch: sie werden übersprungen, der Cursor wandert über sie hinweg —
@@ -47,6 +46,7 @@ import { leseRahmenFolge, TYP_SICHERUNG_AES } from '../ablage/format.ts';
 import { leseSegmentKopf, SEGMENT_KOPF_LAENGE } from '../ablage/segment.ts';
 import { entschlüsseleEintrag } from './krypto.ts';
 import { leseSicherungEintrag, type SicherungEintrag } from './nutzlast.ts';
+import { EintragsGruppen } from './eintragsGruppen.ts';
 
 /** Eine Position im Rahmen-Log einer Geräte-Kette. */
 interface SicherungPosition {
@@ -130,17 +130,14 @@ export async function leseSicherungKanalSeite(
 		(a, b) => Math.max(...b[1].map(segIndexVon)) - Math.max(...a[1].map(segIndexVon)),
 	);
 
-	const nachSchluessel = new Map<string, SicherungEintrag>();
-	// Krypto-Id → Schlüssel der liegenden Fassung: dieselbe logische
-	// Nachricht trägt je Gerät eine andere Id (Autor-Id bzw. Zustellungs-Id)
-	// — nur die kanonische Autor-ID erkennt die Kopie der anderen Kette.
-	// Frames vor der Nutzlast-Erweiterung führen sie nicht und bleiben
-	// deshalb (wie vorher) Id-Duplikate.
-	const kryptoJeSchluessel = new Map<string, string>();
+	// Dieselbe logische Nachricht trägt je Gerät eine andere Id (Autor-Id
+	// bzw. Zustellungs-Id) — die Zusammenlegung über Identität und lokale
+	// Ids, samt Grabstein-Regel, steht in `eintragsGruppen.ts`.
+	const gruppen = new EintragsGruppen();
 	const neuerStand: SicherungLeseStaende = { ...lesestand };
 
 	for (const [praefix, dateien] of ketten) {
-		if (nachSchluessel.size >= anzahl) {
+		if (gruppen.groesse >= anzahl) {
 			voll = true;
 			break;
 		}
@@ -157,7 +154,7 @@ export async function leseSicherungKanalSeite(
 		let letzte: SicherungPosition | null = null;
 
 		for (const name of dateien) {
-			if (nachSchluessel.size >= anzahl) {
+			if (gruppen.groesse >= anzahl) {
 				voll = true;
 				break;
 			}
@@ -191,40 +188,16 @@ export async function leseSicherungKanalSeite(
 				if (erste === null) erste = position;
 				letzte = position;
 				if (rahmenEinzeln.typ !== TYP_SICHERUNG_AES) continue;
+				let eintrag: SicherungEintrag | null = null;
 				try {
-					const klar = await entschlüsseleEintrag(dek, rahmenEinzeln.nutzlast);
-					const eintrag = leseSicherungEintrag(klar);
-					const schluessel = `${eintrag.kanalId}:${eintrag.nachricht.id}`;
-					const kryptoId = eintrag.nachricht.kryptoId;
-					const stellvertreter =
-						kryptoId !== undefined ? kryptoJeSchluessel.get(kryptoId) : undefined;
-					const vorhanden =
-						nachSchluessel.get(schluessel) ??
-						(stellvertreter !== undefined && stellvertreter !== schluessel
-							? nachSchluessel.get(stellvertreter)
-							: undefined);
-					// Dieselbe Nachricht kann aus zwei Ketten stammen (zwei
-					// Geräte spiegeln beide) — sonst gewinnt die reichere
-					// Fassung (mehr Anhänge). ÜBER den Grabstein entscheidet
-					// das nicht: einmal gelöscht bleibt gelöscht, auch wenn
-					// die Nachrichten-Fassung die reichere ist — sonst würde
-					// die Seite die gelöschte Nachricht wiederherstellen.
-					const steinAlt = vorhanden?.nachricht.geloescht === true;
-					const steinNeu = eintrag.nachricht.geloescht === true;
-					if (
-						vorhanden === undefined ||
-						(steinNeu && !steinAlt) ||
-						(!steinNeu &&
-							!steinAlt &&
-							eintrag.nachricht.anhaenge.length > vorhanden.nachricht.anhaenge.length)
-					) {
-						nachSchluessel.set(schluessel, eintrag);
-						if (kryptoId !== undefined) kryptoJeSchluessel.set(kryptoId, schluessel);
-					}
+					eintrag = leseSicherungEintrag(
+						await entschlüsseleEintrag(dek, rahmenEinzeln.nutzlast),
+					);
 				} catch {
 					/* Unlesbare Nutzlast — überspringen, der Cursor ist drüber */
 				}
-				if (nachSchluessel.size >= anzahl) {
+				if (eintrag !== null) gruppen.aufnehmen(eintrag);
+				if (gruppen.groesse >= anzahl) {
 					voll = true;
 					break;
 				}
@@ -247,14 +220,6 @@ export async function leseSicherungKanalSeite(
 		}
 	}
 
-	// Neueste zuerst (Nachricht-Snowflake) — dieselbe Ordnung, die die
-	// Ansicht nach dem Merge erwartet.
-	const eintraege = [...nachSchluessel.values()].sort((a, b) =>
-		a.nachricht.id === b.nachricht.id
-			? a.kanalId.localeCompare(b.kanalId)
-			: BigInt(a.nachricht.id) > BigInt(b.nachricht.id)
-				? -1
-				: 1,
-	);
+	const eintraege = gruppen.ergebnis();
 	return { eintraege, lesestand: neuerStand, erschoepft: !voll };
 }

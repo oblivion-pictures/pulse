@@ -12,6 +12,7 @@
  * Modul ohne SvelteKit-Auflöser laden kann.
  */
 import { compareSnowflakeId } from '../utils/snowflake.ts';
+import { kanonischeId } from '../verlauf/identitaet.ts';
 
 /** Vorwärts-Merge: der größere Stand gilt. `prev` fehlt (undefined) → `next`. */
 export function vorwaertsMerge(prev: string | undefined, next: string): string {
@@ -41,5 +42,5 @@ export function istGelesenBis(partnerStand: string | undefined, messageId: strin
  * Der Klartext-Weg hat kein `krypto_id` und bleibt bei der eigenen ID.
  */
 export function lesestandAnker(nachricht: { id: string; krypto_id?: string }): string {
-  return nachricht.krypto_id ?? nachricht.id;
+  return kanonischeId(nachricht.id, nachricht.krypto_id);
 }

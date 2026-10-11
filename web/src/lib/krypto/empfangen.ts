@@ -156,10 +156,10 @@ function cloudRoute(): { serverId?: string } {
 }
 
 /**
- * Welche LOKALEN Saetze eine kanonische Frame-ID trifft (Loesch-, Reaktions-
+ * Welche LOKALEN Sätze eine kanonische Frame-ID trifft (Lösch-, Reaktions-
  * und Bearbeitungs-Umschlag): die geladene Anzeige UND der Verlauf — die
- * Nachricht kann aelter sein als das, was gerade geladen ist (Regel in
- * `loeschZiel.ts::frameZiele`). Leer = auf diesem Geraet nichts, was dieser
+ * Nachricht kann älter sein als das, was gerade geladen ist (Regel in
+ * `loeschZiel.ts::frameZiele`). Leer = auf diesem Gerät nichts, was dieser
  * Frame treffen darf.
  */
 function lokaleZielIds(

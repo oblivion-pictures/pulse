@@ -1,11 +1,12 @@
 import { vergleicheSnowflakeArtigeId } from '../utils/snowflakeZeit.ts';
+import { nachrichtIdentitaet } from './identitaet.ts';
 
 /**
  * Fuehrt den lokalen Bestand eines DM-Kanals mit der Serverantwort zusammen
- * — importiert bewusst NUR `../utils/snowflakeZeit.ts` (importfrei bis auf
- * diese eine Datei, die selbst importfrei ist und per erweiterungspflichtigem
- * Relativpfad eingebunden wird), damit Nodes Testlaeufer die einzige echte
- * Rechnung dieser Etappe direkt prueft (s. CLAUDE.md „Die Falle").
+ * — importiert bewusst NUR `../utils/snowflakeZeit.ts` und `./identitaet.ts`
+ * (beide selbst importfrei, per erweiterungspflichtigem Relativpfad
+ * eingebunden), damit Nodes Testlaeufer die einzige echte Rechnung dieser
+ * Etappe direkt prueft (s. CLAUDE.md „Die Falle").
  *
  * Vier Faelle (Plan Task 2, Schritt 1): Duplikate erscheinen einmal, der
  * Server gewinnt bei bearbeiteten Nachrichten, ein lokaler Grabstein
@@ -20,17 +21,18 @@ import { vergleicheSnowflakeArtigeId } from '../utils/snowflakeZeit.ts';
  */
 
 /** Was die Merge-Rechnung von einem Posten braucht — der Rest (Inhalt,
- *  Anhaenge, …) reist als beliebige Nutzlast im generischen Typ `T` mit.
+ *  Anhänge, …) reist als beliebige Nutzlast im generischen Typ `T` mit.
  *
- *  `kryptoId` (optional, 2026-09-11): die vom AUTOR gewaehlte, geraete-
- *  uebergreifende Nachrichten-ID (`krypto/nachrichtNutzlast.ts`). Dieselbe
- *  logische Nachricht traegt auf jedem Geraet eine ANDERE lokalen ID (der
- *  Author seine eigene, jeder Empfaenger die Zustellungs-ID seines
- *  Umschlags) — die Sicherung eines anderen Geraets liefert sie deshalb
- *  als scheinbar neue Zeile. Gleiche `kryptoId` heisst gleiche Nachricht. */
+ *  `kryptoId` und `autorId` (optional): zusammen die Identität der
+ *  Nachricht (`identitaet.ts`). Dieselbe logische Nachricht trägt auf jedem
+ *  Gerät eine ANDERE lokale ID (der Autor seine eigene, jeder Empfänger die
+ *  Zustellungs-ID seines Umschlags) — die Sicherung eines anderen Geräts
+ *  liefert sie deshalb als scheinbar neue Zeile. Gleiche Identität heißt
+ *  gleiche Nachricht; ohne `autorId` zählt der Autor als leer. */
 export type Mergeposten = {
   id: string;
   kryptoId?: string | null;
+  autorId?: string | null;
   bearbeitetAm: string | null;
   geloescht: boolean;
 };
@@ -48,39 +50,43 @@ export type Mergeposten = {
 const vergleicheId = vergleicheSnowflakeArtigeId;
 
 /**
- * `lokal` ist die erste Quelle, `vomServer` ergaenzt/ueberschreibt sie —
+ * `lokal` ist die erste Quelle, `vomServer` ergänzt/überschreibt sie —
  * AUSSER ein lokaler Posten ist ein Grabstein: dann bleibt er einer, egal
- * was (oder ob ueberhaupt etwas) der Server zu derselben ID sagt.
+ * was (oder ob überhaupt etwas) der Server zu derselben ID sagt.
  *
- * GLEICHE `kryptoId` zaehlt wie gleiche `id` (2026-09-11): die Kopie vom
- * anderen Geraet wird verworfen statt doppelt angezeigt. Der bereits
- * liegende Posten gewinnt (bei gleicher `id` ueberschreibt der Server wie
- * bisher — dort geht es um Bearbeitungen; bei verschiedener `id` ist der
- * Inhalt ohnehin identisch). Ein Grabstein auf EINE Kopie deckt die logische
- * Nachricht insgesamt ab — geloescht heisst geloescht, egal welches Geraet
- * den Stein gesetzt hat.
+ * GLEICHE Identität zählt wie gleiche `id` (2026-09-11, Autor-Bindung
+ * 2026-10-11): die Kopie vom anderen Gerät wird verworfen statt doppelt
+ * angezeigt. Der bereits liegende Posten gewinnt (bei gleicher `id`
+ * überschreibt der Server wie bisher — dort geht es um Bearbeitungen; bei
+ * verschiedener `id` ist der Inhalt ohnehin identisch). Ein Grabstein auf
+ * EINE Kopie deckt die logische Nachricht insgesamt ab — gelöscht heißt
+ * gelöscht, egal welches Gerät den Stein gesetzt hat und in welcher
+ * Reihenfolge die Kopien hier ankommen. Bis 2026-10-11 galt das nur, wenn
+ * der Stein ZUERST kam; kam die sichtbare Kopie vorher, blieb sie stehen.
+ * Der Stein ist hier ein lokaler Satz mit eigenem Autor, kein Sicherungs-
+ * Rahmen — die Bindung an seine Identität ist die des Satzes selbst.
  */
 export function zusammenfuegen<T extends Mergeposten>(lokal: T[], vomServer: T[]): T[] {
-  const byId = new Map<string, T>();
-  const idJeKrypto = new Map<string, string>();
+  // Platz → Posten; ein Platz ist die `id` des ersten Postens einer Nachricht.
+  const plaetze = new Map<string, T>();
+  const platzJeId = new Map<string, string>();
+  const platzJeIdentitaet = new Map<string, string>();
   for (const posten of [...lokal, ...vomServer]) {
-    const eigen = byId.get(posten.id);
-    const stellvertreter =
-      posten.kryptoId !== null && posten.kryptoId !== undefined
-        ? idJeKrypto.get(posten.kryptoId)
-        : undefined;
-    const bestehend = eigen ?? (stellvertreter === undefined ? undefined : byId.get(stellvertreter));
-    if (bestehend !== undefined) {
-      if (bestehend.geloescht) continue; // Grabstein ueberlebt
-      // Gleiche id: der spaetere Kandidat (Server) gewinnt — Bearbeitung.
-      // Verschiedene id bei gleicher kryptoId: Duplikat vom anderen Geraet,
-      // der bereits liegende Posten bleibt.
-      if (bestehend.id !== posten.id) continue;
-    }
-    if (posten.kryptoId !== null && posten.kryptoId !== undefined) {
-      idJeKrypto.set(posten.kryptoId, posten.id);
-    }
-    byId.set(posten.id, posten);
+    const identitaet = nachrichtIdentitaet(posten.autorId, posten.id, posten.kryptoId);
+    const platz = platzJeId.get(posten.id) ?? platzJeIdentitaet.get(identitaet) ?? posten.id;
+    if (verdraengt(plaetze.get(platz), posten)) plaetze.set(platz, posten);
+    if (!platzJeId.has(posten.id)) platzJeId.set(posten.id, platz);
+    if (!platzJeIdentitaet.has(identitaet)) platzJeIdentitaet.set(identitaet, platz);
   }
-  return [...byId.values()].sort((a, b) => vergleicheId(a.id, b.id));
+  return [...plaetze.values()].sort((a, b) => vergleicheId(a.id, b.id));
+}
+
+/** Ob `neu` den Posten verdrängt, der schon auf seinem Platz liegt. */
+function verdraengt(liegend: Mergeposten | undefined, neu: Mergeposten): boolean {
+  if (liegend === undefined) return true;
+  if (liegend.geloescht) return false; // Grabstein überlebt
+  // Gleiche id: der spätere (Server) gewinnt. Verschiedene id bei gleicher
+  // Identität ist das Duplikat vom anderen Gerät, der liegende Posten
+  // bleibt — außer der neue ist der Grabstein.
+  return liegend.id === neu.id || neu.geloescht;
 }

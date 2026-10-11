@@ -19,9 +19,12 @@
  * mit echter Server-ID), gilt die uebergebene lokale ID unveraendert als
  * kanonische Form.
  *
- * Importfrei, damit Nodes eingebauter Testlaeufer die Datei ohne Bundler
- * prueft (s. CLAUDE.md „Die Falle").
+ * Importfrei (bis auf den erweiterungspflichtigen Relativpfad unten), damit
+ * Nodes eingebauter Testläufer die Datei ohne Bundler prüft (s. CLAUDE.md
+ * „Die Falle"). Die Regel „`krypto_id`, sonst die eigene ID" steht einmal, in
+ * `verlauf/identitaet.ts`.
  */
+import { kanonischeId } from '../verlauf/identitaet.ts';
 
 export function kanonischeAntwortId(
   replyToId: string | null,
@@ -29,5 +32,5 @@ export function kanonischeAntwortId(
 ): string | null {
   if (replyToId === null) return null;
   const ziel = nachrichten.find((n) => n.id === replyToId);
-  return ziel?.krypto_id ?? replyToId;
+  return kanonischeId(replyToId, ziel?.krypto_id);
 }
