@@ -1,6 +1,6 @@
 /**
  * Nachrichten-Aktionen eines Community-Kanals (senden/bearbeiten/loeschen/
- * reagieren) — herausgeloest aus der Kanal-Seite, dieselbe Begruendung wie
+ * reagieren/anheften) — herausgeloest aus der Kanal-Seite, dieselbe Begruendung wie
  * bei `chat/kanalWechsel.svelte.ts` fuer den Kanalwechsel. Kein `$state`
  * noetig (die einzige veraenderliche Groesse ist die Map der ausstehenden
  * Optimistic-Timeouts, ein normaler Wert in einem Closure) — deshalb ein
@@ -124,10 +124,26 @@ export function erstelleKanalNachrichtenAktionen() {
     }
   }
 
+  async function togglePin(msg: Message) {
+    try {
+      if (msg.pinned_at) {
+        await chatApi.unpinMessage(msg.id);
+      } else {
+        await chatApi.pinMessage(msg.id);
+      }
+      // WS pin_update spiegelt den Zustand an alle Kanal-Mitglieder.
+    } catch (e) {
+      toast.error(
+        (e as Error).message.includes('pin_limit_reached') ? pm.pin_limit_reached() : pm.pin_failed()
+      );
+      console.error(e);
+    }
+  }
+
   function aufraeumen() {
     for (const handle of pendingOptimisticTimeouts.values()) clearTimeout(handle);
     pendingOptimisticTimeouts.clear();
   }
 
-  return { sendMessage, editMessage, deleteMessage, toggleReaction, aufraeumen };
+  return { sendMessage, editMessage, deleteMessage, toggleReaction, togglePin, aufraeumen };
 }
