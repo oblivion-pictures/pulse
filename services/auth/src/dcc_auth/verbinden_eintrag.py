@@ -71,7 +71,10 @@ def adresse_gesperrt(hostname: str, settings) -> bool:
     return any(d and (hostname == d or hostname.endswith("." + d)) for d in eigene)
 
 
-async def _aktive_gemietete_server(db: AsyncSession, user_id: int) -> int:
+async def aktive_gemietete_server(db: AsyncSession, user_id: int) -> int:
+    """Die Zählung für ``HOECHSTENS_SERVER`` — öffentlich, weil der
+    Übernahme-Antrag (``verbinden_uebernahme.py``) die Grenze schon vor dem
+    Anlegen prüft und dabei genau so zählen muss wie der Vollzug hier."""
     return (
         await db.execute(
             select(func.count())
@@ -102,7 +105,7 @@ async def instanz_verbinden(db: AsyncSession, user: User, hostname: str) -> Verb
             db.add(UserInstanceMembership(user_id=user.id, instance_id=vorhanden.id, role="owner"))
         return Verbunden(vorhanden, None)
 
-    if await _aktive_gemietete_server(db, user.id) >= HOECHSTENS_SERVER:
+    if await aktive_gemietete_server(db, user.id) >= HOECHSTENS_SERVER:
         raise ZuVieleServer
 
     abgeloest: int | None = None

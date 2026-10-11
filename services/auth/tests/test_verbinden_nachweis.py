@@ -229,3 +229,88 @@ async def test_ganzer_weg_ueber_die_aufgeloeste_adresse(monkeypatch):
     monkeypatch.setattr(vn, "_klient", lambda: _klient(handler))
     assert await vn.nachweis_pruefen("pulse.example.com", _ERWARTET) is None
     assert gesehen == ["https://203.0.113.7/.well-known/pulse-verbinden"]
+
+
+# ---------------------------------------------------------------------------
+# server_info_instanz — wer antwortet unter der Adresse? (Widerspruchsfrist, E2)
+# ---------------------------------------------------------------------------
+
+
+async def _instanz_unter(monkeypatch, handler) -> str | None:
+    async def dns(_host):
+        return Schritt("dns", True, "aufgeloest", adressen=["203.0.113.7"])
+
+    monkeypatch.setattr(vn, "pruefe_dns", dns)
+    monkeypatch.setattr(vn, "_klient", lambda: _klient(handler))
+    return await vn.server_info_instanz("pulse.example.com")
+
+
+async def test_server_info_meldet_die_nummer(monkeypatch):
+    gesehen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        gesehen.append(request)
+        return httpx.Response(
+            200,
+            json={"server_version": "0.8.0", "instance_id": "961000", "capabilities": []},
+        )
+
+    assert await _instanz_unter(monkeypatch, handler) == "961000"
+    # Derselbe abgesicherte Weg wie beim Nachweis: an die geprüfte IP, der Name
+    # im Host-Kopf, ohne Kompression.
+    (anfrage,) = gesehen
+    assert str(anfrage.url) == "https://203.0.113.7/.well-known/pulse-server-info"
+    assert anfrage.headers["host"] == "pulse.example.com"
+    assert anfrage.headers["accept-encoding"] == "identity"
+
+
+@pytest.mark.parametrize(
+    "antwort",
+    [
+        # Ein unverbundener Server oder die Cloud selbst.
+        httpx.Response(200, json={"instance_id": None}),
+        httpx.Response(200, json={"instance_id": 961000}),
+        httpx.Response(200, json={"server_version": "0.8.0"}),
+        httpx.Response(200, json=["961000"]),
+        httpx.Response(301, headers={"Location": "https://anderswo.example.com/"}),
+        httpx.Response(404, json={"instance_id": "961000"}),
+        httpx.Response(200, text="<!doctype html><title>Pulse</title>"),
+        httpx.Response(200, json={"instance_id": "961000", "fuellung": "x" * 5000}),
+        httpx.Response(
+            200,
+            headers={"Content-Encoding": "gzip"},
+            stream=_Stuecke([gzip.compress(b'{"instance_id": "961000"}')]),
+        ),
+    ],
+)
+async def test_server_info_ohne_beleg(monkeypatch, antwort):
+    assert await _instanz_unter(monkeypatch, _antwort(antwort)) is None
+
+
+async def test_server_info_nicht_erreichbar(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("Connection refused", request=request)
+
+    assert await _instanz_unter(monkeypatch, handler) is None
+
+
+async def test_server_info_frist(monkeypatch):
+    monkeypatch.setattr(vn, "FRIST_S", 0.05)
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(1)
+        return httpx.Response(200, json={"instance_id": "961000"})
+
+    assert await _instanz_unter(monkeypatch, handler) is None
+
+
+async def test_server_info_im_privaten_netz_wird_nie_abgefragt(monkeypatch):
+    async def dns(_host):
+        return Schritt("dns", False, "zeigt_ins_private_netz", "10.0.0.5")
+
+    def darf_nicht():
+        raise AssertionError("kein HTTP-Aufruf ohne geprüfte Adresse")
+
+    monkeypatch.setattr(vn, "pruefe_dns", dns)
+    monkeypatch.setattr(vn, "_klient", darf_nicht)
+    assert await vn.server_info_instanz("pulse.example.com") is None

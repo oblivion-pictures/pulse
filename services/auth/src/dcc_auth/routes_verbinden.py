@@ -16,6 +16,10 @@ Kennung, Code und Secret werden nie geloggt — und der Code steht in keinem
 Pfad, auch bei den angemeldeten Routen nicht: Pfade landen in
 Zugriffsprotokollen (``web-nginx.conf`` loggt ``$uri``), und wer dort einen
 offenen Code liest, könnte ihn mit seinem Konto bestätigen.
+
+Gehört die Adresse schon einem anderen Konto, entsteht beim Verbinden erst
+ein Übernahme-Antrag (Widerspruchsfrist, ``verbinden_uebernahme.py`` und
+``verbinden_antrag.py``).
 """
 
 from __future__ import annotations
@@ -23,11 +27,9 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from time import monotonic
-from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 
 from dcc_shared.hostname import normalisiere_hostname
@@ -35,7 +37,11 @@ from dcc_shared.hostname import normalisiere_hostname
 from dcc_auth.admin_events import publish_instanz_verbunden
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
-from dcc_auth.email import compose_verbinden_hinweis, compose_verbinden_uebernahme, send_email
+from dcc_auth.email_verbinden import (
+    compose_verbinden_hinweis,
+    compose_verbinden_uebernahme,
+    hinweis_mail,
+)
 from dcc_auth.models import User
 from dcc_auth.models_instances import RegisteredInstance
 from dcc_auth.routes import _check_rate, _consume_token, _parse_rule
@@ -56,6 +62,7 @@ from dcc_auth.verbinden import (
     vorgang_per_code,
     vorgang_per_nachweis,
 )
+from dcc_auth.verbinden_antrag import antrag_gestellt, uebernahme_gesperrt
 from dcc_auth.verbinden_eintrag import (
     InstanzGesperrt,
     ZuVieleServer,
@@ -63,56 +70,28 @@ from dcc_auth.verbinden_eintrag import (
     instanz_verbinden,
 )
 from dcc_auth.verbinden_nachweis import nachweis_pruefen
-from dcc_auth.zugangsdaten import ZugangsdatenOut, zugangsdaten_ausgeben
+from dcc_auth.verbinden_schemas import (
+    AbholenEin,
+    EntscheidungAus,
+    EntscheidungEin,
+    StartAus,
+    StartEin,
+    VerbindenZugangOut,
+    VorgangAus,
+    VorgangEin,
+)
+from dcc_auth.verbinden_uebernahme import (
+    UebernahmeBeantragt,
+    UebernahmeGesperrt,
+    adresse_vergeben,
+    uebernahme_pruefen,
+    uebernahme_vollzogen,
+)
+from dcc_auth.zugangsdaten import zugangsdaten_ausgeben
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["self-host"], dependencies=[Depends(_require_cloud)])
-
-
-class StartEin(BaseModel):
-    hostname: str = Field(..., min_length=1, max_length=253)
-    #: Die geheime Abholkennung des Servers. Die Cloud bildet daraus den
-    #: Nachweis und vergisst sie wieder — gespeichert wird nur der Hash.
-    kennung: str = Field(..., min_length=32, max_length=128)
-
-
-class StartAus(BaseModel):
-    code: str
-    link: str
-    gueltig_s: int
-    abstand_s: int
-
-
-class AbholenEin(BaseModel):
-    kennung: str = Field(..., min_length=32, max_length=128)
-
-
-class VerbindenZugangOut(ZugangsdatenOut):
-    #: Der Name, den ``pulse-connect`` im Terminal nennt („Connected to …“) —
-    #: so sieht der Betreiber, wessen Klick den Server bekommen hat.
-    owner_name: str
-
-
-class VorgangAus(BaseModel):
-    hostname: str
-    gueltig_bis: str
-
-
-class VorgangEin(BaseModel):
-    #: Wie getippt oder aus dem Link übernommen; ``code_normalisieren`` macht
-    #: daraus die Speicherform.
-    code: str = Field(..., min_length=1, max_length=32)
-
-
-class EntscheidungEin(VorgangEin):
-    aktion: Literal["verbinden", "ablehnen"]
-
-
-class EntscheidungAus(BaseModel):
-    status: Literal["verbunden", "abgelehnt"]
-    hostname: str | None = None
-    instance_id: str | None = None
 
 
 async def _redis(request: Request):
@@ -144,21 +123,6 @@ async def _offener_vorgang(redis, roh: str) -> tuple[str, Vorgang]:
     if treffer is None or treffer[1].status != "wartet":
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="unbekannt")
     return treffer
-
-
-async def _hinweis_mail(db, empfaenger: User, mail: tuple[str, str]) -> None:
-    """Gegenmittel gegen untergeschobene Links (Entwurf E5) — an den, der
-    bestätigt hat, und bei einer Übernahme an den bisherigen Besitzer.
-
-    Ein Fehlschlag beim Versand bricht nichts ab — der Server ist zu diesem
-    Zeitpunkt schon eingetragen, und ein 500 hiesse für den Betreiber „hat
-    nicht geklappt“, obwohl es geklappt hat.
-    """
-    betreff, text = mail
-    try:
-        await send_email(empfaenger.email, betreff, text, session=db)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("verbinden_hinweis_mail_fehlgeschlagen user_id=%s: %s", empfaenger.id, exc)
 
 
 def _nachweis_fehlt(befund: str) -> HTTPException:
@@ -210,7 +174,11 @@ async def verbinden_ansehen(payload: VorgangEin, request: Request, db: SessionDe
     user = await _require_user(request, db)
     _bremse_je_konto(request, user.id)
     _, vorgang = await _offener_vorgang(await _redis(request), payload.code)
-    return VorgangAus(hostname=vorgang.hostname, gueltig_bis=vorgang.gueltig_bis)
+    return VorgangAus(
+        hostname=vorgang.hostname,
+        gueltig_bis=vorgang.gueltig_bis,
+        adresse_vergeben=await adresse_vergeben(db, vorgang.hostname, user.id),
+    )
 
 
 @router.post(
@@ -223,7 +191,10 @@ async def verbinden_entscheiden(
     payload: EntscheidungEin, request: Request, db: SessionDep
 ) -> EntscheidungAus:
     user = await _require_user(request, db)
-    _bremse_je_konto(request, user.id)
+    # Nach einem Zurückrollen sind geladene Objekte abgelaufen; die Nummer
+    # bleibt lesbar.
+    user_id = user.id
+    _bremse_je_konto(request, user_id)
     redis = await _redis(request)
     nachweis, vorgang = await _offener_vorgang(redis, payload.code)
 
@@ -243,7 +214,16 @@ async def verbinden_entscheiden(
         raise _nachweis_fehlt(befund)
 
     try:
+        # Eine fremde Adresse erst nach der Widerspruchsfrist
+        # (verbinden_uebernahme.py); bis dahin nur ein Antrag.
+        await uebernahme_pruefen(db, user, vorgang.hostname, get_settings())
         verbunden = await instanz_verbinden(db, user, vorgang.hostname)
+    except UebernahmeBeantragt as antrag:
+        return await antrag_gestellt(db, redis, nachweis, user_id, vorgang.hostname, antrag)
+    except UebernahmeGesperrt as sperre:
+        raise await uebernahme_gesperrt(
+            db, redis, nachweis, user_id, vorgang.hostname, sperre.bis
+        ) from None
     except ZuVieleServer:
         raise HTTPException(status.HTTP_409_CONFLICT, detail="zu_viele_server") from None
     except InstanzGesperrt:
@@ -254,9 +234,11 @@ async def verbinden_entscheiden(
         await db.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="unbekannt") from None
 
+    if verbunden.abgeloest is not None:
+        await uebernahme_vollzogen(db, verbunden.abgeloest)
     instanz_id = str(verbunden.instanz.id)
     if not await vorgang_entscheiden(
-        redis, nachweis, "bestaetigt", instance_id=instanz_id, user_id=str(user.id)
+        redis, nachweis, "bestaetigt", instance_id=instanz_id, user_id=str(user_id)
     ):
         await db.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="unbekannt")
@@ -278,10 +260,10 @@ async def verbinden_entscheiden(
         alt = await db.get(RegisteredInstance, verbunden.abgeloest)
         vorbesitzer = await db.get(User, alt.registered_by) if alt.registered_by else None
         if vorbesitzer is not None:
-            await _hinweis_mail(
+            await hinweis_mail(
                 db, vorbesitzer, compose_verbinden_uebernahme(vorgang.hostname, jetzt)
             )
-    await _hinweis_mail(db, user, compose_verbinden_hinweis(vorgang.hostname, jetzt))
+    await hinweis_mail(db, user, compose_verbinden_hinweis(vorgang.hostname, jetzt))
     return EntscheidungAus(status="verbunden", hostname=vorgang.hostname, instance_id=instanz_id)
 
 
@@ -306,6 +288,16 @@ async def verbinden_abholen(payload: AbholenEin, request: Request, db: SessionDe
     vorgang = await vorgang_entnehmen(redis, nachweis)
     if vorgang is None:
         raise HTTPException(status.HTTP_410_GONE, detail="abgelaufen")
+    if vorgang.status == "uebernahme_beantragt":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "uebernahme_beantragt", "frist_bis": vorgang.frist_bis},
+        )
+    if vorgang.status == "uebernahme_gesperrt":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail={"code": "uebernahme_gesperrt", "bis": vorgang.frist_bis},
+        )
     if vorgang.status == "abgelehnt":
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="abgelehnt")
     # Zwischen Lesen und Entnehmen kann der entschiedene Vorgang abgelaufen

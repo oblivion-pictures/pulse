@@ -369,6 +369,57 @@ class Complaint(Base):
     )
 
 
+#: Ein Antrag ist offen, solange weder widersprochen, vollzogen noch verfallen.
+#: Wortgleich in Migration 0057.
+_UEBERNAHME_OFFEN = (
+    "widersprochen_at IS NULL AND vollzogen_at IS NULL AND verfallen_at IS NULL"
+)
+
+
+class InstanzUebernahme(Base):
+    """Antrag eines fremden Kontos, eine eingetragene Adresse zu übernehmen
+    (Migration 0057, ``verbinden_uebernahme.py``; Spec 2026-10-09 E2,
+    Nachtrag 2026-10-11).
+
+    Der Antrag hängt an der alten Instanz, nicht an der Adresse: wird der
+    Eintrag gelöscht und die Adresse neu verbunden, zählt er nicht mehr.
+    ``hostname`` steht nur zur Lesbarkeit in Logs und Admin-SQL dabei.
+    """
+
+    __tablename__ = "instanz_uebernahmen"
+
+    id: Mapped[int] = snowflake_pk()
+    alte_instanz_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("registered_instances.id"), nullable=False
+    )
+    hostname: Mapped[str] = mapped_column(Text, nullable=False)
+    # SET NULL, nicht CASCADE: sonst höbe ein Wegwerf-Konto, das sich nach dem
+    # Widerspruch löscht, die 30-Tage-Sperre auf.
+    neues_konto_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    beantragt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    frist_bis: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    widersprochen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    vollzogen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verfallen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_instanz_uebernahmen_alte_instanz_id", "alte_instanz_id"),
+        # Höchstens ein offener Antrag je alter Instanz. ``sqlite_where`` auch,
+        # sonst fehlt der Index in den Tests (``create_all``).
+        Index(
+            "uq_instanz_uebernahmen_offen",
+            "alte_instanz_id",
+            unique=True,
+            postgresql_where=text(_UEBERNAHME_OFFEN),
+            sqlite_where=text(_UEBERNAHME_OFFEN),
+        ),
+    )
+
+
 class InstanceDirectEndpoint(Base):
     """Telefonbuch-Eintrag des Direktpfads (Plan 2026-07-09-direct-path-webrtc).
 
