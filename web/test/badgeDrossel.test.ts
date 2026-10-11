@@ -78,3 +78,30 @@ test('nach einer Zustellung bei wacher App geht derselbe Wert gedrosselt erneut 
 	assert.equal(wartezeit(stand, 3, 11_000), MINDESTABSTAND_MS - 1_000);
 	assert.equal(wartezeit(stand, 3, 10_000 + MINDESTABSTAND_MS), 0);
 });
+
+test('S5: die wiederholte 0 nach einer Zustellung geht durch die Drossel', async () => {
+	// In einem offenen Gespräch ist jede Nachricht ein `postfach_neu`, und die
+	// Zahl bleibt 0. Bisher ging jede dieser Nullen sofort raus — nach 30 war
+	// das Band des Gateways für den Rest der Minute zu.
+	const { serverHatGezaehlt, wartezeit } = await import('../src/lib/platform/badgeDrossel.ts');
+	const stand: Drosselstand = { letzterWert: 0, letzteZeit: 10_000, bereit: true };
+	serverHatGezaehlt(stand);
+	assert.equal(wartezeit(stand, 0, 11_000), MINDESTABSTAND_MS - 1_000);
+	assert.equal(wartezeit(stand, 0, 10_000 + MINDESTABSTAND_MS), 0);
+	// Eine NEUE 0 (alles gelesen) springt weiter vor.
+	assert.equal(wartezeit({ letzterWert: 4, letzteZeit: 10_000, bereit: true }, 0, 10_001), 0);
+});
+
+test('S5: nach einer Abweisung (429) wartet jede Meldung, auch die 0, und kommt dann', async () => {
+	const { abgewiesen, wartezeit, SPERRE_NACH_ABWEISUNG_MS } = await import(
+		'../src/lib/platform/badgeDrossel.ts'
+	);
+	const stand: Drosselstand = { letzterWert: 4, letzteZeit: 10_000, bereit: true };
+	abgewiesen(stand, 20_000);
+	assert.equal(wartezeit(stand, 0, 20_000), SPERRE_NACH_ABWEISUNG_MS);
+	assert.equal(wartezeit(stand, 5, 50_000), SPERRE_NACH_ABWEISUNG_MS - 30_000);
+	// Danach gilt die normale Regel wieder.
+	assert.equal(wartezeit(stand, 0, 20_000 + SPERRE_NACH_ABWEISUNG_MS), 0);
+	// Nichts Neues bleibt nichts Neues, auch während der Sperre.
+	assert.equal(wartezeit(stand, 4, 30_000), null);
+});

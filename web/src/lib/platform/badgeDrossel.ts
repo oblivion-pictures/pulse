@@ -10,7 +10,12 @@
  * **Warum die 0 die Drossel überspringt:** „Alles gelesen" ist die eine
  * Meldung, auf die es ankommt — danach soll die Plakette am Icon sofort weg
  * sein. Eine um Sekunden verzögerte 0 ist genau der Fall, den ein Nutzer als
- * Fehler liest („ich habe doch alles gelesen").
+ * Fehler liest („ich habe doch alles gelesen"). **Aber nur eine NEUE 0** —
+ * wiederholt der Klient bloss die 0, weil der Server womöglich gezählt hat
+ * (`serverHatGezaehlt`), geht sie durch die Drossel wie jede andere Zahl.
+ * Sonst wäre jede Nachricht in einem offenen Gespräch eine sofortige Meldung,
+ * und das Band des Gateways wäre nach 30 davon für den Rest der Minute zu
+ * (Nachprüfung der Fix-Runden, S5).
  *
  * **Warum es ein `bereit` braucht — und warum gerade die 0 gefährlich ist.**
  * Beim App-Start läuft die Ungelesen-Rechnung, BEVOR der Postfach-Abholweg
@@ -42,7 +47,16 @@ export interface Drosselstand {
    *  Dann ist auch derselbe Wert eine Nachricht — gedrosselt wie jede
    *  andere (s. `serverHatGezaehlt`). Fehlt das Feld, gilt `false`. */
   gezaehlt?: boolean;
+  /** Bis wann das Band des Gateways zu ist (ms, `Date.now()`-Skala) — nach
+   *  einer Abweisung mit 429 (`abgewiesen`). Fehlt das Feld, ist es offen. */
+  gesperrtBis?: number;
 }
+
+/** So lange wartet eine Meldung nach einem 429. **Eine ganze Fensterlänge
+ *  des Gateways** (`fcm_badge`: 30 je 60 s, festes Fenster ab dem ersten
+ *  Aufruf, `ratelimit.py`): danach ist das Fenster, in dem abgewiesen wurde,
+ *  sicher vorbei. Gesetzt aus dem Code, nicht gemessen. */
+export const SPERRE_NACH_ABWEISUNG_MS = 60_000;
 
 /**
  * Wann der Wert gemeldet werden darf: `0` = jetzt, eine Zahl > 0 = in so
@@ -62,12 +76,27 @@ export function wartezeit(stand: Drosselstand, wert: number, jetzt: number): num
   // Derselbe Wert ist keine Nachricht — der Server weiss ihn schon, es sei
   // denn, er hat inzwischen selbst gezählt.
   if (stand.letzterWert === wert && !stand.gezaehlt) return null;
-  // Alles gelesen: sofort, s. Modulkopf.
-  if (wert === 0) return 0;
+  // Das Band ist zu (429): nichts geht vorbei, auch die 0 nicht — sie käme
+  // nur wieder zurück.
+  const sperre = (stand.gesperrtBis ?? 0) - jetzt;
+  if (sperre > 0) return sperre;
+  // Alles gelesen: sofort — wenn es neu ist, s. Modulkopf.
+  if (wert === 0 && stand.letzterWert !== 0) return 0;
   // Erste Meldung dieser Sitzung: sofort, damit ein frisch gestartetes Gerät
   // den Serverstand nicht minutenlang falsch stehen lässt.
   if (stand.letzterWert === null) return 0;
   return Math.max(0, stand.letzteZeit + MINDESTABSTAND_MS - jetzt);
+}
+
+/**
+ * Der Server hat die Meldung mit 429 abgewiesen: das Band ist zu, bis
+ * `SPERRE_NACH_ABWEISUNG_MS` vorbei sind. Bis zur Nachprüfung der Fix-Runden
+ * (S5) ging der Wert danach nie wieder raus — der Merker wurde nur
+ * zurückgenommen, und ohne neue Zahl fragte niemand mehr. Der Aufrufer
+ * meldet jetzt nach (`badgeMelden.ts`).
+ */
+export function abgewiesen(stand: Drosselstand, jetzt: number): void {
+  stand.gesperrtBis = jetzt + SPERRE_NACH_ABWEISUNG_MS;
 }
 
 /** Darf der Wert JETZT gemeldet werden? Ja/Nein-Form von `wartezeit`. */

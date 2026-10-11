@@ -1,7 +1,9 @@
 """In-process per-user token-bucket rate limiting for the chat-gateway.
 
-This is intentionally minimal: each bucket is a sliding window keyed on
-(action, user_id) held in module-global state. It is *per process* — for a
+This is intentionally minimal: each bucket is a FIXED window keyed on
+(action, user_id) held in module-global state — it starts with the first call
+and resets once ``window_seconds`` have passed since then (``check`` below), not
+a sliding window. It is *per process* — for a
 multi-instance deployment behind Caddy this must be swapped for a Redis-backed
 limiter (same caveat as the auth-svc's `_check_rate`). Buckets are evicted
 lazily once their window has fully elapsed, so memory stays bounded by the

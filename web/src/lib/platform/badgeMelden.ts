@@ -1,7 +1,8 @@
-import { request } from '$lib/api/client';
+import { ApiError, request } from '$lib/api/client';
 import { serversStore } from '$lib/api/servers.svelte';
 import { badgeSetzen } from './badge';
 import {
+  abgewiesen,
   serverHatGezaehlt,
   serverStandUnsicher,
   wartezeit,
@@ -79,13 +80,22 @@ function melden(): void {
     '/fcm/badge',
     { method: 'POST', body: { anzahl: wert } },
     { serverId: serversStore.cloudId() }
-  ).catch(() => {
+  ).catch((e: unknown) => {
     // Fehlgeschlagen (offline, 429, nicht angemeldet): den Merker
     // zurücknehmen, sonst gilt ein nie angekommener Wert als gemeldet und
     // der nächste Durchlauf schweigt über denselben Stand.
     if (stand.letzterWert === wert) {
       stand.letzterWert = vorher.wert;
       stand.gezaehlt = vorher.gezaehlt;
+    }
+    // **Ein 429 wird nachgemeldet** (S5): das Band ist eine Minute zu, und
+    // ohne neue Zahl fragte danach niemand mehr. Offline und abgemeldet
+    // nicht — dort meldet das Wiederverbinden ohnehin neu
+    // (`badgeNachVerbindung`), und eine abgemeldete Sitzung hat nichts zu
+    // melden.
+    if (e instanceof ApiError && e.status === 429) {
+      abgewiesen(stand, Date.now());
+      melden();
     }
   });
 }
@@ -145,6 +155,7 @@ export function badgeMeldungZuruecksetzen(): void {
   stand.letzteZeit = 0;
   stand.bereit = false;
   stand.gezaehlt = false;
+  stand.gesperrtBis = 0;
   gerechnet = null;
   nachmelden = null;
   if (nachzuegler !== null) clearTimeout(nachzuegler);
