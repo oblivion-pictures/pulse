@@ -266,3 +266,33 @@ A2 (Gegenseite hört nichts), A3 (WebView eingefroren nach Annahme), A5
 (Anklopfen bei `maximumCallGroups = 1`), A6 (Aufblitzen, Verlaufseintrag), A7
 (Zeitpunkt `didDeactivate`), B1/D2 (`sessionStorage` nach WebContent-Absturz),
 C1 (halboffener Socket), F3 (iOS-Einstellungen ohne Anfrage).
+
+---
+
+## Stand der Behebung (2026-10-11)
+
+Alle bestätigten und plausiblen Funde sowie die fünf nicht entschiedenen sind
+behoben, in drei Runden je von einem frischen Agenten, jede im Prüfbaum
+nachgeprüft (Typprüfung, Unit-Tests, Simulator-Bau, Backend-Suiten) und auf
+den Dev-Stack ausgeliefert:
+
+| Runde | Commits | Funde |
+|---|---|---|
+| 1 | `2246c52c..4deea71d` | N1, D1, B1/D2, F1, F4, F5, E1 |
+| 2 | `7b811921..7a7a6864` | A2–A10, B2–B6, D4, D5 |
+| 3 | `a0a867ec..2865023f` | C1–C4, C6, C7, D3, E2–E5, F2, F3, F6–F8, dazu die Nachzügler aus Runde 2 (Sendable-Warnungen, `notifyListeners` in drei weiteren Plugins, Knöpfe der nativen Ansicht in die Befehlskette) |
+
+**Nur am Gerät belegbar** bleibt, was oben unter „Nur am Gerät zu klären"
+steht, dazu: dass die Gegenseite im ersten Anruf hört (A2), der Vordergrund-
+Riegel für DM-Banner (C1), der Android-Download (F2).
+
+**Offen geblieben:** verschlüsselte Anhänge unter Android (der Klartext liegt
+nur als `blob:` vor, die Hülle verwirft das — vor dem Branch schon so);
+`MainActivity` speichert Downloads ohne Dateinamen; ein `auth:ketten_ende`
+während eines Gateway-Neustarts geht verloren, eine still abgelaufene Kette
+meldet niemand; WebRTC-Unterbibliotheken, Rust-Crates in livekit-uniffi und
+die Android-Hülle fehlen noch in den Lizenzhinweisen.
+
+**Beim Landen auf `main`:** neben T1 hängt jetzt `0102_geraetetoken_kette` an
+`0101_voip_tokens`; `services/**` ist geändert, die Windows-Server-App braucht
+deshalb einen Versions-Bump.
