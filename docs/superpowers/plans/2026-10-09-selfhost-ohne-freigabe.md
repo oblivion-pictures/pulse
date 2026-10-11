@@ -26,7 +26,7 @@
 - Commit-Messages und neue Texte mit echten Umlauten; keine Emojis, nirgends.
 - Backend-Tests: `REDIS_URL=redis://127.0.0.1:6380/1 PULSE_INSTANCE_MODE=cloud PULSE_INSTANCE_ID=0 uv run --all-packages pytest -q <pfad>`; Web: `cd web && pnpm check && pnpm build && pnpm test:unit`; volles Gate `bash scripts/gate.sh`.
 - Jede Etappe auf eigenem Zweig von frisch gepulltem `main`, gelandet über `bash scripts/ship.sh`. **Landen = Prod-Deploy → nur auf ausdrückliche Freigabe des Eigentümers.**
-- Nach jeder Code-Änderung: `code-simplifier`-Agent über die geänderten Dateien, Tests erneut grün, `bash .claude/hooks/simplify-stamp.sh`, dann committen. Jeder Commit endet mit `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Nach jeder Code-Änderung: `code-simplifier`-Agent über die geänderten Dateien, Tests erneut grün, `bash .claude/hooks/simplify-stamp.sh`, dann committen. Commits tragen **keinen** `Co-Authored-By`-Footer (globale Regel des Eigentümers: der CLA-Bot zählt ihn als weiteren Beteiligten).
 - Bestandsserver (drei VPS mit Zugangsdaten in der Umgebung, zwei Heim-Server) dürfen in keiner Etappe etwas bemerken.
 - GitHub-Organisation: `oblivion-pictures`. Die Domain `howispulse.com` bleibt überall.
 
@@ -109,9 +109,7 @@ Expected: keine Ausgabe.
 
 ```bash
 git add .github/workflows/mediamtx-fork.yml
-git commit -m "ci: MediaMTX-Fork baut in den Namensraum oblivion-pictures
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "ci: MediaMTX-Fork baut in den Namensraum oblivion-pictures"
 bash scripts/ship.sh
 ```
 
@@ -211,9 +209,7 @@ git add .github/workflows/ci.yml .github/workflows/allinone.yml .github/workflow
   infra/self-host/Dockerfile infra/prod/docker-compose.yml infra/prod/pulse-update.sh \
   web/src/lib/legal/impressum.md web/src/lib/legal/drittanbieter.md \
   infra/self-host/README.md infra/prod/DEPLOY.md docs/ONBOARDING.md
-git commit -m "chore: Bauwege und Cloud-Abholung auf die Organisation oblivion-pictures
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "chore: Bauwege und Cloud-Abholung auf die Organisation oblivion-pictures"
 ```
 Erst landen (`bash scripts/ship.sh`), wenn der Eigentümer für Task 0.4 bereitsteht — ab dem Merge baut CI nur noch unter den neuen Namen, und die Cloud bleibt stehen, bis Task 0.4 erledigt ist.
 
@@ -417,9 +413,7 @@ Expected: `17 passed`.
 
 ```bash
 git add shared/src/dcc_shared/hostname.py shared/tests/test_hostname.py
-git commit -m "feat(shared): Hostnamen für Cloud und Self-Host gleich normalisieren
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(shared): Hostnamen für Cloud und Self-Host gleich normalisieren"
 ```
 
 ---
@@ -858,9 +852,7 @@ git add services/auth/alembic/versions/20261010_1200_0056_verbinden.py \
   services/auth/src/dcc_auth/routes_admin_instances.py \
   services/auth/src/dcc_auth/instance_provisioning.py \
   services/auth/tests/test_verbinden_datenmodell.py
-git commit -m "feat(auth): Datenmodell für das Verbinden per Gerätecode (Migration 0056)
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(auth): Datenmodell für das Verbinden per Gerätecode (Migration 0056)"
 ```
 
 ---
@@ -1282,9 +1274,7 @@ Expected: `23 passed`. Danach einmal parallel, um den Fixture auch mit eigenem R
 ```bash
 git add services/auth/src/dcc_auth/verbinden.py services/auth/tests/conftest.py \
   services/auth/tests/test_verbinden.py
-git commit -m "feat(auth): Gerätecode und Redis-Vorgang für das Verbinden
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(auth): Gerätecode und Redis-Vorgang für das Verbinden"
 ```
 
 ---
@@ -1590,9 +1580,7 @@ asyncio.run(m())"
 
 ```bash
 git add services/auth/src/dcc_auth/verbinden_nachweis.py services/auth/tests/test_verbinden_nachweis.py
-git commit -m "feat(auth): Nachweis prüfen, dass unter der Adresse der anfragende Server läuft
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(auth): Nachweis prüfen, dass unter der Adresse der anfragende Server läuft"
 ```
 
 ---
@@ -1873,9 +1861,7 @@ Expected: `40 passed`.
 ```bash
 git add services/auth/src/dcc_auth/zugangsdaten.py \
   services/auth/src/dcc_auth/routes_selfhost_bootstrap.py services/auth/tests/test_zugangsdaten.py
-git commit -m "refactor(auth): Zugangsdaten-Ausgabe aus dem Bootstrap herausziehen
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "refactor(auth): Zugangsdaten-Ausgabe aus dem Bootstrap herausziehen"
 ```
 
 ---
@@ -2260,9 +2246,7 @@ Expected: alles grün (`test_verbinden_eintrag.py`: 12 Tests).
 
 ```bash
 git add services/auth/src/dcc_auth/verbinden_eintrag.py services/auth/tests/test_verbinden_eintrag.py
-git commit -m "feat(auth): Server-Eintrag beim Verbinden anlegen, wiederverwenden oder übernehmen
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(auth): Server-Eintrag beim Verbinden anlegen, wiederverwenden oder übernehmen"
 ```
 
 ---
@@ -3021,9 +3005,7 @@ Expected: `23 passed`.
 ```bash
 git add services/auth/src/dcc_auth/routes_verbinden.py services/auth/src/dcc_auth/config.py \
   services/auth/src/dcc_auth/app.py services/auth/tests/test_verbinden_routen.py
-git commit -m "feat(auth): Routen für das Verbinden per Gerätecode
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(auth): Routen für das Verbinden per Gerätecode"
 ```
 
 ---
@@ -3257,9 +3239,7 @@ Expected: alles grün (`test_verbinden_routen.py`: 26 Tests). Ohne SMTP-Konfigur
 ```bash
 git add services/auth/src/dcc_auth/email.py services/auth/src/dcc_auth/routes_verbinden.py \
   services/auth/tests/test_verbinden_routen.py
-git commit -m "feat(auth): Hinweis-Mails beim Verbinden und bei der Übernahme eines Servers
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(auth): Hinweis-Mails beim Verbinden und bei der Übernahme eines Servers"
 ```
 
 ---
@@ -3520,9 +3500,7 @@ Expected: alles grün (`test_verbinden_routen.py`: 28 Tests).
 git add shared/src/dcc_shared/events/instances.py shared/src/dcc_shared/events/__init__.py \
   shared/tests/test_events.py services/auth/src/dcc_auth/admin_events.py \
   services/auth/src/dcc_auth/routes_verbinden.py services/auth/tests/test_verbinden_routen.py
-git commit -m "feat(auth): verbundener Server erscheint sofort auf allen Geräten des Besitzers
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(auth): verbundener Server erscheint sofort auf allen Geräten des Besitzers"
 ```
 
 ---
@@ -3660,9 +3638,7 @@ Expected: `19 passed`.
 ```bash
 git add services/auth/src/dcc_auth/schemas.py services/auth/src/dcc_auth/routes_admin.py \
   services/auth/tests/test_admin.py
-git commit -m "feat(auth): Admin-Schalter „Darf Server verbinden“
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(auth): Admin-Schalter „Darf Server verbinden“"
 ```
 
 ---
@@ -4201,9 +4177,7 @@ git commit -m "feat(self-host): Nachweis unter /.well-known/pulse-verbinden und 
 
 Der chat-gateway liefert den Nachweis aus, den pulse-connect beim Verbinden
 ablegt (Spec 2026-10-09, E2); die Caddy-Vorlage führt den Pfad. Die
-Server-Info sagt, ob ein Self-Host schon mit einem Konto verbunden ist.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Server-Info sagt, ob ein Self-Host schon mit einem Konto verbunden ist."
 ```
 
 ---
@@ -4501,9 +4475,7 @@ git commit -m "feat(chat-gateway): Self-Host startet ohne Verbindung und nimmt d
 
 Ohne PULSE_INSTANCE_ID bricht der Start nicht mehr ab; das Log nennt einmal
 pulse-connect, und POST /session antwortet 503 nicht_verbunden statt
-instance_id_unconfigured (Spec 2026-10-09, E4).
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+instance_id_unconfigured (Spec 2026-10-09, E4)."
 ```
 
 ---
@@ -5008,9 +4980,7 @@ git commit -m "feat(self-host): Container startet mit der Adresse allein
 Pflicht ist nur noch PULSE_HOSTNAME. 07-render-env.sh übernimmt Zugangsdaten
 aus /data/pulse/verbindung.env, wenn die Umgebung sie leer lässt (Umgebung
 gewinnt), und rendert fehlende Werte ohne Abbruch; ohne Admin-Mail entfällt
-die email-Zeile im Caddyfile (Spec 2026-10-09, E4).
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+die email-Zeile im Caddyfile (Spec 2026-10-09, E4)."
 ```
 
 ---
@@ -5875,9 +5845,7 @@ git commit -m "feat(self-host): pulse-connect verbindet den Server per Geräteco
 Legt den Nachweis ab, fragt bei der Cloud einen Code an, zeigt Link und Code,
 holt die Zugangsdaten nach der Bestätigung im Browser ab, schreibt sie nach
 /data/pulse/verbindung.env und startet den Container neu (Spec 2026-10-09,
-E1/E6). Abholkennung und Secret erscheinen in keiner Ausgabe.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+E1/E6). Abholkennung und Secret erscheinen in keiner Ausgabe."
 ```
 
 ---
@@ -6277,9 +6245,7 @@ cd /home/michael/Dokumente/pulse/web && pnpm check && pnpm test:unit
 cd /home/michael/Dokumente/pulse && bash .claude/hooks/simplify-stamp.sh
 git add web/src/lib/verbinden/code.ts web/src/lib/verbinden/gemerkt.ts \
   web/test/verbinden-code.test.ts web/test/verbinden-gemerkt.test.ts
-git commit -m "feat(web): Verbindungs-Code normalisieren und über die Anmeldung merken
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(web): Verbindungs-Code normalisieren und über die Anmeldung merken"
 ```
 
 ### Task 3.2: API, Seite `/verbinden` und Rückweg
@@ -6605,9 +6571,7 @@ Expected: PASS (der Deckungstest findet die Schlüssel aus Step 4), 0 Fehler.
 cd /home/michael/Dokumente/pulse && bash .claude/hooks/simplify-stamp.sh
 git add web/src/lib/verbinden/fehler.ts web/test/verbinden-fehler.test.ts \
   web/src/lib/api/verbinden.ts web/messages/de.json web/messages/en.json
-git commit -m "feat(web): Fehlerdeutung, API und Texte der Bestätigungsseite
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(web): Fehlerdeutung, API und Texte der Bestätigungsseite"
 ```
 
 - [ ] **Step 8: Playwright-Test schreiben.** `web/tests/e2e/verbinden.spec.ts`:
@@ -7318,9 +7282,7 @@ git add web/src/lib/verbinden/VerbindenKarte.svelte web/src/routes/verbinden/+pa
 git commit -m "feat(web): Bestätigungsseite /verbinden mit Rückweg über die Anmeldung
 
 Die Seite fragt, ob man gerade selbst einen Server installiert; Abbrechen
-ist vorausgewählt. Der Code reist nie in einer Adresse zum Server.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+ist vorausgewählt. Der Code reist nie in einer Adresse zum Server."
 ```
 
 ### Task 3.3: Fehlertext für `nicht_verbunden`
@@ -7424,9 +7386,7 @@ Expected: 0 Fehler, alle Unit-Tests grün (der neue Katalog-Test deckt auch die 
 cd /home/michael/Dokumente/pulse && bash .claude/hooks/simplify-stamp.sh
 git add web/src/lib/api/anmelde-fehler-codes.ts web/test/anmeldefehler.test.ts \
   web/messages/de.json web/messages/en.json
-git commit -m "feat(web): eigener Text für einen Server ohne Verbindung (nicht_verbunden)
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(web): eigener Text für einen Server ohne Verbindung (nicht_verbunden)"
 ```
 
 ### Task 3.4: Landen
@@ -9699,9 +9659,7 @@ git add web/static/install.sh web/test/install-ohne-token.test.ts web/test/insta
   web/test/install-proxy-erkennung.test.ts web/test/install-schluss-reihenfolge.test.ts \
   infra/prod/web-nginx.conf
 git rm web/test/install-jget.test.ts
-git commit -m "feat(self-host): Installer ohne Token, verbindet den Server am Ende per pulse-connect
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(self-host): Installer ohne Token, verbindet den Server am Ende per pulse-connect"
 ```
 
 ### Task 4.2: Compose-Dateien, Beispielkonfiguration, Update-Skript
@@ -10054,9 +10012,7 @@ Expected: keine Ausgabe.
 ```bash
 git add infra/self-host/docker-compose.yml infra/self-host/docker-compose.behind-proxy.yml \
   infra/self-host/.env.example infra/self-host/pulse-update.sh infra/self-host/tests/pulse-update-faelle.sh
-git commit -m "feat(self-host): Compose ohne Zugangsdaten, Anmeldung nur noch am Spiegel für Bestandsserver
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(self-host): Compose ohne Zugangsdaten, Anmeldung nur noch am Spiegel für Bestandsserver"
 ```
 
 ### Task 4.3: Anleitungen für Betreiber
@@ -10581,9 +10537,7 @@ Die Seite einmal im Browser öffnen (`cd web && pnpm dev`, dann `http://127.0.0.
 
 ```bash
 git add docs/self-host-guide.html infra/self-host/README.md docs/selfhost-erreichbarkeit.md
-git commit -m "docs(self-host): Anleitung ohne Antrag, ohne .env-Download, mit pulse-connect
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs(self-host): Anleitung ohne Antrag, ohne .env-Download, mit pulse-connect"
 ```
 
 ### Task 4.4: Paket öffentlich, Probe auf einer Wegwerf-VM
@@ -11383,9 +11337,7 @@ git commit -m "feat(web): „Eigenen Server einrichten“ im Plus und im Menü d
 
 Ein Dialog (am Handy ein Blatt) mit Server-App, Installationsbefehl und
 „Von Pulse gehostet (Bald)“. Plus-Menü und Räume-Menü als eigene
-Komponenten, damit Leiste und Route schrumpfen.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Komponenten, damit Leiste und Route schrumpfen."
 ```
 
 ### Task 5.2: „Meine Server“ statt Server-Knopf; Einrichtung und Antragsbeobachtung entfernen
@@ -12136,9 +12088,7 @@ git commit -m "feat(web): „Meine Server“ im Konto-Menü und im Du-Bereich st
 
 Der Knopf unten in der Leiste und am Ende der Räume-Liste entfällt,
 ebenso die Einrichtung freigegebener Server und die Beobachtung eigener
-Anträge. „Meine Server“ erscheint nur mit eigenem Server.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Anträge. „Meine Server“ erscheint nur mit eigenem Server."
 ```
 
 ### Task 5.3: Neuer Server erscheint sofort auf allen Geräten (`instanz_verbunden`)
@@ -12348,9 +12298,7 @@ git add web/test/hintergrund-allowlist.test.ts web/src/lib/ws/handlers/instanzen
 git commit -m "feat(web): neu verbundener Server erscheint sofort auf allen Geräten
 
 Empfänger für instanz_verbunden, auch bei aktivem Self-Host
-(Hintergrund-Allowlist der Cloud-Verbindung) — mit Test im Gate.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+(Hintergrund-Allowlist der Cloud-Verbindung) — mit Test im Gate."
 ```
 
 ### Task 5.4: Admin-Oberfläche ohne Freigabe
@@ -13248,9 +13196,7 @@ git status --short   # nur die in **Files** genannten Pfade
 git commit -m "feat(web): Admin-Bereich ohne Anträge — Vermerk „ohne Freigabe“, „Darf Server verbinden“
 
 Reiter „Server“ ohne Zähler und ohne „Ausstehend“, „Secret rotieren“ nur
-bei freigegebenen Einträgen, gesperrte Heim-Server wieder sichtbar.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+bei freigegebenen Einträgen, gesperrte Heim-Server wieder sichtbar."
 ```
 
 ### Task 5.5: Changelog
@@ -13321,9 +13267,7 @@ Expected: der gewählte Titel, kein Fehler.
 
 ```bash
 cd /home/michael/Dokumente/pulse && git add web/static/changelog.json
-git commit -m "chore: Changelog — eigener Server ohne Antrag
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "chore: Changelog — eigener Server ohne Antrag"
 ```
 
 ### Task 5.6: Landen
@@ -14478,9 +14422,7 @@ Expected: Treffer nur noch im Docstring der Migration `20260628_1200_0036_env_fi
 
 ```bash
 git add -A services/auth
-git commit -m "chore(auth): Antrag, Freigabe, .env-Download und Worker-ID-Vergabe entfernt
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "chore(auth): Antrag, Freigabe, .env-Download und Worker-ID-Vergabe entfernt"
 ```
 
 ### Task 6.2: Gemeinsames Ereignis `application_decided` entfernen, Web-Reste prüfen
@@ -14557,9 +14499,7 @@ Expected: keine Ausgabe (`test_admin_events.py` benutzt `admin_application_pendi
 
 ```bash
 git add -A shared
-git commit -m "chore(shared): Ereignis application_decided entfernt — niemand veröffentlicht es mehr
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "chore(shared): Ereignis application_decided entfernt — niemand veröffentlicht es mehr"
 ```
 
 ### Task 6.3: Texte, die noch auf den alten Weg zeigen
@@ -14842,9 +14782,7 @@ Expected: keine Ausgabe.
 git add services/auth/src/dcc_auth/diagnose_texte_betreiber.py services/auth/src/dcc_auth/diagnose_texte.py \
   services/auth/tests/test_diagnose_texte.py infra/self-host/s6/usr/local/bin/pulse-doctor \
   web/static/install.sh docs/self-host-guide.html web/Dockerfile
-git commit -m "fix(self-host): Diagnose-Texte und Hinweise zeigen auf pulse-connect und „Meine Server“
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "fix(self-host): Diagnose-Texte und Hinweise zeigen auf pulse-connect und „Meine Server“"
 ```
 
 ### Task 6.4: Doku, CLAUDE.md, Gedächtnis
@@ -15006,9 +14944,7 @@ Expected: keine Ausgabe.
 
 ```bash
 git add CLAUDE.md IDENTITY_CONCEPT.md docs/INSTANCE_APPROVAL_POLICY.md infra/prod/DEPLOY.md
-git commit -m "docs: Self-Host ohne Freigabe in CLAUDE.md, Konzept und Betriebsdoku nachgezogen
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs: Self-Host ohne Freigabe in CLAUDE.md, Konzept und Betriebsdoku nachgezogen"
 ```
 
 - [ ] **Step 8: Gedächtnis aktualisieren (maschinenlokal, nach dem Landen von Task 6.5).** In `~/.claude/projects/-home-michael-Dokumente-pulse/memory/project_unified_hosting_applications.md` den Absatz „**Stand 2026-10-10 (Fassung 2 des Entwurfs):** …“ ersetzen durch:
