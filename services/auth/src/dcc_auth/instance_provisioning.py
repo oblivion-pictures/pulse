@@ -26,7 +26,6 @@ from dcc_shared.snowflake import kennung_aus_text
 
 from dcc_auth.config import get_settings
 from dcc_auth.models_instances import RegisteredInstance, UserInstanceMembership
-from dcc_auth.routes_admin_instances import _allocate_worker_ids
 from dcc_auth.security import hash_password
 from dcc_auth.snowflake import next_id
 
@@ -80,10 +79,12 @@ async def provision_app_host_instance(
 ) -> int:
     """Legt eine Relay-Instanz für App-Hosting an und gibt die Instanz-ID zurück.
 
-    Läuft INNERHALB der Transaktion des Callers. Worker-ID-/client_id-Kollisionen
-    werden per SAVEPOINT-Retry gefangen, ohne die äußere Transaktion (z.B. den
-    App-Status + ``self_host_enabled``) zurückzurollen — der Caller committet
-    am Ende alles gemeinsam.
+    Läuft INNERHALB der Transaktion des Callers. client_id-Kollisionen werden
+    per SAVEPOINT-Retry gefangen, ohne die äußere Transaktion (z.B.
+    ``self_host_enabled``) zurückzurollen — der Caller committet am Ende alles
+    gemeinsam. Worker-IDs vergibt die Funktion seit Migration 0056 nicht mehr
+    (Spec 2026-10-09, E7): der Container liest sie nie, und ihr Vorrat war die
+    einzige harte Obergrenze für die Zahl der Server.
 
     Der Caller MUSS vorher idempotent prüfen
     (:func:`user_has_active_owner_instance`), dass noch keine Instanz existiert.
@@ -100,7 +101,6 @@ async def provision_app_host_instance(
     for _attempt in range(5):
         try:
             async with session.begin_nested():  # SAVEPOINT
-                wid_chat, wid_voice, wid_media = await _allocate_worker_ids(session)
                 instance_id = next_id()
                 session.add(
                     RegisteredInstance(
@@ -108,9 +108,6 @@ async def provision_app_host_instance(
                         hostname=f"app-{instance_id}.{settings.pulse_relay_base_domain}",
                         client_id=secrets.token_urlsafe(16),
                         client_secret=secret_hash,
-                        worker_id_chat=wid_chat,
-                        worker_id_voice=wid_voice,
-                        worker_id_media=wid_media,
                         status="active",
                         origin="app_host",
                         registered_by=owner_user_id,
@@ -128,10 +125,10 @@ async def provision_app_host_instance(
                 await session.flush()
             return instance_id
         except IntegrityError:
-            # SAVEPOINT zurückgerollt (Worker-ID-/client_id-Kollision) → neuer
-            # Versuch mit frischen IDs. Die äußere Transaktion bleibt intakt.
+            # SAVEPOINT zurückgerollt (client_id-Kollision) → neuer Versuch mit
+            # frischen Werten. Die äußere Transaktion bleibt intakt.
             continue
     raise HTTPException(
         status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="worker-id allocation conflict, try again",
+        detail="instance allocation conflict, try again",
     )

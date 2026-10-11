@@ -75,9 +75,10 @@ class InstanceOut(BaseModel):
     id: str  # Snowflake-String-API
     hostname: str
     client_id: str
-    worker_id_chat: int
-    worker_id_voice: int
-    worker_id_media: int
+    # ``None`` für Einträge ab Migration 0056 (verbundene und neue Heim-Server).
+    worker_id_chat: int | None
+    worker_id_voice: int | None
+    worker_id_media: int | None
     status: str
     registered_at: datetime
     registrar_username: str
@@ -85,6 +86,10 @@ class InstanceOut(BaseModel):
     # das Admin-UI blendet sie in "Self-Host-Instanzen" aus (sie leben im
     # App-Hosting-Anträge-Tab). Ohne das Feld konnte es nicht unterscheiden.
     origin: str = "vps"
+    # Eintrag aus dem Verbinden per Gerätecode (Migration 0056). Die Oberfläche
+    # zeigt den Vermerk „ohne Freigabe“ und bietet „Secret rotieren“ nur
+    # freigegebenen Einträgen an.
+    ohne_freigabe: bool = False
 
 
 class RotateSecretOut(BaseModel):
@@ -181,6 +186,7 @@ async def list_instances(
             # (Migration 0043: SET NULL statt FK-Blockade).
             registrar_username=row.registrar.username if row.registrar else "(Konto gelöscht)",
             origin=row.origin,
+            ohne_freigabe=row.ohne_freigabe,
         )
         for row in rows
     ]

@@ -104,6 +104,13 @@ class User(Base):
     self_host_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false"), default=False
     )
+    # Riegel gegen ein Konto, das nach einer Sperre immer neue Server verbindet
+    # (Migration 0056, Spec 2026-10-09 E8). Bewusst eine eigene Spalte statt
+    # ``self_host_enabled`` umzudeuten: das ist eine Freischaltung mit Vorgabe
+    # aus und gehört weiter dem Server-App-Weg.
+    server_verbinden_gesperrt: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False
+    )
     # Owner-Stufe (Migration 0039): nur der Betreiber (Owner) darf Self-Host-/
     # App-Host-Anträge GENEHMIGEN (über is_admin hinaus) und ist gegen
     # Demote/Ban geschützt. Genau ein Owner pro Cloud (Bootstrap: erster User /

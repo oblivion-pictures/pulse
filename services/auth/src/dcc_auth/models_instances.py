@@ -53,9 +53,13 @@ class RegisteredInstance(Base):
         server_default="[]",
         default=list,
     )
-    worker_id_chat: Mapped[int] = mapped_column(SmallInteger, nullable=False, unique=True)
-    worker_id_voice: Mapped[int] = mapped_column(SmallInteger, nullable=False, unique=True)
-    worker_id_media: Mapped[int] = mapped_column(SmallInteger, nullable=False, unique=True)
+    # Seit Migration 0056 nullable: neue Einträge (verbundene Server, neue
+    # Heim-Server) bekommen keine Worker-IDs mehr. Der Container hat sie nie
+    # gelesen (feste IDs in 07-render-env.sh), und die Vergabe deckelte die
+    # Zahl der Server bei ~307 (Spec 2026-10-09, E7).
+    worker_id_chat: Mapped[int | None] = mapped_column(SmallInteger, nullable=True, unique=True)
+    worker_id_voice: Mapped[int | None] = mapped_column(SmallInteger, nullable=True, unique=True)
+    worker_id_media: Mapped[int | None] = mapped_column(SmallInteger, nullable=True, unique=True)
     # active | suspended
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     # vps | app_host — Herkunft der Instanz. App-Host-Instanzen (Ein-Knopf-
@@ -87,6 +91,19 @@ class RegisteredInstance(Base):
     # — nur ein Wechsel löst ein Ereignis aus.
     online_gemeldet: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false"), default=False
+    )
+    # Eintrag aus dem Verbinden per Gerätecode (Migration 0056,
+    # ``verbinden_eintrag.py``) statt aus einem freigegebenen Antrag. Nur ein
+    # Vermerk für die Admin-Übersicht — Tickets, Sperre und Mitgliedschaften
+    # behandeln beide Arten gleich.
+    ohne_freigabe: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False
+    )
+    # Wann der Server seine Zugangsdaten abgeholt hat
+    # (``POST /selfhost/verbinden/abholen``). Erst ab da zählt er als
+    # eingerichtet — vorher stünde er mit totem Status-Punkt in der Leiste.
+    verbunden_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # Relationships
