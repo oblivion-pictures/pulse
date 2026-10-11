@@ -81,6 +81,7 @@ from dcc_chat_gateway.routes import (
     stream_reactions,
     streaming,
     users,
+    verbinden_nachweis,
     voice_pull,
     watch,
     watch_chat,
@@ -130,6 +131,7 @@ router.include_router(roles.router)
 router.include_router(role_members.router)
 router.include_router(server_info.router)
 router.include_router(owner_check.router)
+router.include_router(verbinden_nachweis.router)
 router.include_router(sounds.router)
 router.include_router(permission_overwrites.router)
 router.include_router(voice_pull.router)

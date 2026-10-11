@@ -11,7 +11,8 @@ Shape::
         "build_version": "48c405a",
         "pulse_oidc_issuer": "https://howispulse.com",
         "instance_id": "<snowflake-string>|null",
-        "capabilities": ["token_refresh", "server-ticket"]
+        "capabilities": ["token_refresh", "server-ticket"],
+        "verbunden": true
     }
 
 ``instance_id`` is null when ``PULSE_INSTANCE_MODE=cloud`` (the Cloud
@@ -24,6 +25,11 @@ Commit-SHA, den die CI beim Bauen ins Image schreibt — derselbe Stempel auf
 Cloud und Self-Host bedeutet byte-identischen Stand. Ohne CI-Bau: ``dev``.
 ``server_version`` bleibt die handgesetzte KOMPATIBILITAETS-Nummer und
 sagt nichts ueber den Stand (s. ``dcc_chat_gateway.build_version``).
+
+``verbunden`` (Spec 2026-10-09, E4): ``false`` heißt, dieser Self-Host ist noch
+mit keinem Pulse-Konto verbunden und nimmt niemanden auf; abhelfen kann nur
+``pulse-connect`` auf dem Server. Die Cloud meldet immer ``true``. Dieselbe
+Rechnung wie ``POST /session`` (``verbindung.ist_verbunden``).
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ from pydantic import BaseModel
 from dcc_chat_gateway import __version__, build_version
 from dcc_chat_gateway.config import get_settings
 from dcc_chat_gateway.faehigkeiten import SERVER_FAEHIGKEITEN
+from dcc_chat_gateway.verbindung import ist_verbunden
 
 router = APIRouter()
 
@@ -44,6 +51,7 @@ class ServerInfo(BaseModel):
     pulse_oidc_issuer: str
     instance_id: str | None
     capabilities: list[str]
+    verbunden: bool = True
 
 
 @router.get("/.well-known/pulse-server-info", response_model=ServerInfo)
@@ -63,4 +71,5 @@ async def server_info() -> ServerInfo:
         pulse_oidc_issuer=settings.pulse_oidc_issuer,
         instance_id=instance_id,
         capabilities=list(SERVER_FAEHIGKEITEN),
+        verbunden=ist_verbunden(settings),
     )
