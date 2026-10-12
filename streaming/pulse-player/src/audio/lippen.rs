@@ -1,6 +1,6 @@
 //! Lippen-Synchronisation: die Ton-Abspielposition gegen die Ton-RTP-Uhr
 //! regeln — die „gemeinsame Uhr mit dem Videopfad", die es bis hierher nicht
-//! gab (Kopf von [`crate::audio`], Historie in `WISSENSSTAND.md` Nr. 7).
+//! gab (Kopf von [`crate::audio`], Historie im internen Messbericht, Nr. 7).
 //!
 //! Warum das noetig ist: Bild und Ton liefen auf zwei getrennten Uhren — das
 //! Bild folgt seinen RTP-Zeitstempeln (beim Sender wanduhr-echt), der Ton

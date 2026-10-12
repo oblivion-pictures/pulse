@@ -74,8 +74,9 @@ class ExperimentalLog(Base):
     # bedeutete.
     #
     # Das ist der Schlüssel zur Serversicht: der Pfad im MediaMTX-Log heißt
-    # `channel-<kanal>-<sender>-<nonce>` (`scripts/fec-tor-kennzahlen.py` gibt
-    # ihn je Sitzung aus), die Kanalkennung ist also das gemeinsame Stück.
+    # `channel-<kanal>-<sender>-<nonce>` (ein internes Auswerte-Skript für
+    # dieses Log gibt ihn je Sitzung aus), die Kanalkennung ist also das
+    # gemeinsame Stück.
     # Zusammen mit `created_at` grenzt das die Sitzung ein.
     #
     # **Warum nicht die MediaMTX-Sitzungskennung**, die viel genauer wäre: der
