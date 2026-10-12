@@ -23,7 +23,7 @@
   import { m } from '$lib/paraglide/messages.js';
   import { viewport } from '$lib/stores/viewport.svelte';
   import { browserSpeicher } from '$lib/einladung/gemerkt';
-  import { gemerkteVerbindung, gemerkteVerbindungVerwerfen } from '$lib/verbinden/gemerkt';
+  import { gemerkteVerbindungEinloesen } from '$lib/verbinden/gemerkt';
 
   // Darf ich auf dem AKTIVEN Server eine Community anlegen? Rechnung in
   // ``lib/servers/erstellrecht.ts`` (eine Stelle für alle drei Aufrufer).
@@ -72,10 +72,8 @@
     // Seite ohnehin die Startweiterleitung (/app/friends) vornimmt — zwei
     // Weiterleitungen aus zwei Komponenten liefen um die Wette. Sie läuft erst,
     // wenn das Layout fertig hydriert ist (Anmeldung und E-Mail-Riegel geprüft).
-    const speicher = browserSpeicher();
-    const verbindenCode = gemerkteVerbindung(speicher, Date.now());
+    const verbindenCode = gemerkteVerbindungEinloesen(browserSpeicher(), Date.now());
     if (verbindenCode) {
-      gemerkteVerbindungVerwerfen(speicher);
       void goto(`/verbinden#${verbindenCode}`, { replaceState: true });
       return;
     }

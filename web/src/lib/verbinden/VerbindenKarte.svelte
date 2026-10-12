@@ -8,16 +8,14 @@
   dieser Link zu dem Server gehört, den man gerade installiert.
 -->
 <script lang="ts" module>
+  import type { AbschlussZustand } from './VerbindenAbschluss.svelte';
+
   export type VerbindenZustand =
+    | AbschlussZustand
     | 'laden'
     | 'eingabe'
     | 'abgemeldet'
     | 'bereit'
-    | 'verbunden'
-    | 'uebernahme_beantragt'
-    | 'abgelehnt'
-    | 'unbekannt'
-    | 'nachsehen'
     | 'fehler';
 </script>
 
@@ -25,13 +23,9 @@
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
   import ServerIcon from '@lucide/svelte/icons/server';
-  import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
-  import CircleXIcon from '@lucide/svelte/icons/circle-x';
-  import ClockIcon from '@lucide/svelte/icons/clock';
-  import LinkOffIcon from '@lucide/svelte/icons/unlink';
-  import TerminalIcon from '@lucide/svelte/icons/terminal';
   import { m } from '$lib/paraglide/messages.js';
-  import VerbindenFrage from './VerbindenFrage.svelte';
+  import VerbindenAbschluss, { istAbschluss } from './VerbindenAbschluss.svelte';
+  import VerbindenFrage, { IDS } from './VerbindenFrage.svelte';
 
   let {
     zustand,
@@ -42,7 +36,7 @@
     fristBis = '',
     hinweis = null,
     fehlerArt = null,
-    busy = false,
+    aktion = null,
     onCode,
     onAnmelden,
     onRegistrieren,
@@ -57,12 +51,14 @@
     /** Benutzername des angemeldeten Kontos — wer bestätigt, wird Besitzer. */
     konto?: string;
     adresseVergeben?: boolean;
-    /** Fristende einer beantragten Übernahme, schon lesbar formatiert. */
+    /** Fristende einer beantragten Übernahme bzw. Ende einer Sperre, schon lesbar
+     *  formatiert. */
     fristBis?: string;
     hinweis?: string | null;
     /** Maschinenlesbarer Grund zum Hinweis (`data-fehler`, für Tests). */
     fehlerArt?: string | null;
-    busy?: boolean;
+    /** Welche Entscheidung gerade unterwegs ist — `null` = keine. */
+    aktion?: 'verbinden' | 'ablehnen' | null;
     onCode?: (roh: string) => void;
     onAnmelden?: () => void;
     onRegistrieren?: () => void;
@@ -74,54 +70,25 @@
 
   let eingabe = $state('');
 
-  const abschluss = $derived.by(() => {
-    switch (zustand) {
-      case 'verbunden':
-        return {
-          titel: m.verbinden_fertig_titel(),
-          text: m.verbinden_fertig_text(),
-          Symbol: CircleCheckIcon,
-          ton: 'bg-success/15 text-success'
-        };
-      case 'uebernahme_beantragt':
-        return {
-          titel: m.verbinden_titel(),
-          text: m.verbinden_uebernahme_beantragt({ datum: fristBis }),
-          Symbol: ClockIcon,
-          ton: 'bg-warning/15 text-warning'
-        };
-      case 'abgelehnt':
-        return {
-          titel: m.verbinden_abgelehnt_titel(),
-          text: m.verbinden_abgelehnt_text(),
-          Symbol: CircleXIcon,
-          ton: 'bg-bg-hover text-text-muted'
-        };
-      case 'unbekannt':
-        return {
-          titel: m.verbinden_unbekannt_titel(),
-          text: m.verbinden_unbekannt_text(),
-          Symbol: LinkOffIcon,
-          ton: 'bg-bg-hover text-text-muted'
-        };
-      case 'nachsehen':
-        return {
-          titel: m.verbinden_nachsehen_titel(),
-          text: m.verbinden_nachsehen_text(),
-          Symbol: TerminalIcon,
-          ton: 'bg-primary/15 text-primary'
-        };
-      default:
-        return null;
-    }
-  });
-
   const titel = $derived.by(() => {
     if (zustand === 'bereit') return m.verbinden_frage_titel();
     if (zustand === 'fehler') return m.verbinden_fehler_titel();
     return m.verbinden_titel();
   });
 </script>
+
+{#snippet fehlerhinweis()}
+  {#if hinweis}
+    <p
+      class="text-destructive text-sm"
+      role="alert"
+      data-testid="verbinden-hinweis"
+      data-fehler={fehlerArt}
+    >
+      {hinweis}
+    </p>
+  {/if}
+{/snippet}
 
 <div
   class="bg-card border-border/60 flex w-full max-w-md flex-col items-center gap-6 rounded-xl border p-8 text-center shadow-2xl"
@@ -135,20 +102,8 @@
       <div class="bg-bg-hover h-4 w-32 animate-pulse rounded"></div>
     </div>
     <div class="bg-bg-hover h-9 w-full animate-pulse rounded-md"></div>
-  {:else if abschluss}
-    {@const Symbol = abschluss.Symbol}
-    <div class="flex size-16 items-center justify-center rounded-full {abschluss.ton}">
-      <Symbol class="size-7" />
-    </div>
-    <div class="flex flex-col gap-2">
-      <h1 class="text-card-foreground text-xl font-semibold">{abschluss.titel}</h1>
-      <p class="text-muted-foreground text-sm" data-testid="verbinden-abschluss-text">
-        {abschluss.text}
-      </p>
-    </div>
-    <Button variant="outline" class="w-full" onclick={onZuPulse} data-testid="verbinden-zu-pulse">
-      {m.verbinden_zu_pulse()}
-    </Button>
+  {:else if istAbschluss(zustand)}
+    <VerbindenAbschluss {zustand} {fristBis} {onZuPulse} />
   {:else}
     <div class="bg-primary/15 text-primary flex size-16 items-center justify-center rounded-full">
       <ServerIcon class="size-7" />
@@ -180,21 +135,30 @@
       </form>
     {:else}
       {#if hostname}
-        <p class="text-text-bright break-all text-lg font-semibold" data-testid="verbinden-host">
-          {hostname}
+        <p id={IDS.host} class="text-text-bright break-all text-lg font-semibold">
+          <span class="sr-only">{m.verbinden_adresse_label()}: </span>
+          <span data-testid="verbinden-host">{hostname}</span>
         </p>
       {/if}
       {#if code}
         <p
+          id={IDS.code}
           class="bg-bg-input border-border rounded-lg border px-4 py-2 font-mono text-2xl font-bold tracking-widest"
-          data-testid="verbinden-code"
         >
-          {code}
+          <span class="sr-only">{m.verbinden_code_label()}: </span>
+          <span data-testid="verbinden-code">{code}</span>
         </p>
       {/if}
 
       {#if zustand === 'bereit'}
-        <VerbindenFrage {busy} {konto} {adresseVergeben} {onVerbinden} {onAbbrechen} />
+        <VerbindenFrage
+          {aktion}
+          {konto}
+          {adresseVergeben}
+          {fehlerhinweis}
+          {onVerbinden}
+          {onAbbrechen}
+        />
       {:else if zustand === 'abgemeldet'}
         <p class="text-muted-foreground text-sm">{m.verbinden_abgemeldet_text()}</p>
         <div class="flex w-full flex-col gap-2">
@@ -223,14 +187,7 @@
     {/if}
   {/if}
 
-  {#if hinweis}
-    <p
-      class="text-destructive text-sm"
-      role="alert"
-      data-testid="verbinden-hinweis"
-      data-fehler={fehlerArt}
-    >
-      {hinweis}
-    </p>
+  {#if zustand !== 'bereit'}
+    {@render fehlerhinweis()}
   {/if}
 </div>

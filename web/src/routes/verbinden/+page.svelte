@@ -25,7 +25,6 @@
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth.svelte';
   import { serversStore } from '$lib/api/servers.svelte';
-  import { ApiError } from '$lib/api/client';
   import {
     entscheideVerbindung,
     holeVerbindung,
@@ -40,19 +39,10 @@
     tabSpeicher,
     warAbgeschickt
   } from '$lib/verbinden/abgeschickt';
-  import {
-    gemerkteVerbindung,
-    gemerkteVerbindungVerwerfen,
-    verbindungMerken
-  } from '$lib/verbinden/gemerkt';
-  import {
-    ausgangUngewiss,
-    meldungsSchluessel,
-    verbindenFehler,
-    type VerbindenFehler
-  } from '$lib/verbinden/fehler';
+  import { gemerkteVerbindungEinloesen, verbindungMerken } from '$lib/verbinden/gemerkt';
+  import { ausgangUngewiss, vorgangVerbraucht, type VerbindenFehler } from '$lib/verbinden/fehler';
+  import { datumZeigen, fehlerDeuten, meldungstext } from '$lib/verbinden/anzeige';
   import { browserSpeicher } from '$lib/einladung/gemerkt';
-  import { formatTimestamp } from '$lib/utils/formatTimestamp';
   import { m } from '$lib/paraglide/messages.js';
 
   const ausAdresse = $derived(codeAusHash(page.url.hash));
@@ -65,8 +55,11 @@
   let fristBis = $state('');
   let hinweis = $state<string | null>(null);
   let fehlerArt = $state<string | null>(null);
-  let busy = $state(false);
-  // Gegen überholte Antworten, wenn der Code wechselt (Eingabe, neuer Link).
+  // Welche Entscheidung gerade unterwegs ist; `null` = keine. Sperrt beide Knöpfe
+  // und lässt die Frage nur beim Bestätigen von der langen Prüfung sprechen.
+  let aktion = $state<'verbinden' | 'ablehnen' | null>(null);
+  // Gegen überholte Antworten, wenn der Code wechselt (Eingabe, neuer Link) —
+  // beim Laden wie beim Bestätigen.
   let lauf = 0;
 
   function hinweisSetzen(art: string | null, text: string | null): void {
@@ -74,39 +67,23 @@
     hinweis = text;
   }
 
-  /** Zeitpunkt der Cloud (ISO) so, wie ihn der Nutzer liest. */
-  function datumZeigen(iso: string | null | undefined): string {
-    if (!iso || Number.isNaN(Date.parse(iso))) return iso ?? '';
-    return formatTimestamp(iso);
-  }
-
-  function meldungstext(f: VerbindenFehler): string {
-    const schluessel = meldungsSchluessel(f);
-    const katalog = m as unknown as Record<
-      string,
-      ((eingaben: { datum: string }) => string) | undefined
-    >;
-    const datum = f.art === 'uebernahme_gesperrt' ? datumZeigen(f.bis) : '';
-    return (schluessel && katalog[schluessel]?.({ datum })) || m.verbinden_fehler_sonst();
-  }
-
-  /** Zeigt den Fehler und gibt seine Deutung zurück. `frueher`: von diesem Code
-   *  ging schon eine Entscheidung mit unbekanntem Ausgang hinaus. */
-  function fehlerZeigen(err: unknown, frueher: boolean): VerbindenFehler {
-    const f =
-      err instanceof ApiError
-        ? verbindenFehler(err.status, err.body, frueher)
-        : verbindenFehler(null, null);
+  /** Zeigt einen gedeuteten Fehler (`beimBestaetigen`: s. `meldungstext`). */
+  function fehlerZeigen(f: VerbindenFehler, beimBestaetigen: boolean): void {
+    if (f.art === 'uebernahme_gesperrt') {
+      // Ein Endzustand: die Cloud hat den Vorgang beendet, es gibt nichts mehr zu bestätigen.
+      fristBis = datumZeigen(f.bis);
+      zustand = 'uebernahme_gesperrt';
+      return;
+    }
     if (f.art === 'unbekannt' || f.art === 'nachsehen' || f.art === 'abgemeldet') {
       zustand = f.art;
-      return f;
+      return;
     }
-    hinweisSetzen(f.art, meldungstext(f));
+    hinweisSetzen(f.art, meldungstext(f, beimBestaetigen));
     // Beim Bestätigen bleibt die Frage stehen: nach einem behobenen Proxy oder
     // einem gelöschten Server genügt ein zweiter Klick. Beim Laden gibt es
     // noch nichts zu bestätigen.
     if (zustand !== 'bereit') zustand = 'fehler';
-    return f;
   }
 
   async function laden(ausDerAdresse: string | null): Promise<void> {
@@ -114,19 +91,26 @@
     zustand = 'laden';
     hostname = null;
     adresseVergeben = false;
+    fristBis = '';
+    aktion = null;
     hinweisSetzen(null, null);
     // Auth wird nur im /app-Layout hydriert; diese Route liegt außerhalb.
     await auth.hydrate().catch(() => {});
     if (meiner !== lauf) return;
-    let c = ausDerAdresse;
-    if (!c && auth.user) {
-      // Rückweg über die Anmeldung: der Code wartet im Speicher. Einmal
-      // gelesen, gehört er dieser Seite — ein Abbruch soll ihn nicht später
-      // auf /app wieder hervorholen.
-      const speicher = browserSpeicher();
-      c = gemerkteVerbindung(speicher, Date.now());
-      gemerkteVerbindungVerwerfen(speicher);
+    if (auth.user) {
+      // Ein gemerkter Code gehört dieser Seite, sobald sie angemeldet ist — auch
+      // wenn die Adresse einen eigenen trägt: bliebe er stehen, holte /app ihn
+      // später auf einen alten Code zurück.
+      const gemerkt = gemerkteVerbindungEinloesen(browserSpeicher(), Date.now());
+      if (!ausDerAdresse && gemerkt) {
+        // Rückweg über die Anmeldung: den Code in die Adresse setzen, damit ein
+        // Neuladen ihn behält (wie der Rückweg über /app); der Lade-Effekt macht
+        // von dort weiter.
+        void goto(`/verbinden#${gemerkt}`, { replaceState: true, noScroll: true, keepFocus: true });
+        return;
+      }
     }
+    const c = ausDerAdresse;
     code = c;
     if (!c) {
       zustand = 'eingabe';
@@ -144,7 +128,7 @@
       zustand = 'bereit';
     } catch (err) {
       if (meiner !== lauf) return;
-      fehlerZeigen(err, warAbgeschickt(tabSpeicher(), c, Date.now()));
+      fehlerZeigen(fehlerDeuten(err, warAbgeschickt(tabSpeicher(), c, Date.now())), false);
     }
   }
 
@@ -180,28 +164,37 @@
       zustand = 'abgelehnt';
     } else {
       // Eine Antwort, die diese Seite nicht kennt: nichts behaupten.
-      fehlerZeigen(null, false);
+      fehlerZeigen({ art: 'sonst' }, true);
     }
   }
 
-  async function entscheiden(aktion: 'verbinden' | 'ablehnen'): Promise<void> {
-    if (!code || busy) return;
-    busy = true;
+  async function entscheiden(wahl: 'verbinden' | 'ablehnen'): Promise<void> {
+    const c = code;
+    if (!c || aktion) return;
+    const meiner = lauf;
+    aktion = wahl;
     hinweisSetzen(null, null);
     // Die Marke VOR dem Senden: reißt die Verbindung ab, hat die Cloud die
     // Entscheidung vielleicht trotzdem angenommen. `frueher` fragt nach einem
     // früheren Versuch, nicht nach diesem.
     const speicher = tabSpeicher();
-    const frueher = warAbgeschickt(speicher, code, Date.now());
-    abschickenMerken(speicher, code, Date.now());
+    const frueher = warAbgeschickt(speicher, c, Date.now());
+    abschickenMerken(speicher, c, Date.now());
     try {
-      ergebnisZeigen(await entscheideVerbindung(code, aktion));
+      const r = await entscheideVerbindung(c, wahl);
+      if (meiner === lauf) ergebnisZeigen(r);
     } catch (err) {
-      const f = fehlerZeigen(err, frueher);
-      // Eine ausdrückliche Antwort der Cloud heißt: es ist nichts geschehen.
-      if (!ausgangUngewiss(f) && f.art !== 'nachsehen') abschickenVergessen(speicher);
+      // Ein Ergebnis für einen inzwischen gewechselten Code gehört nicht mehr
+      // auf diese Seite.
+      if (meiner !== lauf) return;
+      const f = fehlerDeuten(err, frueher);
+      // Eine ausdrückliche Antwort der Cloud heißt: es ist nichts geschehen —
+      // außer wenn sie den Vorgang beendet hat (dann bleibt die Marke).
+      if (!ausgangUngewiss(f) && !vorgangVerbraucht(f)) abschickenVergessen(speicher);
+      fehlerZeigen(f, true);
     } finally {
-      busy = false;
+      // Hat `laden` inzwischen einen neuen Code aufgenommen, hat es `aktion` schon zurückgesetzt.
+      if (meiner === lauf) aktion = null;
     }
   }
 
@@ -232,7 +225,7 @@
     {fristBis}
     {hinweis}
     {fehlerArt}
-    {busy}
+    {aktion}
     onCode={codeEingegeben}
     onAnmelden={() => merkenUndWeiter('/login?redirect=%2Fverbinden')}
     onRegistrieren={() => merkenUndWeiter('/register')}

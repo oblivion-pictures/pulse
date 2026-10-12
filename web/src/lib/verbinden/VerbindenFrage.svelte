@@ -7,27 +7,48 @@
   eigenen Vorgangs schickt, soll an einem reflexhaften Klick oder Enter
   scheitern. Abbrechen steht deshalb oben, gefüllt und mit dem Fokus.
 -->
+<script lang="ts" module>
+  /** Die Stücke, die die beiden Knöpfe beschreiben (`aria-describedby`): die
+   *  Warnung steht hier, Adresse und Code in `VerbindenKarte.svelte`. */
+  export const IDS = {
+    warnung: 'verbinden-warnung',
+    host: 'verbinden-host',
+    code: 'verbinden-code'
+  } as const;
+</script>
+
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
   import { m } from '$lib/paraglide/messages.js';
 
   let {
-    busy = false,
+    aktion = null,
     konto = '',
     adresseVergeben = false,
+    fehlerhinweis,
     onVerbinden,
     onAbbrechen
   }: {
-    busy?: boolean;
+    /** Welche Entscheidung gerade unterwegs ist — `null` = keine. Nur beim
+     *  Bestätigen läuft die Prüfung der Cloud (bis ~30 s); ein Abbrechen soll
+     *  davon nichts zeigen. */
+    aktion?: 'verbinden' | 'ablehnen' | null;
     /** Benutzername des angemeldeten Kontos — wer bestätigt, wird Besitzer. */
     konto?: string;
     /** Die Adresse gehört schon einem anderen Konto: Bestätigen beantragt nur
      *  eine Übernahme mit Widerspruchsfrist. */
     adresseVergeben?: boolean;
+    /** Der Fehlerhinweis der Karte — er steht ÜBER den Knöpfen, wo der Blick
+     *  nach dem Klick liegt, nicht unter der Angabe zum Konto. */
+    fehlerhinweis?: Snippet;
     onVerbinden?: () => void;
     onAbbrechen?: () => void;
   } = $props();
+
+  const busy = $derived(aktion !== null);
+  const beschreibung = `${IDS.warnung} ${IDS.host} ${IDS.code}`;
 
   // Ausdrücklich per focus() statt `autofocus`: Svelte meldet das Attribut als
   // a11y-Warnung (Muster `DropboxCreateFolderDialog.svelte`). Läuft, sobald der
@@ -43,6 +64,7 @@
 <div class="flex flex-col gap-2">
   <p class="text-muted-foreground text-sm">{m.verbinden_code_konsole()}</p>
   <p
+    id={IDS.warnung}
     class="text-warning flex items-start justify-center gap-1.5 text-sm font-medium"
     data-testid="verbinden-warnung"
   >
@@ -61,12 +83,15 @@
   </p>
 {/if}
 
+{@render fehlerhinweis?.()}
+
 <div class="flex w-full flex-col gap-2">
   <Button
     bind:ref={abbrechenKnopf}
     class="w-full"
     onclick={onAbbrechen}
     disabled={busy}
+    aria-describedby={beschreibung}
     data-testid="verbinden-abbrechen"
   >
     {m.verbinden_abbrechen()}
@@ -76,15 +101,20 @@
     class="w-full"
     onclick={onVerbinden}
     disabled={busy}
+    aria-describedby={beschreibung}
     data-testid="verbinden-bestaetigen"
   >
-    {busy ? m.verbinden_ja_laeuft() : m.verbinden_ja()}
+    {aktion === 'verbinden' ? m.verbinden_ja_laeuft() : m.verbinden_ja()}
   </Button>
 </div>
 
-{#if busy}
+{#if aktion === 'verbinden'}
   <p class="text-muted-foreground text-xs" role="status" data-testid="verbinden-dauert">
     {m.verbinden_dauert()}
+  </p>
+{:else if aktion === 'ablehnen'}
+  <p class="text-muted-foreground text-xs" role="status" data-testid="verbinden-bricht-ab">
+    {m.verbinden_bricht_ab()}
   </p>
 {/if}
 {#if konto}
