@@ -26,15 +26,41 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Versions-Pins — zusammen mit den SHA256-Prüfungen unten pflegen.
+# Versions-Pins — zusammen mit den SHA256-Prüfungen pflegen. JEDER Download
+# unten läuft über Fetch und wird gegen die Prüfsumme hier verglichen; eine
+# Abweichung bricht den Bau ab, bevor irgendetwas entpackt wird. Wer eine
+# Version anhebt, trägt die neue Prüfsumme in derselben Zeile nach — Fetch
+# lässt sich ohne Prüfsumme gar nicht aufrufen.
+#
+# Woher die Werte stammen (Stand 2026-10-12, je Datei mit curl geladen und mit
+# sha256sum nachgerechnet):
+#   Caddy, frp, LiveKit, MediaMTX, .NET: gegen die Liste des Herstellers
+#     geprüft (Caddy `caddy_<v>_checksums.txt` und .NET `releases.json` führen
+#     SHA512 — die SHA256 hier ist selbst berechnet, die Datei zuvor gegen die
+#     SHA512 des Herstellers bestätigt; frp, LiveKit und MediaMTX führen SHA256
+#     und stimmen wörtlich überein).
+#   Garnet: keine Herstellerliste; selbst berechnet und gegen die von GitHub am
+#     Release-Asset angezeigte `sha256:`-Angabe bestätigt.
+#   Postgres (EDB): keine Herstellerliste; selbst berechnet (der MD5 aus den
+#     S3-Metadaten des Servers stimmte mit der Datei überein).
+#   weed (SeaweedFS): kein Download, sondern `git clone` am Tag — festgeschrieben
+#     ist der Commit, auf den der Tag zeigt.
 $CaddyVersion   = "2.8.4"
+$CaddySha256    = "2631fbe1c4f6fb08783ed6dc6ac238d6655b4c923abe2bce1433dbd7fd079630"
 $GarnetVersion  = "2.2.0"
+$GarnetSha256   = "8812ae916dd2386db6ebfaeeee3fb6508024f82ee4c66284532a1a5baa6afea2"
 $LivekitVersion = "1.13.3"   # gleiches Pin wie das allinone-Image
+$LivekitSha256  = "d29786e63a11de390fb8051191a30520cfb687d8f6cb5063b6ef0f748f029727"
 $MediamtxVersion = "1.19.1"  # upstream; Fork-Windows-Artifact steht noch aus
+$MediamtxSha256 = "ca3d89c370bf73dc33ef9ee87afea04834f21b129f499d4b645490fcb01cce22"
 $PgVersion      = "15.14-1"
+$PgSha256       = "234ccc7a5cf07fce70f93faea701fd75fad6bec968359b06cdfc208ed7dfbc30"
 $DotnetVersion  = "10.0.12"
+$DotnetSha256   = "da3947e6acbb5228e4e987c7585aa40ce2d7000856e3da0804e6ee3771e806dc"
 $WeedVersion    = "4.48"
+$WeedCommit     = "530be3e37337488ecc34d58441e0bc476e121c93"   # Commit, auf den der Tag 4.48 zeigt
 $FrpVersion     = "0.69.1"   # passend zum frps der Cloud (snowdreamtech/frps:0.69.1)
+$FrpSha256      = "829ac915f8655d4d4e021b8db61b46c3445205ed80d32b04cda7fa89d87c46e0"
 
 $Repo = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $Tmp = Join-Path $env:TEMP "pulse-native-fetch"
@@ -42,9 +68,22 @@ New-Item -ItemType Directory -Force -Path $Tmp, $Root | Out-Null
 $Bin = Join-Path $Root "native-bin"
 New-Item -ItemType Directory -Force -Path $Bin | Out-Null
 
-function Fetch($Url, $Out) {
+# Lädt $Url nach $Out und bricht ab, wenn die SHA256-Prüfsumme nicht stimmt.
+# Die Prüfsumme ist Pflicht (kein Standardwert): ein Download ohne sie wäre
+# genau die Lücke, die dieser Aufruf schließt. Die Datei bleibt bei einem
+# Fehlschlag nicht liegen, damit ein späterer Lauf sie nicht für gut hält.
+function Fetch($Url, $Out, $Sha256) {
+    if ($Sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "Fetch: keine gültige SHA256-Prüfsumme für $Url angegeben"
+    }
     Write-Host "→ $Url"
     Invoke-WebRequest -Uri $Url -OutFile $Out -MaximumRedirection 5
+    $actual = (Get-FileHash -Path $Out -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $Sha256.ToLowerInvariant()) {
+        Remove-Item -Path $Out -Force -ErrorAction SilentlyContinue
+        throw "SHA256 stimmt nicht für $Url`n  erwartet: $($Sha256.ToLowerInvariant())`n  erhalten: $actual`n  Quelle verändert oder Version angehoben, ohne die Prüfsumme oben nachzutragen — Download wurde verworfen."
+    }
+    Write-Host "  SHA256 ok"
 }
 
 function Unzip($Zip, $Dest) {
@@ -53,21 +92,21 @@ function Unzip($Zip, $Dest) {
 
 # ── Caddy ────────────────────────────────────────────────────────────────────
 if (-not (Test-Path (Join-Path $Bin "caddy.exe"))) {
-    Fetch "https://github.com/caddyserver/caddy/releases/download/v$CaddyVersion/caddy_${CaddyVersion}_windows_amd64.zip" "$Tmp/caddy.zip"
+    Fetch "https://github.com/caddyserver/caddy/releases/download/v$CaddyVersion/caddy_${CaddyVersion}_windows_amd64.zip" "$Tmp/caddy.zip" $CaddySha256
     Unzip "$Tmp/caddy.zip" "$Tmp/caddy"
     Copy-Item "$Tmp/caddy/caddy.exe" $Bin
 }
 
 # ── frpc (Steuerungs-Relay-Tunnel: /livekit + /whep auf den Relay-Hostnamen) ─
 if (-not (Test-Path (Join-Path $Bin "frpc.exe"))) {
-    Fetch "https://github.com/fatedier/frp/releases/download/v$FrpVersion/frp_${FrpVersion}_windows_amd64.zip" "$Tmp/frp.zip"
+    Fetch "https://github.com/fatedier/frp/releases/download/v$FrpVersion/frp_${FrpVersion}_windows_amd64.zip" "$Tmp/frp.zip" $FrpSha256
     Unzip "$Tmp/frp.zip" "$Tmp/frp"
     Copy-Item "$Tmp/frp/frp_${FrpVersion}_windows_amd64/frpc.exe" $Bin
 }
 
 # ── Garnet (+ .NET-Runtime — das Release-Zip ist runtime-abhängig) ──────────
 if (-not (Test-Path (Join-Path $Bin "garnet\GarnetServer.exe"))) {
-    Fetch "https://github.com/microsoft/garnet/releases/download/v$GarnetVersion/win-x64-based-readytorun.zip" "$Tmp/garnet.zip"
+    Fetch "https://github.com/microsoft/garnet/releases/download/v$GarnetVersion/win-x64-based-readytorun.zip" "$Tmp/garnet.zip" $GarnetSha256
     Unzip "$Tmp/garnet.zip" "$Tmp/garnet"
     $garnetExe = Get-ChildItem "$Tmp/garnet" -Recurse -Filter "GarnetServer.exe" | Select-Object -First 1
     if (-not $garnetExe) { throw "GarnetServer.exe nicht im Release-Zip" }
@@ -75,20 +114,20 @@ if (-not (Test-Path (Join-Path $Bin "garnet\GarnetServer.exe"))) {
     Copy-Item (Join-Path $garnetExe.Directory.FullName "*") (Join-Path $Bin "garnet") -Recurse -Force
 }
 if (-not (Test-Path (Join-Path $Bin "dotnet\dotnet.exe"))) {
-    Fetch "https://builds.dotnet.microsoft.com/dotnet/Runtime/$DotnetVersion/dotnet-runtime-$DotnetVersion-win-x64.zip" "$Tmp/dotnet.zip"
+    Fetch "https://builds.dotnet.microsoft.com/dotnet/Runtime/$DotnetVersion/dotnet-runtime-$DotnetVersion-win-x64.zip" "$Tmp/dotnet.zip" $DotnetSha256
     Unzip "$Tmp/dotnet.zip" (Join-Path $Bin "dotnet")
 }
 
 # ── LiveKit ─────────────────────────────────────────────────────────────────
 if (-not (Test-Path (Join-Path $Bin "livekit-server.exe"))) {
-    Fetch "https://github.com/livekit/livekit-server/releases/download/v$LivekitVersion/livekit_${LivekitVersion}_windows_amd64.zip" "$Tmp/livekit.zip"
+    Fetch "https://github.com/livekit/livekit-server/releases/download/v$LivekitVersion/livekit_${LivekitVersion}_windows_amd64.zip" "$Tmp/livekit.zip" $LivekitSha256
     Unzip "$Tmp/livekit.zip" "$Tmp/livekit"
     Copy-Item "$Tmp/livekit/livekit-server.exe" $Bin
 }
 
 # ── MediaMTX ────────────────────────────────────────────────────────────────
 if (-not (Test-Path (Join-Path $Bin "mediamtx.exe"))) {
-    Fetch "https://github.com/bluenviron/mediamtx/releases/download/v$MediamtxVersion/mediamtx_v${MediamtxVersion}_windows_amd64.zip" "$Tmp/mediamtx.zip"
+    Fetch "https://github.com/bluenviron/mediamtx/releases/download/v$MediamtxVersion/mediamtx_v${MediamtxVersion}_windows_amd64.zip" "$Tmp/mediamtx.zip" $MediamtxSha256
     Unzip "$Tmp/mediamtx.zip" "$Tmp/mediamtx"
     Copy-Item "$Tmp/mediamtx/mediamtx.exe" $Bin
 }
@@ -100,6 +139,17 @@ if (-not (Test-Path (Join-Path $Bin "weed.exe"))) {
         $src = Join-Path $Tmp "seaweedfs"
         if (-not (Test-Path $src)) {
             git clone --depth 1 --branch "$WeedVersion" https://github.com/seaweedfs/seaweedfs.git $src
+            if ($LASTEXITCODE -ne 0) { throw "git clone seaweedfs fehlgeschlagen (Exit $LASTEXITCODE)" }
+        }
+        # Ein Tag lässt sich umhängen, ein Commit nicht: gebaut wird nur, wenn
+        # der Tag noch auf den festgeschriebenen Commit zeigt. Die Prüfung steht
+        # außerhalb des Klon-Zweigs, weil ein Ordner aus einem früheren Lauf
+        # (lokal, nicht im frischen CI-Runner) genauso stimmen muss.
+        $weedHead = (git -C $src rev-parse HEAD)
+        if ($LASTEXITCODE -ne 0) { throw "git rev-parse im SeaweedFS-Klon fehlgeschlagen (Exit $LASTEXITCODE)" }
+        $weedHead = "$weedHead".Trim()
+        if ($weedHead -ne $WeedCommit) {
+            throw "SeaweedFS $WeedVersion zeigt nicht auf den festgeschriebenen Commit`n  erwartet: $WeedCommit`n  erhalten: $weedHead`n  Tag umgehängt oder Version angehoben, ohne `$WeedCommit nachzutragen — nichts gebaut."
         }
         Push-Location (Join-Path $src "weed")
         # CGO aus: cgofuse (weed mount) verlangt sonst WinFsp-C-Header, die
@@ -140,7 +190,7 @@ if (-not (Test-Path (Join-Path $Bin "direct-adapter.exe"))) {
 # initdb braucht bin/ + lib/ + share/ (postgres.bki, Timezonedaten) — der
 # Rest des EDB-Zips (pgAdmin, doc, include, StackBuilder) bleibt draußen.
 if (-not (Test-Path (Join-Path $Bin "pg\share\postgres.bki"))) {
-    Fetch "https://get.enterprisedb.com/postgresql/postgresql-$PgVersion-windows-x64-binaries.zip" "$Tmp/pg.zip"
+    Fetch "https://get.enterprisedb.com/postgresql/postgresql-$PgVersion-windows-x64-binaries.zip" "$Tmp/pg.zip" $PgSha256
     Unzip "$Tmp/pg.zip" "$Tmp/pg"
     $pgBinSrc = Get-ChildItem "$Tmp/pg" -Recurse -Filter "postgres.exe" | Select-Object -First 1
     if (-not $pgBinSrc) { throw "postgres.exe nicht im EDB-Zip" }
