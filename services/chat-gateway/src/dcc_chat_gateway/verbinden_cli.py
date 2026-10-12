@@ -8,15 +8,19 @@ Muster „Device Authorization Grant“ (RFC 8628), Spec
 1. Eine geheime Abholkennung erzeugen und ihren SHA-256 als Nachweis nach
    ``<pulse_verbinden_dir>/verbinden-nachweis`` legen; der chat-gateway liefert
    ihn unter ``/.well-known/pulse-verbinden`` aus.
-2. Bei der Cloud einen Gerätecode anfragen und dabei die Kennung selbst
+2. Prüfen, ob Pulse den Nachweis selbst ausliefert (``GET /.well-known/
+   pulse-verbinden`` auf dem eigenen chat-gateway, sonst Exit 3). Die Cloud
+   erlaubt nur 10 Starts je Stunde (``rate_limit_verbinden_start``); einer an
+   einem Server, der noch gar nicht antwortet, wäre vergeudet.
+3. Bei der Cloud einen Gerätecode anfragen und dabei die Kennung selbst
    mitschicken; die Cloud bildet den Hash und vergleicht ihn sofort von außen
    mit dem Nachweis — ein nicht erreichbarer Server verbraucht keinen Code
    (Exit 3). Der Nachweis ist öffentlich lesbar: stünde er statt der Kennung
    im Anfragekörper, könnte jeder Mitleser einen Vorgang für diesen Server
    anlegen (Vertrag, Nachtrag 2).
-3. Link und Code zeigen und alle ``abstand_s`` Sekunden abholen, bis der
+4. Link und Code zeigen und alle ``abstand_s`` Sekunden abholen, bis der
    Betreiber im Browser bestätigt oder ablehnt, höchstens 15 Minuten.
-4. Die Zugangsdaten atomar nach ``verbindung.env`` schreiben (0600), den
+5. Die Zugangsdaten atomar nach ``verbindung.env`` schreiben (0600), den
    Nachweis löschen und den Container neu starten: erst der Neustart rendert
    ``/etc/pulse/env.sh`` neu (07-render-env.sh liest die Datei dort).
 
@@ -32,9 +36,9 @@ allein 07-render-env.sh, das als root läuft. Beim nächsten Start macht
 ``chown -R pulse:pulse /data`` ohnehin alles zu ``pulse``.
 
 Exit-Codes: 0 verbunden · 1 Fehler · 2 abgelehnt, abgelaufen oder die Adresse
-ist gerade gesperrt · 3 der Nachweis ist von außen nicht erreichbar · 4 das
-bestätigende Konto besitzt die Adresse nicht, ein Übernahme-Antrag läuft (kein
-Neustart: es gibt nichts anzuwenden).
+ist gerade gesperrt · 3 der Nachweis wird nicht ausgeliefert (Pulse selbst oder
+von außen nicht erreichbar) · 4 das bestätigende Konto besitzt die Adresse
+nicht, ein Übernahme-Antrag läuft (kein Neustart: es gibt nichts anzuwenden).
 """
 
 from __future__ import annotations
@@ -59,12 +63,17 @@ from dcc_chat_gateway.verbinden_hilfen import (
     entferne_still,
     grund,
     lies_verbindung,
+    lokaler_client,
     nachweis_aus_kennung,
     schreibe_atomar,
     verbindung_env,
     zugang_aus,
 )
-from dcc_chat_gateway.verbindung import NACHWEIS_DATEI, VERBINDUNG_DATEI
+from dcc_chat_gateway.verbindung import (
+    NACHWEIS_DATEI,
+    NACHWEIS_PFAD,
+    VERBINDUNG_DATEI,
+)
 
 #: Beendet den Container sauber; eine Neustart-Regel (``unless-stopped``) holt ihn
 #: zurück, ohne sie bleibt er stehen (``texte.NEUSTART`` nennt den Handgriff).
@@ -78,6 +87,9 @@ ANFRAGE_FRIST_S = 15.0
 #: Beim Start prüft die Cloud erst DNS (bis 5 s) und ruft dann den Nachweis ab
 #: (bis 8 s): im schlechtesten Fall ~13 s, die 15 s Grundfrist wären zu knapp.
 START_FRIST_S = 30.0
+#: Wo der chat-gateway im Container lauscht (s6-rc.d/chat-gateway/run); env.sh
+#: nennt dieselbe Adresse als ``CHAT_GATEWAY_URL``.
+LOKAL_URL_VORGABE = "http://127.0.0.1:8002"
 
 
 @dataclass(frozen=True)
@@ -89,6 +101,7 @@ class Umgebung:
     verzeichnis: Path
     instanz_id: int  # ``pulse_instance_id`` aus /etc/pulse/env.sh; 0 = unverbunden
     modus: str
+    lokal_url: str = LOKAL_URL_VORGABE
 
 
 @dataclass(frozen=True)
@@ -162,6 +175,18 @@ def _starten(umgebung: Umgebung, client: httpx.Client, kennung: str) -> _Vorgang
         raise Abbruch(1, texte.UNERWARTET.format(status=201)) from None
 
 
+def _lokal_pruefen(umgebung: Umgebung, lokal: httpx.Client, nachweis: str) -> None:
+    """Liefert Pulse selbst den Nachweis aus? Sonst scheitert der Start der Cloud
+    mit ``kein_nachweis`` und kostet einen ihrer 10 Starts je Stunde."""
+    try:
+        antwort = lokal.get(umgebung.lokal_url + NACHWEIS_PFAD)
+        gemeldet = antwort.json().get("nachweis") if antwort.status_code == 200 else None
+    except (httpx.HTTPError, ValueError, AttributeError):
+        gemeldet = None
+    if gemeldet != nachweis:
+        raise Abbruch(3, texte.LOKAL_OHNE_NACHWEIS)
+
+
 def _entschieden(umgebung: Umgebung, antwort: httpx.Response) -> None:
     """403 und 409 von ``abholen``. Ein 403 ohne Namen heißt „im Browser abgelehnt“;
     ein 409 ohne Namen kennt der Vertrag nicht und zählt als „wartet“."""
@@ -225,6 +250,7 @@ def verbinden(
     umgebung: Umgebung,
     client: httpx.Client,
     *,
+    lokal: httpx.Client,
     neustart: Callable[[], None] | None,
     rueckfrage: Callable[[str], bool],
     schlafen: Callable[[float], None] = time.sleep,
@@ -241,6 +267,7 @@ def verbinden(
             # VOR der Anfrage: die Cloud ruft den Nachweis sofort von außen ab.
             nachweis = nachweis_aus_kennung(kennung) + "\n"
             _ablegen(nachweis_datei, nachweis, 0o644, texte.DATEN_NICHT_BESCHREIBBAR)
+            _lokal_pruefen(umgebung, lokal, nachweis.strip())
             vorgang = _starten(umgebung, client, kennung)
             minuten = vorgang.gueltig_s // 60
             ausgabe(texte.ANLEITUNG.format(link=vorgang.link, code=vorgang.code, minuten=minuten))
@@ -294,12 +321,17 @@ def main(argv: list[str] | None = None) -> int:
         verzeichnis=Path(settings.pulse_verbinden_dir),
         instanz_id=settings.pulse_instance_id,
         modus=settings.pulse_instance_mode,
+        lokal_url=os.environ.get("CHAT_GATEWAY_URL", LOKAL_URL_VORGABE).rstrip("/"),
     )
-    with httpx.Client(timeout=ANFRAGE_FRIST_S, follow_redirects=False) as client:
+    with (
+        httpx.Client(timeout=ANFRAGE_FRIST_S, follow_redirects=False) as client,
+        lokaler_client() as lokal,
+    ):
         try:
             return verbinden(
                 umgebung,
                 client,
+                lokal=lokal,
                 neustart=None if optionen.no_restart else container_neustarten,
                 rueckfrage=_immer_ja if optionen.yes else frage_im_terminal,
             )

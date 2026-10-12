@@ -43,6 +43,10 @@ NACHWEIS_HILFE = (
     "Then try again: docker exec -it pulse pulse-connect"
 )
 
+LOKAL_OHNE_NACHWEIS = (
+    "Pulse itself is not serving the proof yet (is the server fully started?)\n" + NACHWEIS_HILFE
+)
+
 HILFE = "Connect this Pulse server to your Pulse account."
 HILFE_OHNE_NEUSTART = "do not restart the server afterwards (the installer restarts it itself)"
 HILFE_JA = "connect again without asking if already connected"
