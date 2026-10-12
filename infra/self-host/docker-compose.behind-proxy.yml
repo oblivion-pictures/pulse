@@ -5,24 +5,16 @@
 # only does HTTP routing on 127.0.0.1:8080 (PULSE_TLS_MODE=behind-proxy is set
 # below — the .env does not need touching for it).
 #
-#   1. Get the ready-made config in the app: Settings → Your own server →
-#      My Instances → "Set up server" → "Manual installation" → "Download .env".
-#      It is filled in completely — the Cloud assigns instance ID, client ID and
-#      secret on approval, and shows the secret exactly once.
+#   1. Put this file in an empty directory and create a file named .env next
+#      to it with one line — the public address of your server:
 #
-#   2. Put the file here and rename it to .env:
+#        PULSE_HOSTNAME=chat.example.com
 #
-#        mv ~/Downloads/pulse-instance-*.env .env
+#      The address needs a DNS record pointing at this machine.
 #
-#   3. Sign in to the registry (otherwise: "pull access denied"):
+#   2. docker compose -f docker-compose.behind-proxy.yml up -d
 #
-#        grep -oP '^PULSE_CLOUD_CLIENT_SECRET=\K.*' .env \
-#          | docker login registry.howispulse.com \
-#              -u "$(grep -oP '^PULSE_CLOUD_CLIENT_ID=\K.*' .env)" --password-stdin
-#
-#   4. docker compose -f docker-compose.behind-proxy.yml up -d
-#
-#   5. Add ONE rule in your own proxy:
+#   3. Add ONE rule in your own proxy:
 #        chat.example.com  →  http://127.0.0.1:8080
 #      WebSocket upgrade must pass through (Nginx Proxy Manager: tick "WebSocket
 #      Support"). If your proxy runs IN A CONTAINER it cannot reach the host's
@@ -30,6 +22,15 @@
 #      the container name (`pulse:8080`). Copy-paste snippets for Caddy/nginx/NPM
 #      and the container case: https://howispulse.com/self-host/guide →
 #      "Add the proxy rule".
+#
+#   4. Connect the server to your Pulse account. It shows a link and a code;
+#      open the link, sign in to Pulse and confirm:
+#
+#        docker exec -it pulse pulse-connect
+#
+#      Pulse checks from outside that the server answers under its address,
+#      so the proxy rule from step 3 must be in place first. Until you connect,
+#      the server runs, but nobody can sign in to it.
 #
 #   Optional switches (own certificate, PULSE_PUBLIC_IP behind NAT, backup
 #   interval, log level) are in the commented reference at
@@ -46,11 +47,10 @@
 
 services:
   pulse:
-    # Self-host registry (per-instance credentials). Sign in once before the
-    # first `docker compose pull` — see step 3 in the header above. Use
-    # --password-stdin, not -p: the latter puts the secret into `ps aux` and
-    # your shell history.
-    image: registry.howispulse.com/pulse-allinone:stable
+    # Public image, no login needed. Servers set up before October 2026 may
+    # keep registry.howispulse.com/pulse-allinone:stable here — that one needs
+    # the credentials from their .env (docker login, see pulse-update.sh).
+    image: ghcr.io/oblivion-pictures/pulse:stable
     container_name: pulse
     restart: unless-stopped
     # Log-Begrenzung wie Prod (x-logging-Anker in infra/prod/docker-compose.yml):

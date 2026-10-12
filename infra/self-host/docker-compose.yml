@@ -1,21 +1,20 @@
 # Pulse self-host — Docker Compose (manual path, default case: auto-TLS).
 #
-#   1. Get the ready-made config in the app: Settings → Your own server →
-#      My Instances → "Set up server" → "Manual installation" → "Download .env".
-#      It is filled in completely — the Cloud assigns instance ID, client ID and
-#      secret on approval, and shows the secret exactly once.
+#   1. Put this file in an empty directory and create a file named .env next
+#      to it with one line — the public address of your server:
 #
-#   2. Put the file here and rename it to .env:
+#        PULSE_HOSTNAME=chat.example.com
 #
-#        mv ~/Downloads/pulse-instance-*.env .env
+#      The address needs a DNS record pointing at this machine.
 #
-#   3. Sign in to the registry (otherwise: "pull access denied"):
+#   2. docker compose up -d
 #
-#        grep -oP '^PULSE_CLOUD_CLIENT_SECRET=\K.*' .env \
-#          | docker login registry.howispulse.com \
-#              -u "$(grep -oP '^PULSE_CLOUD_CLIENT_ID=\K.*' .env)" --password-stdin
+#   3. Connect the server to your Pulse account. It shows a link and a code;
+#      open the link, sign in to Pulse and confirm:
 #
-#   4. docker compose up -d
+#        docker exec -it pulse pulse-connect
+#
+#      Until then the server runs, but nobody can sign in to it.
 #
 #   Optional switches (own certificate, PULSE_PUBLIC_IP behind NAT, backup
 #   interval, log level) are in the commented reference at
@@ -34,19 +33,18 @@
 #   docker compose pull && docker compose up -d
 # manually or as a host cron/timer. Ready-made update script as a template:
 #   https://howispulse.com/self-host/pulse-update.sh
-# (drop it next to this file, it reads the registry credentials from .env —
-# examples for cron/systemd are in the script header). The one-command
-# installer (see the guide at https://howispulse.com/self-host/guide) sets up
-# such a host systemd timer automatically — if you take the manual Compose
-# path, you manage updates yourself.
+# (drop it next to this file — examples for cron/systemd are in the script
+# header). The one-command installer (see the guide at
+# https://howispulse.com/self-host/guide) sets up such a host systemd timer
+# automatically — if you take the manual Compose path, you manage updates
+# yourself.
 
 services:
   pulse:
-    # Self-host registry (per-instance credentials). Sign in once before the
-    # first `docker compose pull` — see step 3 in the header above. Use
-    # --password-stdin, not -p: the latter puts the secret into `ps aux` and
-    # your shell history.
-    image: registry.howispulse.com/pulse-allinone:stable
+    # Public image, no login needed. Servers set up before October 2026 may
+    # keep registry.howispulse.com/pulse-allinone:stable here — that one needs
+    # the credentials from their .env (docker login, see pulse-update.sh).
+    image: ghcr.io/oblivion-pictures/pulse:stable
     container_name: pulse
     restart: unless-stopped
     # Log-Begrenzung wie Prod (x-logging-Anker in infra/prod/docker-compose.yml):

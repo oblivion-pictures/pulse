@@ -30,8 +30,11 @@ case "$1 $2" in
       fi
       case "$3" in
         --services) echo pulse ;;
-        --images)   echo reg/probe:t ;;
+        --images)   echo "${IMAGE_NAME:-reg/probe:t}" ;;
       esac; exit 0 ;;
+  # Das Skript leitet die Ausgabe von `docker login` nach /dev/null — der
+  # Nachweis geht deshalb über eine Markerdatei, nicht über stdout.
+  "login registry.howispulse.com") cat > /dev/null; touch "$LOGIN_MARKER"; exit 0 ;;
   "compose pull") exit 0 ;;
   "compose ps")
       # -aq muss dabei sein — ohne -a zählt ein gestoppter Container nicht.
@@ -84,6 +87,34 @@ pruefe "pausiert → nicht anfassen"               nein "angehalten" \
 # Absturzkarussell ist KEIN Handstopp: ein neues Image darf dort heilen.
 pruefe "restarting, neues Image → ausliefern"    ja   "updating" \
   CONTAINER_STATUS=restarting REV_NEU=bbb REV_LAUFEND=aaa
+
+# Anmeldung nur am Spiegel registry.howispulse.com (Bestand). Das öffentliche
+# Bild auf GHCR braucht keine — auch dann nicht, wenn die .env aus der
+# Freigabe-Zeit noch Zugangsdaten trägt.
+pruefe_login() {  # pruefe_login <name> <erwartet: ja|nein> <env…>
+  local name="$1" erwartet="$2"; shift 2
+  local ausgabe login=nein
+  rm -f "$arbeit/login-aufgerufen"
+  ausgabe="$(cd "$arbeit/proj" && env PATH="$arbeit/bin:$PATH" LOGIN_MARKER="$arbeit/login-aufgerufen" "$@" bash ./pulse-update.sh 2>&1 || true)"
+  [ -e "$arbeit/login-aufgerufen" ] && login=ja
+  if [ "$login" != "$erwartet" ]; then
+    echo "✗ $name: login=$login, erwartet=$erwartet"; echo "$ausgabe" | sed 's/^/    /'; fehler=1; return
+  fi
+  echo "✓ $name"
+}
+printf 'PULSE_CLOUD_CLIENT_ID=cid\nPULSE_CLOUD_CLIENT_SECRET=geheim\n' > "$arbeit/proj/.env"
+pruefe_login "Spiegel + Zugangsdaten → Anmeldung" ja \
+  IMAGE_NAME=registry.howispulse.com/pulse-allinone:stable CONTAINER_STATUS=running REV_NEU=aaa REV_LAUFEND=aaa
+pruefe_login "GHCR + Zugangsdaten in der .env → keine Anmeldung" nein \
+  IMAGE_NAME=ghcr.io/oblivion-pictures/pulse:stable CONTAINER_STATUS=running REV_NEU=aaa REV_LAUFEND=aaa
+# Aus .env.example kopierte, LEERE Zeilen sind kein Secret: ein Login mit leeren
+# Daten scheiterte und hielte das Update still an.
+printf 'PULSE_CLOUD_CLIENT_ID=\nPULSE_CLOUD_CLIENT_SECRET=\n' > "$arbeit/proj/.env"
+pruefe_login "Spiegel + leeres Secret → keine Anmeldung" nein \
+  IMAGE_NAME=registry.howispulse.com/pulse-allinone:stable CONTAINER_STATUS=running REV_NEU=aaa REV_LAUFEND=aaa
+rm -f "$arbeit/proj/.env"
+pruefe_login "GHCR ohne .env → keine Anmeldung" nein \
+  IMAGE_NAME=ghcr.io/oblivion-pictures/pulse:stable CONTAINER_STATUS=running REV_NEU=aaa REV_LAUFEND=aaa
 
 # Hinter einem Proxy liegt nur docker-compose.behind-proxy.yml im Verzeichnis.
 mv "$arbeit/proj/docker-compose.yml" "$arbeit/proj/docker-compose.behind-proxy.yml"
