@@ -38,6 +38,16 @@
     deleteConfirmOpen = true;
   }
 
+  /** „Die Adresse wird wieder frei“ stimmt nicht für einen gesperrten Server:
+   *  löscht man ihn, bleibt die Adresse gesperrt (Backend: geloeschte_adresse.py). */
+  function deleteText(inst: Instance | null): string {
+    const hostname = inst?.hostname ?? '';
+    if (inst?.origin === 'app_host') return m.my_instances_apphost_delete_description();
+    return inst?.status === 'suspended'
+      ? m.eigener_server_loeschen_text_gesperrt({ hostname })
+      : m.eigener_server_loeschen_text({ hostname });
+  }
+
   async function confirmDelete() {
     if (!deleteTarget || deleting) return;
     deleting = true;
@@ -147,9 +157,7 @@
     <AlertDialog.Header>
       <AlertDialog.Title>{m.my_instances_delete_title()}</AlertDialog.Title>
       <AlertDialog.Description>
-        {deleteTarget?.origin === 'app_host'
-          ? m.my_instances_apphost_delete_description()
-          : m.eigener_server_loeschen_text({ hostname: deleteTarget?.hostname ?? '' })}
+        {deleteText(deleteTarget)}
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>

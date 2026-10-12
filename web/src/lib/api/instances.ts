@@ -71,7 +71,9 @@ export interface AdminInstance {
   worker_id_chat: number | null;
   worker_id_voice: number | null;
   worker_id_media: number | null;
-  status: string;
+  /** `deleted` kommt nur in der Liste `status=suspended` vor: eine gesperrte
+   *  Instanz, die ihr Besitzer gelöscht hat und die ihre Adresse weiter hält. */
+  status: 'active' | 'suspended' | 'deleted';
   registered_at: string;
   registrar_username: string;
   origin: 'vps' | 'app_host';
@@ -216,7 +218,8 @@ export const adminInstancesApi = {
     return cookieFetch<void>(`/admin/instances/${instanceId}${qs}`, { method: 'DELETE' });
   },
 
-  /** Instanz entsperren. */
+  /** Instanz entsperren; bei einer gelöschten (`status: 'deleted'`) gibt derselbe
+   *  Aufruf nur die Adresse frei, die Instanz bleibt gelöscht. */
   unsuspendInstance(instanceId: string): Promise<void> {
     return cookieFetch<void>(`/admin/instances/${instanceId}/unsuspend`, { method: 'POST' });
   },

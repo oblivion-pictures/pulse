@@ -1,5 +1,10 @@
 <!--
   Admin: Gesperrte Self-Host-Instanzen + Entsperren-Aktion.
+
+  Eine Zeile mit status 'deleted' ist eine gesperrte Instanz, die der Besitzer
+  gelöscht hat: sie hält ihre Adresse weiter gesperrt (Backend:
+  geloeschte_adresse.py). Es gibt nichts zu entsperren, nur die Adresse
+  freizugeben — dieselbe Route, eigene Beschriftung und Meldung.
 -->
 <script lang="ts">
 import { errText } from '$lib/utils/errText';
@@ -35,15 +40,23 @@ import { errText } from '$lib/utils/errText';
   }
 
   async function unsuspend(inst: AdminInstance) {
+    const released = inst.status === 'deleted';
     busy[inst.id] = true;
     try {
       await adminInstancesApi.unsuspendInstance(inst.id);
       instances = instances.filter((i) => i.id !== inst.id);
-      toast.success(m.admin_instances_suspended_unsuspend_success({ hostname: inst.hostname }));
+      toast.success(
+        released
+          ? m.admin_instances_suspended_release_success({ hostname: inst.hostname })
+          : m.admin_instances_suspended_unsuspend_success({ hostname: inst.hostname })
+      );
     } catch (e) {
-      toast.error(m.admin_instances_suspended_unsuspend_failed(), {
-        description: errText(e)
-      });
+      toast.error(
+        released
+          ? m.admin_instances_suspended_release_failed()
+          : m.admin_instances_suspended_unsuspend_failed(),
+        { description: errText(e) }
+      );
     } finally {
       busy[inst.id] = false;
     }
@@ -59,6 +72,7 @@ import { errText } from '$lib/utils/errText';
 {:else}
   <div class="flex flex-col gap-2">
     {#each instances as inst (inst.id)}
+      {@const deleted = inst.status === 'deleted'}
       <div class="border-border bg-bg-hover/30 rounded-xl border p-3 flex items-start justify-between gap-3"
            data-testid="suspended-instance-{inst.id}">
         <div class="min-w-0">
@@ -66,6 +80,11 @@ import { errText } from '$lib/utils/errText';
           <p class="text-text-muted text-xs mt-0.5">
             {inst.registrar_username} · {new Date(inst.registered_at).toLocaleDateString('de-DE')}
           </p>
+          {#if deleted}
+            <p class="text-warning text-xs mt-1" data-testid="suspended-instance-deleted-note-{inst.id}">
+              {m.admin_instances_suspended_deleted_note()}
+            </p>
+          {/if}
         </div>
         <Button
           variant="success-solid"
@@ -74,7 +93,11 @@ import { errText } from '$lib/utils/errText';
           onclick={() => void unsuspend(inst)}
           disabled={!!busy[inst.id]}
         >
-          {busy[inst.id] ? m.admin_instances_suspended_unsuspending() : m.admin_instances_suspended_unsuspend_button()}
+          {#if deleted}
+            {busy[inst.id] ? m.admin_instances_suspended_releasing() : m.admin_instances_suspended_release_button()}
+          {:else}
+            {busy[inst.id] ? m.admin_instances_suspended_unsuspending() : m.admin_instances_suspended_unsuspend_button()}
+          {/if}
         </Button>
       </div>
     {/each}
