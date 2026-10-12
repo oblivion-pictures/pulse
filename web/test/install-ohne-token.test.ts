@@ -22,7 +22,7 @@ import { test as testAlle } from 'node:test';
 const test = process.platform === 'win32' ? testAlle.skip : testAlle;
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +32,8 @@ const SKRIPT = join(dirname(fileURLToPath(import.meta.url)), '../static/install.
 interface Lauf {
   exit: number;
   ausgabe: string;
+  /** Das Konfigurationsverzeichnis dieses Laufs (PULSE_DIR). */
+  pulseDir: string;
 }
 
 interface Optionen {
@@ -85,10 +87,10 @@ esac
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe']
     });
-    return { exit: 0, ausgabe };
+    return { exit: 0, ausgabe, pulseDir };
   } catch (fehler) {
     const f = fehler as { status?: number; stdout?: string; stderr?: string };
-    return { exit: f.status ?? 1, ausgabe: `${f.stdout ?? ''}${f.stderr ?? ''}` };
+    return { exit: f.status ?? 1, ausgabe: `${f.stdout ?? ''}${f.stderr ?? ''}`, pulseDir };
   }
 }
 
@@ -166,4 +168,15 @@ test('liegt eine frühere pulse.env da, ist ihre Adresse die Vorgabe', () => {
   const ohneTerminal = lauf({ eingabe: null, alteKonfiguration: alt });
   assert.equal(ohneTerminal.exit, 0, ohneTerminal.ausgabe);
   assert.match(ohneTerminal.ausgabe, /Server address: alt\.example\.org/);
+});
+
+test('der Dry-Run auf einer vorhandenen pulse.env nennt die Sicherung, legt sie aber nicht an', () => {
+  const alt = 'PULSE_HOSTNAME=chat.example.org\nPULSE_PUBLIC_IP=203.0.113.7\nPULSE_LOG_LEVEL=warning\n';
+  const e = lauf({ env: { PULSE_HOSTNAME: 'chat.example.org' }, alteKonfiguration: alt });
+  assert.equal(e.exit, 0, e.ausgabe);
+  assert.match(e.ausgabe, /Dry run: .*pulse\.env exists — a real run saves it as .*pulse\.env\.bak-\d+ before rewriting it/);
+  assert.match(e.ausgabe, /Keeping PULSE_PUBLIC_IP from the previous configuration/);
+  assert.match(e.ausgabe, /DRY RUN — nothing changed\./);
+  assert.deepEqual(readdirSync(e.pulseDir), ['pulse.env'], 'der Dry-Run hat etwas angelegt');
+  assert.equal(readFileSync(join(e.pulseDir, 'pulse.env'), 'utf8'), alt, 'der Dry-Run hat die Datei verändert');
 });

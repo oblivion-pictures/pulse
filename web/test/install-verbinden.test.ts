@@ -77,6 +77,10 @@ interface Optionen {
   connectExit?: number;
   /** Gibt es ein Terminal? */
   terminal?: boolean;
+  /** Die Adresse, auf die die vorige pulse.env lief (`bestand_uebernehmen`), wenn sie nicht diese ist. */
+  alteAdresse?: string;
+  /** Stehen die Verbindungswerte in der pulse.env (Bestandsserver)? */
+  bestand?: boolean;
 }
 
 interface Ergebnis {
@@ -115,6 +119,8 @@ const VORSPANN = `
 set -euo pipefail
 CONTAINER=pulse
 VERBUNDEN=""
+SRV_HOST=chat.example.org
+ENV_FILE=/opt/pulse/pulse.env
 PULSE_INSTALL_WARTE_VERSUCHE=1
 PULSE_INSTALL_WARTE_INTERVALL=0
 log()  { printf 'LOG %s\\n' "$*"; }
@@ -127,6 +133,8 @@ function verbinde(optionen: Optionen): Ergebnis {
   const u = umgebung(optionen);
   const skript = `${VORSPANN}
 TTY_GERAET="${u.terminalPfad}"
+ALTE_ADRESSE="${optionen.alteAdresse ?? ''}"
+BESTAND_ZEILEN="${optionen.bestand ? 'PULSE_INSTANCE_ID=123456789' : ''}"
 ${funktion(quelle, 'server_info_innen')}
 ${funktion(quelle, 'ist_verbunden')}
 ${funktion(quelle, 'verbinden_spaeter')}
@@ -192,7 +200,42 @@ test('Neuinstallation auf altem, schon verbundenem Volumen: kein neues Verbinden
   assert.ok(!e.dockerAufrufe.some((z) => z.includes('pulse-connect')), 'pulse-connect aufgerufen');
   assert.ok(!e.dockerAufrufe.some((z) => z.startsWith('restart ')), 'neu gestartet');
   assert.match(e.ausgabe, /already connected to a Pulse account/);
+  assert.match(e.ausgabe, /To connect it to a different account:  docker exec -it pulse pulse-connect/);
   assert.match(e.ausgabe, /^VERBUNDEN=1$/m);
+});
+
+test('ein Bestandsserver (Verbindung in pulse.env) bekommt nicht den Rat, pulse-connect für ein anderes Konto zu rufen', () => {
+  // pulse-connect weist Server mit Verbindungswerten aus der Umgebung ab (Exit 1).
+  const e = verbinde({ serverInfo: VERBUNDEN, bestand: true });
+  assert.equal(e.exit, 0, e.ausgabe);
+  assert.match(e.ausgabe, /already connected to a Pulse account/);
+  assert.doesNotMatch(e.ausgabe, /To connect it to a different account/);
+  assert.match(e.ausgabe, /stored in \/opt\/pulse\/pulse\.env, so pulse-connect refuses to change it/);
+  assert.ok(!e.dockerAufrufe.some((z) => z.includes('pulse-connect')));
+  assert.match(e.ausgabe, /^VERBUNDEN=1$/m);
+});
+
+test('Adresswechsel auf einem im Volumen verbundenen Server: nicht „fertig“, sondern der Weg zur neuen Adresse', () => {
+  // Die Verbindung liegt im Datenvolumen und gilt der alten Adresse; der
+  // Cloud-Eintrag trägt sie noch. „Already connected“ wäre hier die falsche Auskunft.
+  const e = verbinde({ serverInfo: VERBUNDEN, alteAdresse: 'alt.example.org' });
+  assert.equal(e.exit, 0, e.ausgabe);
+  assert.doesNotMatch(e.ausgabe, /already connected/i);
+  assert.match(e.ausgabe, /still has its old address, alt\.example\.org/);
+  assert.match(e.ausgabe, /To enter chat\.example\.org .*docker exec -it pulse pulse-connect/);
+  assert.match(e.ausgabe, /asks before changing anything/);
+  assert.ok(!e.dockerAufrufe.some((z) => z.includes('pulse-connect')), 'pulse-connect darf nicht ungefragt laufen');
+  assert.ok(!e.dockerAufrufe.some((z) => z.startsWith('restart ')));
+  // Die Prüfung von aussen (nur bei VERBUNDEN) ginge gegen die alte Adresse im Cloud-Eintrag.
+  assert.match(e.ausgabe, /^VERBUNDEN=$/m);
+});
+
+test('Adresswechsel auf einem noch nicht verbundenen Server: ganz normal verbinden', () => {
+  const e = verbinde({ serverInfo: UNVERBUNDEN, connectExit: 0, alteAdresse: 'alt.example.org' });
+  assert.equal(e.exit, 0, e.ausgabe);
+  assert.ok(e.dockerAufrufe.some((z) => z.includes('pulse-connect')));
+  assert.match(e.ausgabe, /^VERBUNDEN=1$/m);
+  assert.doesNotMatch(e.ausgabe, /old address/);
 });
 
 test('ein älterer Server ohne Feld „verbunden", aber mit Instanz-Nummer gilt als verbunden', () => {
@@ -215,12 +258,23 @@ test('antwortet der Server im Container nicht, wird nicht verbunden', () => {
   assert.match(e.ausgabe, HINWEIS);
 });
 
+test('antwortet der Server nicht, behauptet die Meldung nicht zugleich, er laufe', () => {
+  const e = verbinde({ serverInfo: null });
+  assert.match(e.ausgabe, /does not answer inside the container/);
+  assert.doesNotMatch(e.ausgabe, /is running/, 'widerspricht „antwortet nicht“');
+  assert.match(e.ausgabe, /It is not connected to a Pulse account yet\./);
+  // Gegenprobe: dort, wo der Server tatsächlich antwortet, bleibt der Satz stehen.
+  const e2 = verbinde({ serverInfo: UNVERBUNDEN, connectExit: 2 });
+  assert.match(e2.ausgabe, /Your server is running, but it is not connected to a Pulse account yet/);
+});
+
 test('der Hauptablauf endet nach gescheitertem Verbinden mit Exit 0 und „Done."', () => {
   const quelle = readFileSync(SKRIPT, 'utf8');
   const u = umgebung({ serverInfo: UNVERBUNDEN, connectExit: 2 });
   const skript = `${VORSPANN}
 TTY_GERAET="${u.terminalPfad}"
-SRV_HOST=chat.example.org
+ALTE_ADRESSE=""
+BESTAND_ZEILEN=""
 pruefung_von_aussen() { return 1; }
 ${funktion(quelle, 'server_info_innen')}
 ${funktion(quelle, 'ist_verbunden')}
