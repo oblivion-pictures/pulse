@@ -40,6 +40,7 @@ from dcc_chat_gateway.models import (
     MessageAttachment,
     Report,
 )
+from dcc_chat_gateway.models.messages import belegte_bytes
 from dcc_chat_gateway.routes._deps import publish_guild_event
 from dcc_chat_gateway.routes._dropbox_policy import clamp_dropbox_quota_to_ceiling
 from dcc_chat_gateway.routes.admin import _audit
@@ -104,7 +105,7 @@ async def _community_out(session: SessionDep, guild: Guild) -> CommunityOut:
     ).scalar_one()
     storage_bytes = (
         await session.execute(
-            select(func.coalesce(func.sum(MessageAttachment.size), 0))
+            select(func.coalesce(func.sum(belegte_bytes()), 0))
             .select_from(MessageAttachment)
             .join(Channel, Channel.id == MessageAttachment.channel_id)
             .where(Channel.guild_id == guild.id, MessageAttachment.deleted_at.is_(None))
@@ -142,7 +143,7 @@ async def list_communities(
     # channels. MessageAttachment.channel_id is polymorphic (guild OR DM
     # channel); the join to Channel restricts it to this guild's channels.
     storage_sq = (
-        select(func.coalesce(func.sum(MessageAttachment.size), 0))
+        select(func.coalesce(func.sum(belegte_bytes()), 0))
         .select_from(MessageAttachment)
         .join(Channel, Channel.id == MessageAttachment.channel_id)
         .where(

@@ -164,6 +164,111 @@ async def test_upload_url_enforces_total_storage_quota(
     assert r2.status_code == 413
 
 
+# ─── Vorschaubild: eigene Obergrenze + zählt gegen das Kontingent ───────────
+#
+# Der Klient erzeugt Vorschaubilder mit höchstens 720 px Kantenlänge als WebP
+# (q 0,85). Nachgemessen (libwebp q85, Pillow): selbst reines Pixelrauschen
+# kommt bei 720x720 auf ~390 kB, mit zufälligem Alphakanal auf ~913 kB. 1 MiB
+# trägt also noch den theoretischen Schlimmstfall. Vorher galt als Grenze für
+# das Vorschaubild die volle Dateigrenze (25 MiB und mehr) — und gezählt wurde
+# es nirgends.
+
+_MIB = 1024 * 1024
+
+
+@pytest.mark.asyncio
+async def test_thumb_has_its_own_small_cap(client, _auth_signer, mock_s3):
+    (t1, _u1), _ = await register_two(_auth_signer)
+    _, cid = await _make_guild_channel(client, t1)
+
+    # Ein Byte über der Vorschaubild-Grenze, obwohl weit unter der Dateigrenze
+    # (25 MiB): abgelehnt, und es wird keine Adresse ausgestellt.
+    r = await _upload(client, t1, cid, has_thumb=True, thumb_size=_MIB + 1,
+                      thumb_width=720, thumb_height=720)
+    assert r.status_code == 413, r.text
+    assert mock_s3.put_calls == []
+
+    # Genau 1 MiB geht noch.
+    r = await _upload(client, t1, cid, has_thumb=True, thumb_size=_MIB,
+                      thumb_width=720, thumb_height=720)
+    assert r.status_code == 201, r.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("thumb_size", [0, -1, -512])
+async def test_thumb_size_must_be_positive(client, _auth_signer, mock_s3, thumb_size):
+    # Ein negatives thumb_size liesse sich sonst vom Kontingent abziehen.
+    (t1, _u1), _ = await register_two(_auth_signer)
+    _, cid = await _make_guild_channel(client, t1)
+    r = await _upload(client, t1, cid, has_thumb=True, thumb_size=thumb_size)
+    assert r.status_code == 422, r.text
+    assert mock_s3.put_calls == []
+
+
+@pytest.mark.asyncio
+async def test_thumb_does_not_count_against_the_file_size_limit(
+    client, _auth_signer, mock_s3, session_factory
+):
+    from dcc_chat_gateway.models import Guild
+
+    (t1, _u1), _ = await register_two(_auth_signer)
+    gid, cid = await _make_guild_channel(client, t1)
+    async with session_factory() as s:
+        g = await s.get(Guild, int(gid))
+        g.attachment_max_size_bytes = 10_000
+        await s.commit()
+    # Datei genau auf der Grenze, Vorschaubild obendrauf: die Dateigrenze gilt
+    # je Datei, das Vorschaubild hat seine eigene.
+    r = await _upload(client, t1, cid, size=10_000, has_thumb=True, thumb_size=4096)
+    assert r.status_code == 201, r.text
+
+
+@pytest.mark.asyncio
+async def test_thumb_counts_against_storage_quota(
+    client, _auth_signer, mock_s3, session_factory
+):
+    from dcc_chat_gateway.models import Guild
+
+    (t1, _u1), _ = await register_two(_auth_signer)
+    gid, cid = await _make_guild_channel(client, t1)
+    async with session_factory() as s:
+        g = await s.get(Guild, int(gid))
+        g.attachment_storage_quota_bytes = 2000
+        await s.commit()
+
+    # Allein die Datei (1500) passt, mit Vorschaubild (1500 + 600) nicht.
+    r = await _upload(client, t1, cid, size=1500, has_thumb=True, thumb_size=600)
+    assert r.status_code == 413, r.text
+    assert mock_s3.put_calls == []
+
+    # 1024 + 512 = 1536 belegt ...
+    r1 = await _upload(client, t1, cid, size=1024, has_thumb=True, thumb_size=512)
+    assert r1.status_code == 201, r1.text
+    # ... und beim nächsten Upload ist das Vorschaubild des ersten mitgezählt:
+    # 1536 + 600 > 2000, aber 1024 + 600 wäre noch gegangen.
+    r2 = await _upload(client, t1, cid, size=600)
+    assert r2.status_code == 413, r2.text
+    # Ohne Überschreitung weiterhin möglich: 1536 + 400 <= 2000.
+    r3 = await _upload(client, t1, cid, size=400)
+    assert r3.status_code == 201, r3.text
+
+
+@pytest.mark.asyncio
+async def test_thumb_size_is_stored_on_the_row(client, _auth_signer, mock_s3, session_factory):
+    (t1, _u1), _ = await register_two(_auth_signer)
+    _, cid = await _make_guild_channel(client, t1)
+    r = await _upload(client, t1, cid, has_thumb=True, thumb_size=777,
+                      thumb_width=64, thumb_height=64)
+    assert r.status_code == 201, r.text
+    async with session_factory() as s:
+        row = await s.get(MessageAttachment, int(r.json()["id"]))
+        assert row.thumb_size == 777
+    r = await _upload(client, t1, cid)  # ohne Vorschaubild
+    async with session_factory() as s:
+        row = await s.get(MessageAttachment, int(r.json()["id"]))
+        assert row.thumb_size is None
+
+
 @pytest.mark.asyncio
 async def test_attach_files_blocked_without_attach_files(
     client, _auth_signer, mock_s3

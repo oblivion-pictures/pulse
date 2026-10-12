@@ -193,6 +193,12 @@ class MessageAttachment(Base):
     )
     thumb_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     thumb_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Bytes des Vorschaubildes (so wie angemeldet und in die vorsignierte
+    #: Adresse eingebacken). Zählt zusammen mit ``size`` gegen das
+    #: Speicher-Kontingent der Community (``belegte_bytes``). NULL = kein
+    #: Vorschaubild — oder eine Zeile von vor Migration 0102, deren Größe
+    #: nirgends festgehalten wurde.
+    thumb_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -223,3 +229,14 @@ class MessageAttachment(Base):
             postgresql_where="message_id IS NULL",
         ),
     )
+
+
+def belegte_bytes():
+    """SQL-Ausdruck: was ein Anhang im Objektspeicher belegt — die Datei UND
+    ihr Vorschaubild. Die einzige Rechnung dafür: das Kontingent
+    (``routes/attachments.py::_enforce_storage_quota``) und die zwei
+    Belegt-Anzeigen des Betreibers (``routes/owner.py``) summieren sie, und
+    eine Stelle, die nur ``size`` nähme, ließe das Vorschaubild wieder
+    unbemerkt durch."""
+    return MessageAttachment.size + func.coalesce(MessageAttachment.thumb_size, 0)
+
