@@ -13,7 +13,14 @@ kollidieren. Die Zeile bleibt deshalb bestehen (``status='deleted'``), nur der
 Hostname wird auf einen Platzhalter unter ``.invalid`` (RFC 2606) umbenannt,
 damit er für Neuanträge wieder frei ist.
 
-Zusätzlich wird ein ``suspended_instances``-Eintrag angelegt: Ein noch
+**Ausnahme: eine gesperrte Instanz behält ihren echten Hostnamen.** Sonst
+käme ihr Besitzer um die Sperre herum — löschen, unter derselben Adresse neu
+verbinden. Die Adresse bleibt gesperrt, bis ein Admin sie freigibt
+(``geloeschte_adresse.py``). Das gilt für die Löschung durch den Besitzer wie
+für die Konto-Löschung.
+
+Zusätzlich wird ein ``suspended_instances``-Eintrag angelegt (bei einer
+gesperrten Instanz besteht der des Admins schon und bleibt): Ein noch
 laufender Container findet sich damit auf der öffentlichen
 ``/.well-known/pulse-suspended-instances``-Liste und stellt den Betrieb ein —
 der Kill-Switch greift also auch, wenn der Owner das Docker-Volume nie anfasst
@@ -28,6 +35,7 @@ from fastapi import APIRouter, Request, status
 from sqlalchemy import delete, update
 
 from dcc_auth.db import SessionDep
+from dcc_auth.geloeschte_adresse import platzhalter_hostname
 from dcc_auth.instance_provisioning import eigene_instanz_oder_404
 from dcc_auth.models_instances import (
     InstanceApplication,
@@ -56,7 +64,9 @@ async def delete_my_instance(
     Nur der Besitzer; 404 statt 403 gegen Existence-Leak (wie die
     Nachbar-Routen). Eine bereits gelöschte Instanz ist für den Owner
     unsichtbar → ebenfalls 404. Auch eine admin-suspendierte Instanz darf der
-    Owner löschen (der Suspend-Eintrag und damit der Kill-Switch bleiben).
+    Owner löschen (der Suspend-Eintrag und damit der Kill-Switch bleiben) —
+    aber ihre Adresse wird dadurch NICHT frei: sie bleibt gesperrt, bis ein
+    Admin sie freigibt. Bei jeder anderen Instanz wird die Adresse frei.
     """
     user = await _require_user(request, db)
 
@@ -82,9 +92,14 @@ async def soft_delete_instance(db, inst: RegisteredInstance) -> None:
     iid = inst.id
     was_suspended = inst.status == "suspended"
     inst.status = "deleted"
-    # Hostname freigeben — Unique-Constraint bleibt erfüllt, Kollision mit
-    # echten Hostnames unmöglich (.invalid ist reserviert, RFC 2606).
-    inst.hostname = f"deleted-{iid}.invalid"
+    if not was_suspended:
+        # Hostname freigeben — Unique-Constraint bleibt erfüllt, Kollision mit
+        # echten Hostnames unmöglich (.invalid ist reserviert, RFC 2606).
+        inst.hostname = platzhalter_hostname(iid)
+    # War die Instanz gesperrt, bleibt der echte Hostname stehen: Er hält die
+    # Adresse gesperrt (``instanz_verbinden`` weist einen gelöschten Eintrag
+    # darunter ab), sonst entkäme der Besitzer der Sperre durch Löschen und
+    # Neuverbinden. Der Admin gibt die Adresse frei (``unsuspend_instance``).
 
     # Offene Bootstrap-Tokens entwerten — es darf kein Installer-Lauf mehr
     # gegen die gelöschte Instanz einlösen.

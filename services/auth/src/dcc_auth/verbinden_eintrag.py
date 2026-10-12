@@ -12,6 +12,8 @@ angefragt hat. Daraus folgt die Regel (Spec
   anlegen. Der alte Server steht über die Sperrliste still, falls er
   irgendwo noch läuft. Die Route ruft das bei einem fremden Eintrag erst
   nach abgelaufener Widerspruchsfrist auf (``verbinden_uebernahme.py``),
+* gesperrter Eintrag → ``InstanzGesperrt``; ebenso ein gelöschter, der beim
+  Löschen gesperrt war und deshalb seine Adresse hält,
 * kein Eintrag → neu anlegen.
 
 Committet nicht: der Aufrufer committet erst, wenn der Vorgang in Redis
@@ -49,6 +51,8 @@ class InstanzGesperrt(Exception):
     """Unter der Adresse steht ein gesperrter Eintrag.
 
     Ihn zu übernehmen hiesse, der Sperre durch Neuverbinden zu entkommen.
+    Das gilt auch für einen gelöschten: der Besitzer darf eine gesperrte
+    Instanz löschen, die Adresse bleibt dabei gesperrt (``geloeschte_adresse.py``).
     """
 
 
@@ -106,7 +110,12 @@ async def instanz_verbinden(db: AsyncSession, user: User, hostname: str) -> Verb
     """Eintrag für ``hostname`` mit ``user`` als Besitzer — ohne Commit."""
     vorhanden = await eintrag_sperren(db, hostname)
 
-    if vorhanden is not None and vorhanden.status == "suspended":
+    # Ein gelöschter Eintrag gilt wie ein gesperrter. Einen echten Hostnamen
+    # trägt er nur, wenn er beim Löschen gesperrt war — jede andere Löschung
+    # benennt ihn auf den Platzhalter um, unter dem ihn niemand mehr findet
+    # (``soft_delete_instance``). Wäre dieser Fall frei, entkäme der Besitzer
+    # der Sperre: löschen und die Adresse sofort neu verbinden.
+    if vorhanden is not None and vorhanden.status in ("suspended", "deleted"):
         raise InstanzGesperrt
     if vorhanden is not None and vorhanden.registered_by == user.id:
         if await db.get(UserInstanceMembership, (user.id, vorhanden.id)) is None:
