@@ -109,8 +109,7 @@ import { errText } from '$lib/utils/errText';
         stream_bitrate_max_kbps: mbpsStrToKbps(streamMbps),
         stream_fps_max: numOrNull(fps),
         stream_resolution_max: resolution || null,
-        // Der volle Satz geht immer mit (null löscht hier eine Übersteuerung),
-        // also kann ein unverändertes Feld nicht fehlen — aber es schickt den
+        // Der volle Satz geht immer mit. Ein unverändertes Feld schickt den
         // gespeicherten Wert, nicht die Rückrechnung der gerundeten Anzeige.
         attachment_max_size_bytes: unitStrToBytesKeep(
           attachSizeMB,

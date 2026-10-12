@@ -255,7 +255,10 @@ async def set_community_limits(
     community's own owner can't raise their own limits. The form always sends
     the full set; NULL clears an override back to the instance default. A
     ``guild_updated`` broadcast pushes the new caps to connected members so
-    their stream/voice publish re-clamps live."""
+    their stream/voice publish re-clamps live.
+
+    Ausnahme: bei den zwei Datei-Obergrenzen (Größe, Anzahl) heißt NULL
+    „nicht ändern"."""
     guild = await session.get(Guild, guild_id)
     if guild is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="community not found")
@@ -274,9 +277,8 @@ async def set_community_limits(
     # Feld heißt „nicht ändern", NICHT „Obergrenze löschen". Gelöscht (NULL)
     # wäre sie nämlich nicht unbegrenzt, sondern fiele auf den Instanz-Standard
     # (25 MiB / 4) zurück, und ``clamp_to_ceilings`` unten holte jeden höheren
-    # Wert der Community still darauf herunter. Seit 0057 schrieb der Code
-    # trotzdem immer — gegen den Kommentar, der „nur bei Wert" sagte. Den
-    # Standard stellt man ein, indem man ihn einträgt.
+    # Wert der Community still darauf herunter. Den Standard stellt man ein,
+    # indem man ihn einträgt.
     if payload.attachment_max_size_bytes is not None:
         guild.attachment_max_size_ceiling_bytes = payload.attachment_max_size_bytes
     if payload.attachment_max_count_per_message is not None:

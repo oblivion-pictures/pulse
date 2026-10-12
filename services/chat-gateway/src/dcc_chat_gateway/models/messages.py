@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
+    ColumnElement,
     DateTime,
     ForeignKey,
     Index,
@@ -231,7 +232,7 @@ class MessageAttachment(Base):
     )
 
 
-def belegte_bytes():
+def belegte_bytes() -> ColumnElement[int]:
     """SQL-Ausdruck: was ein Anhang im Objektspeicher belegt — die Datei UND
     ihr Vorschaubild. Die einzige Rechnung dafür: das Kontingent
     (``routes/attachments.py::_enforce_storage_quota``) und die zwei
@@ -239,4 +240,3 @@ def belegte_bytes():
     eine Stelle, die nur ``size`` nähme, ließe das Vorschaubild wieder
     unbemerkt durch."""
     return MessageAttachment.size + func.coalesce(MessageAttachment.thumb_size, 0)
-
