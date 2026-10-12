@@ -68,8 +68,8 @@ jobs:
       POSTGRES_PORT: "5434"
       REDIS_URL: redis://localhost:6380/0
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           enable-cache: true
       - name: Set up Python
@@ -108,9 +108,10 @@ jobs:
     runs-on: ubuntu-24.04
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master — mit SHA gilt nur `with: toolchain`, nicht der Ref-Name
         with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
       # `web/src/lib/krypto/{account.svelte,sitzungen,empfangen,veroeffentlichen}.ts`
       # importieren `krypto/pulse-krypto/pkg/pulse_krypto.js` STATISCH — das
@@ -120,7 +121,7 @@ jobs:
       # (UNRESOLVED_IMPORT) — dieselbe Lücke, die web/Dockerfile & infra/self-
       # host/Dockerfile über eine eigene wasm-builder-Stage schließen.
       - name: Cache cargo (WASM-Bau des Krypto-Kerns)
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/bin
@@ -135,8 +136,8 @@ jobs:
         run: command -v wasm-pack >/dev/null || cargo install wasm-pack --locked --version 0.15.0
       - name: Krypto-Kern als WASM bauen
         run: bash krypto/pulse-krypto/bauen-wasm.sh
-      - uses: pnpm/action-setup@v4   # version comes from package.json "packageManager"
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0 — version comes from package.json "packageManager"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           # Match the production image (web/Dockerfile builds with node:25)
           # so we don't ship a CI-green / prod-broken bundle.
@@ -157,8 +158,10 @@ jobs:
   zwillinge:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master — mit SHA gilt nur `with: toolchain`, nicht der Ref-Name
+        with:
+          toolchain: stable
       - name: Zwillinge prüfen
         run: cargo test --manifest-path streaming/zwillinge/Cargo.toml
       # Dieselbe Begründung wie oben: die gemeinsamen Kisten (streaming/pulse-*,
@@ -204,7 +207,7 @@ jobs:
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0  # check-changelog.sh diff't before..after
       - name: Changelog-Pflicht prüfen
@@ -268,7 +271,7 @@ jobs:
               SVC_DIR=relay-frps-plugin
               SVC_PKG=dcc_relay_frps_plugin
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # Pre-pull the buildkit image with retry BEFORE setup-buildx bootstraps
       # its docker-container driver. The recurring image-build failures were
       # transient Docker Hub hiccups pulling moby/buildkit (502 Bad Gateway) /
@@ -285,10 +288,10 @@ jobs:
             sleep 15
           done
           echo "::warning::buildkit pre-pull exhausted retries; letting setup-buildx try anyway"
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         with:
           driver-opts: image=moby/buildkit:buildx-stable-1
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -296,7 +299,7 @@ jobs:
       - name: Short SHA
         id: sha
         run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ${{ matrix.file }}
