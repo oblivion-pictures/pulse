@@ -308,6 +308,15 @@ test.describe.serial('lokaler Verlauf (IndexedDB) E2E', () => {
     await alicePage.getByTestId('message-input').press('Enter');
     const row = alicePage.locator('[data-testid="message-item"]', { hasText: dmDeleteText });
     await expect(row).toBeVisible({ timeout: 10_000 });
+    // Die Zeile erscheint SOFORT mit einer vorläufigen `tmp-n-…`-Kennung (die
+    // Uhr der Häkchen-Treppe, `chat/vorlaeufigVerschluesselt.ts`, seit
+    // 2026-10-10) und bekommt die echte erst, wenn der Versand durch ist.
+    // Der Satz und später sein Grabstein liegen unter der echten. Wer die
+    // Kennung gleich nach dem Erscheinen liest, sucht den Grabstein unter
+    // einem Schlüssel, den es im Speicher nie gab: der Test stand rot mit
+    // „Received: undefined", obwohl der Grabstein sauber gesetzt war.
+    // Erst auf die echte Kennung warten, dann lesen.
+    await expect(row).toHaveAttribute('data-message-id', /^[0-9]+$/, { timeout: 10_000 });
     const nachrichtId = await row.getAttribute('data-message-id');
     expect(nachrichtId).toBeTruthy();
 
