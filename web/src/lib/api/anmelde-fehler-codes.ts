@@ -26,6 +26,10 @@ export const ABLEHNUNGSCODES = [
   'jwks_cold',
   'speicher_nicht_erreichbar',
   'instance_id_unconfigured',
+  // Self-Host läuft, ist aber noch mit keinem Konto verbunden (`pulse-connect`
+  // nicht gelaufen). Löst `instance_id_unconfigured` für neue Server ab; der
+  // alte Code bleibt für Server mit älterem Stand.
+  'nicht_verbunden',
   'join_locked',
   'join_not_permitted',
   'instance banned',
@@ -55,6 +59,7 @@ export const MELDUNGSSCHLUESSEL: Record<Ablehnungscode, string> = {
   jwks_cold: 'anmeldung_server_ohne_cloud',
   speicher_nicht_erreichbar: 'anmeldung_server_speicher',
   instance_id_unconfigured: 'anmeldung_server_ohne_kennung',
+  nicht_verbunden: 'anmeldung_server_nicht_verbunden',
   join_locked: 'anmeldung_server_geschlossen',
   join_not_permitted: 'anmeldung_kein_zugang',
   'instance banned': 'anmeldung_gesperrt',
