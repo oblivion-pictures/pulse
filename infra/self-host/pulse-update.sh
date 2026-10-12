@@ -2,10 +2,10 @@
 # Pulse self-host updater — Compose-Pfad (manuelle Installation).
 #
 # Liegt neben docker-compose.yml + .env, erledigt einen kompletten
-# Update-Lauf: Registry-Login (nur Bestand, s. unten), Image pullen, Container nur bei
-# geändertem Digest neu anlegen, altes Image erst aufräumen, wenn der neue
-# Stand eine Runde gelaufen ist. Gedacht für einen Host-Cron oder systemd-
-# Timer (Beispiele unten) — von Hand läuft er genauso.
+# Update-Lauf: Registry-Login (nur Bestand, s. unten), Image pullen, Container
+# nur bei geändertem Digest neu anlegen, altes Image erst aufräumen, wenn der
+# neue Stand eine Runde gelaufen ist. Gedacht für einen Host-Cron oder
+# systemd-Timer (Beispiele unten) — von Hand läuft er genauso.
 #
 #   cron (täglich 04:17):  17 4 * * *  /opt/pulse/pulse-update.sh >> /opt/pulse/pulse-update.log 2>&1
 #   systemd:               Unit wie im Installer (pulse-update.service/.timer)

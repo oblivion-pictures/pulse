@@ -66,6 +66,7 @@ done
 # Zugangsdaten kennt der Installer nur von Bestandsservern (bestand_uebernehmen)
 # oder, nach dem Verbinden, aus dem Datenvolumen (zugang_aus_volumen).
 INSTANCE_ID=""; CLIENT_ID=""; CLIENT_SECRET=""; BESTAND_ZEILEN=""
+# Gesetzt von server_verbinden, sobald der Server mit einem Pulse-Konto verbunden ist.
 VERBUNDEN=""
 
 # --- Ausgabe-Helfer --------------------------------------------------------
@@ -148,7 +149,7 @@ check_ports() {
 
 # --- $PULSE_DIR muss beschreibbar sein — vor der ersten Änderung -------- #
 #
-# `mkdir -p "$PULSE_DIR"` ist der erste Dateisystemzugriff des ganzen Laufs.
+# `mkdir -p "$PULSE_DIR"` ist der erste schreibende Dateisystemzugriff des Laufs.
 # Wer PULSE_DIR=/opt/pulse ohne Schreibrechte setzt, bekam sonst erst beim
 # Schreiben der Konfiguration eine rohe mkdir-Fehlermeldung unter set -e. Legt
 # das Verzeichnis hier bereits an (idempotent, kein Test-und-wieder-Löschen)
