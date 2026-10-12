@@ -34,6 +34,26 @@ export function anzeigeName(e: AnzeigeEintrag): string {
   return e.anzeigename || e.server_name || e.hostname;
 }
 
+/**
+ * Der Server selbst nennt seinen Namen — im `ready`-Rahmen, im Live-Ereignis
+ * einer Umbenennung oder als Antwort auf das eigene Speichern.
+ *
+ * **Beide Felder zugleich.** `anzeigename` (Cloud) gewinnt in `anzeigeName`
+ * gegen `server_name`. Hätte man nur `server_name` gesetzt, bliebe nach einer
+ * Umbenennung der alte Cloud-Name stehen, solange die Meldung des Servers an
+ * die Cloud noch unterwegs ist — oder dauerhaft, wenn sie scheitert (Cloud
+ * kurz weg): der Betreiber sähe seinen neuen Namen nirgends. Der Server ist
+ * die Quelle dieses Namens; was er gerade sagt, ist frischer als die Kopie in
+ * der Cloud. Kommt die Cloud-Meldung danach an, trägt sie denselben Wert.
+ */
+export function nameVomServer(name: string | null | undefined): {
+  server_name: string | null;
+  anzeigename: string | null;
+} {
+  const n = name?.trim() || null;
+  return { server_name: n, anzeigename: n };
+}
+
 export function istSichtbar(e: AnzeigeEintrag): boolean {
   if (e.isCloud) return true;
   return !(e.origin === 'app_host' && e.online === false);

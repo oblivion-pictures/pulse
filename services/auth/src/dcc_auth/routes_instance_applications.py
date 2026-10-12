@@ -34,6 +34,7 @@ from dcc_auth.instance_provisioning import (
     provision_app_host_instance,
     user_has_active_owner_instance,
 )
+from dcc_auth.instance_status import online_aussage
 from dcc_auth.models import User
 from dcc_auth.models_instances import (
     InstanceBootstrapToken,
@@ -171,7 +172,7 @@ def _instance_to_out(
         role="owner" if inst.registered_by == viewer_id else "member",
         set_up=set_up,
         anzeigename=inst.anzeigename,
-        online=inst.online_gemeldet if inst.origin == "app_host" else None,
+        online=online_aussage(inst),
         ohne_freigabe=inst.ohne_freigabe,
         uebernahme_frist_bis=uebernahme_frist_bis,
     )

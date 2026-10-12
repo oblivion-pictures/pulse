@@ -8,11 +8,14 @@
  * in der Leiste umbenennen oder ausblenden. `dispatchingIsCloud()` weist alles
  * andere ab.
  *
- * Geht ein Server offline, während man auf ihm ist, wechselt die App auf die
- * Cloud — er verschwindet ja gerade aus der Leiste (Muster wie beim Entfernen,
- * `api/server-removal.ts`).
+ * Geht ein Heim-Server offline, während man auf ihm ist, wechselt die App auf
+ * die Cloud — er verschwindet ja gerade aus der Leiste (Muster wie beim
+ * Entfernen, `api/server-removal.ts`). Nur ein Heim-Server: einen per
+ * Gerätecode verbundenen Server meldet die Cloud nie als gestoppt, und ein
+ * Namenswechsel darf niemanden von ihm vertreiben (`servers/instanzStatus.ts`).
  */
 import { serversStore } from '$lib/api/servers.svelte';
+import { wirkungVonStatus } from '$lib/servers/instanzStatus';
 import { activeServer } from '$lib/stores/active-server.svelte';
 import { appHostAnwesenheit } from '$lib/stores/appHostAnwesenheit.svelte';
 import { dispatchingIsCloud } from '$lib/ws/gateway-connection';
@@ -21,13 +24,18 @@ import { registerWsHandler } from '../handler-registry';
 export function register(): void {
   registerWsHandler('instance_status', (evt) => {
     if (!dispatchingIsCloud()) return;
-    const { instance_id, online, anzeigename } = evt.data;
-    const eintrag = serversStore.setzeInstanzStatus(instance_id, { online, anzeigename });
+    const { instance_id } = evt.data;
+    const bekannt = serversStore.servers.find((s) => s.instance_id === instance_id);
+    if (!bekannt) return; // nicht in dieser Liste (noch nicht eingerichtet/entfernt)
+    // Was das Ereignis ändern darf, entscheidet `wirkungVonStatus` — vor allem:
+    // „offline“ zählt nur für Heim-Server (Begründung dort).
+    const wirkung = wirkungVonStatus(bekannt, evt.data, activeServer.serverId === bekannt.id);
+    serversStore.setzeInstanzStatus(instance_id, wirkung.stand);
     // Die Direkt-Weichen fragen den Anwesenheits-Store — ihn mitziehen, damit
     // ein gerade gestarteter Server nicht bis zum nächsten Takt als schlafend
     // gilt (und umgekehrt).
-    appHostAnwesenheit.vermerke(instance_id, !online);
-    if (!online && eintrag && activeServer.serverId === eintrag.id) {
+    if (wirkung.offline !== null) appHostAnwesenheit.vermerke(instance_id, wirkung.offline);
+    if (wirkung.zurueckZurCloud) {
       const cloud = serversStore.servers.find((s) => s.isCloud);
       if (cloud) activeServer.set(cloud.id);
     }

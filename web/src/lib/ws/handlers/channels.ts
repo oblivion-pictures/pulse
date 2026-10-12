@@ -11,6 +11,7 @@ import { messages } from '$lib/stores/messages.svelte';
 import { capabilities } from '$lib/stores/capabilities.svelte';
 import { serverCapabilities } from '$lib/stores/serverCapabilities.svelte';
 import { serversStore } from '$lib/api/servers.svelte';
+import { nameVomServer } from '$lib/servers/anzeige';
 import { activeServer } from '$lib/stores/active-server.svelte';
 import { channelPermissions } from '$lib/stores/channelPermissions.svelte';
 import { readState } from '$lib/stores/readState.svelte';
@@ -91,7 +92,7 @@ export function register(ctx: HandlerContext): void {
     // JEDER Admin-Toggle den Anzeigenamen bis zum nächsten Reconnect.
     if (evt.instance_name != null) {
       const sid = (evt as { _serverId?: string })._serverId ?? activeServer.current?.id;
-      if (sid) serversStore.update(sid, { server_name: evt.instance_name || null });
+      if (sid) serversStore.update(sid, nameVomServer(evt.instance_name));
     }
     // Bughunt Runde 13: den PRO-Server-Capability-Cache mit verwerfen —
     // `refresh()` war tot (Docstring versprach genau diesen Aufrufer), der

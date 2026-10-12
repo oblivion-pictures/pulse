@@ -24,7 +24,11 @@ from dcc_shared.events._base import _EventBase
 
 class InstanceStatusData(_EventBase):
     instance_id: str
-    online: bool
+    # ``None`` = die Cloud weiß es nicht: nur ein Heim-Server meldet sich beim
+    # Telefonbuch, ein per Gerätecode verbundener Server nie (s.
+    # ``instance_status.online_aussage``). Kein ``false`` erfinden — die
+    # Oberfläche blendet bei ``false`` aus und wechselt den aktiven Server.
+    online: bool | None = None
     anzeigename: str | None = None
 
 

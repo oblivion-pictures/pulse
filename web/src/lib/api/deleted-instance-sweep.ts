@@ -17,7 +17,7 @@
 
 import { toast } from 'svelte-sonner';
 import { m } from '$lib/paraglide/messages.js';
-import { serversStore } from '$lib/api/servers.svelte';
+import { serversStore, serverDisplayName } from '$lib/api/servers.svelte';
 import { fetchDeletedInstanceIds } from '$lib/api/deleted-instances';
 import { removeServerLocally } from '$lib/api/server-removal';
 import { preCheckServer } from '$lib/api/server-info';
@@ -44,6 +44,6 @@ export async function sweepDeletedServers(): Promise<void> {
     }
     if (!deleted.has(instanceId)) continue;
     removeServerLocally(server.id);
-    toast.info(m.server_deleted_by_operator({ label: server.label }));
+    toast.info(m.server_deleted_by_operator({ label: serverDisplayName(server) }));
   }
 }

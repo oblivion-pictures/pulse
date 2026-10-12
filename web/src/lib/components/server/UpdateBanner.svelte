@@ -19,6 +19,7 @@
   import { Button } from '$lib/components/ui/button/index.js';
   import { goto } from '$app/navigation';
   import { activeServer } from '$lib/stores/active-server.svelte';
+  import { serverDisplayName } from '$lib/api/servers.svelte';
   import { serverState } from '$lib/ws/server-state.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
@@ -32,7 +33,7 @@
       snap.state === 'suspended' ||
       snap.state === 'email-unverified',
   );
-  let host = $derived(active?.label ?? 'Server');
+  let host = $derived(active ? serverDisplayName(active) : 'Server');
 
   function message(state: string, h: string): string {
     if (state === 'incompatible')

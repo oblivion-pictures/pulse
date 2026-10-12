@@ -22,6 +22,7 @@ from dcc_auth.models_instances import (
     UserInstanceMembership,
 )
 from dcc_auth.relay import generate_relay_token, hash_relay_token
+from dcc_auth.security import hash_password
 
 _FINGERPRINT = "sha-256 AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89"
 _INSTANCE_ID = 21000000000000077
@@ -169,3 +170,114 @@ async def test_vps_instanz_hat_keinen_online_zustand(client, aufbau, session_fac
         await s.execute(update(RegisteredInstance).values(origin="vps"))
         await s.commit()
     assert (await _eintrag(client, aufbau["owner"]["cookie"]))["online"] is None
+
+
+# ---------------------------------------------------------------------------
+# Server per Gerätecode verbunden (``origin="vps"``): der Weg, auf dem der
+# Betreiber seinen Server umbenennt. Anders als ein Heim-Server weist er sich
+# mit ``client_id`` + Secret aus (kein Relay-Token) und meldet sich nie beim
+# Telefonbuch.
+# ---------------------------------------------------------------------------
+
+_VPS_ID = 21000000000000088
+_VPS_CLIENT_ID = "ci_vpsverbunden"
+_VPS_SECRET = "geheimes-secret-des-servers"
+
+
+@pytest_asyncio.fixture
+async def aufbau_vps(client, session_factory):
+    owner = await _konto(client, "vps_owner")
+    mitglied = await _konto(client, "vps_mitglied")
+    async with session_factory() as s:
+        s.add(RegisteredInstance(
+            id=_VPS_ID, hostname="selfhost.example.com", client_id=_VPS_CLIENT_ID,
+            client_secret=hash_password(_VPS_SECRET), status="active", origin="vps",
+            registered_by=int(owner["id"]), ohne_freigabe=True,
+        ))
+        s.add(UserInstanceMembership(user_id=int(owner["id"]), instance_id=_VPS_ID, role="owner"))
+        s.add(UserInstanceMembership(user_id=int(mitglied["id"]), instance_id=_VPS_ID, role="member"))
+        await s.commit()
+    return {"owner": owner, "mitglied": mitglied}
+
+
+def _melde_name(name: str | None, **ueber) -> dict:
+    return {"instance_id": str(_VPS_ID), "client_id": _VPS_CLIENT_ID, "token": _VPS_SECRET,
+            "anzeigename": name, **ueber}
+
+
+async def _eintrag_vps(client, cookie: str) -> dict:
+    r = await client.get("/me/instances", headers={"Cookie": cookie})
+    return next(i for i in r.json() if i["id"] == str(_VPS_ID))
+
+
+async def test_umbenannter_server_zeigt_mitgliedern_den_namen_statt_der_adresse(
+    client, aufbau_vps, sammler
+):
+    """Der Kern des Wunsches: wer den Server noch nie geöffnet hat, sieht in
+    ``/me/instances`` den Namen des Betreibers — nicht nur der Betreiber selbst."""
+    vorher = await _eintrag_vps(client, aufbau_vps["mitglied"]["cookie"])
+    assert vorher["anzeigename"] is None
+    assert vorher["hostname"] == "selfhost.example.com"
+
+    r = await client.post("/selfhost/anzeigename", json=_melde_name("Michaels Server"))
+    assert r.status_code == 204
+
+    eintrag = await _eintrag_vps(client, aufbau_vps["mitglied"]["cookie"])
+    assert eintrag["anzeigename"] == "Michaels Server"
+    assert eintrag["role"] == "member"
+    assert (await _eintrag_vps(client, aufbau_vps["owner"]["cookie"]))["anzeigename"] == "Michaels Server"
+    # Und jedes Mitglied wird live benachrichtigt, nicht nur der Betreiber.
+    assert sammler.an() == sorted([aufbau_vps["owner"]["id"], aufbau_vps["mitglied"]["id"]])
+
+
+async def test_umbenennen_behauptet_bei_einem_vps_nicht_er_sei_offline(client, aufbau_vps, sammler):
+    """Ein per Gerätecode verbundener Server meldet sich nie beim Telefonbuch —
+    sein ``online_gemeldet`` steht dauerhaft auf ``false``, ohne etwas
+    auszusagen. Das Ereignis trug dieses ``false`` trotzdem als ``online``; die
+    Oberfläche las es als „Server gestoppt" und warf jeden, der gerade auf
+    diesem Server war (auch den Umbenennenden), auf die Cloud zurück. Gesagt
+    wird nur, was gemessen wurde: ``/me/instances`` meldet für denselben Server
+    ``null``, das Ereignis muss dasselbe tun."""
+    await client.post("/selfhost/anzeigename", json=_melde_name("Michaels Server"))
+    assert sammler.nachrichten, "es wurde nichts gemeldet"
+    for _, n in sammler.nachrichten:
+        assert n["op"] == "instance_status"
+        assert n["data"]["online"] is None
+        assert n["data"]["anzeigename"] == "Michaels Server"
+    assert (await _eintrag_vps(client, aufbau_vps["owner"]["cookie"]))["online"] is None
+
+
+async def test_cloud_bereinigt_den_namen_wie_der_server(client, aufbau_vps, sammler):
+    """Server und Cloud nutzen dieselbe Funktion (``dcc_shared.anzeigename``):
+    Steuerzeichen fallen weg, ein zusammengesetztes Emoji bleibt heil."""
+    familie = "\U0001f468‍\U0001f469‍\U0001f467"
+    await client.post("/selfhost/anzeigename", json=_melde_name(f"  Clan\u0007 {familie} "))
+    eintrag = await _eintrag_vps(client, aufbau_vps["mitglied"]["cookie"])
+    assert eintrag["anzeigename"] == f"Clan {familie}"
+
+
+async def test_anzeigename_zuruecksetzen_meldet_leeren_namen(client, aufbau_vps, sammler):
+    await client.post("/selfhost/anzeigename", json=_melde_name("Michaels Server"))
+    sammler.nachrichten.clear()
+    assert (await client.post("/selfhost/anzeigename", json=_melde_name(""))).status_code == 204
+    assert {n["data"]["anzeigename"] for _, n in sammler.nachrichten} == {None}
+    assert (await _eintrag_vps(client, aufbau_vps["mitglied"]["cookie"]))["anzeigename"] is None
+
+
+async def test_vps_anzeigename_nur_mit_richtigem_secret(client, aufbau_vps, sammler):
+    r = await client.post("/selfhost/anzeigename", json=_melde_name("Gekapert", token="falsch"))
+    assert r.status_code == 401
+    r = await client.post("/selfhost/anzeigename", json=_melde_name("Gekapert", client_id="ci_fremd"))
+    assert r.status_code == 401
+    assert sammler.nachrichten == []
+    assert (await _eintrag_vps(client, aufbau_vps["mitglied"]["cookie"]))["anzeigename"] is None
+
+
+async def test_gestoppter_heimserver_meldet_weiter_online_false(client, aufbau, sammler):
+    """Gegenprobe: ein Heim-Server MELDET sich beim Telefonbuch, dort bleibt
+    ``false`` eine echte Aussage."""
+    await client.post("/selfhost/directory/heartbeat", json=_hb(aufbau["token"]))
+    sammler.nachrichten.clear()
+    await client.post("/selfhost/directory/offline",
+                      json={"instance_id": str(_INSTANCE_ID), "token": aufbau["token"]})
+    assert {n["data"]["online"] for _, n in sammler.nachrichten} == {False}

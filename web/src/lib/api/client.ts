@@ -18,6 +18,7 @@
 
 import { clearTokens, isAccessExpired, loadTokens, saveTokens } from './storage';
 import { serversStore } from './servers.svelte';
+import { anzeigeName } from '$lib/servers/anzeige';
 import { activeServer } from '$lib/stores/active-server.svelte';
 import { sessionTokens } from './session_tokens.svelte';
 import { safeParse, extractDetail } from './parse';
@@ -46,7 +47,7 @@ export class SessionExpiredError extends Error {
   serverId: string;
   constructor(serverId: string) {
     const entry = serversStore.find(serverId);
-    const label = entry?.server_name ?? entry?.label ?? serverId;
+    const label = entry ? anzeigeName(entry) : serverId;
     // Kennt der Re-Auth den Grund, wird ER gezeigt — mit Handgriff. Nur wenn
     // wirklich niemand etwas weiss, bleibt es bei der Sammelmeldung, die
     // wenigstens nichts Falsches behauptet.

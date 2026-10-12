@@ -22,6 +22,7 @@
     type EinladungZustand
   } from './EinladungKarte.svelte';
   import { einladungAusParametern, istAdresse, ohneEinladung, type Ziel } from './einladungsLink';
+  import { bekannterServerName } from './serverName';
   import {
     EREIGNIS_GEMERKT,
     browserSpeicher,
@@ -147,6 +148,7 @@
         art={aktiv && istAdresse(aktiv) ? 'adresse' : 'einladung'}
         {community}
         host={aktiv?.host ?? null}
+        hostName={bekannterServerName(aktiv?.host)}
         {hinweis}
         {busy}
         rahmen="dialog"
