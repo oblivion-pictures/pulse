@@ -1,13 +1,13 @@
 # Claude-Notizen für dieses Projekt
 
-Projekt: **Pulse — Web-First Discord-artiger Chat + Voice + HQ-Screen-Streaming**.
+Projekt: **Pulse — Chat + Voice + HQ-Screen-Streaming für Communities**, auf Windows, macOS, Linux, Android und im Browser.
 Monorepo: uv-Workspace (Backend) + pnpm-Workspace (`web`, `desktop`).
 Vollständige Architektur + History: `PLAN.md`, `infra/prod/DEPLOY.md`, `streaming/README.md`, `git log`.
 **Hier nur nicht-offensichtliche Dinge** — Mechanik-Details stehen in den verlinkten Docs.
 
 ## Was das Projekt macht
 
-Chat/Voice-Client, **Web-First** (alle Browser), PWA-installierbar, Desktop via **Electron** (`desktop/`), Mobile (Android) via Capacitor/TWA (`packaging/android/`).
+Chat/Voice-Client für alle Plattformen gleichrangig: im Browser (PWA-installierbar), Desktop via **Electron** (`desktop/`), Mobile (Android) via Capacitor/TWA (`packaging/android/`).
 Backend = mehrere kleine FastAPI-Services: `services/{auth,chat-gateway,voice-signaling,media-svc,mediamtx-auth-hook,relay-frps-plugin}`.
 Voice über LiveKit (WebRTC/Opus). HQ-Screen-Streaming über die Pulse-Rust-Sidecars (`streaming/`), pusht an MediaMTX → Viewer per WHEP.
 Drei Transportpfade getrennt: HTTPS/WSS → FastAPI · WebRTC → LiveKit · WHEP → MediaMTX (Details `PLAN.md` §1).

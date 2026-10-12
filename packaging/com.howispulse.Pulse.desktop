@@ -2,7 +2,7 @@
 Type=Application
 Name=Pulse
 GenericName=Chat & Voice
-Comment=Web-first chat, voice and high-quality screen streaming
+Comment=Chat, voice and high-quality screen sharing
 Exec=pulse %u
 Icon=com.howispulse.Pulse
 Terminal=false
