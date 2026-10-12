@@ -1,6 +1,6 @@
 <!--
   SettingsApps — „Apps"-Tab in den Einstellungen: Download-Karten für die
-  Desktop-Apps (Windows-Installer, Linux-Flatpak) und die Android-APK.
+  Desktop-Apps (Windows-Installer, macOS-DMG, Linux-Flatpak) und die Android-APK.
 
   Der Tab wird in SettingsDialog nur im Browser angeboten (in Electron /
   im Android-Wrapper ausgeblendet — dort ist die App schon installiert).
@@ -12,10 +12,12 @@
   import CopyIcon from '@lucide/svelte/icons/copy';
   import DownloadIcon from '@lucide/svelte/icons/download';
   import WindowsIcon from '$lib/components/brand-icons/WindowsIcon.svelte';
+  import AppleIcon from '$lib/components/brand-icons/AppleIcon.svelte';
   import LinuxIcon from '$lib/components/brand-icons/LinuxIcon.svelte';
   import AndroidIcon from '$lib/components/brand-icons/AndroidIcon.svelte';
   import {
     WINDOWS_INSTALLER_URL,
+    MAC_DMG_URL,
     ANDROID_APK_URL,
     LINUX_FLATPAKREF_URL,
     LINUX_INSTALL_COMMAND
@@ -52,6 +54,23 @@
       </div>
     </div>
     <Button href={WINDOWS_INSTALLER_URL} variant="secondary" size="sm" class="gap-1.5 self-start">
+      <DownloadIcon class="size-3.5" />
+      {m.settings_apps_download()}
+    </Button>
+  </div>
+
+  <!-- macOS -->
+  <div class="border-border flex flex-col gap-3 rounded-2xl border p-4">
+    <div class="flex items-center gap-3">
+      <span class="bg-bg-input text-text-muted flex size-10 shrink-0 items-center justify-center rounded-full">
+        <AppleIcon class="size-5" />
+      </span>
+      <div class="min-w-0 flex-1">
+        <p class="text-text-bright text-sm font-medium">{m.downloads_mac()}</p>
+        <p class="text-text-muted text-xs">{m.settings_apps_mac_desc()}</p>
+      </div>
+    </div>
+    <Button href={MAC_DMG_URL} variant="secondary" size="sm" class="gap-1.5 self-start" data-testid="settings-apps-mac">
       <DownloadIcon class="size-3.5" />
       {m.settings_apps_download()}
     </Button>
