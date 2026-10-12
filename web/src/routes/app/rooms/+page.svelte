@@ -12,10 +12,6 @@
    * Server man gerade etwas anklickt.
    */
   import { goto } from '$app/navigation';
-  import CompassIcon from '@lucide/svelte/icons/compass';
-  import LogInIcon from '@lucide/svelte/icons/log-in';
-  import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
   import { suchnorm, namePasst } from '$lib/utils/suche';
   import { serversStore, istSichtbar } from '$lib/api/servers.svelte';
   import { serverGuilds } from '$lib/stores/serverGuilds.svelte';
@@ -24,6 +20,7 @@
   import CommunityAnlegenKnopf from '$lib/components/mobile/CommunityAnlegenKnopf.svelte';
   import CommunityBeitretenKnopf from '$lib/components/mobile/CommunityBeitretenKnopf.svelte';
   import SelfHostRoomsButton from '$lib/components/selfhost/SelfHostRoomsButton.svelte';
+  import RaeumeMenue from '$lib/components/mobile/RaeumeMenue.svelte';
   import { guilds as guildsStore } from '$lib/stores/guilds.svelte';
   import { readState } from '$lib/stores/readState.svelte';
   import { voicePresence } from '$lib/stores/voicePresence.svelte';
@@ -118,43 +115,7 @@
 <div class="glass-panel flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:w-72 nicht-handy:flex-none nicht-handy:rounded-2xl" data-testid="rooms-page">
   <BereichsKopf titel={m.nav_tab_rooms()}>
     {#snippet handlung()}
-      <!-- Drei-Punkte wie in Chats und Freunde: Entdecken ist der Ausgang ins
-           Verzeichnis, kein dauerhaft sichtbarer Zustand der eigenen Räume. -->
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          {#snippet child({ props })}
-            <button
-              {...props}
-              class="text-text-muted hover:bg-bg-hover hover:text-text-bright flex size-12 items-center justify-center rounded-[14px] transition-colors"
-              data-testid="rooms-menu"
-              aria-label={m.chats_menu()}
-            >
-              <EllipsisIcon class="size-6" />
-            </button>
-          {/snippet}
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="end" class="w-52">
-          <!-- Server per Adresse beitreten (Erstkontakt, kein Invite-Code):
-               `/app?add=join` wie die GuildRail. Warum es diesen Einstieg auf
-               `< lg` braucht, steht in `CommunityBeitretenKnopf.svelte`. -->
-          <DropdownMenu.Item
-            onclick={() => void goto('/app?add=join')}
-            data-testid="rooms-menu-join"
-            class="flex items-center gap-2"
-          >
-            <LogInIcon class="size-4" />
-            {m.guild_rail_join_community()}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            onclick={() => void goto('/app/discover')}
-            data-testid="rooms-menu-discover"
-            class="flex items-center gap-2"
-          >
-            <CompassIcon class="size-4" />
-            {m.rooms_discover_short()}
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+      <RaeumeMenue />
     {/snippet}
   </BereichsKopf>
 

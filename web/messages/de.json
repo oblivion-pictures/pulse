@@ -3413,5 +3413,15 @@
   "verbinden_bricht_ab": "Breche ab …",
   "verbinden_uebernahme_beantragt_titel": "Übernahme beantragt",
   "verbinden_fehler_antwort_fehlt": "Die Antwort kam nicht an. Sieh in der Konsole deines Servers nach; zeigt sie noch den Code, versuche es erneut.",
-  "verbinden_adresse_label": "Adresse"
+  "verbinden_adresse_label": "Adresse",
+  "eigener_server_einrichten": "Eigenen Server einrichten",
+  "eigener_server_rechner_titel": "Auf diesem Rechner",
+  "eigener_server_rechner_text": "Mit der Pulse Server-App. Dein Rechner ist der Server, solange er läuft. Keine eigene Domain nötig.",
+  "eigener_server_gemietet_titel": "Auf einem gemieteten Server",
+  "eigener_server_gemietet_text": "Ein Linux-Rechner mit Docker und eigener Adresse. Läuft rund um die Uhr.",
+  "eigener_server_befehl_hinweis": "Der Installer verbindet den Server am Ende mit deinem Konto.",
+  "eigener_server_kopieren": "Kopieren",
+  "eigener_server_kopiert": "Kopiert",
+  "eigener_server_anleitung": "Ausführliche Anleitung",
+  "eigener_server_schliessen": "Schließen"
 }

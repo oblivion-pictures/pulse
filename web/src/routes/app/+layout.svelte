@@ -65,6 +65,7 @@
   import UpdateBanner from '$lib/components/server/UpdateBanner.svelte';
   import SelfHostDisclaimer from '$lib/components/server/SelfHostDisclaimer.svelte';
   import EinladungDialog from '$lib/einladung/EinladungDialog.svelte';
+  import EigenerServerDialog from '$lib/components/selfhost/EigenerServerDialog.svelte';
 
   let { children } = $props();
   let hydrated = $state(false);
@@ -558,6 +559,10 @@
        erreichbar. -->
   <AnrufOverlay />
   <EinladungDialog />
+  <!-- „Eigenen Server einrichten“: EIN Mount für beide Einstiege (Plus der
+       Leiste, Menü der Räume). Die Hülle wählt hier die Geräteklasse —
+       Geräte-Trennung, die Komponente fragt nicht selbst. -->
+  <EigenerServerDialog blatt={viewport.isMobile} />
   <!-- Die Bereichs-Leiste sitzt UNTER dem Voice-Dock (Canvas 3a): das Dock ist
        der laufende Zustand, die Leiste die Navigation. `--safe-bottom` traegt
        jetzt sie, sonst laege der Home-Balken des Telefons darauf. -->
