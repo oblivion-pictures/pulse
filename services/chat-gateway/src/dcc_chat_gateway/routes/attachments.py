@@ -44,6 +44,7 @@ from dcc_chat_gateway.models import (
     Guild,
     MessageAttachment,
 )
+from dcc_chat_gateway.models.messages import belegte_bytes
 from dcc_chat_gateway.permissions import Permissions, check_permission
 from dcc_chat_gateway.routes._deps import (
     guild_or_404,
@@ -167,8 +168,10 @@ async def _enforce_storage_quota(
     """Reject the upload (413) if it would push the community over its total
     attachment-storage quota. NULL quota = unlimited. Drift-free: sums the
     live (non-deleted) attachment bytes on demand (same query as the owner
-    list). A small overshoot under concurrent uploads is accepted — this is a
-    cost cap, not a security boundary."""
+    list) — Datei UND Vorschaubild (``belegte_bytes``); ``new_bytes`` ist
+    entsprechend ``size + thumb_size`` des neuen Uploads. A small overshoot
+    under concurrent uploads is accepted — this is a cost cap, not a security
+    boundary."""
     guild = await session.get(Guild, guild_id)  # identity-mapped; no extra query
     # Wirksamer Wert: hat die Community sich selbst enger gesetzt, gilt ihrer;
     # sonst die Obergrenze des Betreibers (beim Speichern geklemmt, kann also
@@ -182,7 +185,7 @@ async def _enforce_storage_quota(
         return
     used = (
         await session.execute(
-            select(func.coalesce(func.sum(MessageAttachment.size), 0))
+            select(func.coalesce(func.sum(belegte_bytes()), 0))
             .select_from(MessageAttachment)
             .join(Channel, Channel.id == MessageAttachment.channel_id)
             .where(
@@ -196,6 +199,35 @@ async def _enforce_storage_quota(
             status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"community storage quota exceeded ({used} + {new_bytes} > {quota} bytes)",
         )
+
+
+#: Obergrenze für das Vorschaubild zu einer Datei, unabhängig von der Dateigrenze.
+#: Der Klient erzeugt höchstens 720 px Kantenlänge als WebP (q 0,85,
+#: ``web/src/lib/attachments/vorschaubild.ts``). Nachgemessen mit libwebp q85:
+#: reines Pixelrauschen bei 720x720 ~390 kB, mit zufälligem Alphakanal ~913 kB.
+#: 1 MiB trägt damit noch den theoretischen Schlimmstfall samt der 28 Byte
+#: AES-GCM-Anhang des verschlüsselten Wegs (``postfach_anhaenge.py``), ist
+#: aber um Größenordnungen kleiner als die Dateigrenze, die vorher auch für das
+#: Vorschaubild galt.
+MAX_THUMB_BYTES = 1024 * 1024
+
+
+def thumb_bytes_or_raise(
+    *, has_thumb: bool, thumb_size: int | None, max_size: int
+) -> int | None:
+    """Prüft die angemeldete Größe des Vorschaubildes und gibt sie zurück
+    (``None`` = kein Vorschaubild). 400 ohne Größe, 413 über der Grenze.
+
+    Die Grenze ist die kleinere von ``MAX_THUMB_BYTES`` und der Dateigrenze:
+    ein Vorschaubild, das größer sein darf als die Datei, die es vertritt,
+    gäbe es nicht."""
+    if not has_thumb:
+        return None
+    if thumb_size is None:
+        raise HTTPException(400, detail="thumb_size required when has_thumb=true")
+    if thumb_size > min(MAX_THUMB_BYTES, max_size):
+        raise HTTPException(413, detail="thumbnail too large")
+    return thumb_size
 
 
 def _storage_key(prefix: str, channel_id: int, attachment_id: int) -> str:
@@ -251,10 +283,18 @@ async def create_upload_url(
             detail=f"file too large ({payload.size} > {max_size} bytes)",
         )
 
+    # Das Vorschaubild hat seine eigene Grenze (``MAX_THUMB_BYTES``) und zählt
+    # NICHT gegen die Dateigrenze — wohl aber gegen das Kontingent unten.
+    thumb_size = thumb_bytes_or_raise(
+        has_thumb=payload.has_thumb, thumb_size=payload.thumb_size, max_size=max_size
+    )
+
     # Community-wide total-storage cap (guild channels only; DMs are covered by
     # the chat_settings DM limits, not a per-community quota).
     if kind == "guild":
-        await _enforce_storage_quota(session, ch.guild_id, payload.size)
+        await _enforce_storage_quota(
+            session, ch.guild_id, payload.size + (thumb_size or 0)
+        )
 
     # Count-limit is enforced on the *message* side at POST /messages, not
     # here — clients can upload more files than they'll send (e.g. dragged
@@ -262,13 +302,9 @@ async def create_upload_url(
 
     aid = next_id()
     storage_key = _storage_key("att", channel_id, aid)
-    thumb_key: str | None = None
-    if payload.has_thumb:
-        if payload.thumb_size is None:
-            raise HTTPException(400, detail="thumb_size required when has_thumb=true")
-        if payload.thumb_size > max_size:
-            raise HTTPException(413, detail="thumbnail too large")
-        thumb_key = _storage_key("thumb", channel_id, aid)
+    thumb_key = (
+        _storage_key("thumb", channel_id, aid) if thumb_size is not None else None
+    )
 
     row = MessageAttachment(
         id=aid,
@@ -284,6 +320,7 @@ async def create_upload_url(
         thumb_storage_key=thumb_key,
         thumb_width=payload.thumb_width,
         thumb_height=payload.thumb_height,
+        thumb_size=thumb_size,
     )
     session.add(row)
     await session.commit()
@@ -296,7 +333,7 @@ async def create_upload_url(
         thumb_upload_url = await s3.presigned_put_url(
             thumb_key,
             content_type="image/webp",  # client always emits webp thumbs
-            content_length=payload.thumb_size,
+            content_length=thumb_size,
         )
 
     return AttachmentUploadOut(

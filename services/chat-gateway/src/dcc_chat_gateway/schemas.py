@@ -437,7 +437,9 @@ class AttachmentUploadIn(BaseModel):
     # If true, the client will also PUT a thumbnail; server returns
     # ``thumb_upload_url`` and ``thumb_storage_key`` alongside.
     has_thumb: bool = False
-    thumb_size: int | None = None
+    # ge=1: die Größe wird in die Speicher-Rechnung der Community aufgenommen,
+    # ein negativer Wert dürfte sie nicht verkleinern.
+    thumb_size: Annotated[int | None, Field(default=None, ge=1)] = None
     thumb_width: int | None = None
     thumb_height: int | None = None
 
@@ -1661,7 +1663,7 @@ class PostfachAnhangUploadIn(BaseModel):
     #: Groesse des VERSCHLUESSELTEN Klumpens, wie er hochgeladen wird.
     size: Annotated[int, Field(ge=1, le=4 * 1024**4)]
     has_thumb: bool = False
-    thumb_size: int | None = None
+    thumb_size: Annotated[int | None, Field(default=None, ge=1)] = None
 
 
 class PostfachAnhangAbrufIn(BaseModel):

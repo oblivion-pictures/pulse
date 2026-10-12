@@ -223,6 +223,42 @@ async def test_kein_name_kein_typ_keine_masse(
 
 
 @pytest.mark.asyncio
+async def test_vorschaubild_hat_eine_eigene_kleine_grenze(
+    client, session_factory, _auth_signer, friend_pair, mock_s3
+):
+    """Auch im verschluesselten Weg gilt fuers Vorschaubild nicht die volle
+    Dateigrenze (``ablage_anhang_max_bytes``, Vorgabe 25 MB), sondern 1 MiB;
+    die Groesse wird gemerkt (sie zaehlt dort zwar gegen kein Kontingent,
+    aber die Spalte soll in beiden Wegen dasselbe heissen)."""
+    token_a, _uid_a, _tb, _uid_b, dm_id, _pk = await _aufbau(
+        client, session_factory, _auth_signer, friend_pair
+    )
+
+    def rumpf(thumb_size: int) -> dict:
+        return {
+            "channel_id": str(dm_id), "size": 4096,
+            "has_thumb": True, "thumb_size": thumb_size,
+        }
+
+    zu_gross = await client.post(
+        "/postfach/anhaenge/upload-url", json=rumpf(1024 * 1024 + 1),
+        headers=_auth(token_a),
+    )
+    assert zu_gross.status_code == 413, zu_gross.text
+    assert mock_s3.put_calls == []
+
+    ok = await client.post(
+        "/postfach/anhaenge/upload-url", json=rumpf(1024 * 1024),
+        headers=_auth(token_a),
+    )
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["thumb_upload_url"] is not None
+    async with session_factory() as s:
+        zeile = await s.get(MessageAttachment, int(ok.json()["id"]))
+        assert zeile.thumb_size == 1024 * 1024
+
+
+@pytest.mark.asyncio
 async def test_verschluesselter_weg_haengt_nicht_am_klartext_schalter(
     client, session_factory, _auth_signer, friend_pair, mock_s3, cloud_mode
 ):

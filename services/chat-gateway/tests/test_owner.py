@@ -73,6 +73,45 @@ async def test_communities_lists_with_member_count(
 
 
 @pytest.mark.asyncio
+async def test_community_storage_bytes_includes_thumbnails(
+    client, owner_token, session_factory
+):
+    """Das Vorschaubild belegt Speicher wie die Datei: die Belegt-Anzeige des
+    Betreibers rechnet ``size + thumb_size``, in der Liste wie im Einzelabruf
+    nach Sperren/Entsperren (zwei getrennte Summen im Code)."""
+    from dcc_chat_gateway.models import Channel, MessageAttachment
+    from dcc_chat_gateway.snowflake import next_id
+
+    token, owner_uid = owner_token
+    gid = await _seed_guild(session_factory, owner_id=owner_uid, name="Belegt")
+    cid = next_id()
+    async with session_factory() as s:
+        s.add(Channel(id=cid, guild_id=gid, name="general"))
+        for size, thumb in ((1000, 250), (500, None)):
+            aid = next_id()
+            s.add(
+                MessageAttachment(
+                    id=aid, channel_id=cid, uploader_id=owner_uid,
+                    storage_key=f"att/{cid}/{aid}", size=size,
+                    thumb_storage_key=None if thumb is None else f"thumb/{cid}/{aid}",
+                    thumb_size=thumb,
+                )
+            )
+        await s.commit()
+
+    r = await client.get("/owner/communities", headers=_auth(token))
+    assert r.status_code == 200, r.text
+    row = next(c for c in r.json()["communities"] if c["id"] == str(gid))
+    assert row["storage_bytes"] == 1000 + 250 + 500
+
+    r = await client.post(
+        f"/owner/communities/{gid}/suspend", json={}, headers=_auth(token)
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["storage_bytes"] == 1000 + 250 + 500
+
+
+@pytest.mark.asyncio
 async def test_communities_search_filters_by_name(
     client, owner_token, session_factory
 ):

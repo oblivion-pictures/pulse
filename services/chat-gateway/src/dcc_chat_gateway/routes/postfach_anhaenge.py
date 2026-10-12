@@ -51,7 +51,7 @@ from dcc_chat_gateway import ratelimit, s3
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.models import MessageAttachment
 from dcc_chat_gateway.postfach_anhaenge import anhang_abruffrist
-from dcc_chat_gateway.routes.attachments import _storage_key
+from dcc_chat_gateway.routes.attachments import _storage_key, thumb_bytes_or_raise
 from dcc_chat_gateway.routes.postfach import _channel_zugriff_pruefen
 from dcc_chat_gateway.schemas import (
     AttachmentDownloadOut,
@@ -131,14 +131,15 @@ async def anhang_upload_adresse(
             status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"file too large ({body.size} > {max_bytes} bytes)",
         )
-    thumb_key: str | None = None
+    # Eigene, kleine Grenze fürs Vorschaubild (``attachments.MAX_THUMB_BYTES``,
+    # reicht auch für den GCM-Anhang des Klumpens) statt der vollen Dateigrenze.
+    thumb_size = thumb_bytes_or_raise(
+        has_thumb=body.has_thumb, thumb_size=body.thumb_size, max_size=max_bytes
+    )
     anhang_id = next_id()
-    if body.has_thumb:
-        if body.thumb_size is None:
-            raise HTTPException(400, detail="thumb_size required when has_thumb=true")
-        if body.thumb_size > max_bytes:
-            raise HTTPException(413, detail="thumbnail too large")
-        thumb_key = _storage_key("thumb", channel_id, anhang_id)
+    thumb_key = (
+        _storage_key("thumb", channel_id, anhang_id) if thumb_size is not None else None
+    )
     storage_key = _storage_key("att", channel_id, anhang_id)
 
     # Was hier NICHT gesetzt wird, ist der Kern der Etappe: ``filename``,
@@ -154,6 +155,7 @@ async def anhang_upload_adresse(
             storage_key=storage_key,
             size=body.size,
             thumb_storage_key=thumb_key,
+            thumb_size=thumb_size,
         )
     )
     await session.commit()
@@ -164,7 +166,7 @@ async def anhang_upload_adresse(
     thumb_upload_url: str | None = None
     if thumb_key is not None:
         thumb_upload_url = await s3.presigned_put_url(
-            thumb_key, content_type=_KLUMPEN_TYP, content_length=body.thumb_size
+            thumb_key, content_type=_KLUMPEN_TYP, content_length=thumb_size
         )
     return AttachmentUploadOut(
         id=anhang_id, upload_url=upload_url, thumb_upload_url=thumb_upload_url
