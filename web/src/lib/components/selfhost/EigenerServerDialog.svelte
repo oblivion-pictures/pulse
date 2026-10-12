@@ -137,9 +137,10 @@
     }}
   >
     <!-- Das Kreuz bringt der Dialog selbst mit (klein, `icon-sm`): am Finger auf
-         48 dp, wie jede andere Fläche hier. -->
+         48 dp, wie jede andere Fläche hier. `max-w-xl`: Befehl und „Kopieren“
+         stehen so nebeneinander in einer Zeile (bei `max-w-lg` fehlten 32 px). -->
     <Dialog.Content
-      class="max-h-[90dvh] gap-4 overflow-y-auto nicht-handy:max-w-lg"
+      class="max-h-[90dvh] gap-4 overflow-y-auto nicht-handy:max-w-xl"
       closeClass={finger ? 'top-2 right-2 size-12' : undefined}
       data-testid="eigener-server-dialog"
     >

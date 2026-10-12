@@ -5,7 +5,10 @@
   `pulse-connect`, das den Server über die Bestätigungsseite `/verbinden` mit
   dem Konto verbindet (Spec 2026-10-09, E1/E6).
 
-  Befehl und Anleitung nennen immer die Cloud (`CLOUD_HOSTNAME`), nicht die
+  Darunter stehen die Dateien zum Herunterladen (`SelfHostDateien`) für den
+  Weg von Hand.
+
+  Befehl, Anleitung und Dateien nennen immer die Cloud (`CLOUD_HOSTNAME`), nicht die
   Adresse, von der diese Seite geladen wurde: Self-Hosts liefern dieselbe
   Web-App aus (`infra/self-host/Dockerfile`, Stage `web-build`), aber weder
   `/install` noch `/self-host/guide` — ein Befehl mit ihrer Adresse liefe ins
@@ -18,6 +21,7 @@
   import CopyIcon from '@lucide/svelte/icons/copy';
   import CheckIcon from '@lucide/svelte/icons/check';
   import { CLOUD_HOSTNAME } from '$lib/api/servers.svelte';
+  import SelfHostDateien from './SelfHostDateien.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
   const BEFEHL = `curl -fsSL ${CLOUD_HOSTNAME}/install | bash`;
@@ -45,9 +49,15 @@
 </script>
 
 <div class="flex flex-col gap-2" data-testid="self-host-install-card">
-  <div class="flex items-center gap-2">
+  <!-- `flex-wrap`: reicht die Breite für Befehl und Knopf nebeneinander nicht,
+       rutscht der Knopf in die nächste Zeile. Reicht sie auch für den Befehl
+       allein nicht (Handy), umbricht er an den Leerzeichen und bleibt ganz
+       sichtbar — vorher scrollte er in seinem Kasten und das „bash“ am Ende
+       lag verdeckt. Ein weicher Umbruch gehört nicht zum Text: `select-all` und
+       „Kopieren“ liefern den Befehl weiter als eine Zeile. -->
+  <div class="flex flex-wrap items-center gap-2">
     <code
-      class="bg-bg-input text-text-bright min-w-0 flex-1 overflow-x-auto rounded-md px-2 py-1.5 font-mono text-xs whitespace-nowrap select-all"
+      class="bg-bg-input text-text-bright min-w-0 flex-auto rounded-md px-2 py-1.5 font-mono text-xs break-words select-all"
       data-testid="self-host-install-command">{BEFEHL}</code
     >
     <!-- Am Finger (Handy, Tablet) 48 dp hoch (Basis-Klasse), am Rechner die
@@ -78,4 +88,5 @@
   >
     {m.eigener_server_anleitung()}
   </a>
+  <SelfHostDateien />
 </div>

@@ -3453,6 +3453,13 @@
   "eigener_server_rechner_finger_titel": "Auf einem eigenen Rechner",
   "eigener_server_rechner_finger_text": "Pulse Server-App für Windows, macOS und Linux — der Rechner, auf dem sie läuft, ist dein Server.",
   "eigener_server_kopieren_fehlgeschlagen": "Kopieren ging nicht. Markiere den Befehl und kopiere ihn von Hand.",
+  "eigener_server_dateien_titel": "Lieber von Hand?",
+  "eigener_server_dateien_text": "Wähle eine der beiden Compose-Dateien und lege sie in einen leeren Ordner. Daneben legst du eine Datei namens „.env“ an, in der die Zeile PULSE_HOSTNAME=deine-adresse steht. Dann startest du mit „docker compose up -d“ und verbindest den Server mit „docker exec -it pulse pulse-connect“.",
+  "eigener_server_datei_compose": "Der Normalfall. Port 80 und 443 müssen erreichbar sein.",
+  "eigener_server_datei_proxy": "Wenn auf dem Rechner schon ein eigener Proxy läuft (die Regel dafür steht in der Anleitung). Starte mit „docker compose -f docker-compose.behind-proxy.yml up -d“.",
+  "eigener_server_datei_update": "Aktualisiert den Server, am besten per Cron. Gehört neben die Compose-Datei; ein Cron-Beispiel steht im Kopf der Datei.",
+  "eigener_server_datei_installer": "Statt der Compose-Dateien: der Installer von oben als Datei, zum Durchlesen.",
+  "eigener_server_datei_laden": "{name} herunterladen",
   "guild_rail_plus_aria_anlegen": "Community erstellen, beitreten oder eigenen Server einrichten",
   "guild_rail_plus_aria_beitreten": "Community beitreten oder eigenen Server einrichten"
 }
