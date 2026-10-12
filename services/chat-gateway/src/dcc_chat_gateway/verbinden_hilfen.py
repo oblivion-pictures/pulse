@@ -1,4 +1,5 @@
-"""Kleine Helfer von ``pulse-connect`` (``verbinden_cli.py``): Dateien, Hash, Anzeige.
+"""Kleine Helfer von ``pulse-connect`` (``verbinden_cli.py``): Dateien und Sperre,
+Hash, Anzeige, die Prüfung des eigenen Servers und das Lesen von Cloud-Antworten.
 
 Ausgelagert, damit die Ablauflogik unter der Größengrenze bleibt. Die Namen der
 Dateien stehen in ``verbindung.py``.
@@ -11,9 +12,15 @@ import hashlib
 import os
 import re
 import secrets
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
+
+try:
+    import fcntl
+except ImportError:  # Windows: pulse-connect läuft nur im Linux-Container
+    fcntl = None
 
 from dcc_chat_gateway import verbinden_texte as texte
 from dcc_chat_gateway.verbindung import VERBINDUNG_DATEI
@@ -131,3 +138,77 @@ def lokaler_client(*, transport: httpx.BaseTransport | None = None) -> httpx.Cli
     return httpx.Client(
         timeout=LOKAL_FRIST_S, trust_env=False, follow_redirects=False, transport=transport
     )
+
+
+@contextlib.contextmanager
+def sperre(pfad: Path) -> Iterator[None]:
+    """Höchstens ein Lauf von ``pulse-connect`` zugleich; ein zweiter bricht ab.
+
+    ``flock`` statt einer ``O_EXCL``-Datei: der Kernel gibt die Sperre frei, sobald
+    der Prozess endet — auch bei SIGKILL oder geschlossenem Terminal, wo kein
+    ``finally`` mehr läuft. Eine Datei, die dann stehen bliebe, sperrte jeden
+    weiteren Aufruf aus, bis der Container neu startet. Die (leere) Datei bleibt
+    liegen: sie zu löschen, während ein Wartender sie schon geöffnet hat, ließe
+    zwei Läufe gleichzeitig sperren. Das Dateisystem kann ``flock`` auch nicht
+    können; dann läuft ``pulse-connect`` ohne Sperre, statt gar nicht."""
+    try:
+        pfad.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(pfad, os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    except OSError as fehler:
+        raise Abbruch(
+            1, texte.DATEN_NICHT_BESCHREIBBAR.format(pfad=pfad, grund=grund(fehler))
+        ) from None
+    try:
+        if fcntl is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise Abbruch(1, texte.LAEUFT_SCHON) from None
+            except OSError:
+                pass  # Dateisystem ohne flock
+        yield
+    finally:
+        os.close(fd)
+
+
+def detail(antwort: httpx.Response) -> object:
+    """Das ``detail`` einer Fehlerantwort der Cloud; ``None``, wenn es keins gibt."""
+    try:
+        return antwort.json().get("detail")
+    except (ValueError, AttributeError):
+        return None
+
+
+def abholen_entschieden(host: str, antwort: httpx.Response) -> None:
+    """403 und 409 von ``abholen``. Ein 403 ohne Namen heißt „im Browser abgelehnt“;
+    ein 409 ohne Namen kennt der Vertrag nicht und zählt als „wartet“."""
+    info = detail(antwort)
+    name = info.get("code") if isinstance(info, dict) else None
+    if antwort.status_code == 409 and name == "uebernahme_beantragt":
+        frist = texte.utc_minute(info.get("frist_bis"))
+        raise Abbruch(4, texte.UEBERNAHME_BEANTRAGT.format(host=host, frist=frist))
+    if antwort.status_code == 403 and name == "uebernahme_gesperrt":
+        raise Abbruch(2, texte.UEBERNAHME_GESPERRT.format(bis=texte.utc_minute(info.get("bis"))))
+    if antwort.status_code == 403:
+        raise Abbruch(2, texte.ABGELEHNT)
+
+
+def lokal_pruefen(url: str, lokal: httpx.Client, nachweis: str) -> None:
+    """Liefert Pulse selbst den Nachweis aus? Sonst scheitert der Start der Cloud
+    mit ``kein_nachweis`` und kostet einen ihrer 10 Starts je Stunde."""
+    try:
+        antwort = lokal.get(url)
+        gemeldet = antwort.json().get("nachweis") if antwort.status_code == 200 else None
+    except (httpx.HTTPError, ValueError, AttributeError):
+        gemeldet = None
+    if gemeldet != nachweis:
+        raise Abbruch(3, texte.LOKAL_OHNE_NACHWEIS)
+
+
+def ablegen(ziel: Path, inhalt: str, modus: int, vorlage: str) -> None:
+    """Schreiben; ein ``OSError`` (Platte voll, keine Rechte) wird zur Meldung."""
+    try:
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        schreibe_atomar(ziel, inhalt, modus)
+    except OSError as fehler:
+        raise Abbruch(1, vorlage.format(pfad=ziel, grund=grund(fehler))) from None

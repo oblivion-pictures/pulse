@@ -67,6 +67,10 @@ SCHON_VERBUNDEN = (
     "Connect it to a different account? [y/N] "
 )
 NICHTS_GEAENDERT = "Nothing changed."
+LAEUFT_SCHON = (
+    "pulse-connect is already running (in another terminal?). "
+    "Finish or cancel that run first. Nothing changed."
+)
 
 BEGINN = "Connecting {host} to a Pulse account."
 ANLEITUNG = (
