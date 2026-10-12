@@ -178,3 +178,6 @@ web/data/
 /streaming/win-hq-labor/
 /streaming/mac-hq-labor/
 /streaming/player-labor/
+
+# Arbeitsordner von infra/release/github-release.sh (räumt sich selbst weg)
+/.github-release.*/
