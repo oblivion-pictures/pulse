@@ -44,13 +44,26 @@ log = logging.getLogger(__name__)
 WAECHTER_TAKT_S = 30
 
 
+def online_aussage(inst: RegisteredInstance) -> bool | None:
+    """Was die Cloud über das Laufen der Instanz WEISS.
+
+    Nur ein Heim-Server (``app_host``) meldet sich beim Telefonbuch; bei ihm
+    ist ``online_gemeldet`` eine Messung. Ein per Gerätecode verbundener Server
+    (``vps``) meldet sich nie — sein ``false`` ist der Spaltenvorgabewert und
+    sagt nichts. Als „offline" ausgeliefert hat es die Oberfläche als gestoppten
+    Server gelesen und jeden, der gerade darauf war, auf die Cloud geworfen —
+    ausgerechnet beim Umbenennen. ``None`` = unbekannt, wie in
+    ``GET /me/instances``."""
+    return inst.online_gemeldet if inst.origin == "app_host" else None
+
+
 def ereignis(inst: RegisteredInstance) -> dict:
     """Nutzlast des ``instance_status``-Ereignisses (ohne Empfänger)."""
     return {
         "op": "instance_status",
         "data": {
             "instance_id": str(inst.id),
-            "online": inst.online_gemeldet,
+            "online": online_aussage(inst),
             "anzeigename": inst.anzeigename,
         },
     }

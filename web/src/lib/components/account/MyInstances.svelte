@@ -107,7 +107,15 @@
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <p class="text-text-bright truncate text-sm font-medium">{inst.hostname}</p>
+              <!-- Der Name, den der Betreiber vergeben hat, steht vorn; die Adresse
+                   bleibt darunter lesbar — hier verwaltet man den Server, und
+                   dafür braucht man sie. -->
+              <p class="text-text-bright truncate text-sm font-medium" data-testid="instance-name-{inst.id}">
+                {inst.anzeigename || inst.hostname}
+              </p>
+              {#if inst.anzeigename}
+                <p class="text-text-muted mt-0.5 truncate text-xs">{inst.hostname}</p>
+              {/if}
               <p class="text-text-muted mt-0.5 text-xs">
                 {#if inst.origin === 'app_host'}
                   {m.my_instances_apphost_label()} ·

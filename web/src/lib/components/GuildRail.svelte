@@ -57,6 +57,8 @@
   import { appHostAnwesenheit } from '$lib/stores/appHostAnwesenheit.svelte';
   import { serverCapabilities } from '$lib/stores/serverCapabilities.svelte';
   import ServerInfoDialog from './sidebar/ServerInfoDialog.svelte';
+  import ServerRenameDialog from './server/ServerRenameDialog.svelte';
+  import { darfUmbenennen } from '$lib/servers/umbenennenRecht';
   import RenameGuildDialog from './RenameGuildDialog.svelte';
   import ServerAdminButton from './ServerAdminButton.svelte';
   import GuildRailPlusMenu from './GuildRailPlusMenu.svelte';
@@ -244,6 +246,16 @@
   function openServerInfo(server: ServerEntry): void {
     infoServerTarget = server;
     infoServerOpen = true;
+  }
+
+  // Server umbenennen (Rechtsklick-Menü). Admin DIESES Servers — nicht das
+  // Cloud-Flag; Regel und Begründung in `servers/umbenennen.ts`.
+  let renameServerTarget = $state<ServerEntry | null>(null);
+  let renameServerOpen = $state(false);
+
+  function openServerRename(server: ServerEntry): void {
+    renameServerTarget = server;
+    renameServerOpen = true;
   }
 
   // Anzeigename für die Rail: Admin-Instanz-Name > Hostname (Letzteres ohne
@@ -486,6 +498,14 @@
           {#if isServerAdmin}
             <ContextMenu.Item onSelect={() => openServerInfo(server)}>
               {m.guild_rail_server_info()}
+            </ContextMenu.Item>
+          {/if}
+          {#if darfUmbenennen(server)}
+            <ContextMenu.Item
+              onSelect={() => openServerRename(server)}
+              data-testid="server-rename-menu"
+            >
+              <PencilIcon /> {m.server_rename_menu()}
             </ContextMenu.Item>
           {/if}
           <ContextMenu.Sub>
@@ -775,6 +795,12 @@
 </AlertDialog.Root>
 
 <ServerInfoDialog bind:open={infoServerOpen} server={infoServerTarget} />
+
+<ServerRenameDialog
+  open={renameServerOpen}
+  server={renameServerTarget}
+  onClose={() => (renameServerOpen = false)}
+/>
 
 <RenameGuildDialog
   open={renameTarget !== null}

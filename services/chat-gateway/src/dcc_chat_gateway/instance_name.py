@@ -21,6 +21,8 @@ import logging
 import httpx
 from fastapi import Request
 
+from dcc_shared.anzeigename import bereinige_anzeigename
+
 from dcc_chat_gateway import config as chat_cfg
 from dcc_chat_gateway.models.admin import ChatSettings
 
@@ -34,8 +36,12 @@ START_VERZOEGERUNG_S = 20
 
 
 def normalisiere(name: str | None) -> str | None:
-    """Leerstring → NULL (zurücksetzen), Ränder weg."""
-    return (name or "").strip() or None
+    """Leerstring → NULL (zurücksetzen), Steuerzeichen raus, Ränder weg.
+
+    Dieselbe Rechnung wie die Cloud (``setze_anzeigename`` in auth-svc), aus
+    derselben Funktion: was der Server speichert, muss dem gleichen, was die
+    Cloud den anderen Mitgliedern ausliefert (``dcc_shared.anzeigename``)."""
+    return bereinige_anzeigename(name)
 
 
 async def melde_an_cloud(name: str | None) -> bool:

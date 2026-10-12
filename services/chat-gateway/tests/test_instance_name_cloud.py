@@ -100,6 +100,44 @@ async def test_meldung_an_cloud_traegt_instanz_zugangsdaten(monkeypatch, _isolat
     }
 
 
+def test_normalisiere_wie_die_cloud():
+    """Der Server speichert, was die Cloud den anderen Mitgliedern ausliefert:
+    Steuerzeichen raus, Ränder weg, leer = zurücksetzen. Nähme der Server sie
+    mit, hießen derselbe Server auf zwei Wegen unterschiedlich."""
+    assert modul.normalisiere("  Michaels\u0007 Server \n") == "Michaels Server"
+    assert modul.normalisiere("Zeile\neins") == "Zeileeins"
+    assert modul.normalisiere("Büro — Süd") == "Büro — Süd"
+    # Zusammengesetzte Emoji bleiben heil (der Zero-Width-Joiner ist kein
+    # Steuerzeichen), ein No-Break-Space wird ein normales Leerzeichen.
+    assert modul.normalisiere("Clan 👨‍👩‍👧") == "Clan 👨‍👩‍👧"
+    assert modul.normalisiere("Mein Server") == "Mein Server"
+    assert modul.normalisiere("   ") is None
+    assert modul.normalisiere("\u0007\t") is None
+    assert modul.normalisiere("") is None
+    assert modul.normalisiere(None) is None
+
+
+@pytest.mark.asyncio
+async def test_admin_patch_speichert_den_bereinigten_namen(client, _auth_signer, gemeldet):
+    token, _ = await _make_token(_auth_signer, is_admin=True)
+    r = await client.patch("/admin/permissions", json={"instance_name": "Mi\tchaels\u0007 Server"},
+                           headers=auth(token))
+    assert r.status_code == 200, r.text
+    assert r.json()["instance_name"] == "Michaels Server"
+    await _warte_auf_hintergrund()
+    assert gemeldet == ["Michaels Server"]
+
+
+@pytest.mark.asyncio
+async def test_nicht_admin_darf_nicht_umbenennen(client, _auth_signer, gemeldet):
+    """Die Oberfläche zeigt „Umbenennen“ nur Admins — der Server entscheidet."""
+    token, _ = await _make_token(_auth_signer, is_admin=False)
+    r = await client.patch("/admin/permissions", json={"instance_name": "Kapern"}, headers=auth(token))
+    assert r.status_code == 403
+    await _warte_auf_hintergrund()
+    assert gemeldet == []
+
+
 @pytest.mark.asyncio
 async def test_cloud_selbst_meldet_nichts(monkeypatch, _isolate_chat_settings):
     monkeypatch.setattr(_isolate_chat_settings, "pulse_instance_mode", "cloud")

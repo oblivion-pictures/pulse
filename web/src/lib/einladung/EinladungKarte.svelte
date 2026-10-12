@@ -36,6 +36,7 @@
     zustand,
     community = null,
     host = null,
+    hostName = null,
     rahmen = 'karte',
     art = 'einladung',
     hinweis = null,
@@ -56,6 +57,9 @@
     community?: EinladungCommunity | null;
     /** FQDN des Self-Hosts; null = Cloud. */
     host?: string | null;
+    /** Name des Servers, wenn das Gerät ihn schon kennt (`serverName.ts`) —
+     *  steht dann statt der Adresse im Kästchen; die Adresse bleibt im Tooltip. */
+    hostName?: string | null;
     rahmen?: 'karte' | 'dialog';
     /** Öffentliche Adresse statt Einladungscode: andere Überschrift und Texte. */
     art?: 'einladung' | 'adresse';
@@ -180,9 +184,10 @@
         <span
           class="bg-primary/15 text-primary inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
           data-testid="einladung-host"
+          title={hostName ? host : undefined}
         >
           <ServerIcon class="size-3.5 shrink-0" />
-          <span class="truncate">{host}</span>
+          <span class="truncate">{hostName ?? host}</span>
         </span>
       {/if}
     </div>

@@ -567,3 +567,17 @@ def test_instanz_verbunden_traegt_nur_die_nummer() -> None:
         modell.model_validate(
             {"op": "instanz_verbunden", "data": {"instance_id": "1", "hostname": "x"}}
         )
+
+
+def test_instance_status_online_darf_unbekannt_sein() -> None:
+    """Ein per Gerätecode verbundener Server meldet sich nie beim Telefonbuch;
+    die Cloud schickt für ihn ``online: null`` (statt eines erfundenen
+    ``false``). Das Modell muss das annehmen, sonst verwirft der chat-gateway
+    der Cloud das Ereignis — und kein Mitglied sähe den neuen Namen live."""
+    modell = EVENT_REGISTRY["instance_status"]
+    evt = modell.model_validate(
+        {"op": "instance_status",
+         "data": {"instance_id": "1", "online": None, "anzeigename": "Michaels Server"}}
+    )
+    assert evt.data.online is None
+    assert evt.data.anzeigename == "Michaels Server"

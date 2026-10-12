@@ -20,6 +20,7 @@
     type EinladungZustand
   } from '$lib/einladung/EinladungKarte.svelte';
   import { istGueltigerHandle, zielHost, type Ziel } from '$lib/einladung/einladungsLink';
+  import { bekannterServerName } from '$lib/einladung/serverName';
   import {
     browserSpeicher,
     einladungMerken,
@@ -114,6 +115,7 @@
     art="adresse"
     {community}
     host={ziel?.host ?? null}
+    hostName={bekannterServerName(ziel?.host)}
     {hinweis}
     {busy}
     onBeitreten={() => beitreten()}

@@ -32,6 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete
 
+from dcc_shared.anzeigename import bereinige_anzeigename
 from dcc_shared.snowflake import kennung_aus_text
 
 from dcc_auth.config import get_settings
@@ -198,7 +199,8 @@ async def setze_anzeigename(body: AnzeigenameIn, request: Request, db: SessionDe
     await _check_rate(request, "directory_heartbeat", settings.rate_limit_directory_heartbeat)
     inst = await _authed_instance(db, body.instance_id, body.token, body.client_id)
     # Steuerzeichen raus, Ränder weg — der Wert landet in jeder Server-Leiste.
-    name = "".join(z for z in (body.anzeigename or "") if z.isprintable()).strip() or None
+    # Dieselbe Funktion wie auf dem Server selbst (dcc_shared.anzeigename).
+    name = bereinige_anzeigename(body.anzeigename)
     if name != inst.anzeigename:
         inst.anzeigename = name
         await db.commit()

@@ -24,6 +24,7 @@
     type EinladungZustand
   } from '$lib/einladung/EinladungKarte.svelte';
   import { einladungAusUrl, zielHost, type Einladung } from '$lib/einladung/einladungsLink';
+  import { bekannterServerName } from '$lib/einladung/serverName';
   import {
     browserSpeicher,
     einladungMerken,
@@ -160,6 +161,7 @@
     {zustand}
     {community}
     host={einladung?.host ?? null}
+    hostName={bekannterServerName(einladung?.host)}
     {hinweis}
     {busy}
     {appKnopf}

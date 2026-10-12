@@ -9,7 +9,7 @@
  * needed (audit-log, stats overview).
  */
 
-import { request } from './client';
+import { request, type RequestRoute } from './client';
 
 export type RegistrationMode = 'open' | 'invite_only' | 'closed';
 
@@ -386,12 +386,15 @@ export const adminApi = {
   getPermissions(): Promise<Permissions> {
     return request<Permissions>('/admin/permissions', { endpoint: 'chat' });
   },
-  patchPermissions(payload: Partial<Permissions>): Promise<Permissions> {
-    return request<Permissions>('/admin/permissions', {
-      method: 'PATCH',
-      endpoint: 'chat',
-      body: payload
-    });
+  /** `route` richtet die Anfrage an einen bestimmten Server (mit dessen
+   *  Sitzung), sonst an den aktiven — z. B. das Umbenennen per Rechtsklick auf
+   *  einen Server, auf dem man gerade nicht ist. */
+  patchPermissions(payload: Partial<Permissions>, route: RequestRoute = {}): Promise<Permissions> {
+    return request<Permissions>(
+      '/admin/permissions',
+      { method: 'PATCH', endpoint: 'chat', body: payload },
+      route
+    );
   },
   chatAuditLog(
     opts: { before?: string; limit?: number } = {}

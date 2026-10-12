@@ -428,7 +428,9 @@ export type ServerEvent =
   // (handlers/instanzen.ts).
   | {
       op: 'instance_status';
-      data: { instance_id: string; online: boolean; anzeigename: string | null };
+      // `online: null` = die Cloud weiß es nicht (Server ohne Telefonbuch-
+      // Meldung, `servers/instanzStatus.ts`).
+      data: { instance_id: string; online: boolean | null; anzeigename: string | null };
     }
   // Ein eigener Server hat seine Zugangsdaten abgeholt (`pulse-connect`,
   // Spec E3). auth-svc über user:events, nur an den Besitzer. Nur von der
