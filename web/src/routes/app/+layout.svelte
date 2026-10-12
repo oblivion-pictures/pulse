@@ -547,9 +547,10 @@
   <AnrufOverlay />
   <EinladungDialog />
   <!-- „Eigenen Server einrichten“: EIN Mount für beide Einstiege (Plus der
-       Leiste, Menü der Räume). Die Hülle wählt hier die Geräteklasse —
+       Leiste, Menü der Räume). Die Geräteklasse wählt hier die Hülle (`blatt`:
+       nur das Handy) und den Finger-Zuschnitt (`finger`: Handy und Tablet) —
        Geräte-Trennung, die Komponente fragt nicht selbst. -->
-  <EigenerServerDialog blatt={viewport.isMobile} />
+  <EigenerServerDialog blatt={viewport.isMobile} finger={!viewport.isDesktop} />
   <!-- Die Bereichs-Leiste sitzt UNTER dem Voice-Dock (Canvas 3a): das Dock ist
        der laufende Zustand, die Leiste die Navigation. `--safe-bottom` traegt
        jetzt sie, sonst laege der Home-Balken des Telefons darauf. -->

@@ -7,12 +7,20 @@
  * Ersetzt heim-server.spec.ts: dessen Prüfungen (Download ohne Sperre, kein
  * Antragsformular) stehen jetzt hier am Dialog statt auf /app/server.
  */
-import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import {
+  test,
+  expect,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type Page
+} from '@playwright/test';
 
 const PW = 'Passwort123!';
 const TAG = Date.now().toString(36);
 const RECHNER = { width: 1440, height: 900 };
 const HANDY = { width: 390, height: 844 };
+const TABLET = { width: 834, height: 1112 };
 const HOST = 'meine-server.dcc-test.example.com';
 const INSTANZ = '7300000000000000001';
 
@@ -67,6 +75,35 @@ async function registrieren(page: Page, name: string): Promise<void> {
     .catch(() => undefined);
 }
 
+/** Kontext mit Finger-Zeiger: die Geräteklasse hängt am ZEIGER
+ *  (geraetKlasse.ts), ohne Emulation wäre jede Breite nur ein schmales
+ *  Desktop-Fenster. */
+function fingerKontext(
+  browser: Browser,
+  groesse: { width: number; height: number }
+): Promise<BrowserContext> {
+  return browser.newContext({ viewport: groesse, locale: 'de-DE', isMobile: true, hasTouch: true });
+}
+
+/** Trefferflächen unter 48 dp im Dialog: gemessen wie in
+ *  mobile-treffflaechen.spec.ts, nicht aus Klassennamen gefolgert (Höhe, Knopf
+ *  wie Link — auch das Kreuz oben rechts, das der Dialog selbst mitbringt). */
+function zuKleineFlaechen(dialog: Locator): Promise<string[]> {
+  return dialog.evaluate(async (wurzel) => {
+    // Der Dialog zoomt beim Öffnen von 95 % auf 100 % (`zoom-in-95`): mitten
+    // darin misst jede 48-px-Fläche 47. Erst messen, wenn er steht.
+    await Promise.all(wurzel.getAnimations({ subtree: true }).map((a) => a.finished));
+    const raus: string[] = [];
+    for (const el of wurzel.querySelectorAll<HTMLElement>('button, a[href]')) {
+      const hoehe = el.getBoundingClientRect().height;
+      if (hoehe > 0 && hoehe < 48) {
+        raus.push(`${el.dataset.testid ?? el.tagName}: ${Math.round(hoehe)}px`);
+      }
+    }
+    return raus;
+  });
+}
+
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Eigenen Server einrichten', () => {
@@ -74,10 +111,18 @@ test.describe('Eigenen Server einrichten', () => {
     const page = await browser.newPage({ viewport: RECHNER });
     await registrieren(page, `es_desk_${TAG}`);
 
-    await page.locator('[data-testid^="guild-create-menu-"]').first().click();
+    // Das Plus nennt auch den neuen Eintrag, nicht nur Erstellen/Beitreten.
+    const plus = page.locator('[data-testid^="guild-create-menu-"]').first();
+    await expect(plus).toHaveAttribute('aria-label', /eigenen Server einrichten/);
+    await plus.click();
     await page.getByTestId('guild-eigener-server').click();
     const dialog = page.getByTestId('eigener-server-dialog');
     await expect(dialog).toBeVisible();
+
+    // Am Rechner ist es der Rechner, an dem man sitzt.
+    const rechner = dialog.getByTestId('eigener-server-rechner');
+    await expect(rechner).toContainText('Auf diesem Rechner');
+    await expect(rechner).toContainText('Dein Rechner ist der Server');
 
     await expect(dialog.getByTestId('self-host-install-command')).toHaveText(
       'curl -fsSL https://howispulse.com/install | bash'
@@ -89,10 +134,11 @@ test.describe('Eigenen Server einrichten', () => {
     // Heim-Server ohne Sperre und ohne Antrag; „Desktop Chrome“ meldet Windows.
     await expect(dialog.getByTestId('server-app-download')).toBeVisible();
     await expect(dialog.getByTestId('server-app-download-windows')).toBeVisible();
-    await expect(dialog.getByTestId('eigener-server-gehostet')).toHaveAttribute(
-      'aria-disabled',
-      'true'
-    );
+    // „Von Pulse gehostet“ gibt es noch nicht: ausgegraut UND ausgezeichnet —
+    // `aria-disabled` allein auf einem Div ohne Rolle liest kein Hilfsmittel.
+    const gehostet = dialog.getByTestId('eigener-server-gehostet');
+    await expect(gehostet).toHaveAttribute('role', 'group');
+    await expect(gehostet).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByTestId('self-host-application')).toHaveCount(0);
 
     // Schließen per Knopf IM Dialog: belegt, dass der aus dem Menü geöffnete
@@ -105,12 +151,7 @@ test.describe('Eigenen Server einrichten', () => {
   test('am Handy: das Menü der Räume öffnet dasselbe als Blatt', async ({ browser }) => {
     // Geräteklasse hängt am ZEIGER (geraetKlasse.ts): ohne Finger-Emulation
     // wäre jede Breite nur ein schmales Desktop-Fenster.
-    const ctx = await browser.newContext({
-      viewport: HANDY,
-      locale: 'de-DE',
-      isMobile: true,
-      hasTouch: true
-    });
+    const ctx = await fingerKontext(browser, HANDY);
     const page = await ctx.newPage();
     await registrieren(page, `es_handy_${TAG}`);
 
@@ -122,23 +163,117 @@ test.describe('Eigenen Server einrichten', () => {
       page.getByTestId('eigener-server-dialog').getByTestId('self-host-install-command')
     ).toBeVisible();
 
-    // Trefferflächen im Blatt: gemessen wie in mobile-treffflaechen.spec.ts,
-    // nicht aus Klassennamen gefolgert (48 dp Höhe, Knopf wie Link).
-    const zuKlein = await page.getByTestId('eigener-server-dialog').evaluate((wurzel) => {
-      const raus: string[] = [];
-      for (const el of wurzel.querySelectorAll<HTMLElement>('button, a[href]')) {
-        const hoehe = el.getBoundingClientRect().height;
-        if (hoehe > 0 && hoehe < 48) {
-          raus.push(`${el.dataset.testid ?? el.tagName}: ${Math.round(hoehe)}px`);
-        }
-      }
-      return raus;
-    });
-    expect(zuKlein, 'zu kleine Trefferflächen im Blatt').toEqual([]);
+    // Am Handy steht kein „Auf diesem Rechner“: die Server-App läuft nicht auf
+    // dem Telefon, es ist der Weg zu einem anderen Rechner.
+    const rechner = page.getByTestId('eigener-server-dialog').getByTestId('eigener-server-rechner');
+    await expect(rechner).toContainText('Auf einem eigenen Rechner');
+    await expect(rechner).toContainText('der Rechner, auf dem sie läuft, ist dein Server');
+    await expect(rechner).not.toContainText('Auf diesem Rechner');
+    await expect(rechner).not.toContainText('Dein Rechner ist der Server');
+
+    expect(
+      await zuKleineFlaechen(page.getByTestId('eigener-server-dialog')),
+      'zu kleine Trefferflächen im Blatt'
+    ).toEqual([]);
 
     await page.getByTestId('eigener-server-schliessen').click();
     await expect(page.getByTestId('eigener-server-blatt')).toHaveCount(0);
     await ctx.close();
+  });
+
+  test('am Tablet: derselbe Dialog wie am Rechner, aber Wortlaut und Trefferflächen für Finger', async ({
+    browser
+  }) => {
+    const ctx = await fingerKontext(browser, TABLET);
+    const page = await ctx.newPage();
+    await registrieren(page, `es_tab_${TAG}`);
+
+    await page.goto('/app/rooms');
+    await page.getByTestId('rooms-menu').click({ timeout: 30_000 });
+    await page.getByTestId('rooms-eigener-server').click();
+    // Ein Dialog, kein Blatt von unten: nur das Handy bekommt das Blatt.
+    const dialog = page.getByTestId('eigener-server-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(page.getByTestId('eigener-server-blatt')).toHaveCount(0);
+
+    const rechner = dialog.getByTestId('eigener-server-rechner');
+    await expect(rechner).toContainText('Auf einem eigenen Rechner');
+    await expect(rechner).not.toContainText('Auf diesem Rechner');
+
+    expect(await zuKleineFlaechen(dialog), 'zu kleine Trefferflächen im Dialog').toEqual([]);
+
+    await dialog.getByTestId('eigener-server-schliessen').click();
+    await expect(page.getByTestId('eigener-server-dialog')).toHaveCount(0);
+    await ctx.close();
+  });
+
+  test('Navigation schließt das Blatt: Android-Zurück lässt es nicht stehen', async ({
+    browser
+  }) => {
+    const ctx = await fingerKontext(browser, HANDY);
+    const page = await ctx.newPage();
+    await registrieren(page, `es_zurueck_${TAG}`);
+
+    // Erst Dokument-Ladung, dann eine App-Navigation: der Rücksprung geht dann
+    // auf einen Eintrag desselben Dokuments, also über den Router (popstate).
+    await page.goto('/app/me');
+    await expect(page.getByTestId('me-page')).toBeVisible();
+    await page.getByTestId('tab-rooms').click();
+    await page.waitForURL((u) => u.pathname.startsWith('/app/rooms'));
+
+    await page.getByTestId('rooms-menu').click();
+    await page.getByTestId('rooms-eigener-server').click();
+    await expect(page.getByTestId('eigener-server-blatt')).toBeVisible();
+
+    await page.goBack();
+    await page.waitForURL((u) => u.pathname === '/app/me');
+    await expect(page.getByTestId('eigener-server-blatt')).toHaveCount(0);
+    await expect(page.getByTestId('me-page')).toBeVisible();
+    await ctx.close();
+  });
+
+  test('Kopieren des Befehls: scheitert es, sagt es ein Hinweis; gelingt es, nicht', async ({
+    browser
+  }) => {
+    const page = await browser.newPage({ viewport: RECHNER });
+    await registrieren(page, `es_kopie_${TAG}`);
+    // Die Zwischenablage ist in der Testumgebung nicht frei: beide Ausgänge
+    // werden vorgegeben, statt sich auf Berechtigungen zu verlassen.
+    await page.evaluate(() => {
+      const w = window as unknown as { __kopiert?: string; __kopieren?: 'fehler' | 'ok' };
+      w.__kopieren = 'fehler';
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: (text: string) => {
+            if (w.__kopieren === 'fehler') return Promise.reject(new Error('verweigert'));
+            w.__kopiert = text;
+            return Promise.resolve();
+          }
+        }
+      });
+    });
+
+    await page.locator('[data-testid^="guild-create-menu-"]').first().click();
+    await page.getByTestId('guild-eigener-server').click();
+    const dialog = page.getByTestId('eigener-server-dialog');
+    const knopf = dialog.getByTestId('self-host-install-copy');
+
+    await knopf.click();
+    await expect(page.getByText('Kopieren ging nicht')).toBeVisible();
+    // Der Knopf behauptet kein „Kopiert“, das nicht stattfand.
+    await expect(knopf).toContainText('Kopieren');
+    await expect(knopf).not.toContainText('Kopiert');
+
+    await page.evaluate(() => {
+      (window as unknown as { __kopieren: string }).__kopieren = 'ok';
+    });
+    await knopf.click();
+    await expect(knopf).toContainText('Kopiert');
+    expect(
+      await page.evaluate(() => (window as unknown as { __kopiert?: string }).__kopiert)
+    ).toBe('curl -fsSL https://howispulse.com/install | bash');
+    await page.close();
   });
 
   test('ohne eigenen Server: kein „Meine Server“, kein Server-Knopf', async ({ browser }) => {

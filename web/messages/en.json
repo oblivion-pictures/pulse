@@ -3442,8 +3442,13 @@
   "meine_server_uebernahme_fehler_sonst": "The objection did not arrive. Please try again in a moment.",
   "admin_tab_servers": "Servers",
   "admin_instances_description_frei": "All servers the cloud knows — approved ones and those without approval. Suspending takes effect for new sign-ins immediately.",
-  "admin_instances_ohne_freigabe": "no approval",
+  "admin_instances_ohne_freigabe": "without approval",
   "admin_users_darf_verbinden": "May connect servers",
   "admin_users_verbinden_updated": "Permission to connect servers updated.",
-  "admin_badge_meldungen_aria": "Open reports"
+  "admin_badge_meldungen_aria": "Open reports",
+  "eigener_server_rechner_finger_titel": "On your own computer",
+  "eigener_server_rechner_finger_text": "Pulse Server app for Windows, macOS and Linux — the computer it runs on is your server.",
+  "eigener_server_kopieren_fehlgeschlagen": "Copying failed. Select the command and copy it by hand.",
+  "guild_rail_plus_aria_anlegen": "Create or join a community, or set up your own server",
+  "guild_rail_plus_aria_beitreten": "Join a community or set up your own server"
 }
