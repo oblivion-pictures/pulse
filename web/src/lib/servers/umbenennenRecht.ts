@@ -1,8 +1,9 @@
 /**
  * Darf der angemeldete Mensch DIESEN Server umbenennen? — die Rechnung steht in
  * `umbenennen.ts` (importfrei, geprüft); hier werden nur die Eingaben aus den
- * Stores geholt. Eine Stelle für beide Eingänge: das Rechtsklick-Menü der
- * `GuildRail` am Rechner und die Server-Zeile im Räume-Bereich am Handy.
+ * Stores geholt. Eine Stelle für alle Eingänge: das Rechtsklick-Menü der
+ * `GuildRail` am Rechner, die Server-Zeile im Räume-Bereich am Handy und
+ * „Umbenennen“ auf „Meine Server“ (`account/MyInstances`).
  */
 import type { ServerEntry } from '$lib/api/servers.svelte';
 import { serverAdmin } from '$lib/stores/serverAdmin.svelte';

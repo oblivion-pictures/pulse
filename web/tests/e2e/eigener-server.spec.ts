@@ -210,8 +210,8 @@ test.describe('Eigenen Server einrichten', () => {
   test('am Rechner: der Dialog schneidet in gängigen Fenstergrößen nichts ab', async ({ browser }) => {
     const page = await browser.newPage({ viewport: RECHNER });
     await registrieren(page, `es_rahmen_${TAG}`);
-    await page.locator('[data-testid^="guild-create-menu-"]').first().click();
-    await page.getByTestId('guild-eigener-server').click();
+    await page.getByTestId('rail-server-button').click();
+    await page.getByTestId('rail-server-einrichten').click();
     const dialog = page.getByTestId('eigener-server-dialog');
     await expect(dialog).toBeVisible();
 
@@ -265,8 +265,8 @@ test.describe('Eigenen Server einrichten', () => {
     });
     const page = await ctx.newPage();
     await registrieren(page, `es_dateien_${TAG}`);
-    await page.locator('[data-testid^="guild-create-menu-"]').first().click();
-    await page.getByTestId('guild-eigener-server').click();
+    await page.getByTestId('rail-server-button').click();
+    await page.getByTestId('rail-server-einrichten').click();
     const dialog = page.getByTestId('eigener-server-dialog');
     const dateien = dialog.getByTestId('self-host-dateien');
     await expect(dateien).toBeVisible();

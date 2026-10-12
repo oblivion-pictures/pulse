@@ -547,12 +547,12 @@
        erreichbar. -->
   <AnrufOverlay />
   <EinladungDialog />
-  <!-- Server umbenennen: EIN Mount für beide Eingänge (Rechtsklick in der
-       Leiste, Tipp auf die Server-Zeile in den Räumen) — Zustand in
-       `stores/serverRename`. -->
+  <!-- Server umbenennen: EIN Mount für alle Eingänge (Rechtsklick in der
+       Leiste, Tipp auf die Server-Zeile in den Räumen, „Umbenennen“ auf
+       „Meine Server“) — Zustand in `stores/serverRename`. -->
   <ServerRenameDialog />
-  <!-- „Eigenen Server einrichten“: EIN Mount für beide Einstiege (Plus der
-       Leiste, Menü der Räume). Die Geräteklasse wählt hier die Hülle (`blatt`:
+  <!-- „Eigenen Server einrichten“: EIN Mount für beide Einstiege (Server-Knopf
+       unten in der Leiste am Rechner, Menü der Räume auf Handy und Tablet). Die Geräteklasse wählt hier die Hülle (`blatt`:
        nur das Handy) und den Finger-Zuschnitt (`finger`: Handy und Tablet) —
        Geräte-Trennung, die Komponente fragt nicht selbst. -->
   <EigenerServerDialog blatt={viewport.isMobile} finger={!viewport.isDesktop} />
