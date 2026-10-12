@@ -3444,6 +3444,9 @@
   "eigener_server_meine_server": "My servers",
   "eigener_server_liste_leer": "You do not have a server of your own yet.",
   "eigener_server_status_aktiv": "Active",
+  "server_knopf_label": "Server",
+  "server_knopf_einrichten": "Set up your own server …",
+  "server_knopf_verwalten": "Manage servers",
   "eigener_server_eingetragen_am": "Added on {date}",
   "eigener_server_loeschen_text": "{hostname} will be removed from your account for good. A server that is still running stops operating, and the address becomes free again. The data on your server (Docker volume) stays untouched; you delete it yourself. This cannot be undone.",
   "eigener_server_loeschen_text_gesperrt": "{hostname} will be removed from your account for good. The server is blocked, and it stays that way after deletion: no server can be connected under this address until the block is lifted. The data on your server (Docker volume) stays untouched; you delete it yourself. This cannot be undone.",
@@ -3474,6 +3477,6 @@
   "eigener_server_datei_update": "Updates the server, best run by cron. Belongs next to the Compose file; a cron example is in the header of the file.",
   "eigener_server_datei_installer": "Instead of the Compose files: the installer from above as a file, to read first.",
   "eigener_server_datei_laden": "Download {name}",
-  "guild_rail_plus_aria_anlegen": "Create or join a community, or set up your own server",
-  "guild_rail_plus_aria_beitreten": "Join a community or set up your own server"
+  "guild_rail_plus_aria_anlegen": "Create or join a community",
+  "guild_rail_plus_aria_beitreten": "Join a community"
 }

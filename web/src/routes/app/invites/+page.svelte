@@ -40,7 +40,12 @@
 />
 
 {#if !viewport.isMobile}
-  <DMChannelList activeDMId={null} onSelect={selectDM} handy={false} />
+  <DMChannelList
+    activeDMId={null}
+    onSelect={selectDM}
+    handy={false}
+    serverKnopf={viewport.isDesktop}
+  />
 {/if}
 
 <section

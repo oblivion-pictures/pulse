@@ -1,8 +1,9 @@
 /**
  * „Eigenen Server einrichten“ (Spec 2026-10-09-selfhost-ohne-freigabe-design.md
- * §5): Einstieg im Plus jeder Server-Gruppe (Rechner) und im Menü der Räume
- * (Handy), ein Dialog bzw. ein Blatt von unten mit den Wegen Server-App,
- * gemieteter Server und „Von Pulse gehostet (Bald)“.
+ * §5): Einstieg im Server-Knopf unten in der Leiste (Rechner) und im Menü der
+ * Räume (Handy), ein Dialog bzw. ein Blatt von unten mit den Wegen Server-App,
+ * gemieteter Server und „Von Pulse gehostet (Bald)“. Die Menüs des Server-Knopfs
+ * selbst prüft server-knopf.spec.ts.
  *
  * Ersetzt heim-server.spec.ts: dessen Prüfungen (Download ohne Sperre, kein
  * Antragsformular) stehen jetzt hier am Dialog statt auf /app/server.
@@ -163,15 +164,12 @@ function rahmenMessen(dialog: Locator): Promise<{
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Eigenen Server einrichten', () => {
-  test('am Rechner: das Plus öffnet den Dialog mit allen Wegen', async ({ browser }) => {
+  test('am Rechner: der Server-Knopf öffnet den Dialog mit allen Wegen', async ({ browser }) => {
     const page = await browser.newPage({ viewport: RECHNER });
     await registrieren(page, `es_desk_${TAG}`);
 
-    // Das Plus nennt auch den neuen Eintrag, nicht nur Erstellen/Beitreten.
-    const plus = page.locator('[data-testid^="guild-create-menu-"]').first();
-    await expect(plus).toHaveAttribute('aria-label', /eigenen Server einrichten/);
-    await plus.click();
-    await page.getByTestId('guild-eigener-server').click();
+    await page.getByTestId('rail-server-button').click();
+    await page.getByTestId('rail-server-einrichten').click();
     const dialog = page.getByTestId('eigener-server-dialog');
     await expect(dialog).toBeVisible();
 
@@ -432,8 +430,8 @@ test.describe('Eigenen Server einrichten', () => {
       });
     });
 
-    await page.locator('[data-testid^="guild-create-menu-"]').first().click();
-    await page.getByTestId('guild-eigener-server').click();
+    await page.getByTestId('rail-server-button').click();
+    await page.getByTestId('rail-server-einrichten').click();
     const dialog = page.getByTestId('eigener-server-dialog');
     const knopf = dialog.getByTestId('self-host-install-copy');
 
@@ -454,24 +452,32 @@ test.describe('Eigenen Server einrichten', () => {
     await page.close();
   });
 
-  test('ohne eigenen Server: kein „Meine Server“, kein Server-Knopf', async ({ browser }) => {
+  test('ohne eigenen Server: kein „Server verwalten“, auch nicht im Konto-Menü', async ({
+    browser
+  }) => {
     const page = await browser.newPage({ viewport: RECHNER });
     await registrieren(page, `es_ohne_${TAG}`);
     await expect(page.getByTestId('open-self-host')).toHaveCount(0);
+    // Der Server-Knopf selbst ist für jeden da (hier richtet man den ersten
+    // Server ein) — nur das Verwalten fehlt.
+    await page.getByTestId('rail-server-button').click();
+    await expect(page.getByTestId('rail-server-einrichten')).toBeVisible();
+    await expect(page.getByTestId('rail-server-verwalten')).toHaveCount(0);
+    await page.keyboard.press('Escape');
     await page.getByTestId('user-footer-trigger').first().click();
     await expect(page.getByTestId('open-settings')).toBeVisible();
     await expect(page.getByTestId('user-footer-meine-server')).toHaveCount(0);
     await page.close();
   });
 
-  test('am Rechner: „Meine Server“ im Konto-Menü führt zur Liste', async ({ browser }) => {
+  test('am Rechner: „Server verwalten“ im Server-Knopf führt zur Liste', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: RECHNER, serviceWorkers: 'block' });
     await eigenerServerVortaeuschen(ctx);
     const page = await ctx.newPage();
     await registrieren(page, `es_mit_${TAG}`);
 
-    await page.getByTestId('user-footer-trigger').first().click();
-    await page.getByTestId('user-footer-meine-server').click();
+    await page.getByTestId('rail-server-button').click();
+    await page.getByTestId('rail-server-verwalten').click();
     await page.waitForURL(/\/app\/server/);
     await expect(page.getByTestId(`instance-row-${INSTANZ}`)).toBeVisible();
     await expect(page.getByTestId(`instance-delete-btn-${INSTANZ}`)).toBeVisible();

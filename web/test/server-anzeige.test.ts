@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { anzeigeName, istSichtbar, type AnzeigeEintrag } from '../src/lib/servers/anzeige.ts';
+import { anzeigeName, instanzZeile, istSichtbar, type AnzeigeEintrag } from '../src/lib/servers/anzeige.ts';
 
 const heim = (over: Partial<AnzeigeEintrag> = {}): AnzeigeEintrag => ({
   isCloud: false,
@@ -43,4 +43,42 @@ test('Nachzug übernimmt Name und Online-Zustand aus der Cloud, sonst nichts zu 
   assert.equal(neu?.anzeigename, 'Michaels Server');
   assert.equal(neu?.online, false);
   assert.equal(instanzNachzug(neu!, { ...inst, anzeigename: 'Michaels Server', online: false }, 'https://a.relay.x'), null);
+});
+
+const ADRESSE = 'meine-server.dcc-test.example.com';
+
+test('Zeile: ohne Eintrag auf diesem Gerät gilt der Cloud-Name, sonst die Adresse', () => {
+  assert.deepEqual(instanzZeile({ hostname: ADRESSE, anzeigename: 'Atelier' }), {
+    name: 'Atelier',
+    adresse: ADRESSE,
+  });
+  // Kein Name: die Adresse steht nur einmal da, nicht als Name UND als Unterzeile.
+  assert.deepEqual(instanzZeile({ hostname: ADRESSE, anzeigename: null }), {
+    name: ADRESSE,
+    adresse: null,
+  });
+  assert.deepEqual(instanzZeile({ hostname: ADRESSE }), { name: ADRESSE, adresse: null });
+});
+
+test('Zeile: mit Eintrag folgt der Name der Leiste, nicht der Cloud-Kopie', () => {
+  // Frisch umbenannt: der Server hat es dem Eintrag schon gesagt, die Cloud-
+  // Liste der Seite kennt noch den alten Namen.
+  const eintrag = heim({
+    hostname: `https://${ADRESSE}`,
+    label: `https://${ADRESSE}`,
+    server_name: 'Neu',
+    anzeigename: 'Neu',
+  });
+  assert.deepEqual(instanzZeile({ hostname: ADRESSE, anzeigename: 'Alt' }, eintrag), {
+    name: 'Neu',
+    adresse: ADRESSE,
+  });
+});
+
+test('Zeile: der Eintrag ohne Namen zeigt die Adresse ohne Schema, wie die Leiste', () => {
+  const eintrag = heim({ hostname: `https://${ADRESSE}`, label: `https://${ADRESSE}` });
+  assert.deepEqual(instanzZeile({ hostname: ADRESSE, anzeigename: null }, eintrag), {
+    name: ADRESSE,
+    adresse: null,
+  });
 });

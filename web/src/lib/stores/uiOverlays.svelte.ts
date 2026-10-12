@@ -13,8 +13,8 @@ class UIOverlays {
   /** Käfer-Knopf: Diagnose-Bericht an die Cloud schicken (Klick = Einwilligung,
    *  s. Spec 2026-09-21 §5). */
   diagnoseOpen = $state(false);
-  /** „Eigenen Server einrichten“ — gesetzt vom Plus jeder Server-Gruppe
-   *  (`GuildRailPlusMenu`) und vom Menü der Räume (`RaeumeMenue`), gemountet
+  /** „Eigenen Server einrichten“ — gesetzt vom Server-Knopf der Leiste
+   *  (`GuildRailServerButton`) und vom Menü der Räume (`RaeumeMenue`), gemountet
    *  einmal im App-Layout (`EigenerServerDialog`). */
   eigenerServerOpen = $state(false);
   /** Tab, auf dem der Einstellungs-Dialog beim nächsten Öffnen landet.

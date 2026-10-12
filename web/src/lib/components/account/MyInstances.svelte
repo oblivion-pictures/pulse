@@ -3,13 +3,19 @@
   Endpoint: GET /me/instances (Cookie-Auth via instancesApi).
 
   Seit dem Wegfall der Freigabe (2026-10, Spec 2026-10-09 §5) steht hier nur
-  die Verwaltung: Diagnose und Löschen. Das Einrichten eines freigegebenen VPS
+  die Verwaltung: Diagnose, Umbenennen und Löschen. Das Einrichten eines freigegebenen VPS
   („Server einrichten“ mit Installer-Befehl und `.env`) ist entfallen — ein
   neuer Server verbindet sich beim Installieren selbst (`pulse-connect`).
 
   Liegt für einen Server ein Übernahme-Antrag eines anderen Kontos vor, trägt
   sein Eintrag `uebernahme_frist_bis` und zeigt den Hinweis mit „Widersprechen“
   (`UebernahmeHinweis`, Widerspruchsfrist, Nachtrag 2026-10-11).
+
+  Die Liste kommt aus der Cloud, der Name aber aus der Server-Liste dieses
+  Geräts, sobald der Server dort steht (`instanzZeile`): nach dem Umbenennen
+  steht der neue Name sofort da, nicht erst nach einem Neuladen. „Umbenennen“
+  gibt es nur für einen Server, den diese Liste kennt und den man verwalten darf
+  (`darfUmbenennen`); der Dialog hängt einmal im App-Layout.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -19,6 +25,9 @@
   import { instancesApi, type Instance } from '$lib/api/instances';
   import { serversStore } from '$lib/api/servers.svelte';
   import { removeServerLocally } from '$lib/api/server-removal';
+  import { instanzZeile } from '$lib/servers/anzeige';
+  import { darfUmbenennen } from '$lib/servers/umbenennenRecht';
+  import { serverRename } from '$lib/stores/serverRename.svelte';
   import InstanceDiagnose from './InstanceDiagnose.svelte';
   import UebernahmeHinweis from './UebernahmeHinweis.svelte';
   import EmptyState from '$lib/components/feedback/EmptyState.svelte';
@@ -26,6 +35,7 @@
   import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
   import { Button } from '$lib/components/ui/button';
   import Trash2Icon from '@lucide/svelte/icons/trash-2';
+  import PencilIcon from '@lucide/svelte/icons/pencil';
 
   let instances = $state<Instance[]>([]);
   let loading = $state(true);
@@ -101,6 +111,8 @@
   {:else}
     <div class="flex flex-col gap-2">
       {#each instances as inst (inst.id)}
+        {@const eintrag = serversStore.servers.find((s) => s.instance_id === inst.id)}
+        {@const zeile = instanzZeile(inst, eintrag)}
         <div
           class="border-border bg-bg-input/30 flex flex-col gap-2 rounded-xl border p-3"
           data-testid="instance-row-{inst.id}"
@@ -111,10 +123,15 @@
                    bleibt darunter lesbar — hier verwaltet man den Server, und
                    dafür braucht man sie. -->
               <p class="text-text-bright truncate text-sm font-medium" data-testid="instance-name-{inst.id}">
-                {inst.anzeigename || inst.hostname}
+                {zeile.name}
               </p>
-              {#if inst.anzeigename}
-                <p class="text-text-muted mt-0.5 truncate text-xs">{inst.hostname}</p>
+              {#if zeile.adresse}
+                <p
+                  class="text-text-muted mt-0.5 truncate text-xs"
+                  data-testid="instance-adresse-{inst.id}"
+                >
+                  {zeile.adresse}
+                </p>
               {/if}
               <p class="text-text-muted mt-0.5 text-xs">
                 {#if inst.origin === 'app_host'}
@@ -143,6 +160,17 @@
                die Kette läuft gegen die Relay-Adresse. -->
           <InstanceDiagnose instanceId={inst.id} />
           <div class="mt-1 flex flex-wrap gap-2">
+            {#if eintrag && darfUmbenennen(eintrag)}
+              <Button
+                variant="outline"
+                size="xs"
+                onclick={() => serverRename.ask(eintrag)}
+                data-testid="instance-rename-btn-{inst.id}"
+              >
+                <PencilIcon class="size-3.5" />
+                {m.server_rename_menu()}
+              </Button>
+            {/if}
             <Button
               variant="destructive"
               size="xs"

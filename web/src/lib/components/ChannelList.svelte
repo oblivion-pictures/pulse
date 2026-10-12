@@ -44,6 +44,7 @@ import { errText } from '$lib/utils/errText';
      *  an die Abschnitte durchgereicht (Raumklang-Eintrag, Klang-Steller,
      *  Profil-Huelle in den Sprachkanal-Teilnehmern). */
     handy,
+    serverKnopf = false,
     activeChannelId = null,
     onSelect,
     onCreateClick,
@@ -57,6 +58,10 @@ import { errText } from '$lib/utils/errText';
     guild: Guild | null;
     channels: Channel[];
     handy: boolean;
+    /** Sitzt auf diesem Gerät der Server-Knopf der GuildRail? Vom Mount-Punkt
+     *  hereingereicht und an den Sidebar-Footer durchgereicht (dort entscheidet
+     *  es, ob „Meine Server“ im Konto-Menü steht). */
+    serverKnopf?: boolean;
     activeChannelId?: string | null;
     onSelect: (c: Channel) => void;
     onCreateClick: () => void;
@@ -272,6 +277,6 @@ import { errText } from '$lib/utils/errText';
   </nav>
 
   {#if variant === 'aside'}
-    <SidebarFooter {handy} />
+    <SidebarFooter {handy} {serverKnopf} />
   {/if}
 </svelte:element>

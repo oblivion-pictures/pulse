@@ -337,7 +337,7 @@ export interface HostExportResult {
 
 /** Ergebnis von host.giveUp(). cloudDeleted null = bewusst übersprungen
  *  (superseded-Zustand); false = liegengeblieben → UI verweist auf den
- *  Client-Weg (Konto-Menü → Meine Server). */
+ *  Client-Weg (Meine Server: Server-Knopf der Leiste bzw. Du-Bereich). */
 export interface HostGiveUpResult {
   ok: boolean;
   cloudDeleted: boolean | null;

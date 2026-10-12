@@ -25,7 +25,8 @@
     /** Handy-Klasse? Vom Mount-Punkt hereingereicht (Geraete-Trennung) und
      *  an den Sidebar-Footer durchgereicht (Voice-Bar/User-Fuss sind dort
      *  ausgeblendet — sie wohnen in ChatView bzw. im Raeume-Bereich). */
-    handy
+    handy,
+    serverKnopf = false
   }: {
     activeDMId?: string | null;
     onSelect: (dm: DMChannel) => void;
@@ -33,6 +34,10 @@
      *  Abschnitt aus — die Liste behauptet dann nicht, es gaebe Gruppen. */
     onSelectGruppe?: (gruppeId: string) => void;
     handy: boolean;
+    /** Sitzt auf diesem Gerät der Server-Knopf der GuildRail? Vom Mount-Punkt
+     *  hereingereicht und an den Sidebar-Footer durchgereicht (dort entscheidet
+     *  es, ob „Meine Server“ im Konto-Menü steht). */
+    serverKnopf?: boolean;
   } = $props();
 
   let neueGruppe = $state(false);
@@ -230,7 +235,7 @@
     {/if}
   </nav>
 
-  <SidebarFooter {handy} />
+  <SidebarFooter {handy} {serverKnopf} />
 </aside>
 
 {#if neueGruppe}

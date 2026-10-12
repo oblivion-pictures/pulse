@@ -101,6 +101,32 @@ export function cloudNameAnwenden(
   return { anzeigename: neu, name_ueberholt: null };
 }
 
+/**
+ * Name und Adresse einer Zeile unter „Meine Server“ — in der Seite
+ * (`account/MyInstances`) und im Menü des Server-Knopfs
+ * (`GuildRailServerButton`). Eine Rechnung für beide, damit sie nicht
+ * auseinanderlaufen.
+ *
+ * **Der Name folgt der Leiste.** Steht der Server in der Liste dieses Geräts
+ * (`eintrag`), gilt `anzeigeName(eintrag)` ohne Schema, genau wie dort. Nur so
+ * steht nach einem Umbenennen sofort der neue Name da: die Zeilen selbst
+ * kommen aus `GET /me/instances` und damit aus der Cloud, die den Namen erst
+ * nach der Meldung des Servers kennt. Ohne Eintrag (Server noch nicht
+ * abgeholt, oder auf diesem Gerät nie gesehen) bleibt der Cloud-Name, dann die
+ * Adresse.
+ *
+ * `adresse` ist `null`, wenn der Name die Adresse selbst ist — sonst stünde sie
+ * zweimal untereinander.
+ */
+export function instanzZeile(
+  inst: { hostname: string; anzeigename?: string | null },
+  eintrag?: AnzeigeEintrag | null
+): { name: string; adresse: string | null } {
+  const roh = eintrag ? anzeigeName(eintrag) : inst.anzeigename || inst.hostname;
+  const name = roh.replace(/^https?:\/\//, '');
+  return { name, adresse: name === inst.hostname ? null : inst.hostname };
+}
+
 export function istSichtbar(e: AnzeigeEintrag): boolean {
   if (e.isCloud) return true;
   return !(e.origin === 'app_host' && e.online === false);

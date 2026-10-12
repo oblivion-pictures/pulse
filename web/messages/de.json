@@ -3444,6 +3444,9 @@
   "eigener_server_meine_server": "Meine Server",
   "eigener_server_liste_leer": "Du hast noch keinen eigenen Server.",
   "eigener_server_status_aktiv": "Aktiv",
+  "server_knopf_label": "Server",
+  "server_knopf_einrichten": "Eigenen Server einrichten …",
+  "server_knopf_verwalten": "Server verwalten",
   "eigener_server_eingetragen_am": "Eingetragen am {date}",
   "eigener_server_loeschen_text": "{hostname} wird endgültig aus deinem Konto entfernt. Ein noch laufender Server stellt den Betrieb ein, und die Adresse wird wieder frei. Die Daten auf deinem Server (Docker-Volume) bleiben unberührt, die löschst du selbst. Das kann nicht rückgängig gemacht werden.",
   "eigener_server_loeschen_text_gesperrt": "{hostname} wird endgültig aus deinem Konto entfernt. Der Server ist gesperrt, und das bleibt auch nach dem Löschen so: Unter dieser Adresse lässt sich kein Server mehr verbinden, bis die Sperre aufgehoben wird. Die Daten auf deinem Server (Docker-Volume) bleiben unberührt, die löschst du selbst. Das kann nicht rückgängig gemacht werden.",
@@ -3474,6 +3477,6 @@
   "eigener_server_datei_update": "Aktualisiert den Server, am besten per Cron. Gehört neben die Compose-Datei; ein Cron-Beispiel steht im Kopf der Datei.",
   "eigener_server_datei_installer": "Statt der Compose-Dateien: der Installer von oben als Datei, zum Durchlesen.",
   "eigener_server_datei_laden": "{name} herunterladen",
-  "guild_rail_plus_aria_anlegen": "Community erstellen, beitreten oder eigenen Server einrichten",
-  "guild_rail_plus_aria_beitreten": "Community beitreten oder eigenen Server einrichten"
+  "guild_rail_plus_aria_anlegen": "Community erstellen oder beitreten",
+  "guild_rail_plus_aria_beitreten": "Community beitreten"
 }

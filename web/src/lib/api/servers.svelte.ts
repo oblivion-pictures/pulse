@@ -429,8 +429,10 @@ class ServersStore {
         // weiter für neu verbundene Server: bestätigt auf `/verbinden`, aber
         // noch nicht abgeholt, heißt auch hier `set_up: false`. Bis dahin
         // steht die Instanz nur auf der Seite „Meine Server“ (die liest die
-        // Cloud-Liste direkt); der Menüeintrag dorthin (`hatEigeneServer`)
-        // erscheint erst mit dem Eintrag in diesem Store. Das Ereignis
+        // Cloud-Liste direkt) und in der frisch geladenen Liste des
+        // Server-Knopfs; die Menüeinträge dorthin, die an `hatEigeneServer`
+        // hängen (Du-Bereich, Konto-Menü am Tablet), erscheinen erst mit dem
+        // Eintrag in diesem Store. Das Ereignis
         // `instanz_verbunden` stößt den Abgleich an, sobald abgeholt wurde.
         //
         // Nur der NEUE Eintrag hängt daran. Bestehende bleiben unangetastet:

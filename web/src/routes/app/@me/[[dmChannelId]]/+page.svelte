@@ -284,6 +284,7 @@
     onSelect={selectDM}
     onSelectGruppe={selectGruppe}
     handy={viewport.isMobile}
+    serverKnopf={viewport.isDesktop}
   />
 {/if}
 

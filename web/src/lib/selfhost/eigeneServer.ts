@@ -2,9 +2,11 @@
  * Hat dieses Konto einen eigenen Server? — reine Rechnung, importfrei
  * (Node-Unit-Test, s. `pnpm test:unit`-Falle in CLAUDE.md).
  *
- * Entscheidet, ob „Meine Server“ im Konto-Menü (`UserFooter`) und im
- * Du-Bereich (`MeSectionList`) erscheint (Spec 2026-10-09 §5). Eine Stelle für
- * beide, damit sie nicht auseinanderlaufen.
+ * Entscheidet, ob „Meine Server“ im Konto-Menü (`UserFooter`, nur wo kein
+ * Server-Knopf in der Leiste sitzt, also auf dem Tablet), im Du-Bereich
+ * (`MeSectionList`) und „Server verwalten“ im Server-Knopf der Leiste
+ * (`GuildRailServerButton`) erscheint (Spec 2026-10-09 §5). Eine Stelle für
+ * alle, damit sie nicht auseinanderlaufen.
  *
  * **Quelle ist die Server-Liste des Kontos, nie der aktive Server.** Die Rolle
  * kommt aus `GET /me/instances` (`hydrateFromBackend`), also aus der Cloud,

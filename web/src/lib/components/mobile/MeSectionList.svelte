@@ -91,7 +91,8 @@
   let medienOffen = $state(false);
 
   /** „Meine Server“ — nur mit eigenem Server (Rechnung in
-   *  `selfhost/eigeneServer.ts`, dieselbe wie im Konto-Menü am Rechner). */
+   *  `selfhost/eigeneServer.ts`, dieselbe wie im Server-Knopf der Leiste am
+   *  Rechner). */
   let meineServer = $derived(hatEigeneServer(serversStore.servers));
 </script>
 

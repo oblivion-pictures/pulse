@@ -23,8 +23,13 @@
   import UserFooter from './UserFooter.svelte';
 
   /** Handy-Klasse? Vom Mount-Punkt hereingereicht (Geraete-Trennung):
-   *  ChannelList und DMChannelList reichen den Wert ihrer Routen durch. */
-  let { handy = false }: { handy?: boolean } = $props();
+   *  ChannelList und DMChannelList reichen den Wert ihrer Routen durch.
+   *
+   *  `serverKnopf`: sitzt auf diesem Gerät der Server-Knopf der GuildRail
+   *  (Desktop-Klasse)? Kommt ebenso von der Route und geht an `UserFooter`,
+   *  das „Meine Server“ dann nicht mehr im Konto-Menü anbietet. */
+  let { handy = false, serverKnopf = false }: { handy?: boolean; serverKnopf?: boolean } =
+    $props();
 </script>
 
 {#if (voice.connected || voice.connecting) && !handy}
@@ -34,5 +39,5 @@
 <!-- Auf Mobil sitzt der eigene User unten im Raeume-Bereich (die Rail ist
      dort ausgeblendet) — hier nur auf Desktop, mit Name + Chip. -->
 {#if !handy}
-  <UserFooter />
+  <UserFooter {serverKnopf} />
 {/if}

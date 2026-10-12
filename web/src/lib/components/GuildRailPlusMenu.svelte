@@ -1,22 +1,20 @@
 <!--
   Das „+“ unter jeder Server-Gruppe der GuildRail: Community erstellen (nur mit
-  Erstellrecht), Community beitreten, und — nach einem Trenner, in jedem Plus
-  gleich — „Eigenen Server einrichten“ (Spec 2026-10-09 §5; ersetzt den
-  Server-Knopf unten in der Leiste). Herausgezogen aus `GuildRail.svelte`,
-  damit die Leiste schrumpft statt wächst.
+  Erstellrecht) und Community beitreten. „Eigenen Server einrichten“ steht
+  nicht hier, sondern im Server-Knopf unten in der Leiste
+  (`GuildRailServerButton`). Herausgezogen aus `GuildRail.svelte`, damit die
+  Leiste schrumpft statt wächst.
 
   Bewusst kleiner als die Community-Symbole (gestrichelt), damit es als
   Sektions-Aktion liest. Die Beschriftung des Knopfes zählt auf, was das Menü
-  anbietet — auch den Server-Eintrag, der in jedem Plus steht. Der Aufrufer aktiviert vor `onAnlegen`/`onBeitreten`
-  den Server — die neue Community landet garantiert auf DIESEM Server.
+  anbietet. Der Aufrufer aktiviert vor `onAnlegen`/`onBeitreten` den Server —
+  die neue Community landet garantiert auf DIESEM Server.
 -->
 <script lang="ts">
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
   import PlusIcon from '@lucide/svelte/icons/plus';
   import UsersRoundIcon from '@lucide/svelte/icons/users-round';
   import LogInIcon from '@lucide/svelte/icons/log-in';
-  import ServerIcon from '@lucide/svelte/icons/server';
-  import { uiOverlays } from '$lib/stores/uiOverlays.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
   let {
@@ -65,16 +63,5 @@
         {m.guild_rail_join_community()}
       </DropdownMenu.Item>
     {/if}
-    <DropdownMenu.Separator />
-    <!-- `onclick` wie die Dialog-Einträge im Konto-Menü (UserFooter: Einstellungen,
-         Problem melden). Dass der Dialog danach bedienbar ist, belegt
-         eigener-server.spec.ts mit einem Klick auf „Schließen“ im Dialog. -->
-    <DropdownMenu.Item
-      onclick={() => (uiOverlays.eigenerServerOpen = true)}
-      data-testid="guild-eigener-server"
-    >
-      <ServerIcon />
-      {m.eigener_server_einrichten()}
-    </DropdownMenu.Item>
   </DropdownMenu.Content>
 </DropdownMenu.Root>

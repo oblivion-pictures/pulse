@@ -23,8 +23,8 @@
   Store, nicht an der Adresse, und bliebe nach „Zurück“ (Android-System-Back)
   sonst über der vorigen Seite stehen.
 
-  Geöffnet über `uiOverlays.eigenerServerOpen` — vom Plus jeder Server-Gruppe
-  (`GuildRailPlusMenu`) und vom Menü der Räume (`RaeumeMenue`).
+  Geöffnet über `uiOverlays.eigenerServerOpen` — vom Server-Knopf der Leiste
+  (`GuildRailServerButton`) und vom Menü der Räume (`RaeumeMenue`).
 -->
 <script lang="ts">
   import type { Component } from 'svelte';
