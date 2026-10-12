@@ -209,6 +209,37 @@ async def test_null_on_not_null_limit_is_422_not_500(client, session_factory, _a
 
 
 @pytest.mark.asyncio
+async def test_unnamed_limits_stay_exactly_as_stored(client, session_factory, _auth_signer):
+    """Der Vertrag, auf den sich das Formular verlässt: ein PATCH, der die
+    Dateigröße gar nicht nennt, lässt sie BYTEGENAU stehen (auch einen Wert, der
+    in der Anzeige gerundet wird), und ein leerer ``limits``-Satz ist kein
+    Fehler. Das Formular schickt deshalb nur, was angefasst wurde, und lässt ein
+    geleertes Pflichtfeld ganz weg — ``null`` dort bliebe ein 422 (siehe oben)."""
+    token, _uid, gid = await _owned_guild(session_factory, _auth_signer)
+    async with session_factory() as s:
+        g = await s.get(Guild, gid)
+        g.attachment_max_size_bytes = 1_000_000  # Anzeige: 0.95 MB
+        g.attachment_max_count_per_message = 3
+        await s.commit()
+
+    r = await client.patch(
+        f"/guilds/{gid}/limits",
+        json={"limits": {"max_members": 50}},
+        headers=_auth(token),
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["clamped"] == []
+    assert body["limits"]["attachment_max_size_bytes"]["value"] == 1_000_000
+    assert body["limits"]["attachment_max_count_per_message"]["value"] == 3
+    assert body["limits"]["max_members"]["value"] == 50
+
+    r = await client.patch(f"/guilds/{gid}/limits", json={"limits": {}}, headers=_auth(token))
+    assert r.status_code == 200, r.text
+    assert r.json()["limits"]["attachment_max_size_bytes"]["value"] == 1_000_000
+
+
+@pytest.mark.asyncio
 async def test_community_null_clears_own_value(client, session_factory, _auth_signer):
     token, _uid, gid = await _owned_guild(session_factory, _auth_signer)
     async with session_factory() as s:

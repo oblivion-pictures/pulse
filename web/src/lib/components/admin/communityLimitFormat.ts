@@ -33,6 +33,26 @@ export function unitStrToBytes(s: unknown, unit: number): number | null {
   return n == null ? null : Math.round(n * unit);
 }
 
+/** Wie `unitStrToBytes`, aber ein UNVERÄNDERTES Feld liefert den gespeicherten
+ *  Wert zurück statt der Rückrechnung seiner gerundeten Anzeige.
+ *
+ *  Das Betreiber-Formular schickt immer den vollen Satz (NULL löscht dort eine
+ *  Übersteuerung), kann ein unverändertes Feld also nicht weglassen. Es kann
+ *  aber den Wert schicken, den der Server schon hat: `bytesToUnitStr` rundet auf
+ *  zwei Stellen, und 1.000.000 Byte würden sonst über „0.95" zu 996.147.
+ *  `stored` ist der aktuelle Stand des Servers (die Prop der Community), nicht
+ *  der beim Öffnen gemerkte — sonst verlöre ein Zurücktippen auf den alten Wert
+ *  nach einem Speichern seine Wirkung. */
+export function unitStrToBytesKeep(
+  shown: unknown,
+  stored: number | null,
+  unit: number
+): number | null {
+  const text = shown == null ? '' : String(shown);
+  if (text === bytesToUnitStr(stored, unit)) return stored;
+  return unitStrToBytes(shown, unit);
+}
+
 /** Instanz-Standards der zwei Datei-Obergrenzen — Spiegel von
  *  ``DEFAULT_ATTACHMENT_MAX_SIZE_BYTES`` / ``DEFAULT_ATTACHMENT_MAX_COUNT``
  *  (guild_limits.py). Synchron halten. */

@@ -37,7 +37,7 @@ import { errText } from '$lib/utils/errText';
     mbpsStrToKbps,
     bytesToUnit,
     bytesToUnitStr,
-    unitStrToBytes,
+    unitStrToBytesKeep,
     ceilingOrDefault,
     DEFAULT_ATTACH_MAX_SIZE_BYTES,
     DEFAULT_ATTACH_MAX_COUNT
@@ -109,16 +109,27 @@ import { errText } from '$lib/utils/errText';
         stream_bitrate_max_kbps: mbpsStrToKbps(streamMbps),
         stream_fps_max: numOrNull(fps),
         stream_resolution_max: resolution || null,
-        attachment_max_size_bytes: unitStrToBytes(attachSizeMB, MB),
+        // Der volle Satz geht immer mit (null löscht hier eine Übersteuerung),
+        // also kann ein unverändertes Feld nicht fehlen — aber es schickt den
+        // gespeicherten Wert, nicht die Rückrechnung der gerundeten Anzeige.
+        attachment_max_size_bytes: unitStrToBytesKeep(
+          attachSizeMB,
+          community.attachment_max_size_bytes,
+          MB
+        ),
         attachment_max_count_per_message: numOrNull(attachCount),
-        attachment_storage_quota_bytes: unitStrToBytes(storageQuotaGB, GB),
+        attachment_storage_quota_bytes: unitStrToBytesKeep(
+          storageQuotaGB,
+          community.attachment_storage_quota_bytes,
+          GB
+        ),
         max_members: numOrNull(maxMembers),
         max_channels: numOrNull(maxChannels),
         max_roles: numOrNull(maxRoles),
         max_devices_per_owner: numOrNull(maxDevicesPerOwner),
         max_concurrent_streams: numOrNull(maxStreams),
         dropbox_allowed: dropboxAllowed,
-        dropbox_quota_bytes: unitStrToBytes(dropboxQuotaGB, GB)
+        dropbox_quota_bytes: unitStrToBytesKeep(dropboxQuotaGB, community.dropbox_quota_bytes, GB)
       });
       onSaved(updated);
       toast.success(m.admin_communities_limits_saved());
