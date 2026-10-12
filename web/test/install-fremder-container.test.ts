@@ -48,13 +48,17 @@
  * Zuschnitt-Algorithmus im Testbaum) und mit einem gefälschten `docker` auf
  * dem PATH ausgeführt. Der Reihenfolge-Test (`reihenfolgeTest`) geht einen
  * Schritt weiter und führt einen wörtlich aus `install.sh` herausgeschnittenen
- * ZUSAMMENHÄNGENDEN AUSSCHNITT aus — von `check_ports` bis nach der
- * Token-Einlösung, inklusive der echten `curl`-Zeile —, gegen ein
- * gefälschtes `curl`, das eine Markerdatei hinterlässt, sobald es
- * aufgerufen wird. Ein Test, der nur behauptet „die Prüfung sitzt vor der
- * Einlösung" (weil er sie in dieser Reihenfolge selbst zusammenbaut), würde
- * eine künftige Umsortierung im echten Skript nicht bemerken — nur echter,
- * an Ort und Stelle ausgeführter Quelltext tut das.
+ * ZUSAMMENHÄNGENDEN AUSSCHNITT aus — von `check_ports` bis nach dem Schreiben
+ * der Konfiguration. Ein Test, der nur behauptet „die Prüfung sitzt davor"
+ * (weil er sie in dieser Reihenfolge selbst zusammenbaut), würde eine
+ * künftige Umsortierung im echten Skript nicht bemerken — nur echter, an Ort
+ * und Stelle ausgeführter Quelltext tut das.
+ *
+ * **Seit Oktober 2026 gibt es keinen Token mehr** (der Installer verbindet
+ * den Server am Ende per `pulse-connect`). Die frühe Prüfung bleibt: sie
+ * verhindert jetzt, dass ein von Anfang an aussichtsloser Lauf eine
+ * Konfiguration hinterlässt. Der Reihenfolge-Test misst deshalb, ob
+ * `pulse.env` geschrieben wurde, statt ob ein `curl` lief.
  */
 
 import { test as testAlle } from 'node:test';
@@ -254,9 +258,9 @@ check_ports
 }
 
 interface Reihenfolge {
-  /** Wurde `curl` (= die Token-Einlösung) überhaupt aufgerufen? */
-  tokenAngefasst: boolean;
-  /** Wurde das Ende des Ausschnitts erreicht (nach der Einlösung)? */
+  /** Wurde die Konfiguration (`pulse.env`) geschrieben — die erste Änderung? */
+  konfigGeschrieben: boolean;
+  /** Wurde das Ende des Ausschnitts erreicht (nach dem Schreiben)? */
   ueberlebt: boolean;
   /** Die an `die` übergebene Meldung (leer, wenn nicht abgebrochen). */
   meldung: string;
@@ -264,20 +268,16 @@ interface Reihenfolge {
 
 /**
  * Führt den echten, wörtlich herausgeschnittenen Ausschnitt von `check_ports`
- * bis zur Zeile nach der Token-Einlösung aus — inklusive der frühen
- * `pruefe_container_konflikt`-Zeile UND der echten `curl`-Zeile. `curl` ist
- * gefälscht und hinterlässt eine Markerdatei, sobald es aufgerufen wird —
- * das ist der direkte Beweis, ob die Token-Einlösung versucht wurde, nicht
- * nur eine Vermutung über eine Zeilennummer. Liefert bei Erfolg zusätzlich
- * eine gültige JSON-Antwort, damit der Gegenprobe-Fall (kein Konflikt)
- * tatsächlich bis ans Ende durchläuft, statt an einer geschluckten
- * `jget`-Fehlermeldung hängenzubleiben — sonst bliebe unklar, ob ein
- * Nicht-Erreichen am Konflikt oder an einem kaputten Testgeschirr liegt.
+ * bis zur Zeile nach dem Schreiben der Konfiguration aus — inklusive der
+ * frühen `pruefe_container_konflikt`-Zeile UND des echten
+ * `schreibe_konfiguration`-Aufrufs. Ob `pulse.env` danach existiert, ist der
+ * direkte Beweis, ob schon etwas verändert wurde, nicht nur eine Vermutung
+ * über eine Zeilennummer.
  */
 function reihenfolgeTest(container: { image: string } | null): Reihenfolge {
   const quelle = readFileSync(SKRIPT, 'utf8');
   const dir = mkdtempSync(join(tmpdir(), 'pulse-reihenfolge-'));
-  const curlMarker = join(dir, 'curl-aufgerufen');
+  const pulseDir = join(dir, 'pulsedir');
 
   writeFileSync(
     join(dir, 'docker'),
@@ -295,33 +295,22 @@ esac
   );
   chmodSync(join(dir, 'docker'), 0o755);
 
-  writeFileSync(
-    join(dir, 'curl'),
-    `#!/bin/bash
-touch "${curlMarker}"
-cat <<'JSON'
-{"instance_id":"1","owner_user_id":"2","hostname":"test.invalid","client_id":"cid","client_secret":"csecret","admin_email":"a@test.invalid","cloud_origin":"http://cloud.invalid"}
-JSON
-`,
-    { mode: 0o755 }
-  );
-  chmodSync(join(dir, 'curl'), 0o755);
-
   const skript = `
 set -euo pipefail
 CONTAINER=pulse
-IMAGE="registry.howispulse.com/pulse-allinone:edge"
+IMAGE="ghcr.io/oblivion-pictures/pulse:stable"
 MODE=greenfield
+TLS_MODE=auto
 HTTP_PORT=8080
-# Der wörtliche Ausschnitt reicht seit Fund 4 (Schlussprüfung) über den
-# Dry-Run-Zweig UND pruefe_pulse_dir_schreibbar hinweg (beide liegen jetzt
-# zwischen pruefe_container_konflikt und der Token-Einlösung) — ohne diese
-# beiden Variablen bricht das Skript unter set -u an "\$DRY_RUN ist nicht
-# gesetzt" ab, lange bevor es überhaupt bei curl ankommt.
-PULSE_DIR="${join(dir, 'pulsedir')}"
+PULSE_DIR="${pulseDir}"
+ENV_FILE="${join(pulseDir, 'pulse.env')}"
 DRY_RUN=""
+SRV_HOST=chat.example.org
 CLOUD_ORIGIN=http://cloud.invalid
-TOKEN=testtoken
+ADMIN_EMAIL=""
+CLIENT_ID=""
+CLIENT_SECRET=""
+BESTAND_ZEILEN=""
 log()  { :; }
 warn() { :; }
 err()  { :; }
@@ -331,10 +320,11 @@ udp_port_busy() { return 1; }
 ${funktion(quelle, 'eigener_container_laeuft')}
 ${funktion(quelle, 'ist_unser_container')}
 ${funktion(quelle, 'pruefe_container_konflikt')}
+${funktion(quelle, 'pruefe_registry_zugang')}
 ${funktion(quelle, 'check_ports')}
 ${funktion(quelle, 'pruefe_pulse_dir_schreibbar')}
-${funktion(quelle, 'jget')}
-${bereich(quelle, 'check_ports', 'log "Instance: ${SRV_HOST} (ID ${INSTANCE_ID})"')}
+${funktion(quelle, 'schreibe_konfiguration')}
+${bereich(quelle, 'check_ports', 'log "Configuration written: ${ENV_FILE} (readable by root only)"')}
 echo __UEBERLEBT__
 `;
   let stdout = '';
@@ -350,7 +340,7 @@ echo __UEBERLEBT__
 
   const treffer = stdout.match(/__DIE__([\s\S]*?)(?:\n__UEBERLEBT__)?$/);
   return {
-    tokenAngefasst: existsSync(curlMarker),
+    konfigGeschrieben: existsSync(join(pulseDir, 'pulse.env')),
     ueberlebt: stdout.includes('__UEBERLEBT__'),
     meldung: treffer ? treffer[1] : ''
   };
@@ -362,13 +352,28 @@ test('ein fremder Container namens pulse wird nicht angerührt', () => {
   assert.match(ergebnis.meldung, /PULSE_CONTAINER/);
 });
 
-test('die späte Meldung sagt ausdrücklich: der Token ist schon verbraucht', () => {
-  // Ergänzung aus Korrekturrunde 1: an der SPÄTEN Stelle ist der
-  // Einmal-Token zu diesem Zeitpunkt im echten Ablauf bereits eingelöst —
-  // die Meldung soll das sagen, statt den Eindruck zu erwecken, ein
-  // erneuter Versuch mit demselben Token wäre möglich.
+test('die späte Meldung sagt, dass die Konfiguration schon steht und ein neuer Lauf sicher ist', () => {
+  // An der SPÄTEN Stelle ist pulse.env im echten Ablauf schon geschrieben —
+  // die Meldung soll das sagen, statt den Eindruck zu erwecken, es sei noch
+  // nichts geschehen.
   const ergebnis = pruefeUebernahme({ image: 'postgres:16' });
-  assert.match(ergebnis.meldung, /already been redeemed/i);
+  assert.match(ergebnis.meldung, /running this command again is safe/i);
+});
+
+test('das öffentliche Bild ghcr.io/oblivion-pictures/pulse gilt als unser Container, auch mit anderem Tag', () => {
+  const ergebnis = pruefeUebernahme(
+    { image: 'ghcr.io/oblivion-pictures/pulse:edge' },
+    'ghcr.io/oblivion-pictures/pulse:stable'
+  );
+  assert.equal(ergebnis.abgebrochen, false);
+});
+
+test('Gegenprobe: ein Cloud-Bild derselben Organisation (pulse-auth) bleibt fremd', () => {
+  const ergebnis = pruefeUebernahme(
+    { image: 'ghcr.io/oblivion-pictures/pulse-auth:latest' },
+    'ghcr.io/oblivion-pictures/pulse:stable'
+  );
+  assert.equal(ergebnis.abgebrochen, true);
 });
 
 test('unser eigener Container wird übernommen', () => {
@@ -423,29 +428,29 @@ test('ein LAUFENDER eigener Container schaltet die Portprüfung weiterhin ab', (
   assert.equal(portpruefungLaeuft({ running: true }), false);
 });
 
-test('ein Fremdkonflikt bricht ab, BEVOR der Token eingelöst wird', () => {
-  // Korrekturrunde 1: der Kern des Befunds. `curl` (die Token-Einlösung)
-  // darf hier nicht aufgerufen worden sein — das ist der eigentliche
-  // Nachweis der Reihenfolge, nicht nur, dass irgendwann abgebrochen wurde.
+test('ein Fremdkonflikt bricht ab, BEVOR die Konfiguration geschrieben wird', () => {
+  // Der Kern des Befunds: pulse.env darf hier nicht entstanden sein — das ist
+  // der eigentliche Nachweis der Reihenfolge, nicht nur, dass irgendwann
+  // abgebrochen wurde.
   const ergebnis = reihenfolgeTest({ image: 'postgres:16' });
-  assert.equal(ergebnis.tokenAngefasst, false, 'curl wurde aufgerufen — die Prüfung kam zu spät');
+  assert.equal(ergebnis.konfigGeschrieben, false, 'pulse.env existiert — die Prüfung kam zu spät');
   assert.equal(ergebnis.ueberlebt, false);
   assert.match(ergebnis.meldung, /PULSE_CONTAINER/);
-  assert.match(ergebnis.meldung, /nothing has been consumed yet/i);
+  assert.match(ergebnis.meldung, /Nothing has been changed yet/);
 });
 
-test('ohne Konflikt läuft die Token-Einlösung normal weiter (eigener Container)', () => {
+test('ohne Konflikt wird die Konfiguration geschrieben (eigener Container)', () => {
   // Gegenprobe zum Reihenfolge-Test: beweist, dass die frühe Prüfung einen
-  // legitimen Lauf nicht blockiert UND dass das Testgeschirr selbst in der
-  // Lage ist, bis zur echten curl-Zeile durchzulaufen — sonst wäre der Test
-  // oben auch bei einem kaputten Geschirr grün.
-  const ergebnis = reihenfolgeTest({ image: 'registry.howispulse.com/pulse-allinone:edge' });
-  assert.equal(ergebnis.tokenAngefasst, true);
+  // legitimen Lauf nicht blockiert UND dass das Testgeschirr selbst bis zum
+  // Schreiben durchlaufen kann — sonst wäre der Test oben auch bei einem
+  // kaputten Geschirr grün.
+  const ergebnis = reihenfolgeTest({ image: 'ghcr.io/oblivion-pictures/pulse:stable' });
+  assert.equal(ergebnis.konfigGeschrieben, true);
   assert.equal(ergebnis.ueberlebt, true);
 });
 
-test('ohne Konflikt läuft die Token-Einlösung normal weiter (Erstinstallation)', () => {
+test('ohne Konflikt wird die Konfiguration geschrieben (Erstinstallation)', () => {
   const ergebnis = reihenfolgeTest(null);
-  assert.equal(ergebnis.tokenAngefasst, true);
+  assert.equal(ergebnis.konfigGeschrieben, true);
   assert.equal(ergebnis.ueberlebt, true);
 });

@@ -2,11 +2,14 @@
 #
 # Pulse Self-Host — One-command installer
 # =======================================
-#   curl -fsSL https://howispulse.com/install | PULSE_BOOTSTRAP_TOKEN=<TOKEN> bash
+#   curl -fsSL https://howispulse.com/install | bash
+#   curl -fsSL https://howispulse.com/install | PULSE_HOSTNAME=chat.example.org bash
 #
-# Token bevorzugt per Env-Variable (argv wäre für jeden lokalen User in `ps`
-# sichtbar, solange das Script läuft); `bash -s -- <TOKEN>` bleibt als
-# Fallback unterstützt.
+# Fragt nach der Adresse des Servers (oder nimmt PULSE_HOSTNAME bzw. das erste
+# Argument), startet den Container und verbindet ihn am Ende mit dem
+# Pulse-Konto des Betreibers: `pulse-connect` im Container zeigt Link und Code,
+# der Betreiber bestätigt im Browser. Seit Oktober 2026 ohne Antrag und ohne
+# Token (docs/superpowers/specs/2026-10-09-selfhost-ohne-freigabe-design.md).
 #
 # Das Script erkennt die Umgebung selbst und richtet sich passend ein — auch
 # wenn auf dem Server schon ein Reverse-Proxy läuft (User-Output ist Englisch,
@@ -18,13 +21,12 @@
 #   3. Statischer dockerisierter Proxy → Netz-Anbindung + eine Route ausgeben.
 #   4. Reverse-Proxy außerhalb von Docker → Loopback-Port + Route ausgeben.
 #
-# Sicherheit: Bootstrap-Token wird beim Einlösen verbraucht, das Pairing-Secret
-# serverseitig rotiert. --dry-run zeigt nur den Plan (kein Token-Verbrauch).
+# --dry-run zeigt nur den Plan und verändert nichts.
 set -euo pipefail
 
 # --- Konfiguration (per Env überschreibbar) --------------------------------
 CLOUD_ORIGIN="${PULSE_CLOUD_ORIGIN:-https://howispulse.com}"
-IMAGE="${PULSE_IMAGE:-registry.howispulse.com/pulse-allinone:edge}"
+IMAGE="${PULSE_IMAGE:-ghcr.io/oblivion-pictures/pulse:stable}"
 CONTAINER="${PULSE_CONTAINER:-pulse}"
 VOLUME="${PULSE_VOLUME:-pulse-data}"
 # Config-Verzeichnis: root → /opt/pulse, sonst ins Home (Docker-Gruppen-User
@@ -43,18 +45,28 @@ UPDATE_SH="${PULSE_DIR}/pulse-update.sh"
 #   PULSE_TLS_MODE = auto | provided | behind-proxy ; PULSE_NETWORK = Docker-Netz
 FORCE_TLS_MODE="${PULSE_TLS_MODE:-}"
 FORCE_NETWORK="${PULSE_NETWORK:-}"
+# Woher Eingaben kommen. Bei `curl … | bash` ist stdin die Pipe, deshalb das
+# Terminal direkt. PULSE_TTY biegt das um — die Tests setzen es, damit ein
+# Lauf aus einem Terminal heraus nie auf eine Eingabe wartet.
+TTY_GERAET="${PULSE_TTY:-/dev/tty}"
 
 # --- Args ---------------------------------------------------------------- #
 DRY_RUN=""
-TOKEN=""
+SRV_HOST="${PULSE_HOSTNAME:-}"
+ADMIN_EMAIL="${PULSE_ADMIN_EMAIL:-}"
+ALTER_TOKEN=""
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     --*) ;;                       # unbekannte Flags ignorieren
-    *) [ -z "$TOKEN" ] && TOKEN="$arg" ;;
+    plse_boot_*) ALTER_TOKEN=1 ;; # alter Befehl `bash -s -- <TOKEN>`, s. unten
+    *) if [ -z "$SRV_HOST" ]; then SRV_HOST="$arg"; fi ;;
   esac
 done
-TOKEN="${TOKEN:-${PULSE_BOOTSTRAP_TOKEN:-}}"
+# Zugangsdaten kennt der Installer nur von Bestandsservern (bestand_uebernehmen)
+# oder, nach dem Verbinden, aus dem Datenvolumen (zugang_aus_volumen).
+INSTANCE_ID=""; CLIENT_ID=""; CLIENT_SECRET=""; BESTAND_ZEILEN=""
+VERBUNDEN=""
 
 # --- Ausgabe-Helfer --------------------------------------------------------
 log()  { printf '\033[1;36m[pulse]\033[0m %s\n' "$*"; }
@@ -62,9 +74,11 @@ warn() { printf '\033[1;33m[pulse]\033[0m %s\n' "$*"; }
 err()  { printf '\033[1;31m[pulse] ERROR:\033[0m %s\n' "$*" >&2; }
 die()  { err "$*"; exit 1; }
 
-[ -n "$TOKEN" ] || die "No bootstrap token provided.
-  Usage: curl -fsSL ${CLOUD_ORIGIN}/install | PULSE_BOOTSTRAP_TOKEN=<TOKEN> bash
-  Get a token in the Pulse app: Settings → Self-Host → Set up server."
+# Bis Oktober 2026 verlangte der Installer einen Einmal-Token aus der Cloud.
+# Alte Befehle laufen weiter; der Token wird nicht mehr verwendet.
+if [ -n "$ALTER_TOKEN" ] || [ -n "${PULSE_BOOTSTRAP_TOKEN:-}" ]; then
+  warn "Setup tokens are no longer needed — ignoring the token."
+fi
 
 # --- Docker prüfen ------------------------------------------------------- #
 command -v docker >/dev/null 2>&1 \
@@ -95,11 +109,11 @@ udp_port_busy() {
 
 # --- Alle Ports prüfen, die wir binden werden --------------------------- #
 #
-# Warum VOR dem Token-Einlösen: der Token ist einmalig und wird in Schritt 2
-# verbrannt, `docker run` läuft erst in Schritt 4. Ein belegter Port 3478 (ein
-# anderer coturn, gar nicht selten) liess das Script unter `set -e` sterben —
-# mit verbranntem Token und einer rohen Docker-Fehlermeldung. Zwei Sekunden
-# vorher war das erkennbar.
+# Warum VOR jeder Änderung: `docker run` läuft erst in Schritt 3, nachdem die
+# Konfiguration geschrieben und das Bild geladen ist. Ein belegter Port 3478
+# (ein anderer coturn, gar nicht selten) liess das Script unter `set -e`
+# sterben — mit einer rohen Docker-Fehlermeldung und einem halb eingerichteten
+# Server. Zwei Sekunden vorher war das erkennbar.
 #
 # Übersprungen bei einer Neuinstallation: dort hält der ALTE Pulse-Container
 # die Ports noch, und `docker run` bekommt sie, weil er vorher entfernt wird.
@@ -111,7 +125,7 @@ check_ports() {
   # wieder frei. Ein gestoppter (`created`/`exited`) hält nichts: `docker
   # inspect` gelingt für ihn genauso, aber ohne diese Unterscheidung prüfte
   # ein zweiter Lauf nach einem Teilabbruch gar keinen Port mehr, und ein
-  # echter Fremdkonflikt hätte den Einmal-Token doch noch verbrannt.
+  # echter Fremdkonflikt wäre erst an `docker run` gescheitert.
   eigener_container_laeuft && return 0
   local belegt=""
   local p
@@ -129,27 +143,142 @@ check_ports() {
   [ -z "$belegt" ] && return 0
   die "These ports are already in use:${belegt}
   Pulse needs them for voice and screen sharing. Free them (or stop whatever
-  is listening) and run this command again — your setup token is still valid,
-  nothing has been consumed yet."
+  is listening) and run this command again. Nothing has been changed yet."
 }
 
-# --- $PULSE_DIR muss beschreibbar sein — vor der Token-Einloesung -------- #
+# --- $PULSE_DIR muss beschreibbar sein — vor der ersten Änderung -------- #
 #
-# `mkdir -p "$PULSE_DIR"` war bisher der ERSTE Dateisystemzugriff des ganzen
-# Laufs und lief NACH der Token-Einloesung (s. "3) Config schreiben" weiter
-# unten). Wer PULSE_DIR=/opt/pulse ohne Schreibrechte setzt, verbrannte den
-# Token trotzdem — eine rohe mkdir-Fehlermeldung unter set -e sagt nicht,
-# dass der Token weg ist, und ein neuer Versuch braucht einen kompletten
-# neuen Antrag (Single-Bootstrap pro Antrag, s. CLAUDE.md). Legt das
-# Verzeichnis hier bereits an (idempotent, kein Test-und-wieder-Löschen)
-# statt es nur zu prüfen — die spätere `mkdir -p` bei der Config wird damit
-# zu einem reinen No-op und bleibt dort trotzdem stehen, falls sich der
-# Ablauf dazwischen je trennt.
+# `mkdir -p "$PULSE_DIR"` ist der erste Dateisystemzugriff des ganzen Laufs.
+# Wer PULSE_DIR=/opt/pulse ohne Schreibrechte setzt, bekam sonst erst beim
+# Schreiben der Konfiguration eine rohe mkdir-Fehlermeldung unter set -e. Legt
+# das Verzeichnis hier bereits an (idempotent, kein Test-und-wieder-Löschen)
+# statt es nur zu prüfen — die spätere `mkdir -p` in schreibe_konfiguration
+# wird damit zu einem reinen No-op und bleibt dort trotzdem stehen, falls sich
+# der Ablauf dazwischen je trennt.
 pruefe_pulse_dir_schreibbar() {
   mkdir -p "$PULSE_DIR" 2>/dev/null && [ -w "$PULSE_DIR" ] || die "Cannot create or write to '${PULSE_DIR}'.
   Check the permissions on that path, or set PULSE_DIR=<a writable path> and
-  run this command again — your setup token is still valid, nothing has
-  been consumed yet."
+  run this command again. Nothing has been changed yet."
+}
+
+# --- Adresse des Servers ------------------------------------------------- #
+#
+# Sie kommt aus PULSE_HOSTNAME, dem ersten Argument oder einer Frage am
+# Terminal (Frage auf stdout wie bei der Routen-Frage weiter unten, Antwort
+# aus TTY_GERAET). Liegt von einer früheren Installation schon eine
+# pulse.env da, ist deren Adresse die Vorgabe — ein erneuter Lauf soll nicht
+# aus Versehen eine andere Adresse eintragen.
+frage_adresse() {
+  [ -n "$SRV_HOST" ] && return 0
+  local vorschlag=""
+  if [ -r "$ENV_FILE" ]; then
+    vorschlag="$(grep -m1 '^PULSE_HOSTNAME=' "$ENV_FILE" | cut -d= -f2- || true)"
+  fi
+  if { : <"$TTY_GERAET"; } 2>/dev/null; then
+    if [ -n "$vorschlag" ]; then
+      printf '  Address of this server [%s]: ' "$vorschlag"
+    else
+      printf '  Address of this server (e.g. chat.example.org): '
+    fi
+    read -r SRV_HOST <"$TTY_GERAET" || true
+  fi
+  SRV_HOST="${SRV_HOST:-$vorschlag}"
+  [ -n "$SRV_HOST" ] || die "No server address given.
+  Usage: curl -fsSL ${CLOUD_ORIGIN}/install | PULSE_HOSTNAME=chat.example.org bash
+  The address needs a DNS record pointing at this machine."
+}
+
+# Dieselbe Form, die die Cloud beim Verbinden einträgt
+# (dcc_shared.hostname.normalisiere_hostname): Kleinbuchstaben, ohne Schema,
+# Pfad, Port und abschliessenden Punkt. Wiche sie ab, stünde in pulse.env eine
+# andere Adresse als im Cloud-Eintrag.
+pruefe_adresse() {
+  SRV_HOST="$(printf '%s' "$SRV_HOST" | tr -d '[:space:]' | tr 'A-Z' 'a-z' \
+    | sed -e 's|^[a-z][a-z0-9+.-]*://||' -e 's|[/:?#].*$||' -e 's|\.$||')"
+  printf '%s' "$SRV_HOST" \
+    | grep -qE '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$' \
+    || die "'${SRV_HOST}' is not a valid server address (expected something like chat.example.org).
+  The address needs a DNS record pointing at this machine."
+}
+
+# --- Zugangsdaten aus KEY=wert-Zeilen lesen (stdin) ---------------------- #
+# Setzt INSTANCE_ID, CLIENT_ID und CLIENT_SECRET. Gibt nichts aus.
+zugang_lesen() {
+  local k v
+  while IFS='=' read -r k v || [ -n "$k" ]; do
+    v="${v%\"}"; v="${v#\"}"
+    case "$k" in
+      PULSE_INSTANCE_ID)         INSTANCE_ID="$v" ;;
+      PULSE_CLOUD_CLIENT_ID)     CLIENT_ID="$v" ;;
+      PULSE_CLOUD_CLIENT_SECRET) CLIENT_SECRET="$v" ;;
+    esac
+  done
+}
+
+# --- Bestand: Verbindung einer Installation aus der Freigabe-Zeit ------- #
+#
+# Server, die vor Oktober 2026 mit Freigabe eingerichtet wurden, tragen ihre
+# Zugangsdaten in $ENV_FILE und nicht im Datenvolumen. Schriebe ein erneuter
+# Lauf die Datei ohne sie, stünde der Server unverbunden da; ein neues
+# Verbinden gäbe ihm eine neue Instanz-Nummer, und seine Mitglieder verlören
+# ihn aus ihrer Server-Liste. Gehört die alte Datei zu derselben Adresse,
+# wandern ihre Verbindungswerte deshalb unverändert mit (im Container gewinnt
+# die Umgebung ohnehin vor /data/pulse/verbindung.env). Liest nur.
+bestand_uebernehmen() {
+  [ -r "$ENV_FILE" ] || return 0
+  local alter_host
+  alter_host="$(grep -m1 '^PULSE_HOSTNAME=' "$ENV_FILE" | cut -d= -f2- || true)"
+  [ -n "$alter_host" ] || return 0
+  if [ "$alter_host" != "$SRV_HOST" ]; then
+    warn "The previous configuration in ${ENV_FILE} belongs to ${alter_host} — its connection is not carried over."
+    return 0
+  fi
+  BESTAND_ZEILEN="$(grep -E '^PULSE_(INSTANCE_ID|INSTANCE_OWNER_ID|CLOUD_CLIENT_ID|CLOUD_CLIENT_SECRET)=.' "$ENV_FILE" || true)"
+  [ -n "$BESTAND_ZEILEN" ] || return 0
+  zugang_lesen <<<"$BESTAND_ZEILEN"
+  if [ -z "$ADMIN_EMAIL" ]; then
+    ADMIN_EMAIL="$(grep -m1 '^PULSE_ADMIN_EMAIL=' "$ENV_FILE" | cut -d= -f2- || true)"
+  fi
+  log "Keeping the existing connection of ${SRV_HOST} (instance ${INSTANCE_ID})."
+}
+
+# --- Spiegel registry.howispulse.com nur mit Bestands-Zugang ------------- #
+#
+# Der Spiegel lässt nur Server aus der Freigabe-Zeit herein (Anmeldung mit
+# ihren Zugangsdaten, routes_registry_auth.py). Ohne sie scheiterte ein Lauf
+# erst beim Pull, nach dem Schreiben der Konfiguration — deshalb hier, vor
+# jeder Änderung.
+pruefe_registry_zugang() {
+  case "$IMAGE" in
+    registry.howispulse.com/*)
+      if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
+        die "The image ${IMAGE} needs the credentials of a server set up before October 2026.
+  Use the public image instead: unset PULSE_IMAGE and run this command again.
+  Nothing has been changed yet."
+      fi ;;
+  esac
+  return 0
+}
+
+# --- Konfiguration schreiben (chmod 600) -------------------------------- #
+#
+# Nur Adresse und Betriebswerte. Die Zugangsdaten holt pulse-connect am Ende
+# selbst ab und legt sie ins Datenvolumen (/data/pulse/verbindung.env); hier
+# stehen sie allein bei einem Bestandsserver (s. bestand_uebernehmen).
+schreibe_konfiguration() {
+  mkdir -p "$PULSE_DIR"
+  ( umask 077
+    {
+      printf 'PULSE_HOSTNAME=%s\n' "$SRV_HOST"
+      printf 'PULSE_INSTANCE_MODE=self-host\n'
+      printf 'PULSE_CLOUD_ORIGIN=%s\n' "$CLOUD_ORIGIN"
+      if [ -n "$ADMIN_EMAIL" ]; then printf 'PULSE_ADMIN_EMAIL=%s\n' "$ADMIN_EMAIL"; fi
+      printf 'PULSE_TLS_MODE=%s\n' "$TLS_MODE"
+      printf 'PULSE_HTTP_PORT=%s\n' "$HTTP_PORT"
+      if [ -n "$BESTAND_ZEILEN" ]; then printf '%s\n' "$BESTAND_ZEILEN"; fi
+    } > "$ENV_FILE"
+  )
+  chmod 600 "$ENV_FILE"
 }
 
 # --- Helfer: alle Nutzer-Netze eines Containers, eines je Zeile ---------- #
@@ -221,24 +350,29 @@ eigener_container_laeuft() {
 # sondern der Grund, warum dieser Helfer existiert.
 #
 # Geprüft wird das Image, nicht der Name — der Name ist ja gerade die
-# Kollisionsquelle. ZWEI Wege gelten als "unser Container":
-#   1. Ein Substring-Vergleich auf `pulse-allinone` — `PULSE_IMAGE` ist
-#      überschreibbar und ein Betreiber mit eigenem Spiegel/Fork (eigene
-#      Registry, eigener Tag) soll den Installer trotzdem benutzen können,
-#      solange der Repository-Name erhalten bleibt.
-#   2. Ein exakter Vergleich mit dem AKTUELL konfigurierten `$IMAGE` (Fund 3,
+# Kollisionsquelle. DREI Wege gelten als "unser Container":
+#   1. Ein Substring-Vergleich auf `pulse-allinone` — so heisst das Bild am
+#      Spiegel registry.howispulse.com (Bestandsserver) und bis Oktober 2026
+#      auf GHCR. `PULSE_IMAGE` ist überschreibbar, und ein Betreiber mit
+#      eigenem Spiegel/Fork (eigene Registry, eigener Tag) soll den Installer
+#      trotzdem benutzen können, solange der Repository-Name erhalten bleibt.
+#   2. Das öffentliche Bild `ghcr.io/oblivion-pictures/pulse` mit beliebigem
+#      Tag oder Digest — der Name `pulse` allein wäre zu allgemein, deshalb
+#      nur unter genau diesem Pfad.
+#   3. Ein exakter Vergleich mit dem AKTUELL konfigurierten `$IMAGE` (Fund 3,
 #      Schlussprüfung) — Weg 1 allein sperrt einen Betreiber aus, der
 #      `PULSE_IMAGE` auf einen anders benannten Spiegel/Fork gesetzt hat
 #      (kein `pulse-allinone` im Namen): sein eigener Container gälte dann
 #      unter demselben Containernamen für immer als fremd, und ein erneuter
 #      Lauf des Installers könnte nie wieder auf ihn zugreifen.
-# Ein Docker-LABEL wäre robuster (unabhängig von beidem), existiert im
+# Ein Docker-LABEL wäre robuster (unabhängig von allen dreien), existiert im
 # Image aber nicht — das einzuführen läge ausserhalb dieser Behebung.
 ist_unser_container() {
   local img
   img="$(docker inspect -f '{{.Config.Image}}' "$CONTAINER" 2>/dev/null)"
   case "$img" in
     *pulse-allinone*) return 0 ;;
+    ghcr.io/oblivion-pictures/pulse:*|ghcr.io/oblivion-pictures/pulse@*) return 0 ;;
     "$IMAGE") return 0 ;;
     *) return 1 ;;
   esac
@@ -247,17 +381,18 @@ ist_unser_container() {
 # --- Fremdkonflikt am Containernamen erkennen (liest nur, löscht nichts) - #
 #
 # Wird an ZWEI Stellen aufgerufen: FRÜH, direkt nach `check_ports` und damit
-# vor der Token-Einlösung — und SPÄT, direkt vor dem tatsächlichen
-# `docker rm -f` in `sichere_container_ersetzung`. Die frühe Prüfung allein
-# würde nicht reichen: zwischen ihr und dem eigentlichen Ersetzen liegen die
-# Token-Einlösung und der Image-Pull, spürbare Zeit, in der sich der
+# vor jeder Änderung — und SPÄT, direkt vor dem tatsächlichen `docker rm -f`
+# in `sichere_container_ersetzung`. Die frühe Prüfung allein würde nicht
+# reichen: zwischen ihr und dem eigentlichen Ersetzen liegen das Schreiben der
+# Konfiguration und der Image-Pull, spürbare Zeit, in der sich der
 # Containername theoretisch neu belegen liesse — ein Fremdkonflikt, der
 # GENAU in dieser Lücke entsteht, fände die frühe Prüfung nicht mehr. Die
-# späte Prüfung allein würde den Token unnötig verbrennen (s. dort). Beide
-# zusammen schliessen das Fenster; keine der beiden ersetzt die andere.
+# späte Prüfung allein liesse eine geschriebene Konfiguration zurück, obwohl
+# der Lauf von Anfang an keine Chance hatte. Beide zusammen schliessen das
+# Fenster; keine der beiden ersetzt die andere.
 #
-# $1 = zusätzlicher Satz für die Meldung (früh: Hinweis auf den noch
-# unverbrauchten Token; spät: Hinweis, dass er es nicht mehr ist).
+# $1 = zusätzlicher Satz für die Meldung (früh: es wurde noch nichts
+# verändert; spät: die Konfiguration steht schon, ein neuer Lauf ist sicher).
 pruefe_container_konflikt() {
   local zusatz="${1:-}"
   docker inspect "$CONTAINER" >/dev/null 2>&1 || return 0
@@ -280,7 +415,7 @@ pruefe_container_konflikt() {
 # Prüfung sitzt in `pruefe_container_konflikt` (s. dort) — hier nur noch der
 # Aufruf plus das Entfernen selbst.
 sichere_container_ersetzung() {
-  pruefe_container_konflikt "Your setup token has already been redeemed for this run — it cannot be reused. You'll need a fresh one to try again."
+  pruefe_container_konflikt "The configuration has already been written — running this command again is safe."
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 }
 
@@ -317,7 +452,7 @@ _set_proxy() {
 $(printf '%s\n' "$netze" | sed 's/^/    - /')
   Picking one automatically would be a guess — on a real machine, that guess
   once put Pulse into a different project's network. Nothing has been
-  consumed yet; this check runs before the setup token is redeemed.
+  changed yet.
   Set PULSE_NETWORK=<name> to the one Pulse should join and run this command
   again."
   fi
@@ -406,13 +541,13 @@ decide_mode() {
       # die nie geprueft wurde.
       else die "Proxy '${PROXY_CONTAINER}' has no Docker network Pulse could join to reach it — the only address it could offer, a loopback (127.0.0.1), would be inside the PROXY CONTAINER itself, not the host's, and could never reach Pulse from there.
   Set PULSE_NETWORK=<name> to a network Pulse and '${PROXY_CONTAINER}' can both join, and run this command again.
-  Nothing has been consumed yet; this check runs before the setup token is redeemed."; fi ;;
+  Nothing has been changed yet."; fi ;;
     static-caddy|static-nginx)
       if [ -n "$PROXY_NET" ]; then MODE=static-docker
       else die "Proxy '${PROXY_CONTAINER}' is only on the default Docker bridge network — Pulse has no reachable address to hand it.
   A loopback address (127.0.0.1) would be the PROXY CONTAINER's own loopback, not the host's; it could never reach Pulse from there.
   Set PULSE_NETWORK=<name> to a network Pulse and '${PROXY_CONTAINER}' can both join, and run this command again.
-  Nothing has been consumed yet; this check runs before the setup token is redeemed."; fi ;;
+  Nothing has been changed yet."; fi ;;
     none)
       # Veroeffentlicht unser eigener laufender Container 80/443 SELBST, ist
       # das KEIN fremder Proxy, sondern der greenfield-Modus eines fruehreren
@@ -433,8 +568,8 @@ decide_mode() {
   esac
   # --- Harte Overrides ----------------------------------------------------
   # Reihenfolge ist Teil der Korrektheit, nicht nur Geschmack:
-  #   1. PULSE_TLS_MODE validieren — VOR jeder Wirkung und vor allem vor der
-  #      Token-Einloesung weiter unten im Skript. Der Container kennt nur
+  #   1. PULSE_TLS_MODE validieren — VOR jeder Wirkung und vor allem vor dem
+  #      Schreiben der Konfiguration weiter unten. Der Container kennt nur
   #      auto|provided|behind-proxy (s. 09-init-caddy.sh:20-62); ein
   #      unbekannter Wert (Tippfehler oder ein hier nicht abgebildeter Name)
   #      wirkte bisher STILL gar nicht — der Admin haette es erst am
@@ -455,8 +590,7 @@ decide_mode() {
     ''|auto|provided|behind-proxy) ;;
     *) die "Unknown PULSE_TLS_MODE='${FORCE_TLS_MODE}'.
   Allowed values: auto | provided | behind-proxy
-  Nothing has been consumed yet; this check runs before the setup token is
-  redeemed." ;;
+  Nothing has been changed yet." ;;
   esac
 
   if [ -n "$FORCE_NETWORK" ]; then
@@ -572,36 +706,6 @@ print_plan() {
   esac
 }
 
-# --- JSON-Feld auslesen (python3 bevorzugt, sonst grep/sed) -------------- #
-# Newlines werden hart entfernt: die Werte landen zeilenweise in der .env.
-jget() {
-  if command -v python3 >/dev/null 2>&1; then
-    # `.get('$2','')` liefert das Vorgabe-'' nur, wenn der Schlüssel FEHLT —
-    # steht er mit JSON-`null` im Feld (z. B. admin_email ohne hinterlegte
-    # Mail), kommt echtes `None` zurück und `print(None)` schreibt den
-    # literalen Text "None" in die .env. `or ''` fängt beides ab.
-    #
-    # `|| true` am Ende, aus demselben Grund wie beim Rückfallzweig unten
-    # (dort steht nur noch der Verweis hierher): eine Antwort mit
-    # Statuscode 200, die kein gültiges JSON ist (Captive Portal,
-    # transparenter Proxy, WAF-Zwischenseite — `curl -fsSL` folgt
-    # Weiterleitungen, `-f` greift nur bei Nicht-2xx), lässt `json.load` mit
-    # `JSONDecodeError` abbrechen. Ohne `|| true` tötet das unter `set -euo
-    # pipefail` (Skriptkopf) die Zuweisung `VAR="$(jget …)"` wortlos, mit
-    # einem Python-Traceback als letzter Ausgabe, unmittelbar nach dem
-    # Einlösen des Bootstrap-Tokens.
-    printf '%s' "$1" | python3 -c "import sys,json;print(json.load(sys.stdin).get('$2','') or '')" | tr -d '\r\n' || true
-  else
-    # Kein Treffer lässt `grep -o` mit Exit 1 enden; unter `set -euo
-    # pipefail` (Skriptkopf) tötet das sonst die Zuweisung `VAR="$(jget …)"`
-    # wortlos, unmittelbar nach dem Einlösen des Bootstrap-Tokens. Ein
-    # fehlendes/leeres Feld ist hier ein Normalzustand, kein Fehler — wie
-    # beim python3-Zweig oben.
-    printf '%s' "$1" | grep -o "\"$2\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 \
-      | sed 's/.*:[[:space:]]*"//; s/"$//' | tr -d '\r\n' || true
-  fi
-}
-
 # --- Host-Updater: Skript generieren (ersetzt Watchtower) --------------- #
 # Statt eines dauerlaufenden Fremd-Containers mit Docker-Socket (= Root auf
 # dem Host) schreibt der Installer ein kleines, lesbares Skript auf den Host
@@ -630,9 +734,10 @@ HEADER
     printf 'RUN_ARGS=('
     printf '%q ' "${RUN_ARGS[@]}"
     printf ')\n'
-    # Registry-Credentials einbacken (chmod 700, gleicher Schutz wie pulse.env).
-    # Nur wenn IMAGE von der eigenen Registry kommt — der GHCR-Fallback via
-    # PULSE_IMAGE braucht kein Login.
+    # Registry-Zugang einbacken (chmod 700, gleicher Schutz wie pulse.env) —
+    # nur für den Spiegel registry.howispulse.com, den allein Bestandsserver
+    # aus der Freigabe-Zeit nutzen (s. pruefe_registry_zugang). Das
+    # öffentliche Bild auf GHCR braucht keine Anmeldung.
     case "$IMAGE" in
       registry.howispulse.com/*)
         printf 'REGISTRY=%q\n' "registry.howispulse.com"
@@ -950,122 +1055,7 @@ install_update_cron() {
     || warn "Could not write to your crontab — auto-update not scheduled. Update manually anytime: ${UPDATE_SH}"
 }
 
-# ======================================================================== #
-# Ablauf
-# ======================================================================== #
-
-# 1) Umgebung erkennen + Modus wählen (braucht KEINEN Token).
-SRV_HOST="<hostname>"; ADMIN_EMAIL=""    # Platzhalter für die Dry-Run-Vorschau
-decide_mode
-build_run_args
-print_plan
-
-# 1b) Ports prüfen, solange der Token noch unverbraucht ist. VOR dem
-# Dry-Run-Ausstieg (Fund 4, Schlussprüfung): diese Prüfung liest nur und
-# verbraucht nichts, und der Vorschau-Modus ist gerade der, in dem ein
-# Betreiber einen Konflikt sehen will — vorher meldete ein Dry-Run auf einer
-# Maschine mit belegtem Port trotzdem einen grünen Plan.
-check_ports
-
-# 1c) Denselben Grund wie 1b, ebenfalls VOR dem Dry-Run-Ausstieg: lieber
-# jetzt scheitern als nach dem Verbrauch. Die Freigabe ist Single-Bootstrap
-# pro Antrag (s. CLAUDE.md) — ein hier unentdeckter Fremdkonflikt kostet
-# nicht nur einen neuen Tokenlauf, sondern einen kompletten neuen Antrag samt
-# erneuter Freigabe durch den Cloud-Betreiber. Ersetzt NICHT die gleiche
-# Prüfung in `sichere_container_ersetzung` weiter unten (s. Begründung dort).
-pruefe_container_konflikt "Your setup token is still valid — nothing has been consumed yet."
-
-if [ -n "$DRY_RUN" ]; then
-  echo
-  log "DRY RUN — nothing changed, no token consumed."
-  log "Planned container start:"
-  printf '    docker run'; printf ' %q' "${RUN_ARGS[@]}"; echo
-  exit 0
-fi
-
-# 1d) $PULSE_DIR muss beschreibbar sein, ebenfalls vor der Token-Einlösung —
-# NACH dem Dry-Run-Ausstieg (anders als 1b/1c): ein Dry-Run verspricht
-# "nothing changed", und diese Prüfung legt das Verzeichnis tatsächlich an
-# (s. Begründung bei der Funktion), das wäre in einem Dry-Run ein echter,
-# wenn auch harmloser Seiteneffekt.
-pruefe_pulse_dir_schreibbar
-
-# 2) Token einlösen (verbraucht ihn, rotiert das Secret).
-log "Redeeming bootstrap token at ${CLOUD_ORIGIN}…"
-RESP="$(curl -fsSL -X POST "${CLOUD_ORIGIN}/api/auth/selfhost/bootstrap" \
-        -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json')" \
-  || die "Token redemption failed — expired or already used?
-  Generate a fresh command in the Pulse app (Set up server → regenerate)."
-
-INSTANCE_ID="$(jget "$RESP" instance_id)"
-OWNER_ID="$(jget "$RESP" owner_user_id)"
-SRV_HOST="$(jget "$RESP" hostname)"
-CLIENT_ID="$(jget "$RESP" client_id)"
-CLIENT_SECRET="$(jget "$RESP" client_secret)"
-ADMIN_EMAIL="$(jget "$RESP" admin_email)"
-RESP_ORIGIN="$(jget "$RESP" cloud_origin)"
-[ -n "$RESP_ORIGIN" ] && CLOUD_ORIGIN="$RESP_ORIGIN" || true
-[ -n "$INSTANCE_ID" ] && [ -n "$CLIENT_SECRET" ] && [ -n "$SRV_HOST" ] \
-  || die "Unexpected response from the cloud — aborting."
-log "Instance: ${SRV_HOST} (ID ${INSTANCE_ID})"
-
-# Hostname steht jetzt fest → Run-Args neu bauen (Labels brauchen ihn).
-build_run_args
-
-# 3) Config schreiben (chmod 600).
-mkdir -p "$PULSE_DIR"
-( umask 077
-  cat > "$ENV_FILE" <<EOF
-PULSE_HOSTNAME=${SRV_HOST}
-PULSE_INSTANCE_ID=${INSTANCE_ID}
-PULSE_INSTANCE_OWNER_ID=${OWNER_ID}
-PULSE_INSTANCE_MODE=self-host
-PULSE_CLOUD_ORIGIN=${CLOUD_ORIGIN}
-PULSE_CLOUD_CLIENT_ID=${CLIENT_ID}
-PULSE_CLOUD_CLIENT_SECRET=${CLIENT_SECRET}
-PULSE_ADMIN_EMAIL=${ADMIN_EMAIL}
-PULSE_TLS_MODE=${TLS_MODE}
-PULSE_HTTP_PORT=${HTTP_PORT}
-EOF
-)
-chmod 600 "$ENV_FILE"
-log "Configuration written: ${ENV_FILE} (readable by root only)"
-
-# 4) Container starten.
-case "$IMAGE" in
-  registry.howispulse.com/*)
-    log "Logging in to Pulse registry (instance credentials)…"
-    printf '%s' "$CLIENT_SECRET" | docker login registry.howispulse.com -u "$CLIENT_ID" --password-stdin \
-      || die "Registry login failed — instance credentials rejected (suspended or wrong instance?)." ;;
-esac
-log "Pulling image ${IMAGE}…"
-docker pull "$IMAGE"
-sichere_container_ersetzung
-log "Starting Pulse (${MODE})…"
-docker run "${RUN_ARGS[@]}" >/dev/null
-
-# 5) Auto-Update — Host-systemd-Timer statt eines socket-haltenden Containers.
-# Kein Container braucht den Docker-Socket; der Update-Code ist das oben
-# generierte, lesbare Skript. PULSE_NO_AUTOUPDATE=1 schaltet es ab
-# (PULSE_NO_WATCHTOWER bleibt als Alias erhalten).
-# Migration: einen früher angelegten Watchtower-Container ablösen.
-docker rm -f pulse-watchtower >/dev/null 2>&1 || true
-if [ -z "${PULSE_NO_AUTOUPDATE:-${PULSE_NO_WATCHTOWER:-}}" ]; then
-  write_update_script
-  log "Update helper written: ${UPDATE_SH}"
-  if [ "$(id -u)" = "0" ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-    install_update_timer
-    log "Auto-updates enabled (systemd timer 'pulse-update.timer', checks every 5 min)."
-  elif command -v crontab >/dev/null 2>&1; then
-    install_update_cron
-    log "Auto-updates enabled (user crontab, checks every 5 min). 'crontab -l' to view."
-  else
-    warn "No root+systemd and no crontab — auto-update could not be scheduled."
-    warn "Update manually anytime:   ${UPDATE_SH}"
-  fi
-fi
-
-# 6) Startfortschritt verfolgen — mitlaufende Checkliste statt Stille.
+# --- Startfortschritt verfolgen — mitlaufende Checkliste statt Stille --- #
 #
 # Gelesen wird der Fortschritt AUS DEM CONTAINER (`docker exec … cat
 # /data/setup-status`, geschrieben von cont-init-main.sh), nicht über HTTP.
@@ -1093,118 +1083,187 @@ schritt_text() {
   esac
 }
 
-log "Starting up — this takes about a minute:"
-GESEHEN=0
-FERTIG=""
-ABBRUCH=""
-ABBRUCH_CRASH=""
-for _ in $(seq 1 60); do
-  STATUS_ROH="$(docker exec "$CONTAINER" cat /data/setup-status 2>/dev/null || true)"
-  if [ -n "$STATUS_ROH" ]; then
-    ZEILEN="$(printf '%s\n' "$STATUS_ROH" | wc -l)"
-    if [ "$ZEILEN" -gt "$GESEHEN" ]; then
-      printf '%s\n' "$STATUS_ROH" | tail -n +$((GESEHEN + 1)) | while IFS="$(printf '\t')" read -r _t name zustand; do
-        [ -z "$name" ] && continue
-        if [ "$zustand" = "ok" ]; then
-          printf '    \033[1;32m+\033[0m %s\n' "$(schritt_text "$name")"
-        else
-          printf '    \033[1;31mx\033[0m %s — FAILED\n' "$(schritt_text "$name")"
-        fi
-      done
-      GESEHEN="$ZEILEN"
+# Wartet, bis der Container seine Startskripte durchlaufen hat, und druckt
+# die Checkliste mit. Läuft zweimal: nach dem ersten Start und nach dem
+# Neustart, der die abgeholten Zugangsdaten einliest (server_verbinden).
+# Bricht der Start ab, endet der Installer hier mit Exit 1 — ein Server, der
+# nicht startet, braucht zuerst `docker logs`, nicht den nächsten Schritt.
+warte_auf_start() {
+  GESEHEN=0
+  FERTIG=""
+  ABBRUCH=""
+  ABBRUCH_CRASH=""
+  for _ in $(seq 1 60); do
+    STATUS_ROH="$(docker exec "$CONTAINER" cat /data/setup-status 2>/dev/null || true)"
+    if [ -n "$STATUS_ROH" ]; then
+      ZEILEN="$(printf '%s\n' "$STATUS_ROH" | wc -l)"
+      if [ "$ZEILEN" -gt "$GESEHEN" ]; then
+        printf '%s\n' "$STATUS_ROH" | tail -n +$((GESEHEN + 1)) | while IFS="$(printf '\t')" read -r _t name zustand; do
+          [ -z "$name" ] && continue
+          if [ "$zustand" = "ok" ]; then
+            printf '    \033[1;32m+\033[0m %s\n' "$(schritt_text "$name")"
+          else
+            printf '    \033[1;31mx\033[0m %s — FAILED\n' "$(schritt_text "$name")"
+          fi
+        done
+        GESEHEN="$ZEILEN"
+      fi
+      printf '%s\n' "$STATUS_ROH" | grep -q "$(printf '\t')fertig$(printf '\t')ok" && { FERTIG=1; break; }
+      # Merker statt `exit` in der Regel: ein `exit` dort springt nach END,
+      # und dessen `exit` ueberschreibt den Status wieder — die Erkennung waere
+      # damit immer falsch.
+      printf '%s\n' "$STATUS_ROH" \
+        | awk -F"$(printf '\t')" '$3 != "" && $3 != "ok" { gefunden=1 } END { exit !gefunden }' \
+        && { ABBRUCH=1; break; }
     fi
-    printf '%s\n' "$STATUS_ROH" | grep -q "$(printf '\t')fertig$(printf '\t')ok" && { FERTIG=1; break; }
-    # Merker statt `exit` in der Regel: ein `exit` dort springt nach END,
-    # und dessen `exit` ueberschreibt den Status wieder — die Erkennung waere
-    # damit immer falsch.
-    printf '%s\n' "$STATUS_ROH" \
-      | awk -F"$(printf '\t')" '$3 != "" && $3 != "ok" { gefunden=1 } END { exit !gefunden }' \
-      && { ABBRUCH=1; break; }
-  fi
-  # Ein Container, der nicht mehr läuft, wird auch nicht mehr fertig — UND
-  # einer, der immer wieder abstürzt und neu startet, macht ebenso wenig
-  # Fortschritt, meldet dabei aber '.State.Running' durchgehend 'true' (Fund
-  # 1, Schlussprüfung: Docker hält den Wert während der GESAMTEN
-  # Neustart-Rückstufung auf 'true', s. container_laeuft_stabil() weiter
-  # oben). Ohne diese Unterscheidung wartete die Schleife eine Absturzschleife
-  # bis zum Zeitlimit aus, statt sie sofort zu erkennen — und das ist der
-  # wahrscheinlichste Fehlschlag einer Erstinstallation überhaupt.
-  #
-  # '.RestartCount' + '.State.Status' in einem Aufruf, wie in Fund 1: steigt
-  # der Zähler, ist es keine Erstinstallation, sondern eine Schleife — dafür
-  # unten eine EIGENE Meldung, nicht "the step marked FAILED above", denn
-  # oben steht in diesem Fall gar kein FAILED — der Container starb, bevor er
-  # überhaupt einen weiteren Schritt in setup-status schreiben konnte.
-  WERTE="$(docker inspect -f '{{.RestartCount}} {{.State.Status}}' "$CONTAINER" 2>/dev/null)" || WERTE=""
-  RESTARTS="${WERTE%% *}"
-  STATUS="${WERTE#* }"
-  if [ "${RESTARTS:-0}" != "0" ]; then
-    ABBRUCH=1; ABBRUCH_CRASH=1; break
-  elif [ -z "$WERTE" ] || [ "$STATUS" != "running" ]; then
-    ABBRUCH=1; break
-  fi
-  # Zustandserkennung Ende — hier weiter mit 'sleep 5' im echten Ablauf.
-  sleep 5
-done
+    # Ein Container, der nicht mehr läuft, wird auch nicht mehr fertig — UND
+    # einer, der immer wieder abstürzt und neu startet, macht ebenso wenig
+    # Fortschritt, meldet dabei aber '.State.Running' durchgehend 'true' (Fund
+    # 1, Schlussprüfung: Docker hält den Wert während der GESAMTEN
+    # Neustart-Rückstufung auf 'true', s. container_laeuft_stabil() weiter
+    # oben). Ohne diese Unterscheidung wartete die Schleife eine Absturzschleife
+    # bis zum Zeitlimit aus, statt sie sofort zu erkennen — und das ist der
+    # wahrscheinlichste Fehlschlag einer Erstinstallation überhaupt.
+    #
+    # '.RestartCount' + '.State.Status' in einem Aufruf, wie in Fund 1: steigt
+    # der Zähler, ist es keine Erstinstallation, sondern eine Schleife — dafür
+    # unten eine EIGENE Meldung, nicht "the step marked FAILED above", denn
+    # oben steht in diesem Fall gar kein FAILED — der Container starb, bevor er
+    # überhaupt einen weiteren Schritt in setup-status schreiben konnte.
+    WERTE="$(docker inspect -f '{{.RestartCount}} {{.State.Status}}' "$CONTAINER" 2>/dev/null)" || WERTE=""
+    RESTARTS="${WERTE%% *}"
+    STATUS="${WERTE#* }"
+    if [ "${RESTARTS:-0}" != "0" ]; then
+      ABBRUCH=1; ABBRUCH_CRASH=1; break
+    elif [ -z "$WERTE" ] || [ "$STATUS" != "running" ]; then
+      ABBRUCH=1; break
+    fi
+    # Zustandserkennung Ende — hier weiter mit 'sleep 5' im echten Ablauf.
+    sleep 5
+  done
 
-echo
-if [ -n "$ABBRUCH_CRASH" ]; then
-  err "Startup aborted — the container is stuck in a restart loop. It keeps crashing before it can make further progress."
-  err "  docker logs ${CONTAINER} 2>&1 | tail -50"
-  exit 1
-elif [ -n "$ABBRUCH" ]; then
-  err "Startup aborted. The step marked FAILED above is where it stopped."
-  err "  docker logs ${CONTAINER} 2>&1 | tail -50"
-  exit 1
-fi
-[ -n "$FERTIG" ] || warn "Startup is taking longer than expected — check: docker logs -f ${CONTAINER}"
-
-# 7) Falls eine Route nötig ist, sie + den Reload-Befehl konkret ausgeben.
-#
-# BEVOR geprüft wird, nicht danach: im Modus `static-docker` hat der Container
-# keinen veröffentlichten Port, er ist also über https://<hostname> erst
-# erreichbar, NACHDEM diese Route steht. Früher stand die Prüfung davor und
-# lief zwangsläufig fünf Minuten ins Leere, bevor der Betreiber überhaupt
-# erfuhr, was er noch zu tun hat.
-if [ "$MODE" = "static-docker" ] || [ "$MODE" = "hostproxy" ]; then
-  if [ "$MODE" = "static-docker" ]; then TARGET="${CONTAINER}:${HTTP_PORT}"; else TARGET="127.0.0.1:${HTTP_PORT}"; fi
-  # Reload-Befehl nach erkanntem Proxy (bei dockerisiertem statischem Proxy
-  # kennen wir den Container-Namen → konkreter Befehl).
-  case "$PROXY_KIND" in
-    static-caddy) RELOAD_CMD="docker exec ${PROXY_CONTAINER} caddy reload --config /etc/caddy/Caddyfile" ;;
-    static-nginx) RELOAD_CMD="docker exec ${PROXY_CONTAINER} nginx -s reload" ;;
-    *)            RELOAD_CMD="# reload your reverse proxy, e.g.:  sudo systemctl reload caddy   (or: nginx -s reload)" ;;
-  esac
-  cat <<EOF
-
-  ----------------------------------------------------------------
-  Last step — ONE route in your existing reverse proxy.
-  (If a route for ${SRV_HOST} already exists, just point it at http://${TARGET}.)
-
-  Caddy — add to your Caddyfile:
-      ${SRV_HOST} {
-          reverse_proxy ${TARGET}
-      }
-  nginx — inside the server block (WebSockets must pass through):
-      location / {
-          proxy_pass http://${TARGET};
-          proxy_http_version 1.1;
-          proxy_set_header Upgrade \$http_upgrade;
-          proxy_set_header Connection "upgrade";
-          proxy_set_header Host \$host;
-      }
-
-  Then reload the proxy:
-      ${RELOAD_CMD}
-  ----------------------------------------------------------------
-
-EOF
-  # Ohne die Route kann keine Prüfung von aussen gelingen — also erst fragen.
-  printf '  Press Enter once the route is in place (or Ctrl-C to check later)… '
-  # Mit Frist: ein unbeaufsichtigter Lauf mit Terminal haenge sonst fuer immer.
-  read -r -t 600 _ </dev/tty 2>/dev/null || true
   echo
-fi
+  if [ -n "$ABBRUCH_CRASH" ]; then
+    err "Startup aborted — the container is stuck in a restart loop. It keeps crashing before it can make further progress."
+    err "  docker logs ${CONTAINER} 2>&1 | tail -50"
+    exit 1
+  elif [ -n "$ABBRUCH" ]; then
+    err "Startup aborted. The step marked FAILED above is where it stopped."
+    err "  docker logs ${CONTAINER} 2>&1 | tail -50"
+    exit 1
+  fi
+  [ -n "$FERTIG" ] || warn "Startup is taking longer than expected — check: docker logs -f ${CONTAINER}"
+}
+
+# --- /.well-known/pulse-server-info lesen -------------------------------- #
+#
+# Von innen über den chat-gateway (127.0.0.1:8002 im Container): kein DNS,
+# kein Zertifikat, kein Hairpin-NAT — die verlässliche Antwort auf „ist der
+# Server schon verbunden?“. Von aussen über https://<adresse>: der Beweis,
+# dass DNS, Port 443, Zertifikat und Routing stehen. Beide wiederholen, weil
+# „startup complete“ nur das Ende der Startskripte meldet; die Dienste und
+# Caddys Zertifikat kommen erst danach. PULSE_INSTALL_WARTE_* nur für Tests.
+server_info_innen() {
+  local i
+  for i in $(seq 1 "${PULSE_INSTALL_WARTE_VERSUCHE:-20}"); do
+    docker exec "$CONTAINER" curl -fsS -m 5 \
+      http://127.0.0.1:8002/.well-known/pulse-server-info 2>/dev/null && return 0
+    sleep "${PULSE_INSTALL_WARTE_INTERVALL:-3}"
+  done
+  return 1
+}
+
+server_info_aussen() {
+  local i
+  for i in $(seq 1 "${PULSE_INSTALL_WARTE_VERSUCHE:-20}"); do
+    curl -fsS -m 5 "https://${SRV_HOST}/.well-known/pulse-server-info" 2>/dev/null && return 0
+    sleep "${PULSE_INSTALL_WARTE_INTERVALL:-3}"
+  done
+  return 1
+}
+
+# Ist der Server mit einem Pulse-Konto verbunden? $1 = Antwort von
+# pulse-server-info. Ältere Server kennen das Feld `verbunden` nicht; dort
+# heisst eine gesetzte Instanz-Nummer dasselbe (instance_id ist null, solange
+# keine gesetzt ist).
+ist_verbunden() {
+  case "$1" in
+    *'"verbunden":true'*|*'"verbunden": true'*) return 0 ;;
+    *'"verbunden"'*) return 1 ;;
+  esac
+  printf '%s' "$1" | grep -qE '"instance_id"[[:space:]]*:[[:space:]]*"[0-9]+"'
+}
+
+verbinden_spaeter() {
+  warn "Your server is running, but it is not connected to a Pulse account yet."
+  warn "Connect later: docker exec -it ${CONTAINER} pulse-connect"
+}
+
+# --- Mit einem Pulse-Konto verbinden (pulse-connect im Container) ------- #
+#
+# Der letzte Schritt einer Installation (Spec E1/E6): pulse-connect fragt bei
+# der Cloud einen Gerätecode an, zeigt Link und Code und wartet, bis der
+# Betreiber im Browser bestätigt. Es braucht ein Terminal; `--no-restart`,
+# weil der Neustart hier geschieht — so sieht der Installer, wann der Server
+# mit den abgeholten Zugangsdaten wieder steht.
+#
+# Ein schon verbundener Server (Neuinstallation auf altem Volumen, Bestand)
+# wird nicht angefasst: pulse-connect fragte dort nach, ob er einem anderen
+# Konto gehören soll, und das entscheidet niemand nebenbei.
+#
+# Nie ein Fehler-Exit: Der Server läuft auch unverbunden, er nimmt nur noch
+# niemanden auf. Abbruch (Strg+C), abgelaufener oder abgelehnter Code, von
+# aussen nicht erreichbar — alles endet mit dem Hinweis, wie man es nachholt.
+server_verbinden() {
+  local info
+  info="$(server_info_innen || true)"
+  if [ -z "$info" ]; then
+    warn "Your server does not answer inside the container yet — skipping the connection step."
+    warn "  docker logs ${CONTAINER} 2>&1 | tail -50"
+    verbinden_spaeter
+    return 0
+  fi
+  if ist_verbunden "$info"; then
+    VERBUNDEN=1
+    log "This server is already connected to a Pulse account."
+    log "To connect it to a different account:  docker exec -it ${CONTAINER} pulse-connect"
+    return 0
+  fi
+  if ! { : <"$TTY_GERAET"; } 2>/dev/null; then
+    warn "No terminal available — connecting needs one."
+    verbinden_spaeter
+    return 0
+  fi
+  log "Connecting your server to your Pulse account…"
+  if ! docker exec -it "$CONTAINER" pulse-connect --no-restart <"$TTY_GERAET"; then
+    verbinden_spaeter
+    return 0
+  fi
+  # setup-status vorher leeren: sonst sähe warte_auf_start bis zum ersten
+  # Startskript noch das „fertig“ des vorigen Laufs.
+  docker exec "$CONTAINER" rm -f /data/setup-status >/dev/null 2>&1 || true
+  log "Restarting Pulse with the new connection…"
+  if ! docker restart "$CONTAINER" >/dev/null; then
+    warn "The restart failed. Restart it yourself:  docker restart ${CONTAINER}"
+    return 0
+  fi
+  warte_auf_start
+  VERBUNDEN=1
+}
+
+# --- Zugangsdaten für die Prüfung aus der Cloud ------------------------- #
+#
+# Die Prüfung weist sich mit den Zugangsdaten der Instanz aus
+# (routes_selfhost_diagnose.py, Weg 2). Ein Bestandsserver hat sie schon in
+# $ENV_FILE (bestand_uebernehmen), ein frisch verbundener nur im Datenvolumen
+# — pulse-connect hat sie dort abgelegt. Gelesen wird über `docker exec`, und
+# nichts davon wird ausgegeben.
+zugang_aus_volumen() {
+  if [ -z "$CLIENT_SECRET" ]; then
+    zugang_lesen <<<"$(docker exec "$CONTAINER" cat /data/pulse/verbindung.env 2>/dev/null || true)"
+  fi
+  [ -n "$INSTANCE_ID" ] && [ -n "$CLIENT_ID" ] && [ -n "$CLIENT_SECRET" ]
+}
 
 # Bericht der Aussen-Pruefung — eine Checkliste, kein Protokollauszug.
 #
@@ -1311,20 +1370,26 @@ print(LINIE)
 PYEOF
 )
 
-# 8) Die Prüfung von aussen — das Einzige, was der Server über sich selbst
-# NICHT sagen kann. Die Cloud geht die ganze Kette ab (DNS, Zertifikat,
-# Routing, CORS, WebSocket-Upgrade, UDP) und benennt das Glied, das fehlt.
+# Die Prüfung von aussen — das Einzige, was der Server über sich selbst NICHT
+# sagen kann. Die Cloud geht die ganze Kette ab (DNS, Zertifikat, Routing,
+# CORS, WebSocket-Upgrade, UDP, Betreiber-Erkennung) und benennt das Glied,
+# das fehlt.
+#
+# Die Zugangsdaten gehen über stdin an curl (`-K -`), nicht über die
+# Befehlszeile — die ist für jeden lokalen Nutzer in `ps` sichtbar, solange
+# der Aufruf läuft.
 #
 # Die eigene Aussenadresse kommt AUS DEM CONTAINER, nicht aus einem zweiten
 # Aufruf an einen fremden Dienst: dort steht genau die Zahl, mit der Pulse
 # selbst arbeitet (04-init-coturn), und es entsteht keine neue Abhaengigkeit.
 pruefung_von_aussen() {
   local antwort eigene
-  antwort="$(curl -fsS -m 60 -X POST \
-    "${CLOUD_ORIGIN}/api/auth/selfhost/diagnose/${INSTANCE_ID}" \
-    -H "X-Pulse-Client-Id: ${CLIENT_ID}" \
-    -H "X-Pulse-Client-Secret: ${CLIENT_SECRET}" \
-    -H "X-Pulse-Container-Name: ${CONTAINER}" 2>/dev/null)" || return 1
+  zugang_aus_volumen || return 1
+  antwort="$(printf 'header = "X-Pulse-Client-Id: %s"\nheader = "X-Pulse-Client-Secret: %s"\n' \
+      "$CLIENT_ID" "$CLIENT_SECRET" \
+    | curl -fsS -m 60 -K - -X POST \
+      "${CLOUD_ORIGIN}/api/auth/selfhost/diagnose/${INSTANCE_ID}" \
+      -H "X-Pulse-Container-Name: ${CONTAINER}" 2>/dev/null)" || return 1
   [ -n "$antwort" ] || return 1
   command -v python3 >/dev/null 2>&1 || { printf '%s\n' "$antwort"; return 0; }
   eigene="$(docker exec "$CONTAINER" sed -n 's/^external-ip=//p' \
@@ -1333,13 +1398,165 @@ pruefung_von_aussen() {
     | PULSE_EIGENE_IP="$eigene" PULSE_CONTAINER_NAME="$CONTAINER" python3 -c "$PY_BERICHT"
 }
 
-log "Checking your server from the outside — this is what your users will see:"
-if pruefung_von_aussen; then
-  :
+# ======================================================================== #
+# Ablauf
+# ======================================================================== #
+
+# 1) Adresse festlegen, Bestand lesen, Umgebung erkennen, Modus wählen. Nichts
+# davon verändert etwas auf der Maschine.
+frage_adresse
+pruefe_adresse
+log "Server address: ${SRV_HOST}"
+bestand_uebernehmen
+decide_mode
+build_run_args
+print_plan
+
+# 1b) Ports prüfen, bevor irgendetwas verändert wird. VOR dem Dry-Run-Ausstieg
+# (Fund 4, Schlussprüfung): diese Prüfung liest nur, und der Vorschau-Modus ist
+# gerade der, in dem ein Betreiber einen Konflikt sehen will — vorher meldete
+# ein Dry-Run auf einer Maschine mit belegtem Port trotzdem einen grünen Plan.
+check_ports
+
+# 1c) Aus demselben Grund wie 1b, ebenfalls VOR dem Dry-Run-Ausstieg: lieber
+# jetzt scheitern als mit halb eingerichtetem Server. Ersetzt NICHT die
+# gleiche Prüfung in `sichere_container_ersetzung` weiter unten (s. dort).
+pruefe_container_konflikt "Nothing has been changed yet."
+pruefe_registry_zugang
+
+if [ -n "$DRY_RUN" ]; then
+  echo
+  log "DRY RUN — nothing changed."
+  log "Planned container start:"
+  printf '    docker run'; printf ' %q' "${RUN_ARGS[@]}"; echo
+  exit 0
+fi
+
+# 1d) $PULSE_DIR muss beschreibbar sein — NACH dem Dry-Run-Ausstieg (anders
+# als 1b/1c): ein Dry-Run verspricht "nothing changed", und diese Prüfung legt
+# das Verzeichnis tatsächlich an (s. Begründung bei der Funktion), das wäre in
+# einem Dry-Run ein echter, wenn auch harmloser Seiteneffekt.
+pruefe_pulse_dir_schreibbar
+
+# 2) Konfiguration schreiben (chmod 600).
+schreibe_konfiguration
+log "Configuration written: ${ENV_FILE} (readable by root only)"
+
+# 3) Container starten. Anmelden nur am Spiegel registry.howispulse.com
+# (Bestand, s. pruefe_registry_zugang) — das öffentliche Bild braucht keins.
+case "$IMAGE" in
+  registry.howispulse.com/*)
+    log "Logging in to Pulse registry (instance credentials)…"
+    printf '%s' "$CLIENT_SECRET" | docker login registry.howispulse.com -u "$CLIENT_ID" --password-stdin \
+      || die "Registry login failed — instance credentials rejected (suspended or wrong instance?)." ;;
+esac
+log "Pulling image ${IMAGE}…"
+docker pull "$IMAGE"
+sichere_container_ersetzung
+log "Starting Pulse (${MODE})…"
+docker run "${RUN_ARGS[@]}" >/dev/null
+
+# 4) Auto-Update — Host-systemd-Timer statt eines socket-haltenden Containers.
+# Kein Container braucht den Docker-Socket; der Update-Code ist das oben
+# generierte, lesbare Skript. PULSE_NO_AUTOUPDATE=1 schaltet es ab
+# (PULSE_NO_WATCHTOWER bleibt als Alias erhalten).
+# Migration: einen früher angelegten Watchtower-Container ablösen.
+docker rm -f pulse-watchtower >/dev/null 2>&1 || true
+if [ -z "${PULSE_NO_AUTOUPDATE:-${PULSE_NO_WATCHTOWER:-}}" ]; then
+  write_update_script
+  log "Update helper written: ${UPDATE_SH}"
+  if [ "$(id -u)" = "0" ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    install_update_timer
+    log "Auto-updates enabled (systemd timer 'pulse-update.timer', checks every 5 min)."
+  elif command -v crontab >/dev/null 2>&1; then
+    install_update_cron
+    log "Auto-updates enabled (user crontab, checks every 5 min). 'crontab -l' to view."
+  else
+    warn "No root+systemd and no crontab — auto-update could not be scheduled."
+    warn "Update manually anytime:   ${UPDATE_SH}"
+  fi
+fi
+
+# 5) Startfortschritt verfolgen (s. warte_auf_start).
+log "Starting up — this takes about a minute:"
+warte_auf_start
+
+# 6) Falls eine Route nötig ist, sie + den Reload-Befehl konkret ausgeben.
+#
+# BEVOR geprüft wird, nicht danach: im Modus `static-docker` hat der Container
+# keinen veröffentlichten Port, er ist also über https://<hostname> erst
+# erreichbar, NACHDEM diese Route steht. Früher stand die Prüfung davor und
+# lief zwangsläufig fünf Minuten ins Leere, bevor der Betreiber überhaupt
+# erfuhr, was er noch zu tun hat.
+if [ "$MODE" = "static-docker" ] || [ "$MODE" = "hostproxy" ]; then
+  if [ "$MODE" = "static-docker" ]; then TARGET="${CONTAINER}:${HTTP_PORT}"; else TARGET="127.0.0.1:${HTTP_PORT}"; fi
+  # Reload-Befehl nach erkanntem Proxy (bei dockerisiertem statischem Proxy
+  # kennen wir den Container-Namen → konkreter Befehl).
+  case "$PROXY_KIND" in
+    static-caddy) RELOAD_CMD="docker exec ${PROXY_CONTAINER} caddy reload --config /etc/caddy/Caddyfile" ;;
+    static-nginx) RELOAD_CMD="docker exec ${PROXY_CONTAINER} nginx -s reload" ;;
+    *)            RELOAD_CMD="# reload your reverse proxy, e.g.:  sudo systemctl reload caddy   (or: nginx -s reload)" ;;
+  esac
+  cat <<EOF
+
+  ----------------------------------------------------------------
+  Last step — ONE route in your existing reverse proxy.
+  (If a route for ${SRV_HOST} already exists, just point it at http://${TARGET}.)
+
+  Caddy — add to your Caddyfile:
+      ${SRV_HOST} {
+          reverse_proxy ${TARGET}
+      }
+  nginx — inside the server block (WebSockets must pass through):
+      location / {
+          proxy_pass http://${TARGET};
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade \$http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_set_header Host \$host;
+      }
+
+  Then reload the proxy:
+      ${RELOAD_CMD}
+  ----------------------------------------------------------------
+
+EOF
+  # Ohne die Route kann keine Prüfung von aussen gelingen — also erst fragen.
+  printf '  Press Enter once the route is in place (or Ctrl-C to check later)… '
+  # Mit Frist: ein unbeaufsichtigter Lauf mit Terminal haenge sonst fuer immer.
+  read -r -t 600 _ <"$TTY_GERAET" 2>/dev/null || true
+  echo
+fi
+
+# 7) Antwortet der Server unter seiner eigenen Adresse?
+#
+# Ein Abruf von /.well-known/pulse-server-info prüft DNS, Port 443, Zertifikat
+# und Routing in einem Schritt. Ein Fehlschlag hier ist kein Beweis: etliche
+# Netze erreichen ihren eigenen öffentlichen Namen von innen nicht (kein
+# Hairpin-NAT). Deshalb nur eine Warnung — ob die Cloud den Server erreicht,
+# stellt pulse-connect im nächsten Schritt selbst fest.
+log "Checking that your server answers under https://${SRV_HOST} …"
+if server_info_aussen >/dev/null; then
+  log "Your server answers under https://${SRV_HOST}."
 else
-  warn "Could not run the external check right now."
-  warn "Run it on this machine any time:  docker exec $CONTAINER pulse-doctor"
-  warn "Or in the Pulse app: My Instances → Check connection."
+  warn "Your server does not answer under https://${SRV_HOST} from this machine yet."
+  warn "Check that the DNS record points at this machine and that ports 80 and 443 are open."
+  warn "Some networks cannot reach their own public address from inside — the next step checks from outside."
+  warn "Details:  docker exec ${CONTAINER} pulse-doctor"
+fi
+
+# 8) Mit dem Pulse-Konto verbinden (s. server_verbinden).
+server_verbinden
+
+# 9) Die Prüfung aus der Cloud — nur ein verbundener Server hat die
+# Zugangsdaten, mit denen sie sich ausweist.
+if [ -n "$VERBUNDEN" ]; then
+  log "Checking your server from the outside — this is what your users will see:"
+  if ! pruefung_von_aussen; then
+    warn "Could not run the external check right now."
+    warn "Run it on this machine any time:  docker exec $CONTAINER pulse-doctor"
+    warn "Or in the Pulse app: My Instances → Check connection."
+  fi
 fi
 
 echo
