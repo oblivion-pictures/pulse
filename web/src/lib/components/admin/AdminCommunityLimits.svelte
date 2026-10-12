@@ -3,7 +3,11 @@
 
   Zwei Arten von Feldern, die nicht verwechselt werden dürfen:
     * Grenzen — leer heißt „erbt den serverweiten Standard" bzw. „unbegrenzt".
-      Der Platzhalter nennt den Wert, der dann tatsächlich gilt.
+      Der Platzhalter nennt den Wert, der dann tatsächlich gilt. Ausnahme:
+      die zwei Datei-Obergrenzen (Größe, Anzahl) — dort heißt leer „nicht
+      ändern" (Platzhalter „Aktuell: …"), weil ein gelöschter Wert nicht
+      „unbegrenzt" wäre, sondern den Standard zurückholte und die Werte der
+      Community still darauf herunterklemmte.
     * Freigaben — ein Schalter, kein Erben: aus heißt aus.
 
   Gruppiert nach dem, worum es geht, nicht danach, aus welcher Tabellenspalte
@@ -33,7 +37,10 @@ import { errText } from '$lib/utils/errText';
     mbpsStrToKbps,
     bytesToUnit,
     bytesToUnitStr,
-    unitStrToBytes
+    unitStrToBytes,
+    ceilingOrDefault,
+    DEFAULT_ATTACH_MAX_SIZE_BYTES,
+    DEFAULT_ATTACH_MAX_COUNT
   } from './communityLimitFormat';
 
   let { community, onSaved }: { community: Community; onSaved: (c: Community) => void } =
@@ -172,18 +179,28 @@ import { errText } from '$lib/utils/errText';
         fallback="unlimited"
         min="0" step="any" testid="community-limit-storage-quota"
       />
-      <!-- Diese beiden Spalten sind nicht-nullable: leer lassen ändert nichts,
-           der bisherige Wert gilt weiter. Genau den zeigt der Platzhalter. -->
+      <!-- Diese beiden sind Obergrenzen mit Instanz-Standard, kein „unbegrenzt":
+           leer lassen ändert nichts (der Server schreibt nur bei einem Wert),
+           die bisherige Obergrenze gilt weiter. Genau die zeigt der
+           Platzhalter — bei nie gesetzter Obergrenze den Instanz-Standard. -->
       <LimitField
         label={m.admin_communities_limits_attach_size()}
         bind:value={attachSizeMB}
-        fallback={bytesToUnit(community.attachment_max_size_bytes, MB)}
+        fallback={bytesToUnit(
+          ceilingOrDefault(community.attachment_max_size_bytes, DEFAULT_ATTACH_MAX_SIZE_BYTES),
+          MB
+        )}
+        keep
         min="1" step="any" testid="community-limit-attach-size"
       />
       <LimitField
         label={m.admin_communities_limits_attach_count()}
         bind:value={attachCount}
-        fallback={community.attachment_max_count_per_message}
+        fallback={ceilingOrDefault(
+          community.attachment_max_count_per_message,
+          DEFAULT_ATTACH_MAX_COUNT
+        )}
+        keep
         min="1" max="50" testid="community-limit-attach-count"
       />
     </div>

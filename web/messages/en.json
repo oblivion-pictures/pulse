@@ -156,6 +156,7 @@
   "admin_communities_limits_max_members": "Max members",
   "admin_communities_limits_max_roles": "Max roles",
   "admin_communities_limits_max_streams": "Max concurrent HQ streams",
+  "admin_communities_limits_placeholder_current": "Current: {value}",
   "admin_communities_limits_placeholder_default": "Default: {value}",
   "admin_communities_limits_placeholder_unlimited": "Unlimited",
   "admin_communities_limits_res_native": "Unlimited",

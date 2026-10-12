@@ -264,14 +264,23 @@ async def set_community_limits(
     guild.stream_bitrate_max_kbps = payload.stream_bitrate_max_kbps
     guild.stream_fps_max = payload.stream_fps_max
     guild.stream_resolution_max = payload.stream_resolution_max
-    # Storage. Quota is nullable (null = unlimited) → always set. size/count are
-    # non-nullable columns → only overwrite when the form provided a value.
+    # Storage. Quota is nullable (null = unlimited) → always set.
     guild.attachment_storage_quota_bytes = payload.attachment_storage_quota_bytes
     # Bei diesen zwei Limits ist die Altspalte der Wert der Community — der
     # Betreiber setzt hier die OBERGRENZE (0057). Vorher schrieben beide Ebenen
     # dieselbe Zelle, womit MANAGE_GUILD die Vorgabe überschreiben konnte.
-    guild.attachment_max_size_ceiling_bytes = payload.attachment_max_size_bytes
-    guild.attachment_max_count_ceiling = payload.attachment_max_count_per_message
+    #
+    # Nur überschreiben, wenn das Formular einen Wert mitschickt: ein leeres
+    # Feld heißt „nicht ändern", NICHT „Obergrenze löschen". Gelöscht (NULL)
+    # wäre sie nämlich nicht unbegrenzt, sondern fiele auf den Instanz-Standard
+    # (25 MiB / 4) zurück, und ``clamp_to_ceilings`` unten holte jeden höheren
+    # Wert der Community still darauf herunter. Seit 0057 schrieb der Code
+    # trotzdem immer — gegen den Kommentar, der „nur bei Wert" sagte. Den
+    # Standard stellt man ein, indem man ihn einträgt.
+    if payload.attachment_max_size_bytes is not None:
+        guild.attachment_max_size_ceiling_bytes = payload.attachment_max_size_bytes
+    if payload.attachment_max_count_per_message is not None:
+        guild.attachment_max_count_ceiling = payload.attachment_max_count_per_message
     # Scale caps: nullable (null = unlimited) → always set.
     guild.max_members = payload.max_members
     guild.max_channels = payload.max_channels

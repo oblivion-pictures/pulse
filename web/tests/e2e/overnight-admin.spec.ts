@@ -299,6 +299,43 @@ test.describe.serial('T14 — Server-Admin-Panel', () => {
     await expect(row).toBeVisible({ timeout: 7_000 });
   });
 
+  test('Communities-Reiter: leeres Dateigrößen-Feld lässt die Obergrenze stehen', async () => {
+    const oeffnen = async () => {
+      await admin.getByTestId('admin-tab-communities').click();
+      await admin.getByTestId('admin-communities-search').fill(`Admin Panel Guild ${ts}`);
+      const row = admin
+        .getByTestId('admin-community-row')
+        .filter({ hasText: `Admin Panel Guild ${ts}` });
+      await expect(row).toBeVisible({ timeout: 7_000 });
+      await row.getByTestId('admin-community-settings-toggle').click();
+      return row.getByTestId('community-limit-attach-size');
+    };
+    const speichern = async () => {
+      await Promise.all([
+        admin.waitForResponse(
+          (r) => r.url().includes('/limits') && r.request().method() === 'PATCH'
+        ),
+        admin.getByTestId('community-limit-save').click()
+      ]);
+    };
+
+    let groesse = await oeffnen();
+    // Nie gesetzt: der Platzhalter nennt den Instanz-Standard (25 MB), nicht 0.
+    await expect(groesse).toHaveAttribute('placeholder', /25$/);
+
+    await groesse.fill('50');
+    await speichern();
+
+    // Leeren und speichern ist KEIN „Obergrenze löschen": der Wert bleibt.
+    await groesse.fill('');
+    await speichern();
+    await expect(groesse).toHaveAttribute('placeholder', /50$/, { timeout: 7_000 });
+
+    await admin.reload();
+    groesse = await oeffnen();
+    await expect(groesse).toHaveValue('50', { timeout: 7_000 });
+  });
+
   test('Protokoll: Einträge zu den gerade gemachten Änderungen', async () => {
     await admin.getByTestId('admin-tab-audit').click();
     await expect(admin.getByTestId('admin-audit-log')).toBeVisible();
