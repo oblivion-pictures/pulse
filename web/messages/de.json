@@ -3439,5 +3439,11 @@
   "meine_server_uebernahme_fehler_ausgelastet": "Pulse prüft gerade viele Server. Bitte versuche es gleich noch einmal.",
   "meine_server_uebernahme_fehler_gebremst": "Zu viele Versuche in kurzer Zeit. Warte eine Weile und versuche es dann noch einmal.",
   "meine_server_uebernahme_fehler_abgemeldet": "Deine Anmeldung ist abgelaufen. Melde dich neu an und versuche es dann noch einmal.",
-  "meine_server_uebernahme_fehler_sonst": "Der Widerspruch ist nicht angekommen. Versuche es gleich noch einmal."
+  "meine_server_uebernahme_fehler_sonst": "Der Widerspruch ist nicht angekommen. Versuche es gleich noch einmal.",
+  "admin_tab_servers": "Server",
+  "admin_instances_description_frei": "Alle Server, die die Cloud kennt — freigegebene und solche ohne Freigabe. Sperren wirkt sofort für neue Anmeldungen.",
+  "admin_instances_ohne_freigabe": "ohne Freigabe",
+  "admin_users_darf_verbinden": "Darf Server verbinden",
+  "admin_users_verbinden_updated": "Erlaubnis zum Verbinden aktualisiert.",
+  "admin_badge_meldungen_aria": "Offene Meldungen"
 }

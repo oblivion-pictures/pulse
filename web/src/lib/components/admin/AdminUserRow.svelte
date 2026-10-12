@@ -1,8 +1,9 @@
 <!--
   Eine Zeile der Admin-User-Liste: Avatar + Name/E-Mail, Status-Badges
-  (Owner/Admin/Gesperrt/Self-Host) und das Aktions-Popover (Admin-Rolle,
-  Sperren, Self-Host-Freischaltung). Ausgelagert aus AdminUsers.svelte, damit
-  die Liste unter der Komponenten-Größen-Policy bleibt.
+  (Owner/Admin/Gesperrt) und das Aktions-Popover (Admin-Rolle, Sperren,
+  „Darf Server verbinden“). Ausgelagert aus AdminUsers.svelte, damit die Liste
+  unter der Komponenten-Größen-Policy bleibt. Abzeichen und Schalter
+  „Hosting“/„Selbst-Hosting erlauben“ sind 2026-10 entfallen (Spec §5).
 -->
 <script lang="ts">
   import * as Avatar from '$lib/components/ui/avatar/index.js';
@@ -15,10 +16,11 @@
   import ShieldIcon from '@lucide/svelte/icons/shield';
   import BanIcon from '@lucide/svelte/icons/ban';
   import ServerIcon from '@lucide/svelte/icons/server';
+  import CheckIcon from '@lucide/svelte/icons/check';
   import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
   import MenuRow from '$lib/components/menu/MenuRow.svelte';
 
-  type Field = 'is_admin' | 'disabled' | 'self_host_enabled';
+  type Field = 'is_admin' | 'disabled' | 'server_verbinden_gesperrt';
 
   let {
     user,
@@ -75,40 +77,36 @@
         {m.admin_users_badge_disabled()}
       </span>
     {/if}
-    {#if user.self_host_enabled}
-      <span
-        class="rounded-md bg-success/15 px-2 py-0.5 text-xs font-medium text-success"
-        data-testid="badge-selfhost"
-      >
-        {m.admin_users_badge_self_host()}
-      </span>
-    {/if}
   </div>
 
-  <PopoverPrimitive.Root>
-    <PopoverPrimitive.Trigger>
-      {#snippet child({ props })}
-        <Button
-          {...props}
-          variant="ghost"
-          size="icon-sm"
-          aria-label={m.admin_users_actions_aria_label()}
-          disabled={pending}
-          data-testid="admin-user-actions"
+  <!-- Der Owner ist gegen Entmachten und Sperren geschützt, und der Riegel
+       „Darf Server verbinden“ lässt sich bei ihm nicht setzen (Backend 400).
+       Es bliebe kein Eintrag im Menü → für ihn gar nicht erst anbieten. Der
+       Platzhalter hält die Abzeichen auf einer Linie mit den anderen Zeilen. -->
+  {#if user.is_owner}
+    <span class="size-8 shrink-0" aria-hidden="true"></span>
+  {:else}
+    <PopoverPrimitive.Root>
+      <PopoverPrimitive.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant="ghost"
+            size="icon-sm"
+            aria-label={m.admin_users_actions_aria_label()}
+            disabled={pending}
+            data-testid="admin-user-actions"
+          >
+            <MoreHorizontalIcon class="size-4" />
+          </Button>
+        {/snippet}
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          side="left"
+          sideOffset={8}
+          class="ring-border bg-popover z-50 flex w-56 flex-col gap-1 rounded-xl p-2 shadow-xl ring-1 outline-none"
         >
-          <MoreHorizontalIcon class="size-4" />
-        </Button>
-      {/snippet}
-    </PopoverPrimitive.Trigger>
-    <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Content
-        side="left"
-        sideOffset={8}
-        class="ring-border bg-popover z-50 flex w-56 flex-col gap-1 rounded-xl p-2 shadow-xl ring-1 outline-none"
-      >
-        <!-- Der Owner ist gegen Entmachten/Sperren geschützt (Backend 400) →
-             diese Aktionen für ihn gar nicht erst anbieten. -->
-        {#if !user.is_owner}
           <MenuRow
             onclick={() => ontoggle(user, 'is_admin', !user.is_admin)}
             data-testid="toggle-admin-btn"
@@ -123,15 +121,23 @@
             <BanIcon class="size-4" />
             {user.disabled ? m.admin_users_unban() : m.admin_users_ban()}
           </MenuRow>
-        {/if}
-        <MenuRow
-          onclick={() => ontoggle(user, 'self_host_enabled', !user.self_host_enabled)}
-          data-testid="toggle-selfhost-btn"
-        >
-          <ServerIcon class="size-4" />
-          {user.self_host_enabled ? m.admin_users_self_host_revoke() : m.admin_users_self_host_grant()}
-        </MenuRow>
-      </PopoverPrimitive.Content>
-    </PopoverPrimitive.Portal>
-  </PopoverPrimitive.Root>
+          <!-- Ein Schalter, kein Paar „erlauben/entziehen“: der Haken zeigt den
+               Stand (Spec E8, Skizze 2026-10-10). -->
+          <MenuRow
+            onclick={() =>
+              ontoggle(user, 'server_verbinden_gesperrt', !user.server_verbinden_gesperrt)}
+            aria-pressed={!user.server_verbinden_gesperrt}
+            data-testid="toggle-verbinden-btn"
+            data-erlaubt={user.server_verbinden_gesperrt ? 'nein' : 'ja'}
+          >
+            <ServerIcon class="size-4" />
+            <span class="flex-1">{m.admin_users_darf_verbinden()}</span>
+            {#if !user.server_verbinden_gesperrt}
+              <CheckIcon class="size-4" />
+            {/if}
+          </MenuRow>
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  {/if}
 </li>

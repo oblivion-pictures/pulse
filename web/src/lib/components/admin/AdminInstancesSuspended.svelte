@@ -23,11 +23,10 @@ import { errText } from '$lib/utils/errText';
     loading = true;
     loadError = null;
     try {
-      // Gleicher UI-Filter wie im Aktiv-Tab: app_host-Instanzen leben im
-      // App-Hosting-Anträge-Tab, nicht hier.
-      instances = (await adminInstancesApi.listInstances('suspended')).filter(
-        (i) => i.origin !== 'app_host'
-      );
+      // Alle Herkünfte. Gesperrte Heim-Server waren hier bis 2026-10
+      // ausgefiltert, mit Verweis auf einen Antrags-Reiter, den es nicht mehr
+      // gibt — sie waren damit nirgends zu sehen und nicht zu entsperren.
+      instances = await adminInstancesApi.listInstances('suspended');
     } catch (e) {
       loadError = errText(e);
     } finally {

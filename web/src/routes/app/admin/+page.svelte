@@ -1,9 +1,9 @@
 <!--
   Server-Admin panel. Entry from UserFooter dropdown (visible only when
   `auth.user.is_admin`). Reiter-Schale: die Bereiche sind auf sechs Tabs
-  verteilt (Übersicht · Nutzer · Anträge · Meldungen · Einstellungen ·
+  verteilt (Übersicht · Nutzer · Server · Meldungen · Einstellungen ·
   Protokoll), jeder Tab-Inhalt lebt in seiner eigenen Komponente unter
-  `$lib/components/admin/`. Self-Host sieht nur vier Tabs (Anträge/Meldungen
+  `$lib/components/admin/`. Self-Host sieht nur vier Tabs (Server/Meldungen
   sind reine Cloud-Funktionen).
 
   Double-gated: client-side this page bounces non-admins back to /app/@me
@@ -24,15 +24,13 @@
   import AdminCommunities from '$lib/components/admin/AdminCommunities.svelte';
   import AdminSettingsTab from '$lib/components/admin/AdminSettingsTab.svelte';
   import AdminAuditLog from '$lib/components/admin/AdminAuditLog.svelte';
-  import { adminInstancesApi } from '$lib/api/instances';
   import { adminComplaintsApi } from '$lib/api/complaints';
   import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
   import { m } from '$lib/paraglide/messages.js';
 
-  // Self-Host-Instanzen verwalten (Anträge genehmigen/sperren) ist eine reine
-  // Cloud-Funktion — nur howispulse.com entscheidet, wer self-hosten darf. Auf
-  // jedem Self-Host-Server blenden wir die Bereiche aus (Backend riegelt zusätzlich
-  // per PULSE_INSTANCE_MODE ab).
+  // Server verwalten (sperren, Diagnose) ist eine reine Cloud-Funktion — nur
+  // howispulse.com kennt alle Server. Auf jedem Self-Host-Server blenden wir die
+  // Bereiche aus (Backend riegelt zusätzlich per PULSE_INSTANCE_MODE ab).
   let isCloud = $derived(activeServer.current?.isCloud ?? false);
   let serverId = $derived(activeServer.current?.id ?? '');
 
@@ -60,14 +58,12 @@
     | 'audit';
   let activeTab = $state<MainTab>('overview');
 
-  // Tab-Badges: warten Anträge/Meldungen? Die jeweiligen Bereiche zählen intern
-  // noch einmal, aber der Tab-Badge muss den Stand auch zeigen, wenn der Tab
-  // gerade NICHT offen ist — also hier auf Panel-Ebene mitzählen.
-  let instancesPending = $state(0);
+  // Tab-Badge: warten Meldungen? Der Bereich zählt intern noch einmal, aber der
+  // Reiter muss den Stand auch zeigen, wenn er gerade NICHT offen ist. Der
+  // Antrags-Zähler am Reiter „Server“ ist mit der Freigabe entfallen (2026-10).
   let complaintsNew = $state(0);
-  let applicationsBadge = $derived(instancesPending);
 
-  // Reihenfolge: Übersicht → Einstellungen → Nutzer → (Cloud: Anträge,
+  // Reihenfolge: Übersicht → Einstellungen → Nutzer → (Cloud: Server,
   // Meldungen) → Protokoll. Cloud-only-Reiter bleiben vor dem Protokoll.
   let tabs = $derived([
     { id: 'overview' as const, label: m.admin_tab_overview(), badge: 0 },
@@ -78,7 +74,8 @@
       : []),
     ...(isCloud
       ? [
-          { id: 'applications' as const, label: m.admin_tab_applications(), badge: applicationsBadge },
+          // ID bleibt `applications` (admin.spec.ts und Verweise hängen daran).
+          { id: 'applications' as const, label: m.admin_tab_servers(), badge: 0 },
           { id: 'complaints' as const, label: m.admin_tab_complaints(), badge: complaintsNew }
         ]
       : []),
@@ -100,11 +97,6 @@
 
   async function refreshBadges() {
     if (!isCloud || !isAdminHere) return;
-    try {
-      instancesPending = (await adminInstancesApi.listApplications('pending', 'vps')).length;
-    } catch {
-      /* still — Badge bleibt einfach aus */
-    }
     try {
       complaintsNew = (await adminComplaintsApi.list('new')).length;
     } catch {
@@ -184,9 +176,8 @@
       {:else if activeTab === 'communities' && isOwner}
         <AdminCommunities />
       {:else if activeTab === 'applications' && isCloud}
-        <!-- Instanz-Verwaltung mit Pending/Aktiv/Gesperrt-Untertabs; seit der
-             Vereinheitlichung leben app_host-Instanzen samt Revoke im Aktiv-Tab
-             (kein separater App-Host-Freischaltungen-Block mehr). -->
+        <!-- Server-Verwaltung mit Aktiv/Gesperrt/Diagnose-Untertabs (seit 2026-10
+             ohne „Ausstehend“: es gibt keine Anträge mehr). -->
         <AdminInstances />
       {:else if activeTab === 'complaints' && isCloud}
         <AdminComplaints />

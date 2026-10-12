@@ -19,7 +19,6 @@
   import { watchFehlerWacht } from '$lib/watch/fehlerwacht.svelte';
   import { gatewayPool } from '$lib/ws/gateway-pool.svelte';
   import { initActivityHeartbeat, disposeActivityHeartbeat } from '$lib/ws/activity';
-  import { pendingInstanceApps } from '$lib/stores/pendingInstanceApps.svelte';
   import { pendingComplaints } from '$lib/stores/pendingComplaints.svelte';
   import { viewport } from '$lib/stores/viewport.svelte';
   import { voice, resumeVoiceIfPending } from '$lib/voice/livekit.svelte';
@@ -269,9 +268,6 @@
     // so it lives exactly as long as the /app session.
     initActivityHeartbeat();
 
-    // Cloud-Admin-Benachrichtigung: pollt offene Self-Host-Anträge (Badge im
-    // UserFooter + Toast bei Zuwachs). Interner Guard pollt nur für Admins.
-    pendingInstanceApps.start();
     // App-Hosting-Anwesenheit: hält den „schläft der Server?"-Stand frisch,
     // damit Klicks auf ausgeschaltete App-Hosts sofort beantwortet werden.
     appHostAnwesenheit.start();
@@ -353,7 +349,6 @@
   onDestroy(() => {
     disposeActivityHeartbeat();
     serverState.stop();
-    pendingInstanceApps.stop();
     appHostAnwesenheit.stop();
     pendingComplaints.stop();
     _stoppeKanalFestigung?.();
