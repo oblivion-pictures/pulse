@@ -3362,5 +3362,6 @@
   "camera_video_vorbereiten": "Video wird vorbereitet …",
   "camera_video_kuerzen": "Kürzen",
   "camera_nicht_verfuegbar": "Kamera nicht verfügbar",
-  "message_input_anhang_kamera": "Kamera"
+  "message_input_anhang_kamera": "Kamera",
+  "anmeldung_server_nicht_verbunden": "Dieser Server ist noch mit keinem Pulse-Konto verbunden und nimmt deshalb niemanden auf. Der Betreiber muss auf dem Server „docker exec -it pulse pulse-connect“ ausführen."
 }
