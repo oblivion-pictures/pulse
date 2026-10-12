@@ -251,6 +251,9 @@ async def verbinden_entscheiden(
         ) from None
     except ZuVieleServer:
         # Wiederholbar (ein gelöschter Server genügt): der Vorgang bleibt offen.
+        # Erst zurückrollen, damit die Zeilensperre aus ``eintrag_sperren`` nicht
+        # über die Redis-Runde hinweg gehalten wird.
+        await db.rollback()
         await vorgang_hinweis_setzen(redis, nachweis, "zu_viele_server")
         raise HTTPException(status.HTTP_409_CONFLICT, detail="zu_viele_server") from None
     except InstanzGesperrt:

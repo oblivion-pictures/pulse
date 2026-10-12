@@ -70,8 +70,10 @@ class Vorgang(BaseModel):
     #: reicht ihn an ``pulse-connect`` weiter. Bewusst ``str``, nicht ``Literal``:
     #: ein Wert, den dieser Stand nicht kennt, soll beim Lesen nicht werfen.
     grund: str | None = None
-    #: Nur bei ``wartet``: woran das Bestätigen zuletzt scheiterte, obwohl ein
-    #: zweiter Klick helfen kann (``zu_viele_server``, ``nachweis_fehlt``).
+    #: Woran das Bestätigen zuletzt scheiterte, obwohl ein zweiter Klick helfen
+    #: kann (``zu_viele_server``, ``nachweis_fehlt``). Gesetzt nur an einem
+    #: wartenden Vorgang und nur dort gelesen; eine spätere Entscheidung lässt den
+    #: Wert stehen, ``abholen`` gibt ihn dann nicht mehr aus.
     #: Ebenfalls mit Vorgabe und ohne ``Literal``, aus demselben Grund.
     hinweis: str | None = None
 
@@ -178,30 +180,38 @@ async def vorgang_entscheiden(
     ``True`` kam. Die Frist läuft weiter (``KEEPTTL``).
     """
     schluessel = _vorgang_schluessel(nachweis)
-    async with redis.pipeline(transaction=True) as pipe:
-        try:
-            await pipe.watch(schluessel)
-            roh = await pipe.get(schluessel)
-            if roh is None:
-                return False
-            vorgang = Vorgang.model_validate_json(roh)
-            if vorgang.status != "wartet":
-                return False
-            neu = vorgang.model_copy(
-                update={
-                    "status": status,
-                    "instance_id": instance_id,
-                    "user_id": user_id,
-                    "frist_bis": frist_bis,
-                    "grund": grund,
-                }
-            )
-            pipe.multi()
-            pipe.set(schluessel, neu.model_dump_json(), xx=True, keepttl=True)
-            await pipe.execute()
-        except WatchError:
-            return False
-    return True
+    # Ein WatchError sagt nur, dass sich der Schlüssel zwischen Lesen und
+    # Schreiben geändert hat. Meist hat ein anderer Klick entschieden: dann liest
+    # der nächste Durchgang ``status != wartet`` und gibt auf. Hat dagegen nur ein
+    # Hinweis geschrieben (``vorgang_hinweis_setzen``, ein zweiter Tab, dessen
+    # Bestätigen gerade scheitert), wartet der Vorgang noch und darf entschieden
+    # werden. Drei Durchgänge genügen dafür: Hinweise kommen nur aus Klicks.
+    for _ in range(3):
+        async with redis.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(schluessel)
+                roh = await pipe.get(schluessel)
+                if roh is None:
+                    return False
+                vorgang = Vorgang.model_validate_json(roh)
+                if vorgang.status != "wartet":
+                    return False
+                neu = vorgang.model_copy(
+                    update={
+                        "status": status,
+                        "instance_id": instance_id,
+                        "user_id": user_id,
+                        "frist_bis": frist_bis,
+                        "grund": grund,
+                    }
+                )
+                pipe.multi()
+                pipe.set(schluessel, neu.model_dump_json(), xx=True, keepttl=True)
+                await pipe.execute()
+                return True
+            except WatchError:
+                continue
+    return False
 
 
 async def vorgang_hinweis_setzen(redis, nachweis: str, hinweis: str) -> bool:
