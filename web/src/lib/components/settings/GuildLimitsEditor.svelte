@@ -16,14 +16,14 @@ import { errText } from '$lib/utils/errText';
   import { m } from '$lib/paraglide/messages.js';
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
   import GuildLimitRow from './GuildLimitRow.svelte';
-  import { toDisplay, changedLimitsPayload, type LimitKind } from './guildLimitUnits';
+  import { toDisplay, changedLimitsPayload, type LimitFieldSpec } from './guildLimitUnits';
 
   let { guildId }: { guildId: string } = $props();
 
   // Feldtabelle: Schlüssel (muss zum Backend passen) + Einheit, in Gruppen.
-  // `required`: die Spalte ist NOT NULL (Spiegel von `value_nullable=False` in
-  // guild_limits.py) — dort heißt ein leeres Feld „nicht ändern", nicht „löschen".
-  type Field = { key: string; kind: LimitKind; label: () => string; required?: boolean };
+  // `required` (aus LimitFieldSpec): die Spalte ist NOT NULL — ein leeres Feld
+  // heißt dort „nicht ändern", nicht „löschen".
+  type Field = LimitFieldSpec & { label: () => string };
   const GROUPS: { title: string; fields: Field[] }[] = [
     {
       title: m.guild_limits_group_quality(),

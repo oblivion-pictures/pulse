@@ -168,10 +168,11 @@ async def _enforce_storage_quota(
     """Reject the upload (413) if it would push the community over its total
     attachment-storage quota. NULL quota = unlimited. Drift-free: sums the
     live (non-deleted) attachment bytes on demand (same query as the owner
-    list) — Datei UND Vorschaubild (``belegte_bytes``); ``new_bytes`` ist
-    entsprechend ``size + thumb_size`` des neuen Uploads. A small overshoot
-    under concurrent uploads is accepted — this is a cost cap, not a security
-    boundary."""
+    list). A small overshoot under concurrent uploads is accepted — this is a
+    cost cap, not a security boundary.
+
+    Gezählt wird die Datei UND ihr Vorschaubild (``belegte_bytes``);
+    ``new_bytes`` ist deshalb ``size + thumb_size`` des neuen Uploads."""
     guild = await session.get(Guild, guild_id)  # identity-mapped; no extra query
     # Wirksamer Wert: hat die Community sich selbst enger gesetzt, gilt ihrer;
     # sonst die Obergrenze des Betreibers (beim Speichern geklemmt, kann also
@@ -207,8 +208,8 @@ async def _enforce_storage_quota(
 #: reines Pixelrauschen bei 720x720 ~390 kB, mit zufälligem Alphakanal ~913 kB.
 #: 1 MiB trägt damit noch den theoretischen Schlimmstfall samt der 28 Byte
 #: AES-GCM-Anhang des verschlüsselten Wegs (``postfach_anhaenge.py``), ist
-#: aber um Größenordnungen kleiner als die Dateigrenze, die vorher auch für das
-#: Vorschaubild galt.
+#: aber deutlich kleiner als die Dateigrenze (Vorgabe 25 MiB), die vorher auch
+#: für das Vorschaubild galt.
 MAX_THUMB_BYTES = 1024 * 1024
 
 
@@ -219,8 +220,8 @@ def thumb_bytes_or_raise(
     (``None`` = kein Vorschaubild). 400 ohne Größe, 413 über der Grenze.
 
     Die Grenze ist die kleinere von ``MAX_THUMB_BYTES`` und der Dateigrenze:
-    ein Vorschaubild, das größer sein darf als die Datei, die es vertritt,
-    gäbe es nicht."""
+    liegt die Dateigrenze unter 1 MiB, gilt weiter sie (bisher galt sie für
+    Datei und Vorschaubild gleichermaßen)."""
     if not has_thumb:
         return None
     if thumb_size is None:

@@ -40,15 +40,13 @@
 
   // Zahlen werden mit der Locale des Browsers gesetzt (1000 → „1.000"), damit
   // der Platzhalter so aussieht wie das, was der Betreiber sonst liest.
-  const placeholder = $derived(
-    fallback === 'unlimited'
-      ? m.admin_communities_limits_placeholder_unlimited()
-      : (keep
-          ? m.admin_communities_limits_placeholder_current
-          : m.admin_communities_limits_placeholder_default)({
-          value: new Intl.NumberFormat().format(fallback)
-        })
-  );
+  const placeholder = $derived.by(() => {
+    if (fallback === 'unlimited') return m.admin_communities_limits_placeholder_unlimited();
+    const value = new Intl.NumberFormat().format(fallback);
+    return keep
+      ? m.admin_communities_limits_placeholder_current({ value })
+      : m.admin_communities_limits_placeholder_default({ value });
+  });
 </script>
 
 <label class="flex flex-col gap-1">

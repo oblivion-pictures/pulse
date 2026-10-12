@@ -22,8 +22,9 @@ export const DM_MIN_BYTES = 1024;
 /** Bytes → MiB für die Anzeige, auf vier Nachkommastellen: genug, damit ein
  *  eingetippter Wert wie 0,3 nach dem Rundlauf wieder 0,3 zeigt (und nicht
  *  0,29999923706054688), und fein genug für die 1-KiB-Untergrenze (0,001). */
-export const bytesToMiB = (bytes: number): number =>
-  Math.round((bytes / MIB) * 10_000) / 10_000;
+export function bytesToMiB(bytes: number): number {
+  return Math.round((bytes / MIB) * 10_000) / 10_000;
+}
 
 /** Was das Größenfeld beim Speichern schicken soll, oder `undefined` = Feld
  *  weglassen. Weggelassen wird, wenn das Feld leer/unlesbar ist oder noch

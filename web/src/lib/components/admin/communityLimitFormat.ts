@@ -21,7 +21,7 @@ export function mbpsStrToKbps(s: unknown): number | null {
   return mbps == null ? null : Math.round(mbps * 1000);
 }
 
-/** Bytes → Anzeige-Einheit als Zahl (für die Platzhalter der Pflichtfelder). */
+/** Bytes → Anzeige-Einheit als Zahl (für die Platzhalter der Datei-Obergrenzen). */
 export const bytesToUnit = (v: number, unit: number): number =>
   Math.round((v / unit) * 100) / 100;
 
@@ -56,11 +56,12 @@ export function unitStrToBytesKeep(
 /** Instanz-Standards der zwei Datei-Obergrenzen — Spiegel von
  *  ``DEFAULT_ATTACHMENT_MAX_SIZE_BYTES`` / ``DEFAULT_ATTACHMENT_MAX_COUNT``
  *  (guild_limits.py). Synchron halten. */
-export const DEFAULT_ATTACH_MAX_SIZE_BYTES = 26214400;
+export const DEFAULT_ATTACH_MAX_SIZE_BYTES = 25 * 1024 * 1024;
 export const DEFAULT_ATTACH_MAX_COUNT = 4;
 
 /** Die Obergrenze, die tatsächlich gilt: die des Betreibers, sonst der
  *  Instanz-Standard. Der Server liefert für „nicht gesetzt" `null` — als Zahl
  *  gelesen wäre das 0 („Aktuell: 0") und sagte das Gegenteil. */
-export const ceilingOrDefault = (v: number | null | undefined, standard: number): number =>
-  v ?? standard;
+export function ceilingOrDefault(v: number | null | undefined, standard: number): number {
+  return v ?? standard;
+}

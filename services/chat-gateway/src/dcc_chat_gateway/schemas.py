@@ -1131,7 +1131,10 @@ class CommunityLimitsIn(BaseModel):
     NULL means "inherit the instance default" — the form always sends the full
     set, so NULL explicitly clears an override. ``stream_resolution_max`` uses
     the HQ resolution vocabulary ('Native' = uncapped); it is mapped down to the
-    narrower screenshare/webcam ladders client-side."""
+    narrower screenshare/webcam ladders client-side.
+
+    Ausnahme: bei den zwei Datei-Obergrenzen (Größe, Anzahl) heißt NULL
+    „nicht ändern"."""
 
     voice_bitrate_max_kbps: Annotated[int | None, Field(default=None, ge=16, le=512)] = None
     stream_bitrate_max_kbps: Annotated[
