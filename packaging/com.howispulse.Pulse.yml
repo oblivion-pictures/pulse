@@ -26,18 +26,18 @@
 #       flatpak-builder --user --install-deps-from=flathub --force-clean --install build/flatpak packaging/com.howispulse.Pulse.yml )
 app-id: com.howispulse.Pulse
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 # SDK-Extensions für den experimentellen Rust-Linux-HQ-Sidecar-Build:
-# rust-stable = cargo/rustc, llvm18 = libclang für bindgen (ffmpeg-sys,
+# rust-stable = cargo/rustc, llvm20 = libclang für bindgen (ffmpeg-sys,
 # pipewire-sys, libspa-sys). Nur zur Build-Zeit; nichts davon landet im App.
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
-  - org.freedesktop.Sdk.Extension.llvm18
+  - org.freedesktop.Sdk.Extension.llvm20
 # zypak: replaces Chromium's setuid sandbox (which can't work inside a Flatpak)
 # with a bubblewrap-based one. The launcher runs Electron via `zypak-wrapper`.
 base: org.electronjs.Electron2.BaseApp
-base-version: '24.08'
+base-version: '25.08'
 command: pulse
 # Skip the AppStream "compose" step at the end of the build. Ubuntu 24.04's
 # appstreamcli 1.0.2 (used on the GitHub runner) raises an opaque
@@ -106,7 +106,7 @@ finish-args:
   - --env=PYTHONUNBUFFERED=1
 
 # NB: do NOT add an `add-extensions` block for org.freedesktop.Platform.GL — the
-# org.freedesktop.Platform//24.08 runtime already declares it (with the right
+# org.freedesktop.Platform//25.08 runtime already declares it (with the right
 # directory/merge-dirs). Overriding it breaks EGL on Mesa. (Same as the official
 # gpu-screen-recorder-Flathub-Manifest — it inherits GL from the runtime.)
 
@@ -261,10 +261,10 @@ modules:
   - name: pulse-linux-hq-sidecar
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm20/bin
       env:
         CARGO_HOME: /run/build/pulse-linux-hq-sidecar/cargo
-        LIBCLANG_PATH: /usr/lib/sdk/llvm18/lib
+        LIBCLANG_PATH: /usr/lib/sdk/llvm20/lib
     build-commands:
       # Gebaut wird IM Unterverzeichnis, nicht im Bauwurzel — s. den Kommentar
       # bei den `dir`-Quellen unten. `cargo/` bleibt an der Wurzel liegen, wo
@@ -359,20 +359,13 @@ modules:
   # nötigen Rechte hat der Player als Kind von Electron in derselben Sandbox
   # (`--device=all`, `--socket=pulseaudio`, `--share=network`).
   # **Eigene Rust-Toolchain, NICHT die SDK-Extension** — der einzige Punkt, an
-  # dem dieses Modul vom Sidecar daneben abweicht, und der Grund dafuer ist
-  # hart: `org.freedesktop.Sdk.Extension.rust-stable//24.08` liefert rustc
-  # 1.89, die egui-0.35-Kette verlangt 1.92. Der Bau bricht sonst ab mit
-  # „rustc 1.89.0 is not supported by the following packages".
-  #
-  # Drei Wege standen zur Wahl, zwei sind verworfen:
-  # * `rust-nightly//24.08` haette gereicht (1.99), waere aber der einzige
-  #   unpinnbare Baustein im ganzen Manifest — FFmpeg, webrtc-rs und MediaMTX
-  #   haengen alle an festen Commits. Ein Nightly-Regress braeche den
-  #   Flatpak-Bau zu einem beliebigen Zeitpunkt, ohne dass sich hier etwas
-  #   geaendert haette.
-  # * Runtime auf 25.08 anheben waere die saubere Dauerloesung, ist aber eine
-  #   eigene Baustelle (BaseApp, GL-Extension, codecs-extra) und hat mit dem
-  #   Player nichts zu tun.
+  # dem dieses Modul vom Sidecar daneben abweicht. Der Grund war hart:
+  # `org.freedesktop.Sdk.Extension.rust-stable//24.08` lieferte rustc 1.89, die
+  # egui-0.35-Kette verlangt 1.92, und `rust-nightly` waere der einzige
+  # unpinnbare Baustein im Manifest gewesen. Seit dem Umstieg auf 25.08
+  # (2026-10-12, 24.08 ist end-of-life) liefert die Extension rustc 1.98.1 und
+  # wuerde reichen. Die eigene Toolchain bleibt trotzdem vorerst: an ihr sind die
+  # Messungen entstanden (s. unten), und ein Wechsel ist ein eigener Schritt.
   #
   # Also die offizielle Toolchain, auf Version UND Pruefsumme festgenagelt. Sie
   # wird in den BAU-Ordner ausgepackt, nicht nach /app — sie landet also nicht
@@ -385,10 +378,10 @@ modules:
   - name: pulse-player
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/llvm18/bin
+      append-path: /usr/lib/sdk/llvm20/bin
       env:
         CARGO_HOME: /run/build/pulse-player/cargo
-        LIBCLANG_PATH: /usr/lib/sdk/llvm18/lib
+        LIBCLANG_PATH: /usr/lib/sdk/llvm20/lib
         # **Ausdruecklich, weil der Player sonst das FFMPEG DES SDK nimmt.**
         #
         # Bis zum 2026-08-07 stand hier nichts, und `ldd /app/bin/pulse-player`

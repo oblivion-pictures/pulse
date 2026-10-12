@@ -54,7 +54,7 @@ flatpak run com.howispulse.Pulse
 > an install straight off the published channel legitimately shows up as
 > `pulse1-origin`. A local `build.fish` install is recognisable by its
 > `file:///…/.flatpak-builder/cache` URL.
-First run pulls runtimes (`org.freedesktop.{Platform,Sdk}//24.08`, `org.electronjs.Electron2.BaseApp//24.08`) and
+First run pulls runtimes (`org.freedesktop.{Platform,Sdk}//25.08`, `org.electronjs.Electron2.BaseApp//25.08`) and
 builds FFmpeg from source. That used to also build GSR from source; that build step is gone since 2026-08-27, so
 the first run is now shorter than the ~15-30 min this used to say — not re-measured since, so no new number here.
 

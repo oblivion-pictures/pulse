@@ -14,11 +14,11 @@
 # Laufen:  flatpak run com.howispulse.PulseServer
 app-id: com.howispulse.PulseServer
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 # zypak ersetzt Chromiums setuid-Sandbox (in Flatpak unbrauchbar) durch bubblewrap.
 base: org.electronjs.Electron2.BaseApp
-base-version: '24.08'
+base-version: '25.08'
 command: pulse-server
 appstream-compose: false
 separate-locales: false
