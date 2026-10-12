@@ -28,6 +28,8 @@ type Satz = {
   kontoId: string;
   /** S. `schema.ts::Satz.nichtZugestellt`. */
   nichtZugestellt?: boolean;
+  /** S. `schema.ts::Satz.archivZeile`. */
+  archivZeile?: string;
 };
 
 /**
@@ -74,6 +76,8 @@ export function zuSatz(kanalId: string, nachricht: unknown, kontoId: string): Sa
   const anhaenge = Array.isArray(n.attachments) ? n.attachments : [];
   const antwortAufId = istGueltigeKennung(n.reply_to_id) ? n.reply_to_id : null;
   const kryptoId = istGueltigeKennung(n.krypto_id) ? n.krypto_id : null;
+  // Nur eine Nachricht aus dem Archiv trägt `archiv_zeile` (`archiv/zeile.ts::leseZeile`).
+  const archivZeile = istGueltigeKennung(n.archiv_zeile) ? n.archiv_zeile : null;
 
   return {
     schluessel: sortierSchluessel(kanalId, id),
@@ -89,7 +93,8 @@ export function zuSatz(kanalId: string, nachricht: unknown, kontoId: string): Sa
     antwortAufId,
     kryptoId,
     kontoId,
-    ...(n.nicht_zugestellt === true ? { nichtZugestellt: true } : {})
+    ...(n.nicht_zugestellt === true ? { nichtZugestellt: true } : {}),
+    ...(archivZeile !== null ? { archivZeile } : {})
   };
 }
 
@@ -239,7 +244,8 @@ export type Nachschub = 'sicherung' | 'archiv';
  *
  *   - Ein Grabstein bleibt einer — der Nachschub kann ihn nicht aufheben.
  *   - Ein anderer Autor unter demselben Schlüssel ist nicht dieselbe
- *     Nachricht; der liegende Satz bleibt unangetastet.
+ *     Nachricht; der liegende Satz bleibt unangetastet. Wohin der Nachschub
+ *     dann geht, entscheidet `platzWahl.ts`.
  *   - Inhalt, Bearbeitung, Reaktionen, Zustellstand: der liegende gewinnt —
  *     er ist auf diesem Gerät gepflegt worden, der Nachschub ist eine Kopie
  *     von früher.
@@ -301,24 +307,33 @@ export function satzErgaenzen<S extends Satz>(
 }
 
 /**
- * Legt die Sätze EINES Nachschubs zusammen, die denselben Schlüssel tragen —
- * mit derselben Regel wie gegen den liegenden Bestand (`satzErgaenzen`): der
- * erste gewinnt, ein späterer ergänzt ihn höchstens.
+ * Legt die Sätze EINES Nachschubs zusammen, die denselben Schlüssel UND
+ * denselben Autor tragen — mit derselben Regel wie gegen den liegenden
+ * Bestand (`satzErgaenzen`): der erste gewinnt, ein späterer ergänzt ihn
+ * höchstens. Sätze verschiedener Autoren unter demselben Schlüssel bleiben
+ * getrennt; sie laufen nacheinander durch die Platzwahl
+ * (`platzWahl.ts`, Gegenprüfung 2026-10-12, Fund 3), statt dass der zweite
+ * hier still wegfällt.
  *
- * Gegenprüfung 2026-10-12, Fund 5: `db.ts::verlaufSaetzeErgaenzen` stellt
- * alle Leseanfragen, bevor die erste Antwort kommt, und sah die eigenen
+ * Gegenprüfung 2026-10-12, Fund 5: `verlaufSaetzeErgaenzen` stellte früher
+ * alle Leseanfragen, bevor die erste Antwort kam, und sah die eigenen
  * Schreibvorgänge desselben Aufrufs deshalb nicht. Zwei Archiv-Zeilen mit
  * derselben ID (eine Zeile eines Mitglieds mit der ID einer fremden
  * Nachricht, oder einfach doppelt eingeliefert) liefen beide gegen „liegt
  * nichts" und wurden beide geschrieben — die spätere blind über die
- * frühere. Die Reihenfolge bleibt die des ersten Auftretens.
+ * frühere. Heute legt `dbErgaenzen.ts` die Sätze nacheinander ab, jeder
+ * sieht also den vorigen; die Verdichtung vorab schreibt, was denselben
+ * Schlüssel und Autor teilt, nur einmal. Die Reihenfolge bleibt die des
+ * ersten Auftretens.
  */
 export function nachSchluesselVerdichten<S extends Satz>(saetze: S[], herkunft: Nachschub): S[] {
-  const jeSchluessel = new Map<string, S>();
+  const jeSchluesselUndAutor = new Map<string, S>();
   for (const satz of saetze) {
-    const erster = jeSchluessel.get(satz.schluessel);
-    if (erster === undefined) jeSchluessel.set(satz.schluessel, satz);
-    else jeSchluessel.set(satz.schluessel, satzErgaenzen(erster, satz, herkunft) ?? erster);
+    const schluesselUndAutor = `${satz.schluessel}|${satz.autorId}`;
+    const erster = jeSchluesselUndAutor.get(schluesselUndAutor);
+    const verdichtet =
+      erster === undefined ? satz : (satzErgaenzen(erster, satz, herkunft) ?? erster);
+    jeSchluesselUndAutor.set(schluesselUndAutor, verdichtet);
   }
-  return [...jeSchluessel.values()];
+  return [...jeSchluesselUndAutor.values()];
 }

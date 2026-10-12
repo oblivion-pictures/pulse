@@ -124,6 +124,14 @@ export type Satz = {
    * „zugestellt bzw. unbekannt".
    */
   nichtZugestellt?: boolean;
+  /**
+   * Nur an einem Satz aus dem Server-Archiv: die Zeilen-ID seiner
+   * Archiv-Zeile (Gegenprüfung 2026-10-12, Fund 3). Liegt unter der eigenen
+   * ID `i` der Zeile schon ein Satz eines anderen Autors, weicht der Satz
+   * unter diese Zeilen-ID aus (`platzWahl.ts`) — der Server hält sie
+   * eindeutig. Kein `DB_VERSION`-Bump (neues FELD, s. `antwortAufId`).
+   */
+  archivZeile?: string;
 };
 
 /**

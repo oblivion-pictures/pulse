@@ -24,11 +24,10 @@
  */
 
 import { auth } from '$lib/stores/auth.svelte';
-import type { Message } from '$lib/api/types';
 import { archivKanalSchluessel, archivSeite } from '$lib/api/archiv';
 import { kanalSchluesselHolen } from './kanalSchluessel';
 import { entschluesseleZeile } from './krypto';
-import { leseZeile, type Grabstein } from './zeile';
+import { leseZeile, type ArchivNachricht, type Grabstein } from './zeile';
 import { archivPaar } from './konto';
 import { verlaufErgaenzen, verlaufGebundenGeloescht } from '$lib/verlauf';
 import { messages } from '$lib/stores/messages.svelte';
@@ -69,7 +68,7 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 			const vorId = lesestand.get(kanalId);
 			const zeilen = await archivSeite(kanalId, vorId, SEITEN_GROESSE);
 			if (zeilen.length === 0) break;
-			const nachrichten: Message[] = [];
+			const nachrichten: ArchivNachricht[] = [];
 			const grabsteine: Grabstein[] = [];
 			let verworfen = 0;
 			for (const zeile of zeilen) {
@@ -77,7 +76,7 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 					const klarText = new TextDecoder().decode(
 						await entschluesseleZeile(kanalSchluessel, vonB64(zeile.nutzlast_b64))
 					);
-					const eintrag = leseZeile(zeile.channel_id, klarText, zeile.user_id ?? null);
+					const eintrag = leseZeile(zeile.channel_id, klarText, zeile.user_id ?? null, zeile.id);
 					if (eintrag === null) verworfen++;
 					else if (eintrag.art === 'grabstein') grabsteine.push(eintrag);
 					else nachrichten.push(eintrag.nachricht);

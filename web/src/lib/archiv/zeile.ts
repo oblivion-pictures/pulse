@@ -113,8 +113,14 @@ export function baueGrabsteinKlar(kennung: string, autorId: string, zeit: string
  *  der kanonischen Kennung `kennung`. */
 export type Grabstein = { art: 'grabstein'; autorId: string; kennung: string };
 
+/** Eine Nachricht aus dem Archiv: dazu die Zeilen-ID, unter die sie
+ *  ausweicht, wenn unter ihrer eigenen ID `i` schon ein Satz eines anderen
+ *  Autors liegt (`verlauf/platzWahl.ts`; `verlauf/satz.ts::zuSatz` übernimmt
+ *  sie in den Satz). */
+export type ArchivNachricht = Message & { archiv_zeile?: string };
+
 /** Was eine Archiv-Zeile ist, nachdem `leseZeile` sie angenommen hat. */
-export type ArchivEintrag = { art: 'nachricht'; nachricht: Message } | Grabstein;
+export type ArchivEintrag = { art: 'nachricht'; nachricht: ArchivNachricht } | Grabstein;
 
 /**
  * Bestandszeilen ohne Einlieferer (eingeliefert vor Migration 0102) werden
@@ -135,11 +141,15 @@ const BESTANDSZEILEN_ANNEHMEN = true;
  * oder `null`: die Zeile wird verworfen. Verworfen wird eine Zeile, deren
  * Autor nicht ihr Einlieferer ist, und jede Grabstein-Zeile ohne bekannten
  * Einlieferer. Wirft bei kaputtem JSON (wie `leseZeilenKlar`).
+ *
+ * `zeilenId` ist die ID der Zeile beim Server; die Nachricht trägt sie als
+ * `archiv_zeile` mit, wenn sie eine Kennung ist.
  */
 export function leseZeile(
 	kanalId: string,
 	roh: string,
-	einlieferer: string | null
+	einlieferer: string | null,
+	zeilenId?: string
 ): ArchivEintrag | null {
 	const inhalt = JSON.parse(roh) as Partial<ArchivZeileKlar & GrabsteinZeileKlar>;
 	const vomAutor = einlieferer !== null && inhalt.a === einlieferer;
@@ -151,7 +161,11 @@ export function leseZeile(
 	const angenommeneBestandszeile = einlieferer === null && BESTANDSZEILEN_ANNEHMEN;
 	if (!vomAutor && !angenommeneBestandszeile) return null;
 	if (!istGueltigeKennung(inhalt.i) || !istGueltigeKennung(inhalt.a)) return null;
-	return { art: 'nachricht', nachricht: zuNachricht(kanalId, ohneUngueltigeBezuege(inhalt)) };
+	const nachricht = zuNachricht(kanalId, ohneUngueltigeBezuege(inhalt));
+	return {
+		art: 'nachricht',
+		nachricht: istGueltigeKennung(zeilenId) ? { ...nachricht, archiv_zeile: zeilenId } : nachricht
+	};
 }
 
 /** Der Antwortbezug und die Anhänge einer Zeile, soweit sie Kennungen sind —

@@ -12,13 +12,7 @@
  */
 import { STORE_NACHRICHTEN, STORE_ANHAENGE, STORE_MEDIEN, type Satz } from './schema';
 import { mitVerbindung } from './verbindung';
-import {
-  sortierSchluessel,
-  satzErgaenzen,
-  satzAnhangIds,
-  nachSchluesselVerdichten,
-  type Nachschub
-} from './satz';
+import { sortierSchluessel, satzAnhangIds } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
 import { ablegenMitRegister, kanalBereich, OBERE_ID } from './dbRegister';
 import { anhaengeVerwaistLoeschen } from './dbAnhaenge';
@@ -35,6 +29,8 @@ export {
   anhaengeVerwaistLoeschen
 } from './dbAnhaenge';
 export { satzAnhangIds } from './satz';
+// Der Nachschub (Archiv, Sicherung) liegt in `dbErgaenzen.ts`.
+export { verlaufSaetzeErgaenzen } from './dbErgaenzen';
 // Die Lösch-Wege (mit Grabstein-Register) liegen in `dbLoeschen.ts`.
 export {
   verlaufMarkiereGeloescht,
@@ -101,58 +97,6 @@ export function verlaufPutSaetze(
           };
         }
         tx.oncomplete = () => resolve(alsGrabstein);
-        tx.onerror = () => reject(tx.error);
-      })
-  );
-}
-
-/**
- * Wie `verlaufPutSaetze`, aber ein schon liegender Satz wird ERGÄNZT statt
- * überschrieben (`satz.ts::satzErgaenzen`) — für die Wege, die fremden
- * Bestand nachliefern: Sicherungs-Wiederherstellung (`sicherung/andock.ts`)
- * und Server-Archiv (`archiv/lesen.ts` über `verlauf/index.ts`). Lesen und
- * Schreiben in EINER Transaktion (Muster `verlaufSatzUmschreiben`): zwischen
- * dem Blick auf den liegenden Satz und dem Schreiben darf kein Grabstein und
- * keine Bearbeitung dazwischenfahren, die das Schreiben dann überginge.
- *
- * Ein Satz eines FREMDEN Kontos unter demselben Schlüssel wird wie bisher
- * überschrieben — an dieser Stelle ändert sich gegenüber `verlaufPutSaetze`
- * nur der Fall „eigener Satz liegt schon da". `herkunft` sagt, wie viel der
- * Nachschub dabei ergänzen darf (`satz.ts::Nachschub`). Was geschrieben
- * wird, läuft wie dort durch das Grabstein-Register: eine gelöschte
- * Nachricht kommt über den Nachschub nicht zurück, auch nicht unter einer
- * anderen lokalen ID. Ergebnis: wie viele Sätze geschrieben wurden.
- */
-export function verlaufSaetzeErgaenzen(
-  saetze: Satz[],
-  kontoId: string,
-  herkunft: Nachschub
-): Promise<number> {
-  if (saetze.length === 0) return Promise.resolve(0);
-  return mitVerbindung(
-    (db) =>
-      new Promise<number>((resolve, reject) => {
-        const tx = db.transaction([STORE_NACHRICHTEN, STORE_MEDIEN], 'readwrite');
-        const store = tx.objectStore(STORE_NACHRICHTEN);
-        const medien = tx.objectStore(STORE_MEDIEN);
-        let geschrieben = 0;
-        // Erst innerhalb des Nachschubs verdichten (Fund 5): die Leseanfragen
-        // unten sehen die Schreibvorgänge desselben Aufrufs nicht.
-        for (const neu of nachSchluesselVerdichten(saetze, herkunft)) {
-          const getReq = store.get(neu.schluessel);
-          getReq.onsuccess = () => {
-            const vorhanden = getReq.result as Satz | undefined;
-            const satz =
-              vorhanden !== undefined && gehoertZuKonto(vorhanden, kontoId)
-                ? satzErgaenzen(vorhanden, neu, herkunft)
-                : neu;
-            if (satz === null) return;
-            ablegenMitRegister(store, medien, satz);
-            geschrieben++;
-          };
-          getReq.onerror = () => reject(getReq.error);
-        }
-        tx.oncomplete = () => resolve(geschrieben);
         tx.onerror = () => reject(tx.error);
       })
   );

@@ -195,4 +195,14 @@ describe('archiv/zeile', () => {
 			['8']
 		);
 	});
+
+	test('Fund 3: die Nachricht trägt die Zeilen-ID als Ausweichplatz mit, wenn sie eine Kennung ist', () => {
+		const mit = leseZeile('999', klar(nachricht()), '42', '5000000000000000001');
+		assert.equal(mit?.art === 'nachricht' && mit.nachricht.archiv_zeile, '5000000000000000001');
+		const satz = mit?.art === 'nachricht' ? zuSatz('999', mit.nachricht, 'konto') : null;
+		assert.equal(satz?.archivZeile, '5000000000000000001');
+		// Ohne oder mit ungültiger Zeilen-ID: keine.
+		const ohne = leseZeile('999', klar(nachricht()), '42', 'x');
+		assert.equal(ohne?.art === 'nachricht' && 'archiv_zeile' in ohne.nachricht, false);
+	});
 });

@@ -23,6 +23,7 @@ const D = '700000000000009000';
 
 type Satz = {
   nachrichtId: string;
+  autorId: string;
   geloescht: boolean;
   inhalt: string;
   kryptoId: string | null;
@@ -68,6 +69,8 @@ async function ablegen(
     geloescht?: boolean;
     anhaenge?: { id: string }[];
     antwortAuf?: string;
+    /** Zeilen-ID einer Archiv-Zeile (`archiv/zeile.ts::leseZeile`). */
+    zeile?: string;
   }[]
 ): Promise<string[] | number> {
   return page.evaluate(
@@ -88,7 +91,8 @@ async function ablegen(
             ...(s.verschluesselt ? { verschluesselt: true } : {}),
             ...(s.geloescht ? { deleted_at: '2026-10-12T00:00:01Z' } : {}),
             ...(s.anhaenge ? { attachments: s.anhaenge } : {}),
-            ...(s.antwortAuf ? { reply_to_id: s.antwortAuf } : {})
+            ...(s.antwortAuf ? { reply_to_id: s.antwortAuf } : {}),
+            ...(s.zeile ? { archiv_zeile: s.zeile } : {})
           },
           kontoId
         )
@@ -509,6 +513,68 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     );
     expect(await kanal(page)).toEqual([]);
     expect(await anhangDa(page, BILD)).toBe(true);
+  });
+
+  // Fund 3 der zweiten Gegenprüfung: eine Archiv-Zeile liegt unter ihrer
+  // eigenen ID `i`, und die wählt der Einliefernde frei. Bobs Zeile
+  // `{i: K, a: Bob}` belegte Alices Schlüssel, und Alices Zeile wie ihr Satz
+  // aus der eigenen Sicherung fielen weg (`platzWahl.ts`).
+  const R_ALICE = '5000000000000000001';
+  const R_BOB = '5000000000000000002';
+
+  /** Sichtbare Sätze als `ID Autor Kennung Inhalt`. */
+  async function belegung(page: Page): Promise<string[]> {
+    return (await kanal(page))
+      .filter((s) => !s.geloescht)
+      .map((s) => {
+        const autor = s.autorId === ALICE ? 'alice' : 'bob';
+        return `${s.nachrichtId} ${autor} ${s.kryptoId} ${s.inhalt}`;
+      });
+  }
+
+  test('Fund 3 (zweite Gegenprüfung): Bobs Zeile unter Alices Kennung verdrängt Alices Nachricht nicht', async ({ page }) => {
+    await ablegen(page, 'archiv', [{ id: K, autor: BOB, kryptoId: K, zeile: R_BOB, inhalt: 'bob' }]);
+    await ablegen(page, 'archiv', [{ id: K, autor: ALICE, kryptoId: K, zeile: R_ALICE, inhalt: 'echt' }]);
+    // Alices Zeile weicht unter ihre Zeilen-ID aus, mit K als Kennung.
+    expect(await belegung(page)).toEqual([`${K} bob ${K} bob`, `${R_ALICE} alice ${K} echt`]);
+    // Alices eigene Sicherung holt sich den Schlüssel K zurück; Bobs Satz
+    // weicht unter seine Zeilen-ID aus, statt wegzufallen.
+    await ablegen(page, 'sicherung', [{ id: K, autor: ALICE, inhalt: 'aus der Sicherung' }]);
+    expect(await belegung(page)).toEqual([
+      `${K} alice null aus der Sicherung`,
+      `${R_ALICE} alice ${K} echt`,
+      `${R_BOB} bob ${K} bob`
+    ]);
+    // Ein zweites Lesen derselben Zeilen ändert nichts mehr.
+    await ablegen(page, 'archiv', [
+      { id: K, autor: BOB, kryptoId: K, zeile: R_BOB, inhalt: 'bob' },
+      { id: K, autor: ALICE, kryptoId: K, zeile: R_ALICE, inhalt: 'echt' }
+    ]);
+    expect(await belegung(page)).toHaveLength(3);
+  });
+
+  test('Fund 3 (zweite Gegenprüfung): zwei Autoren mit derselben ID in EINEM Nachschub fallen beide nicht weg', async ({ page }) => {
+    await ablegen(page, 'archiv', [
+      { id: K, autor: BOB, kryptoId: K, zeile: R_BOB, inhalt: 'bob' },
+      { id: K, autor: ALICE, kryptoId: K, zeile: R_ALICE, inhalt: 'echt' }
+    ]);
+    expect(await belegung(page)).toEqual([`${K} bob ${K} bob`, `${R_ALICE} alice ${K} echt`]);
+  });
+
+  test('Fund 3 (zweite Gegenprüfung): einen vorab belegten Ausweichplatz holt sich die Zeile zurück', async ({ page }) => {
+    // Bob liest das Archiv mit und kennt Alices Zeilen-ID. Er liefert eine
+    // Zeile mit `i = R_alice` ein und eine mit `i = K`.
+    const R_BOB_2 = '5000000000000000003';
+    await ablegen(page, 'archiv', [
+      { id: R_ALICE, autor: BOB, kryptoId: R_ALICE, zeile: R_BOB_2, inhalt: 'vorab' },
+      { id: K, autor: BOB, kryptoId: K, zeile: R_BOB, inhalt: 'bob' }
+    ]);
+    await ablegen(page, 'archiv', [{ id: K, autor: ALICE, kryptoId: K, zeile: R_ALICE, inhalt: 'echt' }]);
+    expect(await belegung(page)).toEqual([
+      `${K} bob ${K} bob`,
+      `${R_ALICE} alice ${K} echt`,
+      `${R_BOB_2} bob ${R_ALICE} vorab`
+    ]);
   });
 
   test('Register-Einträge erscheinen in keinem Leseweg', async ({ page }) => {
