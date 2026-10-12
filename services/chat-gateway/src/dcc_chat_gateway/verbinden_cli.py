@@ -108,7 +108,10 @@ class Umgebung:
     hostname: str
     cloud_origin: str
     verzeichnis: Path
-    instanz_id: int  # ``pulse_instance_id`` aus /etc/pulse/env.sh; 0 = unverbunden
+    #: Kamen die Verbindungswerte aus der Container-Umgebung (``docker run -e``, .env)?
+    #: Das sagt allein die Hülle (``PULSE_CONNECT_AUS_UMGEBUNG``); ein Blick in env.sh
+    #: kann es nicht, denn dort stehen auch die Werte aus ``verbindung.env``.
+    aus_umgebung: bool
     modus: str
     lokal_url: str = LOKAL_URL_VORGABE
 
@@ -127,15 +130,15 @@ def _vorpruefung(umgebung: Umgebung) -> None:
         raise Abbruch(1, texte.NUR_SELF_HOST)
     if not umgebung.hostname:
         raise Abbruch(1, texte.OHNE_ADRESSE)
+    # Werte aus der Umgebung gewinnen gegen die Datei (07-render-env.sh): eine
+    # neue Datei bliebe wirkungslos, also gar nicht erst anfangen.
+    if umgebung.aus_umgebung:
+        raise Abbruch(1, texte.AUS_DER_UMGEBUNG)
 
 
 def _bestehende_verbindung(umgebung: Umgebung, rueckfrage: Callable[[str], bool]) -> None:
-    datei_id = lies_verbindung(umgebung.verzeichnis).get("PULSE_INSTANCE_ID", "")
-    # Eine Instanz-Nummer, die nicht aus der Datei stammt, steht in der Umgebung —
-    # und die gewinnt (07-render-env.sh). Eine neue Datei bliebe wirkungslos.
-    if umgebung.instanz_id and str(umgebung.instanz_id) != datei_id:
-        raise Abbruch(1, texte.AUS_DER_UMGEBUNG)
-    if datei_id and not rueckfrage(texte.SCHON_VERBUNDEN):
+    verbunden = lies_verbindung(umgebung.verzeichnis).get("PULSE_INSTANCE_ID")
+    if verbunden and not rueckfrage(texte.SCHON_VERBUNDEN):
         raise Abbruch(1, texte.NICHTS_GEAENDERT)
 
 
@@ -306,7 +309,7 @@ def main(argv: list[str] | None = None) -> int:
         hostname=os.environ.get("PULSE_HOSTNAME", "").strip(),
         cloud_origin=settings.pulse_cloud_origin.rstrip("/"),
         verzeichnis=Path(settings.pulse_verbinden_dir),
-        instanz_id=settings.pulse_instance_id,
+        aus_umgebung=os.environ.get("PULSE_CONNECT_AUS_UMGEBUNG") == "1",
         modus=settings.pulse_instance_mode,
         lokal_url=os.environ.get("CHAT_GATEWAY_URL", LOKAL_URL_VORGABE).rstrip("/"),
     )

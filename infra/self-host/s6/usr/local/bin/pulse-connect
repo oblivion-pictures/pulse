@@ -15,5 +15,15 @@ if [ ! -r /etc/pulse/env.sh ]; then
     echo "pulse-connect: the server is still starting. Wait a moment and try again." >&2
     exit 1
 fi
+# Was der Container wirklich bekam (docker run -e, .env), VOR dem Sourcen festhalten:
+# 07-render-env.sh schreibt die Verbindungswerte immer in env.sh, auch die aus
+# /data/pulse/verbindung.env, und das Sourcen überdeckt damit die Container-Umgebung.
+# Nur ein Wert von aussen gewinnt gegen eine neue verbindung.env; die CLI muss das
+# von einem Wert aus der Datei unterscheiden können (verbinden_cli.py).
+PULSE_CONNECT_AUS_UMGEBUNG=
+if [ -n "${PULSE_INSTANCE_ID:-}${PULSE_INSTANCE_OWNER_ID:-}${PULSE_CLOUD_CLIENT_ID:-}${PULSE_CLOUD_CLIENT_SECRET:-}" ]; then
+    PULSE_CONNECT_AUS_UMGEBUNG=1
+fi
+export PULSE_CONNECT_AUS_UMGEBUNG
 . /etc/pulse/env.sh
 exec /opt/pulse/venv/bin/python3 -m dcc_chat_gateway.verbinden_cli "$@"
