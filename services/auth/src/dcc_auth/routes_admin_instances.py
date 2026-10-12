@@ -7,8 +7,9 @@ DELETE /admin/instances/{id}               -- suspend (soft)
 POST /admin/instances/{id}/unsuspend       -- Sperre aufheben / Adresse freigeben
 POST /admin/instances/{id}/rotate-secret
 
-Die Antrags-Endpoints (``/admin/instance-applications``) leben seit dem
-vereinten Antragssystem (Migration 0044) in ``routes_admin_applications.py``.
+Antrag und Freigabe (``/admin/instance-applications``) sind seit Oktober 2026
+entfernt (Spec E11); Server verbinden sich per Gerätecode selbst
+(``routes_verbinden.py``).
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
 from dcc_auth.config import get_settings
@@ -101,54 +102,6 @@ class RotateSecretOut(BaseModel):
     instance_id: str  # Snowflake-String-API
     client_secret: str
     warning: str = _SECRET_WARNING
-
-
-# --------------------------------------------------------------------------- #
-# Helpers                                                                       #
-# --------------------------------------------------------------------------- #
-
-_SELF_HOST_WORKER_START = 100  # Worker-IDs 1-99 reserviert für Cloud
-
-
-_WORKER_ID_MAX = 1023  # Snowflake 10-bit-Range
-
-
-async def _allocate_worker_ids(session) -> tuple[int, int, int]:
-    """Find and return the next 3 free worker IDs >= 100.
-
-    Allocates chat/voice/media IDs sequentially starting from the
-    current maximum.  The caller holds a FOR UPDATE lock on the
-    application row so parallel approvals will serialise here.
-    Raises RuntimeError on allocation failure (> 5 retries).
-    """
-    # Find max of all three worker ID columns
-    row = (
-        await session.execute(
-            select(
-                func.max(RegisteredInstance.worker_id_chat).label("mx_chat"),
-                func.max(RegisteredInstance.worker_id_voice).label("mx_voice"),
-                func.max(RegisteredInstance.worker_id_media).label("mx_media"),
-            )
-        )
-    ).one()
-
-    current_max = max(
-        row.mx_chat or 0,
-        row.mx_voice or 0,
-        row.mx_media or 0,
-    )
-    base = max(current_max + 1, _SELF_HOST_WORKER_START)
-
-    if base + 2 > _WORKER_ID_MAX:
-        raise HTTPException(
-            status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
-            detail=(
-                "worker-id range exhausted (max ~307 Self-Host-Instanzen). "
-                "Erweiterung des Snowflake-Worker-ID-Bits in Planung (DE 14)."
-            ),
-        )
-
-    return base, base + 1, base + 2
 
 
 # --------------------------------------------------------------------------- #

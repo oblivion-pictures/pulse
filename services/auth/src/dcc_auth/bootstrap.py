@@ -36,10 +36,11 @@ def hash_bootstrap_token(token: str) -> str:
 async def bootstrap_redeemed(db, instance_id: int) -> bool:
     """Wurde fuer diese Instanz je ein Bootstrap-Token eingeloest?
 
-    Das ist die Frage „ist dieser Server schon einmal versorgt worden" — und
-    sie muss BEIDE Wege kennen. Der Schnellinstaller und der ``.env``-Download
-    liefern dieselben Cloud-Credentials und rotieren beim Ausstellen dasselbe
-    ``client_secret``; wer den zweiten Weg nimmt, macht den ersten tot.
+    Das ist die Frage „ist dieser Server schon einmal versorgt worden". Bis
+    Oktober 2026 musste sie BEIDE Wege kennen: der Schnellinstaller und der
+    inzwischen entfernte ``.env``-Download lieferten dieselben Cloud-Credentials
+    und rotierten beim Ausstellen dasselbe ``client_secret``; wer den zweiten
+    Weg nahm, machte den ersten tot.
     Bis 2026-07-27 wussten die beiden nichts voneinander: brach der Installer
     NACH dem Einloesen ab (Container startet nicht, TLS scheitert), lagen die
     gueltigen Zugangsdaten laengst auf dem Server — und ein anschliessender
@@ -60,7 +61,7 @@ async def bootstrap_redeemed(db, instance_id: int) -> bool:
 async def drop_unredeemed_tokens(db, instance_id: int) -> None:
     """Uneingeloeste Tokens dieser Instanz entwerten.
 
-    Wird von JEDER Credential-Ausgabe aufgerufen — Mint wie ``.env``-Download.
+    Wird von jedem Mint aufgerufen (bis Oktober 2026 auch vom ``.env``-Download).
     Sonst bleibt nach einem abgebrochenen Installer-Lauf ein gueltiges Token
     bis zu seiner Ablaufzeit liegen; wird es spaeter doch noch eingeloest
     (zweiter Versuch, zweites Terminal, Scrollback), rotiert es das Secret

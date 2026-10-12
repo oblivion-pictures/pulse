@@ -2,21 +2,28 @@
 
 Pattern mirrors test_admin.py: register users via HTTP, promote via SQLAlchemy,
 login to get fresh tokens, then exercise the endpoints.
+
+Antrag und Freigabe (``/admin/instance-applications``) sind seit Oktober 2026
+entfernt (Spec E11). Die Instanzen dieser Suite entstehen deshalb direkt in
+der Datenbank (``_seed_instance``) — so, wie ein Bestandsserver aus der
+Freigabe-Zeit dort steht.
 """
 
 from __future__ import annotations
+
+import secrets
 
 import pytest
 from sqlalchemy import select
 
 from dcc_auth.models import AdminAuditLog, User
 from dcc_auth.models_instances import (
-    InstanceApplication,
     RegisteredInstance,
     SuspendedInstance,
     UserInstanceMembership,
 )
-from dcc_auth.security import verify_password
+from dcc_auth.security import hash_password, verify_password
+from dcc_auth.snowflake import next_id
 
 
 # --------------------------------------------------------------------------- #
@@ -33,14 +40,10 @@ async def _register(client, *, username: str, email: str) -> str:
     return r.json()["access_token"]
 
 
-async def _promote(session_factory, username: str, *, owner: bool = True) -> None:
+async def _promote(session_factory, username: str) -> None:
     async with session_factory() as s:
         user = (await s.execute(select(User).where(User.username == username))).scalar_one()
         user.is_admin = True
-        # Instanz-Approve/Reject sind owner-gated (Owner-Stufe). Der Default-
-        # Admin-Token dieser Suite muss daher auch Owner sein; ``owner=False``
-        # erzeugt einen Nur-Admin für die Owner-Gate-403-Tests.
-        user.is_owner = owner
         await s.commit()
 
 
@@ -53,25 +56,34 @@ async def _login(client, *, username: str) -> str:
     return r.json()["access_token"]
 
 
-async def _seed_application(session_factory, *, user_id: int, hostname: str) -> int:
-    """Insert a pending InstanceApplication and return its id."""
-    from dcc_auth.snowflake import next_id
+async def _seed_instance(
+    session_factory, *, user_id: int, hostname: str
+) -> tuple[str, str]:
+    """Aktive VPS-Instanz samt Besitzer-Mitgliedschaft anlegen, wie ein
+    Bestandsserver aus der Freigabe-Zeit (mit Worker-IDs, die neue Einträge
+    seit Oktober 2026 nicht mehr bekommen).
 
-    app_id = next_id()
+    Gibt ``(Instanz-ID als String, Klartext-Secret)`` zurück.
+    """
+    iid = next_id()
+    secret = secrets.token_urlsafe(32)
     async with session_factory() as s:
         s.add(
-            InstanceApplication(
-                id=app_id,
-                applicant_user_id=user_id,
+            RegisteredInstance(
+                id=iid,
                 hostname=hostname,
-                purpose="privat",
-                expected_users=5,
-                contact_email="op@dcc-test.example.com",
-                notes=None,
+                client_id=f"ci_{iid}",
+                client_secret=hash_password(secret),
+                worker_id_chat=900,
+                worker_id_voice=901,
+                worker_id_media=902,
+                status="active",
+                registered_by=user_id,
             )
         )
+        s.add(UserInstanceMembership(user_id=user_id, instance_id=iid, role="owner"))
         await s.commit()
-    return app_id
+    return str(iid), secret
 
 
 async def _get_user_id(session_factory, username: str) -> int:
@@ -101,7 +113,7 @@ async def regular_token(client):
 
 @pytest.fixture
 async def applicant_user_id(client, session_factory):
-    """Register a throwaway user and return their id (for seeding applications)."""
+    """Register a throwaway user and return their id (for seeding instances)."""
     # bootstrap slot already consumed by now if admin_token fixture ran first;
     # we seed directly so we don't need to worry about order.
     await _register(client, username="operator", email="operator@dcc-test.example.com")
@@ -111,34 +123,6 @@ async def applicant_user_id(client, session_factory):
 # --------------------------------------------------------------------------- #
 # 1. Auth gate — all endpoints must 403 for non-admins                         #
 # --------------------------------------------------------------------------- #
-
-
-@pytest.mark.asyncio
-async def test_list_applications_403(client, regular_token):
-    r = await client.get(
-        "/admin/instance-applications",
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
-    assert r.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_approve_403(client, regular_token):
-    r = await client.post(
-        "/admin/instance-applications/1/approve",
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
-    assert r.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_reject_403(client, regular_token):
-    r = await client.post(
-        "/admin/instance-applications/1/reject",
-        json={"rejection_reason": "nope"},
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
-    assert r.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -178,204 +162,33 @@ async def test_rotate_secret_403_for_non_admin(client, regular_token):
 
 
 # --------------------------------------------------------------------------- #
-# 2. List applications                                                          #
+# 2. Antrag und Freigabe sind entfernt                                          #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.asyncio
-async def test_list_applications_empty(client, admin_token):
-    r = await client.get(
-        "/admin/instance-applications",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert r.status_code == 200
-    assert r.json() == []
-
-
-@pytest.mark.asyncio
-async def test_list_applications_pending(client, admin_token, session_factory, applicant_user_id):
-    await _seed_application(session_factory, user_id=applicant_user_id, hostname="self1.example.com")
-    r = await client.get(
-        "/admin/instance-applications",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert r.status_code == 200
-    data = r.json()
-    assert len(data) == 1
-    assert data[0]["hostname"] == "self1.example.com"
-    assert data[0]["status"] == "pending"
-    assert "applicant_username" in data[0]
-
-
-# --------------------------------------------------------------------------- #
-# 3. Approve happy path                                                         #
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.asyncio
-async def test_approve_happy(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
-        session_factory, user_id=applicant_user_id, hostname="self2.example.com"
-    )
+async def test_antrags_verwaltung_ist_entfernt(client, admin_token):
+    """Seit Oktober 2026 gibt es keine Freigabe mehr (Spec E11) — die Routen
+    sind weg, auch für Admins. Ein 404 statt 403: es gibt sie schlicht nicht."""
+    h = {"Authorization": f"Bearer {admin_token}"}
+    assert (await client.get("/admin/instance-applications", headers=h)).status_code == 404
+    r = await client.post("/admin/instance-applications/1/approve", headers=h)
+    assert r.status_code == 404
     r = await client.post(
-        f"/admin/instance-applications/{app_id}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
+        "/admin/instance-applications/1/reject", json={"rejection_reason": "x"}, headers=h
     )
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert data["hostname"] == "self2.example.com"
-    assert "client_id" in data
-    assert "client_secret" in data
-    assert len(data["client_secret"]) > 20
-    assert data["worker_id_chat"] >= 100
-    assert data["worker_id_voice"] >= 100
-    assert data["worker_id_media"] >= 100
-    assert "warning" in data
-
-    # Verify DB state
-    assert isinstance(data["instance_id"], str), "instance_id must be a Snowflake string"
-    async with session_factory() as s:
-        app_row = await s.get(InstanceApplication, app_id)
-        assert app_row.status == "approved"
-        assert app_row.approved_instance_id is not None
-
-        inst = await s.get(RegisteredInstance, app_row.approved_instance_id)
-        assert inst is not None
-        assert inst.hostname == "self2.example.com"
-        # Secret must be hashed, not stored plaintext
-        assert verify_password(data["client_secret"], inst.client_secret)
-
-        # Approval must create the owner membership immediately, so the
-        # instance shows up in GET /me/instances (which reads memberships)
-        # before the owner ever redeems a bootstrap token.
-        membership = await s.get(
-            UserInstanceMembership, (applicant_user_id, inst.id)
-        )
-        assert membership is not None
-        assert membership.role == "owner"
+    assert r.status_code == 404
 
 
 # --------------------------------------------------------------------------- #
-# 4. Worker-ID allocation: two approvals → 6 distinct IDs, all >= 100          #
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.asyncio
-async def test_worker_id_allocation_two_approvals(
-    client, admin_token, session_factory, applicant_user_id
-):
-    app1 = await _seed_application(
-        session_factory, user_id=applicant_user_id, hostname="host-a.example.com"
-    )
-    app2 = await _seed_application(
-        session_factory, user_id=applicant_user_id, hostname="host-b.example.com"
-    )
-
-    r1 = await client.post(
-        f"/admin/instance-applications/{app1}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    r2 = await client.post(
-        f"/admin/instance-applications/{app2}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert r1.status_code == 200, r1.text
-    assert r2.status_code == 200, r2.text
-
-    d1, d2 = r1.json(), r2.json()
-    ids_1 = {d1["worker_id_chat"], d1["worker_id_voice"], d1["worker_id_media"]}
-    ids_2 = {d2["worker_id_chat"], d2["worker_id_voice"], d2["worker_id_media"]}
-
-    # All 6 must be >= 100
-    for wid in ids_1 | ids_2:
-        assert wid >= 100, f"worker_id {wid} below 100"
-
-    # No overlap between the two instances
-    assert ids_1.isdisjoint(ids_2), f"worker-id collision: {ids_1 & ids_2}"
-
-
-# --------------------------------------------------------------------------- #
-# 5. Approve idempotent: second call → 409, no secret in error body            #
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.asyncio
-async def test_approve_idempotent(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
-        session_factory, user_id=applicant_user_id, hostname="idem.example.com"
-    )
-    r1 = await client.post(
-        f"/admin/instance-applications/{app_id}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert r1.status_code == 200
-
-    r2 = await client.post(
-        f"/admin/instance-applications/{app_id}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert r2.status_code == 409
-    # Make sure no secret leaks in the error body
-    assert "client_secret" not in r2.text
-
-
-# --------------------------------------------------------------------------- #
-# 6. Reject happy path + idempotent                                             #
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.asyncio
-async def test_reject_happy(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
-        session_factory, user_id=applicant_user_id, hostname="rej.example.com"
-    )
-    r = await client.post(
-        f"/admin/instance-applications/{app_id}/reject",
-        json={"rejection_reason": "spam operation"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert r.status_code == 204
-
-    async with session_factory() as s:
-        app_row = await s.get(InstanceApplication, app_id)
-        assert app_row.status == "rejected"
-        assert app_row.rejection_reason == "spam operation"
-        assert app_row.reviewed_at is not None
-
-
-@pytest.mark.asyncio
-async def test_reject_idempotent(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
-        session_factory, user_id=applicant_user_id, hostname="rej2.example.com"
-    )
-    r1 = await client.post(
-        f"/admin/instance-applications/{app_id}/reject",
-        json={"rejection_reason": "first"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert r1.status_code == 204
-
-    r2 = await client.post(
-        f"/admin/instance-applications/{app_id}/reject",
-        json={"rejection_reason": "second"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert r2.status_code == 409
-
-
-# --------------------------------------------------------------------------- #
-# 7. List instances — no client_secret in response                              #
+# 3. List instances — no client_secret in response                              #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.asyncio
 async def test_list_instances_no_secret(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
+    await _seed_instance(
         session_factory, user_id=applicant_user_id, hostname="sec-check.example.com"
-    )
-    await client.post(
-        f"/admin/instance-applications/{app_id}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
     )
 
     r = await client.get(
@@ -391,12 +204,8 @@ async def test_list_instances_no_secret(client, admin_token, session_factory, ap
 
 @pytest.mark.asyncio
 async def test_list_instances_status_filter(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
+    await _seed_instance(
         session_factory, user_id=applicant_user_id, hostname="filter-test.example.com"
-    )
-    await client.post(
-        f"/admin/instance-applications/{app_id}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
     )
 
     r_active = await client.get(
@@ -415,20 +224,15 @@ async def test_list_instances_status_filter(client, admin_token, session_factory
 
 
 # --------------------------------------------------------------------------- #
-# 8. Suspend → DB state                                                         #
+# 4. Suspend → DB state                                                         #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.asyncio
 async def test_suspend_happy(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
+    inst_id, _ = await _seed_instance(
         session_factory, user_id=applicant_user_id, hostname="suspend-me.example.com"
     )
-    approval = await client.post(
-        f"/admin/instance-applications/{app_id}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    inst_id = approval.json()["instance_id"]
     inst_id_int = int(inst_id)
 
     r = await client.delete(
@@ -447,14 +251,9 @@ async def test_suspend_happy(client, admin_token, session_factory, applicant_use
 
 @pytest.mark.asyncio
 async def test_suspend_idempotent(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
+    inst_id, _ = await _seed_instance(
         session_factory, user_id=applicant_user_id, hostname="suspend-idem.example.com"
     )
-    approval = await client.post(
-        f"/admin/instance-applications/{app_id}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    inst_id = approval.json()["instance_id"]
 
     r1 = await client.delete(
         f"/admin/instances/{inst_id}", headers={"Authorization": f"Bearer {admin_token}"}
@@ -467,20 +266,15 @@ async def test_suspend_idempotent(client, admin_token, session_factory, applican
 
 
 # --------------------------------------------------------------------------- #
-# 9. Unsuspend → row gone, status active                                        #
+# 5. Unsuspend → row gone, status active                                        #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.asyncio
 async def test_unsuspend_happy(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
+    inst_id, _ = await _seed_instance(
         session_factory, user_id=applicant_user_id, hostname="unsuspend-me.example.com"
     )
-    approval = await client.post(
-        f"/admin/instance-applications/{app_id}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    inst_id = approval.json()["instance_id"]
     inst_id_int = int(inst_id)
 
     await client.delete(
@@ -502,14 +296,9 @@ async def test_unsuspend_happy(client, admin_token, session_factory, applicant_u
 
 @pytest.mark.asyncio
 async def test_unsuspend_idempotent(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
+    inst_id, _ = await _seed_instance(
         session_factory, user_id=applicant_user_id, hostname="unsuspend-idem.example.com"
     )
-    approval = await client.post(
-        f"/admin/instance-applications/{app_id}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    inst_id = approval.json()["instance_id"]
 
     # Not suspended yet — unsuspend should be a no-op
     r = await client.post(
@@ -520,7 +309,7 @@ async def test_unsuspend_idempotent(client, admin_token, session_factory, applic
 
 
 # --------------------------------------------------------------------------- #
-# 9b. Gelöschte Instanz, die ihre Adresse noch hält                             #
+# 5b. Gelöschte Instanz, die ihre Adresse noch hält                             #
 #     (der Besitzer hat eine GESPERRTE Instanz gelöscht, geloeschte_adresse.py) #
 # --------------------------------------------------------------------------- #
 
@@ -630,22 +419,16 @@ async def test_unsuspend_409_for_deleted_without_address(
 
 
 # --------------------------------------------------------------------------- #
-# 10. Rotate secret                                                              #
+# 6. Rotate secret                                                               #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.asyncio
 async def test_rotate_secret(client, admin_token, session_factory, applicant_user_id):
-    app_id = await _seed_application(
+    inst_id, old_secret_plain = await _seed_instance(
         session_factory, user_id=applicant_user_id, hostname="rotate-me.example.com"
     )
-    approval = await client.post(
-        f"/admin/instance-applications/{app_id}/approve",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    inst_id = approval.json()["instance_id"]
     inst_id_int = int(inst_id)
-    old_secret_plain = approval.json()["client_secret"]
 
     async with session_factory() as s:
         inst = await s.get(RegisteredInstance, inst_id_int)
@@ -697,27 +480,3 @@ async def test_instance_admin_is_cloud_only(client, admin_token, monkeypatch):
     r = await client.get("/admin/instances", headers=h)
     assert r.status_code == 403
     assert "cloud-only" in r.text
-
-
-@pytest.mark.asyncio
-async def test_approve_reject_require_owner(
-    client, admin_token, session_factory, applicant_user_id
-):
-    """Owner-Stufe: ein Admin OHNE Owner-Recht darf weder genehmigen noch ablehnen."""
-    await _register(client, username="modonly", email="modonly@dcc-test.example.com")
-    await _promote(session_factory, "modonly", owner=False)  # Admin, aber kein Owner
-    mod_token = await _login(client, username="modonly")
-    app_id = await _seed_application(
-        session_factory, user_id=applicant_user_id, hostname="self9.example.com"
-    )
-    h = {"Authorization": f"Bearer {mod_token}"}
-    assert (
-        await client.post(f"/admin/instance-applications/{app_id}/approve", headers=h)
-    ).status_code == 403
-    assert (
-        await client.post(
-            f"/admin/instance-applications/{app_id}/reject",
-            json={"rejection_reason": "x"},
-            headers=h,
-        )
-    ).status_code == 403

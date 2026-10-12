@@ -1,16 +1,20 @@
-"""Tests für /me/instance-applications + /me/instances (Phase 2.2)."""
+"""Tests für /me/instances (Phase 2.2).
+
+Antrag (``/me/instance-applications``) und ``.env``-Download sind seit
+Oktober 2026 entfernt (Spec E11); ``test_antrag_und_env_download_sind_entfernt``
+hält das fest.
+"""
 
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
 
-from sqlalchemy import select, update
+from sqlalchemy import update
 
-from dcc_auth.models import User
 from dcc_auth.models_instances import (
     InstanceBootstrapToken,
     RegisteredInstance,
@@ -36,14 +40,6 @@ _REG_B = {
 _LOGIN_A = {"email_or_username": _REG_A["email"], "password": _REG_A["password"]}
 _LOGIN_B = {"email_or_username": _REG_B["email"], "password": _REG_B["password"]}
 
-_VALID_APP = {
-    "hostname": "pulse.example.com",
-    "purpose": "privat",
-    "expected_users": 5,
-    "contact_email": "alice@dcc-test.example.com",
-    "notes": "Kleines Team",
-}
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -60,32 +56,14 @@ async def _reg_and_login(client, reg: dict, login: dict) -> str:
     return f"pulse_session={sid}"
 
 
-async def _enable_self_host(session_factory, client, cookie: str) -> None:
-    """④-Gate: die Credential-Endpunkte (env-file, bootstrap-token) verlangen
-    self_host_enabled. Diese Datei testet die Instanz-Workflows, nicht das Gate,
-    also schalten die Fixtures es frei (das Gate selbst deckt test_self_host_gate ab)."""
-    r = await client.get("/me", headers={"Cookie": cookie})
-    assert r.status_code == 200, r.text
-    uid = int(r.json()["id"])
-    async with session_factory() as session:
-        await session.execute(
-            update(User).where(User.id == uid).values(self_host_enabled=True)
-        )
-        await session.commit()
+@pytest_asyncio.fixture
+async def alice_cookie(client) -> str:
+    return await _reg_and_login(client, _REG_A, _LOGIN_A)
 
 
 @pytest_asyncio.fixture
-async def alice_cookie(session_factory, client) -> str:
-    cookie = await _reg_and_login(client, _REG_A, _LOGIN_A)
-    await _enable_self_host(session_factory, client, cookie)
-    return cookie
-
-
-@pytest_asyncio.fixture
-async def bob_cookie(session_factory, client) -> str:
-    cookie = await _reg_and_login(client, _REG_B, _LOGIN_B)
-    await _enable_self_host(session_factory, client, cookie)
-    return cookie
+async def bob_cookie(client) -> str:
+    return await _reg_and_login(client, _REG_B, _LOGIN_B)
 
 
 @pytest_asyncio.fixture
@@ -130,245 +108,27 @@ async def alice_instance(session_factory, alice_cookie, client) -> RegisteredIns
 
 
 @pytest.mark.asyncio
-async def test_post_application_requires_cookie(client):
-    r = await client.post("/me/instance-applications", json=_VALID_APP)
-    assert r.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_get_applications_requires_cookie(client):
-    r = await client.get("/me/instance-applications")
-    assert r.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_get_instances_requires_cookie(client):
     r = await client.get("/me/instances")
     assert r.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_get_snippet_requires_cookie(client):
-    r = await client.post("/me/instances/12345/env-file")
-    assert r.status_code == 401
+async def test_antrag_und_env_download_sind_entfernt(client, alice_cookie, alice_instance):
+    """Seit Oktober 2026 gibt es weder Antrag noch ``.env``-Download (Spec E11).
 
-
-# ---------------------------------------------------------------------------
-# POST /me/instance-applications — Happy Path
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_post_application_happy_path(client, alice_cookie):
+    Ein Server verbindet sich per Gerätecode selbst (``routes_verbinden.py``).
+    Die alten Wege dürfen nicht still weiterleben: der eine legte Anträge an,
+    die niemand mehr bearbeitet, der andere gab frische Zugangsdaten aus.
+    """
+    h = {"Cookie": alice_cookie}
     r = await client.post(
-        "/me/instance-applications",
-        json=_VALID_APP,
-        headers={"Cookie": alice_cookie},
+        "/me/instance-applications", json={"hostname": "neu.example.com"}, headers=h
     )
-    assert r.status_code == 201, r.text
-    data = r.json()
-    assert data["hostname"] == "pulse.example.com"
-    assert data["purpose"] == "privat"
-    assert data["status"] == "pending"
-    assert data["expected_users"] == 5
-    # ID muss als String kommen (Snowflake-String-API)
-    assert isinstance(data["id"], str)
-    assert isinstance(data["applicant_user_id"], str)
-    # Kein secret im Body
-    assert "client_secret" not in data
-
-
-@pytest.mark.asyncio
-async def test_post_application_hostname_only_derives_email(client, alice_cookie):
-    """Das schlanke Formular schickt nur den Hostname — contact_email leitet das
-    Backend aus dem eingeloggten User ab, purpose/expected_users bekommen Defaults."""
-    r = await client.post(
-        "/me/instance-applications",
-        json={"hostname": "minimal.example.com"},
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 201, r.text
-    data = r.json()
-    assert data["hostname"] == "minimal.example.com"
-    assert data["contact_email"] == "inst_alice@dcc-test.example.com"
-    assert data["status"] == "pending"
-
-
-# ---------------------------------------------------------------------------
-# Hostname-Validation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "hostname",
-    [
-        "localhost",          # Single-label
-        "example",            # Single-label ohne TLD
-        "192.168.1.1",        # IPv4
-        "2001:db8::1",        # IPv6-artig
-        "-invalid.com",       # Bindestrich am Labelanfang
-        "invalid-.com",       # Bindestrich am Labelende
-        "a",                  # zu kurz (< 4 Zeichen)
-        "",                   # leer
-    ],
-)
-async def test_post_application_invalid_hostname(client, alice_cookie, hostname):
-    payload = {**_VALID_APP, "hostname": hostname}
-    r = await client.post(
-        "/me/instance-applications",
-        json=payload,
-        headers={"Cookie": alice_cookie},
-    )
-    # 422 von Pydantic (zu kurz/leer) oder vom FQDN-Check
-    assert r.status_code == 422, r.text
-
-
-@pytest.mark.asyncio
-async def test_post_application_uppercase_normalized(client, alice_cookie):
-    """Uppercase-Hostnames werden zu lowercase normalisiert und akzeptiert."""
-    r = await client.post(
-        "/me/instance-applications",
-        json={**_VALID_APP, "hostname": "PULSE.EXAMPLE.COM"},
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 201, r.text
-    assert r.json()["hostname"] == "pulse.example.com"
-
-
-@pytest.mark.asyncio
-async def test_post_application_valid_fqdn_accepted(client, alice_cookie):
-    """Gültige FQDNs werden akzeptiert."""
-    payload = {**_VALID_APP, "hostname": "sub.domain.co.uk"}
-    r = await client.post(
-        "/me/instance-applications",
-        json=payload,
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 201, r.text
-
-
-# ---------------------------------------------------------------------------
-# Duplicate-Check: pending-Antrag für denselben Hostname → 409
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_post_application_duplicate_pending_409(client, alice_cookie):
-    # Erster Antrag
-    r1 = await client.post(
-        "/me/instance-applications",
-        json=_VALID_APP,
-        headers={"Cookie": alice_cookie},
-    )
-    assert r1.status_code == 201, r1.text
-
-    # Zweiter Antrag für denselben Hostname → 409
-    r2 = await client.post(
-        "/me/instance-applications",
-        json=_VALID_APP,
-        headers={"Cookie": alice_cookie},
-    )
-    assert r2.status_code == 409, r2.text
-
-
-@pytest.mark.asyncio
-async def test_post_application_different_hostname_ok(client, alice_cookie):
-    """Zwei Anträge für verschiedene Hostnames sind erlaubt."""
-    r1 = await client.post(
-        "/me/instance-applications",
-        json={**_VALID_APP, "hostname": "host1.example.com"},
-        headers={"Cookie": alice_cookie},
-    )
-    assert r1.status_code == 201, r1.text
-
-    r2 = await client.post(
-        "/me/instance-applications",
-        json={**_VALID_APP, "hostname": "host2.example.com"},
-        headers={"Cookie": alice_cookie},
-    )
-    assert r2.status_code == 201, r2.text
-
-
-@pytest.mark.asyncio
-async def test_post_application_hostname_conflict_with_instance(
-    client, alice_cookie, alice_instance
-):
-    """Hostname der bereits in registered_instances existiert → 409."""
-    r = await client.post(
-        "/me/instance-applications",
-        json={**_VALID_APP, "hostname": alice_instance.hostname},
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 409, r.text
-
-
-# ---------------------------------------------------------------------------
-# GET /me/instance-applications — nur eigene Applications
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_applications_only_own(client, alice_cookie, bob_cookie):
-    # Alice reicht Antrag ein
-    await client.post(
-        "/me/instance-applications",
-        json=_VALID_APP,
-        headers={"Cookie": alice_cookie},
-    )
-
-    # Bob reicht Antrag für anderen Hostname ein
-    await client.post(
-        "/me/instance-applications",
-        json={**_VALID_APP, "hostname": "bob.example.com"},
-        headers={"Cookie": bob_cookie},
-    )
-
-    # Alice sieht nur ihren eigenen Antrag
-    r_alice = await client.get(
-        "/me/instance-applications",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r_alice.status_code == 200, r_alice.text
-    alice_apps = r_alice.json()
-    assert len(alice_apps) == 1
-    assert alice_apps[0]["hostname"] == "pulse.example.com"
-
-    # Bob sieht nur seinen eigenen Antrag
-    r_bob = await client.get(
-        "/me/instance-applications",
-        headers={"Cookie": bob_cookie},
-    )
-    assert r_bob.status_code == 200, r_bob.text
-    bob_apps = r_bob.json()
-    assert len(bob_apps) == 1
-    assert bob_apps[0]["hostname"] == "bob.example.com"
-
-
-@pytest.mark.asyncio
-async def test_get_applications_status_filter(client, alice_cookie):
-    """?status=pending filtert korrekt."""
-    await client.post(
-        "/me/instance-applications",
-        json=_VALID_APP,
-        headers={"Cookie": alice_cookie},
-    )
-    # pending-Filter
-    r = await client.get(
-        "/me/instance-applications?status=pending",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 200
-    apps = r.json()
-    assert len(apps) == 1
-
-    # rejected-Filter → leer (keine rejected)
-    r2 = await client.get(
-        "/me/instance-applications?status=rejected",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r2.status_code == 200
-    assert len(r2.json()) == 0
+    assert r.status_code == 404
+    assert (await client.get("/me/instance-applications", headers=h)).status_code == 404
+    r = await client.post(f"/me/instances/{alice_instance.id}/env-file", headers=h)
+    assert r.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -423,13 +183,22 @@ async def test_set_up_ist_falsch_solange_keine_zugangsdaten_geholt_wurden(
 
 
 @pytest.mark.asyncio
-async def test_set_up_nach_env_download(client, alice_cookie, alice_instance):
-    """Der manuelle Weg zaehlt: die Zugangsdaten sind beim Nutzer."""
-    r = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 200, r.text
+async def test_set_up_bleibt_fuer_bestand_mit_env_download(
+    client, alice_cookie, alice_instance, session_factory
+):
+    """Der ``.env``-Download ist entfernt, sein Zeitstempel zählt weiter.
+
+    Ein Server aus der Freigabe-Zeit, der per ``.env`` eingerichtet wurde, hat
+    nur ``env_file_downloaded_at`` — kein eingelöstes Token, kein Verbinden.
+    Fiele er aus ``set_up``, verschwände er aus der Leiste seiner Mitglieder.
+    """
+    async with session_factory() as session:
+        await session.execute(
+            update(RegisteredInstance)
+            .where(RegisteredInstance.id == alice_instance.id)
+            .values(env_file_downloaded_at=datetime.now(UTC))
+        )
+        await session.commit()
 
     r = await client.get("/me/instances", headers={"Cookie": alice_cookie})
     eintrag = next(i for i in r.json() if i["id"] == str(alice_instance.id))
@@ -463,252 +232,6 @@ async def test_set_up_nach_eingeloestem_bootstrap_token(
     r = await client.get("/me/instances", headers={"Cookie": alice_cookie})
     eintrag = next(i for i in r.json() if i["id"] == str(alice_instance.id))
     assert eintrag["set_up"] is True
-
-
-# ---------------------------------------------------------------------------
-# POST /me/instances/{id}/env-file
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_snippet_happy_path(client, alice_cookie, alice_instance):
-    r = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 200
-    assert "text/plain" in r.headers["content-type"]
-    body = r.text
-    # Var-Namen MÜSSEN exakt die sein, die der allinone-Container liest
-    # (07-render-env.sh) — sonst nimmt der Server niemanden auf (er startet seit
-    # 2026-10 trotzdem, unverbunden; 10-check-cloud-creds.sh verlangt nur noch die Adresse).
-    assert f"PULSE_INSTANCE_ID={alice_instance.id}" in body
-    assert f"PULSE_CLOUD_CLIENT_ID={alice_instance.client_id}" in body
-    assert f"PULSE_INSTANCE_OWNER_ID={alice_instance.registered_by}" in body
-    assert f"PULSE_HOSTNAME={alice_instance.hostname}" in body
-    # Der alte (kaputte) INSTANCE_CLIENT-Name darf NICHT mehr vorkommen.
-    assert "PULSE_INSTANCE_CLIENT_ID" not in body
-    # Worker-IDs ignoriert der Single-Container → nicht mehr im Snippet.
-    assert "WORKER_ID_CHAT" not in body
-    # Frisches Secret ist gesetzt — KEIN Platzhalter mehr.
-    assert "PULSE_CLOUD_CLIENT_SECRET=<...>" not in body
-    secret_line = next(
-        ln for ln in body.splitlines() if ln.startswith("PULSE_CLOUD_CLIENT_SECRET=")
-    )
-    secret = secret_line.split("=", 1)[1]
-    assert len(secret) >= 20
-    # Admin-Mail ist befüllt (keine offenen Platzhalter mehr).
-    assert "PULSE_ADMIN_EMAIL=" in body
-    assert "<...>" not in body
-
-
-@pytest.mark.asyncio
-async def test_env_file_blocked_after_first_download(
-    client, alice_cookie, alice_instance
-):
-    """One-shot: zweiter Download → 403 mit Hinweis auf neuen Antrag."""
-    r1 = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r1.status_code == 200
-
-    r2 = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r2.status_code == 403, r2.text
-    assert "bereits eingerichtet" in r2.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_env_file_reissue_liefert_neues_secret(
-    client, alice_cookie, alice_instance
-):
-    """``reset=true`` hebt die One-Shot-Sperre auf und rotiert das Secret.
-
-    Der Recovery-Pfad bei verlorener Datei (2026-07-27). Wichtig ist nicht nur,
-    DASS ein zweiter Download klappt, sondern dass er ein ANDERES Secret
-    liefert — sonst waere die Rotation kaputt und zwei Server koennten
-    gleichzeitig mit demselben Geheimnis laufen.
-    """
-
-    def secret_of(resp) -> str:
-        line = next(
-            ln
-            for ln in resp.text.splitlines()
-            if ln.startswith("PULSE_CLOUD_CLIENT_SECRET=")
-        )
-        return line.split("=", 1)[1]
-
-    r1 = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r1.status_code == 200
-
-    r2 = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-        json={"reset": True},
-    )
-    assert r2.status_code == 200, r2.text
-    assert secret_of(r2) != secret_of(r1)
-
-    # Ohne das Flag bleibt es gesperrt — der Reset ist ein bewusster Schritt,
-    # kein Zustand, in den die Instanz nach einmal Reset dauerhaft faellt.
-    r3 = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r3.status_code == 403, r3.text
-
-
-@pytest.mark.asyncio
-async def test_env_file_reissue_false_bleibt_gesperrt(
-    client, alice_cookie, alice_instance
-):
-    """``reset=false`` explizit im Body darf die Sperre NICHT aufheben."""
-    r1 = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r1.status_code == 200
-    r2 = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-        json={"reset": False},
-    )
-    assert r2.status_code == 403, r2.text
-
-
-@pytest.mark.asyncio
-async def test_env_download_nach_installer_braucht_bestaetigung(
-    client, alice_cookie, alice_instance, session_factory
-):
-    """Der wichtigste Fall: Installer lief schon, .env-Download darf NICHT still rotieren.
-
-    Bricht der Schnellinstaller NACH dem Einloesen ab (Container startet nicht,
-    TLS scheitert), liegen die gueltigen Zugangsdaten laengst auf dem Server.
-    Ein anschliessender Download rotierte sie frueher wortlos weg — aus einem
-    halb geglueckten Setup wurde ein sicher kaputtes. Jetzt zaehlt ein
-    eingeloestes Token als "bereits eingerichtet" und der Weg fuehrt ueber die
-    bewusste Bestaetigung.
-    """
-    async with session_factory() as session:
-        session.add(
-            InstanceBootstrapToken(
-                id=20000000000000001,
-                instance_id=alice_instance.id,
-                token_hash="egal",
-                expires_at=datetime.now(UTC) + timedelta(hours=1),
-                consumed_at=datetime.now(UTC),  # <- der Installer war hier
-            )
-        )
-        await session.commit()
-
-    # Erster (!) Download — vorher war das ein freier Schuss.
-    r = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 403, r.text
-    assert "bereits eingerichtet" in r.json()["detail"]
-
-    # Mit bewusster Bestaetigung geht es weiter — sonst waere der Nutzer
-    # ausgesperrt, statt nur gewarnt.
-    r2 = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-        json={"reset": True},
-    )
-    assert r2.status_code == 200, r2.text
-
-
-@pytest.mark.asyncio
-async def test_env_download_entwertet_offene_installer_tokens(
-    client, alice_cookie, alice_instance, session_factory
-):
-    """Ein liegengebliebenes Token darf die frisch verteilte .env nicht erschlagen.
-
-    Bricht der Installer VOR dem Einloesen ab, lebt sein Token bis zum Ablauf
-    weiter. Wird es spaeter doch noch eingeloest, rotiert es das Secret erneut.
-    Deshalb entwertet jede Credential-Ausgabe offene Tokens.
-    """
-    mint = await client.post(
-        f"/me/instances/{alice_instance.id}/bootstrap-token",
-        headers={"Cookie": alice_cookie},
-    )
-    assert mint.status_code == 201, mint.text
-
-    async with session_factory() as session:
-        offen = (
-            await session.execute(
-                select(InstanceBootstrapToken.id).where(
-                    InstanceBootstrapToken.instance_id == alice_instance.id,
-                    InstanceBootstrapToken.consumed_at.is_(None),
-                )
-            )
-        ).all()
-    assert len(offen) == 1, "Vorbedingung: genau ein offenes Token"
-
-    r = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 200, r.text
-
-    async with session_factory() as session:
-        offen_danach = (
-            await session.execute(
-                select(InstanceBootstrapToken.id).where(
-                    InstanceBootstrapToken.instance_id == alice_instance.id,
-                    InstanceBootstrapToken.consumed_at.is_(None),
-                )
-            )
-        ).all()
-    assert offen_danach == [], "offenes Token haette entwertet werden muessen"
-
-
-@pytest.mark.asyncio
-async def test_env_file_reissue_nur_fuer_owner(client, bob_cookie, alice_instance):
-    """Der Reset darf kein Schlupfloch um den Owner-Check sein — Bob bekommt
-    404 wie ueberall sonst (Existence-Leak-Schutz)."""
-    r = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": bob_cookie},
-        json={"reset": True},
-    )
-    assert r.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_snippet_404_for_other_user(client, bob_cookie, alice_instance):
-    """Bob bekommt 404 für Alices Instanz (kein 403 wegen Existence-Leak)."""
-    r = await client.post(
-        f"/me/instances/{alice_instance.id}/env-file",
-        headers={"Cookie": bob_cookie},
-    )
-    assert r.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_snippet_404_nonexistent(client, alice_cookie):
-    r = await client.post(
-        "/me/instances/9999999999999/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_snippet_invalid_id_404(client, alice_cookie):
-    """Ungültige (nicht-numerische) ID → 404."""
-    r = await client.post(
-        "/me/instances/not-a-number/env-file",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -761,12 +284,11 @@ async def test_role_unterscheidet_besitzer_von_mitglied(
     assert [i["role"] for i in alice_sicht] == ["owner"]
 
     # Gegenprobe: Bob kommt an keine der Verwaltungs-Routen heran.
-    for weg in ("env-file", "bootstrap-token"):
-        r = await client.post(
-            f"/me/instances/{alice_instance.id}/{weg}",
-            headers={"Cookie": bob_cookie},
-        )
-        assert r.status_code == 404, (weg, r.text)
+    r = await client.post(
+        f"/me/instances/{alice_instance.id}/bootstrap-token",
+        headers={"Cookie": bob_cookie},
+    )
+    assert r.status_code == 404, r.text
     r = await client.delete(f"/me/instances/{alice_instance.id}", headers={"Cookie": bob_cookie})
     assert r.status_code == 404, r.text
 
