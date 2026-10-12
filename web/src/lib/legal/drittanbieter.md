@@ -175,6 +175,33 @@ eingebettet — Teil des Web-Bundles, gebaut aus `krypto/pulse-krypto/`.
 | [wasm-bindgen](https://github.com/rustwasm/wasm-bindgen) | 0.2.127 | MIT oder Apache-2.0 |
 | [getrandom](https://github.com/rust-random/getrandom) (0.2 und 0.3) | 0.2.17 / 0.3.4 | MIT oder Apache-2.0 |
 
+## Pulse Server (Heimserver-App) und Self-Host-Server
+
+Sprachkanäle laufen über einen [LiveKit](https://github.com/livekit/livekit)-Server.
+Die Windows-Fassung der Pulse-Server-App liefert ihn als eigenes Programm mit
+(`livekit-server.exe`); die macOS-Fassung und jeder selbst betriebene Server
+bekommen ihn im Server-Container.
+
+| Komponente | Version | Lizenz |
+|---|---|---|
+| [LiveKit Server](https://github.com/livekit/livekit) (**von Pulse geändert**, siehe unten) | 1.13.3 | Apache-2.0 |
+| [mediatransportutil](https://github.com/livekit/mediatransportutil) (Teil davon, **von Pulse geändert**) | Stand `a3417d38cda0` | Apache-2.0 |
+
+Copyright 2023 LiveKit, Inc. Lizenztext, Hinweisdatei (NOTICE) und die
+Änderung liegen der ausgelieferten Datei bei.
+
+### Änderung an LiveKit
+
+Pulse baut LiveKit aus dem Quellcode und ändert dabei drei Dateien von
+mediatransportutil (`pkg/rtcconfig/config.go`, `webrtc_config.go` und den
+zugehörigen Test): eine neue Einstellung `extra_node_ips` kündigt weitere
+Adressen neben der Hauptadresse an. Damit erreichen Geräte im eigenen Heimnetz
+einen Heimserver über seine LAN-Adresse, während Gäste aus dem Internet die
+öffentliche nutzen. Ohne diese Einstellung verhält sich der Server wie das
+offizielle LiveKit. Dieser Hinweis erfüllt Apache-2.0 §4(b); die Patch-Datei
+liegt mitsamt eigener Lizenzdatei im öffentlichen Quellcode-Repository unter
+[`infra/livekit-fork/patches/`](https://github.com/oblivion-pictures/pulse/tree/main/infra/livekit-fork/patches).
+
 ## Startseite (howispulse.com)
 
 Die Startseite der Cloud-Instanz liefert ihre beiden Schriften vom eigenen
@@ -187,4 +214,4 @@ Server aus, damit kein Browser eines Besuchers Google Fonts kontaktiert.
 
 ---
 
-Stand: 2. Oktober 2026 (Lizenz-Rückkehr zu AGPL-3.0)
+Stand: 13. Oktober 2026 (LiveKit, von Pulse geändert)

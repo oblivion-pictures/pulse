@@ -241,6 +241,35 @@ hkdf, sha2, aes, ...) is not separately re-verified here — same scope as the
 "Not covered here" note below for the statically-linked sidecar crates; all
 are permissively licensed by upstream convention.
 
+## LiveKit server (self-host image and Pulse Server app, `infra/livekit-fork/`)
+
+Voice runs through a LiveKit SFU. Until 2026-10-12 the self-host image and the
+Windows Pulse Server installer bundled the **unmodified** official release
+binary — and this file did not list it at all. Since then both ship a
+**modified** build: LiveKit is compiled from source with one Pulse patch
+against its dependency mediatransportutil.
+
+| Component | Version / pin | License | Notes |
+|---|---|---|---|
+| [LiveKit server](https://github.com/livekit/livekit) | v1.13.3, commit `8f6a9cb8b735549f0c5770df8ea70ac51f860ecb` | Apache-2.0 | Built from source; reports `version 1.13.3` |
+| [mediatransportutil](https://github.com/livekit/mediatransportutil) | commit `a3417d38cda0c840ef8c7ebe9628472028921d58` (the one v1.13.3 requires) | Apache-2.0 | **Modified by Pulse** — one patch, see below |
+
+Where it ships: the self-host image (`/usr/local/bin/livekit-server`; LICENSE,
+NOTICE and the patch in `/usr/share/doc/livekit-server/`), the Windows Pulse
+Server installer (`native/native-bin/livekit-server.exe`, the same three in
+`native/native-bin/livekit-lizenz/`), and the macOS Pulse Server through the
+self-host image it runs. Pins: `infra/livekit-fork/quelle.env`.
+
+**Modification notice for mediatransportutil (Apache-2.0 §4(b)):** Pulse
+changes `pkg/rtcconfig/config.go`, `pkg/rtcconfig/webrtc_config.go` and
+`pkg/rtcconfig/webrtc_config_test.go` — a new option `extra_node_ips` whose
+addresses are announced as host candidates next to `node_ip`
+(`infra/livekit-fork/patches/0001-extra-node-ips.patch`, with its own
+`LICENSE`). Without that option the build behaves like the official one.
+
+**NOTICE (Apache-2.0 §4(d))**, reproduced from both upstream repositories:
+"Copyright 2023 LiveKit, Inc. Licensed under the Apache License, Version 2.0."
+
 ## Landing page (`web/static/landing.html`, cloud only)
 
 The marketing page at https://howispulse.com/ ships its two typefaces from the
@@ -274,4 +303,4 @@ outstanding audit.
 
 ---
 
-Stand / last updated: 2. Oktober 2026 (Lizenz-Rückkehr zu AGPL-3.0)
+Stand / last updated: 13. Oktober 2026 (LiveKit, von Pulse verändert)

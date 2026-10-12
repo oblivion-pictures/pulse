@@ -15,8 +15,9 @@ Bis zum 2026-08-27 nannte dieser Absatz zwei Geschwister, die aus demselben
 Grund eine eigene LICENSE trugen: `streaming/patches/` (GPL-3.0-or-later, von
 gpu-screen-recorder abgeleitet) und `streaming/ffmpeg-patches/`
 (LGPL-2.1-or-later). Das erste ist mit dem alten Linux-Aufnahmeweg entfallen,
-das zweite existierte zu diesem Zeitpunkt schon nicht mehr. Dieses Verzeichnis
-ist damit das einzige seiner Art im Repository.
+das zweite existierte zu diesem Zeitpunkt schon nicht mehr. Seit dem
+2026-10-12 hat es wieder ein Geschwister aus demselben Grund:
+`infra/livekit-fork/patches/` (Apache-2.0, von mediatransportutil abgeleitet).
 
 Geaendert werden gegenueber dem Stand v0.17.2:
 
