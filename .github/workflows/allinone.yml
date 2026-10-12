@@ -64,6 +64,7 @@ on:
       - 'krypto/**'               # Krypto-Kern wird als WASM ins Frontend eingebaut
       - 'plugins/**'
       - 'infra/self-host/**'     # Dockerfile + Rust-Direktpfad-Adapter
+      - 'infra/livekit-fork/**'  # LiveKit wird im Image aus dem Fork gebaut (Stufe livekit-build)
       - 'patches/**'             # patchedDependencies — wirken auf Frontend-Bau
       - 'pyproject.toml'
       - 'uv.lock'

@@ -1,0 +1,164 @@
+Pulse-Patch 0001 gegen github.com/livekit/mediatransportutil @ a3417d38cda0
+(der Stand, den LiveKit v1.13.3 verlangt).
+
+Neue Option `rtc.extra_node_ips` (Liste): weitere Adressen, die LiveKit neben
+`node_ip` als Host-Kandidaten ankündigt. Gebraucht vom Heimserver der
+Server-App: `node_ip` ist dort die öffentliche IPv4, `extra_node_ips` die
+LAN-IPv4 des Rechners. Ohne die zweite müsste jedes Gerät im Heimnetz über die
+öffentliche Adresse zurück ins eigene Netz (Hairpin-NAT), was die Fritz!Box
+nicht kann — „could not establish pc connection".
+
+Warum ein Patch und keine Konfiguration: `node_ip` nimmt genau eine IPv4
+(`NodeIP{V4,V6}`), und im `node_ip`-Weg (`use_external_ip: false`) ersetzt
+`SetNAT1To1AddressRewriteRules` per Catch-all-Regel JEDE lokale Adresse durch
+diese eine; `advertise_internal_ip` wirkt dort nicht (nur im STUN-Weg). Pion
+(ice v4.2.7, external_ip_mapper.go) kann für eine lokale Adresse mehrere
+externe ausgeben — LiveKit reicht nur keine zweite durch. Der Patch hängt
+`extra_node_ips` an genau diese Catch-all-Regel an.
+
+Wirkung ohne die Option: keine. `nodeIPsWithExtras` liefert dann `node_ip`
+unverändert, und im STUN-Weg (`use_external_ip: true`, alle VPS-Self-Hosts)
+wird die neue Funktion gar nicht aufgerufen. `node_ip` bleibt die primäre
+Adresse für Routing und TURN.
+
+Test: `go test ./pkg/rtcconfig/` sammelt echte ICE-Kandidaten einer
+PeerConnection (ohne Patch rot, mit grün; nachgefahren 2026-10-12).
+
+Entfernen, sobald upstream eine gleichwertige Option kennt (dann den Namen in
+infra/self-host/livekit-node-ip.sh und desktop/electron/localBackend/
+nativeBackend/configs.ts nachziehen).
+
+diff --git a/pkg/rtcconfig/config.go b/pkg/rtcconfig/config.go
+index a0d03d2..b06a3e8 100644
+--- a/pkg/rtcconfig/config.go
++++ b/pkg/rtcconfig/config.go
+@@ -75,6 +75,13 @@ type RTCConfig struct {
+ 
+ 	// for testing, disable UDP
+ 	ForceTCP bool `yaml:"force_tcp,omitempty"`
++
++	// ExtraNodeIPs (Pulse patch): further addresses advertised as host
++	// candidates next to node_ip, e.g. the LAN and the public address of a home
++	// server behind NAT without hairpinning. Applies only where node_ip drives
++	// the address rewrite (use_external_ip: false); node_ip stays the primary
++	// address for routing and TURN.
++	ExtraNodeIPs []string `yaml:"extra_node_ips,omitempty"`
+ }
+ 
+ type InterfacesConfig struct {
+diff --git a/pkg/rtcconfig/webrtc_config.go b/pkg/rtcconfig/webrtc_config.go
+index 3c9d489..8000353 100644
+--- a/pkg/rtcconfig/webrtc_config.go
++++ b/pkg/rtcconfig/webrtc_config.go
+@@ -109,7 +109,7 @@ func NewWebRTCConfig(rtcConf *RTCConfig, development bool) (*WebRTCConfig, error
+ 			}
+ 			nat1to1IPs = ips
+ 		} else {
+-			if err := SetNAT1To1AddressRewriteRules(&s, rtcConf.NodeIP.ToStringSlice(), false); err != nil {
++			if err := SetNAT1To1AddressRewriteRules(&s, nodeIPsWithExtras(rtcConf), false); err != nil {
+ 				return nil, err
+ 			}
+ 		}
+@@ -249,6 +249,30 @@ func NewWebRTCConfig(rtcConf *RTCConfig, development bool) (*WebRTCConfig, error
+ 	}, nil
+ }
+ 
++// nodeIPsWithExtras returns node_ip followed by extra_node_ips, without
++// duplicates (Pulse patch). Each extra must be a bare IP address: a
++// "external/local" pair would turn into a pinned rule that shadows the
++// catch-all, which is not what extra_node_ips promises.
++func nodeIPsWithExtras(rtcConf *RTCConfig) []string {
++	ips := rtcConf.NodeIP.ToStringSlice()
++	seen := make(map[string]bool, len(ips)+len(rtcConf.ExtraNodeIPs))
++	for _, ip := range ips {
++		seen[ip] = true
++	}
++	for _, raw := range rtcConf.ExtraNodeIPs {
++		ip := net.ParseIP(strings.TrimSpace(raw))
++		if ip == nil {
++			logger.Warnw("ignoring invalid extra_node_ips entry", nil, "entry", raw)
++			continue
++		}
++		if s := ip.String(); !seen[s] {
++			seen[s] = true
++			ips = append(ips, s)
++		}
++	}
++	return ips
++}
++
+ func SetNAT1To1AddressRewriteRules(s *webrtc.SettingEngine, ips []string, includeInternal bool) error {
+ 	rules := make([]webrtc.ICEAddressRewriteRule, 0, len(ips)+1)
+ 	catchAll := make([]string, 0, len(ips))
+diff --git a/pkg/rtcconfig/webrtc_config_test.go b/pkg/rtcconfig/webrtc_config_test.go
+index ae91c15..f467ef4 100644
+--- a/pkg/rtcconfig/webrtc_config_test.go
++++ b/pkg/rtcconfig/webrtc_config_test.go
+@@ -16,8 +16,10 @@ package rtcconfig
+ 
+ import (
+ 	"net"
++	"strings"
+ 	"testing"
+ 
++	"github.com/pion/webrtc/v4"
+ 	"github.com/stretchr/testify/require"
+ )
+ 
+@@ -86,3 +88,56 @@ func Test_InterfaceFilterFromConf(t *testing.T) {
+ 		}
+ 	}
+ }
++
++// Pulse patch: extra_node_ips must show up as additional host candidates next
++// to node_ip — gathered by a real peer connection, not just read back from
++// the rewrite rules.
++func Test_ExtraNodeIPsAdvertisedAsHostCandidates(t *testing.T) {
++	conf := &RTCConfig{
++		NodeIP:       NodeIP{V4: "203.0.113.7"},
++		ExtraNodeIPs: []string{"192.0.2.10", "203.0.113.7", "not-an-ip"},
++	}
++	wc, err := NewWebRTCConfig(conf, false)
++	require.NoError(t, err)
++
++	api := webrtc.NewAPI(webrtc.WithSettingEngine(wc.SettingEngine))
++	pc, err := api.NewPeerConnection(wc.Configuration)
++	require.NoError(t, err)
++	defer pc.Close()
++
++	_, err = pc.CreateDataChannel("probe", nil)
++	require.NoError(t, err)
++	offer, err := pc.CreateOffer(nil)
++	require.NoError(t, err)
++	done := webrtc.GatheringCompletePromise(pc)
++	require.NoError(t, pc.SetLocalDescription(offer))
++	<-done
++
++	hosts := map[string]int{}
++	for _, line := range strings.Split(pc.LocalDescription().SDP, "\n") {
++		if !strings.HasPrefix(line, "a=candidate:") || !strings.Contains(line, " typ host") {
++			continue
++		}
++		fields := strings.Fields(line)
++		// IPv4 only: node_ip carries no IPv6 here, so local IPv6 addresses pass
++		// through unchanged, exactly as without the patch.
++		if len(fields) > 4 && strings.EqualFold(fields[2], "udp") && net.ParseIP(fields[4]).To4() != nil {
++			hosts[fields[4]]++
++		}
++	}
++	require.Contains(t, hosts, "203.0.113.7")
++	require.Contains(t, hosts, "192.0.2.10")
++	// The duplicate entry adds no second rule, so each local socket yields the
++	// two addresses once.
++	require.Equal(t, hosts["203.0.113.7"], hosts["192.0.2.10"])
++	for ip := range hosts {
++		require.Contains(t, []string{"203.0.113.7", "192.0.2.10"}, ip, "local address leaked: %s", ip)
++	}
++}
++
++// Without extra_node_ips nothing changes: node_ip alone replaces the local
++// addresses.
++func Test_NodeIPAloneUnchanged(t *testing.T) {
++	ips := nodeIPsWithExtras(&RTCConfig{NodeIP: NodeIP{V4: "203.0.113.7"}})
++	require.Equal(t, []string{"203.0.113.7"}, ips)
++}

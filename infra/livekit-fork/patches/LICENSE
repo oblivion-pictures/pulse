@@ -1,0 +1,32 @@
+Apache-2.0
+
+Diese Patch-Dateien ändern mediatransportutil
+(https://github.com/livekit/mediatransportutil), das wie LiveKit selbst unter
+der Apache License 2.0 steht. Als abgeleitete Werke dieses Quelltexts stehen
+sie selbst unter derselben Lizenz und sind NICHT von der AGPL erfasst, die für
+den Rest dieses Repositorys gilt (`infra/LICENSE`). Vorbild und Begründung wie
+bei `streaming/pulse-player/patches/LICENSE`.
+
+Geändert werden gegenüber dem Stand a3417d38cda0c840ef8c7ebe9628472028921d58
+(der Stand, den LiveKit v1.13.3 verlangt):
+
+  0001-extra-node-ips.patch
+      pkg/rtcconfig/config.go
+      pkg/rtcconfig/webrtc_config.go
+      pkg/rtcconfig/webrtc_config_test.go
+      Neue Option `extra_node_ips`: weitere Adressen, die im node_ip-Weg
+      neben node_ip als Host-Kandidaten angekündigt werden.
+
+Änderungshinweis nach Apache-2.0 §4(b): die oben genannten Dateien sind
+gegenüber diesem Stand verändert; jede der drei Dateien trägt im Quelltext den
+Vermerk „Pulse patch". Was genau und warum, steht im Kopf des Patches und in
+`../README.md`.
+
+mediatransportutil selbst liegt nicht in diesem Repository. Der gepatchte
+Stand entsteht zur Bauzeit (`../bauen.sh`), und mit dem gebauten Binary reisen
+LICENSE, NOTICE und die Patches (`bauen.sh --lizenz`).
+
+Copyright 2023 LiveKit, Inc.
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use these files except in compliance with the License. You may obtain a copy
+of the License at http://www.apache.org/licenses/LICENSE-2.0

@@ -21,15 +21,12 @@ ARG PYTHON_VERSION=3.13
 # below where upstream publishes checksums (see TODOs for the few that don't).
 ARG S6_OVERLAY_VERSION=3.2.0.2
 ARG CADDY_VERSION=2.8.4
-# v1.13.3: braucht mediatransportutil >= a3417d38 für skip_external_ip_validation
-# + advertise_internal_ip (livekit.yaml.template) — ohne die verwirft LiveKit
-# hinter hairpin-losem NAT (Fritz!Box + rootless-podman/pasta) die per STUN
-# gefundene öffentliche IPv4 ("could not validate external IP") und kündigt
-# externen Gästen nur LAN-/IPv6-Kandidaten an → Voice/Streaming für Gäste tot.
-# Am echten App-Host verifiziert 2026-07-13 (Binary-Swap-Test). Protocol-16-
-# kompatibel zu livekit-client 2.18.9 (das frühere F17-Problem war ein ZU
-# ALTER Server 1.8.4 mit protocol 15, nicht ein zu neuer).
-ARG LIVEKIT_VERSION=1.13.3
+# LiveKit steht hier NICHT mehr als Version: es wird seit 2026-10-12 aus dem
+# Quelltext gebaut, als 1.13.3 + Pulse-Patch (Stufe `livekit-build` unten).
+# Fassung, Commits und Patch-Stand stehen allein in
+# `infra/livekit-fork/quelle.env` — dieselbe Quelle baut die livekit-server.exe
+# der Windows-Server-App. Warum 1.13.3 und warum der Patch: Kopf von
+# `infra/livekit-fork/README.md`.
 # MediaMTX kommt als BINAERDATEI AUS DEM PULSE-FORK, nicht mehr von upstream
 # (seit 2026-09-07) — dieselbe Fassung, die die Cloud faehrt.
 #
@@ -77,16 +74,15 @@ ARG TARGETARCH=amd64
 #
 # Sources:
 #   - s6-overlay: official .sha256 next to each release artifact.
-#   - LiveKit: official checksums.txt in the GitHub release.
-#   - Caddy + MediaMTX: re-hashed from the upstream release tarballs (Caddy
-#     publishes SHA-512 only; MediaMTX publishes no checksums file at all).
+#   - Caddy: re-hashed from the upstream release tarballs (Caddy publishes
+#     SHA-512 only).
+#   - LiveKit has no pin here any more: it is built from source at pinned
+#     commits (`livekit-build` stage), so there is no tarball to hash.
 ARG SHA256_S6_NOARCH=6dbcde158a3e78b9bb141d7bcb5ccb421e563523babbe2c64470e76f4fd02dae
 ARG SHA256_S6_X86_64=59289456ab1761e277bd456a95e737c06b03ede99158beb24f12b165a904f478
 ARG SHA256_S6_AARCH64=8b22a2eaca4bf0b27a43d36e65c89d2701738f628d1abd0cea5569619f66f785
 ARG SHA256_CADDY_AMD64=a7e8306c54138cf88e371c5ec0caf7baf142ecc1d60a30897dfb67d65d3748c8
 ARG SHA256_CADDY_ARM64=93a3eb31883d678c6590c6d823eb6bb9f7a3af66dcd9d53df3eb2c7528b2af05
-ARG SHA256_LIVEKIT_AMD64=7ac9372a229b3d31a716d63b5a9915ad2ffb7d28a8bacc5ba5fc33a2a475d8a3
-ARG SHA256_LIVEKIT_ARM64=b76fa445c625827999ab6a8cd2d30a64547cb3c9e7189b64ab1dd7444bc17159
 # frp: upstream publiziert keine Checksums-Datei — re-hashed vom offiziellen Tarball.
 ARG SHA256_FRP_AMD64=7be257b72dbbc60bcb3e0e25a5afd1dfac7b63f897084864d3c956dd3d5674e1
 ARG SHA256_FRP_ARM64=bbc0c75e896af3f292fb46ba09c844a04fa9b5ea3530c039c7af20637f836355
@@ -197,9 +193,35 @@ COPY infra/self-host/direct-adapter/ .
 RUN cargo build --release --locked \
     && cp target/release/direct-adapter /opt/pulse-direct-adapter
 
+# ── Stage 2c ───────────────────────────────────────────────────────────────
+# LiveKit-Server aus dem Pulse-Fork: 1.13.3 + Patch `extra_node_ips`
+# (infra/livekit-fork/ — README dort). Der Heimserver der Server-App kündigt
+# damit LAN- UND öffentliche IPv4 an; ohne `extra_node_ips` in der livekit.yaml
+# verhält sich das Binary wie das offizielle 1.13.3 (alle VPS-Self-Hosts).
+#
+# Gebaut von DEMSELBEN Skript, das die Windows-Server-App benutzt — Commits und
+# Patch-Stand stehen nur in `infra/livekit-fork/quelle.env`. Das Skript holt
+# beide Repos per Commit, wendet die Patches an, fährt deren Go-Tests und baut.
+#
+# `--platform=$BUILDPLATFORM` wie im MediaMTX-Fork: die Stufe läuft in der
+# Architektur des Läufers, Go kompiliert ohne CGO selbst für `TARGETARCH`
+# (allinone.yml baut ohnehin je Architektur nativ — dann sind beide gleich).
+# Go-Fassung: LiveKits go.mod verlangt 1.26; dieselbe Fassung setzt
+# win-build-server.yml (`actions/setup-go`). Das Bild ist per Digest gepinnt
+# (Index-Digest, Docker Hub, abgefragt 2026-10-12) — der Tag allein wandert mit
+# jedem Neubau des Basisbilds.
+# ──────────────────────────────────────────────────────────────────────────
+FROM --platform=$BUILDPLATFORM golang:1.26.8-bookworm@sha256:dc9ad6c05acc7a88e5b71bde60a5fe3bd4b9f0db209011711b464107438a8107 AS livekit-build
+ARG TARGETARCH
+WORKDIR /build
+COPY infra/livekit-fork/ livekit-fork/
+RUN bash livekit-fork/bauen.sh --aus /out/livekit-server --os linux \
+        --arch "${TARGETARCH:-$(go env GOARCH)}" --lizenz /out/lizenz
+
 # ── Stage 3 ────────────────────────────────────────────────────────────────
-# Binaries: s6-overlay, Caddy, LiveKit, MediaMTX (download + verify here so
-# the runtime stage stays free of build-tooling). Every tarball is verified
+# Binaries: s6-overlay, Caddy, frpc (download + verify here so the runtime
+# stage stays free of build-tooling), plus MediaMTX copied from the fork image
+# (no tarball, see below). Every tarball is verified
 # against a pinned SHA-256 from the top-level ARGs — a tampered, swapped or
 # silently re-built upstream artifact fails the build instead of installing.
 # ──────────────────────────────────────────────────────────────────────────
@@ -212,7 +234,6 @@ FROM ghcr.io/oblivion-pictures/pulse-mediamtx:${PULSE_MEDIAMTX_TAG} AS mediamtx-
 FROM debian:bookworm-slim AS binaries
 ARG S6_OVERLAY_VERSION
 ARG CADDY_VERSION
-ARG LIVEKIT_VERSION
 ARG FRP_VERSION
 ARG TARGETARCH
 ARG SHA256_S6_NOARCH
@@ -220,8 +241,6 @@ ARG SHA256_S6_X86_64
 ARG SHA256_S6_AARCH64
 ARG SHA256_CADDY_AMD64
 ARG SHA256_CADDY_ARM64
-ARG SHA256_LIVEKIT_AMD64
-ARG SHA256_LIVEKIT_ARM64
 ARG SHA256_FRP_AMD64
 ARG SHA256_FRP_ARM64
 ENV DEBIAN_FRONTEND=noninteractive
@@ -263,20 +282,6 @@ RUN set -eux; \
     echo "${SHA256_CADDY}  caddy.tar.gz" | sha256sum -c -; \
     mkdir -p /opt/caddy; \
     tar -C /opt/caddy -xzf caddy.tar.gz caddy
-
-# LiveKit server — static linux binary, upstream tarball contains the bin.
-# SHA-256 from the official checksums.txt in the same release.
-RUN set -eux; \
-    case "${TARGETARCH}" in \
-        amd64) LK_ARCH=linux_amd64; SHA256_LIVEKIT="${SHA256_LIVEKIT_AMD64}" ;; \
-        arm64) LK_ARCH=linux_arm64; SHA256_LIVEKIT="${SHA256_LIVEKIT_ARM64}" ;; \
-        *) echo "unsupported arch: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL -o livekit.tar.gz \
-        "https://github.com/livekit/livekit/releases/download/v${LIVEKIT_VERSION}/livekit_${LIVEKIT_VERSION}_${LK_ARCH}.tar.gz"; \
-    echo "${SHA256_LIVEKIT}  livekit.tar.gz" | sha256sum -c -; \
-    mkdir -p /opt/livekit; \
-    tar -C /opt/livekit -xzf livekit.tar.gz livekit-server
 
 # MediaMTX — aus dem Pulse-Fork, s. `PULSE_MEDIAMTX_TAG` oben.
 #
@@ -369,7 +374,10 @@ RUN ldconfig && ln -sf /usr/local/bin/python3.13 /usr/local/bin/python3
 # Bundled binaries from stage 3
 COPY --from=binaries /opt/s6/      /
 COPY --from=binaries /opt/caddy/caddy            /usr/local/bin/caddy
-COPY --from=binaries /opt/livekit/livekit-server /usr/local/bin/livekit-server
+COPY --from=livekit-build /out/livekit-server  /usr/local/bin/livekit-server
+# Apache-2.0 §4: Lizenz, NOTICE-Text und die Pulse-Änderung reisen mit dem
+# veränderten Binary (LICENSE, NOTICE, patches/ — von bauen.sh --lizenz).
+COPY --from=livekit-build /out/lizenz/       /usr/share/doc/livekit-server/
 COPY --from=binaries /opt/mediamtx/mediamtx      /usr/local/bin/mediamtx
 COPY --from=garage-upstream /garage              /usr/local/bin/garage
 COPY infra/self-host/garage-init.sh /usr/local/bin/garage-init

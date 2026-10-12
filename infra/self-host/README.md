@@ -122,7 +122,7 @@ in `/data/jwt_keys/` and persisted across container restarts.
 |---|---|---|---|
 | s6-overlay | v3.2.0.2 | github.com/just-containers/s6-overlay | SHA-256 pinned per artifact |
 | Caddy | v2.8.4 | github.com/caddyserver/caddy | SHA-256 pinned per artifact |
-| LiveKit | v1.13.3 | github.com/livekit/livekit | SHA-256 pinned per artifact |
+| LiveKit | v1.13.3 + Pulse-Patch (`extra_node_ips`) | built from source, `infra/livekit-fork/` | commits pinned in `infra/livekit-fork/quelle.env`; patch test runs in the build |
 | MediaMTX | 1.19.1-pulse7 (Pulse-Fork) | ghcr.io/oblivion-pictures/pulse-mediamtx | Registry-Digest |
 | Garage | v1.1.0 | dxflrs/garage (Docker Hub) | pinned image tag — the binary is copied into our image (`garage-upstream` stage) |
 | frp (frpc) | 0.69.1 | github.com/fatedier/frp | SHA-256 pinned per artifact |
@@ -136,6 +136,13 @@ Every third-party tarball is downloaded with `curl` and verified against a
 pinned `SHA256_*` ARG inside the Dockerfile (`sha256sum -c`). The build
 aborts on mismatch — a tampered, swapped or silently rebuilt upstream
 artifact cannot reach the runtime stage.
+
+LiveKit is the exception since 2026-10-12: it is built from source in the
+`livekit-build` stage (`infra/livekit-fork/bauen.sh`, both repositories
+fetched by commit, not by tag). Without `extra_node_ips` in `livekit.yaml` —
+which a VPS self-host never sets — the patched binary behaves like the
+official 1.13.3. License, NOTICE and the patch ship in
+`/usr/share/doc/livekit-server/` inside the image.
 
 ### Refreshing or bumping pinned versions
 

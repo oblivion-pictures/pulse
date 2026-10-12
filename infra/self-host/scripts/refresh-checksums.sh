@@ -19,7 +19,7 @@
 #
 #   3. Version bump (--set NAME=VERSION ..., implies --write)
 #        ./refresh-checksums.sh --set CADDY_VERSION=2.9.0
-#        ./refresh-checksums.sh --set CADDY_VERSION=2.9.0 --set LIVEKIT_VERSION=1.9.0
+#        ./refresh-checksums.sh --set CADDY_VERSION=2.9.0 --set FRP_VERSION=0.70.0
 #      Rewrites the ARG <NAME>=<VERSION> line, then downloads the new
 #      tarballs, recomputes all relevant SHA-256 pins, and rewrites them.
 #
@@ -95,7 +95,6 @@ read_arg() {
 
 S6_OVERLAY_VERSION="$(read_arg S6_OVERLAY_VERSION)"
 CADDY_VERSION="$(read_arg CADDY_VERSION)"
-LIVEKIT_VERSION="$(read_arg LIVEKIT_VERSION)"
 # Bughunt 2026-09-20 (Runde 2): frp stand hier NICHT in der Liste — der
 # Re-verify meldete "all pins match", pruefte den Pin aber nie. (MinIO
 # ebenso; sein Eintrag ist mit der Garage-Umstellung entfallen — Garage
@@ -106,24 +105,26 @@ FRP_VERSION="$(read_arg FRP_VERSION)"
 # Pulse-Fork-Bild (`PULSE_MEDIAMTX_TAG` im Dockerfile) statt von upstream, und
 # die Registry sichert ihre Schichten selbst ueber den Digest — eine von Hand
 # gepflegte Pruefsumme waere eine zweite Wahrheit ohne Gewinn.
+# LiveKit steht hier seit 2026-10-12 ebenfalls nicht mehr: es wird im Image
+# aus dem Quelltext gebaut (Pulse-Fork, `infra/livekit-fork/quelle.env` nennt
+# die Commits), es gibt also keinen Tarball zu hashen.
 
 # Apply --set overrides
 for key in "${!VERSION_OVERRIDES[@]}"; do
     case "$key" in
         S6_OVERLAY_VERSION) S6_OVERLAY_VERSION="${VERSION_OVERRIDES[$key]}" ;;
         CADDY_VERSION)      CADDY_VERSION="${VERSION_OVERRIDES[$key]}" ;;
-        LIVEKIT_VERSION)    LIVEKIT_VERSION="${VERSION_OVERRIDES[$key]}" ;;
         FRP_VERSION)        FRP_VERSION="${VERSION_OVERRIDES[$key]}" ;;
         *)
             echo "error: --set: unknown version name '$key'" >&2
-            echo "       valid: S6_OVERLAY_VERSION CADDY_VERSION LIVEKIT_VERSION FRP_VERSION" >&2
+            echo "       valid: S6_OVERLAY_VERSION CADDY_VERSION FRP_VERSION" >&2
             exit 2
             ;;
     esac
 done
 
 # Validate we got everything
-for var in S6_OVERLAY_VERSION CADDY_VERSION LIVEKIT_VERSION FRP_VERSION; do
+for var in S6_OVERLAY_VERSION CADDY_VERSION FRP_VERSION; do
     if [[ -z "${!var}" ]]; then
         echo "error: ${var} not set (Dockerfile parse failed?)" >&2
         exit 1
@@ -139,15 +140,13 @@ declare -A URLS=(
     [S6_AARCH64]="https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-aarch64.tar.xz"
     [CADDY_AMD64]="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz"
     [CADDY_ARM64]="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_arm64.tar.gz"
-    [LIVEKIT_AMD64]="https://github.com/livekit/livekit/releases/download/v${LIVEKIT_VERSION}/livekit_${LIVEKIT_VERSION}_linux_amd64.tar.gz"
-    [LIVEKIT_ARM64]="https://github.com/livekit/livekit/releases/download/v${LIVEKIT_VERSION}/livekit_${LIVEKIT_VERSION}_linux_arm64.tar.gz"
     # frp: der Tarball (der Pin hashed das Archiv; extrahiert wird nur frpc).
     [FRP_AMD64]="https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_amd64.tar.gz"
     [FRP_ARM64]="https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_arm64.tar.gz"
 )
 
 # Iteration order is stable (we sort the keys) so log output is reproducible.
-NAMES=(S6_NOARCH S6_X86_64 S6_AARCH64 CADDY_AMD64 CADDY_ARM64 LIVEKIT_AMD64 LIVEKIT_ARM64 FRP_AMD64 FRP_ARM64)
+NAMES=(S6_NOARCH S6_X86_64 S6_AARCH64 CADDY_AMD64 CADDY_ARM64 FRP_AMD64 FRP_ARM64)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Download + hash each binary into a temp dir, capture results.
@@ -165,7 +164,7 @@ declare -A OLD_HASHES=()
 echo "Versions:"
 echo "  S6_OVERLAY_VERSION = ${S6_OVERLAY_VERSION}"
 echo "  CADDY_VERSION      = ${CADDY_VERSION}"
-echo "  LIVEKIT_VERSION    = ${LIVEKIT_VERSION}"
+echo "  FRP_VERSION        = ${FRP_VERSION}"
 echo
 echo "Downloading + hashing ${#NAMES[@]} binaries..."
 echo
