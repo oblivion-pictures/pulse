@@ -39,6 +39,36 @@
  * landete sonst als Eintrag im Grabstein-Register und als Stein in der
  * Sicherung, an dem jede Wiederherstellung des Kanals scheiterte.
  *
+ * **Bekannte, offene Lücke: eine Zeile unter fremder ID** (Gegenprüfung
+ * 2026-10-12, Fund 3, mittel; bestand schon auf `main`). Lokal liegt eine
+ * Zeile unter ihrer ID `i`, und `i` wählt der Einliefernde frei. Bob liefert
+ * `{i: K_alice, a: Bob}` ein, mit `K_alice` als Kennung einer Nachricht von
+ * Alice, die er empfangen hat. Die Zeile zählt, denn Bob ist ihr Autor und
+ * Einlieferer. Ihre Zeilen-ID wählt er ebenso frei (der Server nimmt jede
+ * freie ID über 0, `routes/archiv.py`), und damit auch, ob sie vor Alices
+ * Zeile gelesen wird. Auf einem Gerät, das unter `K_alice` noch nichts hat
+ * (ein Frischgerät vor Sicherung und Kopplung, oder eines, das die Nachricht
+ * nie empfing), legt das Archiv Bobs Satz unter `K_alice` ab. Danach fällt
+ * dort alles weg, was Alices Nachricht unter diesem Schlüssel nachliefern
+ * könnte: ihre echte Archiv-Zeile, ihr Satz aus der eigenen Sicherung und
+ * der aus der Kopplung, denn ein anderer Autor unter demselben Schlüssel
+ * wird nicht überschrieben (`verlauf/satz.ts::satzErgaenzen`). Der
+ * Sicherungs-Lesestand rückt trotzdem vor (`sicherung/andockLesen.ts`), der
+ * Satz kommt aus der Sicherung also nicht wieder, und die Kopplung zählt ihn
+ * als übernommen (`kopplung/empfangen.ts::stueckAblegen`). Angezeigt wird
+ * Bobs Text unter Bobs Namen; gefälscht ist die Zuschreibung nicht, Alices
+ * Nachricht fehlt auf diesem Gerät. Nichts verloren geht auf einem Gerät,
+ * das Alices Nachricht schon hält: unter `K_alice` überschreibt eine fremde
+ * Zeile nie einen liegenden Satz, und unter einer Zustellungs-ID bleibt die
+ * Empfangs-Kopie ohnehin stehen.
+ *
+ * Ein Ausweichplatz unter der Zeilen-ID (`b74b2f57`, wieder zurückgenommen)
+ * hat das nicht behoben: eine Zeile darf als Zeilen-ID ihre eigene `i`
+ * tragen und galt dann als ausgewichen, und ein verdrängter Satz fiel weg,
+ * wenn Bob seinen Ausweichplatz vorab belegt hatte. Die Lösung braucht einen
+ * eigenen Entwurf, etwa den Autor im lokalen Schlüssel oder einen Server,
+ * der `i` an den Einlieferer bindet.
+ *
  * Laufzeit-Importe nur mit `.ts`-Endung (Node-Testläufer-Regel, s.
  * `verlauf/schema.ts`); sonst nur Typen.
  */
@@ -113,11 +143,9 @@ export function baueGrabsteinKlar(kennung: string, autorId: string, zeit: string
  *  der kanonischen Kennung `kennung`. */
 export type Grabstein = { art: 'grabstein'; autorId: string; kennung: string };
 
-/** Eine Nachricht aus dem Archiv: dazu die Zeilen-ID, unter die sie
- *  ausweicht, wenn unter ihrer eigenen ID `i` schon ein Satz eines anderen
- *  Autors liegt (`verlauf/platzWahl.ts`; `verlauf/satz.ts::zuSatz` übernimmt
- *  sie in den Satz). */
-export type ArchivNachricht = Message & { archiv_zeile?: string; archiv_ungeprueft?: true };
+/** Eine Nachricht aus dem Archiv, bei einer Bestandszeile mit der Marke
+ *  `archiv_ungeprueft` (`verlauf/satz.ts::zuSatz` übernimmt sie in den Satz). */
+export type ArchivNachricht = Message & { archiv_ungeprueft?: true };
 
 /** Was eine Archiv-Zeile ist, nachdem `leseZeile` sie angenommen hat. */
 export type ArchivEintrag = { art: 'nachricht'; nachricht: ArchivNachricht } | Grabstein;
@@ -144,15 +172,11 @@ const BESTANDSZEILEN_ANNEHMEN = true;
  * oder `null`: die Zeile wird verworfen. Verworfen wird eine Zeile, deren
  * Autor nicht ihr Einlieferer ist, und jede Grabstein-Zeile ohne bekannten
  * Einlieferer. Wirft bei kaputtem JSON (wie `leseZeilenKlar`).
- *
- * `zeilenId` ist die ID der Zeile beim Server; die Nachricht trägt sie als
- * `archiv_zeile` mit, wenn sie eine Kennung ist.
  */
 export function leseZeile(
 	kanalId: string,
 	roh: string,
-	einlieferer: string | null,
-	zeilenId?: string
+	einlieferer: string | null
 ): ArchivEintrag | null {
 	const inhalt = JSON.parse(roh) as Partial<ArchivZeileKlar & GrabsteinZeileKlar>;
 	const vomAutor = einlieferer !== null && inhalt.a === einlieferer;
@@ -165,7 +189,6 @@ export function leseZeile(
 	if (!vomAutor && !angenommeneBestandszeile) return null;
 	if (!istGueltigeKennung(inhalt.i) || !istGueltigeKennung(inhalt.a)) return null;
 	const nachricht: ArchivNachricht = zuNachricht(kanalId, ohneUngueltigeBezuege(inhalt));
-	if (istGueltigeKennung(zeilenId)) nachricht.archiv_zeile = zeilenId;
 	// Den Autor einer Bestandszeile hat niemand geprüft — der Satz daraus
 	// wird nie eigene Wahrheit (`verlauf/herkunft.ts`, Fund 4).
 	if (angenommeneBestandszeile) nachricht.archiv_ungeprueft = true;

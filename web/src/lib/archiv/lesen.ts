@@ -76,7 +76,7 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 					const klarText = new TextDecoder().decode(
 						await entschluesseleZeile(kanalSchluessel, vonB64(zeile.nutzlast_b64))
 					);
-					const eintrag = leseZeile(zeile.channel_id, klarText, zeile.user_id ?? null, zeile.id);
+					const eintrag = leseZeile(zeile.channel_id, klarText, zeile.user_id ?? null);
 					if (eintrag === null) verworfen++;
 					else if (eintrag.art === 'grabstein') grabsteine.push(eintrag);
 					else nachrichten.push(eintrag.nachricht);

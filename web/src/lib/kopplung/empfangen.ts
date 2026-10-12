@@ -30,7 +30,10 @@
  * ankam, fiel zurück auf den Stand des alten. Jetzt läuft das Ablegen über
  * `verlaufSaetzeErgaenzen` mit der Herkunft `kopplung` — eigene Wahrheit wie
  * die Sicherung (`verlauf/satz.ts::Nachschub`) — und durch das
- * Grabstein-Register.
+ * Grabstein-Register. Liegt unter einem Schlüssel schon ein Satz eines
+ * anderen Autors, bleibt er, und der übernommene fällt weg, wird aber als
+ * übernommen gezählt (Gegenprüfung 2026-10-12, Fund 3, offen: Kopf von
+ * `archiv/zeile.ts`).
  *
  * **Grabsteine des alten Geräts gelten hier weiter.** Nach dem letzten Stück
  * trägt `verlaufRegisterAbgleichen` genau die übernommenen Grabsteine ins

@@ -71,8 +71,6 @@ async function ablegen(
     geloescht?: boolean;
     anhaenge?: { id: string }[];
     antwortAuf?: string;
-    /** Zeilen-ID einer Archiv-Zeile (`archiv/zeile.ts::leseZeile`). */
-    zeile?: string;
     /** Archiv-Bestandszeile ohne geprüften Autor (`verlauf/herkunft.ts`). */
     ungeprueft?: boolean;
   }[]
@@ -96,7 +94,6 @@ async function ablegen(
             ...(s.geloescht ? { deleted_at: '2026-10-12T00:00:01Z' } : {}),
             ...(s.anhaenge ? { attachments: s.anhaenge } : {}),
             ...(s.antwortAuf ? { reply_to_id: s.antwortAuf } : {}),
-            ...(s.zeile ? { archiv_zeile: s.zeile } : {}),
             ...(s.ungeprueft ? { archiv_ungeprueft: true } : {})
           },
           kontoId
@@ -601,13 +598,6 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     expect(await anhangDa(page, BILD)).toBe(true);
   });
 
-  // Fund 3 der zweiten Gegenprüfung: eine Archiv-Zeile liegt unter ihrer
-  // eigenen ID `i`, und die wählt der Einliefernde frei. Bobs Zeile
-  // `{i: K, a: Bob}` belegte Alices Schlüssel, und Alices Zeile wie ihr Satz
-  // aus der eigenen Sicherung fielen weg (`platzWahl.ts`).
-  const R_ALICE = '5000000000000000001';
-  const R_BOB = '5000000000000000002';
-
   /** Sichtbare Sätze als `ID Autor Kennung Inhalt`. */
   async function belegung(page: Page): Promise<string[]> {
     return (await kanal(page))
@@ -618,49 +608,35 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
       });
   }
 
-  test('Fund 3 (zweite Gegenprüfung): Bobs Zeile unter Alices Kennung verdrängt Alices Nachricht nicht', async ({ page }) => {
-    await ablegen(page, 'archiv', [{ id: K, autor: BOB, kryptoId: K, zeile: R_BOB, inhalt: 'bob' }]);
-    await ablegen(page, 'archiv', [{ id: K, autor: ALICE, kryptoId: K, zeile: R_ALICE, inhalt: 'echt' }]);
-    // Alices Zeile weicht unter ihre Zeilen-ID aus, mit K als Kennung.
-    expect(await belegung(page)).toEqual([`${K} bob ${K} bob`, `${R_ALICE} alice ${K} echt`]);
-    // Alices eigene Sicherung holt sich den Schlüssel K zurück; Bobs Satz
-    // weicht unter seine Zeilen-ID aus, statt wegzufallen.
+  // Fund 3 der zweiten Gegenprüfung, offen (Kopf von `archiv/zeile.ts`): eine
+  // Archiv-Zeile liegt unter ihrer eigenen ID `i`, und die wählt der
+  // Einliefernde frei. Was gilt: ein Satz eines anderen Autors unter
+  // derselben ID überschreibt nie einen liegenden Satz, über keinen Weg.
+
+  test('Fund 3 (offen): ein Satz unter fremder ID überschreibt keinen liegenden Satz', async ({ page }) => {
+    const bobUnterK = { id: K, autor: BOB, kryptoId: K, inhalt: 'bob' };
+    await ablegen(page, 'put', [{ id: K, autor: ALICE, kryptoId: K, inhalt: 'echt' }]);
+    await ablegen(page, 'archiv', [bobUnterK]);
+    await ablegen(page, 'sicherung', [bobUnterK]);
+    // Die Kopplung legte bis 2026-10-12 blind über den Schlüssel.
+    await kopplungUebernehmen(page, [bobUnterK]);
+    expect(await belegung(page)).toEqual([`${K} alice ${K} echt`]);
+  });
+
+  test('Fund 3 (offen): im selben Nachschub gewinnt der erste Satz unter einem Schlüssel', async ({ page }) => {
+    await ablegen(page, 'archiv', [
+      { id: K, autor: ALICE, kryptoId: K, inhalt: 'echt' },
+      { id: K, autor: BOB, kryptoId: K, inhalt: 'bob' }
+    ]);
+    expect(await belegung(page)).toEqual([`${K} alice ${K} echt`]);
+  });
+
+  test('Fund 3 (offen): liegt Bobs Satz zuerst, holt die eigene Sicherung den Schlüssel nicht zurück', async ({ page }) => {
+    // Die bekannte Lücke, festgehalten, damit ihre Behebung hier auffällt:
+    // wer Fund 3 löst, dreht diese Erwartung um.
+    await ablegen(page, 'archiv', [{ id: K, autor: BOB, kryptoId: K, inhalt: 'bob' }]);
     await ablegen(page, 'sicherung', [{ id: K, autor: ALICE, inhalt: 'aus der Sicherung' }]);
-    expect(await belegung(page)).toEqual([
-      `${K} alice null aus der Sicherung`,
-      `${R_ALICE} alice ${K} echt`,
-      `${R_BOB} bob ${K} bob`
-    ]);
-    // Ein zweites Lesen derselben Zeilen ändert nichts mehr.
-    await ablegen(page, 'archiv', [
-      { id: K, autor: BOB, kryptoId: K, zeile: R_BOB, inhalt: 'bob' },
-      { id: K, autor: ALICE, kryptoId: K, zeile: R_ALICE, inhalt: 'echt' }
-    ]);
-    expect(await belegung(page)).toHaveLength(3);
-  });
-
-  test('Fund 3 (zweite Gegenprüfung): zwei Autoren mit derselben ID in EINEM Nachschub fallen beide nicht weg', async ({ page }) => {
-    await ablegen(page, 'archiv', [
-      { id: K, autor: BOB, kryptoId: K, zeile: R_BOB, inhalt: 'bob' },
-      { id: K, autor: ALICE, kryptoId: K, zeile: R_ALICE, inhalt: 'echt' }
-    ]);
-    expect(await belegung(page)).toEqual([`${K} bob ${K} bob`, `${R_ALICE} alice ${K} echt`]);
-  });
-
-  test('Fund 3 (zweite Gegenprüfung): einen vorab belegten Ausweichplatz holt sich die Zeile zurück', async ({ page }) => {
-    // Bob liest das Archiv mit und kennt Alices Zeilen-ID. Er liefert eine
-    // Zeile mit `i = R_alice` ein und eine mit `i = K`.
-    const R_BOB_2 = '5000000000000000003';
-    await ablegen(page, 'archiv', [
-      { id: R_ALICE, autor: BOB, kryptoId: R_ALICE, zeile: R_BOB_2, inhalt: 'vorab' },
-      { id: K, autor: BOB, kryptoId: K, zeile: R_BOB, inhalt: 'bob' }
-    ]);
-    await ablegen(page, 'archiv', [{ id: K, autor: ALICE, kryptoId: K, zeile: R_ALICE, inhalt: 'echt' }]);
-    expect(await belegung(page)).toEqual([
-      `${K} bob ${K} bob`,
-      `${R_ALICE} alice ${K} echt`,
-      `${R_BOB_2} bob ${R_ALICE} vorab`
-    ]);
+    expect(await belegung(page)).toEqual([`${K} bob ${K} bob`]);
   });
 
   test('Fund 4 (zweite Gegenprüfung): eine ungeprüfte Archiv-Kopie weicht der eigenen Sicherung, nie umgekehrt', async ({ page }) => {

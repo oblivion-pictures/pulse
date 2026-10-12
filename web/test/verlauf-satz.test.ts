@@ -204,12 +204,11 @@ test('nachSchluesselVerdichten: der erste gewinnt, ein späterer ergänzt ihn h�
   assert.equal(aus[0].inhalt, 'echt');
   assert.deepEqual(aus[0].anhaenge, []);
   assert.equal(aus[0].kryptoId, '42');
-  // Ein fremder Autor unter demselben Schlüssel verdrängt den ersten nicht —
-  // und fällt auch nicht weg: beide laufen nacheinander durch die Platzwahl
-  // (`platzWahl.ts`, Gegenprüfung 2026-10-12, Fund 3).
+  // Ein fremder Autor unter demselben Schlüssel verdrängt den ersten nicht,
+  // er fällt weg (Gegenprüfung 2026-10-12, Fund 3, offen: `archiv/zeile.ts`).
   const fremd = beispielSatz({ author_id: '8', content: 'fremd' });
   const beide = nachSchluesselVerdichten([echt, fremd], 'sicherung');
-  assert.deepEqual(beide.map((s) => s.inhalt), ['echt', 'fremd']);
+  assert.deepEqual(beide.map((s) => s.inhalt), ['echt']);
 });
 
 // Gegenprüfung 2026-10-12, Fund 4: eine Archiv-Bestandszeile ohne
