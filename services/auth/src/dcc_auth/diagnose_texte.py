@@ -3,7 +3,7 @@
 Warum sie hier liegen und nicht dreimal im Repo
 -----------------------------------------------
 Drei Stellen zeigen dasselbe Ergebnis: der Installer im Terminal, die App unter
-„Meine Instanzen", und ``pulse-doctor`` im Container. Läge der Text an jeder
+„Meine Server", und ``pulse-doctor`` im Container. Läge der Text an jeder
 Stelle eigens, beschriebe bald jede denselben Zustand mit anderen Worten — der
 Plan (``docs/plans/2026-08-25-selfhost-erreichbarkeit-diagnose.md``) verlangt
 deshalb ausdrücklich **einen** Ort. Der Server liefert den fertigen Satz mit der

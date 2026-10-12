@@ -1712,7 +1712,7 @@ if [ -n "$VERBUNDEN" ]; then
   if ! pruefung_von_aussen; then
     warn "Could not run the external check right now."
     warn "Run it on this machine any time:  docker exec $CONTAINER pulse-doctor"
-    warn "Or in the Pulse app: My Instances → Check connection."
+    warn "Or in the Pulse app: My servers → Check connection."
   fi
 fi
 

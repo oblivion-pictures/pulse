@@ -667,9 +667,9 @@ curl https://chat.example.com/.well-known/pulse-server-info</pre>
       <p>The server now appears in Pulse on every device of your account. Open
       it there and create the first community with its plus button.</p>
 
-      <p>Finally run <strong>Settings &rarr; Your own server &rarr; My Instances
-      &rarr; Check connection</strong>. That is the view from outside, and it
-      catches what a server cannot see about itself.</p>
+      <p>Finally run <strong>My servers &rarr; Check connection</strong> in the
+      account menu (bottom left). That is the view from outside, and it catches
+      what a server cannot see about itself.</p>
 
       <div class="note">Opening your server domain directly in a browser shows a
       <strong>blank page</strong>. That is intended &mdash; a self-host has no
@@ -827,10 +827,10 @@ curl https://chat.example.com/.well-known/pulse-server-info</pre>
       <p>The server now appears in Pulse on every device of your account. Open
       it there and create the first community with its plus button.</p>
 
-      <p>Finally run <strong>Settings &rarr; Your own server &rarr; My Instances
-      &rarr; Check connection</strong>. That is the view from outside, and it
-      catches what a server cannot see about itself &mdash; above all a proxy that
-      drops WebSockets.</p>
+      <p>Finally run <strong>My servers &rarr; Check connection</strong> in the
+      account menu (bottom left). That is the view from outside, and it catches
+      what a server cannot see about itself &mdash; above all a proxy that drops
+      WebSockets.</p>
 
       <div class="note">Opening your server domain directly in a browser shows a
       <strong>blank page</strong>. That is intended &mdash; a self-host has no
@@ -892,8 +892,8 @@ docker compose -f docker-compose.behind-proxy.yml pull &amp;&amp; \
     <pre>docker exec pulse pulse-doctor</pre>
   </div>
 
-  <p>From outside: <strong>Settings &rarr; Your own server &rarr; My Instances
-  &rarr; Check connection</strong>. Green inside and red outside means DNS,
+  <p>From outside: <strong>My servers &rarr; Check connection</strong> in the
+  account menu (bottom left). Green inside and red outside means DNS,
   firewall or proxy &mdash; not the server.</p>
 
   <h3 id="normal-logs">Normal start-up messages</h3>
@@ -1012,8 +1012,8 @@ docker compose down -v               <span class="c"># removes pulse_pulse-data 
   <p><code>docker compose down</code> without <code>-v</code> keeps the data for a
   reinstall.</p>
 
-  <p>Afterwards delete the instance in the app under <strong>My Instances</strong>,
-  which frees the hostname. Members remove the server from their own list by
+  <p>Afterwards delete the server in the app under <strong>My servers</strong>,
+  which frees the address. Members remove the server from their own list by
   right-clicking it.</p>
 </section>
 

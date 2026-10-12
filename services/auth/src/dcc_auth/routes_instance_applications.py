@@ -81,8 +81,8 @@ class InstanceOut(BaseModel):
     worker_id_voice: int | None
     worker_id_media: int | None
     status: Literal["active", "suspended"]
-    # vps = klassischer Self-Host, app_host = Ein-Knopf-Container aus der App.
-    # Das Frontend blendet app_host-Instanzen aus "Meine Instanzen" aus.
+    # vps = gemieteter Server mit eigener Adresse, app_host = Heim-Server
+    # (Server-App). „Meine Server“ führt beide und beschriftet die Heim-Server.
     origin: Literal["vps", "app_host"] = "vps"
     registered_at: datetime
     # Per-User-Präferenzen aus user_instance_memberships (account-basiert →

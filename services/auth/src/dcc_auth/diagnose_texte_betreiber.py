@@ -28,48 +28,62 @@ BEFUNDE: dict[tuple[str, str], tuple[tuple[str, str], tuple[str, str]]] = {
             "Deshalb bist du dort ein gewöhnliches Mitglied: Du kannst keine Community anlegen und "
             "die Server-Einstellungen nicht öffnen, obwohl der Server dir gehört. Am häufigsten "
             "passiert das, wenn die Konfigurationsdatei eines früheren Servers weiterverwendet wurde.",
-            "Trage auf der Maschine in /etc/pulse/pulse.env bei PULSE_INSTANCE_OWNER_ID die Kennung "
-            "ein, die dir in „Meine Instanzen“ angezeigt wird, und starte den Server neu: "
-            "sudo docker restart {container}. Danach in der App einmal neu laden.",
+            "Verbinde den Server neu mit dem Konto, dem er gehören soll: sudo docker exec -it "
+            "{container} pulse-connect — dann den angezeigten Link öffnen und mit diesem Konto "
+            "bestätigen; danach in der App einmal neu laden. Ausnahme: Ein Server, der vor Oktober "
+            "2026 mit Freigabe eingerichtet wurde, trägt den Besitzer als PULSE_INSTANCE_OWNER_ID in "
+            "seiner Konfigurationsdatei (Installer: /opt/pulse/pulse.env bzw. ~/.pulse/pulse.env, "
+            "Compose: .env neben der Compose-Datei). Dort die Kennung korrigieren und "
+            "sudo docker restart {container}.",
         ),
         (
             "This server is configured with a different account as its owner — not yours. That makes "
             "you an ordinary member there: you cannot create a community or open the server settings, "
             "even though the server is yours. The most common cause is a configuration file carried "
             "over from an earlier server.",
-            "On the machine, set PULSE_INSTANCE_OWNER_ID in /etc/pulse/pulse.env to the identifier "
-            "shown to you under \"My instances\", then restart the server: "
-            "sudo docker restart {container}. Afterwards reload the app once.",
+            "Connect the server again with the account that should own it: sudo docker exec -it "
+            "{container} pulse-connect — then open the link it shows and confirm with that account; "
+            "afterwards reload the app once. Exception: a server set up before October 2026 with an "
+            "approval carries its owner as PULSE_INSTANCE_OWNER_ID in its configuration file "
+            "(installer: /opt/pulse/pulse.env or ~/.pulse/pulse.env, Compose: the .env next to the "
+            "compose file). Correct the identifier there and run sudo docker restart {container}.",
         ),
     ),
     ("betreiber", "nicht_konfiguriert"): (
         (
             "Dieser Server weiss gar nicht, wem er gehört. Damit kann ihn niemand verwalten — auch du "
             "nicht.",
-            "Trage auf der Maschine in /etc/pulse/pulse.env bei PULSE_INSTANCE_OWNER_ID die Kennung "
-            "ein, die dir in „Meine Instanzen“ angezeigt wird, und starte den Server neu: "
+            "Verbinde den Server mit deinem Konto: sudo docker exec -it {container} pulse-connect — "
+            "dann den angezeigten Link öffnen und bestätigen. Ausnahme: Ein Server, der vor Oktober "
+            "2026 mit Freigabe eingerichtet wurde, trägt den Besitzer als PULSE_INSTANCE_OWNER_ID in "
+            "seiner Konfigurationsdatei (Installer: /opt/pulse/pulse.env bzw. ~/.pulse/pulse.env, "
+            "Compose: .env neben der Compose-Datei). Dort die Kennung eintragen und "
             "sudo docker restart {container}.",
         ),
         (
             "This server does not know who it belongs to. Nobody can administer it that way — not "
             "even you.",
-            "On the machine, set PULSE_INSTANCE_OWNER_ID in /etc/pulse/pulse.env to the identifier "
-            "shown to you under \"My instances\", then restart the server: "
-            "sudo docker restart {container}.",
+            "Connect the server to your account: sudo docker exec -it {container} pulse-connect — "
+            "then open the link it shows and confirm. Exception: a server set up before October 2026 "
+            "with an approval carries its owner as PULSE_INSTANCE_OWNER_ID in its configuration file "
+            "(installer: /opt/pulse/pulse.env or ~/.pulse/pulse.env, Compose: the .env next to the "
+            "compose file). Enter the identifier there and run sudo docker restart {container}.",
         ),
     ),
     ("betreiber", "kein_self_host"): (
         (
             "Dieser Server läuft nicht in der Betriebsart für eigene Server. In dieser Einstellung "
             "wird niemand zum Verwalter ernannt, auch nicht mit der richtigen Kennung.",
-            "Setze auf der Maschine in /etc/pulse/pulse.env PULSE_INSTANCE_MODE=self-host und starte "
-            "den Server neu: sudo docker restart {container}.",
+            "Setze in der Konfigurationsdatei des Servers (Installer: /opt/pulse/pulse.env bzw. "
+            "~/.pulse/pulse.env, Compose: .env neben der Compose-Datei) PULSE_INSTANCE_MODE=self-host "
+            "und starte den Server neu: sudo docker restart {container}.",
         ),
         (
             "This server is not running in the mode meant for your own servers. In that setting nobody "
             "is made an administrator, not even with the correct identifier.",
-            "On the machine, set PULSE_INSTANCE_MODE=self-host in /etc/pulse/pulse.env and restart the "
-            "server: sudo docker restart {container}.",
+            "In the server's configuration file (installer: /opt/pulse/pulse.env or "
+            "~/.pulse/pulse.env, Compose: the .env next to the compose file) set "
+            "PULSE_INSTANCE_MODE=self-host and restart the server: sudo docker restart {container}.",
         ),
     ),
     ("betreiber", "signatur_abgelehnt"): (
