@@ -2,6 +2,17 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-13.2",
+      "date": "2026-10-13",
+      "style": "Sachlich",
+      "title": "Korrekturen",
+      "items": [
+        "Nach dem Wiederherstellen einer Sicherung auf einem neuen Gerät erscheinen Nachrichten nicht mehr doppelt. Das gilt für alles, was ab jetzt gesichert wird.",
+        "Obergrenzen für Dateien bleiben beim Speichern genau so, wie sie eingetragen sind, auch bei Werten wie 0,5 MB. Ein geleertes Feld ändert eine Grenze nicht mehr.",
+        "Vorschaubilder zählen jetzt zum Speicherplatz der Community. Passt ein Vorschaubild nicht unter die Grenze, wird die Datei ohne es hochgeladen, statt abzubrechen."
+      ]
+    },
+    {
       "id": "2026-10-13",
       "date": "2026-10-13",
       "style": "Sachlich",
