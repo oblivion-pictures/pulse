@@ -215,7 +215,6 @@ fi
 # „geprüft".
 mac_crates=""
 echo "$changed" | grep -q '^streaming/mac-hq-sidecar/' && mac_crates="$mac_crates streaming/mac-hq-sidecar"
-echo "$changed" | grep -q '^streaming/mac-hq-labor/' && mac_crates="$mac_crates streaming/mac-hq-labor"
 if [ -n "$mac_crates" ]; then
   if [ "$(uname -s)" = "Darwin" ]; then
     for crate in $mac_crates; do
