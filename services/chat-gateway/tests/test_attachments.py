@@ -226,6 +226,40 @@ async def test_thumb_cap_carries_a_worst_case_png_fallback(client, _auth_signer,
 
 
 @pytest.mark.asyncio
+async def test_thumb_rejection_is_distinguishable_from_file_too_large(
+    client, _auth_signer, mock_s3, session_factory
+):
+    """Beide Absagen sind 413, der Klient muss sie aber unterscheiden: fehlt nur
+    das Vorschaubild, lädt er die Datei ohne es hoch; ist die DATEI zu groß, hilft
+    das nichts. Deshalb trägt die Vorschaubild-Absage einen eigenen, stabilen Text
+    (``thumbnail too large``, vom Klienten wörtlich verglichen), und die
+    „Datei zu groß“-Absage bleibt, wie sie war."""
+    from dcc_chat_gateway.models import Guild
+
+    (t1, _u1), _ = await register_two(_auth_signer)
+    gid, cid = await _make_guild_channel(client, t1)
+    async with session_factory() as s:
+        g = await s.get(Guild, int(gid))
+        g.attachment_max_size_bytes = 500_000  # kleine Dateigrenze der Community
+        await s.commit()
+
+    # Datei passt, das Vorschaubild (unter 4 MiB) ist größer als die Dateigrenze.
+    r = await _upload(client, t1, cid, size=100_000, has_thumb=True, thumb_size=600_000,
+                      thumb_width=720, thumb_height=720)
+    assert r.status_code == 413, r.text
+    assert r.json()["detail"] == "thumbnail too large"
+
+    # Die DATEI ist zu groß: unveränderter Text, nicht der des Vorschaubildes.
+    r = await _upload(client, t1, cid, size=600_000)
+    assert r.status_code == 413, r.text
+    assert r.json()["detail"] == "file too large (600000 > 500000 bytes)"
+
+    # Und ohne Vorschaubild geht die kleine Datei durch - der Rückfall des Klienten.
+    r = await _upload(client, t1, cid, size=100_000)
+    assert r.status_code == 201, r.text
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("thumb_size", [0, -1, -512])
 async def test_thumb_size_must_be_positive(client, _auth_signer, mock_s3, thumb_size):
     # Ein negatives thumb_size liesse sich sonst vom Kontingent abziehen.

@@ -32,7 +32,7 @@ import type { AnhangAngabe } from '$lib/krypto/nachrichtNutzlast';
 import { anhangBytesSichern, anhangBytesLoeschen } from '$lib/verlauf/db';
 import { m } from '$lib/paraglide/messages.js';
 import { erzeugeVorschaubild, erzeugeVideoVorschaubild } from './vorschaubild';
-import { KLUMPEN_ZUSATZ_BYTES, vorschauBehalten } from './vorschauWahl';
+import { KLUMPEN_ZUSATZ_BYTES, ticketAnfordern, vorschauBehalten } from './vorschauWahl';
 import { aufnahmeDauerRegister } from './aufnahmeKern';
 import { putMitFortschritt } from './putMitFortschritt';
 import { nextLocalId, type PendingAttachment } from './upload.svelte';
@@ -141,21 +141,29 @@ export function startUploadVerschluesselt(
       if (cancelled) return;
       // Nur ein Vorschaubild innerhalb der Serverlinie geht mit (s.
       // vorschauWahl.ts). Maße und lokale Kopie bleiben.
-      const vorschauKlumpen =
+      let vorschauKlumpen =
         vorschau && vorschauBehalten(vorschau.blob.size, KLUMPEN_ZUSATZ_BYTES)
           ? await klumpenBauen(vorschau.blob)
           : null;
       if (cancelled) return;
 
-      const adresse = await postfachApi.anhangUploadAdresse(
-        {
-          channel_id: channelId,
-          size: datei.klumpen.size,
-          has_thumb: vorschauKlumpen !== null,
-          thumb_size: vorschauKlumpen?.klumpen.size ?? null
-        },
-        cloudRoute()
+      // Lehnt der Server nur das Vorschaubild ab (kleine Dateigrenze), fragt
+      // `ticketAnfordern` einmal ohne es neu - dann bleibt der Anhang ohne
+      // Vorschau (`vorschauKlumpen` wird null; Maße und lokale Kopie bleiben).
+      const { antwort: adresse, mitVorschau } = await ticketAnfordern(
+        (mitThumb) =>
+          postfachApi.anhangUploadAdresse(
+            {
+              channel_id: channelId,
+              size: datei.klumpen.size,
+              has_thumb: mitThumb,
+              thumb_size: mitThumb ? (vorschauKlumpen?.klumpen.size ?? null) : null
+            },
+            cloudRoute()
+          ),
+        vorschauKlumpen !== null
       );
+      if (!mitVorschau) vorschauKlumpen = null;
       if (cancelled) return;
 
       row.attachmentId = adresse.id;

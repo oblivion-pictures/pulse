@@ -9,6 +9,12 @@
  * dann kein Original von bis zu 25 MiB), und lässt nur ein Vorschaubild über
  * der Grenze weg. Der Safari-Fall wird nachgestellt, indem `toBlob` für WebP
  * ein PNG-Blob liefert.
+ *
+ * Dazu die kleine Dateigrenze einer Community (hier 0,5 MB): das Vorschaubild
+ * ist dann größer als die Grenze, aber kleiner als die feste Linie von 4 MiB.
+ * Der Server lehnt es mit eigener 413 ab (`thumbnail too large`), und der Klient
+ * fragt genau einmal ohne Vorschaubild neu. Eine 413 „Datei zu groß“ löst
+ * keinen Neuversuch aus.
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -53,6 +59,48 @@ test.describe.serial('Vorschaubild-Rückfall', () => {
       })
     ]);
     return anfrage.postDataJSON() as Record<string, unknown>;
+  }
+
+  /** Sammelt Ticket-Anfragen und -Antworten, solange der Test läuft. */
+  function ticketBeobachter() {
+    const anfragen: Array<Record<string, unknown>> = [];
+    const antworten: Array<{ status: number; detail: string | null }> = [];
+    const beiAnfrage = (r: import('@playwright/test').Request) => {
+      if (r.url().includes('/attachments/upload-url') && r.method() === 'POST') {
+        anfragen.push(r.postDataJSON() as Record<string, unknown>);
+      }
+    };
+    const beiAntwort = async (r: import('@playwright/test').Response) => {
+      if (r.url().includes('/attachments/upload-url') && r.request().method() === 'POST') {
+        const body = (await r.json().catch(() => null)) as { detail?: string } | null;
+        antworten.push({ status: r.status(), detail: body?.detail ?? null });
+      }
+    };
+    page.on('request', beiAnfrage);
+    page.on('response', beiAntwort);
+    return {
+      anfragen,
+      antworten,
+      stop: () => {
+        page.off('request', beiAnfrage);
+        page.off('response', beiAntwort);
+      }
+    };
+  }
+
+  /** `toBlob` liefert für WebP ein PNG-Blob der gegebenen Größe (Safari). */
+  async function safariVorschau(bytes: number) {
+    await page.evaluate((groesse) => {
+      const w = window as unknown as { __toBlobEcht?: HTMLCanvasElement['toBlob'] };
+      const echt = (w.__toBlobEcht ??= HTMLCanvasElement.prototype.toBlob);
+      HTMLCanvasElement.prototype.toBlob = function (cb, typ, qualitaet) {
+        if (typ === 'image/webp') {
+          cb(new Blob([new Uint8Array(groesse)], { type: 'image/png' }));
+        } else {
+          echt.call(this, cb, typ, qualitaet);
+        }
+      };
+    }, bytes);
   }
 
   test('Vorbereitung: Konto und Community', async () => {
@@ -133,5 +181,79 @@ test.describe.serial('Vorschaubild-Rückfall', () => {
     await expect(page.getByTestId('message-send')).toBeEnabled({ timeout: 15_000 });
     await page.getByTestId('message-send').click();
     await expect(page.getByTestId('attachment-image')).toHaveCount(3, { timeout: 5_000 });
+  });
+
+  test.describe('kleine Dateigrenze der Community (0,5 MB)', () => {
+    test.beforeAll(async () => {
+      const guildId = /\/guilds\/(\d+)\//.exec(page.url())?.[1];
+      expect(guildId).toBeTruthy();
+      const status = await page.evaluate(async (id) => {
+        const token = localStorage.getItem('dcc.tokens.access');
+        const r = await fetch(`/api/chat/guilds/${id}/limits`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ limits: { attachment_max_size_bytes: 500_000 } })
+        });
+        return r.status;
+      }, guildId);
+      expect(status).toBe(200);
+    });
+
+    test('Vorschaubild über der Dateigrenze: genau ein Neuversuch ohne Vorschaubild', async () => {
+      // 600 kB: unter der festen Linie von 4 MiB (der Klient schickt es), aber
+      // über der Dateigrenze dieser Community (der Server lehnt es ab).
+      await safariVorschau(600_000);
+      const beobachter = ticketBeobachter();
+      try {
+        await page.getByTestId('attachment-file-input').setInputFiles({
+          name: 'retry.png',
+          mimeType: 'image/png',
+          buffer: TINY_PNG
+        });
+        // Der Upload endet in „fertig“ statt in einem Fehler.
+        await expect(page.getByTestId('message-send')).toBeEnabled({ timeout: 15_000 });
+        await expect(page.getByTestId('attachment-error')).toHaveCount(0);
+        await expect.poll(() => beobachter.antworten.length).toBe(2);
+        expect(beobachter.anfragen).toHaveLength(2); // genau einmal wiederholt
+        expect(beobachter.anfragen[0].has_thumb).toBe(true);
+        expect(beobachter.anfragen[0].thumb_size).toBe(600_000);
+        expect(beobachter.anfragen[1].has_thumb).toBe(false);
+        expect(beobachter.anfragen[1].thumb_size ?? null).toBeNull();
+        expect(beobachter.antworten[0]).toEqual({ status: 413, detail: 'thumbnail too large' });
+        expect(beobachter.antworten[1].status).toBe(201);
+      } finally {
+        beobachter.stop();
+      }
+      await page.getByTestId('message-send').click();
+      await expect(page.getByTestId('attachment-preview')).toHaveCount(0);
+    });
+
+    test('„Datei zu groß“ löst keinen Neuversuch aus', async () => {
+      // Ein Bild über der Dateigrenze (TINY_PNG plus Füllbytes hinter dem
+      // Bildende, der Browser dekodiert es weiter), Vorschaubild klein genug.
+      await safariVorschau(100_000);
+      const beobachter = ticketBeobachter();
+      try {
+        await page.getByTestId('attachment-file-input').setInputFiles({
+          name: 'gross.png',
+          mimeType: 'image/png',
+          buffer: Buffer.concat([TINY_PNG, Buffer.alloc(600_000)])
+        });
+        await expect(page.getByTestId('attachment-error').first()).toBeVisible({
+          timeout: 15_000
+        });
+        await expect.poll(() => beobachter.antworten.length).toBe(1);
+        // Zeit für einen (falschen) zweiten Versuch lassen, dann zählen.
+        await page.waitForTimeout(1_500);
+        expect(beobachter.anfragen).toHaveLength(1);
+        expect(beobachter.anfragen[0].has_thumb).toBe(true);
+        expect(beobachter.antworten).toHaveLength(1);
+        expect(beobachter.antworten[0].status).toBe(413);
+        expect(beobachter.antworten[0].detail).toMatch(/^file too large \(/);
+      } finally {
+        beobachter.stop();
+      }
+      await page.getByTestId('attachment-remove').first().click();
+    });
   });
 });
