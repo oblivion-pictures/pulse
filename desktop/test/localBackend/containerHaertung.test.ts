@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { infoAuswerten, waehleRuntime, type Kandidat } from '../../electron/localBackend/runtimeWahl.ts';
 import { authArgv, dockerZielAusInspect, pullMitWegwerfLogin } from '../../electron/localBackend/registryAuth.ts';
 import {
-  belegterPort, gleicheImageId, haertungArgs, netzArgs, raeumeVerwaistes, runFehler,
+  ERLAUBTE_FAEHIGKEITEN, belegterPort, gleicheImageId, haertungArgs, netzArgs, raeumeVerwaistes, runFehler,
 } from '../../electron/localBackend/containerLauf.ts';
 import {
   MEDIA_MAP_TCP, MEDIA_MAP_UDP, RTMPS, TURN, UDP_MEDIA_PORTS, macTcpPortArgs, mediaPortArgs,
@@ -170,9 +170,26 @@ test('gleicheImageId: Docker-Präfix egal', () => {
 test('haertungArgs: nur Linux, mit gemessener Fähigkeiten-Liste', () => {
   const a = haertungArgs('linux');
   assert.deepEqual(a.slice(0, 4), ['--security-opt', 'no-new-privileges', '--cap-drop', 'ALL']);
-  assert.equal(a[5], 'CHOWN,SETUID,SETGID,DAC_OVERRIDE,FOWNER,KILL,NET_BIND_SERVICE');
+  assert.deepEqual(a.slice(4), [
+    '--cap-add', 'CHOWN', '--cap-add', 'SETUID', '--cap-add', 'SETGID', '--cap-add', 'DAC_OVERRIDE',
+    '--cap-add', 'FOWNER', '--cap-add', 'KILL', '--cap-add', 'NET_BIND_SERVICE',
+  ]);
   assert.deepEqual(haertungArgs('darwin'), []);
   assert.deepEqual(haertungArgs('win32'), []);
+});
+
+test('haertungArgs: je Fähigkeit ein eigenes --cap-add, nie eine Kommaliste', () => {
+  // Podman zerlegt `--cap-add A,B`, die docker-CLI nicht: der Daemon bekommt
+  // "A,B" als eine Fähigkeit und antwortet "invalid CapAdd: unknown capability"
+  // (exit 125, 2026-10-12 beim Start der Server-App unter Linux/Docker).
+  const a = haertungArgs('linux');
+  const werte = a.filter((_, i) => a[i - 1] === '--cap-add');
+  assert.equal(werte.length, ERLAUBTE_FAEHIGKEITEN.length);
+  assert.equal(a.filter((x) => x === '--cap-add').length, werte.length, 'jedes --cap-add hat genau einen Wert');
+  assert.deepEqual(werte, [...ERLAUBTE_FAEHIGKEITEN]);
+  for (const w of werte) assert.match(w, /^[A-Z_]+$/, `kein Komma, kein Leerzeichen, keine Liste: ${w}`);
+  assert.equal(a.some((x) => x.includes(',')), false, 'nirgends ein Komma im Härtungs-argv');
+  assert.ok(a.indexOf('--cap-drop') < a.indexOf('--cap-add'), 'erst alles abgeben, dann gezielt zurückgeben');
 });
 
 test('RTMPS nur Loopback, TURN nirgends veröffentlicht oder gemappt', () => {

@@ -23,6 +23,10 @@ import { probeGateway, startUdpGatewayRelay, type UdpGatewayRelay } from './udpG
 import { UDP_GATEWAY_SNIPPET } from './udpGatewaySnippet.ts';
 import { DOCKER_KEIN_RECHT } from './runtimeWahl.ts';
 
+export const ERLAUBTE_FAEHIGKEITEN = [
+  'CHOWN', 'SETUID', 'SETGID', 'DAC_OVERRIDE', 'FOWNER', 'KILL', 'NET_BIND_SERVICE',
+] as const;
+
 /** Container-Härtung, NUR Linux. Am echten Image nachgemessen (2026-10-08,
  *  `pulse-allinone:edge` f174b8c3990d, rootless Podman 5): Erststart mit
  *  initdb, `stop -t 20` (sauber, exit 0), Recreate auf demselben Volume und
@@ -30,15 +34,22 @@ import { DOCKER_KEIN_RECHT } from './runtimeWahl.ts';
  *  EPERM im Log. Die Liste ist die, die s6-overlay und die Init-Skripte
  *  brauchen: CHOWN/FOWNER/DAC_OVERRIDE (01-init-data-dirs, Postgres-Datadir),
  *  SETUID/SETGID (Dienste laufen als `pulse`), KILL (s6 beendet Dienste
- *  anderer UIDs), NET_BIND_SERVICE (Caddy). Docker (rootful) ist NICHT
- *  eigens gemessen — seine Vorgabe ist eine Obermenge derselben Fähigkeiten.
- *  Win/Mac (podman machine) bleiben unberührt, dort ist nichts gemessen. */
+ *  anderer UIDs), NET_BIND_SERVICE (Caddy). Das Image selbst wurde nur unter
+ *  Podman gemessen; Docker ist nur für die ARGV-Form belegt (s. u.).
+ *  Win/Mac (podman machine) bleiben unberührt, dort ist nichts gemessen.
+ *
+ *  **Ein `--cap-add` je Fähigkeit, nie eine Kommaliste.** Podman zerlegt den
+ *  Wert an Kommas, die docker-CLI nicht: sie reicht ihn dem Daemon als EINE
+ *  Fähigkeit, und der lehnt `CAP_CHOWN,SETUID,…` mit „invalid CapAdd:
+ *  unknown capability" ab (nachgemessen 2026-10-12, Docker 29.9.0, per
+ *  `docker create` samt `inspect`). Die erste Fassung (2026-10-08) lief
+ *  deshalb unter Docker nie. */
 export function haertungArgs(plattform: NodeJS.Platform = process.platform): string[] {
   if (plattform !== 'linux') return [];
   return [
     '--security-opt', 'no-new-privileges',
     '--cap-drop', 'ALL',
-    '--cap-add', 'CHOWN,SETUID,SETGID,DAC_OVERRIDE,FOWNER,KILL,NET_BIND_SERVICE',
+    ...ERLAUBTE_FAEHIGKEITEN.flatMap((f) => ['--cap-add', f]),
   ];
 }
 
