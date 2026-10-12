@@ -5,8 +5,9 @@
  * im Testaufbau nicht. Geprüft wird die Seite: Rückweg über Registrieren und
  * Anmelden, Eingabe von Hand, vorausgewähltes Abbrechen, jeder Zustand und
  * jeder Fehlergrund, die Widerspruchsfrist bei einer vergebenen Adresse, die
- * gesperrte Übernahme als Endzustand und das Verkraften einer Bestätigung,
- * deren Antwort nie ankam oder zu spät kam.
+ * gesperrte Übernahme, das gesperrte Konto und der gesperrte Eintrag als
+ * Endzustände und das Verkraften einer Bestätigung, deren Antwort nie ankam
+ * oder zu spät kam.
  */
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 
@@ -201,16 +202,6 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
         art: 'zu_viele_server'
       },
       {
-        code: 'A1B2-C3D6',
-        antwort: { status: 403, body: { detail: 'verbinden_gesperrt' } },
-        art: 'verbinden_gesperrt'
-      },
-      {
-        code: 'A1B2-C3D7',
-        antwort: { status: 403, body: { detail: 'instance_suspended' } },
-        art: 'adresse_gesperrt'
-      },
-      {
         code: 'A1B2-C3D8',
         antwort: { status: 503, body: { detail: 'verbinden_ausgelastet' } },
         art: 'ausgelastet'
@@ -232,6 +223,40 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
       const knopfBox = (await page.getByTestId('verbinden-abbrechen').boundingBox())!;
       expect(hinweisBox.y + hinweisBox.height).toBeLessThanOrEqual(knopfBox.y);
     }
+  });
+
+  test('gesperrtes Konto und gesperrter Eintrag beenden den Vorgang: der Grund steht da, keine Frage mehr', async () => {
+    // Die Cloud lehnt den Vorgang dabei selbst ab (pulse-connect erfährt es beim
+    // Abholen); ein zweiter Klick bekäme 404. Anders als bei den wiederholbaren
+    // Fehlern oben bleibt die Frage deshalb nicht stehen.
+    const faelle = [
+      {
+        code: 'A1B2-C3D6',
+        antwort: { status: 403, body: { detail: 'verbinden_gesperrt' } },
+        art: 'verbinden_gesperrt'
+      },
+      {
+        code: 'A1B2-C3D7',
+        antwort: { status: 403, body: { detail: 'instance_suspended' } },
+        art: 'adresse_gesperrt'
+      }
+    ];
+    for (const fall of faelle) {
+      const aktionen = await cloudVortaeuschen(ctx, { entscheiden: fall.antwort });
+      await frageOeffnen(page, fall.code);
+      await page.getByTestId('verbinden-bestaetigen').click();
+      await expect(karte(page, 'fehler')).toBeVisible();
+      await expect(page.getByTestId('verbinden-hinweis')).toHaveAttribute('data-fehler', fall.art);
+      await expect(page.getByTestId('verbinden-bestaetigen')).toHaveCount(0);
+      await expect(page.getByTestId('verbinden-abbrechen')).toHaveCount(0);
+      await expect(page.getByTestId('verbinden-zu-pulse')).toBeVisible();
+      expect(aktionen).toEqual(['verbinden']);
+    }
+
+    // Ein Neuladen findet den Code verbraucht: „nachsehen“, nicht „gilt nicht mehr“.
+    await cloudVortaeuschen(ctx, { holen: { status: 404, body: { detail: 'unbekannt' } } });
+    await page.reload();
+    await expect(karte(page, 'nachsehen')).toBeVisible({ timeout: 15_000 });
   });
 
   test('gesperrte Übernahme ist ein Endzustand: keine Frage, keine Knöpfe zum Bestätigen', async () => {

@@ -82,8 +82,10 @@
     hinweisSetzen(f.art, meldungstext(f, beimBestaetigen));
     // Beim Bestätigen bleibt die Frage stehen: nach einem behobenen Proxy oder
     // einem gelöschten Server genügt ein zweiter Klick. Beim Laden gibt es
-    // noch nichts zu bestätigen.
-    if (zustand !== 'bereit') zustand = 'fehler';
+    // noch nichts zu bestätigen. Ausnahme: ein gesperrtes Konto oder ein
+    // gesperrter Eintrag beendet den Vorgang (die Cloud lehnt ihn selbst ab),
+    // ein zweiter Klick bekäme nur noch 404 — dann keine Frage mehr.
+    if (zustand !== 'bereit' || vorgangVerbraucht(f)) zustand = 'fehler';
   }
 
   async function laden(ausDerAdresse: string | null): Promise<void> {

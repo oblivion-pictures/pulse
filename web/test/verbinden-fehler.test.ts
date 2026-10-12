@@ -129,20 +129,24 @@ test('nur eine Antwort, die nichts über den Ausgang sagt, lässt ihn offen', ()
   for (const f of klar) assert.equal(ausgangUngewiss(f), false, f.art);
 });
 
-test('eine gesperrte Übernahme beendet den Vorgang, ein Fehlversuch nicht', () => {
-  // Die Cloud entscheidet den Vorgang dabei (`uebernahme_gesperrt`): der Code ist
+test('eine gesperrte Übernahme, ein gesperrtes Konto und ein gesperrter Eintrag beenden den Vorgang, ein Fehlversuch nicht', () => {
+  // Die Cloud entscheidet den Vorgang dabei selbst (`uebernahme_gesperrt`,
+  // `verbinden_gesperrt`, `instance_suspended` → „abgelehnt“): der Code ist
   // verbraucht, ein zweiter Klick bekäme 404. Darum ein Endzustand statt einer
   // Frage mit Knöpfen — und kein „Marke vergessen“, denn der Klick hat gewirkt.
   assert.equal(vorgangVerbraucht({ art: 'uebernahme_gesperrt', bis: null }), true);
   assert.equal(vorgangVerbraucht({ art: 'uebernahme_gesperrt', bis: '2031-11-10T12:00:00Z' }), true);
+  assert.equal(vorgangVerbraucht({ art: 'verbinden_gesperrt' }), true);
+  assert.equal(vorgangVerbraucht({ art: 'adresse_gesperrt' }), true);
   // 404 nach einem eigenen Klick: der Code ist ebenfalls verbraucht.
   assert.equal(vorgangVerbraucht({ art: 'nachsehen' }), true);
-  // Alles andere lässt den Vorgang offen: ein zweiter Klick ist erlaubt.
+  // Alles andere lässt den Vorgang offen: ein zweiter Klick ist erlaubt. Gerade
+  // `zu_viele_server` und `nachweis_fehlt` bleiben wiederholbar — nach einem
+  // gelöschten Server oder einem reparierten Proxy genügt ein zweiter Klick.
   const offen: VerbindenFehler[] = [
     { art: 'nachweis_fehlt', befund: null },
+    { art: 'nachweis_fehlt', befund: 'zertifikat' },
     { art: 'zu_viele_server' },
-    { art: 'verbinden_gesperrt' },
-    { art: 'adresse_gesperrt' },
     { art: 'ausgelastet' },
     { art: 'nicht_verfuegbar' },
     { art: 'gebremst' },
