@@ -116,13 +116,11 @@
     }
   });
 
-  const titel = $derived(
-    zustand === 'bereit'
-      ? m.verbinden_frage_titel()
-      : zustand === 'fehler'
-        ? m.verbinden_fehler_titel()
-        : m.verbinden_titel()
-  );
+  const titel = $derived.by(() => {
+    if (zustand === 'bereit') return m.verbinden_frage_titel();
+    if (zustand === 'fehler') return m.verbinden_fehler_titel();
+    return m.verbinden_titel();
+  });
 </script>
 
 <div
