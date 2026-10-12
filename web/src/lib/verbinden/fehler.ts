@@ -86,10 +86,19 @@ export function ausgangUngewiss(f: VerbindenFehler): boolean {
 /** Hat die Cloud den Vorgang mit dieser Antwort beendet? Dann gibt es nichts
  *  mehr zu bestätigen: ein zweiter Klick bekäme 404, und die Marke „es ging
  *  schon eine Entscheidung hinaus“ muss bleiben (sonst hieße ein Neuladen
- *  „gilt nicht mehr“). Gilt für die gesperrte Übernahme — die Cloud entscheidet
- *  den Vorgang dabei selbst — und für 404 nach einem eigenen Klick. */
+ *  „gilt nicht mehr“). Gilt für die gesperrte Übernahme, das gesperrte Konto
+ *  (`verbinden_gesperrt`) und den gesperrten Eintrag unter der Adresse
+ *  (`adresse_gesperrt`) — die Cloud entscheidet den Vorgang dabei selbst auf
+ *  „abgelehnt“ — und für 404 nach einem eigenen Klick. Ausdrücklich NICHT für
+ *  `zu_viele_server` und `nachweis_fehlt`: der Vorgang wartet weiter, nach einem
+ *  gelöschten Server oder einem reparierten Proxy genügt ein zweiter Klick. */
 export function vorgangVerbraucht(f: VerbindenFehler): boolean {
-  return f.art === 'uebernahme_gesperrt' || f.art === 'nachsehen';
+  return (
+    f.art === 'uebernahme_gesperrt' ||
+    f.art === 'verbinden_gesperrt' ||
+    f.art === 'adresse_gesperrt' ||
+    f.art === 'nachsehen'
+  );
 }
 
 /** Paraglide-Schlüssel des Hinweistextes. `null` = die Seite wechselt in einen
