@@ -3413,5 +3413,15 @@
   "verbinden_bricht_ab": "Cancelling …",
   "verbinden_uebernahme_beantragt_titel": "Takeover requested",
   "verbinden_fehler_antwort_fehlt": "The answer did not arrive. Check your server's console; if it still shows the code, try again.",
-  "verbinden_adresse_label": "Address"
+  "verbinden_adresse_label": "Address",
+  "eigener_server_einrichten": "Set up your own server",
+  "eigener_server_rechner_titel": "On this computer",
+  "eigener_server_rechner_text": "With the Pulse Server app. Your computer is the server while it is running. No domain of your own needed.",
+  "eigener_server_gemietet_titel": "On a rented server",
+  "eigener_server_gemietet_text": "A Linux machine with Docker and its own address. Runs around the clock.",
+  "eigener_server_befehl_hinweis": "At the end, the installer connects the server to your account.",
+  "eigener_server_kopieren": "Copy",
+  "eigener_server_kopiert": "Copied",
+  "eigener_server_anleitung": "Detailed guide",
+  "eigener_server_schliessen": "Close"
 }

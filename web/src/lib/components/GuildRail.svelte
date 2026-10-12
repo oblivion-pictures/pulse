@@ -15,17 +15,13 @@
   import { anfangsBuchstabe } from '$lib/utils/anfangsBuchstabe';
   import * as Tooltip from '$lib/components/ui/tooltip/index.js';
   import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
   import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
-  import PlusIcon from '@lucide/svelte/icons/plus';
   import PencilIcon from '@lucide/svelte/icons/pencil';
   import ImageIcon from '@lucide/svelte/icons/image';
   import ImageOffIcon from '@lucide/svelte/icons/image-off';
   import SettingsIcon from '@lucide/svelte/icons/settings';
   import ServerIcon from '@lucide/svelte/icons/server';
   import Trash2Icon from '@lucide/svelte/icons/trash-2';
-  import UsersRoundIcon from '@lucide/svelte/icons/users-round';
-  import LogInIcon from '@lucide/svelte/icons/log-in';
   import LogOutIcon from '@lucide/svelte/icons/log-out';
   import LockIcon from '@lucide/svelte/icons/lock';
   import BugIcon from '@lucide/svelte/icons/bug';
@@ -63,6 +59,7 @@
   import ServerInfoDialog from './sidebar/ServerInfoDialog.svelte';
   import RenameGuildDialog from './RenameGuildDialog.svelte';
   import ServerAdminButton from './ServerAdminButton.svelte';
+  import GuildRailPlusMenu from './GuildRailPlusMenu.svelte';
   import SelfHostRailButton from '$lib/components/selfhost/SelfHostRailButton.svelte';
   import StandplatzRailButton from '$lib/devices/components/StandplatzRailButton.svelte';
   import GuildSettingsDialog from './settings/GuildSettingsDialog.svelte';
@@ -689,52 +686,17 @@
         </ContextMenu.Root>
       {/each}
 
-      <!-- Per-Server-„+": Mini-Menü für DIESEN Server. IMMER sichtbar (jedes
-           Mitglied kann einer Community beitreten); nur der Punkt „Community
-           erstellen" ist gegatet (``canCreateOnServer`` = Admin oder
-           allow_guild_creation). Klick aktiviert erst den Server, dann öffnet
-           der Eltern-Dialog → neue/beigetretene Community landet garantiert auf
-           genau diesem Server. Bewusst kleiner als die Community-Icons
-           (size-9, gestrichelt), damit es als Sektions-Aktion liest. -->
+      <!-- Per-Server-„+": Mini-Menü für DIESEN Server (GuildRailPlusMenu).
+           IMMER sichtbar (jedes Mitglied kann einer Community beitreten und
+           einen eigenen Server einrichten); nur „Community erstellen“ ist
+           gegatet (``canCreateOnServer`` = Admin oder allow_guild_creation). -->
       {#if onCreateClick || onJoinClick}
-        {@const canCreateHere = !!onCreateClick && canCreateOnServer(server)}
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            {#snippet child({ props })}
-              <!-- KEIN Tooltip-Wrapper: ein zweiter Trigger-Spread (tipProps)
-                   überschreibt die Klick-Handler des DropdownMenu-Triggers, dann
-                   öffnet das Menü nur per Tastatur, nicht per Maus. aria-label
-                   deckt die Zugänglichkeit ab. -->
-              <button
-                {...props}
-                class="border-primary/40 text-primary flex size-12 shrink-0 items-center justify-center rounded-xl border border-dashed nicht-handy:size-10 bg-transparent transition-all hover:bg-primary/10"
-                data-testid={`guild-create-menu-${server.id}`}
-                aria-label={canCreateHere
-                  ? m.guild_rail_create_community()
-                  : m.guild_rail_join_community()}
-              >
-                <PlusIcon class="size-4" />
-              </button>
-            {/snippet}
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content side="right" align="start" class="w-56">
-            {#if canCreateHere}
-              <DropdownMenu.Item
-                onSelect={() => createOnServer(server.id)}
-                data-testid="guild-create"
-              >
-                <UsersRoundIcon />
-                {m.guild_rail_create_community()}
-              </DropdownMenu.Item>
-            {/if}
-            {#if onJoinClick}
-              <DropdownMenu.Item onSelect={() => joinOnServer(server.id)} data-testid="guild-join">
-                <LogInIcon />
-                {m.guild_rail_join_community()}
-              </DropdownMenu.Item>
-            {/if}
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
+        <GuildRailPlusMenu
+          serverId={server.id}
+          darfAnlegen={!!onCreateClick && canCreateOnServer(server)}
+          onAnlegen={() => createOnServer(server.id)}
+          onBeitreten={onJoinClick ? () => joinOnServer(server.id) : undefined}
+        />
       {/if}
 
     {/each}

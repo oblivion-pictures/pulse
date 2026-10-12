@@ -1,11 +1,13 @@
 <!--
-  Heim-Server: Download der Pulse Server-App.
+  Heim-Server: Download der Pulse Server-App, im Dialog „Eigenen Server
+  einrichten“ unter „Auf diesem Rechner“ (EigenerServerDialog — der trägt die
+  Erklärung, hier steht nur noch der Knopf).
 
   Seit dem Selbstbedienungs-Entscheid (2026-09-27) braucht es keine
   Freischaltung und keinen Antrag mehr: Server-App installieren, mit dem
   howispulse.com-Konto einloggen — die Registrierung passiert beim ersten
-  Start von selbst. Diese Karte zeigt den Download für das laufende System;
-  ohne erkennbare Plattform alle drei.
+  Start von selbst. Gezeigt wird der Download für das laufende System; ohne
+  erkennbare Plattform alle drei.
 -->
 <script lang="ts">
   import { isLinux, isWindows, isMac } from '$lib/platform/runtime';
@@ -30,13 +32,11 @@
 </script>
 
 <section class="flex flex-col gap-4" data-testid="server-app-download">
-  <p class="text-text-muted text-sm">{m.server_app_download_intro()}</p>
-
   {#if showWindows}
     <div class="flex flex-col gap-2">
       <a
         href={WIN_URL}
-        class="bg-primary hover:bg-primary/90 inline-flex w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
+        class="bg-primary hover:bg-primary/90 inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
         data-testid="server-app-download-windows"
       >
         <DownloadIcon class="size-4" />
@@ -48,7 +48,7 @@
     <div class="flex flex-col gap-2">
       <a
         href={DMG_URL}
-        class="bg-primary hover:bg-primary/90 inline-flex w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
+        class="bg-primary hover:bg-primary/90 inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
         data-testid="server-app-download-mac"
       >
         <DownloadIcon class="size-4" />
@@ -60,7 +60,7 @@
     <div class="flex flex-col gap-2">
       <a
         href={FLATPAKREF}
-        class="bg-primary hover:bg-primary/90 inline-flex w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
+        class="bg-primary hover:bg-primary/90 inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
         data-testid="server-app-download-linux"
       >
         <DownloadIcon class="size-4" />
@@ -74,7 +74,7 @@
     <div class="flex flex-col gap-2" data-testid="server-app-download-all">
       <a
         href={WIN_URL}
-        class="bg-primary hover:bg-primary/90 inline-flex w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
+        class="bg-primary hover:bg-primary/90 inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
         data-testid="server-app-download-windows"
       >
         <DownloadIcon class="size-4" />
@@ -82,7 +82,7 @@
       </a>
       <a
         href={DMG_URL}
-        class="border-border text-text-bright hover:bg-bg-hover inline-flex w-fit items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors"
+        class="border-border text-text-bright hover:bg-bg-hover inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors"
         data-testid="server-app-download-mac"
       >
         <DownloadIcon class="size-4" />
@@ -90,7 +90,7 @@
       </a>
       <a
         href={FLATPAKREF}
-        class="border-border text-text-bright hover:bg-bg-hover inline-flex w-fit items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors"
+        class="border-border text-text-bright hover:bg-bg-hover inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors"
         data-testid="server-app-download-linux"
       >
         <DownloadIcon class="size-4" />
