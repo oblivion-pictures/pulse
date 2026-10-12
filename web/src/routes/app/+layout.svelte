@@ -63,6 +63,7 @@
   import UpdateBanner from '$lib/components/server/UpdateBanner.svelte';
   import SelfHostDisclaimer from '$lib/components/server/SelfHostDisclaimer.svelte';
   import EinladungDialog from '$lib/einladung/EinladungDialog.svelte';
+  import ServerRenameDialog from '$lib/components/server/ServerRenameDialog.svelte';
   import EigenerServerDialog from '$lib/components/selfhost/EigenerServerDialog.svelte';
 
   let { children } = $props();
@@ -546,6 +547,10 @@
        erreichbar. -->
   <AnrufOverlay />
   <EinladungDialog />
+  <!-- Server umbenennen: EIN Mount für beide Eingänge (Rechtsklick in der
+       Leiste, Tipp auf die Server-Zeile in den Räumen) — Zustand in
+       `stores/serverRename`. -->
+  <ServerRenameDialog />
   <!-- „Eigenen Server einrichten“: EIN Mount für beide Einstiege (Plus der
        Leiste, Menü der Räume). Die Geräteklasse wählt hier die Hülle (`blatt`:
        nur das Handy) und den Finger-Zuschnitt (`finger`: Handy und Tablet) —

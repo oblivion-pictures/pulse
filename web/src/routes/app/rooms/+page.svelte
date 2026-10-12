@@ -13,10 +13,10 @@
    */
   import { goto } from '$app/navigation';
   import { suchnorm, namePasst } from '$lib/utils/suche';
-  import { serversStore, istSichtbar, type ServerEntry } from '$lib/api/servers.svelte';
+  import { serversStore, istSichtbar } from '$lib/api/servers.svelte';
   import { darfUmbenennen } from '$lib/servers/umbenennenRecht';
+  import { serverRename } from '$lib/stores/serverRename.svelte';
   import ServerKopfzeile from '$lib/components/mobile/ServerKopfzeile.svelte';
-  import ServerRenameDialog from '$lib/components/server/ServerRenameDialog.svelte';
   import { serverGuilds } from '$lib/stores/serverGuilds.svelte';
   import { activeServer } from '$lib/stores/active-server.svelte';
   import { guildIconSrc } from '$lib/guildIcon';
@@ -112,16 +112,6 @@
     void goto(`/app/rooms/${g.id}`);
   }
 
-  // Server umbenennen — am Handy tippt man dafür die Server-Zeile an (am Rechner
-  // ist es das Rechtsklick-Menü der Leiste). Gespeichert wird beim Server selbst,
-  // auch wenn er nicht der aktive ist.
-  let umbenennenZiel = $state<ServerEntry | null>(null);
-  let umbenennenOffen = $state(false);
-  function umbenennen(s: ServerEntry) {
-    umbenennenZiel = s;
-    umbenennenOffen = true;
-  }
-
 </script>
 
 <div class="glass-panel flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:w-72 nicht-handy:flex-none nicht-handy:rounded-2xl" data-testid="rooms-page">
@@ -142,7 +132,7 @@
       {#if mehrereServer}
         <ServerKopfzeile
           server={s}
-          onUmbenennen={darfUmbenennen(s) ? () => umbenennen(s) : undefined}
+          onUmbenennen={darfUmbenennen(s) ? () => serverRename.ask(s) : undefined}
         />
       {/if}
       {#if listeUngefiltert.length === 0}
@@ -231,9 +221,3 @@
 {#if !viewport.isMobile}
   <TabletPlaceholder text={m.rooms_pick_community()} />
 {/if}
-
-<ServerRenameDialog
-  open={umbenennenOffen}
-  server={umbenennenZiel}
-  onClose={() => (umbenennenOffen = false)}
-/>

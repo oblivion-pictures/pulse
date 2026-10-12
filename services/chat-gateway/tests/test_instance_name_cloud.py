@@ -105,12 +105,16 @@ def test_normalisiere_wie_die_cloud():
     Steuerzeichen raus, Ränder weg, leer = zurücksetzen. Nähme der Server sie
     mit, hießen derselbe Server auf zwei Wegen unterschiedlich."""
     assert modul.normalisiere("  Michaels\u0007 Server \n") == "Michaels Server"
-    assert modul.normalisiere("Zeile\neins") == "Zeileeins"
+    assert modul.normalisiere("Zeile\neins") == "Zeile eins"
+    # Richtungssteuerung und unsichtbare Zeichen fallen weg (kehren sonst Text
+    # um bzw. lassen einen Namen leer wirken) — der Name wird zurückgesetzt.
+    assert modul.normalisiere("Admin\u202etxt") == "Admintxt"
+    assert modul.normalisiere("\u202e\u200b\u200e") is None
     assert modul.normalisiere("Büro — Süd") == "Büro — Süd"
     # Zusammengesetzte Emoji bleiben heil (der Zero-Width-Joiner ist kein
     # Steuerzeichen), ein No-Break-Space wird ein normales Leerzeichen.
-    assert modul.normalisiere("Clan 👨‍👩‍👧") == "Clan 👨‍👩‍👧"
-    assert modul.normalisiere("Mein Server") == "Mein Server"
+    assert modul.normalisiere("Clan 👨\u200d👩\u200d👧") == "Clan 👨\u200d👩\u200d👧"
+    assert modul.normalisiere("Mein\u00a0Server") == "Mein Server"
     assert modul.normalisiere("   ") is None
     assert modul.normalisiere("\u0007\t") is None
     assert modul.normalisiere("") is None
@@ -120,7 +124,7 @@ def test_normalisiere_wie_die_cloud():
 @pytest.mark.asyncio
 async def test_admin_patch_speichert_den_bereinigten_namen(client, _auth_signer, gemeldet):
     token, _ = await _make_token(_auth_signer, is_admin=True)
-    r = await client.patch("/admin/permissions", json={"instance_name": "Mi\tchaels\u0007 Server"},
+    r = await client.patch("/admin/permissions", json={"instance_name": "Mi\u0007chaels\u202e \t Server"},
                            headers=auth(token))
     assert r.status_code == 200, r.text
     assert r.json()["instance_name"] == "Michaels Server"

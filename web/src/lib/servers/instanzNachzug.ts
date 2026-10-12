@@ -5,6 +5,7 @@
  *
  * Gibt den angeglichenen Eintrag zurück, oder `null`, wenn nichts abweicht.
  */
+import { cloudNameAnwenden } from './anzeige.ts';
 
 export interface NachzugEintrag {
   hostname: string;
@@ -14,6 +15,8 @@ export interface NachzugEintrag {
   origin?: 'vps' | 'app_host' | null;
   role?: 'owner' | 'member' | null;
   anzeigename?: string | null;
+  /** Cloud-Kopie des Namens, die der Server schon überholt hat (`anzeige.ts`). */
+  name_ueberholt?: string | null;
   online?: boolean | null;
 }
 
@@ -42,7 +45,9 @@ export function instanzNachzug<E extends NachzugEintrag>(
   // (deleted-instance-sweep.ts) entfernt dann einen LEBENDEN Server, und
   // falsch verdrahtete Einträge werden unsweepbar (Vorfall 2026-07-14).
   const idChanged = e.hostname === normalized && e.instance_id !== inst.id;
-  const anzeigename = inst.anzeigename ?? null;
+  // Ein Name, den der Server selbst genannt hat, geht der Cloud-Kopie vor, bis
+  // die Cloud etwas anderes als den überholten Wert meldet (`cloudNameAnwenden`).
+  const name = cloudNameAnwenden(e, inst.anzeigename);
   const online = inst.online ?? null;
   if (
     !hostChanged &&
@@ -50,7 +55,8 @@ export function instanzNachzug<E extends NachzugEintrag>(
     e.notification_mode === inst.notification_mode &&
     e.origin === inst.origin &&
     e.role === inst.role &&
-    (e.anzeigename ?? null) === anzeigename &&
+    (e.anzeigename ?? null) === name.anzeigename &&
+    (e.name_ueberholt ?? null) === name.name_ueberholt &&
     (e.online ?? null) === online
   ) {
     return null;
@@ -69,7 +75,8 @@ export function instanzNachzug<E extends NachzugEintrag>(
     origin: inst.origin,
     role: inst.role,
     // Name und Online-Zustand aus der Cloud (lib/servers/anzeige.ts).
-    anzeigename,
+    anzeigename: name.anzeigename,
+    name_ueberholt: name.name_ueberholt,
     online,
   };
 }

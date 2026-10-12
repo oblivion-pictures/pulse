@@ -22,8 +22,9 @@ import { isElectron } from '$lib/platform/runtime';
 import { normalizeHostname } from '$lib/utils/hostname';
 import { instancesApi } from '$lib/api/instances';
 import { neueUuid } from '$lib/utils/uuid';
-import { anzeigeName, istSichtbar } from '$lib/servers/anzeige';
+import { anzeigeName, istSichtbar, nameVomServer } from '$lib/servers/anzeige';
 import { instanzNachzug } from '$lib/servers/instanzNachzug';
+import { standAnwenden } from '$lib/servers/instanzStatus';
 import type { PulseStoreApi } from '$lib/platform/pulse';
 
 export type ServerEntry = {
@@ -66,6 +67,9 @@ export type ServerEntry = {
   // 2026-10-08) — Regeln in lib/servers/anzeige.ts. Beide optional:
   // Alt-Einträge und ältere Clouds kennen sie nicht (= unbekannt).
   anzeigename?: string | null;
+  // Cloud-Kopie des Namens, die der Name des Servers überholt hat — wird nicht
+  // mehr zurückgenommen (lib/servers/anzeige.ts, `cloudNameAnwenden`).
+  name_ueberholt?: string | null;
   online?: boolean | null;
   notification_mode: 'all' | 'mentions' | 'none';
   added_at: number;           // Date.now() ms
@@ -324,13 +328,18 @@ class ServersStore {
   ): ServerEntry | undefined {
     const e = this.servers.find((s) => s.instance_id === instanceId);
     if (!e) return undefined;
-    const online = stand.online ?? e.online ?? null;
-    const anzeigename = 'anzeigename' in stand ? (stand.anzeigename ?? null) : (e.anzeigename ?? null);
-    if (online === (e.online ?? null) && anzeigename === (e.anzeigename ?? null)) return e;
-    this.servers = this.servers.map((s) => (s.id === e.id ? { ...s, online, anzeigename } : s));
+    const neu = standAnwenden(e, stand);
+    if (!neu) return e;
+    this.servers = this.servers.map((s) => (s.id === e.id ? neu : s));
     saveToStorage(this.servers);
     this._notifyChange();
     return this.find(e.id);
+  }
+
+  /** Der Server selbst nennt seinen Namen (ready, Live-Ereignis, eigenes
+   *  Speichern) — er geht der Cloud-Kopie vor (Regeln: lib/servers/anzeige.ts). */
+  setzeServerName(serverId: string, name: string | null | undefined): void {
+    this.update(serverId, nameVomServer(name, this.find(serverId) ?? {}));
   }
 
   find(serverId: string): ServerEntry | undefined {

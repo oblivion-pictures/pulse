@@ -66,6 +66,11 @@
   >
     <ShieldAlertIcon class="size-4 shrink-0" />
     <span class="flex-1">
+      <!-- Bewusst die ADRESSE (`label` = der Hostname, unter dem man den Server
+           eingetragen hat), nicht der Name des Betreibers: der Hinweis sagt,
+           dass hier andere Regeln gelten als in der Cloud, und der Name käme
+           vom Betreiber dieses Servers selbst. Woran man erkennt, WO man ist,
+           soll er nicht selbst bestimmen. -->
       {m.self_host_disclaimer_notice_before()} <strong>{active.label}</strong>{m.self_host_disclaimer_notice_after()}
     </span>
     <Button

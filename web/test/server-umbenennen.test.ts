@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { anzeigeName, nameVomServer, type AnzeigeEintrag } from '../src/lib/servers/anzeige.ts';
-import { wirkungVonStatus } from '../src/lib/servers/instanzStatus.ts';
+import {
+  anzeigeName,
+  cloudNameAnwenden,
+  nameVomServer,
+  type AnzeigeEintrag,
+} from '../src/lib/servers/anzeige.ts';
+import { instanzNachzug, type NachzugEintrag } from '../src/lib/servers/instanzNachzug.ts';
+import { standAnwenden, wirkungVonStatus } from '../src/lib/servers/instanzStatus.ts';
 import {
   SERVER_NAME_MAX,
   darfServerUmbenennen,
@@ -60,6 +66,20 @@ test('Speichern: die Länge folgt dem Server (60)', () => {
   assert.equal(zuSpeichernderName('x'.repeat(80), null)?.length, 60);
 });
 
+test('Speichern: geschnitten wird nach Codepunkten, ein Emoji wird nicht zerrissen', () => {
+  // 59 Zeichen + zwei Emoji (je ein Surrogatpaar, zwei UTF-16-Einheiten): nach
+  // Einheiten läge der Schnitt mitten im zweiten Emoji.
+  const eingabe = 'x'.repeat(59) + '\u{1F600}\u{1F601}';
+  const r = zuSpeichernderName(eingabe, null) ?? '';
+  assert.equal(Array.from(r).length, 60);
+  assert.equal(r, 'x'.repeat(59) + '\u{1F600}');
+  // Kein einzelnes (halbes) Surrogat am Ende.
+  assert.equal(/[\uD800-\uDBFF]$/.test(r), false);
+  // Der Server zählt Codepunkte: genau 60 Emoji sind erlaubt und bleiben ganz.
+  const sechzig = '\u{1F600}'.repeat(60);
+  assert.equal(zuSpeichernderName(sechzig, null), sechzig);
+});
+
 // ---- Name nach dem Speichern / vom Server ----------------------------------
 
 const heim = (over: Partial<AnzeigeEintrag> = {}): AnzeigeEintrag => ({
@@ -72,20 +92,116 @@ const heim = (over: Partial<AnzeigeEintrag> = {}): AnzeigeEintrag => ({
 });
 
 test('Server nennt seinen Namen: beide Felder, damit der Cloud-Altname nicht gewinnt', () => {
-  const patch = nameVomServer('Michaels Server');
-  assert.deepEqual(patch, { server_name: 'Michaels Server', anzeigename: 'Michaels Server' });
-  // Vorher stand in der Cloud der alte Name — er darf den neuen nicht überdecken.
   const alt = heim({ server_name: 'Alt', anzeigename: 'Alt' });
+  const patch = nameVomServer('Michaels Server', alt);
+  assert.deepEqual(patch, {
+    server_name: 'Michaels Server',
+    anzeigename: 'Michaels Server',
+    // Die Cloud-Kopie „Alt“ ist damit überholt und soll nicht zurückspringen.
+    name_ueberholt: 'Alt',
+  });
+  // Vorher stand in der Cloud der alte Name — er darf den neuen nicht überdecken.
   assert.equal(anzeigeName({ ...alt, ...patch }), 'Michaels Server');
+});
+
+test('Server nennt dasselbe wie die Cloud, oder die Cloud kannte keinen Namen: nichts überholt', () => {
+  assert.equal(nameVomServer('X', { anzeigename: 'X' }).name_ueberholt, null);
+  assert.equal(nameVomServer('X', { anzeigename: null }).name_ueberholt, null);
+  assert.equal(nameVomServer('X').name_ueberholt, null);
 });
 
 test('Server nennt keinen Namen (leer/zurückgesetzt): zurück zur Adresse', () => {
   for (const leer of ['', '   ', null, undefined]) {
-    const patch = nameVomServer(leer);
-    assert.deepEqual(patch, { server_name: null, anzeigename: null });
     const alt = heim({ server_name: 'Alt', anzeigename: 'Alt' });
+    const patch = nameVomServer(leer, alt);
+    assert.deepEqual(patch, { server_name: null, anzeigename: null, name_ueberholt: 'Alt' });
     assert.equal(anzeigeName({ ...alt, ...patch }), 'https://selfhost.example.com');
   }
+});
+
+// ---- Rücksprung auf den alten Cloud-Namen ----------------------------------
+
+test('Cloud-Kopie: der überholte Wert springt nicht zurück, alles andere gilt', () => {
+  const e = { anzeigename: 'Neu', name_ueberholt: 'Alt' };
+  // Die Meldung des Servers an die Cloud ist gescheitert: sie nennt weiter „Alt“.
+  assert.deepEqual(cloudNameAnwenden(e, 'Alt'), { anzeigename: 'Neu', name_ueberholt: 'Alt' });
+  // Die Cloud hat aufgeholt: derselbe Name, der Marker fällt weg.
+  assert.deepEqual(cloudNameAnwenden(e, 'Neu'), { anzeigename: 'Neu', name_ueberholt: null });
+  // Oder sie nennt einen noch neueren.
+  assert.deepEqual(cloudNameAnwenden(e, 'Noch neuer'), {
+    anzeigename: 'Noch neuer',
+    name_ueberholt: null,
+  });
+  // Oder gar keinen (zurückgesetzt): dann zeigt der Eintrag server_name bzw. die Adresse.
+  assert.deepEqual(cloudNameAnwenden(e, null), { anzeigename: null, name_ueberholt: null });
+});
+
+test('Cloud-Kopie: ohne Marker übernimmt die Cloud wie bisher', () => {
+  assert.deepEqual(cloudNameAnwenden({ anzeigename: 'A' }, 'B'), {
+    anzeigename: 'B',
+    name_ueberholt: null,
+  });
+  assert.deepEqual(cloudNameAnwenden({}, undefined), { anzeigename: null, name_ueberholt: null });
+});
+
+test('Abgleich mit der Cloud (/me/instances): der Servername springt nicht auf den alten zurück', () => {
+  const vorher: NachzugEintrag = {
+    hostname: 'https://selfhost.example.com',
+    instance_id: '1',
+    label: 'https://selfhost.example.com',
+    notification_mode: 'mentions',
+    origin: 'vps',
+    role: 'owner',
+    server_name: 'Neu',
+    anzeigename: 'Neu',
+    name_ueberholt: 'Alt',
+  } as NachzugEintrag;
+  const inst = {
+    id: '1',
+    notification_mode: 'mentions' as const,
+    origin: 'vps' as const,
+    role: 'owner' as const,
+  };
+  // Cloud kennt noch „Alt“: nichts zu tun, der Eintrag bleibt bei „Neu“.
+  assert.equal(instanzNachzug(vorher, { ...inst, anzeigename: 'Alt' }, 'https://selfhost.example.com'), null);
+  // Cloud hat aufgeholt: Marker weg.
+  const aufgeholt = instanzNachzug(vorher, { ...inst, anzeigename: 'Neu' }, 'https://selfhost.example.com');
+  assert.equal(aufgeholt?.anzeigename, 'Neu');
+  assert.equal(aufgeholt?.name_ueberholt, null);
+  // Cloud nennt etwas Neues: gilt.
+  const neuer = instanzNachzug(vorher, { ...inst, anzeigename: 'Ganz neu' }, 'https://selfhost.example.com');
+  assert.equal(neuer?.anzeigename, 'Ganz neu');
+  assert.equal(neuer?.name_ueberholt, null);
+});
+
+test('Statusereignis der Cloud: der überholte Name springt nicht zurück', () => {
+  const e = { online: null, anzeigename: 'Neu', name_ueberholt: 'Alt' };
+  // Ereignis mit der alten Kopie: nichts zu ändern.
+  assert.equal(standAnwenden(e, { anzeigename: 'Alt' }), null);
+  // Ereignis mit dem Namen des Servers: der Marker fällt weg.
+  const aufgeholt = standAnwenden(e, { anzeigename: 'Neu' });
+  assert.equal(aufgeholt?.anzeigename, 'Neu');
+  assert.equal(aufgeholt?.name_ueberholt, null);
+  // Ein Ereignis ohne Namensfeld (nur online) lässt den Namen in Ruhe.
+  const nurOnline = standAnwenden(e, { online: true });
+  assert.equal(nurOnline?.online, true);
+  assert.equal(nurOnline?.anzeigename, 'Neu');
+  assert.equal(nurOnline?.name_ueberholt, 'Alt');
+});
+
+test('Rücksprung Ende zu Ende: Server nennt B, Cloud sagt A, dann holt sie auf', () => {
+  let e = heim({ server_name: 'A', anzeigename: 'A' }) as AnzeigeEintrag & {
+    name_ueberholt?: string | null;
+  };
+  e = { ...e, ...nameVomServer('B', e) }; // Server meldet B (ready / Speichern)
+  assert.equal(anzeigeName(e), 'B');
+  e = { ...e, ...(standAnwenden(e, { anzeigename: 'A' }) ?? {}) }; // Cloud kennt noch A
+  assert.equal(anzeigeName(e), 'B');
+  e = { ...e, ...(standAnwenden(e, { anzeigename: 'B' }) ?? {}) }; // Cloud holt auf
+  assert.equal(anzeigeName(e), 'B');
+  assert.equal(e.name_ueberholt, null);
+  e = { ...e, ...(standAnwenden(e, { anzeigename: 'C' }) ?? {}) }; // später: anderer Name
+  assert.equal(anzeigeName(e), 'C');
 });
 
 // ---- instance_status: wer darf was ändern ----------------------------------

@@ -45,13 +45,51 @@ export function anzeigeName(e: AnzeigeEintrag): string {
  * kurz weg): der Betreiber sähe seinen neuen Namen nirgends. Der Server ist
  * die Quelle dieses Namens; was er gerade sagt, ist frischer als die Kopie in
  * der Cloud. Kommt die Cloud-Meldung danach an, trägt sie denselben Wert.
+ *
+ * **Und der Rücksprung.** Scheitert die Meldung des Servers an die Cloud
+ * (Wiederholung nur alle 6 Stunden), liefert jeder Abgleich mit der Cloud
+ * (`instanzNachzug`) und jedes Statusereignis weiter den ALTEN Namen und
+ * überschriebe den neuen wieder. Deshalb merkt sich der Eintrag die Cloud-
+ * Kopie, die der Name des Servers gerade überholt hat (`name_ueberholt`), und
+ * `cloudNameAnwenden` ignoriert genau diesen Wert. Ohne Uhr: „neuer“ heißt hier
+ * „ein anderer Wert als der überholte“ — die Cloud holt auf (dann trägt sie
+ * den Namen des Servers oder einen noch neueren), sobald sie etwas anderes
+ * meldet, und der Marker fällt weg.
  */
-export function nameVomServer(name: string | null | undefined): {
+export function nameVomServer(
+  name: string | null | undefined,
+  alt: { anzeigename?: string | null } = {},
+): {
   server_name: string | null;
   anzeigename: string | null;
+  name_ueberholt: string | null;
 } {
   const n = name?.trim() || null;
-  return { server_name: n, anzeigename: n };
+  const vorher = alt.anzeigename ?? null;
+  return { server_name: n, anzeigename: n, name_ueberholt: vorher !== null && vorher !== n ? vorher : null };
+}
+
+/**
+ * Die Cloud nennt den Namen des Servers (`/me/instances`, `instance_status`).
+ * Gilt sie als Stand, oder ist es genau die Kopie, die der Server schon
+ * überholt hat? (`nameVomServer`.) Gibt die neuen Werte für `anzeigename` und
+ * `name_ueberholt` zurück.
+ *
+ * **Bekannte Grenze.** Wird der Server von A auf B und danach zurück auf A
+ * umbenannt, während dieses Gerät nicht mit ihm verbunden ist, bleibt B stehen,
+ * bis der nächste `ready`-Rahmen (jede Verbindung) A nennt: die Cloud meldet
+ * dann A — genau den überholten Wert.
+ */
+export function cloudNameAnwenden(
+  e: { anzeigename?: string | null; name_ueberholt?: string | null },
+  cloud: string | null | undefined,
+): { anzeigename: string | null; name_ueberholt: string | null } {
+  const neu = cloud ?? null;
+  const ueberholt = e.name_ueberholt ?? null;
+  if (ueberholt !== null && neu === ueberholt) {
+    return { anzeigename: e.anzeigename ?? null, name_ueberholt: ueberholt };
+  }
+  return { anzeigename: neu, name_ueberholt: null };
 }
 
 export function istSichtbar(e: AnzeigeEintrag): boolean {

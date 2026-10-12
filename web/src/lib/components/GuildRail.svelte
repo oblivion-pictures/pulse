@@ -57,8 +57,8 @@
   import { appHostAnwesenheit } from '$lib/stores/appHostAnwesenheit.svelte';
   import { serverCapabilities } from '$lib/stores/serverCapabilities.svelte';
   import ServerInfoDialog from './sidebar/ServerInfoDialog.svelte';
-  import ServerRenameDialog from './server/ServerRenameDialog.svelte';
-  import { darfUmbenennen } from '$lib/servers/umbenennenRecht';
+  import ServerRenameMenuItem from './server/ServerRenameMenuItem.svelte';
+  import { serverStateDotColor } from '$lib/servers/statusPunkt';
   import RenameGuildDialog from './RenameGuildDialog.svelte';
   import ServerAdminButton from './ServerAdminButton.svelte';
   import GuildRailPlusMenu from './GuildRailPlusMenu.svelte';
@@ -248,16 +248,6 @@
     infoServerOpen = true;
   }
 
-  // Server umbenennen (Rechtsklick-Menü). Admin DIESES Servers — nicht das
-  // Cloud-Flag; Regel und Begründung in `servers/umbenennen.ts`.
-  let renameServerTarget = $state<ServerEntry | null>(null);
-  let renameServerOpen = $state(false);
-
-  function openServerRename(server: ServerEntry): void {
-    renameServerTarget = server;
-    renameServerOpen = true;
-  }
-
   // Anzeigename für die Rail: Admin-Instanz-Name > Hostname (Letzteres ohne
   // https://-Präfix — Schema-Rauschen gehört nicht in die UI).
   function serverDisplayName(server: ServerEntry): string {
@@ -344,22 +334,6 @@
   // Template-@const).
   function isAdminOnServer(server: ServerEntry): boolean {
     return server.isCloud ? !!auth.user?.is_admin : serverAdmin.isAdmin(server.id);
-  }
-
-  // Status-Dot-Farbe für Self-Host-Server-Section-Header. Wird nur im
-  // Ausnahmezustand gerendert (`open` zeigt keinen Dot), daher kein grüner Fall.
-  function serverStateDotColor(state: string): string {
-    if (state === 'connecting' || state === 'starting' || state === 'updating') return 'bg-warning';
-    // Sperre und E-Mail-Riegel sind Ausnahmezustaende mit Handlungsbedarf —
-    // rot, nicht das gelbe „kommt gleich wieder".
-    if (
-      state === 'incompatible' ||
-      state === 'email-unverified' ||
-      state === 'suspended' ||
-      state === 'mfa-required'
-    )
-      return 'bg-destructive';
-    return 'bg-gray-500';
   }
 </script>
 
@@ -500,14 +474,7 @@
               {m.guild_rail_server_info()}
             </ContextMenu.Item>
           {/if}
-          {#if darfUmbenennen(server)}
-            <ContextMenu.Item
-              onSelect={() => openServerRename(server)}
-              data-testid="server-rename-menu"
-            >
-              <PencilIcon /> {m.server_rename_menu()}
-            </ContextMenu.Item>
-          {/if}
+          <ServerRenameMenuItem {server} />
           <ContextMenu.Sub>
             <ContextMenu.SubTrigger>{m.guild_rail_notifications()}</ContextMenu.SubTrigger>
             <ContextMenu.SubContent>
@@ -795,12 +762,6 @@
 </AlertDialog.Root>
 
 <ServerInfoDialog bind:open={infoServerOpen} server={infoServerTarget} />
-
-<ServerRenameDialog
-  open={renameServerOpen}
-  server={renameServerTarget}
-  onClose={() => (renameServerOpen = false)}
-/>
 
 <RenameGuildDialog
   open={renameTarget !== null}

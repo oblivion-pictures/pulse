@@ -36,7 +36,8 @@ START_VERZOEGERUNG_S = 20
 
 
 def normalisiere(name: str | None) -> str | None:
-    """Leerstring → NULL (zurücksetzen), Steuerzeichen raus, Ränder weg.
+    """Leer oder ohne sichtbares Zeichen → NULL (zurücksetzen), sonst bereinigt:
+    Steuer- und Richtungszeichen raus, Leerraum zu einem Leerzeichen.
 
     Dieselbe Rechnung wie die Cloud (``setze_anzeigename`` in auth-svc), aus
     derselben Funktion: was der Server speichert, muss dem gleichen, was die
