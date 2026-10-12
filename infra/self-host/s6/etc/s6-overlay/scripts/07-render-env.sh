@@ -209,7 +209,9 @@ export PULSE_DATA_PATH='${PULSE_DATA_PATH:-/data}'
 export AVATAR_UPLOAD_DIR='${DATA}/uploads/avatars'
 export GUILD_ICON_UPLOAD_DIR='${DATA}/uploads/guild-icons'
 
-# MinIO — eingebetteter S3-kompatibler Objekt-Store für Message-Attachments.
+# Garage — eingebetteter S3-kompatibler Objekt-Store für Message-Attachments
+# (ersetzt MinIO). Die Schlüsseldateien heissen weiter minio.user/minio.password:
+# bestehende Server tragen sie unter diesen Namen im Datenvolumen (${KEYS}).
 # Ohne diese Vars defaultet der chat-gateway-S3-Client auf localhost:9000 mit
 # minioadmin/minioadmin und der Admin-"Speicher"-Kachel zeigt "noch nicht aktiv".
 #  - INTERNAL  = loopback, server-seitige Ops (delete/head/list/storageinfo).

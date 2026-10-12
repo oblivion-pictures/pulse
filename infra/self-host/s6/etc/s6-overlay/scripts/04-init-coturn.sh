@@ -81,9 +81,13 @@ no-cli
 no-tls
 no-dtls
 
-# voice-signaling reads /data/coturn/secret directly and mints time-limited
-# REST-API credentials (HMAC-SHA1 over username), so coturn validates them
-# against this same static-auth-secret.
+# Nobody mints TURN credentials from this secret today: livekit.yaml.template
+# has no `turn` block, and the clients only list STUN servers. coturn serves as
+# a STUN endpoint (the cloud's reachability probe asks it on 3478/udp), and the
+# relay range above stays unused. The installer therefore does not publish
+# 49160-49200/udp (the Compose files do). Whoever wires TURN up mints
+# time-limited REST credentials (HMAC-SHA1 over the username) from this
+# static-auth-secret and adds the relay range to the installer as well.
 
 # Don't relay to private ranges — defense in depth against SSRF via TURN.
 denied-peer-ip=0.0.0.0-0.255.255.255
