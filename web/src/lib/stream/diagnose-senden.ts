@@ -36,7 +36,7 @@ const ENDPUNKT = '/api/auth/experimental-logs';
  * der Grund, warum der Upload überhaupt einen eigenen Schalter bekam.
  *
  * **Folge, die benannt gehört:** damit fehlt die Zuschauerseite ausgerechnet
- * bei den Browser-Nutzern, und Pulse ist web-first. Das aufzulösen heisst, den
+ * bei den Browser-Nutzern. Das aufzulösen heisst, den
  * Schalter auch im Browser anzubieten — eine Produktentscheidung, keine
  * technische. Bis dahin deckt der Bericht die Desktop-Zuschauer ab.
  */
