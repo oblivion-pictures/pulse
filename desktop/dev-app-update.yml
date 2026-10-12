@@ -10,17 +10,17 @@
 #      extraMetadata), damit die laufende Dev-App „hinterher" ist:
 #        pnpm run build:electron \
 #          && pnpm exec electron-builder --win --publish never \
-#               -c.extraMetadata.version=0.1.99
-#      → release/Pulse-Setup-0.1.99.exe + latest.yml (+ .blockmap).
+#               -c.extraMetadata.version=<höher als "version" in desktop/package.json>
+#      → release/Pulse-Setup-<diese Version>.exe + latest.yml (+ .blockmap).
 #   2. Feed-Server starten (Node, Python-frei; serviert release/ auf :8888):
 #        node scripts/local-update-feed.mjs
 #   3. Pulse im Dev-Modus mit aktivem Updater starten (lädt den echten Renderer
 #      von howispulse.com, weil PULSE_DEV_URL ungesetzt bleibt):
 #        PULSE_DEV_UPDATE=1 PULSE_UPDATE_INITIAL_DELAY_MS=1500 pnpm exec electron .
 #      → Boot-Check, „Update bereit"-Toast; „Neu starten" fährt den echten,
-#        sichtbaren Installer-Lauf durch (installiert 0.1.99 nach %LOCALAPPDATA%).
+#        sichtbaren Installer-Lauf durch (installiert diese Version nach %LOCALAPPDATA%).
 #
-# Achtung: Schritt 3 mit Klick auf „Neu starten" installiert wirklich 0.1.99 —
+# Achtung: Schritt 3 mit Klick auf „Neu starten" installiert sie wirklich —
 # danach ggf. deinstallieren + offiziellen Build neu ziehen (allowDowngrade=false).
 provider: generic
 url: http://localhost:8888/

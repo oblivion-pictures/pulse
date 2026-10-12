@@ -377,7 +377,7 @@ async function refresh() {
     // Primärweg; 'rotated' (Geräte-Umzug) → bisheriger Reset-Hinweis.
     const deleted = !!(st.detail && st.detail.reason === 'deleted');
     $('supersededHint').textContent = deleted
-      ? 'Dieser Server ist nicht mehr registriert — die Instanz wurde in der Cloud gelöscht. Du kannst dieses Gerät neu einrichten.'
+      ? 'Dieser Server ist nicht mehr registriert — er wurde in der Cloud gelöscht. Du kannst dieses Gerät neu einrichten.'
       : 'Dieser Server wurde auf ein anderes Gerät umgezogen.';
     $('btnReprovision').classList.toggle('hidden', !deleted);
     $('btnReset').classList.toggle('hidden', deleted);
