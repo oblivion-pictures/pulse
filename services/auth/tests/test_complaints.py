@@ -905,3 +905,108 @@ class TestNewComplaintNotifiesAdmins:
         )
         assert r.status_code == 201, r.text
         assert calls == [True]
+
+
+# ---------------------------------------------------------------------------
+# Operator ohne Antrag (per pulse-connect verbunden)
+# ---------------------------------------------------------------------------
+
+
+async def _seed_instance_without_application(session_factory) -> tuple[int, str]:
+    """Ein per ``pulse-connect`` verbundener Server: keine Antragszeile.
+
+    Returns ``(instance_id, owner_email)``.
+    """
+    from dcc_auth.models_instances import RegisteredInstance
+
+    inst_id = next_id()
+    async with session_factory() as s:
+        owner = User(
+            id=next_id(),
+            username=f"owner{inst_id}",
+            email=f"owner{inst_id}@dcc-test.example.com",
+            password_hash="x",
+            pairwise_salt=b"\x00" * 32,
+        )
+        s.add(owner)
+        await s.flush()
+        s.add(
+            RegisteredInstance(
+                id=inst_id,
+                hostname=f"verbunden-{inst_id}.example.com",
+                client_id=f"cid-{inst_id}",
+                client_secret="x",
+                status="active",
+                registered_by=owner.id,
+                ohne_freigabe=True,
+            )
+        )
+        await s.commit()
+    return inst_id, owner.email
+
+
+class TestOperatorOhneAntrag:
+    async def test_forward_geht_an_die_konto_mail_des_besitzers(
+        self, client, session_factory, app, monkeypatch
+    ):
+        from dcc_auth.routes import _reset_rate
+
+        inst_id, owner_email = await _seed_instance_without_application(session_factory)
+        sent = _patch_smtp_send(monkeypatch)
+        _reset_rate(app)
+        cid = (
+            await client.post(
+                "/reports",
+                json={"body": "Complaint against a connected server.", "target_instance_id": inst_id},
+            )
+        ).json()["id"]
+
+        _, token = await _seed_user(session_factory, is_admin=True)
+        fr = await client.post(
+            f"/admin/complaints/{cid}/forward",
+            json={"notice_text": "Bitte prüfen."},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert fr.status_code == 200
+        assert fr.json()["forwarded_to_email"] == owner_email
+        assert [m["to"] for m in sent] == [owner_email]
+
+    async def test_liste_zeigt_die_konto_mail_als_betreiber(self, client, session_factory, app):
+        from dcc_auth.routes import _reset_rate
+
+        inst_id, owner_email = await _seed_instance_without_application(session_factory)
+        _reset_rate(app)
+        await client.post(
+            "/reports",
+            json={"body": "Another complaint against a connected server.", "target_instance_id": inst_id},
+        )
+        _, token = await _seed_user(session_factory, is_admin=True)
+        items = (
+            await client.get("/admin/complaints", headers={"Authorization": f"Bearer {token}"})
+        ).json()
+        treffer = [i for i in items if i.get("target_instance_id") == str(inst_id)]
+        assert treffer and treffer[0]["operator_email"] == owner_email
+
+    async def test_antrags_kontakt_hat_vorrang_vor_der_konto_mail(
+        self, client, session_factory, app, monkeypatch
+    ):
+        from dcc_auth.routes import _reset_rate
+
+        inst_id, _hostname, operator_email = await _seed_instance_with_operator(
+            session_factory, contact_email="kontakt@dcc-test.example.com"
+        )
+        sent = _patch_smtp_send(monkeypatch)
+        _reset_rate(app)
+        cid = (
+            await client.post(
+                "/reports",
+                json={"body": "Complaint against an approved server.", "target_instance_id": inst_id},
+            )
+        ).json()["id"]
+        _, token = await _seed_user(session_factory, is_admin=True)
+        await client.post(
+            f"/admin/complaints/{cid}/forward",
+            json={"notice_text": "Bitte prüfen."},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert [m["to"] for m in sent] == [operator_email]

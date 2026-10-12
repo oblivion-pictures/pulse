@@ -2,8 +2,9 @@
 
 Split out of ``routes_complaints.py`` to keep that module under the size policy.
 Holds the Pydantic request/response models, the operator-email lookup (a
-RegisteredInstance carries no contact address itself — it lives on the approved
-InstanceApplication), and the per-page list enrichment.
+RegisteredInstance carries no contact address itself — it is the contact email of
+the approved InstanceApplication or, for servers connected without one, the
+owner's account email), and the per-page list enrichment.
 """
 
 from __future__ import annotations
@@ -123,9 +124,10 @@ async def resolve_operator(
 ) -> tuple[str | None, str | None]:
     """Return ``(hostname, operator_email)`` for a registered instance.
 
-    Either element is ``None`` when unavailable (no instance row / no approved
-    application with a contact email). The operator address lives on the
-    approved ``InstanceApplication``, not on ``RegisteredInstance``.
+    Either element is ``None`` when unavailable. The operator address is the
+    contact email of the approved ``InstanceApplication`` — set by servers that
+    were approved before October 2026 — or else the account email of the owner:
+    a server connected via ``pulse-connect`` has no application row at all.
     """
     if instance_id is None:
         return None, None
@@ -139,6 +141,9 @@ async def resolve_operator(
         )
     ).scalars().first()
     operator_email = app.contact_email if app is not None else None
+    if not operator_email and instance is not None and instance.registered_by is not None:
+        owner = await session.get(User, instance.registered_by)
+        operator_email = owner.email if owner is not None else None
     return hostname, operator_email
 
 
@@ -156,6 +161,7 @@ async def enrich_complaints(
 
     hostnames: dict[int, str] = {}
     operator_emails: dict[int, str] = {}
+    owner_ids: dict[int, int] = {}
     usernames: dict[int, str] = {}
 
     if instance_ids:
@@ -165,6 +171,8 @@ async def enrich_complaints(
             )
         ).scalars():
             hostnames[inst.id] = inst.hostname
+            if inst.registered_by is not None:
+                owner_ids[inst.id] = inst.registered_by
         for app in (
             await session.execute(
                 select(InstanceApplication).where(
@@ -173,7 +181,21 @@ async def enrich_complaints(
             )
         ).scalars():
             # First seen wins; multiple approved apps per instance is not expected.
-            operator_emails.setdefault(app.approved_instance_id, app.contact_email)
+            if app.contact_email:
+                operator_emails.setdefault(app.approved_instance_id, app.contact_email)
+        # Without an application (connected via pulse-connect) the owner's
+        # account email is the contact, same rule as ``resolve_operator``.
+        fehlend = {iid: uid for iid, uid in owner_ids.items() if iid not in operator_emails}
+        if fehlend:
+            emails = {
+                u.id: u.email
+                for u in (
+                    await session.execute(select(User).where(User.id.in_(set(fehlend.values()))))
+                ).scalars()
+            }
+            for iid, uid in fehlend.items():
+                if emails.get(uid):
+                    operator_emails[iid] = emails[uid]
     if user_ids:
         for u in (
             await session.execute(select(User).where(User.id.in_(user_ids)))
