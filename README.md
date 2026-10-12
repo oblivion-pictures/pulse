@@ -47,15 +47,21 @@ Windows, macOS, Linux, Android and in the browser. Use it at
 
 ## Platforms
 
-| Platform | How |
-|---|---|
-| Browser | [howispulse.com](https://howispulse.com), installable as an app |
-| Windows | Desktop app |
-| macOS | Desktop app |
-| Linux | Desktop app as Flatpak |
-| Android | App (APK) |
+| Platform | Download | Good to know |
+|---|---|---|
+| Browser | [howispulse.com](https://howispulse.com) | Installable as an app |
+| Windows | [Pulse-Setup-latest.exe](https://howispulse.com/updates/win/Pulse-Setup-latest.exe) | Updates itself. On first launch SmartScreen asks: “More info” → “Run anyway” |
+| macOS (Apple Silicon) | [Pulse-latest.dmg](https://howispulse.com/downloads/Pulse-latest.dmg) | Not notarized yet: on first launch allow it in System Settings → Privacy & Security → “Open Anyway” |
+| Linux | [Flatpak](https://howispulse.com/flatpak/com.howispulse.Pulse.flatpakref) | Open the file with GNOME Software or Discover, or use the command below. Updates with `flatpak update` |
+| Android | [pulse-latest.apk](https://howispulse.com/downloads/pulse-latest.apk) | Allow “Install from unknown sources” during installation |
 
-Download links for every platform are in the app's settings.
+Linux from the terminal:
+
+```bash
+flatpak install --from https://howispulse.com/flatpak/com.howispulse.Pulse.flatpakref
+```
+
+In the browser the same links are under Settings → Apps.
 
 ## Run your own server
 
@@ -72,7 +78,9 @@ Compose works as well, with the public image `ghcr.io/oblivion-pictures/pulse`
 `:stable` follows releases, `:edge` every change.
 
 No domain? The **Pulse Server app** turns your own computer into a server for
-as long as it runs (Windows, macOS, Linux).
+as long as it runs: [Windows](https://howispulse.com/updates/win-server/Pulse-Server-Setup-latest.exe)
+· [macOS](https://howispulse.com/downloads/Pulse-Server-latest.dmg)
+· [Linux (Flatpak)](https://howispulse.com/flatpak/com.howispulse.PulseServer.flatpakref).
 
 Full guide: [howispulse.com/self-host/guide](https://howispulse.com/self-host/guide)
 
