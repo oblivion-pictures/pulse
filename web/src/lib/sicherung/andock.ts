@@ -547,8 +547,9 @@ export async function sicherungGespraechEntfernen(
  * Leser dedupliziert je Kanal+Nachricht-Id), im Container aber eine neue
  * Rahmen-Partie — also bewusst ein Knopf, kein Autolauf.
  *
- * Anhänge wandern in dieser Fassung NICHT mit (nur Metadaten wären da,
- * die Bytes liegen separat) und gelöschte Zeilen bleiben außen vor.
+ * Die Anhang-Metadaten stehen in der Nachricht, die Bytes legt
+ * `sicherungAnhaenge` als eigene Dateien ab (nur die eigenen, soweit das
+ * Gerät sie noch hält). Gelöschte Zeilen bleiben außen vor.
  */
 const MERKER_ERSTSICHERUNG = 'pulse.sicherung-erstsicherung-ok';
 

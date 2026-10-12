@@ -35,9 +35,10 @@ export function sicherungEintrag(kanalId: string, nachricht: AblageNachricht): S
  * Ein lokaler Verlaufs-Satz → Sicherungs-Nachricht (Erstsicherung: der
  * Bestand wird NACHGEHOLT, ohne dass die Nachricht je neu über den Wire kam).
  *
- * **`kryptoId` muss mit.** Es ist das einzige Merkmal, an dem der
- * Wiederherstellungs-Leser und der Anzeige-Merge (`verlauf/zusammenfuegen.ts`)
- * die Kopie eines anderen Geräts als dieselbe Nachricht erkennen. Die erste
+ * **`kryptoId` muss mit.** Die Kopie eines anderen Geräts liegt unter
+ * einer anderen Id; allein an diesem Merkmal erkennen der
+ * Wiederherstellungs-Leser und der Anzeige-Merge
+ * (`verlauf/zusammenfuegen.ts`) sie als dieselbe Nachricht. Die erste
  * Fassung dieser Umwandlung (inline in `andock.ts`) ließ es weg: lag auf dem
  * Frischgerät schon eine Zeile aus dem Server-Archiv (`krypto_id` = eigene
  * Id), schrieb die Erstsicherung sie ohne Merkmal in die Sicherung, die
