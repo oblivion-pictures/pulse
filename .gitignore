@@ -84,7 +84,7 @@ streaming/server/mediamtx.yml
 streaming/server/.stream-key
 
 # Flatpak repo signing key (packaging/publish.fish). Private key — NIEMALS einchecken.
-# Back it up separately: losing it means the friend's installed app rejects updates.
+# Back it up separately: losing it means installed apps reject updates.
 packaging/.gpg/
 
 # Production deploy — server-side secrets. NIEMALS einchecken.
@@ -112,15 +112,6 @@ streaming/server/certs/
 # höher (webrtc-rs + wgpu + FFmpeg-Bindings, ~2 GB, 8000+ Dateien).
 /streaming/pulse-player/target/
 
-# Bau-Cache der Player-Proben. Eigenständige Crates, kein Workspace-Mitglied —
-# ihr `target/` liegt deshalb je Probe und nicht zentral.
-
-# Bau-Cache des Windows-Input-PoC (~54 MB). Dieselbe Falle wie eine Zeile
-# darueber, nur mit dem Quelltext auf `feat/remote-control-windows`: Der PoC
-# bringt seine eigene `/target`-.gitignore mit, die ist aber mitversioniert und
-# verschwindet beim Wechsel auf einen Branch ohne ihn. Zurueck bleibt das
-# ignorierte Bau-Verzeichnis, das dann NICHT mehr ignoriert ist.
-
 # electron-packager output (Pulse-<platform>-<arch>{/,.zip})
 Pulse-*-*/
 Pulse-*-*.zip
@@ -145,9 +136,6 @@ desktop/resources-podman-mac/*
 # Nativer Windows-Backend-Pfad (Server-App ohne WSL2) — gebaute Binaries +
 # venv, nur via scripts/fetch-win-native.ps1 / CI.
 desktop/resources-native/*
-
-# Nebenprodukte der Pruefstand-Browserlaeufe (SDP-Mitschriften je Lauf)
-
 
 # Ablage-Integrationstests: Nachspiel-Tokens der Anbieter (nie committen)
 web/.ablage-int/

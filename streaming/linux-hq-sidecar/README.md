@@ -1,15 +1,16 @@
 # pulse-linux-hq-sidecar
 
-Rust-Neubau des Pulse **Linux HQ-Streaming-Sidecars** — ersetzt den Python-`gsr-sidecar`
-(`pulse/streaming/gsr-sidecar/`), der das externe `gpu-screen-recorder`-Binary spawned.
+Rust-Neubau des Pulse **Linux HQ-Streaming-Sidecars** — ersetzt den früheren Python-Sidecar,
+der das externe `gpu-screen-recorder`-Binary spawnte (seit 2026-08-27 ersatzlos entfernt).
 Wie die Windows/macOS-Rust-Sidecars: **FFmpeg als Bibliothek** (kein zweites Programm),
-gleiches stdio-JSON-RPC-Protokoll wie `gsr-sidecar/control.py`.
+gleiches stdio-JSON-RPC-Protokoll (`streaming/README.md`).
 
-**Das ist der ausgelieferte Aufnahmeweg** — seit 2026-07-17 der Standard unter Linux
-(der Python-GSR-Sidecar ist nur noch Auffangnetz), gebaut vom Flatpak-Manifest nach
+**Das ist der ausgelieferte und einzige Aufnahmeweg unter Linux** — seit 2026-07-17 der Standard,
+seit 2026-08-27 ohne Rückfall; gebaut vom Flatpak-Manifest nach
 `/app/bin/pulse-linux-hq-sidecar`. Wer am experimentellen Sendeweg misst (eigener
-WebRTC/WHIP-Push, AV1-Paketierer, FEC), arbeitet **nicht hier**, sondern in
-`streaming/hq-labor/` — ein eigenes Binary, das diesen Code als Bibliothek einbindet.
+WebRTC/WHIP-Push, AV1-Paketierer, FEC), arbeitet **nicht hier**, sondern in einem eigenen
+Messlabor-Binary, das diesen Code als Bibliothek einbindet — es gehört zu den internen
+Arbeitsdokumenten und ist nicht Teil dieses Repos.
 
 ## Stack
 - **Capture**: xdg-desktop-portal ScreenCast → PipeWire-DMABUF, zero-copy in den Encoder.

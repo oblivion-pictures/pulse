@@ -57,11 +57,10 @@ Sender — und nur so lässt sich belegen, was beim Zuschauer wirklich ankommt. 
 lag bis 2026-08-04 nur auf einem lokalen Zweig; das war ein Versehen, kein
 Entwurf.
 
-**Bis zum 2026-08-27** lag hier zusätzlich ein aus `~/Dokumente/GPU_Screen_Recorder/`
+**Bis zum 2026-08-27** lag hier zusätzlich ein aus einem lokalen `gpu-screen-recorder`-Checkout
 vendorter Python-Sidecar (`gsr-sidecar/`) samt drei GPL-Patches gegen den GSR-C++-Quellcode
 (`patches/`) — der Linux-Fallback aus dem Abschnitt oben. Beides ist ersatzlos entfernt;
-`~/Dokumente/GPU_Screen_Recorder/` bleibt weiterhin READ-ONLY, wird aber von Pulse nicht mehr
-gelesen. `streaming/patches/` war die einzige GPL-Komponente im Repo — mit ihrem Wegfall ist
+ein solcher Checkout wird von Pulse nicht mehr gelesen. `streaming/patches/` war die einzige GPL-Komponente im Repo — mit ihrem Wegfall ist
 Pulse durchgängig GPL-frei (`CLAUDE.md`).
 
 ## Sidecar — Protokoll
