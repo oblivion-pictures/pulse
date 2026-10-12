@@ -15,6 +15,7 @@ import pytest
 import pytest_asyncio
 from dcc_auth.models import AdminAuditLog, User
 from dcc_auth.models_instances import RegisteredInstance, SuspendedInstance
+from dcc_auth.verbinden_eintrag import InstanzGesperrt, instanz_verbinden
 from sqlalchemy import select
 
 # ---------------------------------------------------------------------------
@@ -40,12 +41,6 @@ _HOSTNAME = "delete-me.example.com"
 _INSTANCE_ID = 10000000000000042
 _PLATZHALTER = f"deleted-{_INSTANCE_ID}.invalid"
 
-_APP_PAYLOAD = {
-    "hostname": _HOSTNAME,
-    "purpose": "privat",
-    "expected_users": 5,
-    "contact_email": "owner@dcc-test.example.com",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -243,34 +238,6 @@ async def test_delete_blocks_snippet_and_bootstrap_token(
 
 
 @pytest.mark.asyncio
-async def test_delete_frees_hostname_for_new_application(
-    client, owner_cookie, owner_instance, session_factory
-):
-    # Vor der Löschung: Hostname ist belegt → Antrag 409.
-    app_payload = {
-        "hostname": _HOSTNAME,
-        "purpose": "privat",
-        "expected_users": 5,
-        "contact_email": "owner@dcc-test.example.com",
-    }
-    r = await client.post(
-        "/me/instance-applications", json=app_payload, headers={"Cookie": owner_cookie}
-    )
-    assert r.status_code == 409
-
-    r = await client.delete(
-        f"/me/instances/{owner_instance.id}", headers={"Cookie": owner_cookie}
-    )
-    assert r.status_code == 204
-
-    # Nach der Löschung: Hostname wieder frei.
-    r = await client.post(
-        "/me/instance-applications", json=app_payload, headers={"Cookie": owner_cookie}
-    )
-    assert r.status_code == 201, r.text
-
-
-@pytest.mark.asyncio
 async def test_delete_suspended_instance_keeps_single_suspend_entry(
     client, owner_cookie, session_factory
 ):
@@ -288,6 +255,18 @@ async def test_delete_suspended_instance_keeps_single_suspend_entry(
     suspend_rows = await _fetch_suspend_rows(session_factory)
     assert len(suspend_rows) == 1
     assert suspend_rows[0].reason == "admin"
+
+
+async def _verbinden(session_factory, client, cookie: str):
+    """Verbindet ``_HOSTNAME`` für das Konto hinter ``cookie`` über
+    ``instanz_verbinden`` — die Stelle, an der sich entscheidet, ob eine Adresse
+    zu haben ist (die Gerätecode-Route davor prüft ``test_verbinden_routen.py``)."""
+    uid = int((await client.get("/me", headers={"Cookie": cookie})).json()["id"])
+    async with session_factory() as s:
+        verbunden = await instanz_verbinden(s, await s.get(User, uid), _HOSTNAME)
+        await s.commit()
+        await s.refresh(verbunden.instanz)
+        return verbunden
 
 
 async def _gesperrte_instanz_saeen(session_factory, client, owner_cookie: str) -> None:
@@ -317,11 +296,9 @@ async def test_delete_suspended_instance_keeps_address_blocked(
     (sperre,) = await _fetch_suspend_rows(session_factory)
     assert sperre.reason == "admin"
 
-    # Auch der alte Antragsweg findet die Adresse weiter belegt.
-    r = await client.post(
-        "/me/instance-applications", json=_APP_PAYLOAD, headers={"Cookie": owner_cookie}
-    )
-    assert r.status_code == 409
+    # Verbinden unter der Adresse wird abgewiesen, auch für den Besitzer selbst.
+    with pytest.raises(InstanzGesperrt):
+        await _verbinden(session_factory, client, owner_cookie)
 
 
 # ---------------------------------------------------------------------------
@@ -384,10 +361,11 @@ async def test_delete_cleans_memberships_directory_and_application(
 ):
     """Löschung räumt ALLE abhängigen Zustände ab (Fund vom Extern-Test 2026-07-10):
 
-    Ohne den Cleanup behielten Mitglieder eine Server-Kachel ohne Server,
-    das Direktpfad-Telefonbuch nannte eine tote Adresse, und der genehmigte
-    Ursprungs-Antrag zeigte auf jedem Gerät weiter den roten
-    "einrichten"-Punkt (myInstanceApplications zählt status='approved').
+    Ohne den Cleanup behielten Mitglieder eine Server-Kachel ohne Server, und
+    das Direktpfad-Telefonbuch nannte eine tote Adresse. Der genehmigte
+    Ursprungs-Antrag wird geschlossen — die Anträge sind seit Oktober 2026 nur
+    noch Historie (Spec E11), und die soll stimmen: eine gelöschte Instanz hat
+    keinen „genehmigten" Antrag mehr.
     """
     from dcc_auth.models_instances import (
         InstanceApplication,
@@ -451,12 +429,6 @@ async def test_delete_cleans_memberships_directory_and_application(
         assert application is not None
         assert application.status == "closed"
 
-    # Der geschlossene Antrag zählt für den Owner nirgends mehr als
-    # approved — der rote Punkt stirbt server-abgeleitet auf jedem Gerät.
-    r = await client.get("/me/instance-applications", headers={"Cookie": owner_cookie})
-    assert r.status_code == 200
-    assert [a["status"] for a in r.json()] == ["closed"]
-
 
 @pytest.mark.asyncio
 async def test_admin_gibt_die_adresse_einer_gesperrt_geloeschten_instanz_frei(
@@ -497,7 +469,5 @@ async def test_admin_gibt_die_adresse_einer_gesperrt_geloeschten_instanz_frei(
     assert r.status_code == 409
 
     # Die Adresse ist wieder zu haben.
-    r = await client.post(
-        "/me/instance-applications", json=_APP_PAYLOAD, headers={"Cookie": owner_cookie}
-    )
-    assert r.status_code == 201, r.text
+    verbunden = await _verbinden(session_factory, client, owner_cookie)
+    assert (verbunden.instanz.hostname, verbunden.instanz.status) == (_HOSTNAME, "active")

@@ -21,11 +21,9 @@ from dcc_auth.routes import router
 from dcc_auth.routes_account import router as account_router
 from dcc_auth.routes_account_security import router as account_security_router
 from dcc_auth.routes_admin import router as admin_router
-from dcc_auth.routes_admin_applications import router as admin_applications_router
 from dcc_auth.routes_admin_backup import router as admin_backup_router
 from dcc_auth.routes_admin_instances import router as admin_instances_router
 from dcc_auth.routes_admin_smtp import router as admin_smtp_router
-from dcc_auth.routes_applications import router as applications_router
 from dcc_auth.routes_archiv import router as archiv_router
 from dcc_auth.routes_avatar import router as avatar_router
 from dcc_auth.routes_complaints import router as complaints_router
@@ -99,7 +97,7 @@ async def lifespan(app: FastAPI):
                 waechter_loop(app, settings, engine), name="dcc-auth-instance-status"
             )
     # Redis-Client für die Optional-Pfade (Suspend-Listen-Cache,
-    # ``admin:events``-Benachrichtigungen). Die Konsumenten prüfen alle auf
+    # ``user:events``-Benachrichtigungen). Die Konsumenten prüfen alle auf
     # ``None`` und arbeiten ohne Redis weiter — deshalb ist ein Verbindungs-
     # fehler hier kein Startfehler. Unter Tests (``skip_cleanup``) gar nicht
     # erst verbinden: die Tests setzen ihren eigenen Client auf app.state.
@@ -273,7 +271,6 @@ def create_app() -> FastAPI:
     app.include_router(archiv_router)
     app.include_router(avatar_router)
     app.include_router(admin_router)
-    app.include_router(admin_applications_router)
     app.include_router(admin_instances_router)
     app.include_router(admin_smtp_router)
     app.include_router(admin_backup_router)
@@ -289,7 +286,6 @@ def create_app() -> FastAPI:
     app.include_router(suspended_instances_router)
     app.include_router(version_policy_router)
     app.include_router(profile_router)
-    app.include_router(applications_router)
     app.include_router(instance_applications_router)
     app.include_router(instance_delete_router)
     app.include_router(instance_membership_router)

@@ -5,13 +5,14 @@ DELETE /me/instances/{id} — Soft-Delete durch den Instanz-Besitzer.
 Eigenes Modul (statt routes_instance_applications.py zu erweitern) wegen der
 Größen-Policy; teilt sich den ``_require_user``-Helper mit den Nachbar-Routen.
 
-Warum Soft-Delete statt Hard-Delete: Die Worker-IDs (chat/voice/media) werden
-per max+1 vergeben (``_allocate_worker_ids``) — eine hart gelöschte Zeile würde
-ihre IDs für die nächste Approval freigeben, und die neue Instanz würde
-Snowflakes minten, die mit bereits existierenden IDs der gelöschten Instanz
-kollidieren. Die Zeile bleibt deshalb bestehen (``status='deleted'``), nur der
-Hostname wird auf einen Platzhalter unter ``.invalid`` (RFC 2606) umbenannt,
-damit er für Neuanträge wieder frei ist.
+Warum Soft-Delete statt Hard-Delete: Bis Oktober 2026 vergab die Cloud
+Worker-IDs (chat/voice/media) per max+1 — eine hart gelöschte Zeile hätte ihre
+IDs für die nächste Instanz freigegeben, deren Snowflakes dann mit denen der
+gelöschten kollidiert wären. Bestandszeilen tragen diese IDs weiter; neue
+Einträge bekommen keine mehr (Spec E7). Die Zeile bleibt deshalb bestehen
+(``status='deleted'``), nur der Hostname wird auf einen Platzhalter unter
+``.invalid`` (RFC 2606) umbenannt, damit die Adresse wieder verbunden werden
+kann (außer bei einer gesperrten Instanz, s. unten).
 
 **Ausnahme: eine gesperrte Instanz behält ihren echten Hostnamen.** Sonst
 käme ihr Besitzer um die Sperre herum — löschen, unter derselben Adresse neu
@@ -118,11 +119,10 @@ async def soft_delete_instance(db, inst: RegisteredInstance) -> None:
         delete(InstanceDirectEndpoint).where(InstanceDirectEndpoint.instance_id == iid)
     )
 
-    # Ursprungs-Antrag schließen: 'approved' zählt clientseitig als "wartet
-    # auf Einrichtung" (roter Punkt am UserFooter, myInstanceApplications).
-    # Ohne den Endstatus lebte der Punkt auf jedem neuen Gerät weiter, obwohl
-    # die Instanz weg ist. 'closed' ist bewusst KEIN 'rejected' — sonst
-    # bekäme der Owner nachträglich einen Ablehnungs-Toast.
+    # Ursprungs-Antrag schließen: Anträge sind seit Oktober 2026 nur noch
+    # Historie (Spec E11), und die soll stimmen — eine gelöschte Instanz hat
+    # keinen „genehmigten" Antrag mehr. 'closed' ist bewusst KEIN 'rejected':
+    # abgelehnt wurde nichts.
     await db.execute(
         update(InstanceApplication)
         .where(

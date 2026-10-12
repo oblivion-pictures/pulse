@@ -192,8 +192,9 @@ async def test_mint_blocked_after_successful_redeem(
     client, alice, alice_instance, session_factory
 ):
     """Sobald ein Token eingelöst wurde (Redeem), ist die Instanz
-    'setup-komplett' — weitere Mints sind geblockt, User muss neuen Antrag
-    stellen."""
+    'setup-komplett' — weitere Mints sind geblockt; nur der bewusste Reset
+    (``reset=true``) stellt neu aus. Einen Antrag gibt es seit Oktober 2026
+    nicht mehr, die Meldung darf deshalb auch nicht auf einen verweisen."""
     token = await _mint(client, alice, alice_instance.id)
 
     # Redeem → consumed_at wird gesetzt.
@@ -209,6 +210,7 @@ async def test_mint_blocked_after_successful_redeem(
     )
     assert r2.status_code == 403
     assert "bereits eingelöst" in r2.json()["detail"]
+    assert "Antrag" not in r2.json()["detail"]
 
 
 @pytest.mark.asyncio

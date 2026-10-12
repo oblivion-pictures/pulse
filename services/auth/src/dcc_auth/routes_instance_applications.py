@@ -1,22 +1,22 @@
 """User-facing Self-Hoster endpoints — Phase 2.2.
 
-GET    /me/instances                    -- eigene registrierte Instanzen
-POST   /me/instances/{id}/env-file            -- fertige .env (inkl. frischem Secret)
-POST   /me/instances/{id}/bootstrap-token     -- One-Time-Installer-Token
+POST   /me/instances                          -- eigenen Heim-Server anlegen
+GET    /me/instances                          -- eigene registrierte Instanzen
+POST   /me/instances/{id}/bootstrap-token     -- One-Time-Token (Server-App)
 
-Die Antrags-Endpoints (``/me/instance-applications``) leben seit dem vereinten
-Antragssystem (Migration 0044) in ``routes_applications.py``; Beitritt, Austritt
-und die Server-Präferenzen in ``routes_instance_membership.py`` (Größen-Policy).
+Antrag (``/me/instance-applications``) und ``.env``-Download sind seit Oktober
+2026 entfernt (Spec E11) — ein gemieteter Server verbindet sich per Gerätecode
+selbst (``routes_verbinden.py``). Beitritt, Austritt und die Server-Präferenzen
+liegen in ``routes_instance_membership.py`` (Größen-Policy).
 """
 
 from __future__ import annotations
 
-import asyncio
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -29,7 +29,6 @@ from dcc_auth.bootstrap import (
 from dcc_auth.browser_sessions import user_and_session_from_cookie
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
-from dcc_auth.instance_env_file import render_instance_env
 from dcc_auth.instance_provisioning import (
     eigene_instanz_oder_404,
     provision_app_host_instance,
@@ -42,7 +41,6 @@ from dcc_auth.models_instances import (
     UserInstanceMembership,
 )
 from dcc_auth.routes import _check_rate
-from dcc_auth.security import hash_password
 from dcc_auth.snowflake import next_id
 
 router = APIRouter(tags=["self-host"])
@@ -67,43 +65,6 @@ async def _require_user_mit_sitzung(request: Request, db):
     hat, kann das nicht wissen und schriebe stillschweigend „Passwort" hin.
     """
     return await user_and_session_from_cookie(request, db)
-
-
-def _require_self_host_enabled(user: User) -> None:
-    """Cloud-Gate (④) — sitzt nur auf ``generate_env_file``, und dort nur fuer
-    ``origin == "app_host"``.
-
-    **Einschraenkung 2026-08-27 (gemeldeter Fehler).** Das Flag ist durchweg ein
-    APP-HOST-Begriff: ``_guard_app_host`` sperrt damit Doppelantraege, der
-    Widerruf loescht es und suspendiert dabei genau die ``app_host``-Instanzen.
-    ``_approve_vps`` setzt es deshalb nie (festgehalten in
-    ``test_unified_applications``) — womit es fuer einen VPS-Eigentuemer nicht
-    ein Gate war, sondern eine Mauer: der ``.env``-Download, also Schritt 1 des
-    manuellen Compose-Wegs, war fuer die einzige Zielgruppe dieses Wegs
-    dauerhaft zu. Der Absatz unten wusste das schon („Flag greift bei denen
-    nie") und zog daraus nur den Schluss fuer den Mint. Sichtbar wurde es nie,
-    weil die Oberflaeche jeden 403 als „schon heruntergeladen" auslegte.
-
-    Den VPS-Fall deckt seither dasselbe wie den Bootstrap-Mint (s.u.), der
-    dieselben Zugangsdaten liefert: Eigentuemer-Check plus eine vom Admin
-    genehmigte, **aktive** Instanz — der Status wird dafuer jetzt ausdruecklich
-    geprueft, vorher stand dort nur „nicht geloescht", eine suspendierte
-    Instanz haette also frische Zugangsdaten ziehen koennen.
-
-    Entscheidung 2026-07-13 (der frühere Docstring verlangte das Gate auch auf
-    ``mint_bootstrap_token`` — das war veraltet, nicht der Code): Der
-    Bootstrap-Mint ist bereits über den Owner-Check (``registered_by ==
-    user.id``) plus eine vom Admin genehmigte, aktive Instanz gedeckt, und der
-    Redeem verweigert nicht-aktive Instanzen. Die Server-App nutzt den Mint
-    außerdem mit ``reset=true`` zur Crash-/Gerätewechsel-Recovery — ein
-    ``self_host_enabled``-Gate dort würde App-Host-Owner nach einem Admin-
-    Revoke+Re-Approve-Zyklus oder VPS-Owner (Flag greift bei denen nie)
-    aussperren. Fuer App-Host-Instanzen bleibt
-    das Flag am env-File-Download noetig, weil der jederzeit ein frisches
-    ``client_secret`` rotieren kann und das Loeschen des Flags dort der
-    Widerruf IST (s. CLAUDE.md „Self-Host-Approval-Flow")."""
-    if not user.self_host_enabled:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="self-hosting not enabled")
 
 
 # ---------------------------------------------------------------------------
@@ -135,8 +96,9 @@ class InstanceOut(BaseModel):
     # Oberfläche Besitz und Mitgliedschaft nicht unterscheiden.
     role: Literal["owner", "member"]
     # „Sind die Zugangsdaten dieses Servers schon abgeholt worden?" — der
-    # Installer wurde eingelöst ODER die ``.env`` heruntergeladen (dieselbe
-    # Frage wie ``bootstrap_redeemed``, s. ``_versorgte_instanzen``).
+    # Installer wurde eingelöst ODER (bis Oktober 2026) die ``.env``
+    # heruntergeladen (dieselbe Frage wie ``bootstrap_redeemed``, s.
+    # ``_versorgte_instanzen``).
     #
     # Der Klient nimmt einen Server erst DANN in seine Leiste auf. Vorher steht
     # er nur unter „Eigener Server", wo auch der Knopf sitzt, mit dem man ihn
@@ -203,7 +165,7 @@ def _instance_to_out(
             membership.notification_mode if membership else "mentions"  # type: ignore[arg-type]
         ),
         # BEWUSST aus ``registered_by``, nicht aus ``membership.role``: die
-        # Verwaltungs-Routen (env-file, bootstrap-token, DELETE) verriegeln
+        # Verwaltungs-Routen (bootstrap-token, DELETE) verriegeln
         # genau gegen dieses Feld. Eine Rollen-Spalte, die davon abwiche, ließe
         # die Oberfläche Knöpfe zeigen, die anschließend 404 laufen.
         role="owner" if inst.registered_by == viewer_id else "member",
@@ -225,10 +187,13 @@ async def _versorgte_instanzen(db, instanz_ids: list[int]) -> set[int]:
 
     Dieselbe Frage wie ``bootstrap_redeemed`` — nur für viele Instanzen auf
     einmal, weil die Liste sie sonst einzeln stellen müsste (N+1). Es zählen
-    DREI Wege: das eingelöste Installer-Token, der ``.env``-Download und seit
-    Migration 0056 das Abholen beim Verbinden per Gerätecode
-    (``verbunden_at``). Ein bloss ausgestelltes Token oder ein bestätigter,
-    aber nie abgeholter Code zählt nicht; dort läuft noch kein Server.
+    DREI Wege: das eingelöste Installer-Token, der frühere ``.env``-Download
+    (entfernt im Oktober 2026; sein Zeitstempel ``env_file_downloaded_at``
+    zählt für Bestandsserver weiter, sonst fielen sie aus der Leiste ihrer
+    Mitglieder) und seit Migration 0056 das Abholen beim Verbinden per
+    Gerätecode (``verbunden_at``). Ein bloss ausgestelltes Token oder ein
+    bestätigter, aber nie abgeholter Code zählt nicht; dort läuft noch kein
+    Server.
 
     Der Klient hängt daran, ob er den Server in seine Leiste aufnimmt: bis
     2026-08-27 tat er das, sobald die Instanz genehmigt war — der Nutzer sah
@@ -362,121 +327,15 @@ async def list_my_instances(
 
 
 class ReissueIn(BaseModel):
-    """Optionaler Body der beiden „Zugang neu ausstellen"-Pfade.
+    """Optionaler Body des „Zugang neu ausstellen"-Pfads am Bootstrap-Mint.
 
-    ``reset=true`` hebt die jeweilige One-Shot-Sperre auf (``.env``-Download
-    bzw. Bootstrap-Mint) — der bewusste Recovery-Weg nach Datei- oder
-    Geräteverlust. Ein Modell für beide, weil es derselbe Gedanke ist; zwei
-    getrennte Formen dafür wären nur eine Falle für den nächsten Leser. Das
-    Einlösen rotiert in beiden Fällen die Credentials, alte sterben sofort.
+    ``reset=true`` hebt die One-Shot-Sperre auf — der bewusste Recovery-Weg
+    nach Geräteverlust (Server-App). Das Einlösen rotiert die Credentials,
+    alte sterben sofort. Bis Oktober 2026 teilte sich der ``.env``-Download
+    dasselbe Modell; der Download ist entfernt (Spec E11).
     """
 
     reset: bool = False
-
-
-@router.post(
-    "/me/instances/{instance_id}/env-file",
-    response_class=Response,
-)
-async def generate_env_file(
-    instance_id: str,
-    request: Request,
-    db: SessionDep,
-    payload: ReissueIn | None = None,
-) -> Response:
-    """Erzeugt die komplette, sofort lauffähige ``.env`` für den allinone-Container.
-
-    Nur der Eigentümer einer **aktiven** Instanz (404 statt 403 gegen
-    Existence-Leak; bei ``origin == "app_host"`` zusaetzlich das
-    ``self_host_enabled``-Flag, s. ``_require_self_host_enabled``). Anders als ein
-    bloßes Template enthält diese ``.env`` ALLE Werte gesetzt — inklusive eines
-    **frisch generierten** ``PULSE_CLOUD_CLIENT_SECRET``.
-
-    **One-shot nach erstem Download:** der erste Aufruf rotiert das Secret und
-    setzt ``env_file_downloaded_at``; jeder weitere → 403. Verhindert, dass
-    dieser Pfad die One-Shot-Semantik von ``mint_bootstrap_token`` aushebelt
-    (Side-Channel auf frische Credentials).
-
-    **Ausser bei ``reset=true``** — der bewusste „Zugangsdaten neu ausstellen"-
-    Pfad, gleiches Muster wie beim Bootstrap-Mint. Grund (2026-07-27, beim
-    Testen aufgefallen): ein fehlgeschlagener Download — Browser blockt, Platte
-    voll, Datei verlegt — kostete sonst einen kompletten neuen Antrag, obwohl
-    der Owner derselbe ist. Das war streng ohne Sicherheitsgewinn.
-
-    Die Invariante „ein laufender Server pro Antrag" bleibt trotzdem: das
-    Secret rotiert bei JEDEM Aufruf, ein bereits laufender Container verliert
-    seinen Cloud-Zugang also sofort. Aus einer Instanz entstehen nie zwei
-    lebende Server — es wechselt nur, welcher der lebende ist. Genau das muss
-    die Oberflaeche vorher deutlich sagen.
-
-    Der Klartext des Secrets geht **ausschließlich** hier in der Antwort raus;
-    in der DB liegt nur der Argon2-Hash. Secret wird NIE geloggt. Der
-    Datei-Inhalt selbst (inkl. der Var-Namen, die exakt zum Container passen
-    müssen) steht in ``instance_env_file.py``.
-    """
-    user = await _require_user(request, db)
-    settings = get_settings()
-    await _check_rate(request, "bootstrap_mint", settings.rate_limit_bootstrap_mint)
-
-    inst = await eigene_instanz_oder_404(db, user.id, instance_id, with_for_update=True)
-    iid = inst.id
-
-    # Das Recht haengt an DIESER Instanz, nicht am Nutzer (s. Docstring):
-    # gesperrt heisst gesperrt, und das Nutzer-Flag zaehlt nur dort, wo es
-    # ueberhaupt etwas widerruft — bei App-Host-Instanzen.
-    if inst.status != "active":
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="Diese Instanz ist gesperrt — keine neuen Zugangsdaten",
-        )
-    if inst.origin == "app_host":
-        _require_self_host_enabled(user)
-
-    # „Schon versorgt" heisst: ueber DIESEN Weg (env_file_downloaded_at) ODER
-    # ueber den Schnellinstaller (eingeloestes Bootstrap-Token). Beide liefern
-    # dieselben Credentials und rotieren dasselbe Secret — der zweite Weg macht
-    # den ersten tot. Frueher zaehlte hier nur der eigene Weg, ein Download nach
-    # abgebrochenem Installer-Lauf rotierte deshalb wortlos die Zugangsdaten
-    # weg, die schon auf dem Server lagen (s. bootstrap.bootstrap_redeemed).
-    schon_selbst_geladen = inst.env_file_downloaded_at is not None
-    bereits_versorgt = schon_selbst_geladen or await bootstrap_redeemed(db, iid)
-    if bereits_versorgt and not (payload and payload.reset):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            # Fuehrender Code, weil dieser Endpunkt DREI verschiedene 403
-            # kennt (Sperre der Instanz, App-Host-Flag, diese Kollision) und
-            # nur bei diesem einen „neu ausstellen" hilft. Die Oberflaeche las
-            # frueher jeden 403 als „schon heruntergeladen" und bot einen
-            # Ausweg an, der die anderen beiden Faelle nicht loesen konnte.
-            # Der Prosa-Teil bleibt: er steht in Fehlerberichten und Logs.
-            detail=(
-                "already_provisioned: Dieser Server wurde bereits eingerichtet — "
-                "neu ausstellen ist moeglich, der bisher laufende Server verliert "
-                "dabei seinen Zugang"
-            ),
-        )
-
-    # Jede Credential-Ausgabe entwertet noch offene Installer-Tokens, sonst
-    # erschlaegt ein spaet eingeloestes Token die gerade verteilte Datei.
-    await drop_unredeemed_tokens(db, iid)
-
-    new_secret = secrets.token_urlsafe(32)
-    inst.client_secret = await asyncio.to_thread(hash_password, new_secret)
-    inst.env_file_downloaded_at = datetime.now(UTC)  # atomar mit Secret-Rotation
-    await db.commit()
-
-    return Response(
-        content=render_instance_env(
-            inst,
-            client_secret=new_secret,
-            admin_email=user.email or f"admin@{inst.hostname}",
-            cloud_origin=settings.pulse_oidc_issuer,
-        ),
-        media_type="text/plain; charset=utf-8",
-        headers={
-            "Content-Disposition": f'attachment; filename="pulse-instance-{inst.id}.env"'
-        },
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -528,7 +387,7 @@ async def mint_bootstrap_token(
     if await bootstrap_redeemed(db, iid) and not (payload and payload.reset):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            detail="Bootstrap bereits eingelöst — für weitere Server neuen Antrag stellen",
+            detail="Bootstrap bereits eingelöst — neu ausstellen nur mit reset=true",
         )
 
     await drop_unredeemed_tokens(db, iid)

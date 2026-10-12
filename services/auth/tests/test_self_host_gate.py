@@ -1,16 +1,15 @@
-"""Tests for the self_host_enabled gate on mint_bootstrap_token and /me."""
+"""Tests für das Flag ``self_host_enabled``: Admin-Schalter und ``/me``.
+
+Bis Oktober 2026 gab es dazu ein Gate am ``.env``-Download; der Download ist
+entfernt (Spec E11), das Flag bleibt für den Server-App-Weg (Spec E8).
+"""
 
 from __future__ import annotations
-
-import secrets
 
 import pytest
 import pytest_asyncio
 
 from dcc_auth.models import User
-from dcc_auth.models_instances import RegisteredInstance
-
-_FAKE_HASH = "$argon2id$v=19$m=65536,t=3,p=4$fakehash"
 
 _REG_CAROL = {
     "username": "gate_carol",
@@ -59,116 +58,6 @@ async def admin_user(client, session_factory):
     assert r.status_code == 200, r.text
     token = r.json()["access_token"]
     return {"token": token, "id": uid}
-
-
-@pytest_asyncio.fixture
-async def carol_instance(session_factory, carol) -> RegisteredInstance:
-    async with session_factory() as s:
-        inst = RegisteredInstance(
-            id=30000000000000001,
-            hostname="gate-instance.example.com",
-            client_id=f"ci_{secrets.token_hex(8)}",
-            client_secret=_FAKE_HASH,
-            worker_id_chat=120,
-            worker_id_voice=121,
-            worker_id_media=122,
-            status="active",
-            registered_by=int(carol["id"]),
-        )
-        s.add(inst)
-        await s.commit()
-        await s.refresh(inst)
-    return inst
-
-
-@pytest_asyncio.fixture
-async def carol_app_host_instance(session_factory, carol) -> RegisteredInstance:
-    """Dieselbe Instanz, nur aus der App heraus gehostet — dort IST das
-    ``self_host_enabled``-Flag das Widerrufs-Instrument."""
-    async with session_factory() as s:
-        inst = RegisteredInstance(
-            id=30000000000000002,
-            hostname="gate-app-host.example.com",
-            client_id=f"ci_{secrets.token_hex(8)}",
-            client_secret=_FAKE_HASH,
-            worker_id_chat=130,
-            worker_id_voice=131,
-            worker_id_media=132,
-            status="active",
-            origin="app_host",
-            registered_by=int(carol["id"]),
-        )
-        s.add(inst)
-        await s.commit()
-        await s.refresh(inst)
-    return inst
-
-
-# --------------------------------------------------------------------------- #
-# env-file gate — haengt an der INSTANZ, nicht am Nutzer                        #
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.asyncio
-async def test_env_file_app_host_requires_self_host_enabled(
-    client, carol, carol_app_host_instance
-):
-    """App-Host: ohne Flag 403 — sonst holte sich ein Widerrufener über diesen
-    Pfad frische Cloud-Credentials, obwohl der Widerruf genau das beendet."""
-    r = await client.post(
-        f"/me/instances/{carol_app_host_instance.id}/env-file",
-        headers={"Cookie": carol["cookie"]},
-    )
-    assert r.status_code == 403, r.text
-    assert "self-hosting not enabled" in r.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_env_file_vps_ohne_flag_erlaubt(client, carol, carol_instance):
-    """VPS: das Flag setzt ``_approve_vps`` nie — es hier zu verlangen sperrte
-    jeden VPS-Eigentuemer vom manuellen Compose-Weg aus (Fehler 2026-08-27).
-    Gedeckt ist der Fall durch Eigentuemer + aktive, genehmigte Instanz, genau
-    wie beim Bootstrap-Mint, der dieselben Zugangsdaten liefert."""
-    r = await client.post(
-        f"/me/instances/{carol_instance.id}/env-file",
-        headers={"Cookie": carol["cookie"]},
-    )
-    assert r.status_code == 200, r.text
-    assert "PULSE_CLOUD_CLIENT_SECRET=" in r.text
-
-
-@pytest.mark.asyncio
-async def test_env_file_gesperrte_instanz(client, carol, carol_instance, session_factory):
-    """Suspendiert → keine frischen Zugangsdaten. Vorher prueften wir nur auf
-    „nicht geloescht"; ein gesperrter Server konnte sich neu versorgen."""
-    async with session_factory() as s:
-        inst = await s.get(RegisteredInstance, carol_instance.id)
-        inst.status = "suspended"
-        await s.commit()
-
-    r = await client.post(
-        f"/me/instances/{carol_instance.id}/env-file",
-        headers={"Cookie": carol["cookie"]},
-    )
-    assert r.status_code == 403, r.text
-    assert "gesperrt" in r.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_env_file_succeeds_when_enabled(
-    client, carol, carol_app_host_instance, session_factory
-):
-    async with session_factory() as s:
-        user = await s.get(User, int(carol["id"]))
-        user.self_host_enabled = True
-        await s.commit()
-
-    r = await client.post(
-        f"/me/instances/{carol_app_host_instance.id}/env-file",
-        headers={"Cookie": carol["cookie"]},
-    )
-    assert r.status_code == 200, r.text
-    assert "PULSE_CLOUD_CLIENT_SECRET=" in r.text
 
 
 # --------------------------------------------------------------------------- #

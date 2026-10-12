@@ -82,7 +82,7 @@ class RegisteredInstance(Base):
     )
     env_file_downloaded_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
-    )  # One-Shot-Markierung (siehe Migration 0036 + generate_env_file)
+    )  # One-Shot-Markierung des früheren .env-Downloads (Migration 0036, Download entfernt)
     # Name, den der Betreiber seinem Server gibt (Migration 0055) — meldet der
     # Server selbst über ``POST /selfhost/anzeigename``. NULL = keiner gesetzt,
     # die Oberfläche zeigt dann die Adresse.
@@ -167,11 +167,15 @@ class InstanceApplication(Base):
     """Antrag auf Hosting-Freischaltung — VEREINT (Migration 0044) VPS- und
     App-Host-Anträge in einer Tabelle; ``origin`` unterscheidet.
 
-    Workflow: User stellt Antrag → status='pending' → Admin reviewt →
+    **Seit Oktober 2026 nur noch Historie** (Spec E11): Antrag und Freigabe
+    sind entfernt, keine Route legt neue Zeilen an. Die Tabelle bleibt für
+    Beschwerde-Kontakte und die Spur der Bestandsserver; die Löschung einer
+    Instanz schließt ihren Antrag noch (``routes_instance_delete.py``).
+
+    Früherer Ablauf: User stellt Antrag → status='pending' → Admin reviewt →
     approved (VPS: legt RegisteredInstance an + approved_instance_id;
     app_host: setzt self_host_enabled + provisioniert Relay-Instanz) oder
-    rejected. Vorbereitung auf Monetarisierung: „approved" wird später
-    „bezahlt" — ein Statusfeld, ein Antragsweg.
+    rejected.
     """
 
     __tablename__ = "instance_applications"
