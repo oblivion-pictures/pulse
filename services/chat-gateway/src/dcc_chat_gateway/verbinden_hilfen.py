@@ -22,6 +22,8 @@ from dcc_chat_gateway.verbindung import VERBINDUNG_DATEI
 #: ab (``*[!A-Za-z0-9._@+-]*``) — beide Stellen synchron halten.
 _WERT = re.compile(r"[A-Za-z0-9._@+-]+")
 _ZAHL = re.compile(r"[0-9]+")
+#: Der eigene chat-gateway antwortet in Millisekunden oder gar nicht.
+LOKAL_FRIST_S = 3.0
 
 
 class Abbruch(Exception):
@@ -119,3 +121,13 @@ def verbindung_env(zugang: dict) -> str:
     if isinstance(mail, str) and "@" in mail and _WERT.fullmatch(mail):
         zeilen.append(f"PULSE_ADMIN_EMAIL={mail}")
     return "\n".join(zeilen) + "\n"
+
+
+def lokaler_client(*, transport: httpx.BaseTransport | None = None) -> httpx.Client:
+    """Für die Anfrage an den eigenen chat-gateway. ``trust_env=False``: httpx
+    schickt auch 127.0.0.1 über einen ``HTTP_PROXY`` der Umgebung, und ein Proxy
+    dazwischen machte aus einem laufenden Server ein falsches „liefert nichts aus“.
+    ``transport`` ist die Naht für Tests."""
+    return httpx.Client(
+        timeout=LOKAL_FRIST_S, trust_env=False, follow_redirects=False, transport=transport
+    )

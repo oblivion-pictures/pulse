@@ -19,9 +19,15 @@ import pytest
 
 from dcc_chat_gateway import verbinden_cli
 from dcc_chat_gateway.verbinden_cli import Umgebung, nachweis_aus_kennung, verbinden
-from dcc_chat_gateway.verbindung import NACHWEIS_DATEI, VERBINDUNG_DATEI
+from dcc_chat_gateway.verbindung import (
+    NACHWEIS_DATEI,
+    NACHWEIS_PFAD,
+    VERBINDUNG_DATEI,
+    nachweis_lesen,
+)
 
 CLOUD = "https://cloud.example"
+LOKAL = "http://127.0.0.1:8002"
 HOST = "chat.example.org"
 START = "/api/auth/selfhost/verbinden/start"
 ABHOLEN = "/api/auth/selfhost/verbinden/abholen"
@@ -98,7 +104,23 @@ def _nein(_frage: str) -> bool:
     return False
 
 
-def _lauf(tmp_path, cloud, *, verzeichnis=None, instanz_id=0, rueckfrage=_nein, neustart=None):
+def _pulse_selbst(verzeichnis: Path):
+    """Die Route des chat-gateway: der abgelegte Nachweis, sonst 404."""
+
+    def route(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert str(request.url) == LOKAL + NACHWEIS_PFAD
+        wert = nachweis_lesen(verzeichnis)
+        if wert is None:
+            return httpx.Response(404, json={"detail": "Not Found"})
+        return httpx.Response(200, json={"nachweis": wert})
+
+    return route
+
+
+def _lauf(
+    tmp_path, cloud, *, verzeichnis=None, instanz_id=0, rueckfrage=_nein, neustart=None, lokal=None
+):
     zeilen: list[str] = []
     uhr = Uhr()
     umgebung = Umgebung(
@@ -107,11 +129,17 @@ def _lauf(tmp_path, cloud, *, verzeichnis=None, instanz_id=0, rueckfrage=_nein, 
         verzeichnis=verzeichnis or tmp_path,
         instanz_id=instanz_id,
         modus="self-host",
+        lokal_url=LOKAL,
     )
-    with httpx.Client(transport=httpx.MockTransport(cloud)) as client:
+    lokal = lokal or _pulse_selbst(verzeichnis or tmp_path)
+    with (
+        httpx.Client(transport=httpx.MockTransport(cloud)) as client,
+        verbinden_cli.lokaler_client(transport=httpx.MockTransport(lokal)) as pulse,
+    ):
         code = verbinden(
             umgebung,
             client,
+            lokal=pulse,
             neustart=neustart,
             rueckfrage=rueckfrage,
             schlafen=uhr.schlafen,
@@ -589,3 +617,99 @@ def test_503_nicht_verfuegbar_mit_json_ist_auch_nur_ein_spaeter_versuch(tmp_path
     assert code == 1
     assert "please try again in a minute" in text
     assert "busy checking servers" not in text  # das ist ``verbinden_ausgelastet``
+
+
+# ── Härtung: Pulse muss den Nachweis selbst ausliefern, bevor die Cloud fragt ──
+
+
+def test_lokale_vorpruefung_kommt_vor_dem_cloud_start(tmp_path):
+    cloud = Cloud(tmp_path, abholen=[(200, ZUGANG)])
+    gesehen: list[list[str]] = []
+    route = _pulse_selbst(tmp_path)
+
+    def lokal(request: httpx.Request) -> httpx.Response:
+        gesehen.append(list(cloud.pfade))  # was die Cloud bis jetzt gehört hat
+        assert set(request.extensions["timeout"].values()) == {3.0}
+        return route(request)
+
+    assert _lauf(tmp_path, cloud, lokal=lokal)[0] == 0
+    assert gesehen == [[]]  # genau einmal, und die Cloud war noch nicht dran
+
+
+def _antwort(status, koerper):
+    return lambda _request: httpx.Response(status, json=koerper)
+
+
+def _ohne_verbindung(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("Connection refused", request=request)
+
+
+def _zu_langsam(request: httpx.Request) -> httpx.Response:
+    raise httpx.ReadTimeout("zu langsam", request=request)
+
+
+@pytest.mark.parametrize(
+    "lokal",
+    [
+        _antwort(404, {"detail": "Not Found"}),
+        _antwort(200, {"nachweis": "0" * 64}),  # ein anderer Wert als der abgelegte
+        _antwort(200, {"anders": "ja"}),
+        _antwort(200, ["kein", "objekt"]),
+        _antwort(500, {"detail": "kaputt"}),
+        lambda _request: httpx.Response(200, content=b"<html>SPA</html>"),
+        _ohne_verbindung,
+        _zu_langsam,
+    ],
+    ids=["404", "anderer-wert", "falsches-feld", "liste", "500", "kein-json", "refused", "timeout"],
+)
+def test_pulse_liefert_den_nachweis_nicht_aus(tmp_path, lokal):
+    """Läuft der chat-gateway noch nicht (oder reicht ein Proxy davor etwas
+    anderes durch), würde die Cloud den Start mit ``kein_nachweis`` abweisen und
+    einen ihrer 10 Starts je Stunde verbrauchen. Das fällt hier vorher auf."""
+    cloud = Cloud(tmp_path)
+    neustarts: list[str] = []
+    code, text, _ = _lauf(tmp_path, cloud, lokal=lokal, neustart=lambda: neustarts.append("halt"))
+
+    assert code == 3
+    assert cloud.pfade == []  # kein Cloud-Aufruf
+    assert "Pulse itself is not serving the proof yet (is the server fully started?)" in text
+    assert "No code was used up" in text
+    assert neustarts == []
+    assert not (tmp_path / NACHWEIS_DATEI).exists()
+    assert not (tmp_path / VERBINDUNG_DATEI).exists()
+
+
+def test_der_pfad_der_vorpruefung_ist_die_route_des_chat_gateways():
+    from dcc_chat_gateway.app import app
+
+    assert NACHWEIS_PFAD in {getattr(route, "path", None) for route in app.routes}
+
+
+def test_lokaler_client_geht_nie_ueber_einen_umgebungs_proxy(monkeypatch):
+    """httpx nimmt ``HTTP_PROXY`` auch für 127.0.0.1; ein Proxy zwischen
+    pulse-connect und dem eigenen Dienst gäbe jedem Server dahinter ein
+    falsches ``nicht ausgeliefert``."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Antwort(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 — Name der Basisklasse
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *_args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Antwort)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")  # nichts hört dort
+    url = f"http://127.0.0.1:{server.server_port}/"
+    try:
+        with pytest.raises(httpx.ConnectError):  # die Gegenprobe: ein gewöhnlicher Client
+            httpx.Client().get(url, timeout=2)
+        with verbinden_cli.lokaler_client() as client:
+            assert client.get(url).status_code == 200
+    finally:
+        server.shutdown()
+        server.server_close()

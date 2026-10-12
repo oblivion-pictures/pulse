@@ -25,6 +25,9 @@ NACHWEIS_DATEI = "verbinden-nachweis"
 #: Die abgeholten Zugangsdaten (0600). Gelesen von 07-render-env.sh, nicht von
 #: den Diensten selbst — die sehen nur ``/etc/pulse/env.sh``.
 VERBINDUNG_DATEI = "verbindung.env"
+#: Wo die Route den Nachweis ausliefert (``routes/verbinden_nachweis.py``). Die
+#: Cloud ruft ihn über die öffentliche Adresse ab, ``pulse-connect`` vorab bei sich.
+NACHWEIS_PFAD = "/.well-known/pulse-verbinden"
 
 #: Englisch, weil die Zeile im Log fremder Betreiber steht (Regel aus
 #: ``owner_admin_log.py``). Der Befehl ist derselbe, den Installer und
