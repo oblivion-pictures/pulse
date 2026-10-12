@@ -177,6 +177,52 @@ test.describe.serial('T14 — Server-Admin-Panel', () => {
     });
   });
 
+  test('Einstellungen: DM-Dateigröße 0,5 MB bleibt 0,5 — auch nach dem Speichern der Dateizahl', async () => {
+    const size = admin.getByTestId('dm-max-size-input');
+    const count = admin.getByTestId('dm-max-count-input');
+    await expect(size).toBeVisible({ timeout: 7_000 });
+    const originalSize = await size.inputValue();
+    const originalCount = await count.inputValue();
+
+    const speichern = async () => {
+      // Auf die Antwort warten, bevor neu geladen wird: sonst bricht das
+      // Neuladen die PATCH-Anfrage ab, und der Test prüft den Altstand.
+      await Promise.all([
+        admin.waitForResponse(
+          (r) => r.url().includes('/admin/dm-limits') && r.request().method() === 'PATCH'
+        ),
+        admin.getByTestId('dm-limits-save').click()
+      ]);
+    };
+    const neuLaden = async () => {
+      await admin.reload();
+      await admin.getByTestId('admin-tab-settings').click();
+    };
+
+    // 0,5 MB speichern: nach dem Neuladen steht dort 0.5, nicht 1.
+    await size.fill('0.5');
+    await speichern();
+    await neuLaden();
+    await expect(size).toHaveValue('0.5', { timeout: 7_000 });
+
+    // Nur die Dateizahl ändern, das Größenfeld bleibt unberührt stehen: die
+    // Größe darf dabei nicht als gerundeter Anzeigewert zurückgeschrieben werden.
+    const andereZahl = originalCount === '7' ? '8' : '7';
+    await count.fill(andereZahl);
+    await speichern();
+    await neuLaden();
+    await expect(count).toHaveValue(andereZahl, { timeout: 7_000 });
+    await expect(size).toHaveValue('0.5');
+
+    // Sauber zurückstellen — beide Werte dürfen nicht in andere Specs lecken.
+    await size.fill(originalSize);
+    await count.fill(originalCount);
+    await speichern();
+    await neuLaden();
+    await expect(size).toHaveValue(originalSize, { timeout: 7_000 });
+    await expect(count).toHaveValue(originalCount);
+  });
+
   test('Einstellungen: Backup-Bereich rendert', async () => {
     await expect(admin.getByTestId('admin-backup')).toBeVisible();
     // Unkonfiguriert ist der Normalzustand der Testinstanz
