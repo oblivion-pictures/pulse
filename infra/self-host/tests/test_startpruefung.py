@@ -47,6 +47,31 @@ ZUGANG = (
 )
 
 
+# Im Image ist /bin/sh dash (Debian), hier meist bash. Die Skripte sind #!/bin/sh und
+# müssen unter beiden laufen; ein bashism fiele sonst erst im Container auf.
+_SHELLS = [
+    "sh",
+    pytest.param(
+        "dash",
+        marks=pytest.mark.skipif(
+            shutil.which("dash") is None,
+            reason="dash nicht installiert (/bin/sh im Image); apt/pacman install dash",
+        ),
+    ),
+]
+_SHELL = {
+    "name": "sh"
+}  # setzt die Fixture ``shell``; ``_sh`` und die Aufrufe von PRUEFUNG lesen sie
+unter_beiden_shells = pytest.mark.usefixtures("shell")
+
+
+@pytest.fixture(params=_SHELLS)
+def shell(request):
+    _SHELL["name"] = request.param
+    yield request.param
+    _SHELL["name"] = "sh"
+
+
 def _umgebung(**gesetzt: str) -> dict[str, str]:
     # Auch PULSE_INSTANCE_ID=0 aus dem Gate (scripts/gate.sh) muss hier weg.
     basis = {k: v for k, v in os.environ.items() if k not in _ALT}
@@ -66,26 +91,29 @@ def _block(datei: pathlib.Path, anfang: str, ende: str) -> str:
 
 def _sh(skript: str, **umgebung: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["sh", "-c", skript], env=_umgebung(**umgebung), capture_output=True, text=True
+        [_SHELL["name"], "-c", skript], env=_umgebung(**umgebung), capture_output=True, text=True
     )
 
 
 # ── 10-check-cloud-creds.sh ───────────────────────────────────────────────
 
 
+@unter_beiden_shells
 def test_nur_die_adresse_genuegt():
-    r = _sh(f'sh "{PRUEFUNG}"', PULSE_HOSTNAME="chat.example.org")
+    r = _sh(f'{_SHELL["name"]} "{PRUEFUNG}"', PULSE_HOSTNAME="chat.example.org")
     assert r.returncode == 0, r.stderr
 
 
+@unter_beiden_shells
 def test_ohne_adresse_bricht_der_start_ab():
-    r = _sh(f'sh "{PRUEFUNG}"')
+    r = _sh(f'{_SHELL["name"]} "{PRUEFUNG}"')
     assert r.returncode == 1
     assert "PULSE_HOSTNAME" in r.stderr
 
 
+@unter_beiden_shells
 def test_ungueltige_adresse_bricht_ab():
-    r = _sh(f'sh "{PRUEFUNG}"', PULSE_HOSTNAME="kein punkt")
+    r = _sh(f'{_SHELL["name"]} "{PRUEFUNG}"', PULSE_HOSTNAME="kein punkt")
     assert r.returncode == 1
 
 
@@ -101,6 +129,7 @@ def _verbindung_lesen(tmp_path, inhalt: str | None, **umgebung: str):
     return _sh(f'set -eu\nDATA="{daten}"\n{block}\n{_AUSGABE}\n', **umgebung)
 
 
+@unter_beiden_shells
 def test_werte_aus_dem_volumen_fuellen_die_luecken(tmp_path):
     r = _verbindung_lesen(tmp_path, ZUGANG + "PULSE_ADMIN_EMAIL=ops@example.org\n")
     assert r.returncode == 0, r.stderr
@@ -109,6 +138,7 @@ def test_werte_aus_dem_volumen_fuellen_die_luecken(tmp_path):
     )
 
 
+@unter_beiden_shells
 def test_umgebung_gewinnt(tmp_path):
     """Bestandsserver und Server-App setzen die Werte per Umgebung — sie
     dürfen von einer Datei im Volumen nichts bemerken."""
@@ -124,12 +154,14 @@ def test_umgebung_gewinnt(tmp_path):
     assert r.stdout.strip() == "4711|42|alt|alt-geheim|"
 
 
+@unter_beiden_shells
 def test_ohne_datei_bleibt_alles_leer(tmp_path):
     r = _verbindung_lesen(tmp_path, None)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "||||"
 
 
+@unter_beiden_shells
 def test_nichts_aus_der_datei_wird_ausgefuehrt(tmp_path):
     marke = tmp_path / "ausgefuehrt"
     inhalt = f"PULSE_INSTANCE_ID=$(touch {marke})\nPATH=/nirgends\nPULSE_CLOUD_CLIENT_ID=abc\n"
@@ -152,6 +184,7 @@ def _env_datei(pfad: pathlib.Path) -> dict[str, str]:
     return belegung
 
 
+@unter_beiden_shells
 def test_env_beispiel_laesst_die_verbindung_leer(tmp_path):
     """``cp .env.example .env`` ist der dokumentierte Weg eines neuen Servers.
     Trüge das Beispiel Platzhalter, gewönnen die gegen ``verbindung.env``
@@ -188,6 +221,7 @@ def _env_sh(**umgebung: str) -> subprocess.CompletedProcess:
     )
 
 
+@unter_beiden_shells
 def test_env_sh_ohne_verbindung():
     r = _env_sh()
     assert r.returncode == 0, r.stderr
@@ -202,6 +236,7 @@ def test_env_sh_ohne_verbindung():
         assert zeile in r.stdout.splitlines()
 
 
+@unter_beiden_shells
 def test_env_sh_bestand_unveraendert():
     r = _env_sh(
         PULSE_INSTANCE_ID="4711",
@@ -259,6 +294,7 @@ def test_caddy_ohne_env_sh_stirbt_nicht(tmp_path):
 # ── 01-init-data-dirs.sh: Nachweis eines abgebrochenen pulse-connect ──────
 
 
+@unter_beiden_shells
 def test_start_raeumt_den_liegengebliebenen_nachweis_weg(tmp_path):
     """SIGHUP/SIGTERM/SIGKILL beim Lauf von pulse-connect lassen den Nachweis
     liegen (sein ``finally`` läuft dann nicht). Der Name kommt aus dem Code des
@@ -276,6 +312,7 @@ def test_start_raeumt_den_liegengebliebenen_nachweis_weg(tmp_path):
     assert (daten / "pulse" / VERBINDUNG_DATEI).read_text(encoding="utf-8") == ZUGANG
 
 
+@unter_beiden_shells
 def test_start_ohne_nachweis_stirbt_nicht(tmp_path):
     """Der Normalfall — und ``set -e`` darf an der fehlenden Datei nicht hängen."""
     daten = tmp_path / "data"

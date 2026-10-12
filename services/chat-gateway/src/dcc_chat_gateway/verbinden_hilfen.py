@@ -59,11 +59,15 @@ def grund(fehler: OSError) -> str:
 
 
 def lies_verbindung(verzeichnis: Path) -> dict[str, str]:
-    """Die Schlüssel aus ``verbindung.env``; leer, wenn es keine gibt."""
+    """Die Schlüssel aus ``verbindung.env``; leer, wenn es keine gibt, Abbruch, wenn
+    sie kein gültiger Text ist."""
+    datei = verzeichnis / VERBINDUNG_DATEI
     try:
-        zeilen = (verzeichnis / VERBINDUNG_DATEI).read_text(encoding="utf-8").splitlines()
+        zeilen = datei.read_text(encoding="utf-8").splitlines()
     except OSError:
         return {}
+    except UnicodeDecodeError:
+        raise Abbruch(1, texte.VERBINDUNG_UNLESBAR.format(pfad=datei)) from None
     return dict(zeile.split("=", 1) for zeile in zeilen if "=" in zeile)
 
 
