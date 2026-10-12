@@ -8,7 +8,13 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { baueZeilenKlar, leseZeilenKlar } from '../src/lib/archiv/zeile.ts';
+import {
+	baueGrabsteinKlar,
+	baueZeilenKlar,
+	leseZeile,
+	leseZeilenKlar
+} from '../src/lib/archiv/zeile.ts';
+import { zuSatz } from '../src/lib/verlauf/satz.ts';
 import type { Message } from '../src/lib/api/types';
 
 function nachricht(mit: Partial<Message> = {}): Message {
@@ -94,5 +100,52 @@ describe('archiv/zeile', () => {
 		);
 		assert.equal(zurueck.content, 'alt');
 		assert.equal(zurueck.attachments, undefined);
+	});
+
+	// ── Einlieferer (Gegenprüfung 2026-10-12, Fund 2) ──────────────────────
+	// Den Autor `a` schreibt der Einliefernde selbst in die Nutzlast, und
+	// einliefern darf jedes Kanalmitglied. Der Server nennt deshalb seit
+	// Migration 0102 den Einlieferer jeder Zeile.
+
+	const klar = (n: Message) => new TextDecoder().decode(baueZeilenKlar(n));
+
+	test('eine Zeile ihres Autors wird angenommen', () => {
+		const eintrag = leseZeile('999', klar(nachricht()), '42');
+		assert.equal(eintrag?.art, 'nachricht');
+		assert.equal(eintrag?.art === 'nachricht' && eintrag.nachricht.content, 'Hallo Archiv');
+	});
+
+	test('eine Zeile im Namen eines anderen wird verworfen', () => {
+		// Bob (7) liefert eine Zeile mit Alices Namen (42) und ihrer Kennung ein.
+		const gefaelscht = klar(nachricht({ content: 'gefälscht' }));
+		assert.equal(leseZeile('999', gefaelscht, '7'), null);
+	});
+
+	test('eine Bestandszeile ohne Einlieferer wird übergangsweise angenommen', () => {
+		assert.equal(leseZeile('999', klar(nachricht()), null)?.art, 'nachricht');
+	});
+
+	test('eine Grabstein-Zeile zählt nur von ihrem Autor', () => {
+		const stein = new TextDecoder().decode(
+			baueGrabsteinKlar('1234567890123', '42', '2026-10-12T00:00:00.000Z')
+		);
+		assert.deepEqual(leseZeile('999', stein, '42'), {
+			art: 'grabstein',
+			autorId: '42',
+			kennung: '1234567890123'
+		});
+		// Im Namen eines anderen: verworfen — sonst löschte Bob Alices Nachricht
+		// auf jedem Gerät, das das Archiv liest.
+		assert.equal(leseZeile('999', stein, '7'), null);
+		// Ohne Einlieferer gibt es keinen Grabstein: den Bestand kennt niemand.
+		assert.equal(leseZeile('999', stein, null), null);
+	});
+
+	test('eine Grabstein-Zeile ist für einen älteren Klienten keine Nachricht', () => {
+		// Ältere Klienten kennen `g` nicht und lesen die Zeile als Nachricht;
+		// ohne `i` und `t` verwirft `zuSatz` sie still, statt eine leere
+		// Nachricht anzulegen.
+		const stein = new TextDecoder().decode(baueGrabsteinKlar('1', '42', '2026-10-12T00:00:00.000Z'));
+		assert.equal(zuSatz('999', leseZeilenKlar('999', stein), 'konto'), null);
 	});
 });

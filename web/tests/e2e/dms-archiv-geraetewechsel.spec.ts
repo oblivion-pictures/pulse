@@ -76,6 +76,18 @@ async function sendDm(page: Page, text: string) {
   await page.getByTestId('message-input').press('Enter');
 }
 
+/** Wie viele Zeilen das Archiv dieses Kanals hält — die Leseroute, die auch
+ *  der Klient nutzt (`api/archiv.ts::archivSeite`). */
+async function archivZeilen(page: Page, kanalId: string): Promise<number> {
+  return page.evaluate(async (kid) => {
+    const token = localStorage.getItem('dcc.tokens.access');
+    const resp = await fetch(`/api/chat/archiv/${kid}?limit=500`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return resp.ok ? ((await resp.json()) as unknown[]).length : -1;
+  }, kanalId);
+}
+
 test.describe.serial('Archiv-Gerätewechsel: Verlauf auf jedem Gerät (§5)', () => {
   test('Browser 1: Unterhaltung, Browser 2: gleicher Nutzer sieht den Verlauf', async ({
     browser
@@ -127,6 +139,24 @@ test.describe.serial('Archiv-Gerätewechsel: Verlauf auf jedem Gerät (§5)', ()
     ).toBeVisible({ timeout: 10_000 });
     await sendDm(bob1, 'archiv rueck');
 
+    // Alice löscht eine eigene Nachricht wieder (Gegenprüfung 2026-10-12): ihr
+    // Klient liefert dafür eine Grabstein-Zeile ins Archiv ein. Ohne sie holte
+    // jedes Frischgerät die gelöschte Nachricht 120 Tage lang zurück — der
+    // Server kann keine Zeile je Nachricht löschen.
+    await sendDm(alice, 'archiv weg');
+    const weg = (p: Page) =>
+      p.locator('[data-testid="message-item"]', { hasText: 'archiv weg' });
+    await expect(weg(alice)).toBeVisible({ timeout: 10_000 });
+    await expect(weg(bob1)).toBeVisible({ timeout: 10_000 });
+    // Erst wenn auch die Nachricht selbst im Archiv liegt, sagt die Löschung
+    // etwas: sonst bestünde der Test auch ohne Grabstein-Zeile.
+    await expect.poll(() => archivZeilen(alice, dmId), { timeout: 10_000 }).toBe(3);
+    await weg(alice).hover();
+    await weg(alice).getByTestId('message-action-delete').click();
+    await alice.getByTestId('confirm-dialog-confirm').click();
+    await expect(weg(alice)).toHaveCount(0, { timeout: 10_000 });
+    await expect.poll(() => archivZeilen(alice, dmId), { timeout: 10_000 }).toBe(4);
+
     // Abmelden (vollständiger Identitäts-Wisch) + Browser zu.
     await bob1.getByTestId('user-footer-trigger').click();
     await bob1.getByTestId('sign-out').click();
@@ -147,6 +177,13 @@ test.describe.serial('Archiv-Gerätewechsel: Verlauf auf jedem Gerät (§5)', ()
     await expect(
       bob2.locator('[data-testid="message-content"]', { hasText: 'archiv rueck' })
     ).toBeVisible({ timeout: 20_000 });
+
+    // Die gelöschte Nachricht kommt aus dem Archiv NICHT zurück. Feste
+    // Wartezeit: `toHaveCount(0)` wäre schon vor dem Nachzug erfüllt.
+    await bob2.waitForTimeout(3_000);
+    await expect(
+      bob2.locator('[data-testid="message-content"]', { hasText: 'archiv weg' })
+    ).toHaveCount(0);
 
     // Und der Zweitgerät-Verlauf bleibt auch nach einem Kanalwechsel erhalten.
     await bob2.goto('/app/@me');

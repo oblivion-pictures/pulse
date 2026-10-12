@@ -27,6 +27,10 @@ interface ArchivZeileFern {
 	channel_id: string;
 	nutzlast_b64: string;
 	erstellt_at: string;
+	/** Wer die Zeile eingeliefert hat (aus der Anmeldung, Migration 0102);
+	 *  `null` bei Bestandszeilen davor. `archiv/zeile.ts::leseZeile` prüft
+	 *  den Autor der Nutzlast dagegen. */
+	user_id: string | null;
 }
 
 export async function archivEinliefern(zeilen: Array<{ id: string; channel_id: string; nutzlast_b64: string }>, wraps: Array<{ channel_id: string; user_id: string; wrap_b64: string }>): Promise<void> {

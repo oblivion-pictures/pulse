@@ -31,6 +31,7 @@ import {
   verlaufReaktionAnwenden
 } from '$lib/verlauf';
 import { kanonischeAntwortId } from '$lib/krypto/kanonischeAntwortId';
+import { kanonischeId } from '$lib/verlauf/identitaet';
 import { sendeBearbeitung, sendeLoeschung, sendeReaktion } from '$lib/krypto/senden';
 import {
   sendeGruppenBearbeitung,
@@ -102,7 +103,22 @@ export async function nachrichtLoeschen(
     : opts.partnerId
       ? () => sendeLoeschung(msg.channel_id, opts.partnerId as string, msg.id)
       : null;
-  const frameWeg = async (): Promise<void> => {
+  // E2EE: keine Server-Zeile — der Grabstein läuft lokal (Verlauf +
+  // Sicherungs-Archiv), als Grabstein-Zeile ins Server-Archiv (nur für eine
+  // eigene Nachricht: dort zählt er nur vom Autor, `archiv/zeile.ts`) und
+  // als Lösch-Frame an die anderen Geräte über den verschlüsselten Sendeweg.
+  // Schlägt das Senden fehl, ist die lokale Löschung trotzdem gültig; der
+  // Fehler wird sichtbar gemacht.
+  const e2eLoeschen = async (): Promise<void> => {
+    verlaufNachrichtGeloescht(msg.channel_id, msg.id);
+    messages.remove(msg.channel_id, msg.id);
+    if (msg.author_id === auth.user?.id) {
+      const kennung = kanonischeId(msg.id, msg.krypto_id);
+      // Dynamisch wie der Sendeweg (`krypto/senden.ts`); `archiviereGrabstein` wirft nie.
+      void import('$lib/archiv/senden')
+        .then((a) => a.archiviereGrabstein(msg.channel_id, kennung))
+        .catch((e) => console.warn('[archiv] Grabstein-Zeile nicht eingeliefert', e));
+    }
     if (!loeschFrame) return;
     try {
       await loeschFrame();
@@ -112,13 +128,7 @@ export async function nachrichtLoeschen(
     }
   };
   if (msg.verschluesselt) {
-    // E2EE: keine Server-Zeile — der Grabstein läuft lokal (Verlauf +
-    // Sicherungs-Archiv) und der Lösch-Frame an die anderen Geräte über den
-    // verschlüsselten Sendeweg. Schlägt das Senden fehl, ist die lokale
-    // Löschung trotzdem gültig; der Fehler wird sichtbar gemacht.
-    verlaufNachrichtGeloescht(msg.channel_id, msg.id);
-    messages.remove(msg.channel_id, msg.id);
-    await frameWeg();
+    await e2eLoeschen();
     return;
   }
   // Eine ID jenseits von int64 kann in keiner Server-Zeile liegen (Postgres-
@@ -131,9 +141,7 @@ export async function nachrichtLoeschen(
     }
   })();
   if (ueberInt64) {
-    verlaufNachrichtGeloescht(msg.channel_id, msg.id);
-    messages.remove(msg.channel_id, msg.id);
-    await frameWeg();
+    await e2eLoeschen();
     return;
   }
 
@@ -146,9 +154,7 @@ export async function nachrichtLoeschen(
     // 404 für eine echte Klartext-Zeile heißt "schon weg" und verträgt den
     // lokalen Grabstein ebenfalls.
     if (e instanceof ApiError && e.status === 404 && loeschFrame) {
-      verlaufNachrichtGeloescht(msg.channel_id, msg.id);
-      messages.remove(msg.channel_id, msg.id);
-      await frameWeg();
+      await e2eLoeschen();
       return;
     }
     toast.error(m.dm_page_delete_failed());

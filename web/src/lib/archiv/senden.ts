@@ -14,14 +14,19 @@
  * einmal je Sitzung berechnet (`kanalSchluessel.ts`): hatte die Gegenseite
  * beim ersten Senden noch keinen Archiv-Public-Key, richtet ein späteres
  * Senden ihren Zugang nach — ohne Extra-Endpunkt und ohne Existenz-Rückfrage.
+ *
+ * Löscht der Autor eine eigene verschlüsselte Nachricht, liefert er dazu
+ * eine Grabstein-Zeile ein (`archiviereGrabstein`, Format in `zeile.ts`) —
+ * sonst holte jedes Frischgerät die Nachricht 120 Tage lang aus dem Archiv
+ * zurück.
  */
 
 import { auth } from '$lib/stores/auth.svelte';
 import type { Message } from '$lib/api/types';
-import { archivEinliefern, archivPubkeys } from '$lib/api/archiv';
+import { archivEinliefern, archivKanalSchluessel, archivPubkeys } from '$lib/api/archiv';
 import { erzeugeZufallsId, kanalSchluesselHolen, type ArchivPubkeyZiel } from './kanalSchluessel';
 import { verschluessleZeile } from './krypto';
-import { baueZeilenKlar } from './zeile';
+import { baueGrabsteinKlar, baueZeilenKlar } from './zeile';
 import { archivPaar } from './konto';
 
 /** Eine laufende Einlieferung je Kanal — zwei schnelle Nachrichten serialisieren. */
@@ -37,7 +42,7 @@ export function archiviereGesendet(kanalId: string, empfaengerId: string, nachri
     const pubkeys = await archivPubkeys([empfaengerId]);
     const fremd = pubkeys[empfaengerId];
     return fremd ? [{ id: empfaengerId, pubkey: fremd }] : [];
-  }, nachricht);
+  }, () => baueZeilenKlar(nachricht));
 }
 
 /**
@@ -56,15 +61,29 @@ export function archiviereGruppeGesendet(
     if (andere.length === 0) return [];
     const pubkeys = await archivPubkeys(andere, kanalId);
     return andere.filter((m) => pubkeys[m]).map((m) => ({ id: m, pubkey: pubkeys[m]! }));
-  }, nachricht);
+  }, () => baueZeilenKlar(nachricht));
+}
+
+/**
+ * Liefert die Grabstein-Zeile für eine EIGENE gelöschte Nachricht ein
+ * (`kennung` = ihre kanonische Kennung). Nur in einen Kanal, für den dieses
+ * Konto schon einen Schlüssel hat — ohne ihn hat es dort nie etwas
+ * archiviert, und es gibt nichts zu löschen. Wirft nie.
+ */
+export function archiviereGrabstein(kanalId: string, kennung: string): void {
+  anstellen(kanalId, null, (autorId) =>
+    baueGrabsteinKlar(kennung, autorId, new Date().toISOString())
+  );
 }
 
 /** Gemeinsamer Kern: serialisieren, entsperren, Schlüssel + Wraps besorgen,
- *  Zeile verschlüsseln, alles in EINER Anfrage einliefern. Wirft nie. */
+ *  Zeile verschlüsseln, alles in EINER Anfrage einliefern. Wirft nie.
+ *  `zieleErmitteln === null`: nur mit dem schon vorhandenen Kanal-Schlüssel,
+ *  ohne Erstanlage und ohne neue Wraps. */
 function anstellen(
   kanalId: string,
-  zieleErmitteln: () => Promise<ArchivPubkeyZiel[]>,
-  nachricht: Message
+  zieleErmitteln: (() => Promise<ArchivPubkeyZiel[]>) | null,
+  zeileKlar: (kontoId: string) => Uint8Array
 ): void {
   const vorher = laufend.get(kanalId) ?? Promise.resolve();
   const lauf = vorher
@@ -73,14 +92,15 @@ function anstellen(
       if (!kontoId) return;
       const paar = await archivPaar(kontoId);
       if (!paar) return; // Archiv auf diesem Gerät nicht entsperrt — kein Zwang
-      const ziele = await zieleErmitteln();
+      if (zieleErmitteln === null && !(await archivKanalSchluessel(kanalId))) return;
+      const ziele = zieleErmitteln === null ? [] : await zieleErmitteln();
       const { schluessel, wraps } = await kanalSchluesselHolen(kanalId, paar, ziele);
       await archivEinliefern(
         [
           {
             id: erzeugeZufallsId(),
             channel_id: kanalId,
-            nutzlast_b64: bytesZuB64(await verschluessleZeile(schluessel, baueZeilenKlar(nachricht)))
+            nutzlast_b64: bytesZuB64(await verschluessleZeile(schluessel, zeileKlar(kontoId)))
           }
         ],
         wraps

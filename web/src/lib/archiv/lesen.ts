@@ -16,6 +16,11 @@
  * wurde — kein Backfill alter Verläufe. Anhänge reisen als Angaben mit, die
  * Bytes nicht: das lesende Gerät zeigt die Kachel und holt sie aus der
  * eigenen Sicherung, wenn es welche hat (§5.4, `zeile.ts`).
+ *
+ * Jede Zeile läuft durch `zeile.ts::leseZeile`: eine Zeile, deren Autor nicht
+ * ihr Einlieferer ist, fällt heraus, und eine Grabstein-Zeile des Autors
+ * löscht seine Nachricht — gebunden an ihn, wie ein Lösch-Frame
+ * (`krypto/loeschZiel.ts`).
  */
 
 import { auth } from '$lib/stores/auth.svelte';
@@ -23,9 +28,14 @@ import type { Message } from '$lib/api/types';
 import { archivKanalSchluessel, archivSeite } from '$lib/api/archiv';
 import { kanalSchluesselHolen } from './kanalSchluessel';
 import { entschluesseleZeile } from './krypto';
-import { leseZeilenKlar } from './zeile';
+import { leseZeile, type Grabstein } from './zeile';
 import { archivPaar } from './konto';
-import { verlaufErgaenzen } from '$lib/verlauf';
+import {
+	verlaufErgaenzen,
+	verlaufLokaleIdsFuerFrame,
+	verlaufNachrichtGeloescht
+} from '$lib/verlauf';
+import { messages } from '$lib/stores/messages.svelte';
 
 const SEITEN_GROESSE = 500;
 
@@ -64,23 +74,34 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 			const zeilen = await archivSeite(kanalId, vorId, SEITEN_GROESSE);
 			if (zeilen.length === 0) break;
 			const nachrichten: Message[] = [];
+			const grabsteine: Grabstein[] = [];
+			let verworfen = 0;
 			for (const zeile of zeilen) {
 				try {
 					const klarText = new TextDecoder().decode(
 						await entschluesseleZeile(kanalSchluessel, vonB64(zeile.nutzlast_b64))
 					);
-					nachrichten.push(leseZeilenKlar(zeile.channel_id, klarText));
+					const eintrag = leseZeile(zeile.channel_id, klarText, zeile.user_id ?? null);
+					if (eintrag === null) verworfen++;
+					else if (eintrag.art === 'grabstein') grabsteine.push(eintrag);
+					else nachrichten.push(eintrag.nachricht);
 				} catch (e) {
 					// Eine unlesbare Zeile (kaputter Wrap, fremde Fassung) blockiert
 					// nicht die übrigen — der Rest des Archivs bleibt verwertbar.
 					console.info('[archiv] lesen: Zeile unlesbar', (e as Error).message);
 				}
 			}
+			if (verworfen > 0) {
+				console.info('[archiv] lesen: Zeilen verworfen, Autor ist nicht der Einlieferer', verworfen);
+			}
 			if (nachrichten.length > 0) {
 				// Ergänzen, nicht überschreiben: die Zeile kennt keine Löschung,
 				// Bearbeitung oder Reaktion — der lokale Satz schon.
 				gesamt += await verlaufErgaenzen(kanalId, nachrichten);
 			}
+			// Grabsteine NACH den Nachrichten der Seite: sie treffen auch, was
+			// diese Seite gerade abgelegt hat.
+			for (const stein of grabsteine) await grabsteinAnwenden(kanalId, stein);
 			// Server liefert aufsteigend — die ERSTE Id ist die älteste der Seite.
 			lesestand.set(kanalId, zeilen[0].id);
 			if (zeilen.length < SEITEN_GROESSE) break;
@@ -89,5 +110,14 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 	} catch (e) {
 		console.warn('[archiv] Nachziehen fehlgeschlagen', e);
 		return 0;
+	}
+}
+
+/** Eine Grabstein-Zeile: jeden lokalen Satz DIESES Autors mit dieser Kennung
+ *  löschen (`loeschZiel.ts::trifftFrame`), im Verlauf und in der Anzeige. */
+async function grabsteinAnwenden(kanalId: string, stein: Grabstein): Promise<void> {
+	for (const id of await verlaufLokaleIdsFuerFrame(kanalId, stein.kennung, stein.autorId)) {
+		verlaufNachrichtGeloescht(kanalId, id, stein.autorId);
+		messages.remove(kanalId, id);
 	}
 }

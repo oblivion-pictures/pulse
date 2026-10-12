@@ -36,6 +36,18 @@ def _b64(raw: bytes) -> str:
     return base64.b64encode(raw).decode()
 
 
+async def _zeile_einliefern(client, token: str, zeilen_id: int, dm_id: str, inhalt: bytes) -> None:
+    r = await client.post(
+        "/archiv",
+        json={
+            "zeilen": [{"id": zeilen_id, "channel_id": int(dm_id), "nutzlast_b64": _b64(inhalt)}],
+            "wraps": [],
+        },
+        headers=make_auth_header(token),
+    )
+    assert r.status_code == 204, r.text
+
+
 @pytest.mark.asyncio
 async def test_einliefern_und_lesen_rundtrip(client, _auth_signer, friend_pair):
     t_a, uid_a = await _register(_auth_signer)
@@ -88,6 +100,90 @@ async def test_wiederholte_einlieferung_ist_idempotent(client, _auth_signer, fri
         assert r.status_code == 204
     r = await client.get(f"/archiv/{dm_id}", headers=make_auth_header(t_a))
     assert len(r.json()) == 1
+
+
+# --- Einlieferer je Zeile (Migration 0102, Gegenprüfung 2026-10-12 Fund 2) ---
+# Einliefern darf jedes Mitglied, und den Autor nennt eine Zeile sonst nur in
+# ihrer Nutzlast. Der Server hält deshalb fest, wer eingeliefert hat — aus der
+# Anmeldung, nie aus dem Körper —, und der Klient verwirft eine Zeile, deren
+# Autor nicht dazu passt.
+
+
+@pytest.mark.asyncio
+async def test_zeile_traegt_den_einlieferer_aus_der_anmeldung(client, _auth_signer, friend_pair):
+    t_a, uid_a = await _register(_auth_signer)
+    t_b, uid_b = await _register(_auth_signer)
+    dm_id = await _dm_zwischen(client, _auth_signer, friend_pair, uid_a, uid_b)
+
+    for token, zeilen_id in ((t_a, 501), (t_b, 502)):
+        await _zeile_einliefern(client, token, zeilen_id, dm_id, b"e" * 60)
+
+    # Beide Seiten lesen dieselbe Zuordnung — als Zeichenkette (Snowflake).
+    for token in (t_a, t_b):
+        r = await client.get(f"/archiv/{dm_id}", headers=make_auth_header(token))
+        assert {z["id"]: z["user_id"] for z in r.json()} == {"501": str(uid_a), "502": str(uid_b)}
+
+
+@pytest.mark.asyncio
+async def test_einlieferer_laesst_sich_nicht_im_koerper_setzen(client, _auth_signer, friend_pair):
+    t_a, uid_a = await _register(_auth_signer)
+    _, uid_b = await _register(_auth_signer)
+    dm_id = await _dm_zwischen(client, _auth_signer, friend_pair, uid_a, uid_b)
+
+    r = await client.post(
+        "/archiv",
+        json={
+            "zeilen": [
+                {
+                    "id": 503,
+                    "channel_id": int(dm_id),
+                    "nutzlast_b64": _b64(b"e" * 60),
+                    "user_id": uid_b,
+                }
+            ],
+            "wraps": [],
+        },
+        headers=make_auth_header(t_a),
+    )
+    assert r.status_code == 422
+    r = await client.get(f"/archiv/{dm_id}", headers=make_auth_header(t_a))
+    assert r.json() == []
+
+
+@pytest.mark.asyncio
+async def test_wiederholte_einlieferung_eines_anderen_uebernimmt_die_zeile_nicht(
+    client, _auth_signer, friend_pair
+):
+    """Dieselbe Zeilen-ID ein zweites Mal, diesmal vom Partner: ON CONFLICT
+    DO NOTHING — der erste Einlieferer bleibt stehen."""
+    t_a, uid_a = await _register(_auth_signer)
+    t_b, uid_b = await _register(_auth_signer)
+    dm_id = await _dm_zwischen(client, _auth_signer, friend_pair, uid_a, uid_b)
+
+    for token, inhalt in ((t_a, b"a" * 60), (t_b, b"b" * 60)):
+        await _zeile_einliefern(client, token, 504, dm_id, inhalt)
+    r = await client.get(f"/archiv/{dm_id}", headers=make_auth_header(t_b))
+    [zeile] = r.json()
+    assert zeile["user_id"] == str(uid_a)
+    assert zeile["nutzlast_b64"] == _b64(b"a" * 60)
+
+
+@pytest.mark.asyncio
+async def test_bestandszeile_ohne_einlieferer_kommt_mit_null(
+    client, _auth_signer, friend_pair, session_factory
+):
+    from dcc_chat_gateway.models import ArchivZeile
+
+    t_a, uid_a = await _register(_auth_signer)
+    _, uid_b = await _register(_auth_signer)
+    dm_id = await _dm_zwischen(client, _auth_signer, friend_pair, uid_a, uid_b)
+    async with session_factory() as session:
+        session.add(ArchivZeile(id=505, channel_id=int(dm_id), nutzlast=b"vor-0102"))
+        await session.commit()
+
+    r = await client.get(f"/archiv/{dm_id}", headers=make_auth_header(t_a))
+    [zeile] = r.json()
+    assert zeile["user_id"] is None
 
 
 @pytest.mark.asyncio

@@ -22,13 +22,15 @@
  * Schlüssel könnte jeder Gesprächspartner eine Nachricht mit der Kennung
  * einer fremden schicken und sie damit als „Duplikat" verdrängen oder mit
  * ihr zusammenlegen lassen. Beim Postfach-Empfang stammt der Autor aus der
- * authentisierten Zustellung (`zustellungOeffnen.ts`). Das Server-Archiv ist
- * die Ausnahme: seine Zeilen tragen den Autor nur in der verschlüsselten
- * Nutzlast, und jedes Kanalmitglied darf Zeilen einliefern (`archiv/zeile.ts`,
- * Server `routes/archiv.py`) — dort trennt die Bindung verschiedene Autoren,
- * erkennt aber keinen gefälschten. Ein gefälschter Archiv-Satz kann auf
- * einem Gerät erscheinen, das unter seinem Schlüssel nichts liegen hat;
- * einen liegenden Satz desselben Kontos überschreibt er nicht
+ * authentisierten Zustellung (`zustellungOeffnen.ts`). Im Server-Archiv
+ * schreibt ihn der Einliefernde selbst in die Nutzlast, und einliefern darf
+ * jedes Kanalmitglied; seit 2026-10-12 nennt der Server deshalb zu jeder
+ * Zeile den Einlieferer, und eine Zeile, deren Autor nicht dazu passt, fällt
+ * beim Lesen heraus (`archiv/zeile.ts::leseZeile`, Server
+ * `routes/archiv.py`). Übergangsweise ausgenommen sind Bestandszeilen von
+ * davor, die keinen Einlieferer kennen: ein gefälschter Bestands-Satz kann
+ * auf einem Gerät erscheinen, das unter seinem Schlüssel nichts liegen hat;
+ * an einem liegenden Satz desselben Kontos ergänzt er höchstens die Kennung
  * (`satz.ts::satzErgaenzen`).
  *
  * **Grabsteine werden NICHT über diese Regel aufgelöst.** Ein Grabstein-Rahmen

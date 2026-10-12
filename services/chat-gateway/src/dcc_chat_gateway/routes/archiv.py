@@ -17,8 +17,19 @@ auch ältere Zeilen; die Zeilen werden ihm nur nicht ausgeliefert
 je Mitgliederwechsel — Upgrade-Pfad wäre eine Schlüssel-Epoche je Sitzung
 wie bei Megolm).
 
+**Wer eine Zeile eingeliefert hat, hält die Zeile selbst** (``user_id``,
+seit Migration 0102, aus der Anmeldung). Einliefern darf jedes Mitglied,
+und den Autor nennt eine Zeile sonst nur in ihrer verschlüsselten Nutzlast
+— ein Mitglied konnte also eine Zeile im Namen eines anderen einliefern.
+Der Server prüft das nicht (er sieht die Nutzlast nie), er liefert den
+Einlieferer nur mit aus; verwerfen muss der Klient (``archiv/zeile.ts``).
+
 Bewusste Grenzen (ponytail): keine Volltextsuche, keine Löschanfrage je
-Zeile — der 120-Tage-Sweeper räumt.
+Zeile — der 120-Tage-Sweeper räumt. Gelöscht wird stattdessen über eine
+Grabstein-ZEILE, die der Autor selbst einliefert: sie zählt beim Klienten
+nur, wenn ihr Einlieferer der Autor der gelöschten Nachricht ist. Eine
+Löschung je Zeile hier bräuchte die Zuordnung Zeile → Nachricht, und die
+steht nur in der Nutzlast.
 """
 
 from __future__ import annotations
@@ -85,6 +96,8 @@ class ArchivZeileOut(BaseModel):
     channel_id: str
     nutzlast_b64: str
     erstellt_at: str
+    # Wer die Zeile eingeliefert hat; ``None`` bei Bestandszeilen vor 0102.
+    user_id: str | None
 
 
 class ArchivZugriff(NamedTuple):
@@ -154,6 +167,7 @@ async def archiv_einliefern(
                 id=zeile.id,
                 channel_id=zeile.channel_id,
                 nutzlast=_b64(zeile.nutzlast_b64),
+                user_id=current.id,
             )
             .on_conflict_do_nothing(index_elements=[ArchivZeile.id])
         )
@@ -260,6 +274,7 @@ async def archiv_lesen(
             channel_id=str(z.channel_id),
             nutzlast_b64=_zu_b64(z.nutzlast),
             erstellt_at=z.erstellt_at.isoformat(),
+            user_id=str(z.user_id) if z.user_id is not None else None,
         )
         for z in reversed(zeilen)  # aufsteigend ausliefern — der Klient hängt an
     ]
