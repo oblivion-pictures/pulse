@@ -4,9 +4,10 @@
 
   Hängt EINMAL im App-Layout und liest `stores/serverRename`. Geöffnet wird er
   per Rechtsklick auf den Server in der Leiste (`ServerRenameMenuItem`, am
-  Rechner) bzw. per Tipp auf die Server-Zeile im Räume-Bereich (`/app/rooms`,
-  Handy/Tablet) — die Wahl des Eingangs trifft die jeweilige Stelle
-  (Geräte-Trennung), der Dialog ist für beide derselbe.
+  Rechner), per Tipp auf die Server-Zeile im Räume-Bereich (`/app/rooms`,
+  Handy/Tablet) oder über „Umbenennen“ auf „Meine Server“ (`account/MyInstances`,
+  alle Geräte) — die Wahl des Eingangs trifft die jeweilige Stelle
+  (Geräte-Trennung), der Dialog ist für alle derselbe.
 
   Gespeichert wird bei DIESEM Server mit seiner Sitzung (`PATCH
   /admin/permissions`), auch wenn er gerade nicht der aktive ist. Der Server
