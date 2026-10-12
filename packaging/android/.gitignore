@@ -16,3 +16,4 @@ manifest-checksum.txt
 store_icon.png
 *.apk
 *.aab
+*.idsig

@@ -7,12 +7,10 @@
 > stehen. HQ-Bildschirm-Wiedergabe läuft im Browser per WHEP
 > (`web/src/lib/stream/whep.ts`) — sie ist nicht Desktop-only.
 >
-> Zwei Stellen unten stimmen zusätzlich nicht mit dem Git-Stand überein:
-> - Unter „Nicht eingecheckt“ steht `*.apk` / `*.aab` — getrackt ist trotzdem
->   `app-release-signed.apk.idsig`.
-> - Die assetlinks.json-Anleitung wurde nie umgesetzt:
->   `web/static/.well-known/assetlinks.json` existierte nie, und die
->   nginx-Whitelist (`infra/prod/web-nginx.conf`) listet die Datei nicht.
+> Eine Stelle unten stimmt zusätzlich nicht mit dem Git-Stand überein: Die
+> assetlinks.json-Anleitung wurde nie umgesetzt:
+> `web/static/.well-known/assetlinks.json` existierte nie, und die
+> nginx-Whitelist (`infra/prod/web-nginx.conf`) listet die Datei nicht.
 
 Eine **Trusted Web Activity (TWA)**: eine dünne Android-Hülle, die `https://howispulse.com`
 in einem echten Chrome-Unterbau lädt. Gebaut mit [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap).
@@ -31,7 +29,7 @@ Chat + Voice (LiveKit/WebRTC) funktionieren. **HQ-Screen-Streaming nicht** — d
   im Store nie wieder aktualisiert werden.
 - Das generierte Gradle-Projekt (`app/`, `gradle/`, `gradlew`, `build.gradle`, …) — wird aus `twa-manifest.json`
   reproduzierbar neu erzeugt.
-- `*.apk` / `*.aab` — die Build-Artefakte.
+- `*.apk` / `*.aab` / `*.idsig` — die Build-Artefakte.
 
 ## Voraussetzungen (einmalig)
 
