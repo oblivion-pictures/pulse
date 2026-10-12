@@ -4,8 +4,9 @@
  * Server, der unter seiner Adresse den Nachweis ausliefert (E2) — den gibt es
  * im Testaufbau nicht. Geprüft wird die Seite: Rückweg über Registrieren und
  * Anmelden, Eingabe von Hand, vorausgewähltes Abbrechen, jeder Zustand und
- * jeder Fehlergrund, die Widerspruchsfrist bei einer vergebenen Adresse und das
- * Verkraften einer Bestätigung, deren Antwort nie ankam.
+ * jeder Fehlergrund, die Widerspruchsfrist bei einer vergebenen Adresse, die
+ * gesperrte Übernahme als Endzustand und das Verkraften einer Bestätigung,
+ * deren Antwort nie ankam oder zu spät kam.
  */
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 
@@ -66,6 +67,33 @@ async function cloudVortaeuschen(
   return aktionen;
 }
 
+/** Hält die Antwort auf die Entscheidung an, bis `freigeben()` gerufen wird (die
+ *  Cloud bestätigt bis zu ~30 s lang). `abgeliefert` ist erfüllt, sobald die
+ *  Antwort an den Browser ging. */
+async function entscheidungAnhalten(ctx: BrowserContext, antwort: Antwort) {
+  await ctx.unroute(ENTSCHEIDUNG);
+  const aktionen: string[] = [];
+  let freigeben!: () => void;
+  const warten = new Promise<void>((r) => (freigeben = r));
+  let geliefert!: () => void;
+  const abgeliefert = new Promise<void>((r) => (geliefert = r));
+  await ctx.route(ENTSCHEIDUNG, async (route) => {
+    const { aktion } = route.request().postDataJSON() as { aktion: string };
+    aktionen.push(aktion);
+    await warten;
+    if (antwort === 'abbruch') await route.abort();
+    else await route.fulfill({ status: antwort.status, json: antwort.body });
+    geliefert();
+  });
+  return { aktionen, freigeben, abgeliefert };
+}
+
+/** Lässt dem Browser Zeit, eine eben gelieferte Antwort zu verarbeiten. */
+const ausschwingen = (page: Page) =>
+  page.evaluate(
+    () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+  );
+
 const karte = (page: Page, zustand: string) =>
   page.locator(`[data-testid=verbinden-karte][data-zustand=${zustand}]`);
 
@@ -115,6 +143,15 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
     await expect(page.getByTestId('verbinden-adresse-vergeben')).toHaveCount(0);
     // Schutz gegen untergeschobene Links (E5): Abbrechen ist vorausgewählt.
     await expect(page.getByTestId('verbinden-abbrechen')).toBeFocused();
+
+    // Beide Knöpfe nennen mit ihrem Namen auch Warnung, Adresse und Code — wer sie
+    // mit dem Screenreader erreicht, hört, worüber er entscheidet.
+    for (const knopf of ['verbinden-abbrechen', 'verbinden-bestaetigen']) {
+      const beschreibung = page.getByTestId(knopf);
+      await expect(beschreibung).toHaveAccessibleDescription(/Hat dir jemand diesen Link geschickt/);
+      await expect(beschreibung).toHaveAccessibleDescription(/Adresse: chat\.dcc-test\.example\.com/);
+      await expect(beschreibung).toHaveAccessibleDescription(/Code: K7QM-2XDP/);
+    }
 
     await page.getByTestId('verbinden-bestaetigen').click();
     await expect(karte(page, 'verbunden')).toBeVisible();
@@ -177,15 +214,6 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
         code: 'A1B2-C3D8',
         antwort: { status: 503, body: { detail: 'verbinden_ausgelastet' } },
         art: 'ausgelastet'
-      },
-      {
-        // Widerspruchsfrist (Task 1.11): Sperre samt Ende, in der Sprache der Seite.
-        code: 'A1B2-C3D9',
-        antwort: {
-          status: 409,
-          body: { detail: { code: 'uebernahme_gesperrt', bis: '2031-11-10T12:00:00Z' } }
-        },
-        art: 'uebernahme_gesperrt'
       }
     ];
     for (const fall of faelle) {
@@ -198,8 +226,42 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
       // Nach der Antwort ist die Frage wieder bedienbar, Abbrechen wieder vorn.
       await expect(page.getByTestId('verbinden-bestaetigen')).toBeEnabled();
       await expect(page.getByTestId('verbinden-abbrechen')).toBeFocused();
-      if (fall.art === 'uebernahme_gesperrt') await expect(hinweis).toContainText('2031');
+      // Der Hinweis steht über den Knöpfen und im Bild, nicht unter der Kontozeile.
+      await expect(hinweis).toBeInViewport();
+      const hinweisBox = (await hinweis.boundingBox())!;
+      const knopfBox = (await page.getByTestId('verbinden-abbrechen').boundingBox())!;
+      expect(hinweisBox.y + hinweisBox.height).toBeLessThanOrEqual(knopfBox.y);
     }
+  });
+
+  test('gesperrte Übernahme ist ein Endzustand: keine Frage, keine Knöpfe zum Bestätigen', async () => {
+    // Die Cloud beendet den Vorgang dabei (Task 1.11); ein zweiter Klick bekäme 404.
+    const faelle = [
+      { code: 'P1Q2-R3S4', bis: '2031-11-10T12:00:00Z' as string | null },
+      { code: 'P1Q2-R3S5', bis: null }
+    ];
+    for (const { code, bis } of faelle) {
+      const aktionen = await cloudVortaeuschen(ctx, {
+        entscheiden: { status: 409, body: { detail: { code: 'uebernahme_gesperrt', bis } } }
+      });
+      await frageOeffnen(page, code);
+      await page.getByTestId('verbinden-bestaetigen').click();
+      await expect(karte(page, 'uebernahme_gesperrt')).toBeVisible();
+      const text = page.getByTestId('verbinden-abschluss-text');
+      await expect(text).toContainText('kann gerade nicht übernommen werden');
+      if (bis) await expect(text).toContainText('2031');
+      else await expect(text).not.toContainText(/\{datum\}|undefined|null/);
+      await expect(page.getByTestId('verbinden-bestaetigen')).toHaveCount(0);
+      await expect(page.getByTestId('verbinden-abbrechen')).toHaveCount(0);
+      await expect(page.getByTestId('verbinden-hinweis')).toHaveCount(0);
+      await expect(page.getByTestId('verbinden-zu-pulse')).toBeVisible();
+      expect(aktionen).toEqual(['verbinden']);
+    }
+
+    // Ein Neuladen findet den Code verbraucht: „nachsehen“, nicht „gilt nicht mehr“.
+    await cloudVortaeuschen(ctx, { holen: { status: 404, body: { detail: 'unbekannt' } } });
+    await page.reload();
+    await expect(karte(page, 'nachsehen')).toBeVisible({ timeout: 15_000 });
   });
 
   test('vergebene Adresse: Hinweis vor dem Knopf, Bestätigen beantragt nur die Übernahme', async () => {
@@ -222,6 +284,10 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
 
     await page.getByTestId('verbinden-bestaetigen').click();
     await expect(karte(page, 'uebernahme_beantragt')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Übernahme beantragt');
+    await expect(page.getByTestId('verbinden-abschluss-text')).not.toContainText(
+      'Übernahme beantragt'
+    );
     await expect(page.getByTestId('verbinden-abschluss-text')).toContainText('2031');
     await expect(page.getByTestId('verbinden-abschluss-text')).toContainText('widersprechen');
     expect(aktionen).toEqual(['verbinden']);
@@ -235,7 +301,11 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
     });
     await frageOeffnen(page, 'C1D2-E3F4');
     await page.getByTestId('verbinden-bestaetigen').click();
-    await expect(page.getByTestId('verbinden-hinweis')).toHaveAttribute('data-fehler', 'sonst');
+    const hinweis = page.getByTestId('verbinden-hinweis');
+    await expect(hinweis).toHaveAttribute('data-fehler', 'sonst');
+    // Der Klick kann gewirkt haben: kein „Etwas ist schiefgegangen“.
+    await expect(hinweis).toContainText('Die Antwort kam nicht an');
+    await expect(hinweis).toContainText('Konsole deines Servers');
     await expect(karte(page, 'bereit')).toBeVisible();
 
     await page.getByTestId('verbinden-bestaetigen').click();
@@ -266,30 +336,85 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
   });
 
   test('Doppelklick: das Bestätigen geht genau einmal hinaus', async () => {
-    const aktionen = await cloudVortaeuschen(ctx);
+    await cloudVortaeuschen(ctx);
     // Die Antwort kommt erst nach dem zweiten Klick.
-    await ctx.unroute(ENTSCHEIDUNG);
-    let freigeben!: () => void;
-    const warten = new Promise<void>((r) => (freigeben = r));
-    await ctx.route(ENTSCHEIDUNG, async (route) => {
-      const { aktion } = route.request().postDataJSON() as { aktion: string };
-      aktionen.push(aktion);
-      await warten;
-      return route.fulfill({
-        status: 200,
-        json: { status: 'verbunden', hostname: HOST, instance_id: '7300000000000000098' }
-      });
+    const { aktionen, freigeben } = await entscheidungAnhalten(ctx, {
+      status: 200,
+      body: { status: 'verbunden', hostname: HOST, instance_id: '7300000000000000098' }
     });
     await frageOeffnen(page, 'F1G2-H3J4');
     const bestaetigen = page.getByTestId('verbinden-bestaetigen');
     await bestaetigen.click();
     await expect(bestaetigen).toBeDisabled();
     await expect(page.getByTestId('verbinden-abbrechen')).toBeDisabled();
+    // Beim Bestätigen spricht die Frage von der Prüfung, nicht vom Abbrechen.
+    await expect(bestaetigen).toContainText('Verbinde');
     await expect(page.getByTestId('verbinden-dauert')).toBeVisible();
+    await expect(page.getByTestId('verbinden-bricht-ab')).toHaveCount(0);
     await bestaetigen.click({ force: true, noWaitAfter: true }).catch(() => undefined);
     freigeben();
     await expect(karte(page, 'verbunden')).toBeVisible();
     expect(aktionen).toEqual(['verbinden']);
+  });
+
+  test('Abbrechen zeigt keinen Verbindungstext', async () => {
+    await cloudVortaeuschen(ctx);
+    const { aktionen, freigeben } = await entscheidungAnhalten(ctx, {
+      status: 200,
+      body: { status: 'abgelehnt' }
+    });
+    await frageOeffnen(page, 'G1H2-J3K4');
+    await page.getByTestId('verbinden-abbrechen').click();
+    await expect(page.getByTestId('verbinden-bricht-ab')).toBeVisible();
+    await expect(page.getByTestId('verbinden-abbrechen')).toBeDisabled();
+    // Weder „Verbinde …“ am Bestätigen-Knopf noch der Hinweis auf die 30 s Prüfung.
+    await expect(page.getByTestId('verbinden-bestaetigen')).toBeDisabled();
+    await expect(page.getByTestId('verbinden-bestaetigen')).not.toContainText('Verbinde');
+    await expect(page.getByTestId('verbinden-dauert')).toHaveCount(0);
+    freigeben();
+    await expect(karte(page, 'abgelehnt')).toBeVisible();
+    expect(aktionen).toEqual(['ablehnen']);
+  });
+
+  test('eine Antwort für einen inzwischen gewechselten Code wird verworfen', async () => {
+    await cloudVortaeuschen(ctx);
+    const { aktionen, freigeben, abgeliefert } = await entscheidungAnhalten(ctx, {
+      status: 200,
+      body: { status: 'verbunden', hostname: HOST, instance_id: '7300000000000000097' }
+    });
+    await frageOeffnen(page, 'H1J2-K3M4');
+    await page.getByTestId('verbinden-bestaetigen').click();
+    await expect(page.getByTestId('verbinden-dauert')).toBeVisible();
+
+    // Während die Antwort aussteht, öffnet sich in diesem Tab ein anderer Link.
+    await frageOeffnen(page, 'N1P2-Q3R4');
+    await expect(page.getByTestId('verbinden-bestaetigen')).toBeEnabled();
+    await expect(page.getByTestId('verbinden-dauert')).toHaveCount(0);
+
+    freigeben();
+    await abgeliefert;
+    await ausschwingen(page);
+    // Die späte Antwort gehörte zum alten Code: die neue Frage bleibt, wie sie ist.
+    await expect(karte(page, 'bereit')).toBeVisible();
+    await expect(page.getByTestId('verbinden-code')).toHaveText('N1P2-Q3R4');
+    await expect(page.getByTestId('verbinden-bestaetigen')).toBeEnabled();
+    expect(aktionen).toEqual(['verbinden']);
+  });
+
+  test('angemeldet mit Code in der Adresse: ein gemerkter Code wird verworfen', async () => {
+    // Sonst holte /app ihn später auf einen alten Code zurück.
+    await cloudVortaeuschen(ctx);
+    const gemerkt = () => page.evaluate(() => localStorage.getItem('pulse.verbinden.gemerkt'));
+    await page.evaluate(() =>
+      localStorage.setItem(
+        'pulse.verbinden.gemerkt',
+        JSON.stringify({ code: 'Z1Z2-Z3Z4', gemerktAm: Date.now() })
+      )
+    );
+    expect(await gemerkt()).not.toBeNull();
+    await frageOeffnen(page, 'Y1Y2-Y3Y4');
+    await expect(page.getByTestId('verbinden-code')).toHaveText('Y1Y2-Y3Y4');
+    expect(await gemerkt()).toBeNull();
   });
 
   test('abgemeldet: Anmelden führt zurück, der Code reist nicht über die Adresse', async ({
@@ -309,6 +434,13 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
       await p.getByTestId('login-password').fill(PW);
       await p.getByTestId('login-submit').click();
       await p.waitForURL((u) => u.pathname === '/verbinden', { timeout: 20_000 });
+      await expect(karte(p, 'bereit')).toBeVisible({ timeout: 15_000 });
+      await expect(p.getByTestId('verbinden-code')).toHaveText(CODE);
+      // Nach der Anmeldung steht der Code in der Adresse (hinter `#`) und der
+      // gemerkte ist verbraucht: ein Neuladen behält die Frage.
+      await expect(p).toHaveURL(new RegExp(`/verbinden#${CODE}$`));
+      expect(await p.evaluate(() => localStorage.getItem('pulse.verbinden.gemerkt'))).toBeNull();
+      await p.reload();
       await expect(karte(p, 'bereit')).toBeVisible({ timeout: 15_000 });
       await expect(p.getByTestId('verbinden-code')).toHaveText(CODE);
     } finally {
