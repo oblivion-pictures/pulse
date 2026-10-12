@@ -206,10 +206,10 @@ mod tests {
 
     #[test]
     fn appends_srflx_for_each_component() {
-        let out = inject_srflx(SDP, "46.128.100.64".parse().unwrap());
+        let out = inject_srflx(SDP, "9.9.9.9".parse().unwrap());
         let srflx: Vec<&str> = out.lines().filter(|l| l.contains("typ srflx")).collect();
         assert_eq!(srflx.len(), 2, "je Komponente ein srflx:\n{out}");
-        assert!(srflx[0].contains("46.128.100.64 7900 typ srflx raddr 192.168.178.87 rport 7900"));
+        assert!(srflx[0].contains("9.9.9.9 7900 typ srflx raddr 192.168.178.87 rport 7900"));
         assert!(srflx[0].contains(" 1 udp "));
         assert!(srflx[1].contains(" 2 udp "));
         // Host-Kandidaten bleiben erhalten (LAN-Weg).
@@ -218,8 +218,8 @@ mod tests {
 
     #[test]
     fn noop_when_public_ip_is_already_host() {
-        let sdp = SDP.replace("192.168.178.87", "46.128.100.64");
-        let out = inject_srflx(&sdp, "46.128.100.64".parse().unwrap());
+        let sdp = SDP.replace("192.168.178.87", "9.9.9.9");
+        let out = inject_srflx(&sdp, "9.9.9.9".parse().unwrap());
         assert!(!out.contains("typ srflx"));
     }
 
@@ -230,10 +230,10 @@ mod tests {
     #[test]
     fn srflx_einmal_je_komponente_trotz_mehrerer_host_basen() {
         let zwei_basen = "v=0\r\na=candidate:1 1 udp 2130706431 10.255.255.254 7900 typ host\r\na=candidate:1 2 udp 2130706431 10.255.255.254 7900 typ host\r\na=candidate:2 1 udp 2130706175 192.168.178.20 7900 typ host\r\na=candidate:2 2 udp 2130706174 192.168.178.20 7900 typ host\r\n";
-        let out = inject_srflx(zwei_basen, "46.128.161.204".parse().unwrap());
+        let out = inject_srflx(zwei_basen, "8.8.4.4".parse().unwrap());
         let srflx: Vec<&str> = out.lines().filter(|l| l.contains("typ srflx")).collect();
         assert_eq!(srflx.len(), 2, "genau je Komponente einer:\n{out}");
-        assert!(srflx.iter().all(|l| l.contains(" 46.128.161.204 7900 typ srflx")));
+        assert!(srflx.iter().all(|l| l.contains(" 8.8.4.4 7900 typ srflx")));
         // Die Foundation ist trotzdem über alle Zeilen gleich (gleiche Basis,
         // gleiche öffentliche Adresse) — dedupliziert ist sie eindeutig je
         // Komponente, und die Komponenten unterscheiden sich in der Prio.
@@ -263,8 +263,8 @@ mod tests {
         let pwd = lines.iter().position(|l| l.starts_with("a=ice-pwd:")).unwrap();
         assert!(lines[pwd + 1].contains("typ host"));
         // Und der srflx hat dadurch wieder seinen Anker:
-        let full = inject_srflx(&with_hosts, "46.128.100.64".parse().unwrap());
-        assert!(full.contains("46.128.100.64 7900 typ srflx raddr 192.168.178.42 rport 7900"));
+        let full = inject_srflx(&with_hosts, "9.9.9.9".parse().unwrap());
+        assert!(full.contains("9.9.9.9 7900 typ srflx raddr 192.168.178.42 rport 7900"));
     }
 
     #[test]
@@ -321,11 +321,11 @@ mod tests {
         let lan: Ipv4Addr = "192.168.178.42".parse().unwrap();
         let full = inject_srflx(
             &inject_extra_hosts(&stripped, &[lan], 7900),
-            "46.128.100.64".parse().unwrap(),
+            "9.9.9.9".parse().unwrap(),
         );
         assert!(full.contains("192.168.178.42 7900 typ host"), "{full}");
         assert!(
-            full.contains("46.128.100.64 7900 typ srflx raddr 192.168.178.42 rport 7900"),
+            full.contains("9.9.9.9 7900 typ srflx raddr 192.168.178.42 rport 7900"),
             "{full}"
         );
     }

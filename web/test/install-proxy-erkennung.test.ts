@@ -262,7 +262,7 @@ test('ohne Container bleibt es bei none', () => {
  * Maschine eines Betreibers real passiert: ein `caddy`, der in sechs
  * Docker-Netzen hing. `first_user_network` nahm das erste — Go-Templates
  * geben Map-Schlüssel alphabetisch aus, „das erste" ist also reiner Zufall.
- * Pulse landete im Netz eines fremden Projekts (`crewconnect-net`). Es
+ * Pulse landete im Netz eines fremden Projekts (`projekt-a-net`). Es
  * funktionierte zufällig — der Proxy war auch dort —, aber die
  * Isolationsgrenze saß falsch: ein `docker compose down` des fremden Projekts
  * hätte Pulse das Netz weggerissen.
@@ -336,11 +336,11 @@ echo "NETZ:\${PROXY_NET}"
 }
 
 test('bei mehreren Netzen wird nicht geraten, sondern abgebrochen', () => {
-  const ergebnis = erkenneNetz(['crewconnect-net', 'cs-trading-net', 'pulse-selfhost-net']);
+  const ergebnis = erkenneNetz(['projekt-a-net', 'projekt-b-net', 'pulse-selfhost-net']);
   assert.equal(ergebnis.abgebrochen, true);
   assert.match(ergebnis.meldung, /PULSE_NETWORK/);
   // Alle Kandidaten muessen genannt werden, sonst kann niemand waehlen.
-  for (const n of ['crewconnect-net', 'cs-trading-net', 'pulse-selfhost-net']) {
+  for (const n of ['projekt-a-net', 'projekt-b-net', 'pulse-selfhost-net']) {
     assert.match(ergebnis.meldung, new RegExp(n));
   }
   // Der Abbruch liegt vor jeder Änderung — das muss die Meldung sagen, sonst
@@ -367,7 +367,7 @@ test('PULSE_NETWORK loest die Mehrdeutigkeit tatsaechlich auf, statt in eine Sac
   // sofort zu ueberspringen), bräche der zweite Lauf mit derselben Meldung
   // ab — eine Sackgasse, aus der PULSE_NETWORK nicht mehr herausfuehrt.
   const ergebnis = erkenneNetz(
-    ['crewconnect-net', 'cs-trading-net', 'pulse-selfhost-net'],
+    ['projekt-a-net', 'projekt-b-net', 'pulse-selfhost-net'],
     'pulse-selfhost-net'
   );
   assert.equal(ergebnis.abgebrochen, false);
@@ -432,7 +432,7 @@ test('PULSE_NETWORK fuehrt nach einer Mehrdeutigkeit wirklich zu static-docker, 
   // erzeugt haette — genau das muss auch mit PULSE_NETWORK herauskommen.
   const ergebnis = decideModeMitProxy(
     'static-caddy',
-    ['crewconnect-net', 'cs-trading-net', 'pulse-selfhost-net'],
+    ['projekt-a-net', 'projekt-b-net', 'pulse-selfhost-net'],
     'pulse-selfhost-net'
   );
   assert.equal(ergebnis.mode, 'static-docker');

@@ -272,7 +272,7 @@ mod tests {
     fn oeffentliche_adressen_gelten_als_internet() {
         // u.a. eine typische Mobilfunk-Adresse (CGNAT) — sie ist aus Sicht des
         // Servers eine Gegenstelle von außen, kein LAN-Kandidat.
-        for wan in ["100.64.12.7", "159.195.150.54", "8.8.8.8"] {
+        for wan in ["100.64.12.7", "1.1.1.1", "8.8.8.8"] {
             assert!(!is_lan_address(wan), "{wan} sollte als Internet gelten");
         }
     }
@@ -331,16 +331,16 @@ mod tests {
     /// ZULETZT gemeldet hat, nicht den vom Start.
     #[tokio::test]
     async fn fabrik_sieht_neue_oeffentliche_ip_vom_herzschlag() {
-        let (tx, rx) = watch::channel::<IpAddr>("46.128.100.64".parse().unwrap());
+        let (tx, rx) = watch::channel::<IpAddr>("9.9.9.9".parse().unwrap());
         let f = fabrik(rx, vec![]).await;
-        assert_eq!(f.aktuelle_public_ip(), "46.128.100.64".parse::<IpAddr>().unwrap());
+        assert_eq!(f.aktuelle_public_ip(), "9.9.9.9".parse::<IpAddr>().unwrap());
         tx.send_replace("84.10.20.30".parse().unwrap());
         assert_eq!(f.aktuelle_public_ip(), "84.10.20.30".parse::<IpAddr>().unwrap());
     }
 
     #[tokio::test]
     async fn fabrik_behaelt_injiziertes_172er_lan() {
-        let (_tx, rx) = watch::channel::<IpAddr>("46.128.100.64".parse().unwrap());
+        let (_tx, rx) = watch::channel::<IpAddr>("9.9.9.9".parse().unwrap());
         let extra = vec!["172.20.1.9".parse().unwrap(), "127.0.0.1".parse().unwrap()];
         let f = fabrik(rx, extra).await;
         assert_eq!(f.extra_host_ips, vec!["172.20.1.9".parse::<std::net::Ipv4Addr>().unwrap()]);

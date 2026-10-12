@@ -19,11 +19,31 @@
 
 import { expect, type Page, type BrowserContext } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 
-export const SSH_ZIEL = process.env.E2E_PG_VIA_SSH ?? 'michael@77.42.71.166';
+/** Wert aus der Umgebung, sonst aus intern/ziele.env (privates Repo,
+ *  scripts/intern-einhaengen.sh) — Adresse und Passwort des Dev-Stacks stehen
+ *  nicht im öffentlichen Repo. */
+function internWert(name: string): string | undefined {
+  if (process.env[name]) return process.env[name];
+  const datei = new URL('../../../intern/ziele.env', import.meta.url);
+  if (!existsSync(datei)) return undefined;
+  const zeile = readFileSync(datei, 'utf8').split('\n').find((z) => z.startsWith(`${name}=`));
+  // trim + Anführungszeichen: CRLF-Datei (Windows) bzw. NAME="wert".
+  return zeile?.slice(name.length + 1).trim().replace(/^["']|["']$/g, '') || undefined;
+}
+export const SSH_ZIEL = process.env.E2E_PG_VIA_SSH ?? internWert('PULSE_DEV_HOST') ?? 'pulse-test';
 
-export const DEV = { username: 'dev', password: 'test1234' };
-export const DEV2 = { username: 'dev2', password: 'test1234' };
+/** Passwort der Testkonten — erst beim Gebrauch gelesen: die Hetzner-Specs
+ *  werden im Standardlauf mit importiert, ein Wurf beim Import brächte dort
+ *  jeden Lauf ohne privates Repo zu Fall. */
+function testpass(): string {
+  const wert = internWert('PULSE_TEST_PASS');
+  if (!wert) throw new Error('PULSE_TEST_PASS fehlt — exportieren oder: bash scripts/intern-einhaengen.sh');
+  return wert;
+}
+export const DEV = { username: 'dev', get password() { return testpass(); } };
+export const DEV2 = { username: 'dev2', get password() { return testpass(); } };
 
 /** Faengt die Vite-Dev-Antwort fuer `schalter.ts` ab und dreht die Konstante
  *  auf `true` — der Quelltext bleibt unangetastet (Muster wie e2e-dm.spec.ts). */

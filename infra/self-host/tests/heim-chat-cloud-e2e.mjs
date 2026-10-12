@@ -18,6 +18,8 @@
 // WICHTIG: Jede DataChannel-Sitzung läuft in EINEM page.evaluate — das
 // conn-Objekt überlebt die evaluate-Grenze nicht (structured clone).
 import { chromium } from '@playwright/test';
+// Passwort der Dev-Testkonten: steht nicht im Repo (privat in intern/ziele.env).
+const TESTPASS = process.env.PULSE_TEST_PASS ?? (() => { throw new Error('PULSE_TEST_PASS ist nicht gesetzt'); })();
 
 const ORIGIN = 'http://127.0.0.1:5273';
 const browser = await chromium.launch();
@@ -45,7 +47,7 @@ async function mitDc(page, fn) {
 }
 
 // ── Owner (dev2): Ticket, Session, Anlage — alles über den Direktweg ──
-const owner = await einloggen('dev2', 'test1234');
+const owner = await einloggen('dev2', TESTPASS);
 const ow = await mitDc(owner, async () => {
   const liste = await (await fetch('/api/auth/me/instances', { credentials: 'include' })).json();
   const inst = Array.isArray(liste) ? liste[0] : liste.instances[0];
@@ -102,7 +104,7 @@ console.log('owner: ticket ok, DC offen, session ok — guild', ow.guild, 'chan'
 await owner.evaluate((d) => { window.__heim = d; }, ow);
 
 // ── dev3: Merkhilfe, Grant-Ticket, Session + Nachricht — alles über DC ──
-const bob = await einloggen('dev3', 'test1234');
+const bob = await einloggen('dev3', TESTPASS);
 await bob.evaluate((d) => { window.__heim = d; }, ow);
 const mem = await bob.evaluate(async (iid) =>
   (await fetch(`/api/auth/me/instances/${iid}/membership`, { method: 'POST', credentials: 'include' })).status, ow.iid);

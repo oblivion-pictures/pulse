@@ -294,7 +294,7 @@ bestand_uebernehmen() {
 #
 # Ohne ausdrückliches PULSE_IMAGE ist die Vorgabe `…/pulse:stable`. Ein
 # erneuter Lauf auf einem Server, der schon steht, darf ihn nicht still darauf
-# umstellen: Atrium und der Test-Server stehen bewusst auf `:edge`, die drei
+# umstellen: einzelne Server stehen bewusst auf `:edge`, die drei
 # Bestandsserver ziehen vom Spiegel. Also das Bild des vorhandenen eigenen
 # Containers übernehmen, ersatzweise die IMAGE-Zeile einer vorhandenen
 # pulse-update.sh (Container entfernt, Updater liegt noch da).

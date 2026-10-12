@@ -3,7 +3,7 @@
  *
  * Vorgabe ohne `PULSE_IMAGE` ist `ghcr.io/oblivion-pictures/pulse:stable`. Ein
  * erneuter Lauf auf einem Server, der schon läuft, darf ihn nicht still auf
- * diese Vorgabe umstellen: Atrium und der Test-Server stehen bewusst auf
+ * diese Vorgabe umstellen: einzelne Server stehen bewusst auf
  * `:edge`, und die drei Bestandsserver ziehen vom Spiegel. Deshalb gilt, in
  * dieser Reihenfolge:
  *

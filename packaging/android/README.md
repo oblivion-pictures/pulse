@@ -41,7 +41,7 @@ Chat + Voice (LiveKit/WebRTC) funktionieren. **HQ-Screen-Streaming nicht** — d
 - **Bubblewrap CLI** — `npm i -g @bubblewrap/cli`.
 - `~/.bubblewrap/config.json` zeigt auf JDK + SDK:
   ```json
-  { "jdkPath": "/usr/lib/jvm/java-17-openjdk", "androidSdkPath": "/home/michael/Android/Sdk" }
+  { "jdkPath": "/usr/lib/jvm/java-17-openjdk", "androidSdkPath": "/home/<user>/Android/Sdk" }
   ```
   Check: `bubblewrap doctor` → „Your jdkpath and androidSdkPath are valid."
 

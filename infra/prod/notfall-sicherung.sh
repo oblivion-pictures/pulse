@@ -23,19 +23,25 @@
 # Die Richtung ist Absicht: Produktion schiebt zum Testserver, nie umgekehrt.
 # Ein Schlüssel vom Testserver in die Produktion wäre der gefährlichere Weg.
 #
-#   ./notfall-sicherung.sh          # sichern
+#   ./notfall-sicherung.sh          # sichern (Ziel: NOTFALL_ZIEL in der .env)
 #   ./notfall-sicherung.sh --liste  # zeigt, was auf dem Ziel liegt
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-ZIEL="${NOTFALL_ZIEL:-michael@77.42.71.166}"
 ZIELPFAD="${NOTFALL_ZIELPFAD:-~/pulse-prod-notfall}"
 SSH_KEY="${NOTFALL_SSH_KEY:-$HOME/.ssh/id_ed25519_notfall}"
 BEHALTEN="${NOTFALL_BEHALTEN:-14}"
 
+# Das Ziel (`NOTFALL_ZIEL=user@host`) steht in der .env neben diesem Skript,
+# nicht hier: die Adresse des Zweitservers gehört nicht ins öffentliche Repo.
+# Ein Wert aus der Umgebung gewinnt, deshalb vor dem Einlesen gemerkt.
+ziel_aus_umgebung="${NOTFALL_ZIEL:-}"
+[ -f .env ] || { echo "notfall-sicherung: .env fehlt neben dem Skript" >&2; exit 1; }
 # shellcheck disable=SC1091
 set -a; . ./.env; set +a
+ZIEL="${ziel_aus_umgebung:-${NOTFALL_ZIEL:-}}"
+[ -n "$ZIEL" ] || { echo "notfall-sicherung: NOTFALL_ZIEL fehlt (in .env eintragen)" >&2; exit 1; }
 : "${NOTFALL_ARCHIV_PASSWORT:?NOTFALL_ARCHIV_PASSWORT fehlt in .env}"
 
 # **Host-Key wird gepinnt, nicht beim ersten Mal geglaubt.** `accept-new`

@@ -24,7 +24,8 @@
 
 set -euo pipefail
 
-ZIEL="${PULSE_DEPLOY_ZIEL:-michael@159.195.150.54}"
+source "$(dirname "${BASH_SOURCE[0]}")/ziele.sh"
+ZIEL="${PULSE_DEPLOY_ZIEL:-$(ziel PULSE_PROD_HOST)}"
 PFAD="${PULSE_DEPLOY_PFAD:-~/pulse/infra/}"
 QUELLE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/infra/"
 

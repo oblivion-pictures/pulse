@@ -2,9 +2,11 @@
 // und spielt einen Freund außerhalb des Heimnetzes. Beweisziel: der
 // Direktpfad trägt übers Internet (srflx öffentliche Adresse), ohne
 // manuelle Portfreigabe (Lochungs-Modus der Server-App).
-// Expected pair: lokal host 77.42.71.166 (Box, öffentlich) <-> remote srflx
-// 46.128.161.204:7900 (Heim, NAT-gelocht).
+// Expected pair: lokal host <Box-IP> (Box, öffentlich) <-> remote srflx
+// <Heim-WAN-IP>:7900 (Heim, NAT-gelocht).
 const { chromium } = require('playwright-core');
+// Passwort der Dev-Testkonten: steht nicht im Repo (privat in intern/ziele.env).
+const TESTPASS = process.env.PULSE_TEST_PASS ?? (() => { throw new Error('PULSE_TEST_PASS ist nicht gesetzt'); })();
 
 const CLOUD = 'https://pulse.unicutmedia.com';
 
@@ -13,15 +15,15 @@ const CLOUD = 'https://pulse.unicutmedia.com';
   const page = await (await browser.newContext()).newPage();
   await page.goto(CLOUD + '/', { waitUntil: 'domcontentloaded' });
 
-  const login = await page.evaluate(async () => {
+  const login = await page.evaluate(async (pass) => {
     const r = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ email_or_username: 'dev3', password: 'test1234' }),
+      body: JSON.stringify({ email_or_username: 'dev3', password: pass }),
     });
     return r.status;
-  });
+  }, TESTPASS);
   console.log('login dev3 (aus dem Internet):', login);
 
   const ergebnis = await page.evaluate(async () => {

@@ -100,11 +100,11 @@ upstream FFmpeg (`com.howispulse.Pulse.yml`, the `ffmpeg` module).
    ```
    ⚠ Back up `packaging/.gpg/`. If you lose it, the friend's app rejects future updates.
 2. **VPS — serve the repo dir.** `infra/prod/docker-compose.yml` already bind-mounts
-   `/home/michael/pulse/flatpak-repo` into `pulse_web` at `/srv/flatpak-repo`, and
+   `~/pulse/flatpak-repo` into `pulse_web` at `/srv/flatpak-repo`, and
    `infra/prod/web-nginx.conf` serves it under `/flatpak/`. So after pushing the
    updated `infra/`:
    ```fish
-   ssh michael@159.195.150.54 'mkdir -p ~/pulse/flatpak-repo'
+   ssh $PULSE_PROD_HOST 'mkdir -p ~/pulse/flatpak-repo'
    # rsync infra/ → ~/pulse/infra/  (if you haven't already), then on the VPS:
    #   cd ~/pulse/infra/prod && docker compose up -d
    ```
@@ -154,11 +154,14 @@ und lädt hoch — Begründung im Kopf von `flatpak.yml`.
 - `VPS_SSH_PRIVATE_KEY` — a CI-only key. Generate fresh, don't reuse a personal one:
   ```fish
   ssh-keygen -t ed25519 -f /tmp/pulse-ci-deploy -N ""
-  ssh-copy-id -i /tmp/pulse-ci-deploy.pub michael@159.195.150.54
+  ssh-copy-id -i /tmp/pulse-ci-deploy.pub $PULSE_PROD_HOST
   cat /tmp/pulse-ci-deploy                     # → paste into the secret
   shred -u /tmp/pulse-ci-deploy /tmp/pulse-ci-deploy.pub
   ```
-- `VPS_KNOWN_HOSTS` — output of `ssh-keyscan 159.195.150.54` (pins the host key).
+- `VPS_KNOWN_HOSTS` — output of `ssh-keyscan <host>` (pins the host key).
+- `VPS_SSH_ZIEL` — the upload target `user@host` (the same value as
+  `PULSE_PROD_HOST`; kept out of the workflow files on purpose). Shared by the
+  Windows, macOS, Android and Flatpak builds.
 
 The legacy pre-push hook still works as an emergency fallback (CI down, hotfix
 without pushing to GitHub) — opt in with `PULSE_FORCE_LOCAL_PUBLISH=1 git push …`.

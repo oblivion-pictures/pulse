@@ -1,11 +1,13 @@
+# Vor dem Kopieren nach ~/.local/share/applications/ beide Pfade auf den
+# eigenen Klon setzen (Exec= kennt weder ~ noch $HOME).
 [Desktop Entry]
 Type=Application
 Version=1.0
 Name=Pulse Launcher
 GenericName=Mode Picker for Pulse
 Comment=Wählt zwischen lokalem Dev-Stack und Prod (howispulse.com)
-Exec=fish /home/michael/Dokumente/pulse/scripts/pulse-launcher.fish
-Icon=/home/michael/Dokumente/pulse/desktop/electron/icon.png
+Exec=fish /PFAD/ZUM/Pulse/scripts/pulse-launcher.fish
+Icon=/PFAD/ZUM/Pulse/desktop/electron/icon.png
 Terminal=false
 Categories=Development;Network;
 StartupNotify=false

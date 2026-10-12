@@ -1,15 +1,15 @@
 # Deploying Pulse to the VPS
 
-Production runs on the netcup VPS (`michael@159.195.150.54`, alongside Caddy and
-the other apps). Public URL: **https://howispulse.com**. The whole stack
+Production runs on a netcup VPS, alongside Caddy and the other apps. Its SSH
+target is `$PULSE_PROD_HOST` (set it in your shell, or mount the private repo
+with `bash scripts/intern-einhaengen.sh`; the scripts read it from
+`intern/ziele.env`, and for the shell commands below `set -a; . intern/ziele.env; set +a`
+in bash puts it into the environment). Public URL: **https://howispulse.com**. The whole stack
 is one Docker Compose project (`name: pulse`) in `~/pulse/infra/prod/`.
 
-> **`77.42.71.166` is NOT production.** That is the old Hetzner box; production
-> moved to netcup on 2026-05-28 and Hetzner lives on as the **self-host test
-> instance** (see the note further down). This paragraph and the first-time
-> setup below still named it until 2026-08-04 — everything from "already live"
-> onwards had been using the netcup address for months, so reading only the top
-> of this file got you the wrong machine.
+> **The Hetzner box is NOT production.** Production moved to netcup on
+> 2026-05-28; Hetzner lives on as the shared dev stack and the self-host test
+> instance (see the note further down).
 
 App images (`ghcr.io/oblivion-pictures/pulse-*`) are built by
 `.github/workflows/ci.yml` on every push to `main` and auto-pulled on the server
@@ -34,10 +34,10 @@ schema migrations apply automatically on deploy (no more manual
 
 ```sh
 # 1. copy infra/ to the server (no git on the server — rsync the configs)
-rsync -av --exclude .env --exclude secrets --exclude target --exclude node_modules infra/ michael@159.195.150.54:~/pulse/infra/
+rsync -av --exclude .env --exclude secrets --exclude target --exclude node_modules infra/ $PULSE_PROD_HOST:~/pulse/infra/
 
 # 2. on the server: secrets
-ssh michael@159.195.150.54
+ssh $PULSE_PROD_HOST
 mkdir -p ~/pulse/infra/prod/secrets && cd ~/pulse/infra/prod
 PGPW=$(openssl rand -hex 32); RPW=$(openssl rand -hex 32); LKS=$(openssl rand -hex 32); GRS=$(openssl rand -hex 32)
 sed -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$PGPW|" \
@@ -129,7 +129,7 @@ docker exec caddy caddy reload --config /etc/caddy/Caddyfile
 #    pulse-update.sh does a scoped `compose pull && up -d` of the app images.
 chmod +x ~/pulse/infra/prod/pulse-update.sh
 ( crontab -l 2>/dev/null | grep -v 'pulse-update.sh'   # drop any old entry
-  echo '*/5 * * * * /home/michael/pulse/infra/prod/pulse-update.sh >> /home/michael/pulse/infra/prod/pulse-update.log 2>&1'
+  echo '*/5 * * * * $HOME/pulse/infra/prod/pulse-update.sh >> $HOME/pulse/infra/prod/pulse-update.log 2>&1'
 ) | crontab -
 crontab -l            # verify
 ```
@@ -190,9 +190,9 @@ livekit) pick the new limits up on their next restart.
   else is unaffected. One-time from the machine with deploy access:
 
   ```sh
-  rsync -av --exclude .env --exclude secrets --exclude target --exclude node_modules infra/ michael@159.195.150.54:~/pulse/infra/
-  ssh michael@159.195.150.54 'grep -q ARCHIV_SCHRANK_SECRET ~/pulse/infra/prod/.env || echo "ARCHIV_SCHRANK_SECRET=$(openssl rand -base64 32)" >> ~/pulse/infra/prod/.env'
-  ssh michael@159.195.150.54 'cd ~/pulse/infra/prod && docker compose up -d auth'
+  rsync -av --exclude .env --exclude secrets --exclude target --exclude node_modules infra/ $PULSE_PROD_HOST:~/pulse/infra/
+  ssh $PULSE_PROD_HOST 'grep -q ARCHIV_SCHRANK_SECRET ~/pulse/infra/prod/.env || echo "ARCHIV_SCHRANK_SECRET=$(openssl rand -base64 32)" >> ~/pulse/infra/prod/.env'
+  ssh $PULSE_PROD_HOST 'cd ~/pulse/infra/prod && docker compose up -d auth'
   ```
 
 - **Migrations** run automatically — `pulse_migrate_auth` / `pulse_migrate_chat`
@@ -217,7 +217,7 @@ Voraussetzung: Tasks 1–3 (auth-Endpoint, frps-Container, CI-Env) sind bereits 
 
 4. **Deploy:** Compose-Struktur hat sich geändert (neuer `frps`-Service) → manuell übertragen und hochfahren:
    ```sh
-   rsync -av --exclude .env --exclude secrets --exclude target --exclude node_modules infra/ michael@159.195.150.54:~/pulse/infra/
+   rsync -av --exclude .env --exclude secrets --exclude target --exclude node_modules infra/ $PULSE_PROD_HOST:~/pulse/infra/
    cd ~/pulse/infra/prod && docker compose up -d
    ```
    Der Cron-Updater zieht nur App-`:latest`-Images — Struktur-Änderungen (neuer Service, neue Env-Vars) brauchen diesen manuellen Schritt.
@@ -268,7 +268,7 @@ hat die `/registry/token`-Route, compose kennt den `registry`-Service).
    lesen darf, openssl in einem Container laufen lassen
    (`docker run --rm -v ~/pulse/infra/prod/secrets:/s alpine/openssl req …`).
 
-2. **DNS:** A-Record `registry.howispulse.com → 159.195.150.54` (beim DNS-Provider).
+2. **DNS:** A-Record `registry.howispulse.com → <IP des VPS>` (beim DNS-Provider).
    Propagation abwarten bevor Caddy ACME auslöst.
 
 3. **`REGISTRY_PUSH_TOKEN`** (für CI-Push als `pulse-ci`): generieren und **identisch**
@@ -283,7 +283,7 @@ hat die `/registry/token`-Route, compose kennt den `registry`-Service).
 
 4. **Deploy:** neuer `registry`-Service → infra übertragen + hochfahren:
    ```sh
-   rsync -av --exclude .env --exclude secrets --exclude target --exclude node_modules infra/ michael@159.195.150.54:~/pulse/infra/
+   rsync -av --exclude .env --exclude secrets --exclude target --exclude node_modules infra/ $PULSE_PROD_HOST:~/pulse/infra/
    cd ~/pulse/infra/prod && docker compose up -d registry auth
    ```
    Der Cron-Updater zieht nur App-`:latest`-Images — neue Services brauchen diesen

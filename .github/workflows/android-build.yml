@@ -112,7 +112,7 @@ jobs:
         shell: bash
         run: |
           scp -i ~/.ssh/id_ed25519 /tmp/pulse-release.apk \
-            michael@159.195.150.54:pulse/downloads/pulse-latest.apk
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/downloads/pulse-latest.apk
 
       - name: SSH-Key entfernen
         if: always()

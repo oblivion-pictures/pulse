@@ -12,6 +12,8 @@
 // Fallen: Login setzt ZWEI Cookies (pulse_rt zuerst, pulse_session danach) —
 // gezielt pulse_session filtern. Der Ready-Frame kommt ggf. ZWEIMAL und hello
 // separat — nicht beim ersten Frame abbrechen.
+// Passwort der Dev-Testkonten: steht nicht im Repo (privat in intern/ziele.env).
+const TESTPASS = process.env.PULSE_TEST_PASS ?? (() => { throw new Error('PULSE_TEST_PASS ist nicht gesetzt'); })();
 const CLOUD = 'https://pulse.unicutmedia.com';
 const RELAY = 'https://merry-meadow-adbe.relay.unicutmedia.com';
 const HOSTNAME = 'merry-meadow-adbe.relay.unicutmedia.com';
@@ -50,7 +52,7 @@ async function relaySitzung(tkt, extra = {}) {
   return (await r.json()).session_token;
 }
 
-const ownerCookie = await loginCookie('dev2', 'test1234');
+const ownerCookie = await loginCookie('dev2', TESTPASS);
 const ownerSess = await relaySitzung(await ticket(ownerCookie));
 console.log('owner: Ticket + Session über Relay-TLS ok');
 
@@ -76,7 +78,7 @@ await fetch(`${CLOUD}/api/auth/me/instances/${iid}/membership`, {
   method: 'POST', headers: { Cookie: ownerCookie },
 });
 
-const bobCookie = await loginCookie('dev3', 'test1234');
+const bobCookie = await loginCookie('dev3', TESTPASS);
 const bobSess = await relaySitzung(
   await ticket(bobCookie, { community_grant_code: inv.code }),
   { community_grant_code: inv.code },

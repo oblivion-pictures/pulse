@@ -88,7 +88,7 @@ def _heartbeat_body(instance: dict, **overrides) -> dict:
     body = {
         "instance_id": instance["id"],
         "token": instance["token"],
-        "candidates": [{"ip": "46.128.100.64", "port": 7900, "protocol": "udp"}],
+        "candidates": [{"ip": "9.9.9.9", "port": 7900, "protocol": "udp"}],
         "fingerprint": _FINGERPRINT,
     }
     body.update(overrides)
@@ -105,7 +105,7 @@ async def test_heartbeat_then_lookup_happy(client, alice, instance):
     )
     assert r.status_code == 200, r.text
     data = r.json()
-    assert data["candidates"] == [{"ip": "46.128.100.64", "port": 7900, "protocol": "udp"}]
+    assert data["candidates"] == [{"ip": "9.9.9.9", "port": 7900, "protocol": "udp"}]
     assert data["fingerprint"] == _FINGERPRINT
     assert data["online"] is True
 

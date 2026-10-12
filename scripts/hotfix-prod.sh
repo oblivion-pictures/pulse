@@ -29,9 +29,14 @@
 #   scripts/hotfix-prod.sh status
 set -euo pipefail
 
-HOST="${PULSE_PROD_HOST:-michael@159.195.150.54}"
-STAGING="/home/michael/pulse-hotfix"   # Ablage auf dem Server, außerhalb von ~/pulse
-COMPOSE_DIR="/home/michael/pulse/infra/prod"
+# Ohne Argument nur die Benutzung zeigen — dafür braucht es kein Ziel.
+[ -n "${1:-}" ] || { sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 1; }
+
+source "$(dirname "${BASH_SOURCE[0]}")/ziele.sh"
+HOST="$(ziel PULSE_PROD_HOST)"
+# Beide Pfade relativ zum Home des SSH-Nutzers: ssh, rsync und scp starten dort.
+STAGING="pulse-hotfix"   # Ablage auf dem Server, außerhalb von ~/pulse
+COMPOSE_DIR="pulse/infra/prod"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Kurzname → "Container|lokaler Pfad|Paketname|compose-Service".
@@ -177,6 +182,5 @@ case "${1:-}" in
   cron-off) cron_off ;;
   cron-on)  cron_on ;;
   status)   status ;;
-  "")       sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 1 ;;
   *)        hotfix_service "$1" ;;
 esac

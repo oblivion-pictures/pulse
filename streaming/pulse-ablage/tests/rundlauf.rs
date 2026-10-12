@@ -166,7 +166,7 @@ fn ein_anspruch_loescht_den_vorbestand_und_gibt_ihn_zurueck() {
     let mut a = Seite::neu();
     let mut b = Seite::neu();
 
-    b.ablage.setzen("/home/michael/wichtig.txt");
+    b.ablage.setzen("/home/nutzer/wichtig.txt");
     b.ablage.geaendert(); // den eigenen Stand quittieren
 
     let hinaus = a.kopiert("drueben kopiert");
@@ -176,7 +176,7 @@ fn ein_anspruch_loescht_den_vorbestand_und_gibt_ihn_zurueck() {
     assert_eq!(b.ablage.inhalt(), None, "der Anspruch hat den Vorbestand geloescht");
     assert_eq!(
         b.ablage.vorbestand().as_deref(),
-        Some("/home/michael/wichtig.txt"),
+        Some("/home/nutzer/wichtig.txt"),
         "er muss gemerkt sein, sonst ist er unwiederbringlich"
     );
 
@@ -185,7 +185,7 @@ fn ein_anspruch_loescht_den_vorbestand_und_gibt_ihn_zurueck() {
     b.ablage.freigeben(vorher.as_deref());
     assert_eq!(
         b.ablage.inhalt().as_deref(),
-        Some("/home/michael/wichtig.txt"),
+        Some("/home/nutzer/wichtig.txt"),
         "nach Sitzungsende steht wieder da, was der Nutzer selbst kopiert hatte"
     );
 }
@@ -197,7 +197,7 @@ fn zwei_ankuendigungen_vernichten_den_vorbestand_nicht() {
     let mut a = Seite::neu();
     let mut b = Seite::neu();
 
-    b.ablage.setzen("/home/michael/wichtig.txt");
+    b.ablage.setzen("/home/nutzer/wichtig.txt");
     b.ablage.geaendert();
 
     let erste = a.kopiert("eins");
@@ -207,12 +207,12 @@ fn zwei_ankuendigungen_vernichten_den_vorbestand_nicht() {
 
     assert_eq!(
         b.ablage.vorbestand().as_deref(),
-        Some("/home/michael/wichtig.txt"),
+        Some("/home/nutzer/wichtig.txt"),
         "die zweite Ankuendigung darf den Merkposten nicht ueberschreiben"
     );
     let vorher = b.ablage.vorbestand();
     b.ablage.freigeben(vorher.as_deref());
-    assert_eq!(b.ablage.inhalt().as_deref(), Some("/home/michael/wichtig.txt"));
+    assert_eq!(b.ablage.inhalt().as_deref(), Some("/home/nutzer/wichtig.txt"));
 }
 
 #[test]

@@ -690,7 +690,7 @@ mod tests {
     fn zweimal_umschalten_verliert_den_vorbestand_nicht() {
         let mut p = Pruefablage::neu();
         let mut st = Prozessablage::default();
-        p.inner.setzen("/home/michael/wichtig.txt");
+        p.inner.setzen("/home/nutzer/wichtig.txt");
         p.inner.geaendert();
         let mut lage = wache_lage();
 
@@ -702,7 +702,7 @@ mod tests {
         // Aus: der Pfad kommt zurueck. (Das prueft schon der Test darueber —
         // hier ist es nur die Vorbedingung fuer den zweiten Durchgang.)
         lage.teilen_setzen(false, &mut st, &mut p);
-        assert_eq!(p.inner.inhalt().as_deref(), Some("/home/michael/wichtig.txt"));
+        assert_eq!(p.inner.inhalt().as_deref(), Some("/home/nutzer/wichtig.txt"));
 
         // Wieder ein, und drueben wird erneut kopiert.
         lage.teilen_setzen(true, &mut st, &mut p);
@@ -713,7 +713,7 @@ mod tests {
         lage.teilen_setzen(false, &mut st, &mut p);
         assert_eq!(
             p.inner.inhalt().as_deref(),
-            Some("/home/michael/wichtig.txt"),
+            Some("/home/nutzer/wichtig.txt"),
             "der Merkposten muss den zweiten Durchgang ueberleben — sonst \
              raeumt das naechste Freigeben die Ablage des Nutzers"
         );
@@ -869,7 +869,7 @@ mod tests {
     fn eine_zweite_sitzung_raeumt_die_zurueckgeschriebene_ablage_nicht() {
         let mut p = Pruefablage::neu();
         let mut st = Prozessablage::default();
-        p.inner.setzen("/home/michael/wichtig.txt");
+        p.inner.setzen("/home/nutzer/wichtig.txt");
         p.inner.geaendert();
         // Zwei Sitzungen auf EINER Ablage — genau die Lage nach einem
         // Traegerwechsel (`App::ablage_traeger_waehlen`).
@@ -883,7 +883,7 @@ mod tests {
         a.ende(&mut st, &mut p);
         assert_eq!(
             p.inner.inhalt().as_deref(),
-            Some("/home/michael/wichtig.txt"),
+            Some("/home/nutzer/wichtig.txt"),
             "A schreibt zurueck — und der PROZESS haelt die Auswahl weiter"
         );
 
@@ -891,7 +891,7 @@ mod tests {
         b.ende(&mut st, &mut p);
         assert_eq!(
             p.inner.inhalt().as_deref(),
-            Some("/home/michael/wichtig.txt"),
+            Some("/home/nutzer/wichtig.txt"),
             "der Merkposten wird hoechstens noch einmal zurueckgeschrieben, \
              nie geraeumt"
         );
@@ -952,7 +952,7 @@ mod tests {
     fn eine_sitzung_ohne_plattform_bucht_den_prozess_stand_nicht_ab() {
         let mut p = Pruefablage::neu();
         let mut st = Prozessablage::default();
-        p.inner.setzen("/home/michael/wichtig.txt");
+        p.inner.setzen("/home/nutzer/wichtig.txt");
         p.inner.geaendert();
         let mut traeger = wache_lage();
         let mut zuschauer = wache_lage();
@@ -970,7 +970,7 @@ mod tests {
         traeger.ende(&mut st, &mut p);
         assert_eq!(
             p.inner.inhalt().as_deref(),
-            Some("/home/michael/wichtig.txt"),
+            Some("/home/nutzer/wichtig.txt"),
             "ein Fenster, das die Ablage nie hielt, darf dem Traeger nicht \
              seinen Merkposten wegbuchen"
         );
@@ -1030,7 +1030,7 @@ mod tests {
     fn ein_traegerwechsel_verliert_den_vorbestand_nicht() {
         let mut p = Pruefablage::neu();
         let mut st = Prozessablage::default();
-        p.inner.setzen("/home/michael/wichtig.txt");
+        p.inner.setzen("/home/nutzer/wichtig.txt");
         p.inner.geaendert();
         let mut a = wache_lage();
         let mut b = wache_lage();
@@ -1042,7 +1042,7 @@ mod tests {
         // Fenster A geht zu: `ablage_abbau(A)` schreibt zurueck, der Traeger
         // wandert zu B.
         a.ende(&mut st, &mut p);
-        assert_eq!(p.inner.inhalt().as_deref(), Some("/home/michael/wichtig.txt"));
+        assert_eq!(p.inner.inhalt().as_deref(), Some("/home/nutzer/wichtig.txt"));
 
         // Drueben wird kopiert — B beansprucht, BEVOR sie endet.
         b.fern(&Rahmen::Neu { generation: 1, typ: Inhaltstyp::Text }, &mut p);
@@ -1052,7 +1052,7 @@ mod tests {
         b.ende(&mut st, &mut p);
         assert_eq!(
             p.inner.inhalt().as_deref(),
-            Some("/home/michael/wichtig.txt"),
+            Some("/home/nutzer/wichtig.txt"),
             "der Merkposten haengt am Prozess, nicht an der Sitzung — sonst \
              ist der Pfad des Nutzers nach einem Fensterwechsel weg"
         );

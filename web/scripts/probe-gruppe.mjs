@@ -20,10 +20,10 @@ page.on('response', (r) => {
 });
 
 try {
-  // dev3 anmelden (existiert: test1234)
+  // dev3 anmelden (bestehendes Testkonto, Passwort aus PULSE_TEST_PASS)
   await page.goto(`${BASIS}/login`);
   await page.getByTestId('login-identifier').fill('dev3');
-  await page.getByTestId('login-password').fill('test1234');
+  await page.getByTestId('login-password').fill(process.env.PULSE_TEST_PASS ?? '');
   await page.getByTestId('login-submit').click();
   await page.waitForURL(/\/app/, { timeout: 60_000 });
 
