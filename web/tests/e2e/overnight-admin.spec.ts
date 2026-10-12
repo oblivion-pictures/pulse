@@ -382,6 +382,59 @@ test.describe.serial('T14 — Server-Admin-Panel', () => {
     await expect(groesse).toHaveValue('50', { timeout: 7_000 });
   });
 
+  test('Communities-Reiter: Speichern lässt Werte mit gerundeter Anzeige bytegenau stehen', async () => {
+    // Anzeige rundet auf zwei Stellen (1.000.000 Byte -> "0.95", 5.000.000.000
+    // -> "4.66"); das Formular schickt den vollen Satz, darf aber nicht die
+    // Rückrechnung der Anzeige statt des gespeicherten Wertes mitschicken.
+    const GROESSE = 1_000_000;
+    const SPEICHER = 5_000_000_000;
+    const ABLAGE = 1_500_000_000;
+    const eingestellt = await admin.evaluate(
+      async ({ id, groesse, speicher, ablage }) => {
+        const token = localStorage.getItem('dcc.tokens.access');
+        const r = await fetch(`/api/chat/owner/communities/${id}/limits`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            attachment_max_size_bytes: groesse,
+            attachment_storage_quota_bytes: speicher,
+            dropbox_allowed: true,
+            dropbox_quota_bytes: ablage
+          })
+        });
+        return r.status;
+      },
+      { id: guildId, groesse: GROESSE, speicher: SPEICHER, ablage: ABLAGE }
+    );
+    expect(eingestellt).toBe(200);
+
+    await admin.reload();
+    await admin.getByTestId('admin-tab-communities').click();
+    await admin.getByTestId('admin-communities-search').fill(`Admin Panel Guild ${ts}`);
+    const row = admin
+      .getByTestId('admin-community-row')
+      .filter({ hasText: `Admin Panel Guild ${ts}` });
+    await expect(row).toBeVisible({ timeout: 7_000 });
+    await row.getByTestId('admin-community-settings-toggle').click();
+    await expect(row.getByTestId('community-limit-attach-size')).toHaveValue('0.95');
+    await expect(row.getByTestId('community-limit-storage-quota')).toHaveValue('4.66');
+
+    // Ein ganz anderes Feld ändern und speichern.
+    await row.getByTestId('community-limit-max-members').fill('500');
+    const [antwort] = await Promise.all([
+      admin.waitForResponse(
+        (r) => r.url().includes('/limits') && r.request().method() === 'PATCH'
+      ),
+      admin.getByTestId('community-limit-save').click()
+    ]);
+    expect(antwort.status()).toBe(200);
+    const body = await antwort.json();
+    expect(body.max_members).toBe(500);
+    expect(body.attachment_max_size_bytes).toBe(GROESSE);
+    expect(body.attachment_storage_quota_bytes).toBe(SPEICHER);
+    expect(body.dropbox_quota_bytes).toBe(ABLAGE);
+  });
+
   test('Protokoll: Einträge zu den gerade gemachten Änderungen', async () => {
     await admin.getByTestId('admin-tab-audit').click();
     await expect(admin.getByTestId('admin-audit-log')).toBeVisible();

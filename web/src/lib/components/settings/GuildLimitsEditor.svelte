@@ -16,12 +16,14 @@ import { errText } from '$lib/utils/errText';
   import { m } from '$lib/paraglide/messages.js';
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
   import GuildLimitRow from './GuildLimitRow.svelte';
-  import { toDisplay, toWire, type LimitKind } from './guildLimitUnits';
+  import { toDisplay, changedLimitsPayload, type LimitKind } from './guildLimitUnits';
 
   let { guildId }: { guildId: string } = $props();
 
   // Feldtabelle: Schlüssel (muss zum Backend passen) + Einheit, in Gruppen.
-  type Field = { key: string; kind: LimitKind; label: () => string };
+  // `required`: die Spalte ist NOT NULL (Spiegel von `value_nullable=False` in
+  // guild_limits.py) — dort heißt ein leeres Feld „nicht ändern", nicht „löschen".
+  type Field = { key: string; kind: LimitKind; label: () => string; required?: boolean };
   const GROUPS: { title: string; fields: Field[] }[] = [
     {
       title: m.guild_limits_group_quality(),
@@ -35,8 +37,8 @@ import { errText } from '$lib/utils/errText';
     {
       title: m.guild_limits_group_files(),
       fields: [
-        { key: 'attachment_max_size_bytes', kind: 'mb', label: m.guild_limits_field_attachment_max_size_bytes },
-        { key: 'attachment_max_count_per_message', kind: 'raw', label: m.guild_limits_field_attachment_max_count_per_message },
+        { key: 'attachment_max_size_bytes', kind: 'mb', required: true, label: m.guild_limits_field_attachment_max_size_bytes },
+        { key: 'attachment_max_count_per_message', kind: 'raw', required: true, label: m.guild_limits_field_attachment_max_count_per_message },
         { key: 'attachment_storage_quota_bytes', kind: 'gb', label: m.guild_limits_field_attachment_storage_quota_bytes }
       ]
     },
@@ -88,9 +90,12 @@ import { errText } from '$lib/utils/errText';
     if (busy) return;
     busy = true;
     try {
-      const payload = Object.fromEntries(
-        FIELDS.map((f) => [f.key, toWire(inputs[f.key] ?? '', f.kind)])
+      // Nur, was angefasst wurde: die Anzeige ist gerundet, der gespeicherte
+      // Wert nicht (s. changedLimitsPayload).
+      const stored = Object.fromEntries(
+        FIELDS.map((f) => [f.key, data?.limits[f.key]?.value ?? null])
       );
+      const payload = changedLimitsPayload(FIELDS, inputs, stored);
       const res = await chatApi.patchGuildLimits(guildId, payload);
       data = res;
       // Nach dem Klemmen die Felder auf die tatsächlich gespeicherten Werte
