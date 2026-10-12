@@ -139,10 +139,10 @@ export function startUploadVerschluesselt(
       // an, der Klumpen ist also groesser als die Datei.
       const datei = await klumpenBauen(file);
       if (cancelled) return;
-      // Nur ein WebP innerhalb der Serverlinie geht mit (s. vorschauWahl.ts:
-      // Safari/iOS liefern ein zu großes PNG). Maße und lokale Kopie bleiben.
+      // Nur ein Vorschaubild innerhalb der Serverlinie geht mit (s.
+      // vorschauWahl.ts). Maße und lokale Kopie bleiben.
       const vorschauKlumpen =
-        vorschau && vorschauBehalten(vorschau.blob.type, vorschau.blob.size, KLUMPEN_ZUSATZ_BYTES)
+        vorschau && vorschauBehalten(vorschau.blob.size, KLUMPEN_ZUSATZ_BYTES)
           ? await klumpenBauen(vorschau.blob)
           : null;
       if (cancelled) return;

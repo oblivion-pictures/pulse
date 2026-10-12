@@ -4,10 +4,11 @@
  *
  * `canvas.toBlob(…, 'image/webp')` liefert dort still ein PNG, und das kann
  * größer sein, als der Server pro Vorschaubild annimmt (413 „thumbnail too
- * large"; der ganze Upload bricht dann ab). Der Klient lässt ein Vorschaubild
- * weg, das kein WebP ist oder über der Grenze liegt, und lädt nur die Datei
- * hoch. Der Safari-Fall wird nachgestellt, indem `toBlob` für WebP ein
- * zu großes PNG liefert.
+ * large"; der ganze Upload bricht dann ab). Der Klient behält das PNG, solange
+ * es die Serverlinie einhält (so lief Safari bis heute, die Zeitleiste zeigt
+ * dann kein Original von bis zu 25 MiB), und lässt nur ein Vorschaubild über
+ * der Grenze weg. Der Safari-Fall wird nachgestellt, indem `toBlob` für WebP
+ * ein PNG-Blob liefert.
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -83,12 +84,36 @@ test.describe.serial('Vorschaubild-Rückfall', () => {
     await expect(page.getByTestId('attachment-image')).toHaveCount(1, { timeout: 5_000 });
   });
 
-  test('Browser ohne WebP-Encoder (PNG, zu groß): Upload gelingt ohne Vorschaubild', async () => {
+  test('Browser ohne WebP-Encoder (PNG unter der Grenze): das Vorschaubild bleibt', async () => {
     // Safari-Verhalten nachgestellt: für 'image/webp' kommt ein PNG zurück —
-    // hier absichtlich über der Serverlinie (4 MiB), wie es ein altes Bundle
-    // mit einem großen Foto nie ausschließen konnte.
+    // hier 2 MB, größer als ein WebP je würde, aber unter der Serverlinie.
     await page.evaluate(() => {
       const echt = HTMLCanvasElement.prototype.toBlob;
+      (window as unknown as { __toBlobEcht: typeof echt }).__toBlobEcht = echt;
+      HTMLCanvasElement.prototype.toBlob = function (cb, typ, qualitaet) {
+        if (typ === 'image/webp') {
+          cb(new Blob([new Uint8Array(2 * 1024 * 1024)], { type: 'image/png' }));
+        } else {
+          echt.call(this, cb, typ, qualitaet);
+        }
+      };
+    });
+
+    const rumpf = await hochladen('safari.png');
+    expect(rumpf.has_thumb).toBe(true);
+    expect(rumpf.thumb_size).toBe(2 * 1024 * 1024);
+    await expect(page.getByTestId('message-send')).toBeEnabled({ timeout: 15_000 });
+    await page.getByTestId('message-send').click();
+    await expect(page.getByTestId('attachment-image')).toHaveCount(2, { timeout: 5_000 });
+  });
+
+  test('Vorschaubild über der Serverlinie: Upload gelingt ohne Vorschaubild', async () => {
+    // Absichtlich über 4 MiB, wie es kein 720-px-Bild ergibt: der Klient lässt
+    // das Vorschaubild weg, statt den ganzen Upload an einem 413 scheitern zu
+    // lassen.
+    await page.evaluate(() => {
+      const echt = (window as unknown as { __toBlobEcht: HTMLCanvasElement['toBlob'] })
+        .__toBlobEcht;
       HTMLCanvasElement.prototype.toBlob = function (cb, typ, qualitaet) {
         if (typ === 'image/webp') {
           cb(new Blob([new Uint8Array(5 * 1024 * 1024)], { type: 'image/png' }));
@@ -98,7 +123,7 @@ test.describe.serial('Vorschaubild-Rückfall', () => {
       };
     });
 
-    const rumpf = await hochladen('safari.png');
+    const rumpf = await hochladen('zu-gross.png');
     expect(rumpf.has_thumb).toBe(false);
     expect(rumpf.thumb_size ?? null).toBeNull();
     // Die Maße der Datei gehen trotzdem mit.
@@ -107,19 +132,6 @@ test.describe.serial('Vorschaubild-Rückfall', () => {
     // Und der Upload endet in „fertig" statt in einem Fehler.
     await expect(page.getByTestId('message-send')).toBeEnabled({ timeout: 15_000 });
     await page.getByTestId('message-send').click();
-    await expect(page.getByTestId('attachment-image')).toHaveCount(2, { timeout: 5_000 });
-  });
-
-  test('Browser ohne WebP-Encoder (PNG, klein): auch dann kein Etikettenschwindel', async () => {
-    // Das Blob bleibt ein 'image/png' — es würde unter dem Typ image/webp
-    // hochgeladen. Der Klient lässt es deshalb weg, egal wie klein es ist.
-    await page.evaluate(() => {
-      HTMLCanvasElement.prototype.toBlob = function (cb, typ) {
-        cb(new Blob([new Uint8Array(10_000)], { type: typ === 'image/webp' ? 'image/png' : typ }));
-      };
-    });
-    const rumpf = await hochladen('safari-klein.png');
-    expect(rumpf.has_thumb).toBe(false);
-    await expect(page.getByTestId('message-send')).toBeEnabled({ timeout: 15_000 });
+    await expect(page.getByTestId('attachment-image')).toHaveCount(3, { timeout: 5_000 });
   });
 });
