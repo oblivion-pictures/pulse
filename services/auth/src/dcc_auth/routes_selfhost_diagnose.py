@@ -306,7 +306,15 @@ async def diagnose(
 
     ausgaben: list[SchrittAus] = []
     for s in schritte:
-        was_ist, was_tun = erklaerung(s.schritt, s.befund, s.ok, sprache, container=container)
+        was_ist, was_tun = erklaerung(
+            s.schritt,
+            s.befund,
+            s.ok,
+            sprache,
+            container=container,
+            kennung=str(inst.registered_by) if inst.registered_by is not None else None,
+            heimserver=inst.origin == "app_host",
+        )
         ausgaben.append(
             SchrittAus(
                 schritt=s.schritt,

@@ -359,8 +359,22 @@ def titel(schritt: str, sprache: str = "en") -> str:
     return _TITEL.get(schritt, _TITEL_UNBEKANNT)[_index(sprache)]
 
 
+class _Platzhalter(dict):
+    """Für ``format_map``: ein nicht übergebener Platzhalter bleibt stehen."""
+
+    def __missing__(self, name: str) -> str:
+        return "{" + name + "}"
+
+
 def erklaerung(
-    schritt: str, befund: str, ok: bool, sprache: str = "en", container: str | None = None
+    schritt: str,
+    befund: str,
+    ok: bool,
+    sprache: str = "en",
+    container: str | None = None,
+    *,
+    kennung: str | None = None,
+    heimserver: bool = False,
 ) -> tuple[str, str]:
     """``(was_ist, was_tun)``.
 
@@ -373,13 +387,19 @@ def erklaerung(
     ``was_tun`` stehen: diese Funktion nagelt selbst keinen Namen fest, das
     tut ``container_name()`` beim Aufrufer (der Route). So bleibt sichtbar,
     welcher Aufrufer den Namen tatsächlich kennt und welcher nur die Vorgabe
-    einsetzt.
+    einsetzt. Genauso ``{kennung}``: die Konto-Nummer, die der Server als
+    Besitzer tragen muss (``registered_by``).
+
+    ``heimserver``: für einen Heim-Server (Server-App) gelten eigene Sätze,
+    wo der Handgriff ein anderer ist (``_betreiber.BEFUNDE_HEIMSERVER``).
     """
     if ok:
         return _GELUNGEN.get(schritt, _GELUNGEN_UNBEKANNT)[_index(sprache)], ""
-    was_ist, was_tun = _BEFUNDE.get((schritt, befund), _ALLGEMEIN)[_index(sprache)]
-    if container is not None:
-        was_tun = was_tun.format(container=container)
+    satz = _betreiber.BEFUNDE_HEIMSERVER.get((schritt, befund)) if heimserver else None
+    was_ist, was_tun = (satz or _BEFUNDE.get((schritt, befund), _ALLGEMEIN))[_index(sprache)]
+    werte = {n: w for n, w in (("container", container), ("kennung", kennung)) if w is not None}
+    if werte:
+        was_tun = was_tun.format_map(_Platzhalter(werte))
     return was_ist, was_tun
 
 
