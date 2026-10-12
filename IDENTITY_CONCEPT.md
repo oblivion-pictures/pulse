@@ -129,6 +129,8 @@ Das erfolgreichste Selfhost-Ökosystem der letzten 15 Jahre. Anmerkung: Minecraf
 
 Bis dahin gilt nur: heutige Entscheidungen den künftigen SSO-Layer nicht blockieren lassen — JWKS-Endpoint öffentlich + stabil halten, JWT-Claims als einzufrierenden Vertrag behandeln (`iss`/`ver`/`aud` früh einbauen), Identitäts-Modell zukunftsoffen.
 
+**Nachtrag 2026-10 — Self-Hosts ohne Freigabe.** Wer einen Server betreibt, braucht keine Zustimmung der Cloud mehr. Der Server gehört von Anfang an jemandem: Am Ende der Installation verbindet der Betreiber ihn per Gerätecode mit seinem Konto (`pulse-connect`, Bestätigung im Browser). Danach hat er dieselben Zugangsdaten wie früher ein freigegebener Server; Tickets bleiben an die Instanz-Nummer gebunden (`aud`), Admin wird der Besitzer, Sperre und Sperrliste wirken unverändert. Die Identität bleibt zentral, die Welten bleiben isoliert — es entfällt nur der Türsteher vor dem Eröffnen einer Welt. Entwurf: `docs/superpowers/specs/2026-10-09-selfhost-ohne-freigabe-design.md`.
+
 ---
 
 # Anhang: Erreichbarkeit & Traffic beim Self-Host (Brainstorm 2026-05-30)

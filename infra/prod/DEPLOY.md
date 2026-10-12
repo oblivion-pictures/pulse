@@ -242,6 +242,8 @@ private Repo nicht public sein). GHCR bleibt Source-of-Truth für die Cloud-Serv
 Images; nur das All-in-one (Self-Host) läuft über die eigene Registry. Architektur +
 Token-Auth-Spec: `infra/prod/registry-config.yml` + `services/auth/src/dcc_auth/routes_registry_auth.py`.
 
+**Stand Oktober 2026:** Neue Self-Hosts ziehen das öffentliche Bild `ghcr.io/oblivion-pictures/pulse` ohne Anmeldung. Die Registry bleibt allein für die Bestandsserver aus der Freigabe-Zeit in Betrieb — ihre Update-Skripte melden sich hier mit ihren Instanz-Zugangsdaten an und hören bei einem Fehlschlag still auf (Spec E10). Abschalten erst, wenn keiner von ihnen mehr von hier zieht.
+
 Manuelle Checkliste — einmalig, wenn die Registry erstmals in Prod geht.
 **Erledigt 2026-07-02** (alle Schritte live verifiziert); bleibt als Referenz für
 Re-Provisionierung und JWT-Key-Rotation.
