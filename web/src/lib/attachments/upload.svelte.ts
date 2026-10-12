@@ -20,6 +20,7 @@
 import { chatApi } from '$lib/api/chat';
 import { aufnahmeDauerRegister } from './aufnahmeKern';
 import { erzeugeVorschaubild } from './vorschaubild';
+import { vorschauBehalten } from './vorschauWahl';
 import { putMitFortschritt } from './putMitFortschritt';
 import type { AnhangAngabe } from '$lib/krypto/nachrichtNutzlast';
 
@@ -95,7 +96,12 @@ export function startUpload(
   const run = async () => {
     try {
       // 1. (image only) build the thumbnail + capture original dimensions.
-      const thumb = await erzeugeVorschaubild(file);
+      //    Die Maße bleiben auch dann, wenn das Vorschaubild nicht mitgeht:
+      //    Safari/iOS liefern statt WebP ein (zu großes) PNG, das lassen wir
+      //    weg und laden nur die Datei hoch (s. vorschauWahl.ts).
+      const erzeugt = await erzeugeVorschaubild(file);
+      const thumb =
+        erzeugt && vorschauBehalten(erzeugt.blob.type, erzeugt.blob.size) ? erzeugt : null;
       if (cancelled) return;
 
       // 2. Ask the server for an upload URL (+ optional thumb URL).
@@ -103,8 +109,8 @@ export function startUpload(
         filename: file.name,
         mime: file.type || 'application/octet-stream',
         size: file.size,
-        width: thumb?.origWidth,
-        height: thumb?.origHeight,
+        width: erzeugt?.origWidth,
+        height: erzeugt?.origHeight,
         has_thumb: thumb !== null,
         thumb_size: thumb?.blob.size,
         thumb_width: thumb?.thumbWidth,

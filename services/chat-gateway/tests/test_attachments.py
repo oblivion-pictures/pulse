@@ -166,14 +166,31 @@ async def test_upload_url_enforces_total_storage_quota(
 
 # ─── Vorschaubild: eigene Obergrenze + zählt gegen das Kontingent ───────────
 #
-# Der Klient erzeugt Vorschaubilder mit höchstens 720 px Kantenlänge als WebP
-# (q 0,85). Nachgemessen (libwebp q85, Pillow): selbst reines Pixelrauschen
-# kommt bei 720x720 auf ~390 kB, mit zufälligem Alphakanal auf ~913 kB. 1 MiB
-# trägt also noch den theoretischen Schlimmstfall. Vorher galt als Grenze für
-# das Vorschaubild die volle Dateigrenze (25 MiB und mehr) — und gezählt wurde
-# es nirgends.
+# Der Klient erzeugt Vorschaubilder mit höchstens 720 px Kantenlänge und
+# verlangt dafür WebP (``canvas.toBlob(…, 'image/webp', 0.85)``). Safari und
+# jeder iOS-Browser kodieren kein WebP und liefern stattdessen ein PNG — und das
+# ist die Größe, nach der sich die Grenze richtet: ein rohes RGBA-Bild von
+# 720x720 sind 2.073.600 Byte, ein PNG davon (inkompressibel) gemessen bis
+# 2.188.607. Die Grenze liegt bei 4 MiB. Vorher galt für das Vorschaubild die
+# volle Dateigrenze (25 MiB und mehr) — und gezählt wurde es nirgends.
 
 _MIB = 1024 * 1024
+_MAX_THUMB = 4 * _MIB
+
+
+def _schlimmstes_png_vorschaubild() -> int:
+    """Größe des größten Vorschaubildes, das ein heutiger Klient erzeugt: ein
+    720x720-PNG aus reinem Rauschen (jedes Pixel unvorhersagbar, also
+    inkompressibel), wie es Safari statt eines WebP liefert."""
+    import io
+    import os
+
+    from PIL import Image
+
+    bild = Image.frombytes("RGBA", (720, 720), os.urandom(720 * 720 * 4))
+    puffer = io.BytesIO()
+    bild.save(puffer, "PNG", compress_level=1)  # schwache Kompression = größter Fall
+    return len(puffer.getvalue())
 
 
 @pytest.mark.asyncio
@@ -183,13 +200,27 @@ async def test_thumb_has_its_own_small_cap(client, _auth_signer, mock_s3):
 
     # Ein Byte über der Vorschaubild-Grenze, obwohl weit unter der Dateigrenze
     # (25 MiB): abgelehnt, und es wird keine Adresse ausgestellt.
-    r = await _upload(client, t1, cid, has_thumb=True, thumb_size=_MIB + 1,
+    r = await _upload(client, t1, cid, has_thumb=True, thumb_size=_MAX_THUMB + 1,
                       thumb_width=720, thumb_height=720)
     assert r.status_code == 413, r.text
     assert mock_s3.put_calls == []
 
-    # Genau 1 MiB geht noch.
-    r = await _upload(client, t1, cid, has_thumb=True, thumb_size=_MIB,
+    # Genau 4 MiB geht noch.
+    r = await _upload(client, t1, cid, has_thumb=True, thumb_size=_MAX_THUMB,
+                      thumb_width=720, thumb_height=720)
+    assert r.status_code == 201, r.text
+
+
+@pytest.mark.asyncio
+async def test_thumb_cap_carries_a_worst_case_png_fallback(client, _auth_signer, mock_s3):
+    """Safari/iOS kodieren kein WebP; ``toBlob`` liefert dort ein PNG. Ein altes
+    Klienten-Bundle kann sich darauf nicht einstellen — die Grenze muss das
+    größte PNG tragen, das 720x720 hergibt, sonst bricht der ganze Upload ab."""
+    png = _schlimmstes_png_vorschaubild()
+    assert png > _MIB, "der Fall wäre mit der alten 1-MiB-Grenze gescheitert"
+    (t1, _u1), _ = await register_two(_auth_signer)
+    _, cid = await _make_guild_channel(client, t1)
+    r = await _upload(client, t1, cid, has_thumb=True, thumb_size=png,
                       thumb_width=720, thumb_height=720)
     assert r.status_code == 201, r.text
 

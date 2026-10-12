@@ -32,6 +32,7 @@ import type { AnhangAngabe } from '$lib/krypto/nachrichtNutzlast';
 import { anhangBytesSichern, anhangBytesLoeschen } from '$lib/verlauf/db';
 import { m } from '$lib/paraglide/messages.js';
 import { erzeugeVorschaubild, erzeugeVideoVorschaubild } from './vorschaubild';
+import { KLUMPEN_ZUSATZ_BYTES, vorschauBehalten } from './vorschauWahl';
 import { aufnahmeDauerRegister } from './aufnahmeKern';
 import { putMitFortschritt } from './putMitFortschritt';
 import { nextLocalId, type PendingAttachment } from './upload.svelte';
@@ -138,7 +139,12 @@ export function startUploadVerschluesselt(
       // an, der Klumpen ist also groesser als die Datei.
       const datei = await klumpenBauen(file);
       if (cancelled) return;
-      const vorschauKlumpen = vorschau ? await klumpenBauen(vorschau.blob) : null;
+      // Nur ein WebP innerhalb der Serverlinie geht mit (s. vorschauWahl.ts:
+      // Safari/iOS liefern ein zu großes PNG). Maße und lokale Kopie bleiben.
+      const vorschauKlumpen =
+        vorschau && vorschauBehalten(vorschau.blob.type, vorschau.blob.size, KLUMPEN_ZUSATZ_BYTES)
+          ? await klumpenBauen(vorschau.blob)
+          : null;
       if (cancelled) return;
 
       const adresse = await postfachApi.anhangUploadAdresse(
