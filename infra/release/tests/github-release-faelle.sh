@@ -23,7 +23,7 @@ set -euo pipefail
 z="$GH_ZUSTAND"; r="$z/releases"; mkdir -p "$r"; touch "$z/reihenfolge"
 [ "$1" = release ] || { echo "attrappe: unerwartet: $*" >&2; exit 9; }
 sub="$2"; shift 2
-tag=""; dateien=(); json=""; muster=""; ziel=""; latest=""; notes=""
+tag=""; dateien=(); json=""; muster=""; ziel=""; latest=""; notes=""; clobber=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo|--target|--title|--limit|--jq) shift ;;
@@ -32,7 +32,8 @@ while [ $# -gt 0 ]; do
     --pattern) muster="$2"; shift ;;
     --dir) ziel="$2"; shift ;;
     --latest) latest=ja ;;
-    --clobber) ;;
+    --latest=false) latest=nein ;;
+    --clobber) clobber=ja ;;
     -*) echo "attrappe: unbekannte Option $1" >&2; exit 9 ;;
     *) if [ -z "$tag" ] && [ "$sub" != list ]; then tag="$1"; else dateien+=("$1"); fi ;;
   esac
@@ -50,14 +51,27 @@ case "$sub" in
     fi
     [ -d "$r/$tag" ] && exit 1
     mkdir -p "$r/$tag"; echo "$tag" >> "$z/reihenfolge"
-    cp "$notes" "$r/$tag/_notizen"; [ -n "$latest" ] && touch "$r/$tag/_latest"
-    echo "CREATE $tag" >> "$z/protokoll"; exit 0 ;;
+    cp "$notes" "$r/$tag/_notizen"; [ "$latest" = ja ] && touch "$r/$tag/_latest"
+    echo "CREATE $tag latest=${latest:-auto}" >> "$z/protokoll"; exit 0 ;;
   upload)
     [ -d "$r/$tag" ] || exit 1
-    for d in "${dateien[@]}"; do cp "$d" "$r/$tag/"; echo "UPLOAD $tag $(basename "$d")" >> "$z/protokoll"; done
+    for d in "${dateien[@]}"; do
+      n="$(basename "$d")"
+      # Wettlauf nachstellen: ein anderer Lauf legt dieselbe Datei genau jetzt ab.
+      if [ -n "${RENNEN:-}" ] && [ "$n" = "$RENNEN" ] && [ -z "$clobber" ]; then
+        printf 'FRISCH' > "$r/$tag/$n"
+      fi
+      if [ -e "$r/$tag/$n" ] && [ -z "$clobber" ]; then echo "already exists" >&2; exit 1; fi
+      cp "$d" "$r/$tag/"; echo "UPLOAD $tag $n" >> "$z/protokoll"
+    done
+    exit 0 ;;
+  edit)
+    [ -d "$r/$tag" ] || exit 1
+    [ "$latest" = ja ] && { rm -f "$r"/*/_latest; touch "$r/$tag/_latest"; echo "LATEST $tag" >> "$z/protokoll"; }
     exit 0 ;;
   list)
-    tac "$z/reihenfolge" | grep '^desktop-v' || true; exit 0 ;;
+    # Neueste Anlage zuerst, ALLE Tags (auch fremde) — gefiltert wird im Skript.
+    sed '1!G;h;$!d' "$z/reihenfolge"; exit 0 ;;
   download)
     cp "$r/$tag/$muster" "$ziel/"; exit 0 ;;
 esac
@@ -77,15 +91,17 @@ lauf() {  # lauf <zustand> <args…> — gibt den Exit-Code zurück, Ausgabe nac
 }
 neu() { local z="$arbeit/z$1"; mkdir -p "$z/releases"; touch "$z/reihenfolge" "$z/protokoll"; echo "$z"; }
 
-# 1. Erste Version: Release anlegen, Dateien unter festem Namen, als „Latest“.
+# 1. Erste Version: Release anlegen, Dateien unter festem Namen — noch nicht
+#    Latest, solange die anderen Plattformen fehlen.
 z="$(neu 1)"
 if lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" "Pulse-Setup-Windows.exe.blockmap=$arbeit/setup.exe.blockmap" \
    && [ "$(cat "$z/releases/desktop-v0.1.101/Pulse-Setup-Windows.exe")" = EXE ] \
    && [ -f "$z/releases/desktop-v0.1.101/Pulse-Setup-Windows.exe.blockmap" ] \
-   && [ -f "$z/releases/desktop-v0.1.101/_latest" ] \
+   && [ ! -f "$z/releases/desktop-v0.1.101/_latest" ] \
+   && grep -q "CREATE desktop-v0.1.101 latest=nein" "$z/protokoll" \
    && grep -q "Pulse 0.1.101" "$z/releases/desktop-v0.1.101/_notizen" \
-   && grep -q "abc123" "$z/releases/desktop-v0.1.101/_notizen"; then
-  ok "neue Version legt desktop-v0.1.101 als Latest an, feste Namen"
+   && grep -q "noch unvollständig" "$z/ausgabe"; then
+  ok "neue Version legt desktop-v0.1.101 an, feste Namen, noch nicht Latest"
 else nein "neue Version: $(cat "$z/ausgabe")"; fi
 
 # 2. Release existiert schon: kein zweites create, Datei wird ersetzt.
@@ -144,5 +160,49 @@ if ! lauf "$z" "" "a=$arbeit/setup.exe" && ! lauf "$z" 0.1 "a=$arbeit/setup.exe"
    && [ ! -s "$z/protokoll" ]; then
   ok "ungültige Version/Angaben werden abgewiesen"
 else nein "ungültige Eingaben: $(cat "$z/ausgabe")"; fi
+
+# 9. Letzte fehlende Datei kommt dazu: jetzt Latest, der Vorgänger verliert es.
+z="$(neu 9)"
+for t in desktop-v0.1.100 desktop-v0.1.101; do mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"; done
+touch "$z/releases/desktop-v0.1.100/_latest"
+for n in Pulse-Setup-Windows.exe Pulse-Server-Setup-Windows.exe Pulse-macOS.dmg Pulse-Android.apk; do
+  printf x > "$z/releases/desktop-v0.1.101/$n"; done
+if lauf "$z" 0.1.101 "Pulse-Server-macOS.dmg=$arbeit/setup.exe" \
+   && [ -f "$z/releases/desktop-v0.1.101/_latest" ] && [ ! -f "$z/releases/desktop-v0.1.100/_latest" ]; then
+  ok "vollständig + höchste Version → Latest wandert"
+else nein "Latest bei Vollständigkeit: $(cat "$z/ausgabe")"; fi
+
+# 10. Vollständig, aber eine höhere Version existiert schon (Neubau eines alten Stands).
+z="$(neu 10)"
+for t in desktop-v0.1.100 desktop-v0.1.102; do mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"; done
+touch "$z/releases/desktop-v0.1.102/_latest"
+for n in Pulse-Setup-Windows.exe Pulse-Server-Setup-Windows.exe Pulse-macOS.dmg Pulse-Android.apk; do
+  printf x > "$z/releases/desktop-v0.1.100/$n"; done
+if lauf "$z" 0.1.100 "Pulse-Server-macOS.dmg=$arbeit/setup.exe" \
+   && [ -f "$z/releases/desktop-v0.1.102/_latest" ] && [ ! -f "$z/releases/desktop-v0.1.100/_latest" ] \
+   && grep -q "nicht die höchste Version" "$z/ausgabe"; then
+  ok "alter Stand wird nicht Latest, auch wenn vollständig"
+else nein "alter Stand: $(cat "$z/ausgabe")"; fi
+
+# 11. Fremde Tags (Self-Host v1.0.0) in der Liste: weder Quelle noch Versionsvergleich.
+z="$(neu 11)"
+for t in desktop-v0.1.100 v1.0.0 v9.9.9; do mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"; done
+printf 'APK-FREMD' > "$z/releases/v9.9.9/Pulse-Android.apk"
+printf 'APK-100' > "$z/releases/desktop-v0.1.100/Pulse-Android.apk"
+if lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/desktop-v0.1.101/Pulse-Android.apk")" = APK-100 ]; then
+  ok "fremde Tags werden übergangen"
+else nein "fremde Tags: $(cat "$z/ausgabe")"; fi
+
+# 12. Wettlauf um die APK: der Android-Bau legt seine frische APK ab, während
+#     ein Desktop-Lauf die alte übernehmen will — die frische bleibt.
+z="$(neu 12)"
+for t in desktop-v0.1.100; do mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"; done
+printf 'APK-ALT' > "$z/releases/desktop-v0.1.100/Pulse-Android.apk"
+if RENNEN=Pulse-Android.apk lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/desktop-v0.1.101/Pulse-Android.apk")" = FRISCH ] \
+   && grep -q "inzwischen ein anderer Lauf" "$z/ausgabe"; then
+  ok "übernommene alte APK überschreibt nie eine frische"
+else nein "APK-Wettlauf: $(cat "$z/ausgabe")"; fi
 
 [ "$fehler" = 0 ] && echo "✓ github-release: alle Fälle wie erwartet" || exit 1

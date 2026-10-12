@@ -20,11 +20,19 @@
 # APK deshalb aus dem jüngsten Vorgänger, sonst fehlte sie nach jedem
 # Versionssprung bis zum nächsten Android-Bau.
 #
+# „Latest“ (worauf `releases/latest/download/…` zeigt) wird ein Release erst,
+# wenn ALLE Downloads drin sind und es die höchste Version ist — nicht beim
+# Anlegen: sonst führten die Links ins Leere, solange die anderen Bauten noch
+# laufen, und nach einem gescheiterten Bau dauerhaft. Bis dahin bleibt der
+# vollständige Vorgänger Latest.
+#
 # Braucht: gh (auf allen GitHub-Runnern vorinstalliert), GH_TOKEN mit
 # contents:write, GITHUB_REPOSITORY, GITHUB_SHA.
 set -euo pipefail
 
 UEBERNEHMEN=(Pulse-Android.apk)
+VOLLSTAENDIG=(Pulse-Setup-Windows.exe Pulse-Server-Setup-Windows.exe Pulse-macOS.dmg
+              Pulse-Server-macOS.dmg Pulse-Android.apk)
 
 die() { echo "github-release: $*" >&2; exit 1; }
 
@@ -70,14 +78,14 @@ Pulse ${version}
 
 Self-hosting on a server: Docker image \`ghcr.io/oblivion-pictures/pulse\`, guide at https://howispulse.com/self-host/guide
 
-Built from \`main\` at ${GITHUB_SHA}. A rebuild of the same version replaces the files here. The \`.zip\` and \`.blockmap\` files are used by the apps' auto-update.
+Built from \`main\`. A rebuild of the same version replaces the files here. Files ending in \`.zip\` and \`.blockmap\` are not needed for installing.
 EOF
 }
 
 if ! gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
   notizen > "$arbeit/notizen.md"
   if gh release create "$tag" --repo "$repo" --target "$GITHUB_SHA" \
-       --title "Pulse ${version}" --notes-file "$arbeit/notizen.md" --latest; then
+       --title "Pulse ${version}" --notes-file "$arbeit/notizen.md" --latest=false; then
     echo "github-release: ${tag} angelegt"
   elif gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
     echo "github-release: ${tag} hat ein paralleler Lauf angelegt — hänge an"
@@ -89,23 +97,54 @@ fi
 gh release upload "$tag" --repo "$repo" --clobber "$arbeit"/hoch/*
 echo "github-release: hochgeladen nach ${tag}: $(ls "$arbeit/hoch" | tr '\n' ' ')"
 
+# Alle Desktop-Releases, neueste Anlage zuerst. Gefiltert wird hier, nicht per
+# --jq: fremde Tags (Self-Host `v1.0.0`) stehen in derselben Liste.
+desktop_tags() {
+  gh release list --repo "$repo" --limit 100 --json tagName --jq '.[].tagName' \
+    | tr -d '\r' | grep '^desktop-v' || true
+}
+dateien_von() {  # dateien_von <tag>
+  gh release view "$1" --repo "$repo" --json assets --jq '.assets[].name' | tr -d '\r'
+}
+
 # Fehlende Dauer-Dateien (APK) aus dem jüngsten Vorgänger übernehmen.
-vorhanden="$(gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name')"
+vorhanden="$(dateien_von "$tag")"
 for name in "${UEBERNEHMEN[@]}"; do
   grep -qxF "$name" <<<"$vorhanden" && continue
   quelle=""
   while read -r t; do
     [ -n "$t" ] && [ "$t" != "$tag" ] || continue
-    if gh release view "$t" --repo "$repo" --json assets --jq '.assets[].name' | grep -qxF "$name"; then
-      quelle="$t"; break
-    fi
-  done < <(gh release list --repo "$repo" --limit 50 --json tagName \
-             --jq '.[].tagName | select(startswith("desktop-v"))')
+    if dateien_von "$t" | grep -qxF "$name"; then quelle="$t"; break; fi
+  done < <(desktop_tags)
   if [ -z "$quelle" ]; then
     echo "github-release: ${name} in keinem Vorgänger — bleibt bis zum nächsten Bau leer"
     continue
   fi
   gh release download "$quelle" --repo "$repo" --pattern "$name" --dir "$arbeit/alt" --clobber
-  gh release upload "$tag" --repo "$repo" --clobber "$arbeit/alt/$name"
-  echo "github-release: ${name} aus ${quelle} übernommen"
+  # OHNE --clobber: hat der Android-Bau (oder ein zweiter Lauf, der dieselbe
+  # Lücke sah) inzwischen hochgeladen, gewinnt dessen Datei — eine übernommene
+  # alte APK darf nie eine frisch gebaute überschreiben.
+  if gh release upload "$tag" --repo "$repo" "$arbeit/alt/$name"; then
+    echo "github-release: ${name} aus ${quelle} übernommen"
+  elif dateien_von "$tag" | grep -qxF "$name"; then
+    echo "github-release: ${name} hat inzwischen ein anderer Lauf abgelegt"
+  else
+    die "konnte ${name} nicht übernehmen"
+  fi
 done
+
+# Latest erst, wenn vollständig und höchste Version (s. Kopf).
+vorhanden="$(dateien_von "$tag")"
+for name in "${VOLLSTAENDIG[@]}"; do
+  if ! grep -qxF "$name" <<<"$vorhanden"; then
+    echo "github-release: ${tag} noch unvollständig (${name} fehlt) — Latest bleibt beim Vorgänger"
+    exit 0
+  fi
+done
+hoechster="$(desktop_tags | sed 's/^desktop-v//' | sort -V | tail -n 1)"
+if [ "$hoechster" != "$version" ]; then
+  echo "github-release: ${tag} ist vollständig, aber nicht die höchste Version (${hoechster}) — Latest unverändert"
+  exit 0
+fi
+gh release edit "$tag" --repo "$repo" --latest
+echo "github-release: ${tag} vollständig, jetzt Latest"
