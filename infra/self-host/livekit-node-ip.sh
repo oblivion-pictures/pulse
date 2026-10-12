@@ -34,10 +34,9 @@
 # liest seine Konfiguration im strengen Modus (`KnownFields`,
 # pkg/config/config.go) und startet mit `extra_node_ips` gar nicht („field
 # extra_node_ips not found in type config.RTCConfig", nachgefahren mit 1.13.3
-# am 2026-10-12). Die
-# Server-App schreibt es deshalb nie selbst in den Container, sondern ruft
-# dieses Skript — ein älteres Image ohne die Option erkennt sie daran, dass es
-# `--zeige-lan` als ungültige IPv4 abweist (Exit 2).
+# am 2026-10-12). Die Server-App schreibt es deshalb nie selbst in den
+# Container, sondern ruft dieses Skript — ein älteres Image ohne die Option
+# erkennt sie daran, dass es `--zeige-lan` als ungültige IPv4 abweist (Exit 2).
 #
 # `--zeige` gibt weiter NUR die node_ip aus: ältere Server-Apps vergleichen
 # die Ausgabe wörtlich mit ihrer öffentlichen IP; eine zweite Zeile liesse sie
@@ -55,15 +54,16 @@ DATEI="${LIVEKIT_YAML:-/etc/livekit/livekit.yaml}"
 # `podman exec` — deshalb absolut.
 S6_SVC="${PULSE_S6_SVC:-/command/s6-svc}"
 
+zeige_node_ip() {
+    sed -n 's|^  node_ip: \([0-9.]*\)$|\1|p' "$DATEI" | head -n1
+}
+zeige_lan() {
+    sed -n 's|^  extra_node_ips: \[\([0-9.]*\)\]$|\1|p' "$DATEI" | head -n1
+}
+
 case "${1:-}" in
-    --zeige)
-        sed -n 's|^  node_ip: \([0-9.]*\)$|\1|p' "$DATEI" | head -n1
-        exit 0
-        ;;
-    --zeige-lan)
-        sed -n 's|^  extra_node_ips: \[\([0-9.]*\)\]$|\1|p' "$DATEI" | head -n1
-        exit 0
-        ;;
+    --zeige) zeige_node_ip; exit 0 ;;
+    --zeige-lan) zeige_lan; exit 0 ;;
 esac
 
 # Nur eine nackte IPv4 — der Wert landet per sed in einer YAML-Datei.
@@ -139,7 +139,7 @@ if ! grep -q "^  node_ip: ${IP}\$" "$TMP" \
 fi
 cat "$TMP" > "$DATEI"   # Inhalt ersetzen: Besitzer und Rechte der Datei bleiben
 rm -f "$TMP"
-echo "[livekit-node-ip] node_ip=${IP} extra_node_ips=[$(sed -n 's|^  extra_node_ips: \[\([0-9.]*\)\]$|\1|p' "$DATEI" | head -n1)]"
+echo "[livekit-node-ip] node_ip=${IP} extra_node_ips=[$(zeige_lan)]"
 
 if [ "$NEUSTART" = 1 ]; then
     "$S6_SVC" -r /run/service/livekit

@@ -7,7 +7,7 @@
 
 import { networkInterfaces } from 'node:os';
 
-import { rtExec, type ContainerRuntime } from './containerRuntime.ts';
+import { rtExec, type ContainerRuntime, type ExecResult } from './containerRuntime.ts';
 import { containerName } from './containerWelt.ts';
 import { ermittleStandardLanIpv4, standardLanIpv4 } from './hostNetz.ts';
 import { discoverPublicIp } from './stun.ts';
@@ -37,6 +37,11 @@ export function lanIpFuerStart(oeffentlicheIp: string | undefined, gateway: stri
   return standardLanIpv4(networkInterfaces() as never, gateway) ?? undefined;
 }
 
+/** `pulse-livekit-node-ip` im laufenden Container aufrufen. */
+function nodeIpSkript(rt: ContainerRuntime, args: string[], timeoutMs = 10_000): Promise<ExecResult> {
+  return rtExec(rt, ['exec', containerName(), SKRIPT, ...args], { timeoutMs });
+}
+
 /** Ein Abgleich gegen den laufenden Container. 'nicht-zustaendig': nicht
  *  Linux, oder ein Image ohne das Skript (älter als 2026-10-08) — dort bleibt
  *  LiveKit beim STUN-Weg. Ein Image mit dem Skript, aber ohne LAN-Teil (älter
@@ -45,21 +50,20 @@ export async function gleicheContainerIpAb(
   rt: ContainerRuntime,
 ): Promise<IpAbgleichErgebnis | 'nicht-zustaendig'> {
   if (process.platform !== 'linux') return 'nicht-zustaendig';
-  const skript = (args: string[], timeoutMs = 10_000) =>
-    rtExec(rt, ['exec', containerName(), SKRIPT, ...args], { timeoutMs });
-  const zeige = await skript(['--zeige']);
+  const zeige = await nodeIpSkript(rt, ['--zeige']);
   // 126/127 = Skript fehlt im Image; jeder andere Fehler = Container nicht da.
   if (zeige.code === 126 || zeige.code === 127) return 'nicht-zustaendig';
-  const zeigeLan = zeige.code === 0 ? await skript(['--zeige-lan']) : null;
-  const lan = zeigeLan ? lanFaehigkeit(zeigeLan.code) : 'unlesbar';
+  // Ohne lesbare node_ip (zeige.code !== 0) gibt es auch keinen LAN-Stand zu lesen.
+  const zeigeLan = zeige.code === 0 ? await nodeIpSkript(rt, ['--zeige-lan']) : null;
+  const lanFaehig = zeigeLan ? lanFaehigkeit(zeigeLan.code) : 'unlesbar';
   return gleicheOeffentlicheIpAb({
     ermittle: () => discoverPublicIp(),
-    gesetzte: async () => (zeige.code === 0 && lan !== 'unlesbar' ? zeige.stdout.trim() : null),
-    lan: lan === 'ja'
-      ? { ermittle: () => ermittleStandardLanIpv4(), gesetzte: async () => zeigeLan!.stdout.trim() }
+    gesetzte: async () => (lanFaehig === 'unlesbar' ? null : zeige.stdout.trim()),
+    lan: zeigeLan && lanFaehig === 'ja'
+      ? { ermittle: () => ermittleStandardLanIpv4(), gesetzte: async () => zeigeLan.stdout.trim() }
       : undefined,
     setze: async (ip, lanIp) => {
-      const r = await skript(nodeIpSkriptArgumente(ip, lanIp), 20_000);
+      const r = await nodeIpSkript(rt, nodeIpSkriptArgumente(ip, lanIp), 20_000);
       if (r.code !== 0) throw new Error(`LiveKit-Adresse nicht gesetzt (exit ${r.code}): ${r.stderr.slice(0, 200)}`);
     },
   });
@@ -69,6 +73,7 @@ export async function gleicheContainerIpAb(
  *  oder null — keine gesetzt, ein Image ohne LAN-Teil, kein Container. Für
  *  die Diagnose (main.ts, „Sprache im Heimnetz"). */
 export async function livekitLanImContainer(rt: ContainerRuntime): Promise<string | null> {
-  const r = await rtExec(rt, ['exec', containerName(), SKRIPT, '--zeige-lan'], { timeoutMs: 10_000 });
-  return lanFaehigkeit(r.code) === 'ja' && r.stdout.trim() ? r.stdout.trim() : null;
+  const r = await nodeIpSkript(rt, ['--zeige-lan']);
+  const adresse = r.stdout.trim();
+  return lanFaehigkeit(r.code) === 'ja' && adresse ? adresse : null;
 }

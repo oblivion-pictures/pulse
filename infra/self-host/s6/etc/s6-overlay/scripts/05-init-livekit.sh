@@ -61,14 +61,18 @@ fi
 # (infra/self-host/livekit-node-ip.sh).
 #
 # Ohne PULSE_PUBLIC_IPV4 bleibt der STUN-Weg wie bisher — so laufen alle
-# VPS-Self-Hosts (Installer/Compose setzen die Variable nicht). Scheitert die
-# LAN-Adresse an der Prüfung, gilt wenigstens die öffentliche.
+# VPS-Self-Hosts (Installer/Compose setzen die Variable nicht). Scheitert der
+# Aufruf mit der LAN-Adresse, gilt wenigstens die öffentliche.
 if [ -z "${PULSE_VM_ANNOUNCE_IP:-}" ] && [ -n "${PULSE_PUBLIC_IPV4:-}" ]; then
-    if [ -n "${PULSE_LAN_IPV4:-}" ] \
-        && LIVEKIT_YAML=/etc/livekit/livekit.yaml /usr/local/bin/pulse-livekit-node-ip "${PULSE_PUBLIC_IPV4}" --lan "${PULSE_LAN_IPV4}"; then
-        :
-    else
-        [ -n "${PULSE_LAN_IPV4:-}" ] && echo "[05-init-livekit] WARN: PULSE_LAN_IPV4 nicht übernommen — nur die öffentliche Adresse"
+    NODE_IP_GESETZT=0
+    if [ -n "${PULSE_LAN_IPV4:-}" ]; then
+        if LIVEKIT_YAML=/etc/livekit/livekit.yaml /usr/local/bin/pulse-livekit-node-ip "${PULSE_PUBLIC_IPV4}" --lan "${PULSE_LAN_IPV4}"; then
+            NODE_IP_GESETZT=1
+        else
+            echo "[05-init-livekit] WARN: PULSE_LAN_IPV4 nicht übernommen — nur die öffentliche Adresse"
+        fi
+    fi
+    if [ "${NODE_IP_GESETZT}" != 1 ]; then
         LIVEKIT_YAML=/etc/livekit/livekit.yaml /usr/local/bin/pulse-livekit-node-ip "${PULSE_PUBLIC_IPV4}" \
             || echo "[05-init-livekit] WARN: PULSE_PUBLIC_IPV4 nicht übernommen — STUN-Weg bleibt"
     fi

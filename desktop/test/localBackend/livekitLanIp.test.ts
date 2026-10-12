@@ -94,6 +94,7 @@ function deps(o: {
 }) {
   const aufrufe: Array<[string, string | undefined]> = [];
   const anzahlArgumente: number[] = [];
+  const lan = o.lan;
   const d: IpAbgleichDeps = {
     ermittle: async () => o.pub,
     gesetzte: async () => o.pubGesetzt,
@@ -101,7 +102,7 @@ function deps(o: {
       anzahlArgumente.push(args.length);
       aufrufe.push([args[0], args[1]]);
     },
-    lan: o.lan ? { ermittle: async () => o.lan!.ist, gesetzte: async () => o.lan!.gesetzt } : undefined,
+    lan: lan ? { ermittle: async () => lan.ist, gesetzte: async () => lan.gesetzt } : undefined,
   };
   return { d, aufrufe, anzahlArgumente };
 }

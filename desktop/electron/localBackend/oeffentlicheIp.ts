@@ -32,14 +32,20 @@
  * Importfrei — der Node-Testläufer prüft die Entscheidung ohne Netz.
  */
 
+/** Die vier Bytes einer nackten IPv4 (`1.2.3.4`), sonst null. */
+function ipv4Teile(ip: string | null | undefined): number[] | null {
+  if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return null;
+  const teile = ip.split('.').map(Number);
+  return teile.some((t) => t > 255) ? null : teile;
+}
+
 /** Taugt `ip` als öffentliche LiveKit-Adresse? Nackte IPv4, nicht privat,
  *  nicht Loopback/Link-local, nicht CGNAT (100.64/10 — dort hilft eine
  *  feste Adresse nichts, der Anschluss ist von außen ohnehin nicht direkt
  *  erreichbar). */
 export function taugtAlsOeffentlicheIp(ip: string | null | undefined): ip is string {
-  if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return false;
-  const teile = ip.split('.').map(Number);
-  if (teile.some((t) => t > 255)) return false;
+  const teile = ipv4Teile(ip);
+  if (!teile) return false;
   const [a, b] = teile;
   if (a === 10 || a === 127 || a === 0 || a >= 224) return false;
   if (a === 172 && b >= 16 && b <= 31) return false;
@@ -54,9 +60,8 @@ export function taugtAlsOeffentlicheIp(ip: string | null | undefined): ip is str
  *  es ist, entscheidet hostNetz.ts::standardLanIpv4 — hier nur die Form, denn
  *  der Wert landet in einer YAML-Datei. */
 export function taugtAlsLanIp(ip: string | null | undefined): ip is string {
-  if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return false;
-  const teile = ip.split('.').map(Number);
-  if (teile.some((t) => t > 255)) return false;
+  const teile = ipv4Teile(ip);
+  if (!teile) return false;
   const [a, b] = teile;
   return !(a === 0 || a === 127 || a >= 224 || (a === 169 && b === 254));
 }

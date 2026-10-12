@@ -69,16 +69,17 @@ export function parseGateway(platform: NodeJS.Platform, routeOutput: string): st
 export function parseProcNetRoute(text: string): string | null {
   let best: { gw: string; metric: number } | null = null;
   for (const zeile of text.split('\n').slice(1)) {
+    // Spalten: Iface Destination Gateway Flags RefCnt Use Metric Mask …
     const f = zeile.trim().split(/\s+/);
     if (f.length < 8 || f[1] !== '00000000' || !/^[0-9A-Fa-f]{8}$/.test(f[2])) continue;
     if ((parseInt(f[3], 16) & 0x2) === 0) continue;
     const n = parseInt(f[2], 16);
+    if (n === 0) continue;
     const gw = [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, n >>> 24].join('.');
     const metric = Number(f[6]);
-    if (gw === '0.0.0.0') continue;
     if (!best || metric < best.metric) best = { gw, metric };
   }
-  return (best as { gw: string } | null)?.gw ?? null;
+  return best?.gw ?? null;
 }
 
 function subnetFallbackGateway(): string | null {

@@ -113,7 +113,8 @@ Braucht `git` und Go ≥ 1.26 (LiveKits `go.mod`). Das Image baut mit
    anderen `mediatransportutil`-Stand nennt als `MTU_COMMIT`, wenn
    `version/version.go` nicht zur Fassung passt, wenn der Patch nicht sauber
    anwendbar ist oder sein Test rot wird. Passt der Patch nicht mehr: gegen
-   den neuen Stand neu schneiden (die Änderung ist ein Feld, eine Hilfsfunktion und ein geänderter Aufruf).
+   den neuen Stand neu schneiden (die Änderung ist ein Feld, eine
+   Hilfsfunktion und ein geänderter Aufruf).
 5. Prüfen, ob LiveKits `go.mod` eine neuere Go-Fassung verlangt — dann das
    Basisbild im Dockerfile und `go-version` in `win-build-server.yml` heben.
 6. Windows-Server-App: Version-Bump in `desktop/package.json`, sonst erreicht
