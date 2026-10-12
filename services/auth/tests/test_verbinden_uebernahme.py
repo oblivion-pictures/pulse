@@ -765,6 +765,24 @@ async def test_vorgang_meldet_vergebene_adresse(
     assert (await _ansehen(client, b, verwaist)).json()["adresse_vergeben"] is True
 
 
+async def test_vorgang_meldet_gesperrt_geloeschte_adresse_nicht_als_vergeben(
+    client, session_factory, mit_redis, nachweis, uhr
+):
+    """Eine gelöschte Zeile mit echter Adresse (der Besitzer hat einen gesperrten
+    Server gelöscht, ``geloeschte_adresse.py``) ist gesperrt, nicht vergeben: die
+    Warnung "Adresse gehört einem anderen Konto" wäre falsch. Das Verbinden
+    antwortet dort 403 ``instance_suspended`` (``test_verbinden_routen.py``)."""
+    a = await _konto(client, "gesperrtinhaber")
+    b = await _konto(client, "gesperrtinteressent")
+    await _eintrag(session_factory, a)
+    async with session_factory() as s:
+        (await s.get(RegisteredInstance, _ALT)).status = "deleted"
+        await s.commit()
+
+    _, code = await _start(client)
+    assert (await _ansehen(client, b, code)).json()["adresse_vergeben"] is False
+
+
 async def test_widerspruch_nur_in_der_cloud(client, session_factory, monkeypatch):
     import dcc_auth.routes_admin_instances as rai
 

@@ -116,6 +116,32 @@ async def test_gesperrte_instanz_bekommt_kein_ticket(client, session_factory):
 
 
 @pytest.mark.asyncio
+async def test_gesperrt_geloeschte_instanz_bekommt_kein_ticket(client, session_factory):
+    """Löscht der Besitzer eine gesperrte Instanz, trägt die Zeile weiter ihren
+    echten Hostnamen (``geloeschte_adresse.py``) — und wird deshalb gefunden.
+    Nur ``status == "active"`` stellt ein Ticket aus: 404, nicht 403."""
+    from dcc_auth.models_instances import RegisteredInstance, SuspendedInstance
+
+    cookie, user_id = await _reg_and_login(client)
+    await _instanz_anlegen(
+        session_factory, iid=900004, hostname="d.example.com", besitzer=user_id
+    )
+    async with session_factory() as s:
+        (await s.get(RegisteredInstance, 900004)).status = "suspended"
+        s.add(SuspendedInstance(instance_id=900004, reason="Test"))
+        await s.commit()
+    r = await client.delete("/me/instances/900004", headers={"Cookie": cookie})
+    assert r.status_code == 204, r.text
+    async with session_factory() as s:
+        assert (await s.get(RegisteredInstance, 900004)).hostname == "d.example.com"
+
+    r = await client.post(
+        "/me/server-ticket", json={"hostname": "d.example.com"}, headers={"Cookie": cookie}
+    )
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_ratenlimit_greift(client, session_factory, app):
     """Der Schutz sitzt hier, wo der Dienst ohnehin einen Begrenzer fuehrt.
 
