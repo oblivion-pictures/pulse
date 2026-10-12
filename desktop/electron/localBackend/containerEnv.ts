@@ -124,8 +124,9 @@ export function renderContainerEnv(
     `PULSE_CLOUD_CLIENT_ID=${creds.clientId}`,
     `PULSE_CLOUD_CLIENT_SECRET=${creds.clientSecret}`,
     `PULSE_CLOUD_ORIGIN=${creds.cloudOrigin}`,
-    // 10-check will eine nicht-leere Admin-Mail; für App-Hosts ist sie rein
-    // informativ (kein SMTP-Versand nötig) → Platzhalter, wenn keine bekannt.
+    // Für App-Hosts ist die Admin-Mail rein informativ (kein SMTP-Versand
+    // nötig) → Platzhalter, wenn keine bekannt. Der Startcheck verlangt sie seit
+    // Oktober 2026 nicht mehr (10-check-cloud-creds.sh prüft nur PULSE_HOSTNAME).
     `PULSE_ADMIN_EMAIL=${adminEmail ?? `admin@${hostname}`}`,
     // Der Relay terminiert TLS — der Container routet nur HTTP intern.
     'PULSE_TLS_MODE=behind-proxy',

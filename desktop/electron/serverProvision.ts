@@ -222,7 +222,7 @@ export async function provision(
     const list = await holeInstanzen(cloudOrigin, getBearer);
     if (list.status === 0) return { ok: false, error: 'Cloud nicht erreichbar — Internetverbindung?' };
     if (list.status !== 200 || !Array.isArray(list.json)) {
-      return { ok: false, error: `Instanzen nicht ladbar (HTTP ${list.status}). Eingeloggt + freigegeben?` };
+      return { ok: false, error: `Server nicht ladbar (HTTP ${list.status}). Angemeldet?` };
     }
     const { cookie: sessionCookie } = list;
     const liste = list.json as InstanceOut[];
@@ -375,7 +375,7 @@ export async function fetchCloudStatus(
 /** "Server aufgeben": Cloud-Registrierung löschen (Soft-Delete im Backend,
  *  routes_instance_delete.py). Läuft wie provision() über den
  *  pulse_session-Cookie — ohne gültige Session 'unauthorized', damit die UI
- *  auf den Client-Weg (Einstellungen → Meine Instanzen) verweisen kann. */
+ *  auf den Client-Weg („Meine Server“ im Konto-Menü) verweisen kann. */
 export async function deleteInstanceRegistration(
   cloudOrigin: string,
   instanceId: string,
