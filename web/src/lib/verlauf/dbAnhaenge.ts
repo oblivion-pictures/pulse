@@ -10,6 +10,7 @@ import {
   STORE_ANHAENGE,
   STORE_MEDIEN,
   STORE_NACHRICHTEN,
+  medienNeuesteZuerst,
   type AnhangBytes,
   type MedienZeile,
   type Satz
@@ -24,12 +25,14 @@ import { satzAnhangIds } from './satz';
  * neben `verlaufAlleLesen`. Konto-gefiltert wie jeder Lesepfad
  * (`kontoFilter.ts`, fail-closed).
  *
- * Sortierung in JS ueber die Snowflake (Zeitordnung), nicht per
- * Store-Cursor: der Primaerschluessel sortiert nur lexikografisch, und
- * Snowflakes verschiedener Ziffernlaengen (der Generator-Epoch ist jung,
- * die IDs wachsen in die naechste Stelle hinein) wuerden dabei verkehrt
- * herum liegen. ponytail: Voller Scan wie `verlaufAlleLesen` — der Speicher
- * traegt nur Metadaten-Zeilen eines Kontos, keine Bytes.
+ * Sortierung in JS ueber die Snowflake (Zeitordnung,
+ * `schema.ts::medienNeuesteZuerst`, die auch Zeilen ohne gueltige Kennung
+ * ueberspringt), nicht per Store-Cursor: der Primaerschluessel sortiert nur
+ * lexikografisch, und Snowflakes verschiedener Ziffernlaengen (der
+ * Generator-Epoch ist jung, die IDs wachsen in die naechste Stelle hinein)
+ * wuerden dabei verkehrt herum liegen. ponytail: Voller Scan wie
+ * `verlaufAlleLesen` — der Speicher traegt nur Metadaten-Zeilen eines
+ * Kontos, keine Bytes.
  */
 export function medienLesen(kontoId: string): Promise<MedienZeile[]> {
   return mitVerbindung(
@@ -41,8 +44,7 @@ export function medienLesen(kontoId: string): Promise<MedienZeile[]> {
         req.onsuccess = () => {
           const cursor = req.result;
           if (!cursor) {
-            zeilen.sort((a, b) => (BigInt(a.id) > BigInt(b.id) ? -1 : BigInt(a.id) < BigInt(b.id) ? 1 : 0));
-            resolve(zeilen);
+            resolve(medienNeuesteZuerst(zeilen));
             return;
           }
           const zeile = cursor.value as MedienZeile;

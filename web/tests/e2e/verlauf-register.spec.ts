@@ -678,6 +678,28 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     expect(sichtbar(await kanal(page))).toEqual([]);
   });
 
+  test('R6 (dritte Gegenprüfung): der Medien-Index überspringt eine Altzeile ohne Kennung und ordnet nach Zeit', async ({ page }) => {
+    // Bis 2026-10-12 sortierte `medienLesen` mit `BigInt(id)`: die Altzeile
+    // "x" warf, und das Medien-Archiv blieb leer. Die lokale 19-stellige ID
+    // ist älter (2023) als die Snowflake (2026), numerisch aber größer.
+    const lokalAelter = '1700000000000123456';
+    const serverNeuer = String(5000n * 4194304n);
+    const gelesen = await page.evaluate(
+      async ({ kontoId, kanalId, ids }) => {
+        const db = (window as unknown as { __db: Record<string, Function> }).__db;
+        const zeile = (id: string) => ({
+          id, kontoId, kanalId, autorId: kontoId, erstelltAm: '2026-10-12T00:00:00Z',
+          dateiname: null, mime: null, size: 1, verschluesselt: true, hatThumb: false,
+          schluessel: null, laufwerkVerteilt: false
+        });
+        await db.medienSchreiben(ids.map(zeile));
+        return ((await db.medienLesen(kontoId)) as { id: string }[]).map((z) => z.id);
+      },
+      { kontoId: KONTO, kanalId: KANAL, ids: [lokalAelter, 'x', serverNeuer] }
+    );
+    expect(gelesen).toEqual([serverNeuer, lokalAelter]);
+  });
+
   test('Register-Einträge erscheinen in keinem Leseweg', async ({ page }) => {
     await gebundenLoeschen(page, ALICE, [K]);
     const gelesen = await page.evaluate(

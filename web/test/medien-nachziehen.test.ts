@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import { medienNachziehen, zeileAusServerAnhang, type ServerAnhang } from '../src/lib/verlauf/medienNachzug.ts';
-import { medienZeilenAusSatz } from '../src/lib/verlauf/schema.ts';
+import { medienNeuesteZuerst, medienZeilenAusSatz } from '../src/lib/verlauf/schema.ts';
 
 const KONTO = 'konto-1';
 
@@ -202,5 +202,29 @@ describe('Medien-Index aus Satz (Zweit-Schreibweg von verlaufPutSaetze)', () => 
       anhaenge: [{ id: '601', filename: 'x', mime: 'text/plain', size: 1 }]
     };
     assert.deepEqual(medienZeilenAusSatz(satz), []);
+  });
+});
+
+// Gegenprüfung 2026-10-12, R6: `medienLesen` sortierte mit `BigInt(id)`. Eine
+// Altzeile mit der ID "x" warf mitten im Sortieren, und das Medien-Archiv
+// blieb auf Dauer leer; eine lokal vergebene 19-stellige ID stand immer vorn.
+describe('medienNeuesteZuerst', () => {
+  it('überspringt Zeilen ohne gültige Kennung und ordnet nach der eingebetteten Zeit', () => {
+    // Lokale ID: Date.now() = 1700000000000 (2023) + Zufall, numerisch größer
+    // als die Snowflake, aber älter. Snowflake: 5 s nach dem Epoch (2026).
+    const lokalAelter = '1700000000000123456';
+    const serverNeuer = String(5000n * 4194304n);
+    const serverAelter = String(1000n * 4194304n);
+    const aus = medienNeuesteZuerst([
+      { id: serverAelter },
+      { id: 'x' },
+      { id: lokalAelter },
+      { id: '0123' },
+      { id: serverNeuer }
+    ]);
+    assert.deepEqual(
+      aus.map((z) => z.id),
+      [serverNeuer, serverAelter, lokalAelter]
+    );
   });
 });

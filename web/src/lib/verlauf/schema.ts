@@ -7,6 +7,7 @@
  * und ein Fehlgriff dort kostet den Geraeteschluessel und damit die Anmeldung.
  */
 import { istGueltigeKennung } from './identitaet.ts';
+import { vergleicheSnowflakeArtigeId } from '../utils/snowflakeZeit.ts';
 
 export const DB_NAME = 'pulse-verlauf';
 /**
@@ -202,9 +203,9 @@ export type MedienZeile = {
 /** Die Index-Zeilen der Anhaenge EINES Satzes — der Zweit-Schreibweg in
  *  `verlaufPutSaetze` und `verlaufSaetzeErgaenzen`. Reine Rechnung
  *  (Node-testbar). Fail-closed wie `zuSatz`: ein Anhang ohne gueltige
- *  Kennung als `id` wird uebersprungen, statt Muell in den Index zu legen —
- *  `dbAnhaenge.ts::medienLesen` sortiert die Zeilen mit `BigInt` (Gegenpruefung
- *  2026-10-12, Fund 1). Grabstein-Saetze liefern bewusst keine
+ *  Kennung als `id` wird uebersprungen, statt Muell in den Index zu legen
+ *  (Gegenpruefung 2026-10-12, Fund 1; gelesen wird dennoch nachsichtig, s.
+ *  `medienNeuesteZuerst`). Grabstein-Saetze liefern bewusst keine
  *  Zeilen — ein geloeschtes Medium ist keins mehr, und der Server liefert
  *  seine Zeile ebenfalls nicht mehr. */
 export function medienZeilenAusSatz(satz: Satz): MedienZeile[] {
@@ -235,4 +236,20 @@ export function medienZeilenAusSatz(satz: Satz): MedienZeile[] {
     });
   }
   return zeilen;
+}
+
+/**
+ * Die Index-Zeilen für das Medien-Archiv-Blatt (`dbAnhaenge.ts::medienLesen`):
+ * neueste zuerst, und nur Zeilen, deren ID eine Kennung ist (Gegenprüfung
+ * 2026-10-12, R6). Bis dahin sortierte `medienLesen` mit `BigInt(id)`: eine
+ * Altzeile von vor der Prüfung beim Schreiben (ID `"x"`) warf mitten im
+ * Sortieren, und das Blatt blieb auf Dauer leer. Und ein roher Zahlvergleich
+ * ordnet eine lokal vergebene 19-stellige ID immer vor eine Server-Snowflake,
+ * egal wann sie entstand; `vergleicheSnowflakeArtigeId` vergleicht die
+ * eingebettete Zeit. Reine Rechnung (Node-testbar).
+ */
+export function medienNeuesteZuerst<Z extends { id: string }>(zeilen: Z[]): Z[] {
+  return zeilen
+    .filter((zeile) => istGueltigeKennung(zeile.id))
+    .sort((a, b) => vergleicheSnowflakeArtigeId(b.id, a.id));
 }
