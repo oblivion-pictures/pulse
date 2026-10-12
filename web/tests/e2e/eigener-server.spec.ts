@@ -140,6 +140,11 @@ test.describe('Eigenen Server einrichten', () => {
     await expect(gehostet).toHaveAttribute('role', 'group');
     await expect(gehostet).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByTestId('self-host-application')).toHaveCount(0);
+    // Am Rechner die schlanke Gestalt (`desktop:` greift auch im Portal); am
+    // Finger sind es 48 dp, s. die Tests unten.
+    for (const id of ['eigener-server-schliessen', 'self-host-install-copy']) {
+      expect((await dialog.getByTestId(id).boundingBox())!.height).toBeLessThan(48);
+    }
 
     // Schließen per Knopf IM Dialog: belegt, dass der aus dem Menü geöffnete
     // Dialog bedienbar ist (bits-ui macht sonst den Inhalt still inert).
