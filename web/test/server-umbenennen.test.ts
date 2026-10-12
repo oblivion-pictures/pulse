@@ -110,6 +110,19 @@ test('Server nennt dasselbe wie die Cloud, oder die Cloud kannte keinen Namen: n
   assert.equal(nameVomServer('X').name_ueberholt, null);
 });
 
+test('Neuverbinden mit unverändertem Namen behält die Marke, die Cloud-Kopie springt nicht zurück', () => {
+  // Umbenannt A → B, die Meldung des Servers an die Cloud steht noch aus.
+  const nachUmbenennen = nameVomServer('B', { anzeigename: 'A' });
+  assert.equal(nachUmbenennen.name_ueberholt, 'A');
+  // Neuverbinden: der ready-Rahmen nennt wieder B.
+  const nachReady = nameVomServer('B', nachUmbenennen);
+  assert.equal(nachReady.name_ueberholt, 'A');
+  // Der nächste Cloud-Abgleich meldet noch A — B bleibt stehen.
+  assert.deepEqual(cloudNameAnwenden(nachReady, 'A'), { anzeigename: 'B', name_ueberholt: 'A' });
+  // Hat die Cloud aufgeholt, fällt die Marke weg.
+  assert.deepEqual(cloudNameAnwenden(nachReady, 'B'), { anzeigename: 'B', name_ueberholt: null });
+});
+
 test('Server nennt keinen Namen (leer/zurückgesetzt): zurück zur Adresse', () => {
   for (const leer of ['', '   ', null, undefined]) {
     const alt = heim({ server_name: 'Alt', anzeigename: 'Alt' });
