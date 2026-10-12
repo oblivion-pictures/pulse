@@ -59,7 +59,7 @@ pruefe_port 8004 "media-svc"
 pruefe_port 5432 "Postgres"
 pruefe_port 6379 "Redis"
 pruefe_port 7880 "LiveKit"
-pruefe_port 9000 "MinIO"
+pruefe_port 9000 "Garage (S3)"
 
 # ── 2. Erststart ───────────────────────────────────────────────────────────
 titel "Erststart"
