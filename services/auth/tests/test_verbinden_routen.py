@@ -597,12 +597,18 @@ async def test_gesperrt_geloeschte_adresse_bleibt_gesperrt_bis_zur_freigabe(
 
     r = await client.delete("/me/instances/962210", headers={"Cookie": besitzer["cookie"]})
     assert r.status_code == 204, r.text
-    code = (await _start(client)).json()["code"]
 
+    # Die Ablehnung ist endgültig (der Vorgang endet, pulse-connect holt den
+    # Grund ab); jeder Versuch beginnt deshalb mit einem frischen Code, so wie
+    # ein neuer pulse-connect-Lauf.
     for konto in (besitzer, fremd):
+        code = (await _start(client)).json()["code"]
         r = await _entscheiden(client, konto, code, "verbinden")
         assert r.status_code == 403, r.text
         assert r.json()["detail"] == "instance_suspended"
+        r = await _abholen(client)
+        assert r.status_code == 403, r.text
+        assert r.json()["detail"] == {"code": "instance_suspended"}
     (eintrag,) = await _eintraege(session_factory)
     assert (eintrag.id, eintrag.status) == (962210, "deleted")
 
@@ -611,6 +617,7 @@ async def test_gesperrt_geloeschte_adresse_bleibt_gesperrt_bis_zur_freigabe(
     )
     assert r.status_code == 204, r.text
 
+    code = (await _start(client)).json()["code"]
     r = await _entscheiden(client, fremd, code, "verbinden")
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "verbunden"
