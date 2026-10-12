@@ -106,6 +106,22 @@ export function verlaufNachrichtGeloescht(
  * zum Absturz (Gegenprüfung 2026-10-12, Fund 1). Die Leser verwerfen sie
  * schon vorher; dies ist die Wand an der Stelle, die dauerhaft schreibt.
  *
+ * **Ohne `istLokalerKanal`, mit Absicht** (Gegenprüfung 2026-10-12, Fund 6).
+ * Die Abfrage hängt an den Stores im Speicher (`kanalArt.ts`), und die sind
+ * nach einem Neuladen beim ersten Postfach-Zyklus nicht unbedingt gefüllt.
+ * Für einen „noch unbekannten" Kanal gab die Funktion deshalb leer zurück,
+ * ohne Register-Eintrag und ohne Markieren, und der Postfach-Zyklus quittierte
+ * den Lösch-Frame trotzdem (`krypto/zyklusAuswerten.ts`): die Nachricht, die
+ * längst in der Datenbank lag, blieb stehen, ebenso eine Kopie, die später
+ * kam. Aus demselben Grund fragt `index.ts::verlaufSchonAbgelegt` die
+ * Datenbank direkt. Den Frame nicht zu quittieren wäre die andere Lösung,
+ * ließe ihn aber bei einem Kanal, den das Gerät nie kennen wird (etwa eine
+ * verlassene Gruppe), bis zur Server-Frist liegen. Als Schutz vor fremden
+ * Kanalarten wird die Abfrage hier nicht gebraucht: beide Aufrufer, der
+ * Postfach-Zyklus und der Archiv-Leser, sehen nur Kanäle, die lokal geführt
+ * werden können. Das Postfach gibt es für Direktnachrichten, private Gruppen
+ * und Ablage-Kanäle, das Archiv nur für Direktnachrichten und private Gruppen.
+ *
  * Ergebnis: die lokalen IDs der markierten Sätze — der Aufrufer nimmt sie
  * aus der Anzeige. Leer bei jedem Fehlschlag (gemeldet bei `verlaufZustand`).
  */
@@ -114,7 +130,7 @@ export async function verlaufGebundenGeloescht(
   kennung: string,
   autorId: string
 ): Promise<string[]> {
-  if (!istLokalerKanal(kanalId) || !istGueltigeKennung(kennung)) return [];
+  if (!istGueltigeKennung(kennung)) return [];
   const kontoId = aktuellesKonto();
   if (kontoId === null) return [];
   try {

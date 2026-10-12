@@ -145,23 +145,27 @@ function sichtbar(saetze: Satz[]): string[] {
 
 /** Meldet das Konto KONTO an und führt KANAL als Direktnachricht mit Bob —
  *  ohne Server, nur die beiden Stores, an denen `verlauf/loeschen.ts` hängt
- *  (`aktuellesKonto`, `istLokalerKanal`). Lädt `loeschen.ts` dazu. */
-async function alsKontoImGespraech(page: Page): Promise<void> {
+ *  (`aktuellesKonto`, `istLokalerKanal`). Lädt `loeschen.ts` dazu. Mit
+ *  `gespraech: false` bleibt der Kanal unbekannt — wie nach einem Neuladen,
+ *  bevor die Gesprächsliste da ist. */
+async function alsKontoImGespraech(page: Page, gespraech = true): Promise<void> {
   await page.evaluate(
-    async ({ kontoId, kanalId, bob }) => {
+    async ({ kontoId, kanalId, bob, gespraech }) => {
       const w = window as unknown as Record<string, unknown>;
       // @ts-expect-error - Vite-served path resolved at browser runtime
       const { auth } = await import('/src/lib/stores/auth.svelte.ts');
       // @ts-expect-error - Vite-served path resolved at browser runtime
       const { directMessages } = await import('/src/lib/stores/directMessages.svelte.ts');
       auth.user = { id: kontoId };
-      directMessages.seed([
-        { id: kanalId, other_user_id: bob, last_message_id: null, created_at: '2026-10-12T00:00:00Z' }
-      ]);
+      if (gespraech) {
+        directMessages.seed([
+          { id: kanalId, other_user_id: bob, last_message_id: null, created_at: '2026-10-12T00:00:00Z' }
+        ]);
+      }
       // @ts-expect-error - Vite-served path resolved at browser runtime
       w.__loeschen = await import('/src/lib/verlauf/loeschen.ts');
     },
-    { kontoId: KONTO, kanalId: KANAL, bob: BOB }
+    { kontoId: KONTO, kanalId: KANAL, bob: BOB, gespraech }
   );
 }
 
@@ -603,6 +607,20 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     await ablegen(page, 'archiv', [ungepruefteKopie]);
     [satz] = await kanal(page);
     expect(satz).toMatchObject({ inhalt: 'echt', anhaenge: [] });
+  });
+
+  test('Fund 6 (zweite Gegenprüfung): ein Lösch-Frame für einen noch unbekannten Kanal wirkt trotzdem', async ({ page }) => {
+    // Nach einem Neuladen liegt die Nachricht in der Datenbank, die
+    // Gesprächsliste ist aber noch nicht da. Der Postfach-Zyklus quittiert
+    // den Frame trotzdem; bis 2026-10-12 blieb er dabei ohne Register-Eintrag
+    // und ohne Markieren.
+    await alsKontoImGespraech(page, false);
+    await ablegen(page, 'put', [{ id: D, autor: ALICE, kryptoId: K, verschluesselt: true }]);
+    expect(await gebundenGeloescht(page, K, ALICE)).toEqual([D]);
+    expect(sichtbar(await kanal(page))).toEqual([]);
+    // Und eine Kopie, die erst danach kommt, landet als Grabstein.
+    await ablegen(page, 'archiv', [{ id: K, autor: ALICE, kryptoId: K }]);
+    expect(sichtbar(await kanal(page))).toEqual([]);
   });
 
   test('Register-Einträge erscheinen in keinem Leseweg', async ({ page }) => {
