@@ -81,6 +81,8 @@ interface Optionen {
   alteAdresse?: string;
   /** Stehen die Verbindungswerte in der pulse.env (Bestandsserver)? */
   bestand?: boolean;
+  /** Ab dem wievielten Aufruf meldet pulse-health die Dienste als bereit? Vorgabe: ab dem ersten. */
+  diensteAbVersuch?: number;
 }
 
 interface Ergebnis {
@@ -95,6 +97,7 @@ function umgebung(optionen: Optionen) {
   const dir = mkdtempSync(join(tmpdir(), 'pulse-verbinden-'));
   const protokoll = join(dir, 'docker.log');
   writeFileSync(protokoll, '');
+  const zaehler = join(dir, 'pulse-health.n');
   const terminalPfad = join(dir, 'terminal');
   if (optionen.terminal !== false) writeFileSync(terminalPfad, '');
   writeFileSync(
@@ -106,6 +109,10 @@ case "$*" in
     optionen.serverInfo === null ? 'exit 7' : `printf '%s' '${optionen.serverInfo}'`
   } ;;
   *pulse-connect*) exit ${optionen.connectExit ?? 0} ;;
+  *pulse-health*)
+    n=$(( $(cat "${zaehler}" 2>/dev/null || echo 0) + 1 )); echo "$n" > "${zaehler}"
+    [ "$n" -ge ${optionen.diensteAbVersuch ?? 1} ] && exit 0
+    exit 1 ;;
 esac
 exit 0
 `,
@@ -279,6 +286,7 @@ pruefung_von_aussen() { return 1; }
 ${funktion(quelle, 'server_info_innen')}
 ${funktion(quelle, 'ist_verbunden')}
 ${funktion(quelle, 'verbinden_spaeter')}
+${funktion(quelle, 'warte_auf_dienste')}
 ${funktion(quelle, 'server_verbinden')}
 ${bereich(quelle, 'server_verbinden', 'log "Done."')}
 `;
@@ -289,6 +297,79 @@ ${bereich(quelle, 'server_verbinden', 'log "Done."')}
   assert.match(ausgabe, HINWEIS);
   assert.match(ausgabe, /LOG Done\./);
   assert.doesNotMatch(ausgabe, /Checking your server from the outside/, 'Cloud-Prüfung ohne Verbindung');
+  assert.ok(
+    !readFileSync(u.protokoll, 'utf8').includes('pulse-health'),
+    'ohne Verbindung gibt es keine Prüfung, also auch nichts abzuwarten'
+  );
+});
+
+/**
+ * Hauptablauf ab Schritt 8 bis „Done.": `warte_auf_start` und die Prüfung aus
+ * der Cloud schreiben sich ins docker-Protokoll, damit die Reihenfolge prüfbar ist.
+ */
+function hauptablauf(optionen: Optionen, versuche = 1) {
+  const quelle = readFileSync(SKRIPT, 'utf8');
+  const u = umgebung(optionen);
+  const skript = `${VORSPANN}
+PULSE_INSTALL_WARTE_VERSUCHE=${versuche}
+TTY_GERAET="${u.terminalPfad}"
+ALTE_ADRESSE=""
+BESTAND_ZEILEN=""
+warte_auf_start() { echo "__warte_auf_start__" >> "${u.protokoll}"; }
+pruefung_von_aussen() { echo "__pruefung_von_aussen__" >> "${u.protokoll}"; }
+${funktion(quelle, 'server_info_innen')}
+${funktion(quelle, 'ist_verbunden')}
+${funktion(quelle, 'verbinden_spaeter')}
+${funktion(quelle, 'warte_auf_dienste')}
+${funktion(quelle, 'server_verbinden')}
+${bereich(quelle, 'server_verbinden', 'log "Done."')}
+`;
+  const ausgabe = execFileSync('bash', ['-c', skript], {
+    env: { ...process.env, PATH: `${u.dir}:${process.env.PATH}` },
+    encoding: 'utf8'
+  });
+  const aufrufe = readFileSync(u.protokoll, 'utf8').split('\n').filter(Boolean);
+  const stelle = (anfang: string) => aufrufe.findIndex((z) => z.startsWith(anfang));
+  return { ausgabe, aufrufe, stelle };
+}
+
+test('nach dem Neustart wartet der Installer auf die Dienste, bevor er von aussen prüft', () => {
+  // Ohne dieses Warten traf die Prüfung aus der Cloud auf einen Server, dessen
+  // HTTP-Dienste noch nicht antworteten (Probe auf dem Hetzner-Rechner).
+  const e = hauptablauf({ serverInfo: UNVERBUNDEN, connectExit: 0 });
+  const neustart = e.stelle('restart pulse ');
+  const gestartet = e.stelle('__warte_auf_start__');
+  const gesund = e.stelle('exec pulse pulse-health ');
+  const pruefung = e.stelle('__pruefung_von_aussen__');
+  assert.notEqual(neustart, -1, `kein Neustart: ${e.aufrufe.join('\n')}`);
+  assert.notEqual(gesund, -1, `pulse-health nicht gefragt: ${e.aufrufe.join('\n')}`);
+  assert.notEqual(pruefung, -1, 'keine Prüfung von aussen');
+  assert.ok(neustart < gestartet && gestartet < gesund && gesund < pruefung, e.aufrufe.join('\n'));
+  assert.doesNotMatch(e.ausgabe, /has not finished starting/);
+  assert.match(e.ausgabe, /LOG Done\./);
+});
+
+test('meldet pulse-health erst beim zweiten Mal bereit, wird erneut gefragt und nicht gewarnt', () => {
+  const e = hauptablauf({ serverInfo: UNVERBUNDEN, connectExit: 0, diensteAbVersuch: 2 }, 3);
+  assert.equal(e.aufrufe.filter((z) => z.startsWith('exec pulse pulse-health ')).length, 2);
+  assert.doesNotMatch(e.ausgabe, /has not finished starting/);
+  assert.ok(e.stelle('__pruefung_von_aussen__') !== -1, 'keine Prüfung von aussen');
+});
+
+test('kommen die Dienste nicht hoch: Warnung mit pulse-doctor, die Prüfung läuft trotzdem, Exit 0', () => {
+  const e = hauptablauf({ serverInfo: UNVERBUNDEN, connectExit: 0, diensteAbVersuch: 99 }, 2);
+  assert.equal(e.aufrufe.filter((z) => z.startsWith('exec pulse pulse-health ')).length, 2);
+  assert.match(e.ausgabe, /^WARN Pulse has not finished starting all its services/m);
+  assert.match(e.ausgabe, /docker exec pulse pulse-doctor/);
+  assert.ok(e.stelle('__pruefung_von_aussen__') !== -1, 'keine Prüfung von aussen');
+  assert.match(e.ausgabe, /LOG Done\./);
+});
+
+test('ein schon verbundener Server wird vor der Prüfung ebenso abgewartet, ohne Neustart', () => {
+  const e = hauptablauf({ serverInfo: VERBUNDEN });
+  assert.equal(e.stelle('restart pulse '), -1, 'Neustart ohne neues Verbinden');
+  assert.ok(e.stelle('exec pulse pulse-health ') !== -1, e.aufrufe.join('\n'));
+  assert.ok(e.stelle('exec pulse pulse-health ') < e.stelle('__pruefung_von_aussen__'));
 });
 
 test('die Prüfung aus der Cloud liest die Zugangsdaten aus dem Volumen und gibt das Secret nie auf der Befehlszeile weiter', () => {

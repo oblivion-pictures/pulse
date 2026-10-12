@@ -1283,6 +1283,24 @@ server_info_innen() {
   return 1
 }
 
+# Antworten die Dienste? „startup complete“ meldet nur das Ende der
+# Startskripte, die Dienste kommen erst danach hoch. Gebraucht vor der Prüfung
+# aus der Cloud (Schritt 9): direkt nach dem Neustart in server_verbinden traf
+# sie sonst auf einen Server, dessen HTTP-Dienste noch nicht antworteten — sechs
+# Kreuze für einen gesunden Server (Probe auf dem Hetzner-Rechner, 2026-10-12:
+# zehn Sekunden zwischen „fertig“ und grünem pulse-health, danach alles grün).
+# pulse-health ist der HEALTHCHECK des Bildes: den chat-gateway über HTTP, die
+# übrigen Dienste über ihre Ports. Den internen Caddy fragt er nicht ab; bei
+# der Probe lauschte der zu dem Zeitpunkt schon, garantiert ist das nicht.
+warte_auf_dienste() {
+  local i
+  for i in $(seq 1 "${PULSE_INSTALL_WARTE_VERSUCHE:-20}"); do
+    docker exec "$CONTAINER" pulse-health >/dev/null 2>&1 && return 0
+    sleep "${PULSE_INSTALL_WARTE_INTERVALL:-3}"
+  done
+  return 1
+}
+
 server_info_aussen() {
   local i
   for i in $(seq 1 "${PULSE_INSTALL_WARTE_VERSUCHE:-20}"); do
@@ -1683,8 +1701,13 @@ fi
 server_verbinden
 
 # 9) Die Prüfung aus der Cloud — nur ein verbundener Server hat die
-# Zugangsdaten, mit denen sie sich ausweist.
+# Zugangsdaten, mit denen sie sich ausweist. Vorher auf die Dienste warten
+# (warte_auf_dienste), an dieser einen Stelle für alle Wege hierher.
 if [ -n "$VERBUNDEN" ]; then
+  if ! warte_auf_dienste; then
+    warn "Pulse has not finished starting all its services, or one of them failed."
+    warn "The check from the outside may report problems because of that. To see which part:  docker exec ${CONTAINER} pulse-doctor"
+  fi
   log "Checking your server from the outside — this is what your users will see:"
   if ! pruefung_von_aussen; then
     warn "Could not run the external check right now."
