@@ -105,8 +105,9 @@
  * loescht sie —, und der Klumpen selbst faellt, sobald die letzte Zustellung
  * quittiert ist (`postfach_pflege.py::sweep_verwaiste_anhaenge`). Wer erst
  * quittiert und dann laedt, laedt ins Leere, endgueltig. `anhaengeHolen`
- * laeuft deshalb innerhalb desselben `quittierbareIds`-Durchgangs, VOR
- * `verlaufSpeichernPflicht` und damit lange vor der Quittung.
+ * laeuft deshalb innerhalb desselben `quittierbareIds`-Durchgangs
+ * (`zyklusAuswerten.ts`), VOR `verlaufSpeichernPflicht` und damit lange vor
+ * der Quittung.
  *
  * **Private Gruppen (Etappe G2) bringen zwei Abzweigungen mit**, beide unten
  * in `zustellungOeffnen` und beide hinter `PRIVATE_GRUPPEN_ENABLED`: eine
@@ -126,7 +127,7 @@ import {
   verlaufBearbeitungAnwenden,
   verlaufReaktionAnwenden
 } from '../verlauf';
-import { frameZiele, lokaleIdsFuerLoeschung } from './loeschZiel';
+import { zyklusAuswerten } from './zyklusAuswerten';
 import { messages } from '../stores/messages.svelte';
 import { auth } from '../stores/auth.svelte';
 import { verlaufZustand } from '../verlauf/zustand.svelte';
@@ -135,7 +136,6 @@ import { serversStore } from '../api/servers.svelte';
 import { kryptoAccountLaden } from './account.svelte';
 import { geraeteKennung } from './geraeteKennung';
 import { anhaengeHolen } from './anhangHolen';
-import { quittierbareIds, type KanalGruppe } from './quittierbareIds';
 import { zustellstaendeAus } from './zustellstand';
 import { verarbeiteMitWiederherstellung } from './postfachSchleife';
 import { KontoSicherungFehlgeschlagen, zustellungOeffnen } from './zustellungOeffnen';
@@ -153,26 +153,6 @@ import { anrufe } from '../anrufe/anruf.svelte';
 // FIX 4 bei einem anderen Agenten in Arbeit und ist erst hier nachgezogen.
 function cloudRoute(): { serverId?: string } {
   return { serverId: serversStore.cloudId() };
-}
-
-/**
- * Welche LOKALEN Sätze eine kanonische Frame-ID trifft (Lösch-, Reaktions-
- * und Bearbeitungs-Umschlag): die geladene Anzeige UND der Verlauf — die
- * Nachricht kann älter sein als das, was gerade geladen ist (Regel in
- * `loeschZiel.ts::frameZiele`). Leer = auf diesem Gerät nichts, was dieser
- * Frame treffen darf.
- */
-function lokaleZielIds(
-  channelId: string,
-  kanonischeId: string,
-  absenderUserId?: string
-): Promise<string[]> {
-  return frameZiele(
-    kanonischeId,
-    messages.for(channelId),
-    () => verlaufLokaleIdsFuerFrame(channelId, kanonischeId, absenderUserId),
-    absenderUserId
-  );
 }
 
 async function postfachZyklus(): Promise<Message[]> {
@@ -222,127 +202,27 @@ async function postfachZyklus(): Promise<Message[]> {
     }
   );
 
-  const geoeffnet: Message[] = [];
-  // Zwei Faelle, die direkt quittierbar sind — ohne Umweg ueber
-  // `verlaufSpeichernPflicht` (es gibt nichts abzulegen) und OHNE Eintrag in
-  // `geoeffnet` (sonst wuerde `ws/handlers/chat.ts` sie als neu/ungelesen
-  // behandeln): eine Zustellung, deren Klartext schon vor diesem Zyklus
-  // abgelegt war (FIX 3, Runde 3), und ein Gruppen-Verteilschluessel, der
-  // seine Sitzung bereits angelegt hat (Etappe G2).
-  const schonQuittierbar: string[] = [];
-  // `verlaufSpeichernPflicht` nimmt einen Kanal je Aufruf — gleich beim
-  // Oeffnen nach Kanal gruppieren, eine Abholung kann mehrere Gespraeche
-  // mitbringen. `nachricht.id` ist die Zustellungs-ID (`id: z.id` in
-  // `zustellungOeffnen`), ein separates Nachschlagen der Zustellung entfaellt.
-  const nachKanal = new Map<string, KanalGruppe>();
-
-  for (const ergebnis of ergebnisse) {
-    if (!ergebnis) continue;
-    if (ergebnis.art === 'loeschung') {
-      // Lösch-Frame (2026-09-02): lokal Grabstein setzen (zusammen mit dem
-      // Sicherungs-Grabstein, `verlauf/loeschen.ts`) und aus der Anzeige
-      // nehmen — nichts abzulegen, direkt quittierbar.
-      //
-      // Der Frame nennt die ABSENDER-ID; hier liegt die Nachricht unter der
-      // Zustellungs-ID mit der Absender-ID als `krypto_id` (s.
-      // `loeschZiel.ts::trifftFrame`) — mit Absender-Bindung: nur der
-      // Verfasser darf seine Sätze löschen (Bughunt 2026-09-23). Ohne
-      // Treffer wird NICHTS markiert: bis 2026-10-11 ging der Grabstein dann
-      // auf die Frame-ID selbst, und genau so löschte ein fremder Frame die
-      // eigene Nachricht des Empfängers, die bei ihm unter dieser ID liegt
-      // (Begründung in `loeschZiel.ts::frameZiele`). Die Löschung geht
-      // trotzdem ins Grabstein-Register
-      // (`verlauf/grabsteinRegister.ts`), gebunden an den Absender: eine
-      // Kopie, die erst danach ankommt (Archiv, Sicherung, Kopplung, eine
-      // spätere Zustellung), landet als Grabstein. Gesucht, eingetragen und
-      // markiert wird in EINER Transaktion (`verlaufGebundenGeloescht`).
-      const { channelId, nachrichtId, absenderUserId } = ergebnis;
-      const ziele = new Set([
-        ...lokaleIdsFuerLoeschung(nachrichtId, messages.for(channelId), absenderUserId),
-        ...(await verlaufGebundenGeloescht(channelId, nachrichtId, absenderUserId))
-      ]);
-      for (const lokaleId of ziele) messages.remove(channelId, lokaleId);
-      schonQuittierbar.push(ergebnis.id);
-      continue;
-    }
-    if (ergebnis.art === 'reaktion') {
-      // Reaktions-Umschlag (P1.5): am Verlaufs-Satz anwenden, die Anzeige
-      // nachziehen, direkt quittieren — nichts abzulegen. Ein unbekanntes
-      // Ziel (Nachricht nie hier angekommen) bleibt wirkungslos und wird
-      // trotzdem quittiert, aus demselben Grund wie beim Lösch-Frame.
-      for (const lokaleId of await lokaleZielIds(ergebnis.channelId, ergebnis.ziel)) {
-        const reactions = await verlaufReaktionAnwenden(
-          ergebnis.channelId,
-          lokaleId,
-          ergebnis.autorId,
-          ergebnis.emoji,
-          ergebnis.entfernen
-        );
-        if (reactions) messages.setReactions(ergebnis.channelId, lokaleId, reactions);
-      }
-      schonQuittierbar.push(ergebnis.id);
-      continue;
-    }
-    if (ergebnis.art === 'bearbeitung') {
-      // Bearbeitungs-Umschlag (P1.5 Teil 2): Text der Ziel-Nachricht
-      // ersetzen, Anzeige nachziehen, direkt quittieren — nichts abzulegen.
-      // Unbekanntes Ziel bleibt wirkungslos und wird trotzdem quittiert.
-      // ponytail: zwei Frames auf dasselbe Ziel wenden last-write-wins an —
-      // same-cycle ist die Reihenfolge garantiert, cross-cycle sortiert der
-      // Server; ein bearbeitetAm-Vergleich waere der Ausbau, falls je
-      // ueberholende Frames beobachtet werden.
-      //
-      // Mit Absender-Bindung wie beim Lösch-Frame (2026-10-12): ohne sie
-      // schrieb der Gesprächspartner den Text MEINER eigenen Nachricht auf
-      // meinem Gerät um — er kennt ihre ID, bei mir ist sie die lokale `id`
-      // — und die Anzeige schrieb mir Worte zu, die ich nie geschrieben habe.
-      const ziele = await lokaleZielIds(ergebnis.channelId, ergebnis.ziel, ergebnis.autorId);
-      for (const lokaleId of ziele) {
-        const bearbeitetAm = new Date().toISOString();
-        if (await verlaufBearbeitungAnwenden(ergebnis.channelId, lokaleId, ergebnis.inhalt, bearbeitetAm)) {
-          messages.bearbeiteInhalt(ergebnis.channelId, lokaleId, ergebnis.inhalt, bearbeitetAm);
-        }
-      }
-      schonQuittierbar.push(ergebnis.id);
-      continue;
-    }
-    if (ergebnis.art === 'anrufSchluessel') {
-      // Anruf-Schlüssel-Frame (E2EE-Anrufe): nur im Anruf-Store merken
-      // (Arbeitsspeicher, nichts im Verlauf) — direkt quittierbar. Ein
-      // unbeteiligtes Gerät (eigenes Zweitgerät, Anruf längst vorbei) legt
-      // den Schlüssel ebenso still ab; der Store räumt beim Anruf-Ende auf.
-      anrufe.schluesselEmpfangen(ergebnis.anrufId, ergebnis.schluessel);
-      schonQuittierbar.push(ergebnis.id);
-      continue;
-    }
-    if (ergebnis.art === 'schonAbgelegt' || ergebnis.art === 'ohneAblage') {
-      schonQuittierbar.push(ergebnis.id);
-      continue;
-    }
-    const nachricht = ergebnis.nachricht;
-    geoeffnet.push(nachricht);
-    const gruppe = nachKanal.get(nachricht.channel_id);
-    if (gruppe) {
-      gruppe.nachrichten.push(nachricht);
-      gruppe.ids.push(nachricht.id);
-    } else {
-      nachKanal.set(nachricht.channel_id, { nachrichten: [nachricht], ids: [nachricht.id] });
-    }
-  }
-
-  const quittierbar = [
-    ...(await quittierbareIds(
-      nachKanal,
-      async (kanalId, nachrichten) => {
-        // Reihenfolge, s. Modulkopf „Anhaenge": ERST die Bytes holen, DANN
-        // ablegen, und quittiert wird erst durch `quittierbareIds` danach.
-        await anhaengeHolen(kanalId, nachrichten as Message[]);
-        return verlaufSpeichernPflicht(kanalId, nachrichten as Message[]);
-      },
-      (err) => verlaufZustand.melde(err)
-    )),
-    ...schonQuittierbar
-  ];
+  // Ablegen, DANN die Aktions-Frames (Fund 3 der Gegenprüfung 2026-10-12,
+  // Begründung in `zyklusAuswerten.ts`).
+  const { geoeffnet, anzuzeigen, quittierbar } = await zyklusAuswerten(ergebnisse, {
+    ablegen: async (kanalId, nachrichten) => {
+      // Reihenfolge, s. Modulkopf „Anhaenge": ERST die Bytes holen, DANN
+      // ablegen, und quittiert wird erst danach.
+      await anhaengeHolen(kanalId, nachrichten);
+      return verlaufSpeichernPflicht(kanalId, nachrichten);
+    },
+    meldeFehler: (err) => verlaufZustand.melde(err),
+    geladen: (kanalId) => messages.for(kanalId),
+    imVerlauf: verlaufLokaleIdsFuerFrame,
+    gebundenLoeschen: verlaufGebundenGeloescht,
+    reaktionAnwenden: verlaufReaktionAnwenden,
+    bearbeitungAnwenden: verlaufBearbeitungAnwenden,
+    anzeigeEntfernen: (kanalId, id) => messages.remove(kanalId, id),
+    anzeigeReaktionen: (kanalId, id, r) => messages.setReactions(kanalId, id, r),
+    anzeigeInhalt: (kanalId, id, inhalt, am) => messages.bearbeiteInhalt(kanalId, id, inhalt, am),
+    anrufSchluessel: (anrufId, schluessel) => anrufe.schluesselEmpfangen(anrufId, schluessel),
+    jetzt: () => new Date().toISOString()
+  });
 
   if (quittierbar.length > 0) {
     // ERST JETZT quittieren, s. Modulkopf — und mit der Quittung den
@@ -364,7 +244,7 @@ async function postfachZyklus(): Promise<Message[]> {
   // `fuelleEinmalschluesselNach`).
   await fuelleEinmalschluesselNach();
 
-  return geoeffnet;
+  return anzuzeigen;
 }
 
 /**
