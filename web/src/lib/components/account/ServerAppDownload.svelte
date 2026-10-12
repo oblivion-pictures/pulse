@@ -33,10 +33,11 @@
   // Erkannte Plattform zuerst; ohne Signal alle drei (User wählt selbst).
   const showWindows = $derived(isWindows());
   const showMac = $derived(!showWindows && isMac());
-  const showFlatpak = $derived(!showWindows && !showMac);
+  // Nur bei erkanntem Linux allein — sonst stünde der Linux-Knopf bei
+  // unbekannter Plattform zweimal da (einzeln UND in der Dreierreihe).
+  const showFlatpak = $derived(!showWindows && !showMac && isLinux());
   const showAll = $derived(!showWindows && !showMac && !isLinux());
 
-  const HINT = m.server_app_download_linux_hint();
 </script>
 
 <section class="flex flex-col gap-4" data-testid="server-app-download">
@@ -46,7 +47,7 @@
         <DownloadIcon class="size-4" />
         {m.server_app_download_windows_btn()}
       </a>
-      <p class="text-text-muted text-xs">{HINT}</p>
+      <p class="text-text-muted text-xs">{m.server_app_download_windows_hint()}</p>
     </div>
   {:else if showMac}
     <div class="flex flex-col gap-2">
@@ -54,7 +55,7 @@
         <DownloadIcon class="size-4" />
         {m.server_app_download_mac_btn()}
       </a>
-      <p class="text-text-muted text-xs">{HINT}</p>
+      <p class="text-text-muted text-xs">{m.server_app_download_mac_hint()}</p>
     </div>
   {:else if showFlatpak}
     <div class="flex flex-col gap-2">
@@ -62,7 +63,7 @@
         <DownloadIcon class="size-4" />
         {m.server_app_download_linux_btn()}
       </a>
-      <p class="text-text-muted text-xs">{HINT}</p>
+      <p class="text-text-muted text-xs">{m.server_app_download_linux_hint()}</p>
     </div>
   {/if}
 
@@ -80,7 +81,6 @@
         <DownloadIcon class="size-4" />
         {m.server_app_download_linux_btn()}
       </a>
-      <p class="text-text-muted text-xs">{HINT}</p>
     </div>
   {/if}
 </section>
