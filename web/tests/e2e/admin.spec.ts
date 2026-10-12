@@ -284,36 +284,7 @@ test.describe.serial('admin-panel E2E', () => {
   });
 
   test('Nutzerliste: „Darf Server verbinden“ statt Hosting-Schalter', async () => {
-    // Das Feld `server_verbinden_gesperrt` kommt aus Etappe 1 (Cloud-Routen), die
-    // auf diesem Zweig noch nicht liegt: das Backend liefert es hier weder in
-    // der Liste noch im PATCH mit und lässt es im PATCH fallen. Beide Antworten
-    // kommen deshalb weiter vom echten Backend (`route.fetch()`); NUR ein
-    // FEHLENDES Feld wird ergänzt, und zwar aus dem, was die Oberfläche gesendet
-    // hat. Sobald Etappe 1 im Baum ist, fehlt nichts mehr, die Ergänzung greift
-    // nicht, und der Test prüft das echte Verhalten — dann darf der Block samt
-    // `unroute` entfallen.
-    const gesperrt = new Map<string, boolean>();
-    let patchBody: Record<string, unknown> | null = null;
-    const liste = /\/api\/auth\/admin\/users\?/;
     const einzeln = /\/api\/auth\/admin\/users\/[^/?]+$/;
-    const ergaenzt = (n: Record<string, unknown>) =>
-      'server_verbinden_gesperrt' in n
-        ? n
-        : { ...n, server_verbinden_gesperrt: gesperrt.get(String(n.id)) ?? false };
-    await page.route(liste, async (route) => {
-      const antwort = await route.fetch();
-      const nutzer = (await antwort.json()) as Record<string, unknown>[];
-      await route.fulfill({ status: antwort.status(), json: nutzer.map(ergaenzt) });
-    });
-    await page.route(einzeln, async (route) => {
-      if (route.request().method() !== 'PATCH') return route.fallback();
-      patchBody = route.request().postDataJSON() as Record<string, unknown>;
-      const antwort = await route.fetch();
-      if (!antwort.ok()) return route.fulfill({ response: antwort });
-      const nutzer = (await antwort.json()) as Record<string, unknown>;
-      gesperrt.set(String(nutzer.id), patchBody.server_verbinden_gesperrt === true);
-      await route.fulfill({ status: antwort.status(), json: ergaenzt(nutzer) });
-    });
 
     await openAdminTab('users');
     await expect(page.getByTestId('admin-users-filter-self_host')).toHaveCount(0);
@@ -326,12 +297,10 @@ test.describe.serial('admin-panel E2E', () => {
     await expect(page.getByTestId('toggle-selfhost-btn')).toHaveCount(0);
     const schalter = page.getByTestId('toggle-verbinden-btn');
     await expect(schalter).toHaveAttribute('data-erlaubt', 'ja');
+    const patch = page.waitForRequest((r) => r.method() === 'PATCH' && einzeln.test(r.url()));
     await schalter.click();
     // Die Zeile rendert aus der Antwort von PATCH /admin/users/{id} neu.
     await expect(schalter).toHaveAttribute('data-erlaubt', 'nein', { timeout: 5_000 });
-    expect(patchBody).toEqual({ server_verbinden_gesperrt: true });
-
-    await page.unroute(liste);
-    await page.unroute(einzeln);
+    expect((await patch).postDataJSON()).toEqual({ server_verbinden_gesperrt: true });
   });
 });
