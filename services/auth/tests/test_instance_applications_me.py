@@ -8,18 +8,20 @@ hält das fest.
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 
 from sqlalchemy import update
 
+from dcc_auth.bootstrap import generate_bootstrap_token, hash_bootstrap_token
 from dcc_auth.models_instances import (
     InstanceBootstrapToken,
     RegisteredInstance,
     UserInstanceMembership,
 )
+from dcc_auth.snowflake import next_id
 
 # ---------------------------------------------------------------------------
 # Shared test credentials
@@ -209,13 +211,21 @@ async def test_set_up_bleibt_fuer_bestand_mit_env_download(
 async def test_set_up_nach_eingeloestem_bootstrap_token(
     client, alice_cookie, alice_instance, session_factory
 ):
-    """Der Installer-Weg zaehlt ebenso — geprueft wird das EINGELOESTE Token,
-    nicht das blosse Ausstellen: ein ungenutzter Mint richtet nichts ein."""
-    r = await client.post(
-        f"/me/instances/{alice_instance.id}/bootstrap-token",
-        headers={"Cookie": alice_cookie},
-    )
-    assert r.status_code == 201, r.text
+    """Der alte Installer-Weg zaehlt ebenso — geprueft wird das EINGELOESTE
+    Token, nicht das blosse Ausstellen: ein ungenutzter Token richtet nichts
+    ein. Seit Oktober 2026 stellt die Route Tokens nur noch fuer Heim-Server
+    aus; ein per Token eingerichteter Bestands-VPS traegt seinen Token schon,
+    deshalb legt der Test ihn direkt an."""
+    async with session_factory() as session:
+        session.add(
+            InstanceBootstrapToken(
+                id=next_id(),
+                instance_id=alice_instance.id,
+                token_hash=hash_bootstrap_token(generate_bootstrap_token()),
+                expires_at=datetime.now(UTC) + timedelta(minutes=15),
+            )
+        )
+        await session.commit()
 
     r = await client.get("/me/instances", headers={"Cookie": alice_cookie})
     eintrag = next(i for i in r.json() if i["id"] == str(alice_instance.id))

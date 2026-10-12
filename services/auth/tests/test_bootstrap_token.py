@@ -89,6 +89,8 @@ async def alice_instance(session_factory, alice) -> RegisteredInstance:
         inst = RegisteredInstance(
             id=20000000000000001,
             hostname="boot-instance.example.com",
+            # Bootstrap-Tokens gibt es nur noch für die Server-App (Heim-Server).
+            origin="app_host",
             client_id=f"ci_{secrets.token_hex(8)}",
             client_secret=_FAKE_HASH,
             worker_id_chat=110,
@@ -378,3 +380,28 @@ async def test_redeem_missing_or_invalid_token(client):
         "/selfhost/bootstrap", headers={"Authorization": "Bearer plse_boot_doesnotexist"}
     )
     assert r2.status_code == 401
+
+
+async def test_kein_bootstrap_token_fuer_gemietete_server(client, alice, session_factory):
+    """Riegel (Etappe 6): ein gemieteter Server (``origin="vps"``) verbindet
+    sich per ``pulse-connect``; der Mint gäbe sonst einen zweiten Weg zu
+    frischen Zugangsdaten, an Gerätecode und Widerspruchsfrist vorbei."""
+    async with session_factory() as session:
+        session.add(
+            RegisteredInstance(
+                id=20000000000000077,
+                hostname="vps-ohne-token.example.com",
+                client_id=f"ci_{secrets.token_hex(8)}",
+                client_secret=_FAKE_HASH,
+                status="active",
+                registered_by=int(alice["id"]),
+                origin="vps",
+            )
+        )
+        await session.commit()
+    r = await client.post(
+        "/me/instances/20000000000000077/bootstrap-token",
+        headers={"Cookie": alice["cookie"]},
+        json={"reset": True},
+    )
+    assert r.status_code == 404, r.text

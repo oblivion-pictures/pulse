@@ -339,7 +339,7 @@ class ReissueIn(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Ein-Befehl-Installer — Mint eines One-Time-Bootstrap-Tokens
+# Server-App (Heim-Server) — Mint eines One-Time-Bootstrap-Tokens
 # ---------------------------------------------------------------------------
 
 
@@ -360,9 +360,10 @@ async def mint_bootstrap_token(
     db: SessionDep,
     payload: ReissueIn | None = None,
 ) -> BootstrapTokenOut:
-    """Mintet einen One-Time-Bootstrap-Token für den Ein-Befehl-Installer.
+    """Mintet einen One-Time-Bootstrap-Token für die Server-App (Heim-Server).
 
-    Nur der Owner der Instanz (404 statt 403 gegen Existence-Leak). Räumt alle
+    Nur der Owner der Instanz und nur für ``origin="app_host"`` (404 statt 403
+    gegen Existence-Leak). Räumt alle
     vorherigen, nicht-eingelösten Tokens dieser Instanz weg — ein „neu
     generieren" entwertet den alten sofort. Nach erfolgreichem Redeem sind
     weitere Mints geblockt (Hijack-Härtung: eine gekaperte Session kann keine
@@ -379,6 +380,13 @@ async def mint_bootstrap_token(
 
     inst = await eigene_instanz_oder_404(db, user.id, instance_id)
     iid = inst.id
+    # Einen Bootstrap-Token löst nur noch die Server-App ein (Heim-Server,
+    # ``app_host``). Ein gemieteter Server verbindet sich per ``pulse-connect``,
+    # und der Installer nimmt seit Oktober 2026 keinen Token mehr an. Ein Mint
+    # wäre hier nur ein zweiter Weg zu frischen Zugangsdaten, an Gerätecode und
+    # Widerspruchsfrist vorbei. 404 wie für eine fremde Instanz.
+    if inst.origin != "app_host":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Instanz nicht gefunden")
 
     # One-shot nach erfolgreichem Setup: ein bereits eingelöstes Token
     # blockiert weitere Mints — außer beim expliziten Reset (s. Docstring).

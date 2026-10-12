@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import re
 import secrets
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 
+from dcc_auth.bootstrap import generate_bootstrap_token, hash_bootstrap_token
 from dcc_auth.config import get_settings
-from dcc_auth.models_instances import RegisteredInstance
+from dcc_auth.models_instances import InstanceBootstrapToken, RegisteredInstance
+from dcc_auth.snowflake import next_id
 from dcc_auth.relay import (
     RELAY_TOKEN_PREFIX,
     allocate_relay_subdomain,
@@ -215,7 +218,20 @@ async def test_redeem_vps_gets_no_relay(
         session.add(vps)
         await session.commit()
 
-    token = await _mint_token(client, alice["cookie"], 20000000000000002)
+    # Für gemietete Server stellt die Route keine Tokens mehr aus (nur noch die
+    # Server-App, ``app_host``); ein Token aus der Zeit davor wird aber weiter
+    # eingelöst und darf auch dann kein Relay bekommen.
+    token = generate_bootstrap_token()
+    async with session_factory() as session:
+        session.add(
+            InstanceBootstrapToken(
+                id=next_id(),
+                instance_id=20000000000000002,
+                token_hash=hash_bootstrap_token(token),
+                expires_at=datetime.now(UTC) + timedelta(minutes=15),
+            )
+        )
+        await session.commit()
     r = await client.post(
         "/selfhost/bootstrap", headers={"Authorization": f"Bearer {token}"}
     )
