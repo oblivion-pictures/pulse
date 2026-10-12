@@ -72,9 +72,10 @@
     // Seite ohnehin die Startweiterleitung (/app/friends) vornimmt — zwei
     // Weiterleitungen aus zwei Komponenten liefen um die Wette. Sie läuft erst,
     // wenn das Layout fertig hydriert ist (Anmeldung und E-Mail-Riegel geprüft).
-    const verbindenCode = gemerkteVerbindung(browserSpeicher(), Date.now());
+    const speicher = browserSpeicher();
+    const verbindenCode = gemerkteVerbindung(speicher, Date.now());
     if (verbindenCode) {
-      gemerkteVerbindungVerwerfen(browserSpeicher());
+      gemerkteVerbindungVerwerfen(speicher);
       void goto(`/verbinden#${verbindenCode}`, { replaceState: true });
       return;
     }
