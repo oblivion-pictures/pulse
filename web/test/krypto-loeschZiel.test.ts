@@ -79,7 +79,9 @@ test('ein Satz ohne bekannten Autor wird nicht geloescht', () => {
 // und der Rückfall löschte trotzdem, samt Grabstein in der Sicherung.
 
 /** Ein Verlauf zum Nachschlagen, der dieselbe Regel anwendet wie
- *  `verlauf/db.ts::verlaufSatzIdsFuerFrame` — ohne IndexedDB. */
+ *  `verlauf/db.ts::verlaufSatzIdsFuerFrame` — ohne IndexedDB. Die echte
+ *  Funktion gegen die echte Datenbank prüft
+ *  `tests/e2e/verlauf-register.spec.ts` (Gegenprüfung 2026-10-12, Fund 9). */
 function verlaufMit(saetze: FrameKandidat[]) {
   return (frameId: string, absender?: string) => async () =>
     saetze.filter((s) => trifftFrame(frameId, s, absender)).map((s) => s.id);
@@ -146,9 +148,9 @@ test('trifftFrame: Autor-Bindung greift auf beiden Formen, ohne Bindung nur die 
 test('Bearbeitung mit Absender-Bindung: der Partner schreibt meine eigene Nachricht nicht um', async () => {
   // Derselbe Weg wie beim Lösch-Frame (`empfangen.ts` reicht beim
   // Bearbeitungs-Frame seit 2026-10-12 den Absender mit). Geprüft wird hier
-  // nur die Zielauflösung; dass `empfangen.ts` den Absender tatsächlich
-  // übergibt, deckt dieser Test nicht ab — die Datei lädt unter Nodes
-  // Läufer nicht.
+  // nur die Zielauflösung; dass der Empfangsweg den Absender tatsächlich
+  // übergibt, prüft `krypto-zyklusAuswerten.test.ts` (seit der Ablauf in
+  // `zyklusAuswerten.ts` steht, lädt er unter Nodes Läufer).
   const geladen = [{ id: 'meine-1', author_id: ICH }];
   const imVerlauf = verlaufMit([{ id: 'meine-1', kryptoId: null, autorId: ICH }]);
   assert.deepEqual(await frameZiele('meine-1', geladen, imVerlauf('meine-1', PARTNER), PARTNER), []);

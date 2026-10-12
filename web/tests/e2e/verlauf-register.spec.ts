@@ -21,7 +21,14 @@ const BOB = '700000000000000012';
 const K = '700000000000005000';
 const D = '700000000000009000';
 
-type Satz = { nachrichtId: string; geloescht: boolean; inhalt: string; kryptoId: string | null };
+type Satz = {
+  nachrichtId: string;
+  geloescht: boolean;
+  inhalt: string;
+  kryptoId: string | null;
+  anhaenge: { id: string }[];
+  antwortAufId: string | null;
+};
 
 /** Lädt die echten Module ins Fenster und legt einen Satz-Bauer daneben. */
 async function vorbereiten(page: Page): Promise<void> {
@@ -52,7 +59,16 @@ async function kanal(page: Page): Promise<Satz[]> {
 async function ablegen(
   page: Page,
   wie: 'put' | 'archiv' | 'sicherung',
-  saetze: { id: string; autor: string; kryptoId?: string; inhalt?: string; verschluesselt?: boolean; geloescht?: boolean }[]
+  saetze: {
+    id: string;
+    autor: string;
+    kryptoId?: string;
+    inhalt?: string;
+    verschluesselt?: boolean;
+    geloescht?: boolean;
+    anhaenge?: { id: string }[];
+    antwortAuf?: string;
+  }[]
 ): Promise<string[] | number> {
   return page.evaluate(
     async ({ wie, saetze, kanalId, kontoId }) => {
@@ -70,7 +86,9 @@ async function ablegen(
             created_at: '2026-10-12T00:00:00Z',
             ...(s.kryptoId ? { krypto_id: s.kryptoId } : {}),
             ...(s.verschluesselt ? { verschluesselt: true } : {}),
-            ...(s.geloescht ? { deleted_at: '2026-10-12T00:00:01Z' } : {})
+            ...(s.geloescht ? { deleted_at: '2026-10-12T00:00:01Z' } : {}),
+            ...(s.anhaenge ? { attachments: s.anhaenge } : {}),
+            ...(s.antwortAuf ? { reply_to_id: s.antwortAuf } : {})
           },
           kontoId
         )
@@ -313,6 +331,32 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     // bei jedem Lesen) sieht unter der Kennung nach, auch ohne neuen Eintrag.
     expect(await gebundenLoeschen(page, ALICE, [K])).toEqual({ markiert: [K], neu: false });
     expect(sichtbar(await kanal(page))).toEqual([]);
+  });
+
+  test('Fund 2/9: aus dem Archiv kommen keine fremden Anhänge an die eigene Nachricht, aus der Sicherung schon', async ({ page }) => {
+    // Der echte Archivweg (`verlaufSaetzeErgaenzen` mit `archiv`) gegen die
+    // echte Datenbank: eine Zeile mit Namen und Kennung meiner Nachricht,
+    // dazu ein fremdes Bild und ein Antwortbezug.
+    await ablegen(page, 'put', [{ id: K, autor: ALICE, inhalt: 'echt', verschluesselt: true }]);
+    const zeileMitAnhang = {
+      id: K,
+      autor: ALICE,
+      kryptoId: K,
+      inhalt: 'gefälscht',
+      verschluesselt: true,
+      anhaenge: [{ id: 'bild-des-partners' }],
+      antwortAuf: '700000000000000999'
+    };
+    await ablegen(page, 'archiv', [zeileMitAnhang]);
+    const [ausArchiv] = await kanal(page);
+    expect(ausArchiv).toMatchObject({ inhalt: 'echt', kryptoId: K, anhaenge: [], antwortAufId: null });
+
+    // Dieselbe Angabe aus der EIGENEN Sicherung ergänzt Anhang und Bezug.
+    await ablegen(page, 'sicherung', [zeileMitAnhang]);
+    const [ausSicherung] = await kanal(page);
+    expect(ausSicherung.inhalt).toBe('echt');
+    expect(ausSicherung.anhaenge.map((a) => a.id)).toEqual(['bild-des-partners']);
+    expect(ausSicherung.antwortAufId).toBe('700000000000000999');
   });
 
   test('Register-Einträge erscheinen in keinem Leseweg', async ({ page }) => {
