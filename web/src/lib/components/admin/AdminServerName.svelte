@@ -11,9 +11,7 @@
   (`server/ServerRenameDialog.svelte`).
 -->
 <script lang="ts">
-import { errText } from '$lib/utils/errText';
-  import { nameVomServer } from '$lib/servers/anzeige';
-  import { onMount } from 'svelte';
+import { errText } from '$lib/utils/errText';  import { onMount } from 'svelte';
   import { toast } from 'svelte-sonner';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
@@ -52,7 +50,7 @@ import { errText } from '$lib/utils/errText';
       saved = updated.instance_name ?? '';
       value = saved;
       const sid = activeServer.serverId;
-      if (sid) serversStore.update(sid, nameVomServer(updated.instance_name));
+      if (sid) serversStore.setzeServerName(sid, updated.instance_name);
       toast.success(m.admin_server_name_saved());
     } catch (e) {
       toast.error(m.admin_server_name_save_failed(), {

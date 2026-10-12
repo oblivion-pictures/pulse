@@ -20,6 +20,7 @@
  * Der Name dagegen gilt immer: das Ereignis trägt stets den aktuellen Stand
  * (leer = zurückgesetzt).
  */
+import { cloudNameAnwenden } from './anzeige.ts';
 
 export interface StatusEintrag {
   origin?: 'vps' | 'app_host' | null;
@@ -54,4 +55,36 @@ export function wirkungVonStatus(
     offline: online === undefined ? null : !online,
     zurueckZurCloud: online === false && istAktiv,
   };
+}
+
+export interface StandEintrag {
+  online?: boolean | null;
+  anzeigename?: string | null;
+  /** Cloud-Kopie des Namens, die der Server schon überholt hat (`anzeige.ts`). */
+  name_ueberholt?: string | null;
+}
+
+/**
+ * Den Stand aus `wirkungVonStatus` (oder einer Telefonbuch-Messung) auf einen
+ * Eintrag anwenden. `null` = nichts zu ändern. Der Name kommt aus der Cloud und
+ * geht durch `cloudNameAnwenden`: eine Cloud-Kopie, die der Name des Servers
+ * schon überholt hat, springt nicht zurück.
+ */
+export function standAnwenden<E extends StandEintrag>(
+  e: E,
+  stand: { online?: boolean; anzeigename?: string | null },
+): E | null {
+  const online = stand.online ?? e.online ?? null;
+  const name =
+    'anzeigename' in stand
+      ? cloudNameAnwenden(e, stand.anzeigename)
+      : { anzeigename: e.anzeigename ?? null, name_ueberholt: e.name_ueberholt ?? null };
+  if (
+    online === (e.online ?? null) &&
+    name.anzeigename === (e.anzeigename ?? null) &&
+    name.name_ueberholt === (e.name_ueberholt ?? null)
+  ) {
+    return null;
+  }
+  return { ...e, online, anzeigename: name.anzeigename, name_ueberholt: name.name_ueberholt };
 }

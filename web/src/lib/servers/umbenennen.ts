@@ -42,8 +42,18 @@ export function darfServerUmbenennen(e: UmbenennenEingaben): boolean {
  * Was beim Speichern an den Server geht. `null` = nichts zu tun (Name
  * unverändert). Leer heißt „zurück zur Adresse“ und geht als leere
  * Zeichenkette hinaus — `null` hieße im Server „Feld nicht ändern“.
+ *
+ * Mehr als Ränder und Länge bereinigt der Klient bewusst nicht: Leerraum
+ * zusammenfassen, Steuer- und Richtungszeichen entfernen und einen Namen ohne
+ * sichtbares Zeichen auf „leer“ setzen macht der SERVER (`dcc_shared.anzeigename`,
+ * dieselbe Funktion wie in der Cloud). Der Dialog übernimmt deshalb nicht, was
+ * getippt wurde, sondern die Antwort des Servers (`instance_name`) — die Leiste
+ * zeigt nie etwas anderes, als dort gespeichert ist.
  */
 export function zuSpeichernderName(eingabe: string, aktuell: string | null): string | null {
-  const neu = eingabe.trim().slice(0, SERVER_NAME_MAX);
+  // Nach Codepunkten schneiden, nicht nach UTF-16-Einheiten: der Server zählt
+  // Codepunkte (pydantic `max_length`), und `slice` könnte ein Emoji mitten im
+  // Surrogatpaar durchtrennen.
+  const neu = Array.from(eingabe.trim()).slice(0, SERVER_NAME_MAX).join('');
   return neu === (aktuell ?? '').trim() ? null : neu;
 }

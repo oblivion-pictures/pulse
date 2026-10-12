@@ -2,15 +2,17 @@
   Server umbenennen — der Betreiber (oder ein Admin) gibt seinem Self-Host einen
   Namen, den ALLE Mitglieder statt der Adresse sehen.
 
-  Geöffnet per Rechtsklick auf den Server in der Leiste (`GuildRail`) bzw. per
-  Tipp auf die Server-Zeile im Räume-Bereich am Handy (`/app/rooms`) — dieselbe
-  Komponente für beide, die Wahl des Eingangs trifft die jeweilige Stelle
-  (Geräte-Trennung).
+  Hängt EINMAL im App-Layout und liest `stores/serverRename`. Geöffnet wird er
+  per Rechtsklick auf den Server in der Leiste (`ServerRenameMenuItem`, am
+  Rechner) bzw. per Tipp auf die Server-Zeile im Räume-Bereich (`/app/rooms`,
+  Handy/Tablet) — die Wahl des Eingangs trifft die jeweilige Stelle
+  (Geräte-Trennung), der Dialog ist für beide derselbe.
 
   Gespeichert wird bei DIESEM Server mit seiner Sitzung (`PATCH
   /admin/permissions`), auch wenn er gerade nicht der aktive ist. Der Server
-  verteilt den Namen an verbundene Mitglieder und meldet ihn der Cloud, die ihn
-  allen anderen mit der Serverliste ausliefert. Wer darf, entscheidet der Server
+  bereinigt den Namen, verteilt ihn an verbundene Mitglieder und meldet ihn der
+  Cloud, die ihn allen anderen mit der Serverliste ausliefert. Übernommen wird
+  die ANTWORT des Servers, nicht das Getippte. Wer darf, entscheidet der Server
   (403); die Oberfläche zeigt den Eintrag nur denen, die er ansprechen würde
   (`servers/umbenennen.ts`).
 -->
@@ -22,24 +24,20 @@
   import { Input } from '$lib/components/ui/input/index.js';
   import FieldLabel from '$lib/components/form/FieldLabel.svelte';
   import { adminApi } from '$lib/api/admin';
-  import { serversStore, type ServerEntry } from '$lib/api/servers.svelte';
-  import { nameVomServer } from '$lib/servers/anzeige';
+  import { serversStore } from '$lib/api/servers.svelte';
+  import { serverRename } from '$lib/stores/serverRename.svelte';
   import { SERVER_NAME_MAX, zuSpeichernderName } from '$lib/servers/umbenennen';
   import { errText } from '$lib/utils/errText';
   import { m } from '$lib/paraglide/messages.js';
 
-  let {
-    open = false,
-    server,
-    onClose
-  }: {
-    open?: boolean;
-    server: ServerEntry | null;
-    onClose: () => void;
-  } = $props();
-
   let name = $state('');
   let busy = $state(false);
+
+  // Der Eintrag in seinem heutigen Stand (das Ziel im Store ist die Momentaufnahme
+  // vom Öffnen).
+  const server = $derived(
+    serverRename.target ? (serversStore.find(serverRename.target.id) ?? serverRename.target) : null
+  );
 
   // Der gesetzte Name — leer, wenn keiner gesetzt ist (dann zeigt die Leiste
   // die Adresse, und die gehört nicht ins Feld).
@@ -48,14 +46,14 @@
   // Nur beim Öffnen vorbelegen: ein Live-Ereignis darf nicht überschreiben,
   // was gerade getippt wird.
   $effect(() => {
-    if (open) name = untrack(() => aktuell ?? '');
+    if (serverRename.open) name = untrack(() => aktuell ?? '');
   });
 
   function handleOpenChange(next: boolean) {
     if (!next) {
       name = '';
       busy = false;
-      onClose();
+      serverRename.close();
     }
   }
 
@@ -64,7 +62,7 @@
     if (!server || busy) return;
     const neu = zuSpeichernderName(name, aktuell);
     if (neu === null) {
-      onClose();
+      serverRename.close();
       return;
     }
     busy = true;
@@ -75,9 +73,9 @@
         { instance_name: neu },
         { serverId: server.id }
       );
-      serversStore.update(server.id, nameVomServer(updated.instance_name));
+      serversStore.setzeServerName(server.id, updated.instance_name);
       toast.success(m.server_rename_saved());
-      onClose();
+      serverRename.close();
     } catch (err) {
       toast.error(m.server_rename_failed(), { description: errText(err) });
     } finally {
@@ -86,7 +84,7 @@
   }
 </script>
 
-<Dialog.Root {open} onOpenChange={handleOpenChange}>
+<Dialog.Root open={serverRename.open} onOpenChange={handleOpenChange}>
   <Dialog.Content data-testid="server-rename-dialog">
     <Dialog.Header>
       <Dialog.Title>{m.server_rename_title()}</Dialog.Title>

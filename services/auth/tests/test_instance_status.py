@@ -250,10 +250,25 @@ async def test_umbenennen_behauptet_bei_einem_vps_nicht_er_sei_offline(client, a
 async def test_cloud_bereinigt_den_namen_wie_der_server(client, aufbau_vps, sammler):
     """Server und Cloud nutzen dieselbe Funktion (``dcc_shared.anzeigename``):
     Steuerzeichen fallen weg, ein zusammengesetztes Emoji bleibt heil."""
-    familie = "\U0001f468‍\U0001f469‍\U0001f467"
+    familie = "\U0001f468\u200d\U0001f469\u200d\U0001f467"
     await client.post("/selfhost/anzeigename", json=_melde_name(f"  Clan\u0007 {familie} "))
     eintrag = await _eintrag_vps(client, aufbau_vps["mitglied"]["cookie"])
     assert eintrag["anzeigename"] == f"Clan {familie}"
+
+
+async def test_cloud_liefert_keine_umkehrende_oder_unsichtbare_schrift_aus(
+    client, aufbau_vps, sammler
+):
+    """Ein RLO kehrt Text um, und ein Name nur aus Formatzeichen wirkt leer —
+    beides ginge sonst an alle Mitglieder. Der zweite gilt als „kein Name“."""
+    await client.post("/selfhost/anzeigename", json=_melde_name("Admin\u202etxt"))
+    eintrag = await _eintrag_vps(client, aufbau_vps["mitglied"]["cookie"])
+    assert eintrag["anzeigename"] == "Admintxt"
+
+    sammler.nachrichten.clear()
+    await client.post("/selfhost/anzeigename", json=_melde_name("\u202e\u200b\u2066\u00ad"))
+    assert (await _eintrag_vps(client, aufbau_vps["mitglied"]["cookie"]))["anzeigename"] is None
+    assert {n["data"]["anzeigename"] for _, n in sammler.nachrichten} == {None}
 
 
 async def test_anzeigename_zuruecksetzen_meldet_leeren_namen(client, aufbau_vps, sammler):

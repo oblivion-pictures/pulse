@@ -386,15 +386,9 @@ export const adminApi = {
   getPermissions(): Promise<Permissions> {
     return request<Permissions>('/admin/permissions', { endpoint: 'chat' });
   },
-  /** `route` richtet die Anfrage an einen bestimmten Server (mit dessen
-   *  Sitzung), sonst an den aktiven — z. B. das Umbenennen per Rechtsklick auf
-   *  einen Server, auf dem man gerade nicht ist. */
+  // `route`: an einen bestimmten Server (mit dessen Sitzung), sonst an den aktiven.
   patchPermissions(payload: Partial<Permissions>, route: RequestRoute = {}): Promise<Permissions> {
-    return request<Permissions>(
-      '/admin/permissions',
-      { method: 'PATCH', endpoint: 'chat', body: payload },
-      route
-    );
+    return request<Permissions>('/admin/permissions', { method: 'PATCH', endpoint: 'chat', body: payload }, route);
   },
   chatAuditLog(
     opts: { before?: string; limit?: number } = {}

@@ -29,7 +29,6 @@ import { modQueueCounts } from '$lib/stores/modQueueCounts.svelte';
 import { guildSounds } from '$lib/stores/guildSounds.svelte';
 import { serverAdmin } from '$lib/stores/serverAdmin.svelte';
 import { serversStore } from '$lib/api/servers.svelte';
-import { nameVomServer } from '$lib/servers/anzeige';
 import { activeServer } from '$lib/stores/active-server.svelte';
 import { registerWsHandler } from '../handler-registry';
 import type { ReadyStamps } from '../gateway-connection';
@@ -296,10 +295,8 @@ export function register(
       // cachen (s. serverDisplayName). null überschreibt einen stale Namen
       // bewusst; ein Server, der das Feld gar nicht kennt (älter als
       // Migration 0040), fasst die Cloud-Kopie des Namens nicht an.
-      serversStore.update(
-        sid,
-        evt.instance_name === undefined ? { server_name: null } : nameVomServer(evt.instance_name)
-      );
+      if (evt.instance_name === undefined) serversStore.update(sid, { server_name: null });
+      else serversStore.setzeServerName(sid, evt.instance_name);
     }
     // **Tote Eintragungen raeumen, BEVOR sich der Rechner meldet.** Die
     // Communityliste dieses Rahmens ist die alleinige Wahrheit darueber, in
