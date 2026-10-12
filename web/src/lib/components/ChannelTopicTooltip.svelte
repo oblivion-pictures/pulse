@@ -36,7 +36,7 @@
   <!-- Länger als im GuildRail (200 ms): über die Kanalliste fährt man ständig
        hinweg, ohne etwas wissen zu wollen — bei 200 ms flackert beim Überfahren
        eine Blase nach der anderen auf. Auf Mobil bleibt die Blase weg: die
-       Klasse hängt an der Geraeteklasse des Wurzel-Divs (`handy:hidden`),
+       Klasse hängt an der Geraeteklasse am `<html>`-Element (`handy:hidden`),
        dort gibt es kein Verweilen. -->
   <Tooltip.Provider delayDuration={450}>
     <Tooltip.Root>

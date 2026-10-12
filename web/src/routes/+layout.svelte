@@ -60,6 +60,22 @@
 
   let { children } = $props();
 
+  // Geräteklasse (`geraet-desktop` / `geraet-tablet` / `geraet-handy`) aufs
+  // <html>, nicht aufs Wurzel-Div: Tailwind-Varianten (`handy:`, `nicht-handy:`,
+  // `desktop:` …, s. app.css) prüfen den Vorfahren, und bits-ui-Portale
+  // (Dialoge, Blätter von unten) hängen direkt am <body> — an einem Div wäre
+  // ihr Inhalt für die Varianten unsichtbar, `nicht-handy:` träfe dort am
+  // Handy immer zu. `$effect.pre` läuft beim ersten Mal synchron, noch bevor
+  // die Vorlage unten ihr DOM anlegt: es gibt keinen Frame ohne Klasse. Die
+  // Aufräum-Funktion nimmt beim Wechsel (Tablet ↔ Handy ohne Neuladen) die alte
+  // Klasse wieder weg.
+  $effect.pre(() => {
+    const klasse = `geraet-${viewport.geraet}`;
+    const wurzel = document.documentElement;
+    wurzel.classList.add(klasse);
+    return () => wurzel.classList.remove(klasse);
+  });
+
   // Neue-Web-Version-Hinweis: SvelteKit pollt `_app/version.json` (Intervall in
   // svelte.config.js). Sobald die deployte Version ≠ der laufenden ist, wird
   // `updated.current` true → einmaliger persistenter Toast mit „Neu laden".
@@ -199,7 +215,7 @@
 
 <ModeWatcher defaultMode="system" track disableHeadScriptInjection />
 
-<div class="min-h-dvh geraet-{viewport.geraet}">
+<div class="min-h-dvh">
   {@render children?.()}
 </div>
 

@@ -50,8 +50,8 @@
    *
    * `mirror` ist der verlaessliche Hinweis auf die eigene Kachel: die
    * Selbst-Vorschau wird gespiegelt gerendert, fremde nie. Dass der Knopf
-   * nur in der Handy-Klasse erscheint, haengt an der Geraeteklasse des
-   * Wurzel-Divs (`nicht-handy:hidden` unten) — nicht mehr an einer
+   * nur in der Handy-Klasse erscheint, haengt an der Geraeteklasse am
+   * `<html>`-Element (`nicht-handy:hidden` unten) — nicht mehr an einer
    * Viewport-Abfrage hier.
    */
   const zeigtKameraWechsel = $derived(mirror && voice.isCameraOn);
