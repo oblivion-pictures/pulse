@@ -156,10 +156,6 @@ _PAYLOADS: dict[str, dict[str, Any]] = {
         "op": "mention_added",
         "data": {"channel_id": "6", "message_id": "1", "guild_id": "5"},
     },
-    "application_decided": {
-        "op": "application_decided",
-        "data": {"kind": "app_host", "status": "approved", "rejection_reason": None},
-    },
     "instance_status": {
         "op": "instance_status",
         "data": {"instance_id": "21000000000000077", "online": False, "anzeigename": "Michaels Server"},
