@@ -6,6 +6,7 @@ import {
   ausgangUngewiss,
   meldungsSchluessel,
   verbindenFehler,
+  vorgangVerbraucht,
   type VerbindenFehler
 } from '../src/lib/verbinden/fehler.ts';
 
@@ -91,10 +92,23 @@ test('Bremse und alles Unerwartete', () => {
   }
 });
 
-test('unbekannt, nachsehen und abgemeldet sind eigene Zustände, kein Hinweistext', () => {
+test('unbekannt, nachsehen, abgemeldet und gesperrte Übernahme sind eigene Zustände, kein Hinweistext', () => {
   assert.equal(meldungsSchluessel({ art: 'unbekannt' }), null);
   assert.equal(meldungsSchluessel({ art: 'nachsehen' }), null);
   assert.equal(meldungsSchluessel({ art: 'abgemeldet' }), null);
+  assert.equal(meldungsSchluessel({ art: 'uebernahme_gesperrt', bis: '2031-11-10T12:00:00Z' }), null);
+  assert.equal(meldungsSchluessel({ art: 'uebernahme_gesperrt', bis: null }), null);
+});
+
+test('beim Bestätigen heißt „sonst“: die Antwort kam nicht an', () => {
+  // Der Klick kann gewirkt haben (Cloud antwortet bis ~30 s spät, Proxy bricht
+  // ab): „Etwas ist schiefgegangen“ ließe den Betreiber den Server für
+  // gescheitert halten. Beim Laden gibt es noch keinen Klick, dort bleibt es.
+  assert.equal(meldungsSchluessel({ art: 'sonst' }, true), 'verbinden_fehler_antwort_fehlt');
+  assert.equal(meldungsSchluessel({ art: 'sonst' }, false), 'verbinden_fehler_sonst');
+  assert.equal(meldungsSchluessel({ art: 'sonst' }), 'verbinden_fehler_sonst');
+  // Ausdrückliche Antworten der Cloud bleiben, was sie sind.
+  assert.equal(meldungsSchluessel({ art: 'gebremst' }, true), 'verbinden_fehler_gebremst');
 });
 
 test('nur eine Antwort, die nichts über den Ausgang sagt, lässt ihn offen', () => {
@@ -115,6 +129,30 @@ test('nur eine Antwort, die nichts über den Ausgang sagt, lässt ihn offen', ()
   for (const f of klar) assert.equal(ausgangUngewiss(f), false, f.art);
 });
 
+test('eine gesperrte Übernahme beendet den Vorgang, ein Fehlversuch nicht', () => {
+  // Die Cloud entscheidet den Vorgang dabei (`uebernahme_gesperrt`): der Code ist
+  // verbraucht, ein zweiter Klick bekäme 404. Darum ein Endzustand statt einer
+  // Frage mit Knöpfen — und kein „Marke vergessen“, denn der Klick hat gewirkt.
+  assert.equal(vorgangVerbraucht({ art: 'uebernahme_gesperrt', bis: null }), true);
+  assert.equal(vorgangVerbraucht({ art: 'uebernahme_gesperrt', bis: '2031-11-10T12:00:00Z' }), true);
+  // 404 nach einem eigenen Klick: der Code ist ebenfalls verbraucht.
+  assert.equal(vorgangVerbraucht({ art: 'nachsehen' }), true);
+  // Alles andere lässt den Vorgang offen: ein zweiter Klick ist erlaubt.
+  const offen: VerbindenFehler[] = [
+    { art: 'nachweis_fehlt', befund: null },
+    { art: 'zu_viele_server' },
+    { art: 'verbinden_gesperrt' },
+    { art: 'adresse_gesperrt' },
+    { art: 'ausgelastet' },
+    { art: 'nicht_verfuegbar' },
+    { art: 'gebremst' },
+    { art: 'sonst' },
+    { art: 'unbekannt' },
+    { art: 'abgemeldet' }
+  ];
+  for (const f of offen) assert.equal(vorgangVerbraucht(f), false, f.art);
+});
+
 test('jeder Hinweis hat einen Text in beiden Sprachen', () => {
   // Ein Schlüssel ohne Text fiele still auf „Etwas ist schiefgegangen“ zurück
   // — und der Betreiber erführe nicht, dass sein Proxy den Nachweis schluckt.
@@ -123,21 +161,31 @@ test('jeder Hinweis hat einen Text in beiden Sprachen', () => {
     ...BEFUNDE.map((befund) => ({ art: 'nachweis_fehlt' as const, befund })),
     { art: 'zu_viele_server' },
     { art: 'verbinden_gesperrt' },
-    { art: 'uebernahme_gesperrt', bis: '2026-11-10T12:00:00Z' },
-    { art: 'uebernahme_gesperrt', bis: null },
     { art: 'adresse_gesperrt' },
     { art: 'ausgelastet' },
     { art: 'nicht_verfuegbar' },
     { art: 'gebremst' },
     { art: 'sonst' }
   ];
+  // Eigene Zustände statt Hinweis, aber mit Text und Titel im Katalog: die
+  // Karte wählt den Text nach dem Datum (`verbinden_uebernahme_gesperrt[_ohne_datum]`).
+  const zustandsTexte = [
+    'verbinden_uebernahme_gesperrt',
+    'verbinden_uebernahme_gesperrt_ohne_datum',
+    'verbinden_uebernahme_gesperrt_titel'
+  ];
   for (const sprache of ['de', 'en']) {
     const katalog = JSON.parse(
       readFileSync(new URL(`../messages/${sprache}.json`, import.meta.url), 'utf8')
     ) as Record<string, unknown>;
     for (const f of faelle) {
-      const schluessel = meldungsSchluessel(f);
-      assert.ok(schluessel, JSON.stringify(f));
+      for (const beimBestaetigen of [false, true]) {
+        const schluessel = meldungsSchluessel(f, beimBestaetigen);
+        assert.ok(schluessel, JSON.stringify(f));
+        assert.equal(typeof katalog[schluessel], 'string', `${sprache}: ${schluessel}`);
+      }
+    }
+    for (const schluessel of zustandsTexte) {
       assert.equal(typeof katalog[schluessel], 'string', `${sprache}: ${schluessel}`);
     }
   }
