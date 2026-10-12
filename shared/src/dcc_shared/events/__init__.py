@@ -71,7 +71,6 @@ they don't carry the discriminator the registry keys on.
 from __future__ import annotations
 
 from dcc_shared.events._base import _EventBase
-from dcc_shared.events.applications import ApplicationDecidedEvent
 from dcc_shared.events.instances import InstanceStatusEvent, InstanzVerbundenEvent
 from dcc_shared.events.chat import (
     GruppeLesestandEvent,
@@ -197,7 +196,6 @@ EVENT_REGISTRY: dict[str, type[_EventBase]] = {
     "postfach_neu": PostfachNeuEvent,
     # ---- direct-delivery (user:events)
     "mention_added": MentionAddedEvent,
-    "application_decided": ApplicationDecidedEvent,
     "instance_status": InstanceStatusEvent,
     "instanz_verbunden": InstanzVerbundenEvent,
     "friend_request_received": FriendRequestReceivedEvent,
@@ -286,7 +284,6 @@ __all__ = [
     "StreamReactionData",
     "StreamReactionEvent",
     # friends
-    "ApplicationDecidedEvent",
     "InstanceStatusEvent",
     "InstanzVerbundenEvent",
     "FriendRemovedEvent",
