@@ -311,6 +311,8 @@ ADMIN_EMAIL=""
 CLIENT_ID=""
 CLIENT_SECRET=""
 BESTAND_ZEILEN=""
+ZUSATZ_ZEILEN=""
+ENV_SICHERUNG=""
 log()  { :; }
 warn() { :; }
 err()  { :; }

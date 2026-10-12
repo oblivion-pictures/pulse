@@ -66,6 +66,9 @@ done
 # Zugangsdaten kennt der Installer nur von Bestandsservern (bestand_uebernehmen)
 # oder, nach dem Verbinden, aus dem Datenvolumen (zugang_aus_volumen).
 INSTANCE_ID=""; CLIENT_ID=""; CLIENT_SECRET=""; BESTAND_ZEILEN=""
+# Zusatzzeilen einer früheren pulse.env (zusatz_uebernehmen), Name der Sicherungskopie
+# dieser pulse.env und die Adresse, auf die sie zuletzt lief, falls sie nicht diese ist.
+ZUSATZ_ZEILEN=""; ENV_SICHERUNG=""; ALTE_ADRESSE=""
 # Gesetzt von server_verbinden, sobald der Server mit einem Pulse-Konto verbunden ist.
 VERBUNDEN=""
 
@@ -216,6 +219,38 @@ zugang_lesen() {
   done
 }
 
+# --- Zusatzzeilen einer früheren pulse.env übernehmen -------------------- #
+#
+# Der Installer schreibt pulse.env jedes Mal neu. Was ein Betreiber dort von
+# Hand ergänzt hat (öffentliche IP hinter NAT, Log-Stufe, Sicherungs-Schalter,
+# Adresse für Let's Encrypt), wäre sonst mit dem nächsten Lauf weg — und weil
+# der Container die Datei nur beim Anlegen liest, merkte er es erst beim
+# nächsten Update. Übernommen wird eine feste Liste, nichts Unbekanntes; was
+# der Installer selbst schreibt (Adresse, TLS-Modus, Port), kommt aus dem neuen
+# Lauf. Ein Wert mit Zeichen ausserhalb von Buchstaben, Ziffern und `._:@/+,=-` (auch ein
+# Zeilenende aus Windows) wird mit seinem Namen gemeldet und nicht übernommen.
+# Die Mail-Adresse geht über ADMIN_EMAIL; eine ausdrücklich gesetzte
+# PULSE_ADMIN_EMAIL gewinnt gegen die alte Datei. Liest nur.
+zusatz_uebernehmen() {
+  local zeile name wert
+  while IFS= read -r zeile; do
+    name="${zeile%%=*}"
+    wert="${zeile#*=}"
+    [ -n "$wert" ] || continue
+    if ! printf '%s' "$wert" | grep -qE '^[A-Za-z0-9._:@/+,=-]+$'; then
+      warn "Ignoring ${name} in ${ENV_FILE}: its value has characters this installer does not carry over."
+      continue
+    fi
+    if [ "$name" = "PULSE_ADMIN_EMAIL" ]; then
+      [ -z "$ADMIN_EMAIL" ] || continue
+      ADMIN_EMAIL="$wert"
+    else
+      ZUSATZ_ZEILEN="${ZUSATZ_ZEILEN:+${ZUSATZ_ZEILEN}$'\n'}${name}=${wert}"
+    fi
+    log "Keeping ${name} from the previous configuration."
+  done < <(grep -E '^(PULSE_PUBLIC_IP|PULSE_LOG_LEVEL|PULSE_BACKUP_[A-Z0-9_]+|PULSE_ADMIN_EMAIL)=' "$ENV_FILE" || true)
+}
+
 # --- Bestand: Verbindung einer Installation aus der Freigabe-Zeit ------- #
 #
 # Server, die vor Oktober 2026 mit Freigabe eingerichtet wurden, tragen ihre
@@ -225,35 +260,95 @@ zugang_lesen() {
 # ihn aus ihrer Server-Liste. Gehört die alte Datei zu derselben Adresse,
 # wandern ihre Verbindungswerte deshalb unverändert mit (im Container gewinnt
 # die Umgebung ohnehin vor /data/pulse/verbindung.env). Liest nur.
+#
+# Die alte Datei wird beim Schreiben als Sicherung beiseitegelegt
+# (schreibe_konfiguration); ihr Name steht hier schon fest, damit Meldung,
+# Dry-Run und Kopie denselben Pfad nennen. Gehört sie zu einer anderen
+# Adresse, steht in ihr die einzige Kopie der Zugangsdaten des alten Servers
+# ausserhalb seines Containers. Eine Verbindung im Datenvolumen ist davon
+# unberührt: sie bleibt beim Volumen, gilt aber für die alte Adresse — ALTE_ADRESSE
+# erinnert server_verbinden daran.
 bestand_uebernehmen() {
   [ -r "$ENV_FILE" ] || return 0
+  ENV_SICHERUNG="${ENV_FILE}.bak-$(date +%s)"
+  if [ -n "$DRY_RUN" ]; then
+    log "Dry run: ${ENV_FILE} exists — a real run saves it as ${ENV_SICHERUNG} before rewriting it."
+  fi
+  zusatz_uebernehmen
   local alter_host
   alter_host="$(grep -m1 '^PULSE_HOSTNAME=' "$ENV_FILE" | cut -d= -f2- || true)"
   [ -n "$alter_host" ] || return 0
   if [ "$alter_host" != "$SRV_HOST" ]; then
-    warn "The previous configuration in ${ENV_FILE} belongs to ${alter_host} — its connection is not carried over."
+    ALTE_ADRESSE="$alter_host"
+    warn "The previous configuration in ${ENV_FILE} belongs to ${alter_host}. Its connection values are not carried over; a copy of the file is saved as ${ENV_SICHERUNG} before it is rewritten."
+    warn "A connection saved in the Docker volume '${VOLUME}' stays with that volume and still belongs to ${alter_host}."
     return 0
   fi
   BESTAND_ZEILEN="$(grep -E '^PULSE_(INSTANCE_ID|INSTANCE_OWNER_ID|CLOUD_CLIENT_ID|CLOUD_CLIENT_SECRET)=.' "$ENV_FILE" || true)"
   [ -n "$BESTAND_ZEILEN" ] || return 0
   zugang_lesen <<<"$BESTAND_ZEILEN"
-  if [ -z "$ADMIN_EMAIL" ]; then
-    ADMIN_EMAIL="$(grep -m1 '^PULSE_ADMIN_EMAIL=' "$ENV_FILE" | cut -d= -f2- || true)"
-  fi
   log "Keeping the existing connection of ${SRV_HOST} (instance ${INSTANCE_ID})."
+}
+
+# --- Bild: das eines vorhandenen Servers beibehalten --------------------- #
+#
+# Ohne ausdrückliches PULSE_IMAGE ist die Vorgabe `…/pulse:stable`. Ein
+# erneuter Lauf auf einem Server, der schon steht, darf ihn nicht still darauf
+# umstellen: Atrium und der Test-Server stehen bewusst auf `:edge`, die drei
+# Bestandsserver ziehen vom Spiegel. Also das Bild des vorhandenen eigenen
+# Containers übernehmen, ersatzweise die IMAGE-Zeile einer vorhandenen
+# pulse-update.sh (Container entfernt, Updater liegt noch da).
+#
+# Der Spiegel registry.howispulse.com kennt nur Zugangsdaten, die der Installer
+# aus der pulse.env eines Bestandsservers hat (bestand_uebernehmen). Fehlen
+# sie, wird daraus das öffentliche Bild mit demselben Tag; ein Digest oder ein
+# Bild ohne Tag lässt sich nicht abbilden und fällt auf die Vorgabe zurück.
+#
+# Muss nach bestand_uebernehmen laufen (Zugangsdaten) und vor build_run_args
+# (das Bild landet in RUN_ARGS und im Updater).
+waehle_bild() {
+  [ -z "${PULSE_IMAGE:-}" ] || return 0
+  local vorhanden="" tag
+  if ist_unser_container; then
+    vorhanden="$(docker inspect -f '{{.Config.Image}}' "$CONTAINER" 2>/dev/null || true)"
+  fi
+  if [ -z "$vorhanden" ] && [ -r "$UPDATE_SH" ]; then
+    # Nur schlichte Bildnamen: die Zeile stammt aus einer Datei, die jemand
+    # von Hand angefasst haben kann.
+    vorhanden="$(sed -n 's|^IMAGE=\([A-Za-z0-9._:@/-]*\)$|\1|p' "$UPDATE_SH" | head -n1)"
+  fi
+  [ -n "$vorhanden" ] || return 0
+  IMAGE="$vorhanden"
+  case "$vorhanden" in
+    registry.howispulse.com/*)
+      if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
+        tag="${vorhanden##*/}"
+        case "$tag" in
+          *@*) tag=stable ;;
+          *:*) tag="${tag##*:}" ;;
+          *)   tag=stable ;;
+        esac
+        IMAGE="ghcr.io/oblivion-pictures/pulse:${tag}"
+        log "Using image ${IMAGE} — the registry mirror needs credentials this server does not have."
+        return 0
+      fi ;;
+  esac
+  log "Keeping image ${IMAGE} of the existing server."
 }
 
 # --- Spiegel registry.howispulse.com nur mit Bestands-Zugang ------------- #
 #
-# Der Spiegel lässt nur Server aus der Freigabe-Zeit herein (Anmeldung mit
-# ihren Zugangsdaten, routes_registry_auth.py). Ohne sie scheiterte ein Lauf
-# erst beim Pull, nach dem Schreiben der Konfiguration — deshalb hier, vor
-# jeder Änderung.
+# Der Spiegel nimmt die Zugangsdaten jeder aktiven Instanz an
+# (routes_registry_auth.py), genutzt wird er aber nur von Bestandsservern: der
+# Installer kennt Zugangsdaten allein aus deren pulse.env. Ohne sie scheiterte
+# ein Lauf erst beim Pull, nach dem Schreiben der Konfiguration — deshalb
+# hier, vor jeder Änderung.
 pruefe_registry_zugang() {
   case "$IMAGE" in
     registry.howispulse.com/*)
       if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
-        die "The image ${IMAGE} needs the credentials of a server set up before October 2026.
+        die "The image ${IMAGE} is the registry mirror, which needs instance credentials.
+  This installer only knows them from the pulse.env of an existing server on the same address.
   Use the public image instead: unset PULSE_IMAGE and run this command again.
   Nothing has been changed yet."
       fi ;;
@@ -266,8 +361,20 @@ pruefe_registry_zugang() {
 # Nur Adresse und Betriebswerte. Die Zugangsdaten holt pulse-connect am Ende
 # selbst ab und legt sie ins Datenvolumen (/data/pulse/verbindung.env); hier
 # stehen sie allein bei einem Bestandsserver (s. bestand_uebernehmen).
+#
+# Eine vorhandene Datei wird vorher kopiert (cp -p, Modus 600: sie kann das
+# Secret eines Bestandsservers tragen). Scheitert die Kopie, bricht der Lauf ab,
+# bevor die Datei angefasst wird. `${ENV_SICHERUNG:-…}` fängt den Fall, dass
+# bestand_uebernehmen die Datei nicht lesen konnte und den Namen nicht festlegte.
 schreibe_konfiguration() {
   mkdir -p "$PULSE_DIR"
+  if [ -e "$ENV_FILE" ]; then
+    local sicherung="${ENV_SICHERUNG:-${ENV_FILE}.bak-$(date +%s)}"
+    ( umask 077; cp -p -- "$ENV_FILE" "$sicherung" ) \
+      || die "Could not save the existing ${ENV_FILE} as ${sicherung}. Nothing has been changed."
+    chmod 600 "$sicherung"
+    log "Previous configuration saved as ${sicherung} (readable by root only)"
+  fi
   ( umask 077
     {
       printf 'PULSE_HOSTNAME=%s\n' "$SRV_HOST"
@@ -276,6 +383,7 @@ schreibe_konfiguration() {
       if [ -n "$ADMIN_EMAIL" ]; then printf 'PULSE_ADMIN_EMAIL=%s\n' "$ADMIN_EMAIL"; fi
       printf 'PULSE_TLS_MODE=%s\n' "$TLS_MODE"
       printf 'PULSE_HTTP_PORT=%s\n' "$HTTP_PORT"
+      if [ -n "$ZUSATZ_ZEILEN" ]; then printf '%s\n' "$ZUSATZ_ZEILEN"; fi
       if [ -n "$BESTAND_ZEILEN" ]; then printf '%s\n' "$BESTAND_ZEILEN"; fi
     } > "$ENV_FILE"
   )
@@ -736,9 +844,10 @@ HEADER
     printf '%q ' "${RUN_ARGS[@]}"
     printf ')\n'
     # Registry-Zugang einbacken (chmod 700, gleicher Schutz wie pulse.env) —
-    # nur für den Spiegel registry.howispulse.com, den allein Bestandsserver
-    # aus der Freigabe-Zeit nutzen (s. pruefe_registry_zugang). Das
-    # öffentliche Bild auf GHCR braucht keine Anmeldung.
+    # nur für den Spiegel registry.howispulse.com, den nur Bestandsserver
+    # nutzen (der Installer kennt die Zugangsdaten allein aus deren pulse.env,
+    # s. pruefe_registry_zugang). Das öffentliche Bild auf GHCR braucht keine
+    # Anmeldung.
     case "$IMAGE" in
       registry.howispulse.com/*)
         printf 'REGISTRY=%q\n' "registry.howispulse.com"
@@ -1195,8 +1304,10 @@ ist_verbunden() {
   printf '%s' "$1" | grep -qE '"instance_id"[[:space:]]*:[[:space:]]*"[0-9]+"'
 }
 
+# $1 = erste Zeile (Vorgabe: der Server läuft nur noch nicht verbunden). Antwortet
+# der Server gar nicht, wäre „läuft“ falsch — dort nennt der Aufrufer den Stand.
 verbinden_spaeter() {
-  warn "Your server is running, but it is not connected to a Pulse account yet."
+  warn "${1:-Your server is running, but it is not connected to a Pulse account yet.}"
   warn "Connect later: docker exec -it ${CONTAINER} pulse-connect"
 }
 
@@ -1221,13 +1332,26 @@ server_verbinden() {
   if [ -z "$info" ]; then
     warn "Your server does not answer inside the container yet — skipping the connection step."
     warn "  docker logs ${CONTAINER} 2>&1 | tail -50"
-    verbinden_spaeter
+    verbinden_spaeter "It is not connected to a Pulse account yet."
     return 0
   fi
   if ist_verbunden "$info"; then
+    # Die Verbindung im Volumen gehört zur ALTEN Adresse (bestand_uebernehmen):
+    # der Eintrag in der Cloud trägt sie noch, und die Prüfung von aussen (Schritt
+    # 9) ginge gegen sie. Also weder „fertig“ melden noch VERBUNDEN setzen.
+    if [ -n "$ALTE_ADRESSE" ]; then
+      warn "This server is connected to a Pulse account, but that entry still has its old address, ${ALTE_ADRESSE}."
+      warn "To enter ${SRV_HOST} (confirm with the same account):  docker exec -it ${CONTAINER} pulse-connect"
+      warn "It asks before changing anything. The check from the outside is skipped until then."
+      return 0
+    fi
     VERBUNDEN=1
     log "This server is already connected to a Pulse account."
-    log "To connect it to a different account:  docker exec -it ${CONTAINER} pulse-connect"
+    if [ -n "$BESTAND_ZEILEN" ]; then
+      log "The connection is stored in ${ENV_FILE}, so pulse-connect refuses to change it."
+    else
+      log "To connect it to a different account:  docker exec -it ${CONTAINER} pulse-connect"
+    fi
     return 0
   fi
   if ! { : <"$TTY_GERAET"; } 2>/dev/null; then
@@ -1409,6 +1533,7 @@ frage_adresse
 pruefe_adresse
 log "Server address: ${SRV_HOST}"
 bestand_uebernehmen
+waehle_bild
 decide_mode
 build_run_args
 print_plan
@@ -1501,7 +1626,7 @@ if [ "$MODE" = "static-docker" ] || [ "$MODE" = "hostproxy" ]; then
   cat <<EOF
 
   ----------------------------------------------------------------
-  Last step — ONE route in your existing reverse proxy.
+  ONE route in your existing reverse proxy is still needed.
   (If a route for ${SRV_HOST} already exists, just point it at http://${TARGET}.)
 
   Caddy — add to your Caddyfile:
@@ -1523,9 +1648,17 @@ if [ "$MODE" = "static-docker" ] || [ "$MODE" = "hostproxy" ]; then
 
 EOF
   # Ohne die Route kann keine Prüfung von aussen gelingen — also erst fragen.
-  printf '  Press Enter once the route is in place (or Ctrl-C to check later)… '
+  # Strg+C beendet den Installer, BEVOR er den Server verbindet (Schritt 8). Der
+  # Hinweis dazu steht deshalb schon an der Frage, und ein INT-Trap nur um das
+  # Warten wiederholt ihn. Nach dem Warten wird der Trap wieder abgenommen: der
+  # Rest des Laufs soll sich bei Strg+C wie bisher verhalten.
+  printf '  Stopping here with Ctrl-C? Add the route, then connect the server:\n'
+  printf '      docker exec -it %s pulse-connect\n' "$CONTAINER"
+  printf '  Press Enter once the route is in place… '
+  trap 'echo; verbinden_spaeter "Stopped before the route was checked — your server is running, but not connected to a Pulse account yet."; exit 130' INT
   # Mit Frist: ein unbeaufsichtigter Lauf mit Terminal haenge sonst fuer immer.
   read -r -t 600 _ <"$TTY_GERAET" 2>/dev/null || true
+  trap - INT
   echo
 fi
 
