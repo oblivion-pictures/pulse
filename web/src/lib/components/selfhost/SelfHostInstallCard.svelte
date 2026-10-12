@@ -50,15 +50,12 @@
       class="bg-bg-input text-text-bright min-w-0 flex-1 overflow-x-auto rounded-md px-2 py-1.5 font-mono text-xs whitespace-nowrap select-all"
       data-testid="self-host-install-command">{BEFEHL}</code
     >
-    <!-- Am Finger (Handy, Tablet) 48 dp hoch, am Rechner die schlanke Größe.
-         Die Geräte-Varianten taugen hier nicht: Blatt und Dialog stehen im
-         Portal, also AUSSERHALB des `.geraet-handy`-Wurzel-Div, `nicht-handy:`
-         träfe dort immer zu. Der Marker `data-finger` kommt von
-         `EigenerServerDialog`. -->
+    <!-- Am Finger (Handy, Tablet) 48 dp hoch (Basis-Klasse), am Rechner die
+         schlanke Größe von `size="xs"` (`desktop:`). -->
     <Button
       size="xs"
       variant="outline"
-      class="in-data-[finger]:h-12 in-data-[finger]:px-4"
+      class="h-12 px-4 desktop:h-6 desktop:px-2.5"
       onclick={kopieren}
       data-testid="self-host-install-copy"
     >
@@ -73,7 +70,7 @@
   </div>
   <p class="text-text-muted text-xs">{m.eigener_server_befehl_hinweis()}</p>
   <a
-    class="text-primary inline-flex w-fit items-center text-xs underline-offset-2 hover:underline in-data-[finger]:min-h-12"
+    class="text-primary inline-flex w-fit items-center text-xs underline-offset-2 hover:underline min-h-12 desktop:min-h-auto"
     href={ANLEITUNG}
     target="_blank"
     rel="noopener"
