@@ -58,9 +58,16 @@ Zwei fertige Compose-Varianten (auch ohne Repo-Clone beziehbar — URLs in
   exponiert nur `127.0.0.1:8080` (setzt `PULSE_TLS_MODE=behind-proxy` selbst).
 
 ```bash
-cp .env.example .env      # PULSE_HOSTNAME eintragen (.env-Download via "Meine Instanzen" bringt alles mit)
+cp .env.example .env      # nur PULSE_HOSTNAME eintragen; die [VERBINDUNG]-Zeilen LEER lassen
 docker compose up -d      # bzw. docker compose -f docker-compose.behind-proxy.yml up -d
+docker exec -it pulse pulse-connect   # verbindet den neuen Server mit deinem Pulse-Konto
 ```
+
+Ein neuer Server lässt die fünf `[VERBINDUNG]`-Zeilen der `.env` leer —
+`pulse-connect` füllt sie (in `/data/pulse/verbindung.env`). Nur Bestandsserver
+(eingerichtet vor Oktober 2026) tragen sie in der `.env` ein; der `.env`-Download
+via "Meine Instanzen" bringt sie fertig mit. Ein Wert in der `.env` gewinnt
+immer gegen `verbindung.env`; eine leere Zeile zählt als nicht gesetzt.
 
 Updates verwaltet der Compose-Pfad bewusst selbst — kein Auto-Updater-Container
 (siehe [Auto-update](#auto-update)).

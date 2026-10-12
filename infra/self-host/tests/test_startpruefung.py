@@ -25,6 +25,7 @@ PRUEFUNG = SKRIPTE / "10-check-cloud-creds.sh"
 RENDER = SKRIPTE / "07-render-env.sh"
 CADDY = SKRIPTE / "09-init-caddy.sh"
 DATENVERZEICHNISSE = SKRIPTE / "01-init-data-dirs.sh"
+ENV_BEISPIEL = S6.parent / ".env.example"
 TEMPLATE = S6 / "etc/caddy/Caddyfile.template"
 _ALT = (
     "PULSE_HOSTNAME",
@@ -137,6 +138,41 @@ def test_nichts_aus_der_datei_wird_ausgefuehrt(tmp_path):
     assert not marke.exists()
     assert r.stdout.strip() == "||abc||"
     assert "ignored" in r.stderr
+
+
+def _env_datei(pfad: pathlib.Path) -> dict[str, str]:
+    """Die Belegung, die ``env_file: .env`` im Container ergibt: ``NAME=wert``,
+    ``#`` ist Kommentar, ein leerer Wert bleibt die leere Zeichenkette."""
+    belegung = {}
+    for zeile in pfad.read_text(encoding="utf-8").splitlines():
+        zeile = zeile.strip()
+        if zeile and not zeile.startswith("#") and "=" in zeile:
+            name, wert = zeile.split("=", 1)
+            belegung[name] = wert
+    return belegung
+
+
+def test_env_beispiel_laesst_die_verbindung_leer(tmp_path):
+    """``cp .env.example .env`` ist der dokumentierte Weg eines neuen Servers.
+    Trüge das Beispiel Platzhalter, gewönnen die gegen ``verbindung.env``
+    (Umgebung vor Datei) und ``pulse-connect`` bliebe wirkungslos — der Server
+    liefe unter einer erfundenen Nummer."""
+    belegung = _env_datei(ENV_BEISPIEL)
+    assert belegung["PULSE_HOSTNAME"]
+    for name in _ALT[1:]:
+        assert belegung.get(name) == "", f"{name} im Beispiel nicht leer: {belegung.get(name)!r}"
+    r = _verbindung_lesen(tmp_path, ZUGANG + "PULSE_ADMIN_EMAIL=ops@example.org\n", **belegung)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == (
+        "73315227868860500|73315227868860416|Zx9_client-id|geheim_secret-123|ops@example.org"
+    )
+
+
+def test_env_beispiel_behauptet_nichts_ueber_ein_ungelesenes_secret():
+    """Das Secret lesen der direct-adapter (``config.rs``) und ``instance_name.py``."""
+    text = " ".join(ENV_BEISPIEL.read_text(encoding="utf-8").replace("#", " ").split())
+    assert "KEIN Dienst" not in text
+    assert "noch nicht implementiert" not in text
 
 
 # ── 07-render-env.sh: env.sh unter set -u ─────────────────────────────────
