@@ -11,9 +11,8 @@ port: 7880
 
 rtc:
   tcp_port: 7881
-  # Use a small UDP port range to keep iptables rules manageable. See
-  # memory/feedback_docker_ports.md — never expand this without switching
-  # to network_mode: host.
+  # Use a small UDP port range to keep iptables rules manageable. Never
+  # expand this without switching to network_mode: host.
   port_range_start: 7882
   port_range_end: 7892
   use_external_ip: false

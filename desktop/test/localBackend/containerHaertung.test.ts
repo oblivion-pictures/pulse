@@ -38,7 +38,7 @@ test('infoAuswerten: Docker ohne Gruppenrecht, Dienst aus, Podman ohne subuid, F
   });
   assert.match(aus.status === 'kein-zugriff' ? aus.grund : '', /Docker-Dienst läuft nicht/);
   const subuid = infoAuswerten('podman', {
-    code: 125, stderr: 'Error: cannot find UID/GID for user michael: no subuid ranges found for user "michael" in /etc/subuid',
+    code: 125, stderr: 'Error: cannot find UID/GID for user beispiel: no subuid ranges found for user "beispiel" in /etc/subuid',
   });
   assert.match(subuid.status === 'kein-zugriff' ? subuid.grund : '', /Unter-IDs/);
   const frist = infoAuswerten('podman', { code: -1, stderr: '' });

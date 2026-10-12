@@ -1,14 +1,19 @@
 # Point ffmpeg-sys-next's pkg-config at our private LGPL FFmpeg 8.0.1 build
 # (~/src/ffmpeg-openssl), NOT Homebrew's.
 #
+# Cargo does not expand `~` or `$HOME` in [env], so the path below is a
+# TEMPLATE: replace <benutzer> with your macOS user name, or export
+# PKG_CONFIG_PATH yourself before building (an exported value wins over this
+# [env] entry; CI does exactly that, see .github/workflows/mac-build.yml).
+#
 # Why a custom build: Homebrew's FFmpeg links Apple SecureTransport for TLS,
 # which blocks on RTMPS bulk writes after the handshake → MediaMTX drops the
 # publish on a 10s i/o timeout (the live HQ-stream failure). Our build uses
 # `--enable-openssl --disable-securetransport` → RTMPS works. It is also LGPL
 # (no x264/x265/gpl; VideoToolbox covers encode), so the same build is the one
-# we ship with bundled dylibs. Build recipe: ~/src/build-ffmpeg-openssl.sh.
+# we ship with bundled dylibs. Build recipe: scripts/build-ffmpeg.sh in this crate.
 #
 # The openssl@3 + opus pkgconfig dirs are on the path so the FFmpeg .pc files'
 # Requires.private resolve (harmless for the shared link).
 [env]
-PKG_CONFIG_PATH = "/Users/michael/src/ffmpeg-openssl/lib/pkgconfig:/opt/homebrew/opt/openssl@3/lib/pkgconfig:/opt/homebrew/opt/opus/lib/pkgconfig"
+PKG_CONFIG_PATH = "/Users/<benutzer>/src/ffmpeg-openssl/lib/pkgconfig:/opt/homebrew/opt/openssl@3/lib/pkgconfig:/opt/homebrew/opt/opus/lib/pkgconfig"

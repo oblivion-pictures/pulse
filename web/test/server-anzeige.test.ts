@@ -4,18 +4,18 @@ import { anzeigeName, instanzZeile, istSichtbar, type AnzeigeEintrag } from '../
 
 const heim = (over: Partial<AnzeigeEintrag> = {}): AnzeigeEintrag => ({
   isCloud: false,
-  label: 'https://rapid-comet-58ed.relay.unicutmedia.com',
-  hostname: 'https://rapid-comet-58ed.relay.unicutmedia.com',
+  label: 'https://rapid-comet-58ed.relay.example.com',
+  hostname: 'https://rapid-comet-58ed.relay.example.com',
   server_name: null,
   origin: 'app_host',
   ...over,
 });
 
 test('Name: Cloud-Name vor ready-Name vor Adresse', () => {
-  assert.equal(anzeigeName(heim()), 'https://rapid-comet-58ed.relay.unicutmedia.com');
+  assert.equal(anzeigeName(heim()), 'https://rapid-comet-58ed.relay.example.com');
   assert.equal(anzeigeName(heim({ server_name: 'Alt' })), 'Alt');
   // Der Cloud-Name ist der neueste — er gewinnt gegen einen veralteten ready-Namen.
-  assert.equal(anzeigeName(heim({ server_name: 'Alt', anzeigename: 'Michaels Server' })), 'Michaels Server');
+  assert.equal(anzeigeName(heim({ server_name: 'Alt', anzeigename: 'Beispiel-Server' })), 'Beispiel-Server');
   assert.equal(anzeigeName({ ...heim(), isCloud: true, label: 'Pulse Cloud', anzeigename: 'X' }), 'Pulse Cloud');
 });
 
@@ -39,10 +39,10 @@ test('Nachzug übernimmt Name und Online-Zustand aus der Cloud, sonst nichts zu 
   const inst = { id: '1', notification_mode: 'mentions' as const, origin: 'app_host' as const, role: 'member' as const };
   // Unbekannt bleibt unbekannt — kein Schreibvorgang.
   assert.equal(instanzNachzug(e, inst, 'https://a.relay.x'), null);
-  const neu = instanzNachzug(e, { ...inst, anzeigename: 'Michaels Server', online: false }, 'https://a.relay.x');
-  assert.equal(neu?.anzeigename, 'Michaels Server');
+  const neu = instanzNachzug(e, { ...inst, anzeigename: 'Beispiel-Server', online: false }, 'https://a.relay.x');
+  assert.equal(neu?.anzeigename, 'Beispiel-Server');
   assert.equal(neu?.online, false);
-  assert.equal(instanzNachzug(neu!, { ...inst, anzeigename: 'Michaels Server', online: false }, 'https://a.relay.x'), null);
+  assert.equal(instanzNachzug(neu!, { ...inst, anzeigename: 'Beispiel-Server', online: false }, 'https://a.relay.x'), null);
 });
 
 const ADRESSE = 'meine-server.dcc-test.example.com';

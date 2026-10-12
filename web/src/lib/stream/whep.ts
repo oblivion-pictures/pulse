@@ -14,7 +14,7 @@
  *  4. `setRemoteDescription({type:'answer', sdp})`.
  *  5. On teardown: `pc.close()` + best-effort `DELETE <resourceUrl>`.
  *
- * Reference for the mechanics: `~/Dokumente/GPU_Screen_Recorder/server/player.html`
+ * Reference for the mechanics: `streaming/server/player.html`
  * (a working WHEP player against this exact MediaMTX). We don't copy it; we
  * follow the pattern. Note: the WHEP URL returned by the gateway already
  * carries a `?token=` read token (minted after the membership/VIEW_CHANNEL

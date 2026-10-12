@@ -14,7 +14,9 @@
 
 set script_dir (dirname (status -f))
 set gpg_home (realpath $script_dir)/.gpg
-set uid 'Pulse Flatpak Repo (com.howispulse.Pulse) <oblivion8282@googlemail.com>'
+# Bewusst ohne Mail-Adresse: die Benutzer-ID wandert mit dem öffentlichen Schlüssel
+# in jede .flatpakref und jedes Repo, eine persönliche Adresse hätte dort nichts verloren.
+set uid 'Pulse Flatpak Repo (com.howispulse.Pulse)'
 
 if test -d $gpg_home
     echo "✗ $gpg_home already exists — nothing to do."

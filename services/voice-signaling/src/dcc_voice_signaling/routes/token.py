@@ -136,9 +136,9 @@ async def issue_token(
     # DIESES Gerät beitritt, fliegen ältere LiveKit-Sitzungen desselben Kontos
     # im Kanal raus — das alte Gerät reißt sauber ab (bleibt angemeldet) und
     # bekommt über voice_disconnect mit Grund einen Hinweis, statt dass
-    # derselbe Mensch doppelt/dreifach als Kachel steht (Kuriiko-Vorfall
-    # 05.10.). Anrufe (call_token.py) sind bewusst NICHT Teil davon: dort
-    # dürfen Zweitgeräte bleiben (Befund 03.10. #6). Best-effort wie der
+    # derselbe Mensch doppelt/dreifach als Kachel steht (Befund 05.10.).
+    # Anrufe (call_token.py) sind bewusst NICHT Teil davon: dort dürfen
+    # Zweitgeräte bleiben (Befund 03.10. #6). Best-effort wie der
     # Admin-Rauswurf — scheitert LiveKit, joint das neue Gerät trotzdem und
     # der Reconcile-Lauf räumt später auf. Ohne API-Singleton (Unit-Tests)
     # entfällt der Wurf komplett.

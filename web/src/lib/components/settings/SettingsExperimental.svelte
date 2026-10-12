@@ -36,7 +36,7 @@
   import { m } from '$lib/paraglide/messages.js';
   import Checkbox from '$lib/components/form/Checkbox.svelte';
 
-  // Prod-Ausschluss des DEV-Fehlerschalters (2026-09-22, Wunsch Michael): der
+  // Prod-Ausschluss des DEV-Fehlerschalters (2026-09-22): der
   // Schalter ist ein Testwerkzeug und darf NIE in ausgelieferten Builds
   // erscheinen — `import.meta.env.DEV` ist im Prod-Build konstant false, das
   // Markup unten wird beim Bauen wegoptimiert. Im Dev-Fenster (Vite-Server)
