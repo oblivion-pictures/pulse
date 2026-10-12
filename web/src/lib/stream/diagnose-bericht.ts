@@ -29,9 +29,9 @@
  * ## Warum es keine Server-Sitzungskennung gibt
  *
  * Naheliegend wäre, die WHEP-Sitzung mit der Kennung zu verbinden, unter der
- * MediaMTX dieselbe Sitzung in seinem Log führt (`[session 9a28cbc6]`, siehe
- * `scripts/fec-tor-kennzahlen.py`). **Das geht nicht, und der Grund ist am
- * MediaMTX-Quelltext geprüft, nicht vermutet:**
+ * MediaMTX dieselbe Sitzung in seinem Log führt (`[session 9a28cbc6]`, so
+ * führt sie das interne Auswerte-Skript für dieses Log auf). **Das geht nicht,
+ * und der Grund ist am MediaMTX-Quelltext geprüft, nicht vermutet:**
  *
  *  - das Log-Präfix ist `hex(session.uuid[:4])`,
  *  - der `Location`-Header der WHEP-Antwort trägt `session.secret` —

@@ -266,7 +266,8 @@ Ehrlich benannt, damit niemand danach sucht:
   und wird nicht ausgeliefert".** Das Zweite ist erledigt: der Player faehrt
   seit Version 0.1.69 im DMG mit. Das Erste nur zur Haelfte — die
   VideoToolbox-Hardware-Dekodierung ist eingebaut und der Weg ist da (`health`
-  meldet ihn aus dem App-Bundle heraus, siehe `WISSENSSTAND.md` Abschnitt 8),
+  meldet ihn aus dem App-Bundle heraus; der zugehoerige Messbericht liegt in
+  den internen Arbeitsunterlagen),
   aber gegen einen echten Stream mit zwei Clients ist er noch nicht
   nachgewiesen. Fuer AV1 zusaetzlich gemessen (Apple M2, ohne `libdav1d`):
   FFmpegs eigener `av1`-Decoder ist ein reiner Hardware-Stub, und

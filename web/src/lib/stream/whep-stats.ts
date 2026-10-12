@@ -69,7 +69,8 @@ export type DiagnosticSnapshot = {
    *  aufgebläht (7442 gegen 801 tatsächliche Lücken). Wer ihn als Verlustmaß
    *  liest, misst die Hartnäckigkeit des Empfängers statt den Zustand der
    *  Leitung. Entdoppeln kann nur, wer die Sequenznummern sieht — also der
-   *  Server (`scripts/fec-tor-kennzahlen.py`), nicht der Browser.
+   *  Server (per internem Auswerte-Skript für das MediaMTX-Log), nicht der
+   *  Browser.
    *
    *  Das Verlustmaß ist {@link packetsLost}, mit {@link packetsReceived} als
    *  Bezugsgröße. */

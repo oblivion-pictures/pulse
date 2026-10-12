@@ -94,7 +94,8 @@ export async function sendeDiagnoseBericht(
       // Doppelt zum Kopf des Berichts, und das ist Absicht: als eigene Spalte
       // ist der Kanal indiziert und suchbar, im JSON wäre jede Suche danach
       // ein Full-Scan. Er ist der Schlüssel, über den sich dieser Bericht mit
-      // der Serversicht verbinden lässt (`scripts/fec-tor-kennzahlen.py`).
+      // der Serversicht verbinden lässt (über ein internes Auswerte-Skript
+      // für das MediaMTX-Log).
       channel_id: String(bericht.kopf.kanal ?? ''),
       system_info: umgebung(),
       report: bericht,
