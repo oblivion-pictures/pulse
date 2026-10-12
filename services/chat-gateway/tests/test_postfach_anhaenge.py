@@ -227,7 +227,7 @@ async def test_vorschaubild_hat_eine_eigene_kleine_grenze(
     client, session_factory, _auth_signer, friend_pair, mock_s3
 ):
     """Auch im verschluesselten Weg gilt fuers Vorschaubild nicht die volle
-    Dateigrenze (``ablage_anhang_max_bytes``, Vorgabe 25 MB), sondern 1 MiB;
+    Dateigrenze (``ablage_anhang_max_bytes``, Vorgabe 25 MB), sondern 4 MiB;
     die Groesse wird gemerkt (sie zaehlt dort zwar gegen kein Kontingent,
     aber die Spalte soll in beiden Wegen dasselbe heissen)."""
     token_a, _uid_a, _tb, _uid_b, dm_id, _pk = await _aufbau(
@@ -241,21 +241,21 @@ async def test_vorschaubild_hat_eine_eigene_kleine_grenze(
         }
 
     zu_gross = await client.post(
-        "/postfach/anhaenge/upload-url", json=rumpf(1024 * 1024 + 1),
+        "/postfach/anhaenge/upload-url", json=rumpf(4 * 1024 * 1024 + 1),
         headers=_auth(token_a),
     )
     assert zu_gross.status_code == 413, zu_gross.text
     assert mock_s3.put_calls == []
 
     ok = await client.post(
-        "/postfach/anhaenge/upload-url", json=rumpf(1024 * 1024),
+        "/postfach/anhaenge/upload-url", json=rumpf(4 * 1024 * 1024),
         headers=_auth(token_a),
     )
     assert ok.status_code == 201, ok.text
     assert ok.json()["thumb_upload_url"] is not None
     async with session_factory() as s:
         zeile = await s.get(MessageAttachment, int(ok.json()["id"]))
-        assert zeile.thumb_size == 1024 * 1024
+        assert zeile.thumb_size == 4 * 1024 * 1024
 
 
 @pytest.mark.asyncio

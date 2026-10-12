@@ -203,14 +203,21 @@ async def _enforce_storage_quota(
 
 
 #: Obergrenze für das Vorschaubild zu einer Datei, unabhängig von der Dateigrenze.
-#: Der Klient erzeugt höchstens 720 px Kantenlänge als WebP (q 0,85,
-#: ``web/src/lib/attachments/vorschaubild.ts``). Nachgemessen mit libwebp q85:
-#: reines Pixelrauschen bei 720x720 ~390 kB, mit zufälligem Alphakanal ~913 kB.
-#: 1 MiB trägt damit noch den theoretischen Schlimmstfall samt der 28 Byte
-#: AES-GCM-Anhang des verschlüsselten Wegs (``postfach_anhaenge.py``), ist
-#: aber deutlich kleiner als die Dateigrenze (Vorgabe 25 MiB), die vorher auch
-#: für das Vorschaubild galt.
-MAX_THUMB_BYTES = 1024 * 1024
+#:
+#: Die Rechnung geht vom Schlimmstfall aus, nicht vom Normalfall: der Klient
+#: erzeugt höchstens 720 px Kantenlänge (``THUMB_MAX`` in
+#: ``web/src/lib/attachments/vorschaubild.ts``) und verlangt dafür per
+#: ``canvas.toBlob(…, 'image/webp')`` ein WebP. Safari und jeder iOS-Browser
+#: kodieren aber kein WebP und liefern stattdessen ein PNG, und ein bereits
+#: ausgeliefertes Klienten-Bundle kann sich nicht anpassen. Ein rohes RGBA-Bild
+#: von 720 x 720 Pixeln sind 720 * 720 * 4 = 2.073.600 Byte; als PNG
+#: (inkompressibles Rauschen, schwache Kompression) kommt das gemessen auf
+#: 2.188.607 Byte (Filterbytes und Deflate-Rahmen obendrauf). 4 MiB
+#: (4.194.304) liegen knapp doppelt darüber und tragen auch die 28 Byte
+#: AES-GCM-Anhang des verschlüsselten Wegs (``postfach_anhaenge.py``). Die
+#: Dateigrenze (Vorgabe 25 MiB), die vorher auch für das Vorschaubild galt,
+#: bleibt deutlich darüber; und das Vorschaubild zählt ins Kontingent.
+MAX_THUMB_BYTES = 4 * 1024 * 1024
 
 
 def thumb_bytes_or_raise(
@@ -220,7 +227,7 @@ def thumb_bytes_or_raise(
     (``None`` = kein Vorschaubild). 400 ohne Größe, 413 über der Grenze.
 
     Die Grenze ist die kleinere von ``MAX_THUMB_BYTES`` und der Dateigrenze:
-    liegt die Dateigrenze unter 1 MiB, gilt weiter sie (bisher galt sie für
+    liegt die Dateigrenze unter 4 MiB, gilt weiter sie (bisher galt sie für
     Datei und Vorschaubild gleichermaßen)."""
     if not has_thumb:
         return None
