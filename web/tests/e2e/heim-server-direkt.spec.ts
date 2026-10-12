@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
+import { E2E_AUTH_PORT } from './_ports';
 
 /**
  * Heim-Server: die ECHTE WebRTC-Direktverbindung, Komplettlauf.
@@ -16,6 +17,17 @@ import fs from 'node:fs';
  * (docker build -f infra/self-host/Dockerfile …). Der Adapter bekommt
  * PULSE_DIRECT_EXTRA_HOST_IPS=127.0.0.1, damit die ICE-Strecke über Loopback
  * läuft — auf echten Zwei-Maschinen-Strecken stehen dort STUN-/LAN-IPs.
+ *
+ * **Das Host-Netz muss FREI sein** (`HOST_PORTS_*` unten): der Container läuft
+ * mit `--network host` und belegt dort u. a. 443, 5432, 7881, 7900/udp, 9000.
+ * Auf einem Rechner, der schon etwas auf diesen Ports hat — ein Heimserver
+ * (`pulse-host-*`), eine fremde Postgres auf 5432, der Dev-Stack —, kann der
+ * Lauf nicht gelingen UND ist nicht harmlos: Bobs ICE-Verbindung geht auf
+ * 127.0.0.1:7900/udp und träfe dort den fremden Server, und der Container
+ * hängt sich an jede Postgres auf 5432 an (`06-run-migrations.sh` fragt nur
+ * `pg_isready`, das auch bei unbekanntem Benutzer „bereit" meldet) und liefe
+ * seine Migrationen gegen sie. Deshalb prüft der Test die Ports als ERSTES und
+ * bricht mit einer klaren Meldung ab, bevor er irgendetwas startet.
  */
 
 const ts = Date.now();
@@ -31,8 +43,46 @@ const BOB = {
 };
 const CONTAINER = 'pulse-heim-e2e';
 
+/** Ports, die der All-in-One-Container im Host-Netz belegt (Kopf von
+ *  `infra/self-host/Dockerfile` + `07-render-env.sh`: Caddy, coturn,
+ *  MediaMTX, LiveKit, Postgres, Redis, Garage, die Python-Dienste). */
+const HOST_PORTS_TCP = [
+  80, 443, 1936, 3478, 5432, 6379, 7880, 7881, 8002, 8003, 8004, 8005, 8889, 9000, 9997
+];
+/** UDP: coturn, LiveKit-ICE (7882–7892), Direktpfad-Adapter (7900), MediaMTX-ICE. */
+const HOST_PORTS_UDP = [3478, 7882, 7883, 7884, 7885, 7886, 7887, 7888, 7889, 7890, 7891, 7892, 7900, 8189];
+
 function sh(cmd: string): string {
   return execSync(cmd, { encoding: 'utf8' });
+}
+
+/** Welche der oben genannten Ports lauscht auf diesem Rechner schon jemand?
+ *  Liest nur die Socket-Tabelle des Kernels (`ss`), spricht niemanden an.
+ *  Ohne `ss` (macOS/Windows) ist nichts prüfbar — dann leer. */
+function belegteHostPorts(): string[] {
+  let tcp: string;
+  let udp: string;
+  try {
+    tcp = sh('ss -H -ltn');
+    udp = sh('ss -H -lun');
+  } catch {
+    return [];
+  }
+  // Spalten: Zustand, Recv-Q, Send-Q, Lokal (Adresse:Port), Gegenstelle.
+  const lauschend = (ausgabe: string): Set<number> =>
+    new Set(
+      ausgabe
+        .split('\n')
+        .map((zeile) => zeile.trim().split(/\s+/)[3])
+        .filter((adresse): adresse is string => Boolean(adresse))
+        .map((adresse) => Number(adresse.slice(adresse.lastIndexOf(':') + 1)))
+    );
+  const tcpBelegt = lauschend(tcp);
+  const udpBelegt = lauschend(udp);
+  return [
+    ...HOST_PORTS_TCP.filter((p) => tcpBelegt.has(p)).map((p) => `${p}/tcp`),
+    ...HOST_PORTS_UDP.filter((p) => udpBelegt.has(p)).map((p) => `${p}/udp`)
+  ];
 }
 
 async function register(page: Page, u: { username: string; email: string; password: string }) {
@@ -79,6 +129,17 @@ test('Direktpfad-Komplettlauf: Selbstbedienung → Container → Bob über DataC
   browser
 }) => {
   test.setTimeout(420_000);
+
+  // ── 0. Voraussetzung: das Host-Netz gehört dem Test (s. Kopf) ──
+  const belegt = belegteHostPorts();
+  if (belegt.length > 0) {
+    throw new Error(
+      `Der Container braucht das Host-Netz für sich, aber auf diesem Rechner lauscht schon ` +
+        `etwas auf: ${belegt.join(', ')}. Der Lauf würde fremde Dienste treffen (ein Heimserver ` +
+        `auf 7900/udp, eine fremde Postgres auf 5432) und kann nicht gelingen. Auf einem Rechner ` +
+        `ohne diese Dienste fahren (CI-Runner, frische VM) — nichts wurde gestartet.`
+    );
+  }
 
   // ── 1. Owner: Konto + Selbstbedienung + Bootstrap (Cloud) ──
   const ownerCtx = await browser.newContext();
@@ -183,7 +244,7 @@ test('Direktpfad-Komplettlauf: Selbstbedienung → Container → Bob über DataC
       `-e PULSE_CLOUD_CLIENT_ID=${clientId} ` +
       `-e PULSE_CLOUD_CLIENT_SECRET=${clientSecret} ` +
       `-e PULSE_ADMIN_EMAIL=${adminEmail} ` +
-      `-e PULSE_CLOUD_ORIGIN=http://127.0.0.1:8101 ` +
+      `-e PULSE_CLOUD_ORIGIN=http://127.0.0.1:${E2E_AUTH_PORT} ` +
       `-e PULSE_CLOUD_API_PREFIX= ` +
       `-e PULSE_TLS_MODE=provided ` +
       `-e PULSE_DIRECT_EXTRA_HOST_IPS=127.0.0.1 ` +
