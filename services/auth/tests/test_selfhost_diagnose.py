@@ -656,3 +656,33 @@ async def test_telefonbuch_gruen_bei_frischem_heartbeat(
     assert erster["ok"] is True
     assert erster["befund"] == "ok"
     assert erster["einzelheit"] == "46.128.161.204:7900"
+
+
+# ---------------------------------------------------------------------------
+# Betreiber-Glied: die Route reicht Kennung und Herkunft an die Sätze weiter
+# ---------------------------------------------------------------------------
+
+
+async def test_betreiber_handgriff_nennt_die_erwartete_kennung(client, alice, instance, ohne_netz):
+    ohne_netz([Schritt("betreiber", False, "andere_kennung")])
+    r = await client.post(
+        f"/selfhost/diagnose/{instance['id']}", headers={"Cookie": alice["cookie"]}
+    )
+    (schritt,) = [s for s in r.json()["schritte"] if s["schritt"] == "betreiber"]
+    assert str(alice["id"]) in schritt["was_tun"]
+    assert "pulse-connect" in schritt["was_tun"]
+
+
+async def test_heimserver_bekommt_den_handgriff_der_server_app(
+    client, alice, heim_instanz, ohne_netz
+):
+    ohne_netz([Schritt("betreiber", False, "andere_kennung")])
+    r = await client.post(
+        f"/selfhost/diagnose/{heim_instanz['id']}",
+        headers={"Cookie": alice["cookie"], "Accept-Language": "de"},
+    )
+    assert r.status_code == 200, r.text
+    (schritt,) = [s for s in r.json()["schritte"] if s["schritt"] == "betreiber"]
+    assert "Server-App" in schritt["was_tun"]
+    for wort in ("pulse-connect", "docker", "Compose", "pulse.env"):
+        assert wort not in schritt["was_tun"]

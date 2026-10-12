@@ -21,6 +21,7 @@ import pathlib
 import pytest
 
 from dcc_auth import diagnose_texte as dt
+from dcc_auth import diagnose_texte_betreiber as _betreiber
 
 _QUELLEN = ("selfhost_probe.py", "selfhost_probe_dienst.py", "selfhost_probe_betreiber.py")
 
@@ -343,3 +344,54 @@ def test_betreiber_texte_zeigen_auf_pulse_connect(befund: str, sprache: str) -> 
     assert "/etc/pulse/pulse.env" not in was_tun
     assert "Meine Instanzen" not in was_tun
     assert "My instances" not in was_tun
+
+
+@pytest.mark.parametrize("befund", ["andere_kennung", "nicht_konfiguriert"])
+@pytest.mark.parametrize("sprache", ["de", "en"])
+def test_bestands_ausnahme_nennt_die_erwartete_kennung(befund: str, sprache: str) -> None:
+    """Die Ausnahme für Server aus der Freigabe-Zeit verlangt, die Kennung in die
+    Konfiguration zu schreiben. Ohne die Zahl selbst war das eine Sackgasse: die
+    App zeigt die Konto-Nummer nirgends an."""
+    _, was_tun = dt.erklaerung(
+        "betreiber", befund, False, sprache, container="pulse", kennung="1234567890"
+    )
+    assert "1234567890" in was_tun
+    assert "{kennung}" not in was_tun
+
+
+def test_platzhalter_ohne_wert_bleibt_stehen() -> None:
+    """Wer nur den Container kennt, bekommt keine erfundene Kennung — und keinen
+    KeyError aus ``format``."""
+    _, was_tun = dt.erklaerung("betreiber", "andere_kennung", False, "de", container="pulse")
+    assert "{kennung}" in was_tun
+    assert "{container}" not in was_tun
+
+
+
+_VPS_HANDGRIFFE = ("pulse-connect", "docker", "Compose", "pulse.env", "Installer", "installer")
+
+
+@pytest.mark.parametrize("paar", sorted(_betreiber.BEFUNDE_HEIMSERVER))
+@pytest.mark.parametrize("sprache", ["de", "en"])
+def test_heimserver_bekommen_keine_vps_handgriffe(paar, sprache: str) -> None:
+    """Ein Heim-Server läuft in der Server-App: kein Installer, kein Compose,
+    kein ``docker exec``. Die Sätze dafür nennen deshalb die Server-App."""
+    was_ist, was_tun = dt.erklaerung(
+        paar[0], paar[1], False, sprache, container="pulse", kennung="42", heimserver=True
+    )
+    assert was_ist and was_tun
+    for wort in _VPS_HANDGRIFFE:
+        assert wort not in was_tun, f"{paar}: {wort!r} im Handgriff"
+    # Wo ein Handgriff etwas an der Server-App verlangt, nennt er sie.
+    if paar[1] != "signatur_abgelehnt":
+        assert ("Server-App" in was_tun) or ("server app" in was_tun)
+
+
+def test_heimserver_saetze_gibt_es_nur_fuer_bekannte_befunde() -> None:
+    assert set(_betreiber.BEFUNDE_HEIMSERVER) <= set(dt.alle_paare())
+
+
+def test_ohne_eigenen_heimserver_satz_gilt_der_gemeinsame() -> None:
+    gemeinsam = dt.erklaerung("health", "server_krank", False, "de", container="pulse")
+    heim = dt.erklaerung("health", "server_krank", False, "de", container="pulse", heimserver=True)
+    assert heim == gemeinsam
