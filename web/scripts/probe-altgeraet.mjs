@@ -14,11 +14,15 @@
 import { chromium } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 const BASIS = 'http://127.0.0.1:5173';
 const TS = Date.now();
-const A = { username: `alt_a_${TS}`, email: `alt_a_${TS}@dev.example.com`, password: 'test1234' };
-const B = { username: `alt_b_${TS}`, email: `alt_b_${TS}@dev.example.com`, password: 'test1234' };
+// Zufällig je Lauf: die Konten sind Wegwerf-Konten, ein festes Passwort im
+// öffentlichen Repo wäre ein bekannter Zugang, falls eines liegen bleibt.
+const PASSWORT = `pw-${randomUUID()}`;
+const A = { username: `alt_a_${TS}`, email: `alt_a_${TS}@dev.example.com`, password: PASSWORT };
+const B = { username: `alt_b_${TS}`, email: `alt_b_${TS}@dev.example.com`, password: PASSWORT };
 
 function pg(sql) {
   const dotenv = {};

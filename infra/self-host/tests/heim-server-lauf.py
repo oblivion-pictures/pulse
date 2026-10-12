@@ -20,7 +20,10 @@ Danach optional: heim-server-webrtc.ts (echter Browser-DataChannel-Test).
 """
 
 """Heim-Server-Kompletttest: Selbstbedienung → Container → Friend-Join → Chat."""
-import json, urllib.request, ssl, subprocess, time, pathlib
+import json, urllib.request, ssl, subprocess, time, pathlib, secrets
+
+# Zufällig je Lauf: Wegwerf-Konten, kein festes Passwort im öffentlichen Repo.
+PASSWORT = "pw-" + secrets.token_urlsafe(12)
 
 CTX = ssl.create_default_context(); CTX.check_hostname=False; CTX.verify_mode=ssl.CERT_NONE
 AUTH = "http://127.0.0.1:8101"
@@ -47,7 +50,7 @@ def login(email, pw):
 
 ts = int(time.time())
 owner = {"username": f"kk_owner_{ts}", "email": f"kk_owner_{ts}@example.com",
-         "password": "kk-pass-123", "display_name": "Owner"}
+         "password": PASSWORT, "display_name": "Owner"}
 call(f"{AUTH}/register", "POST", owner)
 oc = login(owner["email"], owner["password"])
 
@@ -110,7 +113,7 @@ s, _ = call(f"https://{host}/api/chat/channels/{chan}/messages", "POST",
 print("7) Community/Kanal/Invite/Message:", s)
 
 bob = {"username": f"kk_bob_{ts}", "email": f"kk_bob_{ts}@example.com",
-       "password": "kk-pass-123", "display_name": "Bob"}
+       "password": PASSWORT, "display_name": "Bob"}
 call(f"{AUTH}/register", "POST", bob)
 bc = login(bob["email"], bob["password"])
 s, _ = call(f"{AUTH}/me/instances/{iid}/membership", "POST", {}, cookie=bc)
