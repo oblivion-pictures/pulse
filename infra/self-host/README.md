@@ -14,13 +14,17 @@ docs (DNS, ports, connecting the server to a Pulse account) are in
 pushes `ghcr.io/oblivion-pictures/pulse` — **public, no login needed** — and
 its `merge` job mirrors every tag (`imagetools create`) to
 `registry.howispulse.com/pulse-allinone` under the identical tag name. The
-mirror only serves servers set up before October 2026: it gates access
-per-instance via their `PULSE_CLOUD_CLIENT_ID`/`PULSE_CLOUD_CLIENT_SECRET`
-(`docker login registry.howispulse.com`), and their update scripts keep pulling
-from it. New servers pull from GHCR. Both `:edge` (every `main` push) and
+mirror gates access per instance via `PULSE_CLOUD_CLIENT_ID`/
+`PULSE_CLOUD_CLIENT_SECRET` (`docker login registry.howispulse.com`) and
+accepts those of any active instance, but only servers set up before October
+2026 still use it: their update scripts keep pulling from it, and the
+installer knows the credentials only from such a server's `pulse.env`. New
+servers pull from GHCR. Both `:edge` (every `main` push) and
 `:stable` (tagged releases `vX.Y.Z` only) exist on both. The installer
 (`web/static/install.sh`) and the Compose files use `:stable`; the installer
-takes another image via `PULSE_IMAGE`.
+takes another image via `PULSE_IMAGE`. Run again on a server that already
+exists, the installer keeps that server's image (and tag) unless `PULSE_IMAGE`
+is set.
 
 ## Build
 
