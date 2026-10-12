@@ -13,8 +13,9 @@
  *   - `verlaufSatzLoeschen`: der Autor kommt aus dem liegenden Satz — die
  *     eigene Löschung und das Server-Ereignis. Ebenso mit Register.
  *   - `verlaufMarkiereGeloescht`: nur EIN Satz unter seinem Schlüssel, ohne
- *     Register. Für Sicherungs-Steine ohne Autor (vor 2026-10-11): sie
- *     treffen nur ihre lokale ID und lösen nie eine Identität auf.
+ *     Register. Für Sicherungs-Steine, die auch nach dem Leser
+ *     (`sicherung/eintragsGruppen.ts`) keinen Autor tragen: sie treffen hier
+ *     nur ihre lokale ID und lösen nie eine Identität auf.
  *
  * Im Node-Testläufer NICHT prüfbar (kein `indexedDB` dort).
  */

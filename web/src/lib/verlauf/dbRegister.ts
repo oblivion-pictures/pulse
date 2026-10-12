@@ -73,7 +73,12 @@ export function ablegenMitRegister(
  * Standen ALLE Einträge schon im Register, entfällt der Durchlauf durch den
  * Kanal: nach der Invariante im Modulkopf liegt dann kein sichtbarer
  * Treffer mehr. Das zählt, weil Archiv und Sicherung ihre Grabsteine bei
- * jedem Lesen erneut anwenden.
+ * jedem Lesen erneut anwenden. Nachgesehen wird dann nur noch unter den
+ * Kennungen selbst (`markiereUnterKennung`): ein Tab, der nach einem Deploy
+ * noch den Code von vor dem Register fährt, prüft beim Schreiben nichts
+ * und kann die Archiv-Kopie unter K wieder sichtbar ablegen — der eine
+ * Punktzugriff hält die Invariante für diesen Fall, ohne den Kanal je
+ * Grabstein ganz zu lesen.
  */
 export function gebundenLoeschenInTx(
   nachrichten: IDBObjectStore,
@@ -83,7 +88,10 @@ export function gebundenLoeschenInTx(
   kennungen: readonly string[],
   fertig: (markiert: Satz[], neuEingetragen: boolean) => void
 ): void {
-  const eintraege = kennungen
+  // Doppelte Kennungen (ein Sicherungs-Stein, dessen ID seine Kennung ist)
+  // träfen denselben Satz zweimal.
+  const eindeutig = [...new Set(kennungen)];
+  const eintraege = eindeutig
     .map((kennung) => registerEintrag(kontoId, kanalId, autorId, kennung))
     .filter((e): e is RegisterEintrag => e !== null);
   if (eintraege.length === 0) {
@@ -100,10 +108,52 @@ export function gebundenLoeschenInTx(
         neuEingetragen = true;
       }
       if (--offen > 0) return;
-      if (!neuEingetragen) fertig([], false);
-      else markiereTreffer(nachrichten, kontoId, kanalId, autorId, kennungen, (m) => fertig(m, true));
+      const markieren = neuEingetragen ? markiereTreffer : markiereUnterKennung;
+      markieren(nachrichten, kontoId, kanalId, autorId, eindeutig, (m) => fertig(m, neuEingetragen));
     };
   }
+}
+
+/** Wie `markiereTreffer`, aber nur unter den Kennungen selbst als lokale ID
+ *  — ein Punktzugriff je Kennung statt eines Durchlaufs durch den Kanal. */
+function markiereUnterKennung(
+  nachrichten: IDBObjectStore,
+  kontoId: string,
+  kanalId: string,
+  autorId: string,
+  kennungen: readonly string[],
+  fertig: (markiert: Satz[]) => void
+): void {
+  const markiert: Satz[] = [];
+  let offen = kennungen.length;
+  for (const kennung of kennungen) {
+    const anfrage = nachrichten.get(sortierSchluessel(kanalId, kennung));
+    anfrage.onsuccess = () => {
+      const satz = anfrage.result as Satz | undefined;
+      if (satz && sichtbarerTreffer(satz, kontoId, autorId, kennungen)) {
+        const stein = { ...satz, geloescht: true };
+        nachrichten.put(stein);
+        markiert.push(stein);
+      }
+      if (--offen === 0) fertig(markiert);
+    };
+  }
+}
+
+/** Ob ein liegender Satz eine gebundene Löschung mit diesen Kennungen trifft
+ *  und noch sichtbar ist. */
+function sichtbarerTreffer(
+  satz: Satz,
+  kontoId: string,
+  autorId: string,
+  kennungen: readonly string[]
+): boolean {
+  const kandidat = { id: satz.nachrichtId, kryptoId: satz.kryptoId, autorId: satz.autorId };
+  return (
+    !satz.geloescht &&
+    gehoertZuKonto(satz, kontoId) &&
+    kennungen.some((kennung) => trifftFrame(kennung, kandidat, autorId))
+  );
 }
 
 function markiereTreffer(
@@ -123,12 +173,7 @@ function markiereTreffer(
       return;
     }
     const satz = cursor.value as Satz;
-    const kandidat = { id: satz.nachrichtId, kryptoId: satz.kryptoId, autorId: satz.autorId };
-    if (
-      !satz.geloescht &&
-      gehoertZuKonto(satz, kontoId) &&
-      kennungen.some((kennung) => trifftFrame(kennung, kandidat, autorId))
-    ) {
+    if (sichtbarerTreffer(satz, kontoId, autorId, kennungen)) {
       const stein = { ...satz, geloescht: true };
       cursor.update(stein);
       markiert.push(stein);

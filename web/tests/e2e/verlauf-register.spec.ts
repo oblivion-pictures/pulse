@@ -281,6 +281,40 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     expect(sichtbar(await kanal(page))).toEqual([]);
   });
 
+  test('Fund 8: eine Kopie, die ein Tab mit altem Code nach der Löschung ablegt, fällt beim nächsten Anwenden', async ({ page }) => {
+    expect(await gebundenLoeschen(page, ALICE, [K])).toEqual({ markiert: [], neu: true });
+    // Ein Tab mit dem Code von vor dem Register schreibt ohne Prüfung — hier
+    // nachgestellt mit einem rohen `put` an der App vorbei.
+    await page.evaluate(
+      async ({ kanalId, kontoId, k, alice }) => {
+        const w = window as unknown as { __satz: { zuSatz: Function } };
+        const satz = w.__satz.zuSatz(
+          kanalId,
+          { id: k, author_id: alice, content: 'zurück', created_at: '2026-10-12T00:00:00Z' },
+          kontoId
+        );
+        await new Promise<void>((fertig, fehler) => {
+          const offen = indexedDB.open('pulse-verlauf');
+          offen.onsuccess = () => {
+            const tx = offen.result.transaction('nachrichten', 'readwrite');
+            tx.objectStore('nachrichten').put(satz);
+            tx.oncomplete = () => {
+              offen.result.close();
+              fertig();
+            };
+            tx.onerror = () => fehler(tx.error);
+          };
+        });
+      },
+      { kanalId: KANAL, kontoId: KONTO, k: K, alice: ALICE }
+    );
+    expect(sichtbar(await kanal(page))).toEqual([K]);
+    // Das nächste Anwenden derselben Löschung (Archiv und Sicherung tun das
+    // bei jedem Lesen) sieht unter der Kennung nach, auch ohne neuen Eintrag.
+    expect(await gebundenLoeschen(page, ALICE, [K])).toEqual({ markiert: [K], neu: false });
+    expect(sichtbar(await kanal(page))).toEqual([]);
+  });
+
   test('Register-Einträge erscheinen in keinem Leseweg', async ({ page }) => {
     await gebundenLoeschen(page, ALICE, [K]);
     const gelesen = await page.evaluate(

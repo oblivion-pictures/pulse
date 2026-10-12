@@ -144,7 +144,19 @@ export function ausSatz(satz: SatzAusschnitt): AblageNachricht {
  * Worts (lokale ID K) nie, und die gelöschte Nachricht stand nach der
  * Wiederherstellung wieder da. Kein Formatbruch: `autor` ist ohnehin ein
  * Pflichtfeld (bisher leer), `kryptoId` ein tolerant gelesenes Zusatzfeld.
- * Ein älterer Stein trägt beides nicht und trifft weiter nur seine ID.
+ * Ein älterer Stein trägt beides nicht; was er beim Wiederherstellen trifft,
+ * steht in `sicherung/eintragsGruppen.ts` (die Gruppe seiner lokalen ID).
+ *
+ * **Ältere Klienten lesen einen Stein mit Kennung unsauber** (Gegenprüfung
+ * 2026-10-12, Fund 8) — nicht behebbar, nur festgehalten. Ihr Leser
+ * (`wiederherstellen.ts` vor dieser Reihe) legte Rahmen nur über
+ * `kryptoId`↔`kryptoId` zusammen und ließ den Stein unter SEINER ID neben
+ * der Kopie stehen: liest er die Kopie zuerst, bleibt sie nach dem
+ * Wiederherstellen sichtbar; liest er den Stein zuerst, verschwindet sie.
+ * Ein alter Tab liest so bis zum nächsten Neuladen. Das Grabstein-Register
+ * (`verlauf/grabsteinRegister.ts`) kennen solche Tabs auch nicht — ihre
+ * Schreibwege prüfen es nicht; `verlauf/dbRegister.ts::gebundenLoeschenInTx`
+ * fängt die Kopie unter der Kennung beim nächsten Anwenden wieder ein.
  *
  * Die Kennung ist die kanonische (`verlauf/identitaet.ts::kanonischeId`):
  * die `kryptoId` eines Empfangs-Satzes, sonst seine eigene ID — beim

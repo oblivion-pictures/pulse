@@ -30,8 +30,19 @@
  *
  * Trägt der Stein einen Autor, trifft er nur Gruppen DIESES Autors, und zu
  * seinen Ziel-IDs gehört dann auch die Kennung K (unter der die Nachricht
- * beim Verfasser und im Archiv liegt). Ältere Steine tragen keinen Autor
- * (`autor: ''`) und treffen nur ihre eigene lokale ID.
+ * beim Verfasser und im Archiv liegt).
+ *
+ * Ältere Steine tragen keinen Autor (`autor: ''`) und suchen nur über ihre
+ * eigene lokale ID — getroffen wird aber die GANZE Gruppe dieser ID, samt
+ * der lokalen IDs, die über die Identität dazugekommen sind, und die
+ * Ausgabe nennt für jede einen Stein mit dem Autor und der Kennung der
+ * Gruppe. Hier stand bis 2026-10-12, sie träfen „nur ihre eigene lokale ID"
+ * (so auch in der Nachricht zu a5abfb42) — das galt vor der
+ * Identitätsgruppe, nicht mehr danach (Gegenprüfung 2026-10-12, Fund 7).
+ * Der Autor kommt dabei aus den Nachrichten-Rahmen der eigenen Sicherung,
+ * nicht aus dem Stein; ohne einen solchen Rahmen bleibt der Stein ohne
+ * Autor und trifft beim Wiederherstellen nur den Satz unter seiner ID
+ * (`andockLesen.ts::steinAnwenden`).
  *
  * Importfrei bis auf erweiterungspflichtige Relativpfade (Node-Testläufer).
  */
