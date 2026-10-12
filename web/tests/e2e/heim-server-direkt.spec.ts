@@ -45,9 +45,15 @@ const CONTAINER = 'pulse-heim-e2e';
 
 /** Ports, die der All-in-One-Container im Host-Netz belegt (Kopf von
  *  `infra/self-host/Dockerfile` + `07-render-env.sh`: Caddy, coturn,
- *  MediaMTX, LiveKit, Postgres, Redis, Garage, die Python-Dienste). */
+ *  MediaMTX, LiveKit, Postgres, Redis, die Python-Dienste).
+ *
+ *  **9000 (Garage) fehlt mit Absicht.** Den Port hält die Testsuite selbst:
+ *  `_globalSetup.ts` startet vor JEDEM Lauf ihre Garage auf `127.0.0.1:9000`.
+ *  Stünde er hier, scheiterte die Vorprüfung auf jedem Rechner. Die Garage im
+ *  Container bekommt den Port dann nicht — für diesen Test belanglos, er prüft
+ *  den Direktpfad über den DataChannel, keine Anhänge. */
 const HOST_PORTS_TCP = [
-  80, 443, 1936, 3478, 5432, 6379, 7880, 7881, 8002, 8003, 8004, 8005, 8889, 9000, 9997
+  80, 443, 1936, 3478, 5432, 6379, 7880, 7881, 8002, 8003, 8004, 8005, 8889, 9997
 ];
 /** UDP: coturn, LiveKit-ICE (7882–7892), Direktpfad-Adapter (7900), MediaMTX-ICE. */
 const HOST_PORTS_UDP = [3478, 7882, 7883, 7884, 7885, 7886, 7887, 7888, 7889, 7890, 7891, 7892, 7900, 8189];
