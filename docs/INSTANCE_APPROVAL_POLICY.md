@@ -1,3 +1,5 @@
+> **Überholt seit Oktober 2026.** Es gibt keine Freigabe mehr: Server verbinden sich per Gerätecode selbst (`docs/superpowers/specs/2026-10-09-selfhost-ohne-freigabe-design.md`). Gegen Missbrauch wirken Sperre der Instanz und der Admin-Schalter „Darf Server verbinden“ (`users.server_verbinden_gesperrt`). Der Text unten bleibt als Historie.
+
 # Instance-Approval-Policy (Cloud-intern)
 
 Cloud-interne Dokumentation für den Bootstrap-Admin (du) zum Review von
