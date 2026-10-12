@@ -44,7 +44,7 @@ import { aktuellesKonto } from '../verlauf/konto.ts';
 import { sortierSchluessel, zuSatz } from '../verlauf/satz.ts';
 import { verschlüsseleEintrag } from './krypto.ts';
 import { KANAL_ORDNER_MUSTER, leseSicherungKanalSeite } from './wiederherstellen.ts';
-import type { SicherungEintrag } from './nutzlast.ts';
+import { satzZuAblageNachricht, type SicherungEintrag } from './nutzlast.ts';
 import {
 	SicherungsSpiegel,
 	aufbauAdapter,
@@ -577,28 +577,7 @@ export async function sicherungErstsicherung(): Promise<number> {
 	for (const satz of saetze) {
 		if (satz.geloescht) continue;
 		const liste = nachKanal.get(satz.kanalId) ?? [];
-		liste.push({
-			fassung: NUTZLAST_FASSUNG,
-			id: satz.nachrichtId,
-			autor: satz.autorId,
-			inhalt: satz.inhalt,
-			zeit: satz.erstelltAm,
-			bearbeitet: satz.bearbeitetAm,
-			antwortAuf: satz.antwortAufId ?? null,
-			// Anhang-Metadaten aus dem lokalen Satz — die BYTES holt
-			// `sicherungAnhaenge` aus dem gerätelokalen Bytes-Speicher und
-			// legt sie als eigene Dateien ins Archiv. Was das Gerät nicht
-			// mehr hält, bleibt außen vor (ehrliche Grenze).
-			anhaenge: Array.isArray(satz.anhaenge)
-				? (satz.anhaenge as Array<Record<string, unknown>>).map((a) => ({
-						...a,
-						id: String(a.id),
-						name: (a.filename as string | null) ?? null,
-						mime: (a.mime as string | null) ?? null,
-						groesse: Number(a.size ?? 0),
-					}))
-				: [],
-		});
+		liste.push(satzZuAblageNachricht(satz));
 		nachKanal.set(satz.kanalId, liste);
 	}
 	let gesamt = 0;
