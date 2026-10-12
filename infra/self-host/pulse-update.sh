@@ -2,7 +2,7 @@
 # Pulse self-host updater — Compose-Pfad (manuelle Installation).
 #
 # Liegt neben docker-compose.yml + .env, erledigt einen kompletten
-# Update-Lauf: Registry-Login aus der .env, Image pullen, Container nur bei
+# Update-Lauf: Registry-Login (nur Bestand, s. unten), Image pullen, Container nur bei
 # geändertem Digest neu anlegen, altes Image erst aufräumen, wenn der neue
 # Stand eine Runde gelaufen ist. Gedacht für einen Host-Cron oder systemd-
 # Timer (Beispiele unten) — von Hand läuft er genauso.
@@ -46,19 +46,26 @@ _trim_log() {
 }
 trap _trim_log EXIT
 
-# Registry-Login aus der .env — gleiche Muster wie in Schritt 3 des Compose-
-# Headers. Ohne Secret (z. B. GHCR-Image via PULSE_IMAGE) kein Login nötig.
-if [ -f .env ] && grep -q '^PULSE_CLOUD_CLIENT_SECRET=' .env; then
-  grep -oP '^PULSE_CLOUD_CLIENT_SECRET=\K.*' .env \
-    | docker login registry.howispulse.com \
-        -u "$(grep -oP '^PULSE_CLOUD_CLIENT_ID=\K.*' .env)" --password-stdin >/dev/null 2>&1 \
-    || { echo "pulse-update: registry login failed, will retry next run" >&2; exit 0; }
-fi
-
 # Erster Service des Projekts (das Compose-File hat genau einen: `pulse`).
 service="$(docker compose config --services | head -n1)"
 image="$(docker compose config --images | head -n1)"
 [ -n "$image" ] || { echo "pulse-update: kein Image in compose config" >&2; exit 1; }
+
+# Registry-Login nur für den Spiegel registry.howispulse.com. Den ziehen allein
+# Installationen aus der Freigabe-Zeit (vor Oktober 2026), deren .env die
+# Zugangsdaten trägt. Das öffentliche Bild auf GHCR braucht keine Anmeldung —
+# und ein Login-Fehler hielte das Update dort grundlos an. Ein LEERES Secret
+# (`PULSE_CLOUD_CLIENT_SECRET=` aus einer kopierten .env.example) zählt als
+# nicht vorhanden: ein Login mit leeren Daten scheiterte bei jedem Takt.
+case "$image" in
+  registry.howispulse.com/*)
+    if [ -f .env ] && grep -q '^PULSE_CLOUD_CLIENT_SECRET=.' .env; then
+      grep -oP '^PULSE_CLOUD_CLIENT_SECRET=\K.*' .env \
+        | docker login registry.howispulse.com \
+            -u "$(grep -oP '^PULSE_CLOUD_CLIENT_ID=\K.*' .env)" --password-stdin >/dev/null 2>&1 \
+        || { echo "pulse-update: registry login failed, will retry next run" >&2; exit 0; }
+    fi ;;
+esac
 
 # Container des Dienstes — MIT -a, sonst zählt ein gestoppter nicht mit.
 # Ohne -a sah ein absichtlich angehaltener Container (docker compose stop)
