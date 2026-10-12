@@ -31,8 +31,8 @@ Windows, macOS, Linux, Android and in the browser. Use it at
 ### Screen sharing
 
 - Native capture and hardware encoding on Windows, macOS and Linux (NVIDIA,
-  AMD, Intel and Apple GPUs) with H.264, HEVC and AV1 — up to 4K or native
-  resolution and up to 144 frames per second.
+  AMD, Intel and Apple GPUs) with H.264, HEVC and AV1 — well above 4K or native
+  resolution and well above 500 frames per second.
 - **HDR** (AV1, 10 bit) on Windows with AMD and NVIDIA graphics cards.
 - Viewers watch in the browser or in the native player of the desktop app;
   several people can share their screens in the same channel.
