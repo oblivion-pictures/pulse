@@ -1,7 +1,8 @@
 <!--
   Heim-Server: Download der Pulse Server-App, im Dialog „Eigenen Server
-  einrichten“ unter „Auf diesem Rechner“ (EigenerServerDialog — der trägt die
-  Erklärung, hier steht nur noch der Knopf).
+  einrichten“ unter „Auf diesem Rechner“ bzw. „Auf einem eigenen Rechner“
+  (EigenerServerDialog — der trägt die Erklärung, hier steht nur noch der
+  Knopf).
 
   Seit dem Selbstbedienungs-Entscheid (2026-09-27) braucht es keine
   Freischaltung und keinen Antrag mehr: Server-App installieren, mit dem
@@ -22,10 +23,10 @@
   const DMG_URL = 'https://howispulse.com/downloads/Pulse-Server-latest.dmg';
   const FLATPAKREF = 'https://howispulse.com/flatpak/com.howispulse.PulseServer.flatpakref';
 
-  // Im Blatt des Dialogs (Handy) 48 dp hoch; `data-blatt` setzt
+  // Am Finger (Handy, Tablet) im Dialog 48 dp hoch; `data-finger` setzt
   // `EigenerServerDialog`.
   const KNOPF =
-    'inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors';
+    'inline-flex in-data-[finger]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors';
   const PRIMAER = `${KNOPF} bg-primary hover:bg-primary/90 text-white`;
   const SEKUNDAER = `${KNOPF} border border-border text-text-bright hover:bg-bg-hover`;
 

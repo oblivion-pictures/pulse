@@ -6,7 +6,8 @@
   damit die Leiste schrumpft statt wächst.
 
   Bewusst kleiner als die Community-Symbole (gestrichelt), damit es als
-  Sektions-Aktion liest. Der Aufrufer aktiviert vor `onAnlegen`/`onBeitreten`
+  Sektions-Aktion liest. Die Beschriftung des Knopfes zählt auf, was das Menü
+  anbietet — auch den Server-Eintrag, der in jedem Plus steht. Der Aufrufer aktiviert vor `onAnlegen`/`onBeitreten`
   den Server — die neue Community landet garantiert auf DIESEM Server.
 -->
 <script lang="ts">
@@ -43,7 +44,9 @@
         {...props}
         class="border-primary/40 text-primary flex size-12 shrink-0 items-center justify-center rounded-xl border border-dashed nicht-handy:size-10 bg-transparent transition-all hover:bg-primary/10"
         data-testid={`guild-create-menu-${serverId}`}
-        aria-label={darfAnlegen ? m.guild_rail_create_community() : m.guild_rail_join_community()}
+        aria-label={darfAnlegen
+          ? m.guild_rail_plus_aria_anlegen()
+          : m.guild_rail_plus_aria_beitreten()}
       >
         <PlusIcon class="size-4" />
       </button>

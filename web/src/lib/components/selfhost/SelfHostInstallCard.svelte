@@ -13,6 +13,7 @@
 -->
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import { toast } from 'svelte-sonner';
   import { Button } from '$lib/components/ui/button/index.js';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import CheckIcon from '@lucide/svelte/icons/check';
@@ -30,7 +31,9 @@
       await navigator.clipboard.writeText(BEFEHL);
     } catch {
       // Zwischenablage verweigert (ältere WebView, fehlende Berechtigung) —
-      // der Befehl steht markierbar da (`select-all`).
+      // der Befehl steht markierbar da (`select-all`), und der Hinweis sagt es.
+      // Ohne ihn sähe der Knopf nach einem Klick aus wie vorher.
+      toast.error(m.eigener_server_kopieren_fehlgeschlagen());
       return;
     }
     kopiert = true;
@@ -47,14 +50,15 @@
       class="bg-bg-input text-text-bright min-w-0 flex-1 overflow-x-auto rounded-md px-2 py-1.5 font-mono text-xs whitespace-nowrap select-all"
       data-testid="self-host-install-command">{BEFEHL}</code
     >
-    <!-- Im Blatt (Handy) 48 dp hoch, sonst die schlanke Größe. Die Geräte-
-         Varianten taugen hier nicht: das Blatt steht im Portal, also AUSSERHALB
-         des `.geraet-handy`-Wurzel-Div, `nicht-handy:` träfe dort immer zu.
-         Der Marker `data-blatt` kommt von `EigenerServerDialog`. -->
+    <!-- Am Finger (Handy, Tablet) 48 dp hoch, am Rechner die schlanke Größe.
+         Die Geräte-Varianten taugen hier nicht: Blatt und Dialog stehen im
+         Portal, also AUSSERHALB des `.geraet-handy`-Wurzel-Div, `nicht-handy:`
+         träfe dort immer zu. Der Marker `data-finger` kommt von
+         `EigenerServerDialog`. -->
     <Button
       size="xs"
       variant="outline"
-      class="in-data-[blatt]:h-12 in-data-[blatt]:px-4"
+      class="in-data-[finger]:h-12 in-data-[finger]:px-4"
       onclick={kopieren}
       data-testid="self-host-install-copy"
     >
@@ -69,7 +73,7 @@
   </div>
   <p class="text-text-muted text-xs">{m.eigener_server_befehl_hinweis()}</p>
   <a
-    class="text-primary inline-flex w-fit items-center text-xs underline-offset-2 hover:underline in-data-[blatt]:min-h-12"
+    class="text-primary inline-flex w-fit items-center text-xs underline-offset-2 hover:underline in-data-[finger]:min-h-12"
     href={ANLEITUNG}
     target="_blank"
     rel="noopener"

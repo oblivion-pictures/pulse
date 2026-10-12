@@ -3445,5 +3445,10 @@
   "admin_instances_ohne_freigabe": "ohne Freigabe",
   "admin_users_darf_verbinden": "Darf Server verbinden",
   "admin_users_verbinden_updated": "Erlaubnis zum Verbinden aktualisiert.",
-  "admin_badge_meldungen_aria": "Offene Meldungen"
+  "admin_badge_meldungen_aria": "Offene Meldungen",
+  "eigener_server_rechner_finger_titel": "Auf einem eigenen Rechner",
+  "eigener_server_rechner_finger_text": "Pulse Server-App für Windows, macOS und Linux — der Rechner, auf dem sie läuft, ist dein Server.",
+  "eigener_server_kopieren_fehlgeschlagen": "Kopieren ging nicht. Markiere den Befehl und kopiere ihn von Hand.",
+  "guild_rail_plus_aria_anlegen": "Community erstellen, beitreten oder eigenen Server einrichten",
+  "guild_rail_plus_aria_beitreten": "Community beitreten oder eigenen Server einrichten"
 }
