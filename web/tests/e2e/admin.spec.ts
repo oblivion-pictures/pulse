@@ -152,6 +152,13 @@ test.describe.serial('admin-panel E2E', () => {
         await expect(page.getByTestId(id)).toBeVisible();
       }
     }
+
+    // Seit dem Wegfall der Freigabe (2026-10): Reiter „Server“ ohne Zähler,
+    // kein Unterreiter „Ausstehend“.
+    await page.getByTestId('admin-tab-applications').click();
+    await expect(page.getByTestId('admin-tab-applications').locator('span')).toHaveCount(0);
+    await expect(page.getByTestId('instances-tab-pending')).toHaveCount(0);
+    await expect(page.getByTestId('instances-tab-active')).toBeVisible();
   });
 
   test('a submitted abuse report appears in the complaints section', async () => {
@@ -235,5 +242,93 @@ test.describe.serial('admin-panel E2E', () => {
     await expect(
       page.locator('[data-testid="audit-entry"]', { hasText: 'DM-Limits' })
     ).toHaveCount(1, { timeout: 5_000 });
+  });
+
+  test('Server-Liste: Vermerk „ohne Freigabe“, Secret rotieren nur bei freigegebenen', async () => {
+    const FREI = '7300000000000000011';
+    const OHNE = '7300000000000000012';
+    const eintrag = (id: string, hostname: string, ohne_freigabe: boolean) => ({
+      id,
+      hostname,
+      client_id: `c-${id}`,
+      worker_id_chat: ohne_freigabe ? null : 1,
+      worker_id_voice: ohne_freigabe ? null : 2,
+      worker_id_media: ohne_freigabe ? null : 3,
+      status: 'active',
+      registered_at: '2026-10-10T12:00:00Z',
+      registrar_username: ALICE.username,
+      origin: 'vps',
+      ohne_freigabe
+    });
+    const liste = /\/api\/auth\/admin\/instances\?status=active$/;
+    await page.route(liste, (route) =>
+      route.fulfill({
+        json: [
+          eintrag(FREI, 'frei.dcc-test.example.com', false),
+          eintrag(OHNE, 'ohne.dcc-test.example.com', true)
+        ]
+      })
+    );
+    await page.reload();
+    await openAdminTab('applications');
+    await expect(
+      page.getByTestId(`active-instance-${OHNE}`).getByTestId('admin-instance-ohne-freigabe')
+    ).toBeVisible();
+    await expect(
+      page.getByTestId(`active-instance-${FREI}`).getByTestId('admin-instance-ohne-freigabe')
+    ).toHaveCount(0);
+    await expect(page.getByTestId(`admin-instance-rotate-${FREI}`)).toBeVisible();
+    await expect(page.getByTestId(`admin-instance-rotate-${OHNE}`)).toHaveCount(0);
+    await expect(page.getByTestId(`admin-instance-suspend-${OHNE}`)).toBeVisible();
+    await page.unroute(liste);
+  });
+
+  test('Nutzerliste: „Darf Server verbinden“ statt Hosting-Schalter', async () => {
+    // Das Feld `server_verbinden_gesperrt` kommt aus Etappe 1 (Cloud-Routen), die
+    // auf diesem Zweig noch nicht liegt: das Backend lässt es im PATCH fallen und
+    // liefert es nicht mit. Die Antworten werden deshalb ergänzt — Nutzer und
+    // Liste bleiben echt, nur das Feld wird von hier aus geführt. Mit Etappe 1
+    // im Baum darf der Block samt `unroute` entfallen.
+    const gesperrt = new Map<string, boolean>();
+    const bekannt = new Map<string, Record<string, unknown>>();
+    let patchBody: Record<string, unknown> | null = null;
+    const liste = /\/api\/auth\/admin\/users\?/;
+    const einzeln = /\/api\/auth\/admin\/users\/[^/?]+$/;
+    const mitFeld = (n: Record<string, unknown>) => ({
+      ...n,
+      server_verbinden_gesperrt: gesperrt.get(String(n.id)) ?? false
+    });
+    await page.route(liste, async (route) => {
+      const antwort = await route.fetch();
+      const nutzer = (await antwort.json()) as Record<string, unknown>[];
+      for (const n of nutzer) bekannt.set(String(n.id), n);
+      await route.fulfill({ status: antwort.status(), json: nutzer.map(mitFeld) });
+    });
+    await page.route(einzeln, async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback();
+      const id = route.request().url().split('/').pop()!;
+      patchBody = route.request().postDataJSON() as Record<string, unknown>;
+      gesperrt.set(id, patchBody.server_verbinden_gesperrt === true);
+      await route.fulfill({ json: mitFeld(bekannt.get(id) ?? { id }) });
+    });
+
+    await openAdminTab('users');
+    await expect(page.getByTestId('admin-users-filter-self_host')).toHaveCount(0);
+    await page.getByTestId('admin-users-search').fill(BOB.username);
+    const zeile = page.getByTestId('admin-user-row').filter({ hasText: BOB.username });
+    await expect(zeile).toHaveCount(1, { timeout: 5_000 });
+    await expect(zeile.getByTestId('badge-selfhost')).toHaveCount(0);
+
+    await zeile.getByTestId('admin-user-actions').click();
+    await expect(page.getByTestId('toggle-selfhost-btn')).toHaveCount(0);
+    const schalter = page.getByTestId('toggle-verbinden-btn');
+    await expect(schalter).toHaveAttribute('data-erlaubt', 'ja');
+    await schalter.click();
+    // Die Zeile rendert aus der Antwort von PATCH /admin/users/{id} neu.
+    await expect(schalter).toHaveAttribute('data-erlaubt', 'nein', { timeout: 5_000 });
+    expect(patchBody).toEqual({ server_verbinden_gesperrt: true });
+
+    await page.unroute(liste);
+    await page.unroute(einzeln);
   });
 });

@@ -3439,5 +3439,11 @@
   "meine_server_uebernahme_fehler_ausgelastet": "Pulse is checking a lot of servers right now. Please try again in a moment.",
   "meine_server_uebernahme_fehler_gebremst": "Too many attempts in a short time. Wait a while and try again.",
   "meine_server_uebernahme_fehler_abgemeldet": "Your sign-in has expired. Sign in again and then try once more.",
-  "meine_server_uebernahme_fehler_sonst": "The objection did not arrive. Please try again in a moment."
+  "meine_server_uebernahme_fehler_sonst": "The objection did not arrive. Please try again in a moment.",
+  "admin_tab_servers": "Servers",
+  "admin_instances_description_frei": "All servers the cloud knows — approved ones and those without approval. Suspending takes effect for new sign-ins immediately.",
+  "admin_instances_ohne_freigabe": "no approval",
+  "admin_users_darf_verbinden": "May connect servers",
+  "admin_users_verbinden_updated": "Permission to connect servers updated.",
+  "admin_badge_meldungen_aria": "Open reports"
 }

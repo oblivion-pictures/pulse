@@ -423,20 +423,6 @@ export type ServerEvent =
   | { op: 'friend_request_declined'; data: { request_id: string } }
   | { op: 'friend_request_cancelled'; data: { request_id: string } }
   | { op: 'friend_removed'; data: { user_id: string } }
-  // Nur an Admin-Sockets zugestellt (chat-gateway filtert auf `is_admin`).
-  // Trägt bewusst keine Antragsdaten — der Client lädt die Liste danach über
-  // seinen Admin-Endpoint nach.
-  | { op: 'admin_application_pending'; kind: 'app_host' | 'instance' }
-  // An den Antragsteller (user:events). Toast + roter Punkt kommen aus den
-  // Stores, die nach diesem Signal ihre Liste nachladen.
-  | {
-      op: 'application_decided';
-      data: {
-        kind: 'app_host' | 'instance';
-        status: 'approved' | 'rejected';
-        rejection_reason: string | null;
-      };
-    }
   // Heim-Server läuft / läuft nicht / heißt jetzt so (auth-svc über
   // user:events, je Mitglied). Nur von der Cloud-Verbindung angenommen
   // (handlers/instanzen.ts).

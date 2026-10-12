@@ -22,7 +22,7 @@ import { errText } from '$lib/utils/errText';
   import FieldError from '$lib/components/feedback/FieldError.svelte';
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
 
-  type FilterMode = 'all' | 'admins' | 'disabled' | 'self_host';
+  type FilterMode = 'all' | 'admins' | 'disabled';
 
   let users = $state<AdminUser[]>([]);
   let loading = $state(true);
@@ -36,8 +36,7 @@ import { errText } from '$lib/utils/errText';
   const filters: { id: FilterMode; label: string }[] = [
     { id: 'all', label: m.admin_users_filter_all() },
     { id: 'admins', label: m.admin_users_filter_admins() },
-    { id: 'disabled', label: m.admin_users_filter_disabled() },
-    { id: 'self_host', label: m.admin_users_filter_self_host() }
+    { id: 'disabled', label: m.admin_users_filter_disabled() }
   ];
 
   // Such-/Filter-Parameter fürs Backend. filter=all → weglassen (kein Filter).
@@ -95,18 +94,20 @@ import { errText } from '$lib/utils/errText';
     void loadInitial();
   }
 
-  function toggleSuccessMessage(field: 'is_admin' | 'disabled' | 'self_host_enabled') {
+  type Feld = 'is_admin' | 'disabled' | 'server_verbinden_gesperrt';
+
+  function toggleSuccessMessage(field: Feld) {
     switch (field) {
       case 'is_admin':
         return m.admin_users_admin_status_updated();
-      case 'self_host_enabled':
-        return m.admin_users_self_host_updated();
+      case 'server_verbinden_gesperrt':
+        return m.admin_users_verbinden_updated();
       default:
         return m.admin_users_ban_updated();
     }
   }
 
-  async function toggle(u: AdminUser, field: 'is_admin' | 'disabled' | 'self_host_enabled', next: boolean) {
+  async function toggle(u: AdminUser, field: Feld, next: boolean) {
     pendingId = u.id;
     try {
       const updated = await adminApi.patchUser(u.id, { [field]: next });

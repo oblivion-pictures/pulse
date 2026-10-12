@@ -1,10 +1,10 @@
 /**
  * Offene Betreiber-Beschwerden — Cloud-Admin-Benachrichtigung.
  *
- * Spiegel von [[pendingAppHostApplications]]: pollt periodisch die Anzahl neuer
- * Beschwerden und macht sie reaktiv (gelbe Badge über dem Icon im `UserFooter`)
- * + toastet bei Zuwachs während einer Session — damit der Betreiber weiß, dass
- * eine Meldung reinkam, ohne das Admin-Postfach offen zu haben.
+ * Pollt periodisch die Anzahl neuer Beschwerden und macht sie reaktiv (gelbe
+ * Badge über dem Icon im `UserFooter`) + toastet bei Zuwachs während einer
+ * Session — damit der Betreiber weiß, dass eine Meldung reinkam, ohne das
+ * Admin-Postfach offen zu haben.
  *
  * Nur **Cloud-Admins** pollen (Endpoint ist server-seitig admin-gegated).
  */

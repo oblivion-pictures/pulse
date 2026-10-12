@@ -5,9 +5,8 @@
   Selbst-gegated — für Nicht-Admins rendert nichts.
 
   Nur das Schild-Symbol (kein Text), im Stil der runden Rail-Icons. Der Punkt
-  zählt offene Admin-Sachen (Instanz-/App-Hosting-Anträge, Betreiber-
-  Beschwerden). Der „mein eigener Antrag ist durch"-Punkt bleibt am Avatar
-  (UserFooter) — das ist ein User-Hinweis, kein Admin-Alert.
+  zählt offene Meldungen (Betreiber-Beschwerden). Der Antrags-Zähler ist mit
+  der Freigabe entfallen (2026-10).
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
@@ -15,8 +14,6 @@
   import { auth } from '$lib/stores/auth.svelte';
   import { activeServer } from '$lib/stores/active-server.svelte';
   import { serverAdmin } from '$lib/stores/serverAdmin.svelte';
-  import { pendingInstanceApps } from '$lib/stores/pendingInstanceApps.svelte';
-  import { pendingAppHostApplications } from '$lib/stores/pendingAppHostApplications.svelte';
   import { pendingComplaints } from '$lib/stores/pendingComplaints.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import ShieldIcon from '@lucide/svelte/icons/shield';
@@ -30,15 +27,12 @@
       : serverAdmin.isAdmin(activeServer.current?.id ?? '')
   );
 
-  // Alle offenen Admin-Sachen leben nur auf der Cloud (dort die Instanz-
-  // Verwaltung) und nur für Cloud-Admins. Auf einem Self-Host führt das Symbol
-  // aufs lokale Panel, das davon nichts weiß → kein Punkt. In der schmalen Rail
-  // reicht EIN Punkt mit der Gesamtzahl; die Aufschlüsselung sieht man im Panel.
+  // Offene Meldungen leben nur auf der Cloud und nur für Cloud-Admins. Auf
+  // einem Self-Host führt das Symbol aufs lokale Panel, das davon nichts weiß
+  // → kein Punkt.
   let alertCount = $derived(
     (activeServer.current?.isCloud ?? false) && (auth.user?.is_admin ?? false)
-      ? pendingInstanceApps.count +
-          pendingAppHostApplications.count +
-          pendingComplaints.count
+      ? pendingComplaints.count
       : 0
   );
 </script>
@@ -69,7 +63,7 @@
               <span
                 class="bg-badge-count ring-bg-panel text-2xs absolute -right-1 -bottom-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-bold leading-none text-white ring-2"
                 data-testid="admin-pending-badge"
-                aria-label={m.instance_apps_badge_aria()}
+                aria-label={m.admin_badge_meldungen_aria()}
               >{alertCount > 99 ? '99+' : alertCount}</span>
             {/if}
           </div>

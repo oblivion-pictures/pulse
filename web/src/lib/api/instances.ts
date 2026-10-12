@@ -1,66 +1,41 @@
 /**
- * API-Client für Phase 2.5 — Self-Host Instance-Registry.
+ * API-Client der Self-Host-Instanzen (auth-svc).
  *
  * Alle User-Endpoints nutzen Cookie-Auth (pulse_session HttpOnly) via
  * credentials:'include'. Admin-Endpoints ebenfalls — auth-svc prüft
  * is_admin server-seitig.
  *
- * Wichtig: ApprovalOut.client_secret NIE in console.log/localStorage/
+ * Wichtig: RotateSecretResult.client_secret NIE in console.log/localStorage/
  * sessionStorage speichern — nur transient im UI anzeigen.
  *
+ * Antrag, Freigabe und `.env`-Download sind seit 2026-10 aus der Oberfläche
+ * entfernt (Spec 2026-10-09-selfhost-ohne-freigabe-design.md, E11): ein neuer
+ * Server verbindet sich über `pulse-connect` und die Seite `/verbinden`
+ * (`api/verbinden.ts`).
+ *
  * Backend-Quelle:
- *   routes_instance_applications.py (User)
+ *   routes_instance_applications.py (User: /me/instances …)
  *   routes_admin_instances.py       (Admin)
  */
 
-import { AUTH_BASE, ApiError } from './client';
-import { cookieFetch, renewSession, safeParse, extractDetail } from './cookie-client';
+import { cookieFetch } from './cookie-client';
 
-// ---------------------------------------------------------------------------
-// Typen — gespiegelt von den Pydantic-Schemas im Backend
-// ---------------------------------------------------------------------------
-
-// 'closed' = Instanz vom Owner gelöscht → Antrag ist Historie (kein roter
-// Punkt, kein Listeneintrag mehr — siehe routes_instance_delete.py).
-// 'revoked' = App-Host-Freischaltung vom Admin zurückgenommen (nur origin
-// 'app_host' — Historie, der User darf neu beantragen).
-type ApplicationStatus = 'pending' | 'approved' | 'rejected' | 'closed' | 'revoked';
-/** Antragsart im vereinten Antragssystem: VPS mit eigener Domain oder
- *  App-Hosting von zuhause (Server-App, kein Hostname). */
-type ApplicationOrigin = 'vps' | 'app_host';
-type NetworkCheck = 'ok' | 'cgnat' | 'symmetric' | 'blocked' | 'unknown';
 type InstanceStatus = 'active' | 'suspended';
-
-/** Spiegelt InstanceApplicationOut (User-Route). */
-export interface InstanceApplication {
-  id: string;
-  applicant_user_id: string;
-  origin: ApplicationOrigin;
-  hostname: string;
-  purpose: string;
-  expected_users: number;
-  contact_email: string;
-  notes: string | null;
-  network_check: NetworkCheck | null;
-  status: ApplicationStatus;
-  reviewed_at: string | null;
-  rejection_reason: string | null;
-  approved_instance_id: string | null;
-  created_at: string;
-}
 
 /** Spiegelt InstanceOut (User-Route, kein client_secret). */
 export interface Instance {
   id: string;
   hostname: string;
   client_id: string;
-  worker_id_chat: number;
-  worker_id_voice: number;
-  worker_id_media: number;
+  /** Snowflake-Worker-Nummern; `null` bei Einträgen seit 2026-10 (Spec E7). */
+  worker_id_chat: number | null;
+  worker_id_voice: number | null;
+  worker_id_media: number | null;
   status: InstanceStatus;
-  /** vps = klassischer Self-Host (erscheint in "Meine Instanzen"),
-   *  app_host = Ein-Knopf-Container aus der App (nur App-Hosting-Karte). */
+  /** vps = gemieteter Server mit eigener Adresse, app_host = Heim-Server (Server-App). */
   origin: 'vps' | 'app_host';
+  /** Selbst verbunden (`pulse-connect`, Spec E1) statt vom Admin freigegeben. */
+  ohne_freigabe: boolean;
   registered_at: string;
   /** Geräteübergreifender Notification-Modus aus der Membership (account-basiert).
    *  (Das Backend führt zusätzlich ein dormantes ``user_label`` — der
@@ -68,13 +43,12 @@ export interface Instance {
   notification_mode: 'all' | 'mentions' | 'none';
   /** Eigene Rolle auf dieser Instanz. Die Liste enthält AUCH Server, denen man
    *  nur beigetreten ist (damit sie auf allen Geräten in der Server-Leiste
-   *  stehen) — nur `owner` darf einrichten und löschen. */
+   *  stehen) — nur `owner` darf löschen und sieht „Meine Server“. */
   role: 'owner' | 'member';
-  /** Sind die Zugangsdaten dieses Servers schon abgeholt worden (Installer
-   *  eingelöst oder `.env` geladen)? Erst dann nimmt `serversStore` ihn in die
-   *  Server-Leiste auf — vorher steht er nur unter „Eigener Server".
-   *  Optional, weil ein älterer Cloud-Stand das Feld noch nicht schickt; wird
-   *  dort wie `false` behandelt (s. `hydrateFromBackend`). */
+  /** Sind die Zugangsdaten dieses Servers schon abgeholt (Installer bzw.
+   *  `pulse-connect`, Server-App)? Erst dann nimmt `serversStore` ihn in die
+   *  Server-Leiste auf. Optional, weil ein älterer Cloud-Stand das Feld noch
+   *  nicht schickt; wird dort wie `true` behandelt (s. `hydrateFromBackend`). */
   set_up?: boolean;
   /** Vom Betreiber vergebener Name (der Server meldet ihn der Cloud) —
    *  `null` = keiner. Optional: ältere Cloud schickt das Feld nicht. */
@@ -89,60 +63,20 @@ export interface Instance {
   uebernahme_frist_bis?: string | null;
 }
 
-/** Spiegelt ApplicationOut (Admin-Route — trägt applicant_username). */
-export interface AdminApplication {
-  id: string;
-  applicant_user_id: string;
-  origin: ApplicationOrigin;
-  hostname: string;
-  purpose: string;
-  expected_users: number;
-  contact_email: string;
-  notes: string | null;
-  network_check: NetworkCheck | null;
-  /** Bei genehmigten app_host-Anträgen die angelegte Instanz — der „Aktiv"-Tab
-   *  mappt darüber Instanz → Antrag (Revoke braucht die Antrags-ID). */
-  approved_instance_id: string | null;
-  status: string;
-  created_at: string;
-  applicant_username: string;
-}
-
-/** Spiegelt AppHostApprovalOut — Approve-Antwort für origin 'app_host'
- *  (kein client_secret; Pairing kommt später über den Bootstrap-Token). */
-interface AppHostApproval {
-  id: string;
-  user_id: string;
-  self_host_enabled: boolean;
-  /** Auto-provisionierte Relay-Instanz; null, wenn der User schon eine hatte. */
-  instance_id: string | null;
-}
-
-/** Spiegelt ApprovalOut (EINMALIG — client_secret nur hier). */
-interface Approval {
-  instance_id: string;
-  hostname: string;
-  client_id: string;
-  client_secret: string;
-  worker_id_chat: number;
-  worker_id_voice: number;
-  worker_id_media: number;
-  owner_user_id: string;
-  warning: string;
-}
-
 /** Spiegelt InstanceOut (Admin-Route — trägt registrar_username). */
 export interface AdminInstance {
   id: string;
   hostname: string;
   client_id: string;
-  worker_id_chat: number;
-  worker_id_voice: number;
-  worker_id_media: number;
+  worker_id_chat: number | null;
+  worker_id_voice: number | null;
+  worker_id_media: number | null;
   status: string;
   registered_at: string;
   registrar_username: string;
   origin: 'vps' | 'app_host';
+  /** Selbst verbunden statt freigegeben — kein „Secret rotieren“ (Spec §5). */
+  ohne_freigabe: boolean;
 }
 
 /** Spiegelt RotateSecretOut. */
@@ -182,48 +116,12 @@ export interface DiagnoseErgebnis {
   nicht_geprueft: string[];
 }
 
-/** Spiegelt BootstrapTokenOut — One-Time-Token für den Ein-Befehl-Installer. */
-interface BootstrapToken {
-  token: string;
-  expires_at: string;
-  ttl_seconds: number;
-}
-
 // ---------------------------------------------------------------------------
 // User-Endpoints (/me/*)
 // ---------------------------------------------------------------------------
 
 export const instancesApi = {
-  /** Antrag auf Hosting-Freischaltung einreichen (vereintes Antragssystem).
-   *  VPS: hostname Pflicht. App-Host: kein Hostname, optional das Ergebnis des
-   *  beratenden Anschluss-Checks. Die Kontakt-E-Mail leitet das Backend aus
-   *  dem eingeloggten User ab. */
-  submitApplication(payload: {
-    origin?: ApplicationOrigin;
-    hostname?: string;
-    purpose?: 'privat' | 'verein' | 'firma' | 'sonst';
-    notes?: string | null;
-    network_check?: NetworkCheck | null;
-  }): Promise<InstanceApplication> {
-    return cookieFetch<InstanceApplication>('/me/instance-applications', {
-      method: 'POST',
-      body: payload
-    });
-  },
-
-  /** Eigene Anträge abrufen (nach Status/Art gefiltert). Das Backend liefert
-   *  ohne origin-Parameter nur VPS (Alt-Client-Kompatibilität) — deshalb hier
-   *  IMMER explizit senden, Default 'all'. */
-  listMyApplications(
-    status: 'all' | ApplicationStatus = 'all',
-    origin: 'all' | ApplicationOrigin = 'all'
-  ): Promise<InstanceApplication[]> {
-    const params = new URLSearchParams({ origin });
-    if (status !== 'all') params.set('status', status);
-    return cookieFetch<InstanceApplication[]>(`/me/instance-applications?${params}`);
-  },
-
-  /** Eigene registrierte Instanzen (kein client_secret). */
+  /** Eigene und beigetretene Instanzen (kein client_secret). */
   listMyInstances(): Promise<Instance[]> {
     return cookieFetch<Instance[]>('/me/instances');
   },
@@ -231,7 +129,7 @@ export const instancesApi = {
   /**
    * Membership auf einer Self-Host-Instanz in der Cloud eintragen — macht den
    * per Einladung beigetretenen Server auch auf anderen Geräten (Browser)
-   * sichtbar. Idempotent; vom Client NUR nach erfolgreichem Cert-Login
+   * sichtbar. Idempotent; vom Client NUR nach erfolgreichem Ticket-Login
    * aufgerufen. Owner-Rolle wird nie herabgestuft.
    */
   joinInstanceMembership(instanceId: string): Promise<void> {
@@ -259,17 +157,6 @@ export const instancesApi = {
     return cookieFetch<void>(`/me/instances/${instanceId}/preferences`, {
       method: 'PATCH',
       body: prefs
-    });
-  },
-
-  /** One-Time-Bootstrap-Token für den Ein-Befehl-Installer minten.
-   *  `reset: true` = bewusster Recovery-Pfad nach eingelöstem Bootstrap
-   *  (Gerätewechsel/Creds-Verlust) — das spätere Einlösen rotiert die
-   *  Credentials, ein alter Server verliert sofort den Zugang. */
-  mintBootstrapToken(instanceId: string, opts?: { reset?: boolean }): Promise<BootstrapToken> {
-    return cookieFetch<BootstrapToken>(`/me/instances/${instanceId}/bootstrap-token`, {
-      method: 'POST',
-      body: opts?.reset ? { reset: true } : undefined
     });
   },
 
@@ -304,60 +191,12 @@ export const instancesApi = {
   },
 
   /**
-   * Eigene Instanz löschen (Soft-Delete, irreversibel). Der Hostname wird
-   * wieder für Neuanträge frei; ein noch laufender Server landet auf der
-   * Suspend-Liste und stellt den Betrieb ein.
+   * Eigene Instanz löschen (Soft-Delete, irreversibel). Die Adresse wird
+   * wieder frei; ein noch laufender Server landet auf der Sperrliste und
+   * stellt den Betrieb ein.
    */
   deleteMyInstance(instanceId: string): Promise<void> {
     return cookieFetch<void>(`/me/instances/${instanceId}`, { method: 'DELETE' });
-  },
-
-  /**
-   * Fertige `.env` (inkl. frisch erzeugtem client_secret) als Download-Blob.
-   * POST, weil jeder Aufruf das Secret serverseitig rotiert — ein erneuter
-   * Download entwertet das vorherige Secret. Secret wird NIE geloggt.
-   *
-   * Der erste Download ist frei, jeder weitere braucht `reset: true` (sonst
-   * 403). Das ist der bewusste Recovery-Pfad bei verlorener Datei; ein damit
-   * bereits laufender Server verliert dabei seinen Zugang.
-   */
-  async downloadEnvFile(instanceId: string, opts?: { reset?: boolean }): Promise<void> {
-    const endpoint = `${AUTH_BASE}/me/instances/${instanceId}/env-file`;
-    const init: RequestInit = { method: 'POST', credentials: 'include' };
-    // Ohne `reset` bleibt der Body leer — die Route nimmt beides an, und ein
-    // leerer Aufruf soll die One-Shot-Sperre gar nicht erst anfassen können.
-    if (opts?.reset) {
-      init.headers = { 'Content-Type': 'application/json' };
-      init.body = JSON.stringify({ reset: true });
-    }
-    let resp = await fetch(endpoint, init);
-    // Abgelaufener Cookie → renewen + einmal retry (s. cookieFetch).
-    if (resp.status === 401 && (await renewSession())) {
-      resp = await fetch(endpoint, init);
-    }
-    if (!resp.ok) {
-      const text = await resp.text();
-      const data = safeParse(text);
-      throw new ApiError(resp.status, data, extractDetail(data) ?? resp.statusText);
-    }
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    // Content-Disposition vom Server enthält den Dateinamen, aber wir
-    // setzen einen Fallback für den Fall, dass der Browser ihn ignoriert.
-    const cd = resp.headers.get('Content-Disposition') ?? '';
-    const match = cd.match(/filename="([^"]+)"/);
-    a.download = match?.[1] ?? `pulse-instance-${instanceId}.env`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    // a.click() stößt den Download nur an (asynchron). Würde der Object-URL hier
-    // SYNCHRON revoked, kann der Browser den Blob noch nicht geholt haben → leere/
-    // fehlgeschlagene .env-Datei (die das client_secret trägt → Operator müsste
-    // rotate-secret erneut aufrufen und ein neues Geheimnis exponieren). Daher
-    // verzögert freigeben — genug Zeit für den Download-Fetch, dennoch bounded.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 };
 
@@ -366,44 +205,6 @@ export const instancesApi = {
 // ---------------------------------------------------------------------------
 
 export const adminInstancesApi = {
-  /** Anträge abrufen, gefiltert nach Status und Art (beide Origins). */
-  listApplications(
-    status: 'pending' | 'approved' | 'rejected' | 'revoked' | 'closed' | 'all' = 'pending',
-    origin: 'all' | ApplicationOrigin = 'all'
-  ): Promise<AdminApplication[]> {
-    return cookieFetch<AdminApplication[]>(
-      `/admin/instance-applications?status=${status}&origin=${origin}`
-    );
-  },
-
-  /** Antrag genehmigen. Antwort ist origin-abhängig (Union): VPS liefert die
-   *  einmalig gezeigten Credentials, App-Host nur Flag + Instanz-ID. */
-  approveApplication(appId: string): Promise<Approval | AppHostApproval> {
-    return cookieFetch<Approval | AppHostApproval>(
-      `/admin/instance-applications/${appId}/approve`,
-      { method: 'POST' }
-    );
-  },
-
-  /** Antrag ablehnen. */
-  rejectApplication(appId: string, rejection_reason: string): Promise<void> {
-    return cookieFetch<void>(`/admin/instance-applications/${appId}/reject`, {
-      method: 'POST',
-      body: { rejection_reason }
-    });
-  },
-
-  /** Erteilte App-Host-Freischaltung zurücknehmen: Flag aus + App-Host-
-   *  Instanzen des Users suspendiert (Kill-Switch stoppt einen laufenden
-   *  Container). Läuft über den eigenständigen (nicht-deprecated) Pfad —
-   *  einen vereinten Zwilling gibt es bewusst nicht. */
-  revokeAppHostApplication(appId: string, reason?: string): Promise<void> {
-    const q = reason ? `?reason=${encodeURIComponent(reason)}` : '';
-    return cookieFetch<void>(`/admin/app-host-applications/${appId}/revoke${q}`, {
-      method: 'POST'
-    });
-  },
-
   /** Registrierte Instanzen auflisten. */
   listInstances(status: 'all' | 'active' | 'suspended' = 'all'): Promise<AdminInstance[]> {
     return cookieFetch<AdminInstance[]>(`/admin/instances?status=${status}`);

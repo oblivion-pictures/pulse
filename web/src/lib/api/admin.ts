@@ -20,12 +20,17 @@ export type AdminUser = {
   display_name: string | null;
   avatar_url: string | null;
   is_admin: boolean;
-  /** Owner (Betreiber): genehmigt Self-Host-/App-Host-Anträge, gegen
-   *  Demote/Ban geschützt. Nicht über die UI setzbar. */
+  /** Owner (Betreiber): gegen Demote/Ban geschützt, der Verbinden-Riegel
+   *  (`server_verbinden_gesperrt`) greift bei ihm nicht. Nicht über die UI setzbar. */
   is_owner?: boolean;
   disabled: boolean;
   created_at: string;
+  /** Server-App-Freischaltung (Spec E8). Die Oberfläche schaltet sie seit
+   *  2026-10 nicht mehr; der Server liefert das Feld weiter. */
   self_host_enabled: boolean;
+  /** Riegel gegen ein Konto, das nach einer Sperre immer neue Server verbindet
+   *  (Spec E8). Vorgabe aus; der Schalter heißt „Darf Server verbinden“. */
+  server_verbinden_gesperrt: boolean;
 };
 
 type AuthSettings = {
@@ -286,7 +291,7 @@ export const adminApi = {
       before?: string;
       limit?: number;
       q?: string;
-      filter?: 'admins' | 'disabled' | 'self_host';
+      filter?: 'admins' | 'disabled';
     } = {}
   ): Promise<AdminUser[]> {
     const params = paginationParams(opts);
@@ -296,7 +301,7 @@ export const adminApi = {
   },
   patchUser(
     id: string,
-    payload: { is_admin?: boolean; disabled?: boolean; self_host_enabled?: boolean }
+    payload: { is_admin?: boolean; disabled?: boolean; server_verbinden_gesperrt?: boolean }
   ): Promise<AdminUser> {
     return request<AdminUser>(`/admin/users/${id}`, {
       method: 'PATCH',
