@@ -97,11 +97,10 @@ export function startUpload(
     try {
       // 1. (image only) build the thumbnail + capture original dimensions.
       //    Die Maße bleiben auch dann, wenn das Vorschaubild nicht mitgeht:
-      //    Safari/iOS liefern statt WebP ein (zu großes) PNG, das lassen wir
-      //    weg und laden nur die Datei hoch (s. vorschauWahl.ts).
+      //    ein Vorschaubild über der Serverlinie lassen wir weg und laden nur
+      //    die Datei hoch (s. vorschauWahl.ts).
       const erzeugt = await erzeugeVorschaubild(file);
-      const thumb =
-        erzeugt && vorschauBehalten(erzeugt.blob.type, erzeugt.blob.size) ? erzeugt : null;
+      const thumb = erzeugt && vorschauBehalten(erzeugt.blob.size) ? erzeugt : null;
       if (cancelled) return;
 
       // 2. Ask the server for an upload URL (+ optional thumb URL).
