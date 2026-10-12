@@ -23,10 +23,10 @@
   const DMG_URL = 'https://howispulse.com/downloads/Pulse-Server-latest.dmg';
   const FLATPAKREF = 'https://howispulse.com/flatpak/com.howispulse.PulseServer.flatpakref';
 
-  // Am Finger (Handy, Tablet) im Dialog 48 dp hoch; `data-finger` setzt
-  // `EigenerServerDialog`.
+  // Am Finger (Handy, Tablet) 48 dp hoch (Basis-Klasse), am Rechner ohne
+  // Mindesthöhe (`desktop:`).
   const KNOPF =
-    'inline-flex in-data-[finger]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors';
+    'inline-flex min-h-12 desktop:min-h-auto w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors';
   const PRIMAER = `${KNOPF} bg-primary hover:bg-primary/90 text-white`;
   const SEKUNDAER = `${KNOPF} border border-border text-text-bright hover:bg-bg-hover`;
 

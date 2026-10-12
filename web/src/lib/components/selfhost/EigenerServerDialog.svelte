@@ -11,8 +11,13 @@
 
   Ein zweites Zeichen kommt vom selben Mount-Punkt: `finger` (Handy UND Tablet).
   Am Finger gilt der Wortlaut „auf einem eigenen Rechner“ — die Server-App läuft
-  dort nicht auf dem Gerät in der Hand — und die Trefferflächen sind 48 dp hoch.
-  Am Rechner bleibt es bei „auf diesem Rechner“.
+  dort nicht auf dem Gerät in der Hand — und das Kreuz des Dialogs ist 48 dp
+  hoch. Am Rechner bleibt es bei „auf diesem Rechner“.
+
+  Die Trefferflächen der Wege-Karten (48 dp am Finger, schlank am Rechner) hängen
+  dagegen NICHT an `finger`, sondern an den Geräte-Varianten (`desktop:`):
+  Blatt wie Dialog stehen im Portal, aber die Geräteklasse hängt am `<html>`
+  (Root-Layout) und gilt dort ebenso.
 
   Der Dialog schließt bei jeder Navigation (`afterNavigate`): er hängt am
   Store, nicht an der Adresse, und bliebe nach „Zurück“ (Android-System-Back)
@@ -75,47 +80,40 @@
 {/snippet}
 
 {#snippet wege()}
-  <!-- `data-finger`: Marker für die Trefferflächen (48 dp) der Wege-Karten. Das
-       Blatt UND der Dialog stehen im Portal, außerhalb von `.geraet-handy` —
-       die Geräte-Varianten (`handy:`/`nicht-handy:`) sehen sie dort nicht,
-       `nicht-handy:` träfe dort immer zu. `contents`: der Wrapper bleibt für
-       Layout und Abstand unsichtbar. -->
-  <div data-finger={finger ? '' : undefined} class="contents">
-    <p class="text-text-muted text-sm">{m.hosting_apply_mode_label()}</p>
-    <section class={KARTE} data-testid="eigener-server-rechner">
-      {@render kopf(MonitorIcon, rechnerTitel, rechnerText)}
-      <ServerAppDownload />
-    </section>
-    <section class={KARTE} data-testid="eigener-server-gemietet">
-      {@render kopf(ServerIcon, m.eigener_server_gemietet_titel(), m.eigener_server_gemietet_text())}
-      <SelfHostInstallCard />
-    </section>
-    <!-- „Von Pulse gehostet“ gibt es noch nicht. Der Hinweis hing am
-         Antragsformular und wäre mit ihm verschwunden — ausgegraut stehen lassen
-         (Entscheid des Eigentümers, 2026-10-10). `role="group"`: ohne Rolle
-         liest kein Hilfsmittel das `aria-disabled` eines Divs aus. -->
-    <div
-      class="{KARTE} cursor-not-allowed opacity-60"
-      role="group"
-      aria-disabled="true"
-      data-testid="eigener-server-gehostet"
-    >
-      {@render kopf(
-        CloudIcon,
-        m.hosting_apply_mode_managed_title(),
-        m.hosting_apply_mode_managed_desc(),
-        m.hosting_apply_mode_managed_badge()
-      )}
-    </div>
-    <Button
-      variant="outline"
-      class="w-full in-data-[finger]:h-12"
-      onclick={schliessen}
-      data-testid="eigener-server-schliessen"
-    >
-      {m.eigener_server_schliessen()}
-    </Button>
+  <p class="text-text-muted text-sm">{m.hosting_apply_mode_label()}</p>
+  <section class={KARTE} data-testid="eigener-server-rechner">
+    {@render kopf(MonitorIcon, rechnerTitel, rechnerText)}
+    <ServerAppDownload />
+  </section>
+  <section class={KARTE} data-testid="eigener-server-gemietet">
+    {@render kopf(ServerIcon, m.eigener_server_gemietet_titel(), m.eigener_server_gemietet_text())}
+    <SelfHostInstallCard />
+  </section>
+  <!-- „Von Pulse gehostet“ gibt es noch nicht. Der Hinweis hing am
+       Antragsformular und wäre mit ihm verschwunden — ausgegraut stehen lassen
+       (Entscheid des Eigentümers, 2026-10-10). `role="group"`: ohne Rolle
+       liest kein Hilfsmittel das `aria-disabled` eines Divs aus. -->
+  <div
+    class="{KARTE} cursor-not-allowed opacity-60"
+    role="group"
+    aria-disabled="true"
+    data-testid="eigener-server-gehostet"
+  >
+    {@render kopf(
+      CloudIcon,
+      m.hosting_apply_mode_managed_title(),
+      m.hosting_apply_mode_managed_desc(),
+      m.hosting_apply_mode_managed_badge()
+    )}
   </div>
+  <Button
+    variant="outline"
+    class="h-12 w-full desktop:h-9"
+    onclick={schliessen}
+    data-testid="eigener-server-schliessen"
+  >
+    {m.eigener_server_schliessen()}
+  </Button>
 {/snippet}
 
 {#if blatt}
