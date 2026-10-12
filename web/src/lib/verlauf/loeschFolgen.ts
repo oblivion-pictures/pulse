@@ -19,6 +19,21 @@
  *     Eigenes (`sicherung/anhaengeSpiegeln.ts`), eine fremde Löschung hat an
  *     der eigenen Sicherung nichts zu räumen.
  *
+ * **Bekannte Lücke, dokumentiert statt behoben** (Gegenprüfung 2026-10-12,
+ * R5, niedrig, Datenschutz). Die erste Regel hat eine Kehrseite: ein FREMDER
+ * sichtbarer Satz mit meiner Anhang-ID hält bei meiner Löschung meine Bytes
+ * fest, und mit ihnen die Laufwerk-Datei, denn `laufwerkDateien` nimmt nur,
+ * was verwaist ist. Bob braucht dafür nur einen Satz mit der ID meines
+ * Bildes, eine Archiv-Zeile oder eine eigene Nachricht, und lässt ihn stehen.
+ * Lösche ich mein Bild, bleiben die Bytes auf diesem Gerät, bis Bobs Satz
+ * geht. Die Datei in meiner Sicherung bleibt für immer: geht Bobs Satz
+ * später, räumt seine Löschung die Bytes (`anhangKandidaten`), die
+ * Laufwerk-Datei aber nicht, denn sein Satz ist nicht meiner, und die Folgen
+ * meiner eigenen Löschung sind längst gelaufen. Verloren geht dabei nichts,
+ * aber meine Löschung löscht nicht alles. Beheben hieße, sich die
+ * Laufwerk-Dateien einer eigenen Löschung zu merken, bis kein sichtbarer Satz
+ * sie mehr trägt, oder eine Anhang-ID an ihren Autor zu binden.
+ *
  * Importfrei bis auf den `.ts`-Pfad (Nodes Testläufer).
  */
 import { satzAnhangIds } from './satz.ts';
