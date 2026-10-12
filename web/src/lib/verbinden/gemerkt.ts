@@ -53,6 +53,16 @@ export function gemerkteVerbindung(s: Speicher | null, jetzt: number): string | 
   return code;
 }
 
+/** Der gemerkte Code, und danach ist er weg: wer angemeldet auf `/verbinden`
+ *  weitermacht, hat ihn eingelöst — auch wenn die Adresse einen eigenen Code
+ *  trägt und er gar nicht gebraucht wurde. Bliebe er stehen, holte die
+ *  Startseite (`routes/app/+page.svelte`) später auf einen alten Code zurück. */
+export function gemerkteVerbindungEinloesen(s: Speicher | null, jetzt: number): string | null {
+  const code = gemerkteVerbindung(s, jetzt);
+  gemerkteVerbindungVerwerfen(s);
+  return code;
+}
+
 function lesen(roh: string, jetzt: number): string | null {
   let d: unknown;
   try {

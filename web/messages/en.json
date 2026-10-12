@@ -3385,7 +3385,7 @@
   "verbinden_registrieren": "Create account",
   "verbinden_fertig_titel": "Server connected",
   "verbinden_fertig_text": "Done. Your server's console continues on its own now.",
-  "verbinden_uebernahme_beantragt": "Takeover requested. The current owner can object until {datum}. After that, run pulse-connect on your server again.",
+  "verbinden_uebernahme_beantragt": "The current owner can object until {datum}. After that, run pulse-connect on your server again.",
   "verbinden_abgelehnt_titel": "Cancelled",
   "verbinden_abgelehnt_text": "The server will not be connected to your account. The server's console reports this on its own.",
   "verbinden_unbekannt_titel": "This code is no longer valid",
@@ -3408,5 +3408,10 @@
   "verbinden_fehler_ausgelastet": "Pulse is checking a lot of servers right now. Please try again in a moment.",
   "verbinden_fehler_nicht_verfuegbar": "Connecting servers is not possible right now. Try again later.",
   "verbinden_fehler_gebremst": "Too many attempts in a short time. Wait a while, then try again.",
-  "verbinden_fehler_sonst": "Something went wrong. Try again in a moment."
+  "verbinden_fehler_sonst": "Something went wrong. Try again in a moment.",
+  "verbinden_uebernahme_gesperrt_titel": "Takeover not possible right now",
+  "verbinden_bricht_ab": "Cancelling …",
+  "verbinden_uebernahme_beantragt_titel": "Takeover requested",
+  "verbinden_fehler_antwort_fehlt": "The answer did not arrive. Check your server's console; if it still shows the code, try again.",
+  "verbinden_adresse_label": "Address"
 }

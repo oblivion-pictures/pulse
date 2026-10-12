@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   gemerkteVerbindung,
+  gemerkteVerbindungEinloesen,
   gemerkteVerbindungVerwerfen,
   verbindungMerken,
   HALTBARKEIT_MS,
@@ -86,6 +87,25 @@ test('verwerfen löscht', () => {
   verbindungMerken(s, 'K7QM-2XDP', T0);
   gemerkteVerbindungVerwerfen(s);
   assert.equal(gemerkteVerbindung(s, T0), null);
+});
+
+test('einlösen liefert den Code und lässt ihn nicht zurück', () => {
+  // Wer angemeldet auf /verbinden weitermacht, hat den Code verbraucht — auch
+  // dann, wenn er ihn gar nicht brauchte, weil die Adresse einen eigenen trug.
+  // Bliebe er stehen, holte /app später auf einen alten Code zurück.
+  const s = speicher();
+  verbindungMerken(s, 'K7QM-2XDP', T0);
+  assert.equal(gemerkteVerbindungEinloesen(s, T0 + 1000), 'K7QM-2XDP');
+  assert.equal(s.daten.has(SPEICHER_SCHLUESSEL), false);
+  assert.equal(gemerkteVerbindungEinloesen(s, T0 + 1000), null);
+});
+
+test('einlösen räumt auch Abgelaufenes und Kaputtes ab, ohne Speicher geht es still', () => {
+  const alt = speicher();
+  verbindungMerken(alt, 'K7QM-2XDP', T0);
+  assert.equal(gemerkteVerbindungEinloesen(alt, T0 + HALTBARKEIT_MS), null);
+  assert.equal(alt.daten.has(SPEICHER_SCHLUESSEL), false);
+  assert.equal(gemerkteVerbindungEinloesen(null, T0), null);
 });
 
 test('eigener Schlüssel, getrennt von der gemerkten Einladung', () => {

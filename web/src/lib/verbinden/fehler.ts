@@ -83,13 +83,28 @@ export function ausgangUngewiss(f: VerbindenFehler): boolean {
   return f.art === 'sonst';
 }
 
+/** Hat die Cloud den Vorgang mit dieser Antwort beendet? Dann gibt es nichts
+ *  mehr zu bestätigen: ein zweiter Klick bekäme 404, und die Marke „es ging
+ *  schon eine Entscheidung hinaus“ muss bleiben (sonst hieße ein Neuladen
+ *  „gilt nicht mehr“). Gilt für die gesperrte Übernahme — die Cloud entscheidet
+ *  den Vorgang dabei selbst — und für 404 nach einem eigenen Klick. */
+export function vorgangVerbraucht(f: VerbindenFehler): boolean {
+  return f.art === 'uebernahme_gesperrt' || f.art === 'nachsehen';
+}
+
 /** Paraglide-Schlüssel des Hinweistextes. `null` = die Seite wechselt in einen
- *  eigenen Zustand („gilt nicht mehr“, „anmelden“) statt einen Text zu zeigen. */
-export function meldungsSchluessel(f: VerbindenFehler): string | null {
+ *  eigenen Zustand („gilt nicht mehr“, „anmelden“, „Übernahme gesperrt“) statt
+ *  einen Text zu zeigen.
+ *
+ *  `beimBestaetigen`: der Fehler gehört zu einer abgeschickten Entscheidung.
+ *  Dann sagt „sonst“ (kein Netz, 5xx, Proxy-Abbruch) nur, dass die Antwort
+ *  nicht ankam — der Klick kann trotzdem gewirkt haben. */
+export function meldungsSchluessel(f: VerbindenFehler, beimBestaetigen = false): string | null {
   switch (f.art) {
     case 'unbekannt':
     case 'nachsehen':
     case 'abgemeldet':
+    case 'uebernahme_gesperrt':
       return null;
     case 'nachweis_fehlt':
       return f.befund ? `verbinden_fehler_nachweis_${f.befund}` : 'verbinden_fehler_nachweis';
@@ -97,8 +112,6 @@ export function meldungsSchluessel(f: VerbindenFehler): string | null {
       return 'verbinden_fehler_zu_viele_server';
     case 'verbinden_gesperrt':
       return 'verbinden_fehler_gesperrt';
-    case 'uebernahme_gesperrt':
-      return f.bis ? 'verbinden_uebernahme_gesperrt' : 'verbinden_uebernahme_gesperrt_ohne_datum';
     case 'adresse_gesperrt':
       return 'verbinden_fehler_adresse_gesperrt';
     case 'ausgelastet':
@@ -108,6 +121,6 @@ export function meldungsSchluessel(f: VerbindenFehler): string | null {
     case 'gebremst':
       return 'verbinden_fehler_gebremst';
     default:
-      return 'verbinden_fehler_sonst';
+      return beimBestaetigen ? 'verbinden_fehler_antwort_fehlt' : 'verbinden_fehler_sonst';
   }
 }

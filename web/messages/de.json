@@ -3385,7 +3385,7 @@
   "verbinden_registrieren": "Konto erstellen",
   "verbinden_fertig_titel": "Server verbunden",
   "verbinden_fertig_text": "Fertig. Die Konsole deines Servers macht jetzt von selbst weiter.",
-  "verbinden_uebernahme_beantragt": "Übernahme beantragt. Der bisherige Besitzer kann bis {datum} widersprechen. Rufe danach pulse-connect auf deinem Server erneut auf.",
+  "verbinden_uebernahme_beantragt": "Der bisherige Besitzer kann bis {datum} widersprechen. Rufe danach pulse-connect auf deinem Server erneut auf.",
   "verbinden_abgelehnt_titel": "Abgebrochen",
   "verbinden_abgelehnt_text": "Der Server wird nicht mit deinem Konto verbunden. Die Konsole des Servers meldet das von selbst.",
   "verbinden_unbekannt_titel": "Dieser Code gilt nicht mehr",
@@ -3408,5 +3408,10 @@
   "verbinden_fehler_ausgelastet": "Pulse prüft gerade viele Server. Bitte versuche es gleich noch einmal.",
   "verbinden_fehler_nicht_verfuegbar": "Das Verbinden von Servern ist gerade nicht möglich. Versuche es später noch einmal.",
   "verbinden_fehler_gebremst": "Zu viele Versuche in kurzer Zeit. Warte eine Weile und versuche es dann noch einmal.",
-  "verbinden_fehler_sonst": "Etwas ist schiefgegangen. Versuche es gleich noch einmal."
+  "verbinden_fehler_sonst": "Etwas ist schiefgegangen. Versuche es gleich noch einmal.",
+  "verbinden_uebernahme_gesperrt_titel": "Übernahme gerade nicht möglich",
+  "verbinden_bricht_ab": "Breche ab …",
+  "verbinden_uebernahme_beantragt_titel": "Übernahme beantragt",
+  "verbinden_fehler_antwort_fehlt": "Die Antwort kam nicht an. Sieh in der Konsole deines Servers nach; zeigt sie noch den Code, versuche es erneut.",
+  "verbinden_adresse_label": "Adresse"
 }
