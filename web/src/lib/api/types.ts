@@ -11,8 +11,8 @@ export type User = {
   display_name: string | null;
   avatar_url: string | null;
   is_admin: boolean;
-  /** Owner-Stufe (Betreiber): darf Self-Host-/App-Host-Anträge genehmigen und
-   *  ist gegen Demote/Ban geschützt. Optional (Alt-Frames ohne das Feld). */
+  /** Owner-Stufe (Betreiber): gegen Demote/Ban geschützt, der Verbinden-Riegel
+   *  greift bei ihm nicht. Optional (Alt-Frames ohne das Feld). */
   is_owner?: boolean;
   disabled: boolean;
   created_at: string;

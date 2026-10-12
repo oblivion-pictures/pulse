@@ -34,14 +34,22 @@
   const KARTE = 'border-border bg-bg-input/40 flex flex-col gap-3 rounded-2xl border p-4';
 </script>
 
-{#snippet kopf(icon: Component, titel: string, text: string)}
+{#snippet kopf(icon: Component, titel: string, text: string, abzeichen?: string)}
   {@const Icon = icon}
   <div class="flex items-start gap-3 text-left">
     <span class="bg-bg-input text-text-muted flex size-9 shrink-0 items-center justify-center rounded-full">
       <Icon class="size-5" />
     </span>
     <div class="flex min-w-0 flex-col gap-0.5">
-      <h3 class="text-text-bright text-sm font-semibold">{titel}</h3>
+      <span class="flex items-center gap-1.5">
+        <h3 class="text-text-bright text-sm font-semibold">{titel}</h3>
+        {#if abzeichen}
+          <span
+            class="bg-bg-input text-text-muted rounded-full px-1.5 py-0.5 text-2xs font-medium tracking-wide uppercase"
+            >{abzeichen}</span
+          >
+        {/if}
+      </span>
       <p class="text-text-muted text-xs">{text}</p>
     </div>
   </div>
@@ -65,21 +73,12 @@
     aria-disabled="true"
     data-testid="eigener-server-gehostet"
   >
-    <div class="flex items-start gap-3 text-left">
-      <span class="bg-bg-input text-text-muted flex size-9 shrink-0 items-center justify-center rounded-full">
-        <CloudIcon class="size-5" />
-      </span>
-      <div class="flex min-w-0 flex-col gap-0.5">
-        <span class="flex items-center gap-1.5">
-          <h3 class="text-text-bright text-sm font-semibold">{m.hosting_apply_mode_managed_title()}</h3>
-          <span
-            class="bg-bg-input text-text-muted rounded-full px-1.5 py-0.5 text-2xs font-medium tracking-wide uppercase"
-            >{m.hosting_apply_mode_managed_badge()}</span
-          >
-        </span>
-        <p class="text-text-muted text-xs">{m.hosting_apply_mode_managed_desc()}</p>
-      </div>
-    </div>
+    {@render kopf(
+      CloudIcon,
+      m.hosting_apply_mode_managed_title(),
+      m.hosting_apply_mode_managed_desc(),
+      m.hosting_apply_mode_managed_badge()
+    )}
   </div>
   <Button variant="outline" class="w-full in-data-[blatt]:h-12" onclick={schliessen} data-testid="eigener-server-schliessen">
     {m.eigener_server_schliessen()}

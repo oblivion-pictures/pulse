@@ -61,7 +61,7 @@
   }
 
   /** Liste holen — beim Öffnen und nach einem Widerspruch. */
-  async function laden() {
+  async function laden(): Promise<void> {
     try {
       // Nur EIGENE Instanzen: die Antwort enthält auch Server, denen man bloß
       // beigetreten ist (Account-basierte Server-Liste) — die gehören in die

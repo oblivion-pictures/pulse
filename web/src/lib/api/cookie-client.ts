@@ -15,8 +15,8 @@
  * Scheitert auch das — weil die JWT-Kette selbst tot ist (revoked/abgelaufen,
  * Tokens von `doRefresh`/`renewSession` bereits gelöscht) — ist die Session
  * endgültig vorbei: `cookieFetch` meldet den User dann über `auth.signOut()`
- * ab. Ohne das bliebe `auth.user` als Zombie-Cache stehen und z. B. die
- * 60-s-Admin-Polls (Anträge/Beschwerden) würden endlos 401 feuern.
+ * ab. Ohne das bliebe `auth.user` als Zombie-Cache stehen und z. B. der
+ * Admin-Poll der Beschwerden würde endlos 401 feuern.
  */
 
 import { AUTH_BASE, getCloudBearer, parseResponse } from './client';
