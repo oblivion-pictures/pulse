@@ -66,6 +66,10 @@ const PURE_SOCIAL_OPS: ReadonlySet<ServerEvent['op']> = new Set([
   // muss auch dann ankommen, wenn gerade ein Self-Host aktiv ist — sonst
   // bliebe ein gestoppter Server in der Leiste stehen.
   'instance_status',
+  // Eigener Server frisch verbunden (2026-10): dieselbe Quelle, derselbe
+  // Grund — wer gerade auf seinem Self-Host ist, sähe den neuen Server sonst
+  // erst nach einer Neuanmeldung. Gedeckt von `hintergrund-allowlist.test.ts`.
+  'instanz_verbunden',
 ]);
 
 /**

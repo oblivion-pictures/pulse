@@ -201,7 +201,9 @@
   /** Der neue Server zählt für die Leiste erst als eingerichtet, wenn
    *  `pulse-connect` die Zugangsdaten abgeholt hat (Spec E3) — das geschieht im
    *  Abfrage-Abstand der Konsole (5 s) NACH diesem Klick; ein Abgleich jetzt
-   *  sähe ihn noch nicht. Einmalig und ohne Abbau beim Verlassen: der Store ist
+   *  sähe ihn noch nicht. Andere Geräte holt das Ereignis `instanz_verbunden`
+   *  (handlers/instanzen.ts); dieser Tab hat keine WebSocket, die Seite liegt
+   *  außerhalb von /app. Einmalig und ohne Abbau beim Verlassen: der Store ist
    *  app-weit, und wer sofort „Zu Pulse“ klickt, soll den Server trotzdem
    *  bekommen. */
   function leisteSpaeterAbgleichen(): void {

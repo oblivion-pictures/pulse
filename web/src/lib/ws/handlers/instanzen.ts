@@ -1,6 +1,7 @@
 /**
  * Heim-Server läuft / läuft nicht / heißt jetzt so (`instance_status`, von
- * auth-svc über `user:events`, 2026-10-08).
+ * auth-svc über `user:events`, 2026-10-08) — und ein eigener Server ist gerade
+ * verbunden worden (`instanz_verbunden`, 2026-10).
  *
  * **Nur von der Cloud-Verbindung.** Das Ereignis benennt beliebige Instanzen
  * per ID — ein Self-Host, der es selbst schickte, könnte sonst fremde Server
@@ -30,5 +31,16 @@ export function register(): void {
       const cloud = serversStore.servers.find((s) => s.isCloud);
       if (cloud) activeServer.set(cloud.id);
     }
+  });
+
+  // Ein eigener Server hat seine Zugangsdaten abgeholt (Spec E3): erst jetzt
+  // zählt er als eingerichtet (`set_up`), und der Abgleich holt ihn in die
+  // Leiste DIESES Geräts. Die Instanz-ID wird nicht gebraucht —
+  // `hydrateFromBackend` gleicht die ganze Liste ab, idempotent und ohne zu
+  // entfernen. Ersetzt den Anstoß, der bis 2026-10 aus der Freigabe kam
+  // (`application_decided`).
+  registerWsHandler('instanz_verbunden', () => {
+    if (!dispatchingIsCloud()) return;
+    void serversStore.hydrateFromBackend();
   });
 }
