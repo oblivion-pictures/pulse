@@ -51,7 +51,7 @@ Windows, macOS, Linux, Android and in the browser. Use it at
 |---|---|---|
 | Browser | [howispulse.com](https://howispulse.com) | Installable as an app |
 | Windows | [Pulse-Setup-latest.exe](https://howispulse.com/updates/win/Pulse-Setup-latest.exe) | Updates itself. On first launch SmartScreen asks: “More info” → “Run anyway” |
-| macOS (Apple Silicon) | [Pulse-latest.dmg](https://howispulse.com/downloads/Pulse-latest.dmg) | Not notarized yet: on first launch allow it in System Settings → Privacy & Security → “Open Anyway” |
+| macOS (Apple Silicon) | [Pulse-latest.dmg](https://howispulse.com/downloads/Pulse-latest.dmg) | Signed and notarized by Apple |
 | Linux | [Flatpak](https://howispulse.com/flatpak/com.howispulse.Pulse.flatpakref) | Open the file with GNOME Software or Discover, or use the command below. Updates with `flatpak update` |
 | Android | [pulse-latest.apk](https://howispulse.com/downloads/pulse-latest.apk) | Allow “Install from unknown sources” during installation |
 
