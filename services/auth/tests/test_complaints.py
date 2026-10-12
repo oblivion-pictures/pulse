@@ -912,11 +912,15 @@ class TestNewComplaintNotifiesAdmins:
 # ---------------------------------------------------------------------------
 
 
-async def _seed_instance_without_application(session_factory) -> tuple[int, str]:
+async def _seed_instance_without_application(
+    session_factory, *, bestaetigt: bool = True
+) -> tuple[int, str]:
     """Ein per ``pulse-connect`` verbundener Server: keine Antragszeile.
 
     Returns ``(instance_id, owner_email)``.
     """
+    from datetime import UTC, datetime
+
     from dcc_auth.models_instances import RegisteredInstance
 
     inst_id = next_id()
@@ -927,6 +931,7 @@ async def _seed_instance_without_application(session_factory) -> tuple[int, str]
             email=f"owner{inst_id}@dcc-test.example.com",
             password_hash="x",
             pairwise_salt=b"\x00" * 32,
+            email_verified_at=datetime.now(UTC) if bestaetigt else None,
         )
         s.add(owner)
         await s.flush()
@@ -1010,3 +1015,27 @@ class TestOperatorOhneAntrag:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert [m["to"] for m in sent] == [operator_email]
+
+    async def test_unbestaetigte_konto_mail_bekommt_nichts(self, client, session_factory, app):
+        """Verbinden geht auch mit unbestätigtem Konto; der Beschwerdetext soll
+        trotzdem nicht an eine nie bestätigte Adresse gehen."""
+        from dcc_auth.routes import _reset_rate
+
+        inst_id, _owner_email = await _seed_instance_without_application(
+            session_factory, bestaetigt=False
+        )
+        _reset_rate(app)
+        cid = (
+            await client.post(
+                "/reports",
+                json={"body": "Complaint against an unverified owner.", "target_instance_id": inst_id},
+            )
+        ).json()["id"]
+        _, token = await _seed_user(session_factory, is_admin=True)
+        fr = await client.post(
+            f"/admin/complaints/{cid}/forward",
+            json={"notice_text": "Bitte prüfen."},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert fr.json()["email_error"] == "no_operator_email"
+        assert fr.json()["forwarded_to_email"] is None

@@ -119,6 +119,15 @@ class ResolveIn(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _bestaetigte_mail(user: User | None) -> str | None:
+    """Die Konto-Mail nur, wenn sie bestätigt ist. Verbinden geht auch mit einem
+    unbestätigten Konto, und die Weiterleitung schickt den Text der Beschwerde
+    mit — an eine nie bestätigte Adresse soll er nicht gehen."""
+    if user is None or user.email_verified_at is None:
+        return None
+    return user.email
+
+
 async def resolve_operator(
     session: SessionDep, instance_id: int | None
 ) -> tuple[str | None, str | None]:
@@ -126,8 +135,9 @@ async def resolve_operator(
 
     Either element is ``None`` when unavailable. The operator address is the
     contact email of the approved ``InstanceApplication`` — set by servers that
-    were approved before October 2026 — or else the account email of the owner:
-    a server connected via ``pulse-connect`` has no application row at all.
+    were approved before October 2026 — or else the owner's account email, if
+    it is verified: a server connected via ``pulse-connect`` has no application
+    row at all.
     """
     if instance_id is None:
         return None, None
@@ -143,7 +153,7 @@ async def resolve_operator(
     operator_email = app.contact_email if app is not None else None
     if not operator_email and instance is not None and instance.registered_by is not None:
         owner = await session.get(User, instance.registered_by)
-        operator_email = owner.email if owner is not None else None
+        operator_email = _bestaetigte_mail(owner)
     return hostname, operator_email
 
 
@@ -188,7 +198,7 @@ async def enrich_complaints(
         fehlend = {iid: uid for iid, uid in owner_ids.items() if iid not in operator_emails}
         if fehlend:
             emails = {
-                u.id: u.email
+                u.id: _bestaetigte_mail(u)
                 for u in (
                     await session.execute(select(User).where(User.id.in_(set(fehlend.values()))))
                 ).scalars()

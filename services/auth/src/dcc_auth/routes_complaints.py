@@ -276,8 +276,9 @@ async def forward_complaint(
 ) -> ForwardResult:
     """Forward a complaint to the instance operator and mark it forwarded.
 
-    Sends an email to the operator's contact address (resolved from the approved
-    instance application) with the Cloud moderation's notice + the complaint
+    Sends an email to the operator's contact address (the approved instance
+    application's contact email, else the owner's verified account email —
+    ``complaints_support.resolve_operator``) with the Cloud moderation's notice + the complaint
     details. The status is advanced regardless of email outcome — the admin's
     decision is recorded — but ``email_sent``/``email_error`` tell the UI whether
     the notice actually went out. Never logs the notice text or recipient body.
