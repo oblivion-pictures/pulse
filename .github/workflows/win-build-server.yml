@@ -9,7 +9,8 @@ name: win-build-server
 # — die Server-App streamt nicht selbst. Seit 0.1.92 ist das NATIVE Backend
 # der Windows-Default (kein WSL2, keine Virtualisierung): fetch-win-native.ps1
 # bündelt alle nativen Bausteine (Downloads + weed.exe aus Go-Source +
-# direct-adapter.exe aus Rust-Source + uv-Python-venv). Das gebündelte Podman
+# livekit-server.exe aus dem Pulse-Fork + direct-adapter.exe aus Rust-Source +
+# uv-Python-venv). Das gebündelte Podman
 # bleibt als Notfall-Fluchtweg (PULSE_HOST_BACKEND=container). Eigener Feed
 # /updates/win-server/, getrennt vom Client-Feed /updates/win/.
 #
@@ -27,6 +28,10 @@ on:
       - 'services/**'
       - 'shared/**'
       - 'infra/self-host/direct-adapter/**'
+      # LiveKit-Fork (Commits, Patch, Bauskript): fetch-win-native.ps1 baut
+      # livekit-server.exe daraus. Ohne Eintrag erreichte ein neuer Patch-Stand
+      # nur das Linux-Image, nicht die Windows-Heimserver.
+      - 'infra/livekit-fork/**'
       # fetch-win-native.ps1 bündelt beides mit: das Caddyfile-Template als
       # Konfiguration des nativen Caddy und uv.lock als Quelle des Python-venv.
       # Ohne Eintrag erreichte eine Änderung daran keinen Windows-Heimserver.
@@ -83,13 +88,21 @@ jobs:
 
       # ── Native Backend (Windows-Default, kein WSL2) ─────────────────────────
       # weed.exe: SeaweedFS hat kein volles Windows-Release → aus dem Source
-      # gebaut (-WeedSource). direct-adapter.exe: cargo (-AdapterSource).
-      # venv: uv. Alles Weitere (caddy/garnet+dotnet/livekit/mediamtx/pg/frpc,
+      # gebaut (-WeedSource). livekit-server.exe: Pulse-Fork aus
+      # infra/livekit-fork, dasselbe Skript wie im Linux-Image (-LivekitSource,
+      # läuft in Git Bash). direct-adapter.exe: cargo (-AdapterSource).
+      # venv: uv. Alles Weitere (caddy/garnet+dotnet/mediamtx/pg/frpc,
       # Service-Quellen, Templates) lädt fetch-win-native.ps1 idempotent.
+      #
+      # Go fest auf 1.26.8 — dieselbe Fassung wie die Stufe livekit-build in
+      # infra/self-host/Dockerfile (LiveKits go.mod verlangt 1.26, SeaweedFS
+      # 4.48 sogar 1.26.6). Hier stand '1.25.x'; damit hätte Go die passende
+      # Fassung still selbst nachgeladen (GOTOOLCHAIN=auto, die Vorgabe der
+      # Go-Distribution — aus go.mod gefolgert, nicht im Lauf-Protokoll belegt).
       - name: Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: '1.25.x'
+          go-version: '1.26.8'
 
       - name: Rust
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master — mit SHA gilt nur `with: toolchain`, nicht der Ref-Name
@@ -101,7 +114,7 @@ jobs:
 
       - name: Native Backend-Bausteine bündeln
         shell: pwsh
-        run: desktop/scripts/fetch-win-native.ps1 -WeedSource -AdapterSource
+        run: desktop/scripts/fetch-win-native.ps1 -WeedSource -AdapterSource -LivekitSource
 
       # esbuild-Server-Bundle + electron-builder → desktop/release-server/:
       #   Pulse-Server-Setup-<version>.exe  (NSIS-Installer)

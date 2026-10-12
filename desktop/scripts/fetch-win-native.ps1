@@ -17,11 +17,17 @@
 # ohne Subcommands, 2026-10 verifiziert) → aus dem Source gebaut (Go cross-
 # compile, CI) oder lokal via -WeedSource. direct-adapter.exe: cargo build
 # aus infra/self-host/direct-adapter (CI) oder lokal via -AdapterSource.
+# livekit-server.exe: der Pulse-Fork von LiveKit (1.13.3 + Patch
+# extra_node_ips, infra/livekit-fork/) — gebaut von DEMSELBEN Skript wie das
+# Linux-Image, via -LivekitSource. Ein offizielles Release taugt nicht mehr:
+# die Server-App schreibt extra_node_ips in die livekit.yaml, und das
+# offizielle Binary verweigert damit den Start.
 
 param(
     [string]$Root = (Join-Path $PSScriptRoot "..\resources-native"),
-    [switch]$WeedSource,   # weed.exe selbst bauen (braucht go + Netz)
-    [switch]$AdapterSource # direct-adapter.exe selbst bauen (braucht cargo)
+    [switch]$WeedSource,    # weed.exe selbst bauen (braucht go + Netz)
+    [switch]$AdapterSource, # direct-adapter.exe selbst bauen (braucht cargo)
+    [switch]$LivekitSource  # livekit-server.exe aus dem Pulse-Fork bauen (braucht go + Git Bash)
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,11 +40,14 @@ $ErrorActionPreference = "Stop"
 #
 # Woher die Werte stammen (Stand 2026-10-12, je Datei mit curl geladen und mit
 # sha256sum nachgerechnet):
-#   Caddy, frp, LiveKit, MediaMTX, .NET: gegen die Liste des Herstellers
+#   Caddy, frp, MediaMTX, .NET: gegen die Liste des Herstellers
 #     geprüft (Caddy `caddy_<v>_checksums.txt` und .NET `releases.json` führen
 #     SHA512 — die SHA256 hier ist selbst berechnet, die Datei zuvor gegen die
-#     SHA512 des Herstellers bestätigt; frp, LiveKit und MediaMTX führen SHA256
+#     SHA512 des Herstellers bestätigt; frp und MediaMTX führen SHA256
 #     und stimmen wörtlich überein).
+#   LiveKit: kein Download mehr — gebaut aus dem Pulse-Fork, festgeschrieben
+#     sind die Commits in infra/livekit-fork/quelle.env (eine Quelle für
+#     Linux-Image und Windows; Abschnitt „LiveKit" unten).
 #   Garnet: keine Herstellerliste; selbst berechnet und gegen die von GitHub am
 #     Release-Asset angezeigte `sha256:`-Angabe bestätigt.
 #   Postgres (EDB): keine Herstellerliste; selbst berechnet (der MD5 aus den
@@ -49,8 +58,6 @@ $CaddyVersion   = "2.8.4"
 $CaddySha256    = "2631fbe1c4f6fb08783ed6dc6ac238d6655b4c923abe2bce1433dbd7fd079630"
 $GarnetVersion  = "2.2.0"
 $GarnetSha256   = "8812ae916dd2386db6ebfaeeee3fb6508024f82ee4c66284532a1a5baa6afea2"
-$LivekitVersion = "1.13.3"   # gleiches Pin wie das allinone-Image
-$LivekitSha256  = "d29786e63a11de390fb8051191a30520cfb687d8f6cb5063b6ef0f748f029727"
 $MediamtxVersion = "1.19.1"  # upstream; Fork-Windows-Artifact steht noch aus
 $MediamtxSha256 = "ca3d89c370bf73dc33ef9ee87afea04834f21b129f499d4b645490fcb01cce22"
 $PgVersion      = "15.14-1"
@@ -118,11 +125,62 @@ if (-not (Test-Path (Join-Path $Bin "dotnet\dotnet.exe"))) {
     Unzip "$Tmp/dotnet.zip" (Join-Path $Bin "dotnet")
 }
 
-# ── LiveKit ─────────────────────────────────────────────────────────────────
-if (-not (Test-Path (Join-Path $Bin "livekit-server.exe"))) {
-    Fetch "https://github.com/livekit/livekit-server/releases/download/v$LivekitVersion/livekit_${LivekitVersion}_windows_amd64.zip" "$Tmp/livekit.zip" $LivekitSha256
-    Unzip "$Tmp/livekit.zip" "$Tmp/livekit"
-    Copy-Item "$Tmp/livekit/livekit-server.exe" $Bin
+# ── LiveKit (Pulse-Fork) ────────────────────────────────────────────────────
+# Gebaut von infra/livekit-fork/bauen.sh — dasselbe Skript wie im Linux-Image
+# (infra/self-host/Dockerfile, Stufe livekit-build), also dieselben Commits,
+# derselbe Patch und dessen Go-Test. Es läuft in Git Bash: das liegt jedem
+# Git für Windows bei, und ein zweites Bau-Rezept in PowerShell wäre eine
+# zweite Wahrheit.
+#
+# Neben das Binary legt bauen.sh den Stempel livekit-server.exe.fork. Er hat
+# zwei Leser: dieser Abschnitt erkennt daran eine zwischengespeicherte Kopie,
+# die nicht mehr zu quelle.env passt (auch das offizielle Binary aus der Zeit
+# vor dem Fork, das noch in resources-native liegen kann), und die Server-App
+# schreibt extra_node_ips nur neben einem Binary MIT Stempel
+# (nativeBackend/livekitIp.ts) — das offizielle startet mit dem Feld nicht.
+$LivekitQuelle = @{}
+foreach ($zeile in Get-Content (Join-Path $Repo "infra\livekit-fork\quelle.env")) {
+    if ($zeile -match '^([A-Z_]+)=(\S+)$') { $LivekitQuelle[$Matches[1]] = $Matches[2] }
+}
+foreach ($k in @("LIVEKIT_VERSION", "PULSE_REVISION", "LIVEKIT_COMMIT", "MTU_COMMIT")) {
+    if (-not $LivekitQuelle[$k]) { throw "infra/livekit-fork/quelle.env: $k fehlt" }
+}
+# Wortgleich mit STEMPEL in bauen.sh.
+$LivekitStempel = "$($LivekitQuelle.LIVEKIT_VERSION)-pulse$($LivekitQuelle.PULSE_REVISION) livekit=$($LivekitQuelle.LIVEKIT_COMMIT) mediatransportutil=$($LivekitQuelle.MTU_COMMIT)"
+$lkExe = Join-Path $Bin "livekit-server.exe"
+$lkStempel = "$lkExe.fork"
+if ((Test-Path $lkExe) -and (-not (Test-Path $lkStempel) -or (Get-Content $lkStempel -Raw).Trim() -ne $LivekitStempel)) {
+    Write-Warning "livekit-server.exe ist nicht der Pulse-Fork $LivekitStempel — wird ersetzt."
+    Remove-Item $lkExe, $lkStempel -Force -ErrorAction SilentlyContinue
+}
+if (-not (Test-Path $lkExe)) {
+    if ($LivekitSource) {
+        if (-not (Get-Command go -ErrorAction SilentlyContinue)) { throw "go nicht gefunden (-LivekitSource)" }
+        # Git Bash neben git.exe suchen — NICHT `bash` aus dem PATH: unter
+        # Windows ist das oft der WSL-Starter (System32\bash.exe), und der
+        # fände weder dieses go noch diese Pfade.
+        $git = Get-Command git -ErrorAction SilentlyContinue
+        if (-not $git) { throw "git nicht gefunden (-LivekitSource)" }
+        $gitBash = $null
+        $dir = Split-Path $git.Source
+        for ($i = 0; $i -lt 4 -and $dir; $i++) {
+            $kandidat = Join-Path $dir "bin\bash.exe"
+            if (Test-Path $kandidat) { $gitBash = $kandidat; break }
+            $dir = Split-Path $dir
+        }
+        if (-not $gitBash) { throw "Git Bash nicht gefunden (bin\bash.exe neben $($git.Source))" }
+        # Vorwärts-Schrägstriche: bash rechnet mit / als Trenner (dirname).
+        $bauSkript = (Join-Path $Repo "infra\livekit-fork\bauen.sh").Replace('\', '/')
+        $bauAus = $lkExe.Replace('\', '/')
+        $bauLizenz = (Join-Path $Bin "livekit-lizenz").Replace('\', '/')
+        & $gitBash $bauSkript --aus $bauAus --os windows --arch amd64 --lizenz $bauLizenz
+        # Native Befehle werfen in PS nicht (s. weed unten).
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $lkExe) -or -not (Test-Path $lkStempel)) {
+            throw "LiveKit-Fork-Bau fehlgeschlagen (Exit $LASTEXITCODE) — Log oben"
+        }
+    } else {
+        throw "livekit-server.exe fehlt — -LivekitSource verwenden (Pulse-Fork, kein offizielles Release; siehe infra/livekit-fork/README.md)."
+    }
 }
 
 # ── MediaMTX ────────────────────────────────────────────────────────────────
@@ -239,7 +297,7 @@ Write-Host "`nresources-native fertig: $Root"
 # Pflicht-Binaries: fehlt auch nur eine, ist der Installer unbrauchbar —
 # lieber hier hart scheitern als Stillstand beim Nutzer (0.1.93-Lektion:
 # still fehlendes weed.exe fiel erst im Feld auf).
-foreach ($required in @("caddy.exe", "frpc.exe", "livekit-server.exe", "mediamtx.exe", "weed.exe", "direct-adapter.exe", "garnet\GarnetServer.exe", "dotnet\dotnet.exe", "pg\bin\postgres.exe")) {
+foreach ($required in @("caddy.exe", "frpc.exe", "livekit-server.exe", "livekit-server.exe.fork", "mediamtx.exe", "weed.exe", "direct-adapter.exe", "garnet\GarnetServer.exe", "dotnet\dotnet.exe", "pg\bin\postgres.exe")) {
     if (-not (Test-Path (Join-Path $Bin $required))) {
         throw "Pflicht-Binary fehlt: $required"
     }
