@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import secrets
 import subprocess
 import sys
@@ -55,12 +54,15 @@ import httpx
 from dcc_chat_gateway import config as chat_config
 from dcc_chat_gateway import verbinden_texte as texte
 from dcc_chat_gateway.verbinden_hilfen import (
+    Abbruch,
     anzeigbar,
     entferne_still,
     grund,
     lies_verbindung,
     nachweis_aus_kennung,
     schreibe_atomar,
+    verbindung_env,
+    zugang_aus,
 )
 from dcc_chat_gateway.verbindung import NACHWEIS_DATEI, VERBINDUNG_DATEI
 
@@ -73,19 +75,9 @@ HOECHSTENS_S = 900
 #: hinaus schliefe ``pulse-connect`` an der Frist vorbei.
 ABSTAND_HOECHSTENS_S = 60
 ANFRAGE_FRIST_S = 15.0
-#: Erlaubte Zeichen in ``verbindung.env``. 07-render-env.sh weist alles andere
-#: ab (``*[!A-Za-z0-9._@+-]*``) — beide Stellen synchron halten.
-_WERT = re.compile(r"[A-Za-z0-9._@+-]+")
-_ZAHL = re.compile(r"[0-9]+")
-
-
-class _Abbruch(Exception):
-    """Beendet den Ablauf mit Exit-Code und einer Meldung für den Betreiber."""
-
-    def __init__(self, exit_code: int, meldung: str) -> None:
-        super().__init__(meldung)
-        self.exit_code = exit_code
-        self.meldung = meldung
+#: Beim Start prüft die Cloud erst DNS (bis 5 s) und ruft dann den Nachweis ab
+#: (bis 8 s): im schlechtesten Fall ~13 s, die 15 s Grundfrist wären zu knapp.
+START_FRIST_S = 30.0
 
 
 @dataclass(frozen=True)
@@ -109,16 +101,16 @@ class _Vorgang:
 
 def _vorpruefung(umgebung: Umgebung, rueckfrage: Callable[[str], bool]) -> None:
     if umgebung.modus != "self-host":
-        raise _Abbruch(1, texte.NUR_SELF_HOST)
+        raise Abbruch(1, texte.NUR_SELF_HOST)
     if not umgebung.hostname:
-        raise _Abbruch(1, texte.OHNE_ADRESSE)
+        raise Abbruch(1, texte.OHNE_ADRESSE)
     datei_id = lies_verbindung(umgebung.verzeichnis).get("PULSE_INSTANCE_ID", "")
     # Eine Instanz-Nummer, die nicht aus der Datei stammt, steht in der Umgebung —
     # und die gewinnt (07-render-env.sh). Eine neue Datei bliebe wirkungslos.
     if umgebung.instanz_id and str(umgebung.instanz_id) != datei_id:
-        raise _Abbruch(1, texte.AUS_DER_UMGEBUNG)
+        raise Abbruch(1, texte.AUS_DER_UMGEBUNG)
     if datei_id and not rueckfrage(texte.SCHON_VERBUNDEN):
-        raise _Abbruch(1, texte.NICHTS_GEAENDERT)
+        raise Abbruch(1, texte.NICHTS_GEAENDERT)
 
 
 def _detail(antwort: httpx.Response) -> object:
@@ -132,26 +124,32 @@ def _starten(umgebung: Umgebung, client: httpx.Client, kennung: str) -> _Vorgang
     url = f"{umgebung.cloud_origin}/api/auth/selfhost/verbinden/start"
     host = umgebung.hostname
     try:
-        antwort = client.post(url, json={"hostname": host, "kennung": kennung})
+        antwort = client.post(
+            url, json={"hostname": host, "kennung": kennung}, timeout=START_FRIST_S
+        )
+    except httpx.TimeoutException:
+        raise Abbruch(1, texte.CLOUD_ZU_LANGSAM) from None
     except httpx.HTTPError:
-        raise _Abbruch(1, texte.CLOUD_WEG.format(origin=umgebung.cloud_origin)) from None
+        raise Abbruch(1, texte.CLOUD_WEG.format(origin=umgebung.cloud_origin)) from None
     detail = _detail(antwort)
     if antwort.status_code == 409 and detail == "vorgang_laeuft":
-        raise _Abbruch(1, texte.VORGANG_LAEUFT.format(host=host))
+        raise Abbruch(1, texte.VORGANG_LAEUFT.format(host=host))
     if antwort.status_code == 409:
         befund = detail.get("befund") if isinstance(detail, dict) else None
         text = texte.BEFUNDE.get(befund, texte.BEFUND_UNBEKANNT).format(host=host)
-        raise _Abbruch(3, f"{text}\n{texte.NACHWEIS_HILFE}")
+        raise Abbruch(3, f"{text}\n{texte.NACHWEIS_HILFE}")
     if antwort.status_code == 400:
         gesperrt = detail == "adresse_gesperrt"
         vorlage = texte.ADRESSE_GESPERRT if gesperrt else texte.ADRESSE_UNGUELTIG
-        raise _Abbruch(1, vorlage.format(host=host))
+        raise Abbruch(1, vorlage.format(host=host))
     if antwort.status_code == 429:
-        raise _Abbruch(1, texte.ZU_VIELE)
+        raise Abbruch(1, texte.ZU_VIELE)
     if antwort.status_code == 503 and detail == "verbinden_ausgelastet":
-        raise _Abbruch(1, texte.AUSGELASTET)
+        raise Abbruch(1, texte.AUSGELASTET)
+    if antwort.status_code in (502, 503, 504):  # Deploy der Cloud: später noch einmal
+        raise Abbruch(1, texte.CLOUD_NICHT_BEREIT.format(status=antwort.status_code))
     if antwort.status_code != 201:
-        raise _Abbruch(1, texte.UNERWARTET.format(status=antwort.status_code))
+        raise Abbruch(1, texte.UNERWARTET.format(status=antwort.status_code))
     try:
         daten = antwort.json()
         return _Vorgang(
@@ -161,7 +159,7 @@ def _starten(umgebung: Umgebung, client: httpx.Client, kennung: str) -> _Vorgang
             abstand_s=min(max(1, int(daten["abstand_s"])), ABSTAND_HOECHSTENS_S),
         )
     except (ValueError, KeyError, TypeError):
-        raise _Abbruch(1, texte.UNERWARTET.format(status=201)) from None
+        raise Abbruch(1, texte.UNERWARTET.format(status=201)) from None
 
 
 def _entschieden(umgebung: Umgebung, antwort: httpx.Response) -> None:
@@ -171,11 +169,11 @@ def _entschieden(umgebung: Umgebung, antwort: httpx.Response) -> None:
     name = detail.get("code") if isinstance(detail, dict) else None
     if antwort.status_code == 409 and name == "uebernahme_beantragt":
         frist = texte.utc_minute(detail.get("frist_bis"))
-        raise _Abbruch(4, texte.UEBERNAHME_BEANTRAGT.format(host=umgebung.hostname, frist=frist))
+        raise Abbruch(4, texte.UEBERNAHME_BEANTRAGT.format(host=umgebung.hostname, frist=frist))
     if antwort.status_code == 403 and name == "uebernahme_gesperrt":
-        raise _Abbruch(2, texte.UEBERNAHME_GESPERRT.format(bis=texte.utc_minute(detail.get("bis"))))
+        raise Abbruch(2, texte.UEBERNAHME_GESPERRT.format(bis=texte.utc_minute(detail.get("bis"))))
     if antwort.status_code == 403:
-        raise _Abbruch(2, texte.ABGELEHNT)
+        raise Abbruch(2, texte.ABGELEHNT)
 
 
 def _abholen(
@@ -199,7 +197,7 @@ def _abholen(
         except httpx.HTTPError:
             continue  # Netzaussetzer: weiter warten, die Frist läuft mit
         if antwort.status_code == 200:
-            return _zugang_aus(antwort)
+            return zugang_aus(antwort)
         if antwort.status_code in (403, 409):
             _entschieden(umgebung, antwort)
         if antwort.status_code == 410:
@@ -207,37 +205,7 @@ def _abholen(
         if antwort.status_code == 429:
             warten()
         # 202 heißt „wartet“, ebenso alles Unbekannte (502 beim Deploy der Cloud).
-    raise _Abbruch(2, texte.ABGELAUFEN)
-
-
-def _zugang_aus(antwort: httpx.Response) -> dict:
-    """Der Körper eines 200 von ``abholen``: ein Objekt, sonst Abbruch."""
-    try:
-        daten = antwort.json()
-    except ValueError:
-        daten = None
-    if not isinstance(daten, dict):
-        raise _Abbruch(1, texte.ZUGANG_UNBRAUCHBAR)
-    return daten
-
-
-def _verbindung_env(zugang: dict) -> str:
-    """Inhalt von ``verbindung.env`` — oder Abbruch, ohne die Werte zu nennen."""
-    pflicht = (
-        ("PULSE_INSTANCE_ID", zugang.get("instance_id"), _ZAHL),
-        ("PULSE_INSTANCE_OWNER_ID", zugang.get("owner_user_id"), _ZAHL),
-        ("PULSE_CLOUD_CLIENT_ID", zugang.get("client_id"), _WERT),
-        ("PULSE_CLOUD_CLIENT_SECRET", zugang.get("client_secret"), _WERT),
-    )
-    zeilen = []
-    for name, wert, form in pflicht:
-        if not isinstance(wert, str) or not form.fullmatch(wert):
-            raise _Abbruch(1, texte.ZUGANG_UNBRAUCHBAR)
-        zeilen.append(f"{name}={wert}")
-    mail = zugang.get("admin_email")
-    if isinstance(mail, str) and "@" in mail and _WERT.fullmatch(mail):
-        zeilen.append(f"PULSE_ADMIN_EMAIL={mail}")
-    return "\n".join(zeilen) + "\n"
+    raise Abbruch(2, texte.ABGELAUFEN)
 
 
 def _ablegen(ziel: Path, inhalt: str, modus: int, vorlage: str) -> None:
@@ -246,7 +214,7 @@ def _ablegen(ziel: Path, inhalt: str, modus: int, vorlage: str) -> None:
         ziel.parent.mkdir(parents=True, exist_ok=True)
         schreibe_atomar(ziel, inhalt, modus)
     except OSError as fehler:
-        raise _Abbruch(1, vorlage.format(pfad=ziel, grund=grund(fehler))) from None
+        raise Abbruch(1, vorlage.format(pfad=ziel, grund=grund(fehler))) from None
 
 
 def _drucke(text: str) -> None:
@@ -279,10 +247,10 @@ def verbinden(
             zugang = _abholen(umgebung, client, kennung, vorgang, schlafen, uhr)
             # Scheitert das Speichern, ist das Secret in der Cloud schon rotiert.
             ziel = umgebung.verzeichnis / VERBINDUNG_DATEI
-            _ablegen(ziel, _verbindung_env(zugang), 0o600, texte.ZUGANG_NICHT_GESPEICHERT)
+            _ablegen(ziel, verbindung_env(zugang), 0o600, texte.ZUGANG_NICHT_GESPEICHERT)
         finally:
             entferne_still(nachweis_datei)
-    except _Abbruch as abbruch:
+    except Abbruch as abbruch:
         ausgabe(abbruch.meldung)
         return abbruch.exit_code
     besitzer = anzeigbar(str(zugang.get("owner_name") or "your account"))

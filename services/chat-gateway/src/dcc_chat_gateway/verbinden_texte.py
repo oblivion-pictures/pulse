@@ -81,9 +81,16 @@ ADRESSE_GESPERRT = "{host} belongs to Pulse itself. Use your own domain."
 ADRESSE_UNGUELTIG = "The Pulse cloud does not accept {host} as an address."
 ZU_VIELE = "Too many connection attempts from this server. Try again in an hour."
 AUSGELASTET = "Pulse is busy checking servers right now. Run pulse-connect again in a minute."
+#: Die Cloud meldet das nur für dieselbe Kennung — und die ist bei jedem Lauf neu.
+#: Gemeint ist also ein Start, der zweimal ankam; nicht „ein anderer Versuch läuft“.
 VORGANG_LAEUFT = (
-    "A connection attempt for {host} is already running. Confirm its code in the "
-    "browser or wait up to 15 minutes, then run pulse-connect again."
+    "The Pulse cloud already has this connection attempt for {host} open, probably "
+    "because the request arrived twice. Nothing changed. Run pulse-connect again."
+)
+CLOUD_ZU_LANGSAM = "The Pulse cloud did not answer in time — please try again. Nothing changed."
+CLOUD_NICHT_BEREIT = (
+    "The Pulse cloud is not ready right now (HTTP {status}); it may be restarting. "
+    "Nothing changed — please try again in a minute."
 )
 UNERWARTET = "Unexpected answer from the Pulse cloud (HTTP {status}). Nothing changed."
 ZUGANG_UNBRAUCHBAR = (

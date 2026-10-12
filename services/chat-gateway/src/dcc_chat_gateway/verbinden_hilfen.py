@@ -9,10 +9,28 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import re
 import secrets
 from pathlib import Path
 
+import httpx
+
+from dcc_chat_gateway import verbinden_texte as texte
 from dcc_chat_gateway.verbindung import VERBINDUNG_DATEI
+
+#: Erlaubte Zeichen in ``verbindung.env``. 07-render-env.sh weist alles andere
+#: ab (``*[!A-Za-z0-9._@+-]*``) — beide Stellen synchron halten.
+_WERT = re.compile(r"[A-Za-z0-9._@+-]+")
+_ZAHL = re.compile(r"[0-9]+")
+
+
+class Abbruch(Exception):
+    """Beendet den Ablauf mit Exit-Code und einer Meldung für den Betreiber."""
+
+    def __init__(self, exit_code: int, meldung: str) -> None:
+        super().__init__(meldung)
+        self.exit_code = exit_code
+        self.meldung = meldung
 
 
 def nachweis_aus_kennung(kennung: str) -> str:
@@ -71,3 +89,33 @@ def entferne_still(datei: Path) -> None:
     Containerstart räumt ihn weg (01-init-data-dirs.sh)."""
     with contextlib.suppress(OSError):
         datei.unlink(missing_ok=True)
+
+
+def zugang_aus(antwort: httpx.Response) -> dict:
+    """Der Körper eines 200 von ``abholen``: ein Objekt, sonst Abbruch."""
+    try:
+        daten = antwort.json()
+    except ValueError:
+        daten = None
+    if not isinstance(daten, dict):
+        raise Abbruch(1, texte.ZUGANG_UNBRAUCHBAR)
+    return daten
+
+
+def verbindung_env(zugang: dict) -> str:
+    """Inhalt von ``verbindung.env`` — oder Abbruch, ohne die Werte zu nennen."""
+    pflicht = (
+        ("PULSE_INSTANCE_ID", zugang.get("instance_id"), _ZAHL),
+        ("PULSE_INSTANCE_OWNER_ID", zugang.get("owner_user_id"), _ZAHL),
+        ("PULSE_CLOUD_CLIENT_ID", zugang.get("client_id"), _WERT),
+        ("PULSE_CLOUD_CLIENT_SECRET", zugang.get("client_secret"), _WERT),
+    )
+    zeilen = []
+    for name, wert, form in pflicht:
+        if not isinstance(wert, str) or not form.fullmatch(wert):
+            raise Abbruch(1, texte.ZUGANG_UNBRAUCHBAR)
+        zeilen.append(f"{name}={wert}")
+    mail = zugang.get("admin_email")
+    if isinstance(mail, str) and "@" in mail and _WERT.fullmatch(mail):
+        zeilen.append(f"PULSE_ADMIN_EMAIL={mail}")
+    return "\n".join(zeilen) + "\n"
