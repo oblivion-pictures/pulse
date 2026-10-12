@@ -171,7 +171,7 @@ jobs:
       # @loader_path-Rewrite + ad-hoc-Sign) → electron-builder --mac → DMG+ZIP in
       # desktop/release/. `dist:mac` läuft mit `--publish never`; der Upload macht
       # der scp-Step unten. PKG_CONFIG_PATH zeigt cargo auf die frisch gebaute
-      # FFmpeg (überschreibt den auf michaels Mac hardcodierten Pfad in
+      # FFmpeg (überschreibt den für den Entwickler-Mac hinterlegten Pfad in
       # streaming/mac-hq-sidecar/.cargo/config.toml — cargos [env] ist non-force,
       # eine gesetzte Env gewinnt).
       #
@@ -228,7 +228,7 @@ jobs:
           DMG=$(ls desktop/release/Pulse-*.dmg | head -n1)
           scp -i ~/.ssh/id_ed25519 \
             "$DMG" \
-            michael@159.195.150.54:pulse/downloads/Pulse-latest.dmg
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/downloads/Pulse-latest.dmg
 
       # Mac-Auto-Update-Feed (Stufe B): latest-mac.yml + .zip + .blockmap nach
       # ~/pulse/updates-mac/ (nginx: /updates/mac/). electron-updater lädt das
@@ -242,7 +242,7 @@ jobs:
             desktop/release/latest-mac.yml \
             desktop/release/*.zip \
             desktop/release/*.zip.blockmap \
-            michael@159.195.150.54:pulse/updates-mac/
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-mac/
 
       - name: SSH-Key wieder entfernen
         if: always()
@@ -314,7 +314,7 @@ jobs:
           DMG=$(ls desktop/release-server/*.dmg | head -n1)
           scp -i ~/.ssh/id_ed25519 \
             "$DMG" \
-            michael@159.195.150.54:pulse/downloads/Pulse-Server-latest.dmg
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/downloads/Pulse-Server-latest.dmg
 
       # Server-Mac-Update-Feed (Stufe B): eigener Feed /updates/mac-server/ —
       # die Server-App hat eigene Versionen/appId (electron-builder-server.yml).
@@ -325,7 +325,7 @@ jobs:
             desktop/release-server/latest-mac.yml \
             desktop/release-server/*.zip \
             desktop/release-server/*.zip.blockmap \
-            michael@159.195.150.54:pulse/updates-mac-server/
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-mac-server/
 
       - name: SSH-Key wieder entfernen
         if: always()

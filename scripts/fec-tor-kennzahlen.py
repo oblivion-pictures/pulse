@@ -67,7 +67,21 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 
-HOST_VORGABE = os.environ.get("PULSE_PROD_HOST", "michael@159.195.150.54")
+def _ziel_aus_intern(name: str) -> str | None:
+    """Ziel aus intern/ziele.env (privates Repo pulse-intern) — die Adressen
+    stehen bewusst nicht im öffentlichen Repo."""
+    datei = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "intern", "ziele.env")
+    try:
+        with open(datei, encoding="utf-8") as f:
+            for zeile in f:
+                if zeile.startswith(name + "="):
+                    return zeile.split("=", 1)[1].strip().strip("\"'") or None
+    except OSError:
+        pass
+    return None
+
+
+HOST_VORGABE = os.environ.get("PULSE_PROD_HOST") or _ziel_aus_intern("PULSE_PROD_HOST")
 CONTAINER_VORGABE = os.environ.get("PULSE_MEDIAMTX_CONTAINER", "pulse_mediamtx")
 
 # MediaMTX-Zeitstempel: "2026/08/04 19:01:23". Die Sitzungskennung ist die
@@ -368,7 +382,7 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--seit", default="48h", help="Zeitfenster fuer docker logs (Vorgabe: 48h)")
-    p.add_argument("--host", default=HOST_VORGABE, help=f"SSH-Ziel (Vorgabe: {HOST_VORGABE})")
+    p.add_argument("--host", default=HOST_VORGABE, help="SSH-Ziel (Vorgabe: PULSE_PROD_HOST bzw. intern/ziele.env)")
     p.add_argument("--container", default=CONTAINER_VORGABE, help=f"Vorgabe: {CONTAINER_VORGABE}")
     p.add_argument("--datei", help="Statt SSH: eine lokal liegende Logdatei auswerten ('-' = stdin)")
     p.add_argument(
@@ -391,6 +405,8 @@ def main() -> int:
             text = fh.read()
         quelle = f"Datei {args.datei}"
     else:
+        if not args.host:
+            p.error("SSH-Ziel fehlt: --host, PULSE_PROD_HOST oder intern/ziele.env")
         text = hole_log(args.host, args.container, args.seit)
         quelle = f"{args.host}:{args.container}, --since {args.seit}"
 

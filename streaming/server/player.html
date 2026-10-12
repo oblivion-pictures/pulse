@@ -215,7 +215,7 @@ async function updateStats() {
 }
 
 // Default-URL aus aktuellem Host bauen
-$("url").value = `http://${location.hostname || "77.42.71.166"}:8889/test/whep`;
+$("url").value = `http://${location.hostname || "localhost"}:8889/test/whep`;
 
 $("connect").addEventListener("click", connect);
 $("mute").addEventListener("click", () => {

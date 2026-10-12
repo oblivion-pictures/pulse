@@ -20,7 +20,8 @@
 #   scripts/fetch-experimental-logs.sh latest       # das neueste im Volltext
 set -euo pipefail
 
-HOST="${PULSE_PROD_HOST:-michael@159.195.150.54}"
+source "$(dirname "${BASH_SOURCE[0]}")/ziele.sh"
+HOST="$(ziel PULSE_PROD_HOST)"
 
 die() { echo "FEHLER: $*" >&2; exit 1; }
 

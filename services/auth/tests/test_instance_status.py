@@ -85,7 +85,7 @@ async def aufbau(client, session_factory):
 def _hb(token: str) -> dict:
     return {
         "instance_id": str(_INSTANCE_ID), "token": token,
-        "candidates": [{"ip": "46.128.100.64", "port": 7900, "protocol": "udp"}],
+        "candidates": [{"ip": "9.9.9.9", "port": 7900, "protocol": "udp"}],
         "fingerprint": _FINGERPRINT,
     }
 

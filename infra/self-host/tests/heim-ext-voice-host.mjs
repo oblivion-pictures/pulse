@@ -1,19 +1,21 @@
-// Extern-Voice, Host-Seite (läuft lokal bei Michael): Owner verbindet per
+// Extern-Voice, Host-Seite (läuft lokal beim Betreiber): Owner verbindet per
 // LAN in den Voice-Raum des Heim-Containers und wartet auf den externen
 // Gast (Hetzner-Box). State-Datei für die Gast-Seite schreiben.
 import fs from 'node:fs';
 const { chromium } = await import(
-  'file:///home/michael/Dokumente/pulse/web/node_modules/@playwright/test/index.mjs'
+  new URL('../../../web/node_modules/@playwright/test/index.mjs', import.meta.url).href
 );
+// Passwort der Dev-Testkonten: steht nicht im Repo (privat in intern/ziele.env).
+const TESTPASS = process.env.PULSE_TEST_PASS ?? (() => { throw new Error('PULSE_TEST_PASS ist nicht gesetzt'); })();
 const ORIGIN = 'http://127.0.0.1:5273';
 const browser = await chromium.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
 
 const page = await (await browser.newContext()).newPage();
 await page.goto(ORIGIN + '/login', { waitUntil: 'networkidle' });
-const st = await page.evaluate(async () => {
+const st = await page.evaluate(async (pass) => {
   await fetch('/api/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-    body: JSON.stringify({ email_or_username: 'dev2', password: 'test1234' }),
+    body: JSON.stringify({ email_or_username: 'dev2', password: pass }),
   });
   const liste = await (await fetch('/api/auth/me/instances', { credentials: 'include' })).json();
   const inst = Array.isArray(liste) ? liste[0] : liste.instances[0];
@@ -59,7 +61,7 @@ const st = await page.evaluate(async () => {
   }));
   return { iid: inst.id, hostname: inst.hostname, chan: chan.id, code: inv.code,
            ownerToken: vt.token, ownerWs: vt.ws_url };
-});
+}, TESTPASS);
 console.log('host: anlage ok, ws_url', st.ownerWs);
 fs.writeFileSync('/tmp/heim-extern-voice-state.json', JSON.stringify(st));
 

@@ -16,7 +16,7 @@
 #   scripts/dev-sync.sh --migrate       zusätzlich Alembic laufen lassen
 #   scripts/dev-sync.sh --restart       Dienste hart neu starten statt nur neu laden
 #
-# Ziel überschreibbar:  PULSE_DEV_HOST=michael@1.2.3.4  PULSE_DEV_DIR=~/pulse-test
+# Ziel überschreibbar:  PULSE_DEV_HOST=user@host  PULSE_DEV_DIR=~/pulse-test
 #
 # ── Warum das ohne Image-Bau reicht ──────────────────────────────────────────
 # Die Dienste sind im Image *editable* installiert; der Stack hängt genau die
@@ -37,18 +37,6 @@
 
 set -euo pipefail
 
-# Der Kurzname aus ~/.ssh/config hat Vorrang vor der nackten IP, WENN es ihn
-# gibt. Grund: ssh sucht seinen `Host`-Block nach dem Namen auf der
-# Kommandozeile, nicht nach der aufgelösten Adresse — mit `michael@77.42.71.166`
-# greift der Block `Host pulse-test` also NICHT, und damit auch sein
-# `IdentityFile` nicht. Auf einer Maschine ohne Agent endet das in
-# "Permission denied (publickey,password)", obwohl `ssh pulse-test` daneben
-# anstandslos durchläuft.
-if [ -z "${PULSE_DEV_HOST:-}" ] && grep -qiE '^[[:space:]]*Host([[:space:]].*)?[[:space:]]pulse-test([[:space:]]|$)' "$HOME/.ssh/config" 2>/dev/null; then
-  HOST="pulse-test"
-else
-  HOST="${PULSE_DEV_HOST:-michael@77.42.71.166}"
-fi
 DIR="${PULSE_DEV_DIR:-pulse-test}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -114,6 +102,21 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# Erst nach den Optionen: --help braucht kein Ziel.
+# Der Kurzname aus ~/.ssh/config hat Vorrang vor der nackten IP, WENN es ihn
+# gibt. Grund: ssh sucht seinen `Host`-Block nach dem Namen auf der
+# Kommandozeile, nicht nach der aufgelösten Adresse — mit `user@<IP>`
+# greift der Block `Host pulse-test` also NICHT, und damit auch sein
+# `IdentityFile` nicht. Auf einer Maschine ohne Agent endet das in
+# "Permission denied (publickey,password)", obwohl `ssh pulse-test` daneben
+# anstandslos durchläuft.
+if [ -z "${PULSE_DEV_HOST:-}" ] && grep -qiE '^[[:space:]]*Host([[:space:]].*)?[[:space:]]pulse-test([[:space:]]|$)' "$HOME/.ssh/config" 2>/dev/null; then
+  HOST="pulse-test"
+else
+  source "$REPO_ROOT/scripts/ziele.sh"
+  HOST="$(ziel PULSE_DEV_HOST)"
+fi
+
 if [ "$do_watch" = 1 ] && [ "$do_pull" = 1 ]; then
   echo "--watch und --pull zusammen ergibt keinen Sinn: der Dauerlauf schiebt lokale Änderungen, der Pull-Modus holt Commits." >&2
   exit 2
@@ -133,7 +136,7 @@ push_source() {
   ssh_run "mkdir -p '$DIR/src'"
   if have rsync; then
     # --no-perms/-o/-g: das Ziel gehört je nach Nutzer einer anderen UID
-    # (michael oder der externe Mobile-Entwickler), und chmod/chown darf nur
+    # (der eigene oder ein zweiter SSH-Nutzer), und chmod/chown darf nur
     # der Eigentümer. Die Rechte am Ziel regelt die gemeinsame Gruppe mit
     # setgid auf den Verzeichnissen (siehe infra/dev-remote/README.md).
     rsync -az --delete --no-perms --no-owner --no-group \

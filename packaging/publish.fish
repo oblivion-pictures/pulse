@@ -26,7 +26,15 @@ set -l MANIFEST      packaging/com.howispulse.Pulse.yml
 set -l BUILD_DIR     build/flatpak                       # flatpak-builder scratch (--force-clean'd)
 set -l REPO_DIR      build/repo                          # local OSTree repo (archive-z2; persists across runs)
 set -l GPG_HOME      packaging/.gpg
-set -l VPS           michael@159.195.150.54
+# SSH-Ziel aus der Umgebung oder aus intern/ziele.env (privates Repo pulse-intern).
+set -l VPS           $PULSE_PROD_HOST
+if test -z "$VPS"; and test -f intern/ziele.env
+    set VPS (grep -m1 '^PULSE_PROD_HOST=' intern/ziele.env | string replace -r '^PULSE_PROD_HOST=' '' | string trim -c \"\'\r)
+end
+if test -z "$VPS"
+    echo "✗ PULSE_PROD_HOST fehlt — exportieren oder: bash scripts/intern-einhaengen.sh" >&2
+    exit 1
+end
 set -l VPS_REPO_PATH '~/pulse/flatpak-repo'              # host dir bind-mounted into pulse_web → /flatpak/
 set -l REF_URL       'https://howispulse.com/flatpak/'
 set -l RUNTIME_REPO  'https://dl.flathub.org/repo/flathub.flatpakrepo'

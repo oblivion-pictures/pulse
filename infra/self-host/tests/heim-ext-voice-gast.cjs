@@ -4,6 +4,8 @@
 // im Heim-Container. Beweis: Voice-Medien-UDP durchs NAT-Loch von außen.
 const { chromium } = require('playwright-core');
 const fs = require('node:fs');
+// Passwort der Dev-Testkonten: steht nicht im Repo (privat in intern/ziele.env).
+const TESTPASS = process.env.PULSE_TEST_PASS ?? (() => { throw new Error('PULSE_TEST_PASS ist nicht gesetzt'); })();
 
 const st = JSON.parse(fs.readFileSync('/tmp/heim-extern-voice-state.json', 'utf8'));
 const CLOUD = 'https://pulse.unicutmedia.com';
@@ -18,12 +20,12 @@ const CLOUD = 'https://pulse.unicutmedia.com';
 
   // Relay-Basis aus der State (hostname) — Fetches zur Relay sind CORS-erlaubt
   // für die Cloud-Origin (CORS_ALLOW_ORIGINS im Container).
-  const tokenDaten = await page.evaluate(async (st) => {
+  const tokenDaten = await page.evaluate(async ({ st, pass }) => {
     const CLOUD = 'https://pulse.unicutmedia.com';
     const rel = `https://${st.hostname}`;
     const login = await fetch(`${CLOUD}/api/auth/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ email_or_username: 'dev3', password: 'test1234' }),
+      body: JSON.stringify({ email_or_username: 'dev3', password: pass }),
     });
     if (login.status !== 200) throw new Error('login → ' + login.status);
     await fetch(`${CLOUD}/api/auth/me/instances/${st.iid}/membership`, {
@@ -53,7 +55,7 @@ const CLOUD = 'https://pulse.unicutmedia.com';
     });
     if (!vt.ok) throw new Error('voice-token → ' + vt.status + ': ' + await vt.text());
     return await vt.json();
-  }, st);
+  }, { st, pass: TESTPASS });
   console.log('gast: ticket+session+invite+voice-token ok | ws:', tokenDaten.ws_url);
 
   // livekit-client wird aus der Datei injiziert (kein Netz, kein Mixed-Content).

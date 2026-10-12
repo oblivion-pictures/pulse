@@ -49,7 +49,7 @@ function valueOf(flag, fallback) {
 const ORIGIN = valueOf('--origin', process.env.PULSE_API_ORIGIN || 'https://pulse.unicutmedia.com');
 // Kurzname aus ~/.ssh/config vor der nackten IP — dieselbe Begründung wie in
 // scripts/dev-sync.sh: ssh sucht seinen `Host`-Block nach dem Namen auf der
-// Kommandozeile, nicht nach der aufgelösten Adresse. Mit `michael@77.42.71.166`
+// Kommandozeile, nicht nach der aufgelösten Adresse. Mit `user@<IP>`
 // greift `Host pulse-test` nicht, und ohne dessen `IdentityFile` endet das
 // Log-Mitlesen in "Permission denied", obwohl `ssh pulse-test` läuft.
 function devHost() {
@@ -58,11 +58,26 @@ function devHost() {
     const cfg = fs.readFileSync(path.join(os.homedir(), '.ssh', 'config'), 'utf8');
     if (/^\s*Host\s+(\S+\s+)*pulse-test(\s|$)/im.test(cfg)) return 'pulse-test';
   } catch {
-    /* keine ssh-config — dann eben die IP */
+    /* keine ssh-config — dann das Ziel aus dem privaten Repo */
   }
-  return 'michael@77.42.71.166';
+  return zielAusIntern('PULSE_DEV_HOST');
 }
-const DEV_HOST = devHost();
+
+/** Ziel aus intern/ziele.env (privates Repo, scripts/intern-einhaengen.sh) —
+ *  die Adressen stehen bewusst nicht im öffentlichen Repo. */
+function zielAusIntern(name) {
+  const datei = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'intern', 'ziele.env');
+  try {
+    const zeile = fs.readFileSync(datei, 'utf8').split('\n').find((z) => z.startsWith(`${name}=`));
+    // trim + Anführungszeichen: CRLF-Datei (Windows) bzw. NAME="user@host".
+    const wert = zeile?.slice(name.length + 1).trim().replace(/^["']|["']$/g, '');
+    if (wert) return wert;
+  } catch {
+    /* nicht eingehängt */
+  }
+  console.error(`✗ ${name} ist nicht gesetzt. Entweder exportieren oder das private Repo einhängen: bash scripts/intern-einhaengen.sh`);
+  process.exit(1);
+}
 const DEV_DIR = process.env.PULSE_DEV_DIR || 'pulse-test';
 const VITE_PORT = Number(process.env.PULSE_WEB_PORT || 5173);
 const SERVICES = 'auth chat-gateway voice-signaling media-svc mediamtx-auth-hook';
@@ -158,6 +173,9 @@ function printHelp() {
 }
 
 function tailRemoteLogs() {
+  // Erst hier aufgelöst: nur das Log-Mitlesen braucht das SSH-Ziel, Vite und
+  // Electron laufen auch ohne privates Repo.
+  const DEV_HOST = devHost();
   console.log(`→ Logs von ${DEV_HOST}:${DEV_DIR}`);
   // Unter Windows läuft das Kind über cmd.exe (shell:true in run()): ein
   // unquotetes `&&` im Remote-Befehl wäre DEREN Operator und zerreißt die

@@ -146,14 +146,14 @@ jobs:
             desktop/release-server/latest.yml \
             "$EXE" \
             "$EXE.blockmap" \
-            michael@159.195.150.54:pulse/updates-win-server/
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win-server/
           # Zusätzlich unter festem Dateinamen ablegen → stabiler Direktdownload
           # zum Weitergeben: https://howispulse.com/updates/win-server/Pulse-Server-Setup-latest.exe
           # Wird bei jedem Build überschrieben. electron-updater nutzt ihn NICHT
           # (liest nur latest.yml) → harmlos neben den versionierten Dateien.
           scp -i ~/.ssh/id_ed25519 \
             "$EXE" \
-            michael@159.195.150.54:pulse/updates-win-server/Pulse-Server-Setup-latest.exe
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win-server/Pulse-Server-Setup-latest.exe
 
       - name: SSH-Key wieder entfernen
         if: always()

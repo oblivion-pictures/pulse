@@ -147,10 +147,10 @@ mod tests {
 
     #[test]
     fn appends_srflx_for_each_component() {
-        let out = inject_srflx(SDP, "46.128.100.64:7900".parse().unwrap());
+        let out = inject_srflx(SDP, "9.9.9.9:7900".parse().unwrap());
         let srflx: Vec<&str> = out.lines().filter(|l| l.contains("typ srflx")).collect();
         assert_eq!(srflx.len(), 2, "je Komponente ein srflx:\n{out}");
-        assert!(srflx[0].contains("46.128.100.64 7900 typ srflx raddr 192.168.178.87 rport 7900"));
+        assert!(srflx[0].contains("9.9.9.9 7900 typ srflx raddr 192.168.178.87 rport 7900"));
         assert!(srflx[0].contains(" 1 udp "));
         assert!(srflx[1].contains(" 2 udp "));
         // Host-Kandidaten bleiben erhalten (LAN-Weg).
@@ -159,8 +159,8 @@ mod tests {
 
     #[test]
     fn noop_when_public_ip_is_already_host() {
-        let sdp = SDP.replace("192.168.178.87", "46.128.100.64");
-        let out = inject_srflx(&sdp, "46.128.100.64:7900".parse().unwrap());
+        let sdp = SDP.replace("192.168.178.87", "9.9.9.9");
+        let out = inject_srflx(&sdp, "9.9.9.9:7900".parse().unwrap());
         assert!(!out.contains("typ srflx"));
     }
 

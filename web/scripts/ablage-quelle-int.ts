@@ -5,7 +5,7 @@
  * Servern: Anmeldung, Guild/Kanal-Anlage, fünf Nachrichten über die echte
  * REST-API, dann konsolidieren und Feld für Feld zurücklesen.
  *
- *   PULSE_INT_BASE=http://127.0.0.1:5173 node scripts/ablage-quelle-int.ts dev test1234
+ *   PULSE_INT_BASE=http://127.0.0.1:5173 node scripts/ablage-quelle-int.ts dev <passwort>
  *
  * Der Vite muss mit PULSE_API_ORIGIN auf den Stack zeigen (dev:remote:web).
  * Legt eine eigene Guild + Kanal an und räumt sie am Ende NICHT ab —
@@ -22,7 +22,7 @@ import type { Message } from '../src/lib/api/types.ts';
 
 const BASE = process.env.PULSE_INT_BASE ?? 'http://127.0.0.1:5173';
 const NUTZER = process.argv[2] ?? 'dev';
-const PASSWORT = process.argv[3] ?? 'test1234';
+const PASSWORT = process.argv[3] ?? process.env.PULSE_TEST_PASS ?? '';
 let fehlgeschlagen = 0;
 
 function pruefe(bezeichnung: string, bedingung: boolean, detail?: string): void {

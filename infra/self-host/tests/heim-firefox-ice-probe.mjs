@@ -2,6 +2,8 @@
 // zweiten Gerät) und zeigt, ob die Adapter-Antwort überhaupt angenommen wird.
 // Lauf:  node firefox-ice-probe.mjs  (aus web/, nutzt @playwright dort)
 import { firefox } from '@playwright/test';
+// Passwort der Dev-Testkonten: steht nicht im Repo (privat in intern/ziele.env).
+const TESTPASS = process.env.PULSE_TEST_PASS ?? (() => { throw new Error('PULSE_TEST_PASS ist nicht gesetzt'); })();
 
 const CLOUD = 'https://pulse.unicutmedia.com';
 const browser = await firefox.launch({ headless: true });
@@ -9,14 +11,14 @@ const page = await (await browser.newContext()).newPage();
 page.on('console', (m) => console.log('[seite]', m.text().slice(0, 200)));
 await page.goto(CLOUD + '/', { waitUntil: 'domcontentloaded' });
 
-await page.evaluate(async () => {
+await page.evaluate(async (pass) => {
   await fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email_or_username: 'dev3', password: 'test1234' }),
+    body: JSON.stringify({ email_or_username: 'dev3', password: pass }),
   });
-});
+}, TESTPASS);
 
 const out = await page.evaluate(async () => {
   const res = {};

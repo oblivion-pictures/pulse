@@ -15,7 +15,7 @@ import { serversStore } from './servers.svelte';
 // unabhängig davon, welcher Server gerade aktiv ist. Ohne diese Pinne ging
 // der Aufruf an den aktiven Self-Host, dessen Archiv-Routen bewusst 404
 // antworten (CloudOnly) — Verlauf blieb auf anderen Geräten unsichtbar und
-// Sendungen wurden nicht archiviert (Befund 2026-10-05, atrium-sinsheim).
+// Sendungen wurden nicht archiviert (Befund 2026-10-05 auf einem Self-Host).
 function cloudRoute(): { serverId?: string } {
   return { serverId: serversStore.cloudId() };
 }

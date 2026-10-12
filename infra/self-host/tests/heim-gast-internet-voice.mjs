@@ -14,13 +14,14 @@
 //   7. Remote-Teilnehmer + abonnierte Audiospuren + GEWÄHLTES ICE-Paar (Stats).
 //
 // Start:  node heim-gast-internet-voice.mjs <relay-hostname> <channel-id>
-// Env:    GAST_USER (default dev2), GAST_PASS (default test1234)
+// Env:    GAST_USER (default dev2), GAST_PASS (default $PULSE_TEST_PASS)
 // CDN-Import für livekit-client (die Box hat Internet — es ist ja der Punkt).
 
 const RELAY = process.argv[2] ?? 'clever-cobalt-11af.relay.howispulse.com';
 const CHANNEL = process.argv[3] ?? '99546466502057984';
 const USER = process.env.GAST_USER ?? 'dev2';
-const PASS = process.env.GAST_PASS ?? 'test1234';
+const PASS = process.env.GAST_PASS ?? process.env.PULSE_TEST_PASS;
+if (!PASS) throw new Error('GAST_PASS oder PULSE_TEST_PASS setzen');
 
 const { chromium } = await import('playwright-core');
 

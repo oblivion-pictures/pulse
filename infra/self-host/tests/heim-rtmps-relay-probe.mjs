@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 const { chromium } = await import(
   new URL('../../../web/node_modules/@playwright/test/index.mjs', import.meta.url).href
 );
+// Passwort der Dev-Testkonten: steht nicht im Repo (privat in intern/ziele.env).
+const TESTPASS = process.env.PULSE_TEST_PASS ?? (() => { throw new Error('PULSE_TEST_PASS ist nicht gesetzt'); })();
 
 const ORIGIN = 'http://127.0.0.1:5273';
 const FFMPEG = fileURLToPath(new URL(
@@ -42,7 +44,7 @@ async function einloggen(user, pass) {
 }
 
 // ── Owner (dev2): Ticket, Session, Guild + Voice-Kanal, RTMPS-Stream-Token ──
-const owner = await einloggen('dev2', 'test1234');
+const owner = await einloggen('dev2', TESTPASS);
 const ow = await owner.evaluate(async () => {
   const liste = await (await fetch('/api/auth/me/instances', { credentials: 'include' })).json();
   const inst = Array.isArray(liste) ? liste[0] : liste.instances[0];

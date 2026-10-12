@@ -19,7 +19,7 @@
 # `service_completed_successfully` dependency sequences migration-before-app.
 #
 # Install (user crontab, no sudo needed — see infra/prod/DEPLOY.md):
-#   */5 * * * * /home/michael/pulse/infra/prod/pulse-update.sh >> /home/michael/pulse/infra/prod/pulse-update.log 2>&1
+#   */5 * * * * $HOME/pulse/infra/prod/pulse-update.sh >> $HOME/pulse/infra/prod/pulse-update.log 2>&1
 set -euo pipefail
 
 cd "$(dirname "$0")"   # ~/pulse/infra/prod (where docker-compose.yml + .env live)

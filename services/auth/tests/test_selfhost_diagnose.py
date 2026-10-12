@@ -613,7 +613,7 @@ async def test_telefonbuch_offline_bei_altem_heartbeat(
         session.add(
             InstanceDirectEndpoint(
                 instance_id=int(heim_instanz["id"]),
-                candidates=[{"ip": "46.128.161.204", "port": 7900, "protocol": "udp"}],
+                candidates=[{"ip": "8.8.4.4", "port": 7900, "protocol": "udp"}],
                 fingerprint="sha-256 AA:BB",
                 updated_at=datetime.now(UTC) - timedelta(hours=2),
             )
@@ -641,7 +641,7 @@ async def test_telefonbuch_gruen_bei_frischem_heartbeat(
         session.add(
             InstanceDirectEndpoint(
                 instance_id=int(heim_instanz["id"]),
-                candidates=[{"ip": "46.128.161.204", "port": 7900, "protocol": "udp"}],
+                candidates=[{"ip": "8.8.4.4", "port": 7900, "protocol": "udp"}],
                 fingerprint="sha-256 AA:BB",
                 updated_at=datetime.now(UTC),
             )
@@ -655,7 +655,7 @@ async def test_telefonbuch_gruen_bei_frischem_heartbeat(
     erster = r.json()["schritte"][0]
     assert erster["ok"] is True
     assert erster["befund"] == "ok"
-    assert erster["einzelheit"] == "46.128.161.204:7900"
+    assert erster["einzelheit"] == "8.8.4.4:7900"
 
 
 # ---------------------------------------------------------------------------

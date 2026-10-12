@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { gleicheOeffentlicheIpAb, taugtAlsOeffentlicheIp } from '../../electron/localBackend/oeffentlicheIp.ts';
 
 test('öffentliche Adressen taugen, private und Sonderbereiche nicht', () => {
-  assert.equal(taugtAlsOeffentlicheIp('46.128.161.204'), true);
+  assert.equal(taugtAlsOeffentlicheIp('8.8.4.4'), true);
   for (const ip of ['192.168.178.87', '10.0.0.1', '172.17.0.2', '127.0.0.1', '169.254.1.1',
     '100.77.73.26', '0.0.0.0', '256.1.1.1', '1.2.3', '', null, '::1']) {
     assert.equal(taugtAlsOeffentlicheIp(ip), false, String(ip));

@@ -1,6 +1,6 @@
 """CORS am Garage-Prefix /pulse-attachments — der Spiegel-Bildversand-Fall.
 
-Der Vorfall (2026-09-23, pulse.atrium-sinsheim.de): die App läuft auf dem
+Der Vorfall (2026-09-23, auf einem Bestandsserver): die App läuft auf dem
 Cloud-Origin (howispulse.com) und zeigt Spiegel-Kanäle einer Self-Host-
 Instanz. Vorschau-GETs und der Anhang-PUT gehen cross-origin direkt auf
 <self-host>/pulse-attachments/… — Garage antwortet aber ohne CORS-Header
