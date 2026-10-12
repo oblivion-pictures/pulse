@@ -102,6 +102,10 @@ Full guide: [howispulse.com/self-host/guide](https://howispulse.com/self-host/gu
 Voice runs on [LiveKit](https://livekit.io), screen sharing on a patched
 [MediaMTX](https://github.com/bluenviron/mediamtx).
 
+Comments in the code that point to `CLAUDE.md`, `PLAN.md`, `docs/plans`,
+`docs/superpowers` or to lab and measurement folders under `streaming/` refer
+to internal working documents that are not part of this repository.
+
 ## License
 
 Copyright (C) 2026 Oblivion Pictures — Michael de Meyer
