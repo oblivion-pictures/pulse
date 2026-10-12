@@ -208,7 +208,8 @@ class InstanceApplication(Base):
     # 'closed' = die genehmigte Instanz wurde vom Owner gelöscht — der Antrag
     # ist Historie und zählt nirgends mehr als "wartet auf Einrichtung".
     # 'revoked' (nur app_host) = erteilte Freischaltung vom Admin zurückgenommen
-    # (routes_admin_app_host_revoke.py) — Historie, User darf neu beantragen.
+    # — Historie. Seit Oktober 2026 gibt es weder Anträge noch die Widerrufs-
+    # Route; die Spalte trägt nur noch alte Zeilen.
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     # vps | app_host — Herkunft des Antrags (Migration 0044, vereintes
     # Antragssystem; ersetzt die frühere app_host_applications-Tabelle).

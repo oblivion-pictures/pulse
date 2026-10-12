@@ -86,7 +86,7 @@ BEFUNDE: dict[tuple[str, str], tuple[tuple[str, str], tuple[str, str]]] = {
             "wird niemand zum Verwalter ernannt, auch nicht mit der richtigen Kennung.",
             "Setze in der Konfigurationsdatei des Servers (Installer: /opt/pulse/pulse.env bzw. "
             "~/.pulse/pulse.env, Compose: .env neben der Compose-Datei) PULSE_INSTANCE_MODE=self-host "
-            "und den Container neu anlegen, ein Neustart liest die Datei nicht neu: beim "
+            "und lege den Container neu an, ein Neustart liest die Datei nicht neu: beim "
             "Installer den Installationsbefehl erneut ausführen (er behält Bild und "
             "Konfiguration), bei Compose sudo docker compose up -d.",
         ),
