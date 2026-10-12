@@ -58,7 +58,7 @@ export function anzeigeName(e: AnzeigeEintrag): string {
  */
 export function nameVomServer(
   name: string | null | undefined,
-  alt: { anzeigename?: string | null } = {},
+  alt: { anzeigename?: string | null; name_ueberholt?: string | null } = {},
 ): {
   server_name: string | null;
   anzeigename: string | null;
@@ -66,7 +66,16 @@ export function nameVomServer(
 } {
   const n = name?.trim() || null;
   const vorher = alt.anzeigename ?? null;
-  return { server_name: n, anzeigename: n, name_ueberholt: vorher !== null && vorher !== n ? vorher : null };
+  // Nennt der Server denselben Namen noch einmal (jeder ready-Rahmen, jedes
+  // Neuverbinden), bleibt die Marke stehen: sonst brächte der nächste
+  // Cloud-Abgleich die überholte Kopie zurück, solange die Meldung des Servers
+  // an die Cloud nicht durch ist.
+  const behalten = vorher === n && alt.name_ueberholt !== n ? (alt.name_ueberholt ?? null) : null;
+  return {
+    server_name: n,
+    anzeigename: n,
+    name_ueberholt: vorher !== null && vorher !== n ? vorher : behalten,
+  };
 }
 
 /**
