@@ -9,15 +9,15 @@
 #   ghcr.io/oblivion-pictures/pulse:sha-<short>   (every build, for forensics)
 #
 # Trigger options (all do the same build, different tags applied):
-#   1. push to main         → :edge + :stable + :sha-<short>   (PHASEN-POLICY, s.u.)
+#   1. push to main         → :edge + :sha-<short>
 #   2. push tag v*.*.*      → :stable + :vX.Y.Z + :vX.Y + :vX + :sha-<short>
 #   3. workflow_dispatch    → :edge (no input) or :stable (release_version input)
 #
-# PHASEN-POLICY (2026-06-10): In der aktuellen Früh-/Security-Phase taggt JEDER
-# main-Push auch :stable, damit ALLE Self-Hosts (egal ob :edge- oder :stable-
-# gepinnt) jeden Push automatisch via Watchtower ziehen — wie die Cloud :latest.
-# Zum Umstellen auf echte getaggte Releases: ":stable" aus dem edge-Zweig im
-# "Compute version + tags"-Step wieder entfernen.
+# :stable bewegt sich seit v1.0.0 (Oktober 2026) nur noch mit getaggten
+# Releases. Bis dahin taggte jeder main-Push auch :stable (Phasen-Policy vom
+# 2026-06-10), damit in der Frühphase alle Self-Hosts jeden Push zogen — seit
+# sich jeder ohne Freigabe einen Server installieren kann, bekämen sonst
+# fremde Server jeden ungeprüften Stand binnen Minuten.
 #
 # ARCHITEKTUR (2026-07-15): Multi-Arch NATIV statt QEMU. Drei Jobs:
 #   prepare → berechnet Version + Tags einmal zentral.
@@ -134,15 +134,10 @@ jobs:
                 "${IMAGE}:sha-${SHORT_SHA}")
             fi
           else
-            # PHASEN-POLICY (2026-06-10): main-Pushes taggen bewusst AUCH :stable,
-            # nicht nur :edge. In der aktuellen Früh-/Security-Phase müssen ALLE
-            # Self-Hosts (auch die :stable-gepinnten Compose-Installs) jeden
-            # main-Push automatisch ziehen — wie die Cloud :latest. Sobald wir auf
-            # getaggte Releases umstellen, diese Zeile (":stable" im edge-Zweig)
-            # wieder entfernen → dann ist :stable erneut nur tag-gegated.
+            # main-Pushes taggen nur :edge; :stable kommt allein aus Release-Tags
+            # (Kopf dieser Datei).
             TAGS=$(printf '%s\n' \
               "${IMAGE}:edge" \
-              "${IMAGE}:stable" \
               "${IMAGE}:sha-${SHORT_SHA}")
           fi
 
