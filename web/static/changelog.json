@@ -2,6 +2,17 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-12",
+      "date": "2026-10-12",
+      "style": "Sachlich",
+      "title": "Eigener Server ohne Antrag",
+      "items": [
+        "Einen eigenen Pulse-Server richtest du jetzt ohne Antrag und ohne Warten ein: Plus in der Leiste, dann „Eigenen Server einrichten“. Am Handy steht der Eintrag im Menü oben rechts in den Räumen.",
+        "Für einen gemieteten Server genügt ein Befehl. Am Ende verbindet der Installer den Server mit deinem Konto, du bestätigst das einmal im Browser.",
+        "Deine Server findest du unter „Meine Server“ im Konto-Menü unten links und im Du-Bereich. Der Eintrag erscheint, sobald du einen eigenen Server hast."
+      ]
+    },
+    {
       "id": "2026-10-10.3",
       "date": "2026-10-10",
       "style": "Sachlich",
