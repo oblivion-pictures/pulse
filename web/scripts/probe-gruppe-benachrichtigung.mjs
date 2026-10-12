@@ -2,11 +2,15 @@
  *  Zwei UI-Konten (mit Geräte-Registrierung), Gruppe über den Dialog,
  *  Empfänger steht NICHT im Gruppen-Chat. Erwartung: Toast/Ungelesen. */
 import { chromium } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 
 const BASIS = 'http://127.0.0.1:5173';
 const TS = Date.now();
-const G1 = { username: `g1_${TS}`, email: `g1_${TS}@dev.example.com`, password: 'test1234' };
-const G2 = { username: `g2_${TS}`, email: `g2_${TS}@dev.example.com`, password: 'test1234' };
+// Zufällig je Lauf: die Konten sind Wegwerf-Konten, ein festes Passwort im
+// öffentlichen Repo wäre ein bekannter Zugang, falls eines liegen bleibt.
+const PASSWORT = `pw-${randomUUID()}`;
+const G1 = { username: `g1_${TS}`, email: `g1_${TS}@dev.example.com`, password: PASSWORT };
+const G2 = { username: `g2_${TS}`, email: `g2_${TS}@dev.example.com`, password: PASSWORT };
 
 async function register(ctx, u) {
   const page = await ctx.newPage();

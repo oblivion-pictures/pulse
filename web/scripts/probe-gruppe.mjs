@@ -1,6 +1,7 @@
 /** Gegenprobe zu Michaels Gruppen-Befund (05.10.): Gruppe anlegen, öffnen,
  *  Name + Ladeweg beobachten. Gegen den Dev-Stack (5173). */
 import { chromium } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 
 const BASIS = 'http://127.0.0.1:5173';
 const TS = Date.now();
@@ -33,7 +34,7 @@ try {
     const reg = await fetch('/api/auth/register', {
       method: 'POST',
       headers: tok(),
-      body: JSON.stringify({ username: `dev4_${ts}`, email: `dev4_${ts}@dev.example.com`, password: 'test1234', display_name: 'dev4' })
+      body: JSON.stringify({ username: `dev4_${ts}`, email: `dev4_${ts}@dev.example.com`, password: `pw-${randomUUID()}`, display_name: 'dev4' })
     });
     const regBody = await reg.json();
     const mich = (await (await fetch('/api/auth/me', { headers: tok() })).json());
