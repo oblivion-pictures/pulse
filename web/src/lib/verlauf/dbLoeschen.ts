@@ -26,7 +26,8 @@ import { kanonischeId } from './identitaet';
 import {
   istRegisterEintrag,
   registerEintragFuerSatz,
-  registerSchluesselFuerSatz
+  registerSchluesselFuerSatz,
+  type RegisterEintrag
 } from './grabsteinRegister';
 import { gebundenLoeschenInTx, kanalBereich } from './dbRegister';
 import { trifftFrame } from '../krypto/loeschZiel';
@@ -200,62 +201,59 @@ export function verlaufSatzIdsFuerFrame(
 }
 
 /**
- * Gleicht Register und Grabstein-Sätze EINES Kontos ab — für die Kopplung
- * (`kopplung/empfangen.ts`), die den Verlauf des alten Geräts Satz für Satz
- * übernimmt. Dessen Register reist nicht mit, seine Grabsteine schon: jeder
- * Grabstein-Satz trägt hier seinen eigenen Autor und seine Kennung ein
- * (gebunden über den Satz selbst, nicht über eine fremde ID), und jeder
- * sichtbare Satz, dessen Identität danach im Register steht, wird Grabstein
- * — die Archiv-Kopie unter K, deren Empfangs-Satz unter D gelöscht war.
- * Zwei Durchläufe in EINER Transaktion: erst sammeln, dann markieren.
- * Ergebnis: wie viele Sätze markiert wurden.
+ * Trägt die Grabsteine ein, die die Kopplung (`kopplung/empfangen.ts`) vom
+ * alten Gerät übernommen hat, und markiert jeden sichtbaren Satz desselben
+ * Kontos mit derselben Identität — die Archiv-Kopie unter K, deren
+ * Empfangs-Satz unter D auf dem alten Gerät gelöscht war. Das Register des
+ * alten Geräts reist nicht mit, seine Grabstein-Sätze schon; jeder trägt
+ * seinen eigenen Autor und seine Kennung ein, gebunden über den Satz selbst.
+ *
+ * **Nur die übernommenen Grabsteine** (Gegenprüfung 2026-10-12, Fund 7). Die
+ * erste Fassung trug JEDEN Grabstein-Satz des Kontos ein, auch einen, der auf
+ * diesem Gerät schon lag. Dazu gehören ungebundene Altlöschungen: ein
+ * Sicherungs-Stein ohne Autor markiert nur den Satz unter seiner lokalen ID
+ * (`sicherung/andockLesen.ts::steinAnwenden`) und löst bewusst keine
+ * Identität auf. Nach einer Kopplung tat er es doch und nahm jede andere
+ * Kopie derselben Nachricht mit.
+ *
+ * Eintragen und Markieren in EINER Transaktion, ein Durchlauf durch den
+ * Speicher. Ergebnis: wie viele Sätze markiert wurden.
  */
-export function verlaufRegisterAbgleichen(kontoId: string): Promise<number> {
+export function verlaufRegisterAbgleichen(
+  kontoId: string,
+  grabsteine: readonly Satz[]
+): Promise<number> {
+  const eintraege = grabsteine
+    .filter((satz) => satz.geloescht && gehoertZuKonto(satz, kontoId))
+    .map((satz) => registerEintragFuerSatz(satz))
+    .filter((eintrag): eintrag is RegisterEintrag => eintrag !== null);
+  if (eintraege.length === 0) return Promise.resolve(0);
+  const geloescht = new Set(eintraege.map((eintrag) => eintrag.schluessel));
   return mitVerbindung(
     (db) =>
       new Promise<number>((resolve, reject) => {
         const tx = db.transaction(STORE_NACHRICHTEN, 'readwrite');
         const store = tx.objectStore(STORE_NACHRICHTEN);
-        const geloescht = new Set<string>();
+        // `put` überschreibt einen schon liegenden Eintrag mit demselben Inhalt.
+        for (const eintrag of eintraege) store.put(eintrag);
         let markiert = 0;
-        const sammeln = store.openCursor();
-        sammeln.onsuccess = () => {
-          const cursor = sammeln.result;
-          if (!cursor) {
-            markieren();
-            return;
-          }
-          const zeile = cursor.value as unknown;
-          if (istRegisterEintrag(zeile)) {
-            if (zeile.grabstein.konto === kontoId) geloescht.add(zeile.schluessel);
-          } else {
-            const satz = zeile as Satz;
-            const eintrag = satz.geloescht ? registerEintragFuerSatz(satz) : null;
-            if (eintrag !== null && gehoertZuKonto(satz, kontoId) && !geloescht.has(eintrag.schluessel)) {
-              store.put(eintrag);
-              geloescht.add(eintrag.schluessel);
-            }
+        const durchlauf = store.openCursor();
+        durchlauf.onsuccess = () => {
+          const cursor = durchlauf.result;
+          if (!cursor) return;
+          const satz = cursor.value as Satz;
+          if (
+            !istRegisterEintrag(satz) &&
+            !satz.geloescht &&
+            gehoertZuKonto(satz, kontoId) &&
+            geloescht.has(registerSchluesselFuerSatz(satz) ?? '')
+          ) {
+            cursor.update({ ...satz, geloescht: true });
+            markiert++;
           }
           cursor.continue();
         };
-        const markieren = (): void => {
-          const durchlauf = store.openCursor();
-          durchlauf.onsuccess = () => {
-            const cursor = durchlauf.result;
-            if (!cursor) return;
-            const satz = cursor.value as Satz;
-            if (
-              !istRegisterEintrag(satz) &&
-              !satz.geloescht &&
-              gehoertZuKonto(satz, kontoId) &&
-              geloescht.has(registerSchluesselFuerSatz(satz) ?? '')
-            ) {
-              cursor.update({ ...satz, geloescht: true });
-              markiert++;
-            }
-            cursor.continue();
-          };
-        };
+        durchlauf.onerror = () => reject(durchlauf.error);
         tx.oncomplete = () => resolve(markiert);
         tx.onerror = () => reject(tx.error);
       })

@@ -12,28 +12,39 @@
  * Vorgang aus.
  *
  * **Warum das Ablegen keinen Zwischenstand braucht.**
- * `verlaufPutSaetze` ist ein Upsert ueber den Primaerschluessel — ein
- * zweimal geholtes und zweimal abgelegtes Stueck ergibt denselben Bestand
- * wie ein einmal abgelegtes. Der Empfaenger darf deshalb nach einem Abriss
- * schlicht von vorne holen; er muss sich nicht merken, wie weit er kam.
+ * `verlaufSaetzeErgaenzen` ist wiederholbar — ein zweimal geholtes und
+ * zweimal abgelegtes Stueck ergibt denselben Bestand wie ein einmal
+ * abgelegtes (derselbe Satz ergänzt sich selbst um nichts). Der Empfaenger
+ * darf deshalb nach einem Abriss schlicht von vorne holen; er muss sich nicht
+ * merken, wie weit er kam. Die Grabsteine sammelt der neue Lauf dabei wieder
+ * ein, der Abgleich am Ende sieht sie also auch nach einem Abriss.
  * Teuer ist daran nur die Leitung, und die Alternative — ein eigener
  * Fortschritts-Speicher im Klienten — waere eine zweite Wahrheit neben dem
  * lokalen Verlauf.
  *
- * **Grabsteine des alten Geräts gelten hier weiter** (2026-10-12). Das
- * Ablegen läuft durch das Grabstein-Register (`verlauf/grabsteinRegister.ts`)
- * — eine hier schon gelöschte Nachricht kommt nicht sichtbar zurück —, und
- * nach dem letzten Stück trägt `verlaufRegisterAbgleichen` jeden
- * übernommenen Grabstein ins Register ein. Das Register des alten Geräts
- * reist nicht mit, nur seine Grabstein-Sätze: ohne den Abgleich hätte eine
- * Kopie derselben Nachricht unter einer anderen lokalen ID (Archiv-Kopie
- * unter K, Grabstein unter D) hier sichtbar weitergestanden.
+ * **Ergänzen, nicht überschreiben** (Gegenprüfung 2026-10-12, Fund 7). Bis
+ * dahin legte die Kopplung jeden Satz blind über den Schlüssel
+ * (`verlaufPutSaetze`): ein hier gelöschter Satz stand wieder da, wenn sein
+ * Grabstein nicht über das Register lief (ein Sicherungs-Stein ohne Autor),
+ * und eine Bearbeitung oder Reaktion, die seit der Einlösung auf diesem Gerät
+ * ankam, fiel zurück auf den Stand des alten. Jetzt läuft das Ablegen über
+ * `verlaufSaetzeErgaenzen` mit der Herkunft `kopplung` — eigene Wahrheit wie
+ * die Sicherung (`verlauf/satz.ts::Nachschub`) — und durch das
+ * Grabstein-Register.
+ *
+ * **Grabsteine des alten Geräts gelten hier weiter.** Nach dem letzten Stück
+ * trägt `verlaufRegisterAbgleichen` genau die übernommenen Grabsteine ins
+ * Register ein und markiert jede andere lokale Kopie derselben Nachricht
+ * (Archiv-Kopie unter K, Grabstein unter D). Nur diese: ein Grabstein, der
+ * hier schon lag, bleibt, was er war — ohne Autor löst er keine Identität auf.
+ * Das Register des alten Geräts reist nicht mit, nur seine Grabstein-Sätze.
  */
 import { serversStore } from '../api/servers.svelte';
 import { kopplungApi } from '../api/kopplung';
 import { geraeteKennung } from '../krypto/geraeteKennung';
 import { veroeffentlicheSchluessel } from '../krypto/veroeffentlichen';
-import { verlaufPutSaetze, verlaufRegisterAbgleichen } from '../verlauf/db';
+import { verlaufSaetzeErgaenzen, verlaufRegisterAbgleichen } from '../verlauf/db';
+import { ausUmzug } from '../verlauf/herkunft';
 import { aktuellesKonto } from '../verlauf/konto';
 import type { Satz } from '../verlauf/schema';
 import { codeNormalisieren } from './code';
@@ -127,6 +138,25 @@ export async function kopplungVerwerfen(kopplungId: string): Promise<void> {
 type StueckInhalt = { saetze: Satz[] };
 
 /**
+ * Legt die Sätze EINES Stücks ab (`verlauf/herkunft.ts::ausUmzug`, dann
+ * Ergänzen mit der Herkunft `kopplung`, s. Modulkopf). Ergebnis: wie viele
+ * Sätze übernommen wurden (`ausUmzug` verwirft Sätze ohne gültige Kennung und
+ * Ungeprüftes) und die übernommenen Grabsteine — der Abgleich nach dem
+ * letzten Stück braucht genau diese (`verlaufRegisterAbgleichen`).
+ */
+export async function stueckAblegen(
+  saetze: Satz[],
+  kontoId: string
+): Promise<{ anzahl: number; grabsteine: Satz[] }> {
+  const uebernommen = ausUmzug(saetze, kontoId);
+  await verlaufSaetzeErgaenzen(uebernommen, kontoId, 'kopplung');
+  return {
+    anzahl: uebernommen.length,
+    grabsteine: uebernommen.filter((satz) => satz.geloescht)
+  };
+}
+
+/**
  * Holt alle Stuecke und legt sie im lokalen Verlauf ab.
  *
  * Gibt die Zahl der uebernommenen Saetze zurueck — das ist die Zahl, die dem
@@ -147,16 +177,18 @@ export async function verlaufUebernehmen(
   if (gesamt === null) throw new Error('Das alte Geraet hat den Umzug noch nicht abgeschlossen');
 
   // Befund 1 (2026-08-29): das EIGENE Konto dieses Geraets stempeln, nicht
-  // blind uebernehmen, was das Stueck traegt. Eine Kopplung ist per Ablauf
-  // (Code + `veroeffentlicheSchluessel()` oben) immer Umzug DESSELBEN Kontos
-  // — der Stempel ist trotzdem die Quelle der Wahrheit auf DIESEM Geraet,
-  // nicht das alte: `verlauf/kontoFilter.ts::gehoertZuKonto` liest spaeter
-  // nur noch das hier gesetzte Feld.
+  // blind uebernehmen, was das Stueck traegt (`verlauf/herkunft.ts::ausUmzug`).
+  // Eine Kopplung ist per Ablauf (Code + `veroeffentlicheSchluessel()` oben)
+  // immer Umzug DESSELBEN Kontos — der Stempel ist trotzdem die Quelle der
+  // Wahrheit auf DIESEM Geraet, nicht das alte:
+  // `verlauf/kontoFilter.ts::gehoertZuKonto` liest spaeter nur noch das hier
+  // gesetzte Feld.
   const kontoId = aktuellesKonto();
   if (kontoId === null) throw new Error('kein angemeldetes Konto');
 
   const schluessel = await transportSchluessel(code, kopplungId);
   let uebernommen = 0;
+  const grabsteine: Satz[] = [];
   melde(0, gesamt);
 
   for (let folge = 0; folge < gesamt; folge++) {
@@ -166,12 +198,12 @@ export async function verlaufUebernehmen(
     );
     const klartext = await stueckEntschluesseln(schluessel, kopplungId, folge, stueck.daten);
     const inhalt = JSON.parse(DEC.decode(klartext)) as StueckInhalt;
-    const saetzeMitKonto = inhalt.saetze.map((satz) => ({ ...satz, kontoId }));
-    await verlaufPutSaetze(saetzeMitKonto);
-    uebernommen += inhalt.saetze.length;
+    const abgelegt = await stueckAblegen(inhalt.saetze, kontoId);
+    grabsteine.push(...abgelegt.grabsteine);
+    uebernommen += abgelegt.anzahl;
     melde(folge + 1, gesamt);
   }
-  await verlaufRegisterAbgleichen(kontoId);
+  await verlaufRegisterAbgleichen(kontoId, grabsteine);
 
   // Erst NACH dem letzten erfolgreichen Ablegen aufraeumen. Umgekehrt waere
   // ein Fehler im letzten Stueck ein endgueltiger Verlust — der Server haelt

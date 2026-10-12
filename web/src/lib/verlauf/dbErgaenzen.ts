@@ -1,7 +1,8 @@
 /**
  * Der Nachschub in den Verlauf — Sätze, die fremden Bestand nachliefern:
- * Sicherungs-Wiederherstellung (`sicherung/andockLesen.ts`) und Server-Archiv
- * (`archiv/lesen.ts` über `verlauf/index.ts`). Aus `db.ts` herausgelöst
+ * Sicherungs-Wiederherstellung (`sicherung/andockLesen.ts`), Kopplung
+ * (`kopplung/empfangen.ts`) und Server-Archiv (`archiv/lesen.ts` über
+ * `verlauf/index.ts`). Aus `db.ts` herausgelöst
  * (2026-10-12), als die Platzwahl dazukam (`platzWahl.ts`, Gegenprüfung
  * 2026-10-12, Fund 3); `db.ts` reicht `verlaufSaetzeErgaenzen` durch.
  *

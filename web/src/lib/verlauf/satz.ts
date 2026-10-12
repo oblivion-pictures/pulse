@@ -223,19 +223,21 @@ export function satzAnhangIds(satz: { anhaenge?: unknown[] } | undefined): strin
  *   - `sicherung`: die eigene Sicherung im eigenen Laufwerk. Geschrieben hat
  *     sie nur dieses Konto, verschlüsselt mit seinem eigenen Schlüssel; was
  *     sie über eine Nachricht weiß, stammt aus einem früheren eigenen Satz.
+ *   - `kopplung`: der Verlauf des eigenen alten Geräts (`kopplung/empfangen.ts`)
+ *     — eigene Wahrheit wie die Sicherung, und wird genauso behandelt.
  *   - `archiv`: das Server-Archiv. Jedes Mitglied des Kanals darf dort Zeilen
  *     einliefern, und den Autor nennt die Zeile nur in ihrer eigenen Nutzlast
  *     (`archiv/zeile.ts`). Eine Zeile mit dem Namen einer fremden Nachricht
  *     ist deshalb eine Behauptung, kein Nachweis.
  */
-export type Nachschub = 'sicherung' | 'archiv';
+export type Nachschub = 'sicherung' | 'kopplung' | 'archiv';
 
 /**
  * Führt einen neu ankommenden Satz mit dem zusammen, der unter demselben
  * Schlüssel schon liegt — für die Wege, die einen fremden Bestand
- * NACHLIEFERN (Sicherungs-Wiederherstellung, Server-Archiv), nicht für den
- * Empfang. Gibt die zu schreibende Fassung zurück, oder `null`, wenn der
- * liegende Satz so bleiben soll.
+ * NACHLIEFERN (Sicherungs-Wiederherstellung, Kopplung, Server-Archiv), nicht
+ * für den Empfang. Gibt die zu schreibende Fassung zurück, oder `null`, wenn
+ * der liegende Satz so bleiben soll.
  *
  * **Ergänzen, nicht ersetzen, und nicht überspringen.** Bis 2026-10-11
  * schrieben beide Wege blind über den Schlüssel (`verlaufPutSaetze`): ein
@@ -255,7 +257,7 @@ export type Nachschub = 'sicherung' | 'archiv';
  *     er ist auf diesem Gerät gepflegt worden, der Nachschub ist eine Kopie
  *     von früher.
  *   - `kryptoId`: der liegende, sonst der neue.
- *   - Nur aus der eigenen Sicherung (`herkunft === 'sicherung'`): der
+ *   - Nur aus eigener Wahrheit (Sicherung, Kopplung — nicht `archiv`): der
  *     Antwortbezug (der liegende, sonst der neue), `verschluesselt` (wenn
  *     einer von beiden es ist) und Anhänge, die der liegende nicht kennt
  *     (nach ID).

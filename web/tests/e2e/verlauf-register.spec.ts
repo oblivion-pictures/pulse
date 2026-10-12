@@ -42,6 +42,8 @@ async function vorbereiten(page: Page): Promise<void> {
     w.__satz = await import('/src/lib/verlauf/satz.ts');
     // @ts-expect-error - Vite-served path resolved at browser runtime
     w.__lesen = await import('/src/lib/sicherung/andockLesen.ts');
+    // @ts-expect-error - Vite-served path resolved at browser runtime
+    w.__kopplung = await import('/src/lib/kopplung/empfangen.ts');
   });
 }
 
@@ -200,6 +202,50 @@ async function anhangDa(page: Page, id: string): Promise<boolean> {
       (await (window as unknown as { __db: Record<string, Function> }).__db.anhangBytesLesen(id)) !==
       undefined,
     id
+  );
+}
+
+/** Was `kopplung/empfangen.ts::verlaufUebernehmen` mit einem Stück tut, ohne
+ *  Server: der echte `stueckAblegen`, dann der Abgleich mit genau den
+ *  übernommenen Grabsteinen. Ergebnis: wie viele Sätze der Abgleich markiert
+ *  hat. */
+async function kopplungUebernehmen(
+  page: Page,
+  saetze: {
+    id: string;
+    autor: string;
+    kryptoId?: string;
+    inhalt?: string;
+    geloescht?: boolean;
+    anhaenge?: { id: string }[];
+  }[]
+): Promise<number> {
+  return page.evaluate(
+    async ({ saetze, kanalId, kontoId }) => {
+      const w = window as unknown as {
+        __db: Record<string, Function>;
+        __satz: { zuSatz: Function };
+        __kopplung: { stueckAblegen: Function };
+      };
+      const stueck = saetze.map((s) =>
+        w.__satz.zuSatz(
+          kanalId,
+          {
+            id: s.id,
+            author_id: s.autor,
+            content: s.inhalt ?? 'hallo',
+            created_at: '2026-10-12T00:00:00Z',
+            ...(s.kryptoId ? { krypto_id: s.kryptoId } : {}),
+            ...(s.geloescht ? { deleted_at: '2026-10-12T00:00:01Z' } : {}),
+            ...(s.anhaenge ? { attachments: s.anhaenge } : {})
+          },
+          'konto-des-alten-geraets'
+        )
+      );
+      const { grabsteine } = await w.__kopplung.stueckAblegen(stueck, kontoId);
+      return w.__db.verlaufRegisterAbgleichen(kontoId, grabsteine);
+    },
+    { saetze, kanalId: KANAL, kontoId: KONTO }
   );
 }
 
@@ -372,18 +418,51 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
   });
 
   test('Kopplung: übernommene Grabsteine gelten nach dem Abgleich auch für die andere Kopie', async ({ page }) => {
-    // Das alte Gerät hatte D gelöscht, die Archiv-Kopie K aber sichtbar.
-    await ablegen(page, 'put', [
-      { id: D, autor: ALICE, kryptoId: K, geloescht: true },
-      { id: K, autor: ALICE }
-    ]);
-    expect(sichtbar(await kanal(page))).toEqual([K]);
-    const markiert = await page.evaluate((kontoId) => {
-      const db = (window as unknown as { __db: Record<string, Function> }).__db;
-      return db.verlaufRegisterAbgleichen(kontoId);
-    }, KONTO);
+    // Hier liegt die Archiv-Kopie K sichtbar; das alte Gerät hatte die
+    // Empfangs-Kopie D gelöscht und schickt deren Grabstein.
+    await ablegen(page, 'put', [{ id: K, autor: ALICE }]);
+    const markiert = await kopplungUebernehmen(page, [{ id: D, autor: ALICE, kryptoId: K, geloescht: true }]);
     expect(markiert).toBe(1);
     expect(sichtbar(await kanal(page))).toEqual([]);
+  });
+
+  test('Fund 7 (zweite Gegenprüfung): der Abgleich macht keine liegende Altlöschung zur Identitätslöschung', async ({ page }) => {
+    // Ein Sicherungs-Stein ohne Autor hat hier D markiert — nur D, ohne
+    // Register (`steinAnwenden`). Die Archiv-Kopie K derselben Nachricht
+    // bleibt sichtbar; so will es die Regel für Steine ohne Autor.
+    await ablegen(page, 'put', [
+      { id: D, autor: ALICE, kryptoId: K },
+      { id: K, autor: ALICE }
+    ]);
+    await steinAnwenden(page, D, '');
+    expect(sichtbar(await kanal(page))).toEqual([K]);
+    // Eine Kopplung, die nur eine andere Nachricht mitbringt: bis 2026-10-12
+    // trug der Abgleich JEDEN liegenden Grabstein ein und nahm K mit.
+    const andere = '700000000000005003';
+    expect(await kopplungUebernehmen(page, [{ id: andere, autor: BOB }])).toBe(0);
+    expect(sichtbar(await kanal(page))).toEqual([K, andere]);
+  });
+
+  test('Fund 7 (zweite Gegenprüfung): die Kopplung ergänzt, statt Grabstein und Bearbeitung zu überschreiben', async ({ page }) => {
+    // Hier ist D gelöscht (ohne Register, wie oben) und K bearbeitet. Das alte
+    // Gerät kennt beide noch im alten Stand.
+    await ablegen(page, 'put', [
+      { id: D, autor: BOB, inhalt: 'gelöscht' },
+      { id: K, autor: ALICE, inhalt: 'bearbeitet' }
+    ]);
+    await steinAnwenden(page, D, '');
+    await kopplungUebernehmen(page, [
+      { id: D, autor: BOB, inhalt: 'gelöscht' },
+      { id: K, autor: ALICE, inhalt: 'alt', anhaenge: [{ id: '700000000000007004' }] }
+    ]);
+    const saetze = await kanal(page);
+    expect(saetze.find((s) => s.nachrichtId === D)).toMatchObject({ geloescht: true });
+    // Der Text dieses Geräts bleibt, ein fehlender Anhang kommt dazu (eigene
+    // Wahrheit wie die Sicherung).
+    expect(saetze.find((s) => s.nachrichtId === K)).toMatchObject({
+      inhalt: 'bearbeitet',
+      anhaenge: [{ id: '700000000000007004' }]
+    });
   });
 
   test('Fund 8: eine Kopie, die ein Tab mit altem Code nach der Löschung ablegt, fällt beim nächsten Anwenden', async ({ page }) => {

@@ -59,8 +59,9 @@ export {
  *  Zweit-Schreibweg `medien` (Stufe B1): die Anhänge eines Satzes wandern
  *  als Index-Zeilen (`schema.ts::MedienZeile`) mit in dieselbe Transaktion.
  *  Das MUSS in den Schreibpforten passieren und nirgends sonst —
- *  `verlaufPutSaetze` (WS, Nachladen, Krypto-Empfang, Kopplung) und
- *  `verlaufSaetzeErgaenzen` (Sicherung, Server-Archiv, seit 2026-10-11)
+ *  `verlaufPutSaetze` (WS, Nachladen, Krypto-Empfang) und
+ *  `verlaufSaetzeErgaenzen` (Sicherung, Server-Archiv, seit 2026-10-11;
+ *  Kopplung seit 2026-10-12)
  *  legen die Zeilen beide in derselben Transaktion an, der Medien-Index baut
  *  sich damit überall automatisch mit auf, ohne eigenen Code je Weg.
  *  Grabstein-Sätze liefern keine Zeilen (`medienZeilenAusSatz`); bestehende

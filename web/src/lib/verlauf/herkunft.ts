@@ -24,8 +24,13 @@
  *   - ihre Anhänge räumt keine Löschung von Gerät und Laufwerk
  *     (`loeschFolgen.ts`).
  *
- * Importfrei (Nodes Testläufer).
+ * Hier steht außerdem die Gegenseite von `fuerUmzug`: was die Kopplung auf dem
+ * NEUEN Gerät ablegt (`ausUmzug`).
+ *
+ * Importfrei bis auf `.ts`-Pfade (Nodes Testläufer).
  */
+import { istGueltigeKennung } from './identitaet.ts';
+import { sortierSchluessel } from './satz.ts';
 
 type MitHerkunft = { ungeprueft?: true };
 
@@ -46,4 +51,37 @@ export function fuerErstsicherung<S extends MitHerkunft & { geloescht: boolean }
  *  Grabsteine reisen mit — sie löschen dort die Kopien derselben Nachricht. */
 export function fuerUmzug<S extends MitHerkunft>(saetze: S[]): S[] {
   return saetze.filter((satz) => !istUngeprueft(satz));
+}
+
+/** Der Ausschnitt eines übernommenen Satzes, den `ausUmzug` liest. */
+type UmzugSatz = MitHerkunft & {
+  schluessel: string;
+  kanalId: string;
+  nachrichtId: string;
+  kryptoId: string | null;
+  kontoId: string;
+};
+
+/**
+ * Was die Kopplung vom alten Gerät ablegt (`kopplung/empfangen.ts`): jeder
+ * Satz mit dem Konto DIESES Geräts gestempelt (Befund 1, 2026-08-29) und mit
+ * einem Schlüssel, der aus Kanal und ID neu gerechnet ist — nicht aus dem
+ * Stück übernommen.
+ *
+ * Ein Satz, dessen Kanal oder ID keine Kennung ist, fällt weg, eine
+ * ungültige `kryptoId` wird `null` (Gegenprüfung 2026-10-12, Fund 1): das alte
+ * Gerät kann einen Satz aus einer Zeit halten, bevor die Leser das prüften,
+ * und nur was eine gültige Kennung trägt, wird dauerhaft abgelegt.
+ * Ungeprüftes fällt weg wie beim Senden (`fuerUmzug`) — für ein altes Gerät,
+ * das es noch schickt.
+ */
+export function ausUmzug<S extends UmzugSatz>(saetze: S[], kontoId: string): S[] {
+  return fuerUmzug(saetze)
+    .filter((satz) => istGueltigeKennung(satz.kanalId) && istGueltigeKennung(satz.nachrichtId))
+    .map((satz) => ({
+      ...satz,
+      kontoId,
+      schluessel: sortierSchluessel(satz.kanalId, satz.nachrichtId),
+      kryptoId: istGueltigeKennung(satz.kryptoId) ? satz.kryptoId : null
+    }));
 }

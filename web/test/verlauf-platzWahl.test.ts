@@ -95,3 +95,13 @@ test('was nicht aus dem Archiv kommt, verdrängt das Archiv nie', () => {
     art: 'nichts'
   });
 });
+
+test('Fund 7: die Kopplung ist eigene Wahrheit wie die Sicherung und verdrängt einen fremden Archiv-Satz', () => {
+  const bob = zeile(BOB, K, R_BOB);
+  const ausKopplung = satz({ id: K, author_id: ALICE, content: 'vom alten Gerät' });
+  assert.deepEqual(platzWaehlen(bob, ausKopplung, 'kopplung'), {
+    art: 'verdraengen',
+    satz: ausKopplung,
+    verdraengt: bob
+  });
+});

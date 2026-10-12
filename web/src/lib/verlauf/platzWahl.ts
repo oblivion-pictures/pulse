@@ -39,8 +39,9 @@
  *
  * Wer den Schlüssel bekommt:
  *
- *   - Die eigene Sicherung (`sicherung`) ist eigene Wahrheit: sie verdrängt
- *     einen Archiv-Satz eines anderen Autors, der verdrängte weicht aus.
+ *   - Die eigene Sicherung und die Kopplung (`sicherung`, `kopplung`) sind
+ *     eigene Wahrheit: sie verdrängen einen Archiv-Satz eines anderen Autors,
+ *     der verdrängte weicht aus.
  *   - Auf ihrem Ausweichplatz verdrängt eine Archiv-Zeile einen Archiv-Satz,
  *     der dort nur über seine eigene ID `i` sitzt — sonst könnte Bob auch den
  *     Ausweichplatz vorab mit einer Zeile `{i: R_alice}` belegen.
@@ -91,7 +92,7 @@ export function platzWaehlen<S extends Satz>(
     return ergaenzt === null ? { art: 'nichts' } : { art: 'schreiben', satz: ergaenzt };
   }
   const verdraengbar =
-    sitztUeberI(vorhanden) && (herkunft === 'sicherung' || sitztAufAusweichplatz(neu));
+    sitztUeberI(vorhanden) && (herkunft !== 'archiv' || sitztAufAusweichplatz(neu));
   if (verdraengbar) return { art: 'verdraengen', satz: neu, verdraengt: vorhanden };
   if (sitztUeberI(neu)) return { art: 'ausweichen' };
   return { art: 'nichts' };
