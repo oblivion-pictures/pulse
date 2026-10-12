@@ -444,6 +444,10 @@ export type ServerEvent =
       op: 'instance_status';
       data: { instance_id: string; online: boolean; anzeigename: string | null };
     }
+  // Ein eigener Server hat seine Zugangsdaten abgeholt (`pulse-connect`,
+  // Spec E3). auth-svc über user:events, nur an den Besitzer. Nur von der
+  // Cloud-Verbindung angenommen (handlers/instanzen.ts).
+  | { op: 'instanz_verbunden'; data: { instance_id: string } }
   | { op: 'user_blocked'; data: { user_id: string } }
   | { op: 'user_unblocked'; data: { user_id: string } }
   | {
