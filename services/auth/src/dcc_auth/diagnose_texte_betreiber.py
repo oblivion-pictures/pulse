@@ -34,7 +34,9 @@ BEFUNDE: dict[tuple[str, str], tuple[tuple[str, str], tuple[str, str]]] = {
             "2026 mit Freigabe eingerichtet wurde, trägt den Besitzer als PULSE_INSTANCE_OWNER_ID in "
             "seiner Konfigurationsdatei (Installer: /opt/pulse/pulse.env bzw. ~/.pulse/pulse.env, "
             "Compose: .env neben der Compose-Datei). Dort die Kennung korrigieren und "
-            "sudo docker restart {container}.",
+            "den Container neu anlegen, ein Neustart liest die Datei nicht neu: beim Installer "
+            "den Installationsbefehl erneut ausführen (er behält Bild und Konfiguration), bei "
+            "Compose sudo docker compose up -d.",
         ),
         (
             "This server is configured with a different account as its owner — not yours. That makes "
@@ -46,7 +48,10 @@ BEFUNDE: dict[tuple[str, str], tuple[tuple[str, str], tuple[str, str]]] = {
             "afterwards reload the app once. Exception: a server set up before October 2026 with an "
             "approval carries its owner as PULSE_INSTANCE_OWNER_ID in its configuration file "
             "(installer: /opt/pulse/pulse.env or ~/.pulse/pulse.env, Compose: the .env next to the "
-            "compose file). Correct the identifier there and run sudo docker restart {container}.",
+            "compose file). Correct the identifier there and "
+            "recreate the container, a restart does not reread the file: with the installer run "
+            "the install command again (it keeps image and configuration), with Compose run sudo "
+            "docker compose up -d.",
         ),
     ),
     ("betreiber", "nicht_konfiguriert"): (
@@ -58,7 +63,9 @@ BEFUNDE: dict[tuple[str, str], tuple[tuple[str, str], tuple[str, str]]] = {
             "2026 mit Freigabe eingerichtet wurde, trägt den Besitzer als PULSE_INSTANCE_OWNER_ID in "
             "seiner Konfigurationsdatei (Installer: /opt/pulse/pulse.env bzw. ~/.pulse/pulse.env, "
             "Compose: .env neben der Compose-Datei). Dort die Kennung eintragen und "
-            "sudo docker restart {container}.",
+            "den Container neu anlegen, ein Neustart liest die Datei nicht neu: beim Installer "
+            "den Installationsbefehl erneut ausführen (er behält Bild und Konfiguration), bei "
+            "Compose sudo docker compose up -d.",
         ),
         (
             "This server does not know who it belongs to. Nobody can administer it that way — not "
@@ -67,7 +74,10 @@ BEFUNDE: dict[tuple[str, str], tuple[tuple[str, str], tuple[str, str]]] = {
             "then open the link it shows and confirm. Exception: a server set up before October 2026 "
             "with an approval carries its owner as PULSE_INSTANCE_OWNER_ID in its configuration file "
             "(installer: /opt/pulse/pulse.env or ~/.pulse/pulse.env, Compose: the .env next to the "
-            "compose file). Enter the identifier there and run sudo docker restart {container}.",
+            "compose file). Enter the identifier there and "
+            "recreate the container, a restart does not reread the file: with the installer run "
+            "the install command again (it keeps image and configuration), with Compose run sudo "
+            "docker compose up -d.",
         ),
     ),
     ("betreiber", "kein_self_host"): (
@@ -76,14 +86,18 @@ BEFUNDE: dict[tuple[str, str], tuple[tuple[str, str], tuple[str, str]]] = {
             "wird niemand zum Verwalter ernannt, auch nicht mit der richtigen Kennung.",
             "Setze in der Konfigurationsdatei des Servers (Installer: /opt/pulse/pulse.env bzw. "
             "~/.pulse/pulse.env, Compose: .env neben der Compose-Datei) PULSE_INSTANCE_MODE=self-host "
-            "und starte den Server neu: sudo docker restart {container}.",
+            "und den Container neu anlegen, ein Neustart liest die Datei nicht neu: beim "
+            "Installer den Installationsbefehl erneut ausführen (er behält Bild und "
+            "Konfiguration), bei Compose sudo docker compose up -d.",
         ),
         (
             "This server is not running in the mode meant for your own servers. In that setting nobody "
             "is made an administrator, not even with the correct identifier.",
             "In the server's configuration file (installer: /opt/pulse/pulse.env or "
             "~/.pulse/pulse.env, Compose: the .env next to the compose file) set "
-            "PULSE_INSTANCE_MODE=self-host and restart the server: sudo docker restart {container}.",
+            "PULSE_INSTANCE_MODE=self-host and recreate the container, a restart does not reread "
+            "the file: with the installer run the install command again (it keeps image and "
+            "configuration), with Compose run sudo docker compose up -d.",
         ),
     ),
     ("betreiber", "signatur_abgelehnt"): (
