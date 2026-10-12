@@ -39,17 +39,13 @@ from dcc_auth.admin_events import publish_instanz_verbunden
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
 from dcc_auth.dns_ausfuehrer import Ausgelastet
-from dcc_auth.email_verbinden import (
-    compose_verbinden_hinweis,
-    compose_verbinden_uebernahme,
-    hinweis_mail,
-)
+from dcc_auth.email_verbinden import compose_verbinden_hinweis, hinweis_mail
 from dcc_auth.models import User
 from dcc_auth.models_instances import RegisteredInstance
 from dcc_auth.routes import _check_rate, _consume_token, _parse_rule
 from dcc_auth.routes_admin_instances import _require_cloud
 from dcc_auth.routes_instance_applications import _require_user
-from dcc_auth.routes_suspended_instances import _get_redis, suspended_list_add
+from dcc_auth.routes_suspended_instances import _get_redis
 from dcc_auth.verbinden import (
     ABSTAND_S,
     GUELTIG_S,
@@ -61,10 +57,17 @@ from dcc_auth.verbinden import (
     vorgang_anlegen,
     vorgang_entnehmen,
     vorgang_entscheiden,
+    vorgang_hinweis_setzen,
     vorgang_per_code,
     vorgang_per_nachweis,
 )
-from dcc_auth.verbinden_antrag import antrag_gestellt, uebernahme_gesperrt
+from dcc_auth.verbinden_antrag import (
+    abholen_ausnahme,
+    antrag_gestellt,
+    endgueltig_abgelehnt,
+    uebernahme_gesperrt,
+    uebernahme_nachbereiten,
+)
 from dcc_auth.verbinden_eintrag import (
     InstanzGesperrt,
     ZuVieleServer,
@@ -139,36 +142,19 @@ def verbinden_ausgelastet() -> HTTPException:
     return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="verbinden_ausgelastet")
 
 
-async def _nachweis_verlangen(hostname: str, nachweis: str) -> None:
-    """Die Prüfung von aussen; jeder Befund ausser „in Ordnung“ ist ein 409."""
+async def _nachweis_verlangen(hostname: str, nachweis: str, redis=None) -> None:
+    """Die Prüfung von aussen; jeder Befund ausser „in Ordnung“ ist ein 409.
+
+    Mit ``redis`` (beim Bestätigen) merkt sich der wartende Vorgang den
+    Befund; der Start hat noch keinen."""
     try:
         befund = await nachweis_pruefen(hostname, nachweis)
     except Ausgelastet:
         raise verbinden_ausgelastet() from None
     if befund is not None:
+        if redis is not None:
+            await vorgang_hinweis_setzen(redis, nachweis, "nachweis_fehlt")
         raise _nachweis_fehlt(befund)
-
-
-async def _uebernahme_nachbereiten(
-    db, redis, hostname: str, alte_instanz_id: int, neue_instanz_id: str, jetzt: datetime
-) -> None:
-    """Nach dem Commit einer Übernahme: Sperrliste, Log, Hinweis an den
-    bisherigen Besitzer."""
-    await suspended_list_add(redis, alte_instanz_id)
-    # warning, weil ``info`` in der Cloud unsichtbar ist (logging_setup.py):
-    # wer später fragt, warum sein Server stillsteht, findet es hier.
-    log.warning(
-        "verbinden_uebernahme hostname=%s alt=%s neu=%s",
-        hostname,
-        alte_instanz_id,
-        neue_instanz_id,
-    )
-    # Der Soft-Delete lässt ``registered_by`` stehen: der bisherige Besitzer
-    # ist bekannt, solange er sein Konto nicht gelöscht hat.
-    alt = await db.get(RegisteredInstance, alte_instanz_id)
-    vorbesitzer = await db.get(User, alt.registered_by) if alt.registered_by else None
-    if vorbesitzer is not None:
-        await hinweis_mail(db, vorbesitzer, compose_verbinden_uebernahme(hostname, jetzt))
 
 
 @router.post(
@@ -244,10 +230,13 @@ async def verbinden_entscheiden(
         return EntscheidungAus(status="abgelehnt")
 
     if user.server_verbinden_gesperrt:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="verbinden_gesperrt")
+        # Endgültig: ein zweiter Klick ändert daran nichts.
+        raise await endgueltig_abgelehnt(
+            redis, nachweis, user_id, vorgang.hostname, "verbinden_gesperrt"
+        )
     # Zweite Prüfung: zwischen Anfrage und Klick können Minuten liegen. Erst
     # sie macht die Übernahme einer eingetragenen Adresse vertretbar (E2).
-    await _nachweis_verlangen(vorgang.hostname, nachweis)
+    await _nachweis_verlangen(vorgang.hostname, nachweis, redis)
 
     try:
         # Eine fremde Adresse erst nach der Widerspruchsfrist
@@ -261,9 +250,14 @@ async def verbinden_entscheiden(
             db, redis, nachweis, user_id, vorgang.hostname, sperre.bis
         ) from None
     except ZuVieleServer:
+        # Wiederholbar (ein gelöschter Server genügt): der Vorgang bleibt offen.
+        await vorgang_hinweis_setzen(redis, nachweis, "zu_viele_server")
         raise HTTPException(status.HTTP_409_CONFLICT, detail="zu_viele_server") from None
     except InstanzGesperrt:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="instance_suspended") from None
+        await db.rollback()
+        raise await endgueltig_abgelehnt(
+            redis, nachweis, user_id, vorgang.hostname, "instance_suspended"
+        ) from None
     except IntegrityError:
         # Ein gleichzeitiger Klick auf denselben Code hat die Adresse schon
         # eingetragen und gewinnt; ebenso ein Antrags-``flush`` aus
@@ -283,7 +277,7 @@ async def verbinden_entscheiden(
 
     jetzt = datetime.now(UTC)
     if verbunden.abgeloest is not None:
-        await _uebernahme_nachbereiten(
+        await uebernahme_nachbereiten(
             db, redis, vorgang.hostname, verbunden.abgeloest, instanz_id, jetzt
         )
     await hinweis_mail(db, user, compose_verbinden_hinweis(vorgang.hostname, jetzt))
@@ -307,24 +301,18 @@ async def verbinden_abholen(
     if vorgang is None:
         raise HTTPException(status.HTTP_410_GONE, detail="abgelaufen")
     if vorgang.status == "wartet":
-        return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "wartet"})
+        inhalt = {"status": "wartet"}
+        if vorgang.hinweis:  # warum das Bestätigen zuletzt scheiterte; Vorgang bleibt offen
+            inhalt["hinweis"] = vorgang.hinweis
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=inhalt)
 
     # Ab hier genau einmal: wer den Vorgang entnimmt, bekommt das Ergebnis.
     vorgang = await vorgang_entnehmen(redis, nachweis)
     if vorgang is None:
         raise HTTPException(status.HTTP_410_GONE, detail="abgelaufen")
-    if vorgang.status == "uebernahme_beantragt":
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail={"code": "uebernahme_beantragt", "frist_bis": vorgang.frist_bis},
-        )
-    if vorgang.status == "uebernahme_gesperrt":
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail={"code": "uebernahme_gesperrt", "bis": vorgang.frist_bis},
-        )
-    if vorgang.status == "abgelehnt":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="abgelehnt")
+    ausnahme = abholen_ausnahme(vorgang)
+    if ausnahme is not None:
+        raise ausnahme
     # Zwischen Lesen und Entnehmen kann der entschiedene Vorgang abgelaufen
     # sein und ein neuer Start mit derselben Kennung einen frischen angelegt
     # haben: der wartet noch und hat keine Instanz.

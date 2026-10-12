@@ -20,12 +20,13 @@ Frist erledigt Redis selbst.
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from pydantic import BaseModel
-from redis.exceptions import WatchError
+from redis.exceptions import RedisError, WatchError
 
 #: Gültigkeit eines Codes in Sekunden (E1: 15 Minuten).
 GUELTIG_S = 900
@@ -40,6 +41,8 @@ _ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _VERWECHSLUNG = str.maketrans({"O": "0", "I": "1", "L": "1"})
 _CODE_LAENGE = 8
 _PRAEFIX = "auth:verbinden:"
+
+log = logging.getLogger(__name__)
 
 #: ``uebernahme_*``: die Adresse gehört einem anderen Konto, und statt eines
 #: Eintrags entstand ein Antrag bzw. greift eine Sperre (Widerspruchsfrist,
@@ -62,6 +65,15 @@ class Vorgang(BaseModel):
     #: das Sperrende. Mit Vorgabe, damit Vorgänge von vor dem Ausrollen lesbar
     #: bleiben.
     frist_bis: str | None = None
+    #: Nur bei ``abgelehnt``, wenn die Cloud selbst abgelehnt hat und nicht der
+    #: Mensch: ``verbinden_gesperrt`` oder ``instance_suspended``. ``abholen``
+    #: reicht ihn an ``pulse-connect`` weiter. Bewusst ``str``, nicht ``Literal``:
+    #: ein Wert, den dieser Stand nicht kennt, soll beim Lesen nicht werfen.
+    grund: str | None = None
+    #: Nur bei ``wartet``: woran das Bestätigen zuletzt scheiterte, obwohl ein
+    #: zweiter Klick helfen kann (``zu_viele_server``, ``nachweis_fehlt``).
+    #: Ebenfalls mit Vorgabe und ohne ``Literal``, aus demselben Grund.
+    hinweis: str | None = None
 
 
 def _vorgang_schluessel(nachweis: str) -> str:
@@ -156,6 +168,7 @@ async def vorgang_entscheiden(
     instance_id: str | None,
     user_id: str | None,
     frist_bis: str | None = None,
+    grund: str | None = None,
 ) -> bool:
     """Setzt das Ergebnis, aber nur aus ``wartet`` heraus — ``True`` bei Erfolg.
 
@@ -180,6 +193,7 @@ async def vorgang_entscheiden(
                     "instance_id": instance_id,
                     "user_id": user_id,
                     "frist_bis": frist_bis,
+                    "grund": grund,
                 }
             )
             pipe.multi()
@@ -187,6 +201,49 @@ async def vorgang_entscheiden(
             await pipe.execute()
         except WatchError:
             return False
+    return True
+
+
+async def vorgang_hinweis_setzen(redis, nachweis: str, hinweis: str) -> bool:
+    """Merkt am WARTENDEN Vorgang, woran das Bestätigen zuletzt scheiterte.
+
+    Der Vorgang bleibt ``wartet`` — ein zweiter Klick ist erlaubt —, aber
+    ``abholen`` kann es ``pulse-connect`` jetzt sagen, statt dass es 15 Minuten
+    still wartet. Ändert nur einen wartenden Vorgang, atomar wie
+    ``vorgang_entscheiden`` (``WATCH``/``MULTI``, die Frist läuft weiter); ein
+    entschiedener oder verschwundener bleibt unberührt. ``True``, wenn danach
+    ``hinweis`` am wartenden Vorgang steht.
+
+    Eine Hilfe, kein Teil der Entscheidung: scheitert sie, macht der Aufrufer
+    ohne Hinweis weiter. Deshalb wirft sie auch bei einem Redis-Fehler nicht.
+    """
+    schluessel = _vorgang_schluessel(nachweis)
+    try:
+        async with redis.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(schluessel)
+                roh = await pipe.get(schluessel)
+                if roh is None:
+                    return False
+                vorgang = Vorgang.model_validate_json(roh)
+                if vorgang.status != "wartet":
+                    return False
+                if vorgang.hinweis == hinweis:
+                    return True
+                pipe.multi()
+                pipe.set(
+                    schluessel,
+                    vorgang.model_copy(update={"hinweis": hinweis}).model_dump_json(),
+                    xx=True,
+                    keepttl=True,
+                )
+                await pipe.execute()
+            except WatchError:
+                return False  # ein anderer Aufruf war schneller
+    except RedisError as fehler:
+        # warning, weil ``info`` in der Cloud unsichtbar ist (logging_setup.py).
+        log.warning("verbinden_hinweis_fehlgeschlagen fehler=%s", type(fehler).__name__)
+        return False
     return True
 
 

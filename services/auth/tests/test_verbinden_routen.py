@@ -9,6 +9,7 @@ ersetzt; sie hat eigene Tests in ``test_verbinden_nachweis.py``.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -21,7 +22,13 @@ from dcc_auth.models import User
 from dcc_auth.models_instances import RegisteredInstance, UserInstanceMembership
 from dcc_auth.routes_suspended_instances import _BODY_KEY, _ETAG_KEY
 from dcc_auth.security import verify_password
-from dcc_auth.verbinden import vorgang_entscheiden
+from dcc_auth.verbinden import (
+    Vorgang,
+    vorgang_entscheiden,
+    vorgang_hinweis_setzen,
+    vorgang_per_nachweis,
+)
+from dcc_auth.verbinden_antrag import endgueltig_abgelehnt
 from dcc_auth.verbinden_eintrag import instanz_verbinden
 
 _KENNUNG = "abholkennung-fuer-den-test-mit-genug-zeichen-0123"
@@ -200,6 +207,7 @@ async def test_abholen_vor_der_entscheidung_wartet(client, mit_redis, nachweis):
     assert (await _start(client)).status_code == 201
     r = await _abholen(client)
     assert r.status_code == 202
+    # Ohne Hinweis genau das alte Bild, kein leeres ``hinweis``-Feld.
     assert r.json() == {"status": "wartet"}
 
 
@@ -276,6 +284,9 @@ async def test_ohne_anmeldung(client, mit_redis, nachweis):
 async def test_gesperrtes_konto_darf_nicht_verbinden(
     client, session_factory, mit_redis, nachweis
 ):
+    """Endgültig: die Cloud lehnt den Vorgang selbst ab und nennt den Grund,
+    damit ``pulse-connect`` nicht 15 Minuten auf ein Bestätigen wartet, das nie
+    mehr gelingt. Der Browser bekommt dieselbe 403 wie immer."""
     konto = await _konto(client, "gesperrt")
     async with session_factory() as s:
         (await s.get(User, konto["id"])).server_verbinden_gesperrt = True
@@ -285,11 +296,23 @@ async def test_gesperrtes_konto_darf_nicht_verbinden(
     r = await _entscheiden(client, konto, code, "verbinden")
     assert r.status_code == 403
     assert r.json()["detail"] == "verbinden_gesperrt"
-    # Ablehnen bleibt möglich, damit der Server nicht 15 Minuten wartet.
-    assert (await _entscheiden(client, konto, code, "ablehnen")).status_code == 200
+    vorgang = await vorgang_per_nachweis(mit_redis, _NACHWEIS)
+    assert (vorgang.status, vorgang.grund) == ("abgelehnt", "verbinden_gesperrt")
+    assert vorgang.user_id == str(konto["id"])
+    # Ein zweiter Klick findet den Code verbraucht, Ablehnen ebenso.
+    for aktion in ("verbinden", "ablehnen"):
+        r = await _entscheiden(client, konto, code, aktion)
+        assert (r.status_code, r.json()["detail"]) == (404, "unbekannt")
+
+    r = await _abholen(client)
+    assert r.status_code == 403
+    assert r.json()["detail"] == {"code": "verbinden_gesperrt"}
+    assert (await _abholen(client)).status_code == 410
 
 
 async def test_elfter_server(client, session_factory, mit_redis, nachweis):
+    """Wiederholbar: nach einem gelöschten Server genügt ein zweiter Klick. Der
+    Vorgang bleibt offen, ``abholen`` sagt ``pulse-connect`` nur, woran es lag."""
     konto = await _konto(client, "sammler")
     async with session_factory() as s:
         for i in range(10):
@@ -309,6 +332,19 @@ async def test_elfter_server(client, session_factory, mit_redis, nachweis):
     r = await _entscheiden(client, konto, code, "verbinden")
     assert r.status_code == 409
     assert r.json()["detail"] == "zu_viele_server"
+
+    vorgang = await vorgang_per_nachweis(mit_redis, _NACHWEIS)
+    assert (vorgang.status, vorgang.hinweis, vorgang.grund) == ("wartet", "zu_viele_server", None)
+    r = await _abholen(client)
+    assert r.status_code == 202
+    assert r.json() == {"status": "wartet", "hinweis": "zu_viele_server"}
+
+    async with session_factory() as s:
+        (await s.get(RegisteredInstance, 960000)).status = "deleted"
+        await s.commit()
+    r = await _entscheiden(client, konto, code, "verbinden")
+    assert r.status_code == 200, r.text
+    assert (await _abholen(client)).status_code == 200
 
 
 async def test_nachweis_fehlt_beim_start(client, mit_redis, nachweis):
@@ -335,7 +371,16 @@ async def test_nachweis_fehlt_beim_bestaetigen(client, session_factory, mit_redi
             await s.execute(select(RegisteredInstance).where(RegisteredInstance.hostname == _HOST))
         ).first()
     assert treffer is None
-    assert (await _abholen(client)).status_code == 202
+    # Wiederholbar: der Vorgang wartet weiter, ``pulse-connect`` erfährt den Grund.
+    r = await _abholen(client)
+    assert r.status_code == 202
+    assert r.json() == {"status": "wartet", "hinweis": "nachweis_fehlt"}
+
+    # Proxy repariert, zweiter Klick: verbunden.
+    nachweis.befund = None
+    r = await _entscheiden(client, konto, code, "verbinden")
+    assert r.status_code == 200, r.text
+    assert (await _abholen(client)).status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -513,7 +558,15 @@ async def test_gesperrter_eintrag_wird_nicht_uebernommen(
     assert r.json()["detail"] == "instance_suspended"
     (eintrag,) = await _eintraege(session_factory)
     assert (eintrag.id, eintrag.status, eintrag.registered_by) == (962200, "suspended", alt["id"])
-    assert (await _abholen(client)).status_code == 202
+    # Endgültig: die Cloud hat den Vorgang abgelehnt, ``pulse-connect`` erfährt es.
+    vorgang = await vorgang_per_nachweis(mit_redis, _NACHWEIS)
+    assert (vorgang.status, vorgang.grund) == ("abgelehnt", "instance_suspended")
+    r = await _entscheiden(client, neu, code, "verbinden")
+    assert (r.status_code, r.json()["detail"]) == (404, "unbekannt")
+    r = await _abholen(client)
+    assert r.status_code == 403
+    assert r.json()["detail"] == {"code": "instance_suspended"}
+    assert (await _abholen(client)).status_code == 410
 
 
 @pytest.mark.parametrize("zustand", ["deleted", "suspended", "ohne_besitzer", "verschwunden"])
@@ -764,3 +817,104 @@ async def test_redis_fehler_beim_melden_kostet_das_abholen_nicht(
     code = (await _start(client)).json()["code"]
     assert (await _entscheiden(client, konto, code, "verbinden")).status_code == 200
     assert (await _abholen(client)).status_code == 200
+
+
+async def test_alter_vorgang_ohne_grund_und_hinweis_ist_lesbar(client, mit_redis, nachweis):
+    """Ein Vorgang, den ein Stand vor ``grund``/``hinweis`` geschrieben hat, liegt
+    bis zu 15 Minuten in Redis, während der neue Stand schon läuft."""
+    assert (await _start(client)).status_code == 201
+    schluessel = f"auth:verbinden:vorgang:{_NACHWEIS}"
+    alt = {"hostname": _HOST, "code": "K7QM2XDP", "gueltig_bis": "2026-10-12T12:00:00+00:00"}
+
+    await mit_redis.set(schluessel, json.dumps({**alt, "status": "wartet"}), ex=900)
+    vorgang = await vorgang_per_nachweis(mit_redis, _NACHWEIS)
+    assert (vorgang.grund, vorgang.hinweis) == (None, None)
+    r = await _abholen(client)
+    assert (r.status_code, r.json()) == (202, {"status": "wartet"})
+
+    # Von Hand abgelehnt, ohne Grund: weiter das schlichte „abgelehnt“.
+    await mit_redis.set(schluessel, json.dumps({**alt, "status": "abgelehnt"}), ex=900)
+    r = await _abholen(client)
+    assert (r.status_code, r.json()["detail"]) == (403, "abgelehnt")
+
+
+async def test_unbekannter_hinweis_macht_den_vorgang_nicht_unlesbar(client, mit_redis, nachweis):
+    """Rollt der Dienst zurück oder kommt ein neuerer Wert dazu, liest ein Stand,
+    was ein anderer geschrieben hat — ein Name, den er nicht kennt, darf nicht werfen."""
+    assert (await _start(client)).status_code == 201
+    schluessel = f"auth:verbinden:vorgang:{_NACHWEIS}"
+    daten = {
+        "hostname": _HOST,
+        "code": "K7QM2XDP",
+        "gueltig_bis": "2026-10-12T12:00:00+00:00",
+        "status": "wartet",
+        "hinweis": "gibt_es_noch_nicht",
+    }
+    await mit_redis.set(schluessel, json.dumps(daten), ex=900)
+    r = await _abholen(client)
+    assert (r.status_code, r.json()) == (202, {"status": "wartet", "hinweis": "gibt_es_noch_nicht"})
+
+
+async def test_hinweis_aendert_nur_einen_wartenden_vorgang(client, mit_redis, nachweis):
+    assert (await _start(client)).status_code == 201
+    schluessel = f"auth:verbinden:vorgang:{_NACHWEIS}"
+    frist_vorher = await mit_redis.ttl(schluessel)
+
+    assert await vorgang_hinweis_setzen(mit_redis, _NACHWEIS, "zu_viele_server") is True
+    assert (await vorgang_per_nachweis(mit_redis, _NACHWEIS)).hinweis == "zu_viele_server"
+    # Die Frist läuft weiter (``KEEPTTL``), und ein Wiederholen ist harmlos.
+    assert 0 < await mit_redis.ttl(schluessel) <= frist_vorher
+    assert await vorgang_hinweis_setzen(mit_redis, _NACHWEIS, "zu_viele_server") is True
+    # Ein neuer Grund ersetzt den alten.
+    assert await vorgang_hinweis_setzen(mit_redis, _NACHWEIS, "nachweis_fehlt") is True
+    assert (await vorgang_per_nachweis(mit_redis, _NACHWEIS)).hinweis == "nachweis_fehlt"
+
+    # Entschieden: unberührt.
+    assert await vorgang_entscheiden(
+        mit_redis, _NACHWEIS, "abgelehnt", instance_id=None, user_id="1"
+    )
+    assert await vorgang_hinweis_setzen(mit_redis, _NACHWEIS, "zu_viele_server") is False
+    vorgang = await vorgang_per_nachweis(mit_redis, _NACHWEIS)
+    assert (vorgang.status, vorgang.hinweis) == ("abgelehnt", "nachweis_fehlt")
+    # Verschwunden: nichts anzulegen.
+    fremd = "0" * 64
+    assert await vorgang_hinweis_setzen(mit_redis, fremd, "zu_viele_server") is False
+    assert await mit_redis.exists(f"auth:verbinden:vorgang:{fremd}") == 0
+
+
+async def test_hinweis_scheitert_still_wenn_redis_nicht_antwortet(caplog):
+    """Eine Hilfe, kein Teil der Entscheidung: ein Redis-Fehler macht aus dem 409
+    keinen 500."""
+    from redis.exceptions import ConnectionError as RedisVerbindungsfehler
+
+    class Kaputt:
+        def pipeline(self, **_):
+            raise RedisVerbindungsfehler("weg")
+
+    with caplog.at_level("WARNING", logger="dcc_auth.verbinden"):
+        assert await vorgang_hinweis_setzen(Kaputt(), _NACHWEIS, "nachweis_fehlt") is False
+    assert "verbinden_hinweis_fehlgeschlagen fehler=ConnectionError" in caplog.text
+
+
+async def test_endgueltige_ablehnung_entscheidet_nur_einmal(client, mit_redis, nachweis):
+    """Hat ein anderer Tab den Code schon entschieden, bleibt es bei dessen Ergebnis,
+    und der Aufrufer bekommt 404 statt 403."""
+    assert (await _start(client)).status_code == 201
+
+    erste = await endgueltig_abgelehnt(mit_redis, _NACHWEIS, 7, _HOST, "verbinden_gesperrt")
+    assert (erste.status_code, erste.detail) == (403, "verbinden_gesperrt")
+    zweite = await endgueltig_abgelehnt(mit_redis, _NACHWEIS, 8, _HOST, "instance_suspended")
+    assert (zweite.status_code, zweite.detail) == (404, "unbekannt")
+    vorgang = await vorgang_per_nachweis(mit_redis, _NACHWEIS)
+    assert (vorgang.status, vorgang.grund, vorgang.user_id) == (
+        "abgelehnt",
+        "verbinden_gesperrt",
+        "7",
+    )
+
+
+def test_vorgang_nimmt_alte_daten_ohne_die_neuen_felder():
+    vorgang = Vorgang.model_validate_json(
+        '{"hostname": "a.example.org", "code": "K7QM2XDP", "gueltig_bis": "x", "status": "wartet"}'
+    )
+    assert (vorgang.grund, vorgang.hinweis) == (None, None)
