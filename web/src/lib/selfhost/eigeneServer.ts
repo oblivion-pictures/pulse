@@ -13,8 +13,12 @@
  * der auf seinem eigenen Server nach der Verwaltung suchte.
  *
  * Instanzen, deren Zugangsdaten nie abgeholt wurden (`set_up === false`),
- * stehen nicht in der Liste und zählen deshalb nicht. Für neue Server gibt es
- * diesen Zustand nicht mehr: verbunden heißt abgeholt (Spec E3).
+ * stehen nicht in der Liste und zählen deshalb nicht. Das trifft auch neue
+ * Server: wer sie auf `/verbinden` bestätigt hat, ohne dass der Server die
+ * Zugangsdaten schon abgeholt hätte, hat bei der Cloud einen Eintrag mit
+ * `set_up: false` (dort zählt ein bestätigter, nie abgeholter Code nicht —
+ * `_versorgte_instanzen`). „Meine Server“ erscheint dann erst, wenn der Server
+ * abgeholt hat; das Ereignis `instanz_verbunden` lädt die Liste dafür neu.
  */
 export function hatEigeneServer(
   servers: ReadonlyArray<{ isCloud: boolean; role?: string | null }>

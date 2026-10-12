@@ -416,8 +416,13 @@ class ServersStore {
         // Noch nicht versorgt = noch nicht eingerichtet: kein Eintrag in der
         // Leiste. Bis 2026-08-27 entstand er in der Sekunde der Freigabe, und
         // der Nutzer sah einen Server, den es nirgends gab — mit totem
-        // Status-Punkt und einer Erklärung, die nur im Tooltip stand. Bis
-        // dahin lebt die Instanz unter „Meine Server“.
+        // Status-Punkt und einer Erklärung, die nur im Tooltip stand. Das gilt
+        // weiter für neu verbundene Server: bestätigt auf `/verbinden`, aber
+        // noch nicht abgeholt, heißt auch hier `set_up: false`. Bis dahin
+        // steht die Instanz nur auf der Seite „Meine Server“ (die liest die
+        // Cloud-Liste direkt); der Menüeintrag dorthin (`hatEigeneServer`)
+        // erscheint erst mit dem Eintrag in diesem Store. Das Ereignis
+        // `instanz_verbunden` stößt den Abgleich an, sobald abgeholt wurde.
         //
         // Nur der NEUE Eintrag hängt daran. Bestehende bleiben unangetastet:
         // dieser Store entfernt grundsätzlich nichts (der Sweep gelöschter

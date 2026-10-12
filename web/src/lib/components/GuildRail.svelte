@@ -417,8 +417,9 @@
 
     <!-- Sidebar-Variante B: pro Server eine eigene Sektion. Section-Header =
          Server-Label + Status-Dot. Darunter die Communitys DIESES Servers,
-         dann ein "+" zum Anlegen einer neuen Community auf DIESEM Server. Am
-         Ende globaler "+ Server"-Button für Self-Host-Add. -->
+         dann ein "+" (GuildRailPlusMenu) zum Anlegen einer neuen Community auf
+         DIESEM Server — und, in jedem Plus gleich, „Eigenen Server einrichten“.
+         Einen globalen Server-Knopf am Ende der Leiste gibt es nicht mehr. -->
     <!-- Gestoppte Heim-Server stehen nicht in der Leiste (istSichtbar,
          lib/servers/anzeige.ts — Entscheid 2026-10-08: für alle). -->
     {#each serversStore.servers.filter(istSichtbar) as server, sectionIdx (server.id)}
