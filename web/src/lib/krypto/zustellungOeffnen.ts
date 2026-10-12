@@ -13,13 +13,16 @@
  * * Olm-Umschlag -> Sitzung laden bzw. eingehend aufbauen, entschluesseln,
  *   sichern; enthaelt der Klartext einen Gruppen-Verteilschluessel, wird er
  *   dort abgelegt und die Zustellung ist `ohneAblage` quittierbar;
- * * alles Unlesbare -> `null`, die Zustellung bleibt liegen.
+ * * alles Unlesbare -> `null`, die Zustellung bleibt liegen;
+ * * ein Verlauf, der nicht ablegen kann (Riegel nach einem Fassungswechsel,
+ *   `verlauf/verbindung.ts`, oder nicht lesbar) -> `null`, VOR jedem
+ *   Entschlüsseln (Gegenprüfung 2026-10-12, R3).
  */
 import type { Message } from '../api/types';
 import type { Identitaet } from '../../../../krypto/pulse-krypto/pkg/pulse_krypto.js';
 import { Umschlag } from '../../../../krypto/pulse-krypto/pkg/pulse_krypto.js';
 import { directMessages } from '../stores/directMessages.svelte';
-import { verlaufSchonAbgelegt } from '../verlauf';
+import { verlaufSchonAbgelegt, verlaufVerriegelt } from '../verlauf';
 import type { PostfachZustellung } from '../api/postfach';
 import {
   sitzungLaden,
@@ -165,9 +168,15 @@ export async function zustellungOeffnen(
 ): Promise<ZustellungOffenErgebnis> {
   // FIX 3 (Bughunt-Runde 3) — ZUERST pruefen, noch vor jeder Sitzungssperre
   // und jedem Entschluesseln: liegt der Klartext schon lokal, braucht es
-  // beides nicht mehr.
-  if (await verlaufSchonAbgelegt(z.channel_id, z.id)) {
-    return { art: 'schonAbgelegt', channelId: z.channel_id, id: z.id };
+  // beides nicht mehr. Kann der Verlauf nicht lesen (R3), kann er auch nicht
+  // ablegen: liegen lassen, statt eine Sitzung weiterzudrehen.
+  if (verlaufVerriegelt()) return null;
+  try {
+    if (await verlaufSchonAbgelegt(z.channel_id, z.id)) {
+      return { art: 'schonAbgelegt', channelId: z.channel_id, id: z.id };
+    }
+  } catch {
+    return null;
   }
 
   // Eine Megolm-Gruppennachricht (Etappe G2) laeuft ueber eine ganz andere
@@ -222,6 +231,9 @@ export async function zustellungOeffnen(
   }
 
   return mitSitzungssperre(z.channel_id, z.absender_device_pubkey, async () => {
+    // Zwischen der Prüfung oben und hier liegen Netz und Sperre — ein Riegel,
+    // der inzwischen steht, hält das Entschlüsseln noch auf (R3).
+    if (verlaufVerriegelt()) return null;
     try {
       const vorhanden = await sitzungLaden(z.channel_id, z.absender_device_pubkey);
       // Sitzungsaufbau nur, wenn der Umschlag einer ist (Art 0) und der

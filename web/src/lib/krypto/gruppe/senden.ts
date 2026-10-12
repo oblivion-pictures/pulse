@@ -52,7 +52,7 @@ import { gruppenApi } from '../../api/gruppen';
 import type { PostfachNutzlast } from '../../api/postfach';
 import { serversStore } from '../../api/servers.svelte';
 import { auth } from '../../stores/auth.svelte';
-import { verlaufSpeichernPflicht } from '../../verlauf';
+import { verlaufSpeichernPflicht, verlaufRiegelPruefen } from '../../verlauf';
 import { verlaufZustand } from '../../verlauf/zustand.svelte';
 import { parseMentionMarkers } from '../../components/mentionMarkierungen';
 import { geraeteKennung } from '../geraeteKennung';
@@ -121,6 +121,9 @@ export async function sendeInGruppe(
   if (!PRIVATE_GRUPPEN_ENABLED) return { art: 'nicht_moeglich' };
 
   if (!auth.user) return { art: 'nicht_moeglich' };
+  // Der Riegel (Gegenprüfung 2026-10-12, R3), bevor die Sitzung weiterdreht —
+  // s. `../senden.ts::sendeVerschluesselt`.
+  verlaufRiegelPruefen();
   const eigeneUserId = auth.user.id;
   const eigeneKennung = await geraeteKennung();
 

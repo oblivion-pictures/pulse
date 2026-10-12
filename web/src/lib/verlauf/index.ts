@@ -44,14 +44,12 @@
  * naechste Abholzyklus versucht es erneut — sobald der Kanal lokal bekannt
  * ist, gelingt der Schreibvorgang.
  */
-import { zuSatz, sortierSchluessel, satzZuNachricht, type SatzAlsNachricht } from './satz';
+import { zuSatz, satzZuNachricht, type SatzAlsNachricht } from './satz';
 import {
   verlaufPutSaetze,
   verlaufSaetzeErgaenzen,
-  verlaufSatzUmschreiben,
   verlaufLesenSaetze,
   verlaufSatzVorhanden,
-  verlaufSatzIdsFuerFrame,
   verlaufKanalVergessen
 } from './db';
 import { aktuellesKonto } from './konto';
@@ -59,18 +57,29 @@ import { dauerhaftenSpeicherAnfordern } from '$lib/identity/dauerhafterSpeicher'
 import { verlaufZustand } from './zustand.svelte';
 import { zusammenfuegen, type Mergeposten } from './zusammenfuegen';
 import { VerlaufSpeichernFehlgeschlagen, pruefeSpeicherErgebnis } from './speichernPflicht';
-import {
-  reaktionAnwenden,
-  reaktionenZuAggregat,
-  type ReaktionsAggregat
-} from '../krypto/reaktionen';
+import { reaktionenZuAggregat } from '../krypto/reaktionen';
 import { istLokalerKanal } from './kanalArt';
 import type { Message } from '$lib/api/types';
 
 export { VerlaufSpeichernFehlgeschlagen };
 export { verlaufKanalVergessen };
 export { hatServerVerlauf } from './kanalArt';
-export { verlaufNachrichtGeloescht, verlaufGebundenGeloescht } from './loeschen';
+export {
+  verlaufNachrichtGeloescht,
+  verlaufGebundenGeloescht,
+  verlaufGebundenGeloeschtPflicht
+} from './loeschen';
+// Aktions-Frames anwenden, je in zwei Formen (s. Kopf von `frameAnwenden.ts`).
+export {
+  verlaufReaktionAnwenden,
+  verlaufReaktionAnwendenPflicht,
+  verlaufBearbeitungAnwenden,
+  verlaufBearbeitungAnwendenPflicht,
+  verlaufLokaleIdsFuerFrame,
+  verlaufLokaleIdsFuerFramePflicht
+} from './frameAnwenden';
+// Der Riegel nach einem Fassungswechsel (s. `verbindung.ts::verriegelt`).
+export { verlaufVerriegelt, verlaufRiegelPruefen, VerlaufVerriegelt } from './verbindung';
 
 /** Baut die zu schreibenden Saetze — geteilte Rechnung von
  *  `verlaufSpeichern`/`verlaufSpeichernPflicht`. Kein expliziter Rueckgabetyp:
@@ -247,66 +256,19 @@ export function verlaufLesen(
 }
 
 /**
- * Wendet EINE Reaktion (eigene oder per Umschlag empfangene) auf den Satz
- * `nachrichtId` an — `nachrichtId` ist die LOKALE ID; eine kanonische ID aus
- * einem Umschlag loest der Aufrufer vorher auf (`verlaufLokaleIdsFuerFrame`,
- * s. `krypto/empfangen.ts`). Gibt die neue Anzeige-Form zurueck, oder `null`,
- * wenn nichts geschrieben wurde: kein solcher Satz, Grabstein, fremdes
- * Konto, oder der Umschlag aenderte nichts (doppelt angekommen, s.
- * `krypto/reaktionen.ts`). Wirft nie — ein Fehlschlag meldet sich bei
- * `verlaufZustand`, und der Aufrufer laesst die Anzeige, wie sie ist.
- */
-export function verlaufReaktionAnwenden(
-  kanalId: string,
-  nachrichtId: string,
-  autorId: string,
-  emoji: string,
-  entfernen: boolean
-): Promise<ReaktionsAggregat[] | null> {
-  if (!istLokalerKanal(kanalId)) return Promise.resolve(null);
-  const kontoId = aktuellesKonto();
-  if (kontoId === null) return Promise.resolve(null);
-  return verlaufSatzUmschreiben(sortierSchluessel(kanalId, nachrichtId), kontoId, (satz) => {
-    if (satz.geloescht) return null;
-    const reaktionen = reaktionAnwenden(satz.reaktionen, autorId, emoji, entfernen);
-    return reaktionen === satz.reaktionen ? null : { ...satz, reaktionen };
-  })
-    .then((neu) => (neu ? reaktionenZuAggregat(neu.reaktionen, kontoId) : null))
-    .catch((err) => {
-      verlaufZustand.melde(err);
-      return null;
-    });
-}
-
-export async function verlaufBearbeitungAnwenden(
-  kanalId: string,
-  nachrichtId: string,
-  inhalt: string,
-  bearbeitetAm: string
-): Promise<boolean> {
-  if (!istLokalerKanal(kanalId)) return false;
-  const kontoId = aktuellesKonto();
-  if (kontoId === null) return false;
-  return verlaufSatzUmschreiben(
-    sortierSchluessel(kanalId, nachrichtId),
-    kontoId,
-    (satz) => (satz.geloescht ? null : { ...satz, inhalt, bearbeitetAm })
-  )
-    .then((neu) => neu !== null)
-    .catch((err) => {
-      verlaufZustand.melde(err);
-      return false;
-    });
-}
-
-/**
  * `true`, wenn fuer diese Nachrichten-ID im Kanal bereits ein Satz liegt —
  * fuer `krypto/empfangen.ts` FIX 3 (Bughunt-Runde 3, s. dortigen Modulkopf):
  * eine Zustellung, deren Quittung zuletzt fehlschlug, aber deren Klartext
  * schon sicher abgelegt ist, darf ohne erneutes Entschluesseln quittiert
- * werden. Wirft nie (wie die uebrigen Lesefunktionen hier) — ein Lesefehler
- * heisst hier nur "sicherheitshalber wie neu behandeln", der Aufrufer bleibt
- * dann beim bestehenden, langsameren Pfad.
+ * werden.
+ *
+ * **Wirft bei einem Lesefehler** (meldet ihn vorher bei `verlaufZustand`).
+ * Bis 2026-10-12 wurde daraus `false`, „sicherheitshalber wie neu
+ * behandeln" — und genau das war der Verlust (Gegenprüfung, R3): der
+ * Aufrufer entschlüsselte, sicherte die weitergedrehte Sitzung, scheiterte
+ * am Ablegen, und danach liess sich der Umschlag nirgends mehr öffnen. Wer
+ * den Verlauf nicht lesen kann, kann auch nicht ablegen; der Aufrufer
+ * (`krypto/zustellungOeffnen.ts`) lässt die Zustellung dann liegen.
  */
 export function verlaufSchonAbgelegt(kanalId: string, nachrichtId: string): Promise<boolean> {
   // Bewusst OHNE `istLokalerKanal`-Abkuerzung (2026-09-10): der In-Memory-
@@ -318,32 +280,9 @@ export function verlaufSchonAbgelegt(kanalId: string, nachrichtId: string): Prom
   // Quittung, die den Server-Umschlag endgueltig loescht.
   const kontoId = aktuellesKonto();
   if (kontoId === null) return Promise.resolve(false);
-  return verlaufSatzVorhanden(kanalId, nachrichtId, kontoId).catch((err) => {
+  return verlaufSatzVorhanden(kanalId, nachrichtId, kontoId).catch((err: unknown) => {
     verlaufZustand.melde(err);
-    return false;
-  });
-}
-
-/**
- * Die lokalen IDs aller Sätze, die ein Frame mit `frameId` trifft — für den
- * Lösch-, Reaktions- und Bearbeitungs-Frame (`krypto/loeschZiel.ts`): die
- * Anzeige kennt nur die geladenen Nachrichten, der Verlauf auch die
- * älteren. `autorId` muss beim Lösch-Frame dessen Absender sein: es gilt
- * dieselbe Schranke wie in der Anzeige (`trifftFrame`), sonst löschte ein
- * Frame über den Verlauf genau das, was er über die geladene Liste nicht
- * darf. Wirft nie; leer heißt „kein solcher Satz auf diesem Gerät".
- */
-export function verlaufLokaleIdsFuerFrame(
-  kanalId: string,
-  frameId: string,
-  autorId?: string
-): Promise<string[]> {
-  if (!istLokalerKanal(kanalId)) return Promise.resolve([]);
-  const kontoId = aktuellesKonto();
-  if (kontoId === null) return Promise.resolve([]);
-  return verlaufSatzIdsFuerFrame(kanalId, frameId, kontoId, autorId).catch((err) => {
-    verlaufZustand.melde(err);
-    return [];
+    throw err;
   });
 }
 

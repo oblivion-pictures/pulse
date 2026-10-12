@@ -28,7 +28,8 @@ import { messages } from '$lib/stores/messages.svelte';
 import {
   verlaufBearbeitungAnwenden,
   verlaufNachrichtGeloescht,
-  verlaufReaktionAnwenden
+  verlaufReaktionAnwenden,
+  verlaufVerriegelt
 } from '$lib/verlauf';
 import { kanonischeAntwortId } from '$lib/krypto/kanonischeAntwortId';
 import { kanonischeId } from '$lib/verlauf/identitaet';
@@ -115,6 +116,13 @@ export async function nachrichtLoeschen(
   // Schlägt das Senden fehl, ist die lokale Löschung trotzdem gültig; der
   // Fehler wird sichtbar gemacht.
   const e2eLoeschen = async (): Promise<void> => {
+    // Der Riegel (Gegenprüfung 2026-10-12, R3, `verlauf/verbindung.ts`): der
+    // lokale Grabstein ginge ins Leere, Anzeige und andere Geräte aber nicht.
+    // Dann gar nicht erst anfangen; das Banner bittet um ein Neuladen.
+    if (verlaufVerriegelt()) {
+      toast.error(m.dm_page_delete_failed());
+      return;
+    }
     verlaufNachrichtGeloescht(msg.channel_id, msg.id);
     messages.remove(msg.channel_id, msg.id);
     if (msg.author_id === auth.user?.id) {

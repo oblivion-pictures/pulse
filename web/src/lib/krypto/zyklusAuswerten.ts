@@ -21,6 +21,18 @@
  * (`verlauf/grabsteinRegister.ts`), auch ohne Treffer: kommt die Nachricht
  * erst in einem späteren Zyklus, landet sie dort als Grabstein.
  *
+ * **Ein Frame wird nur quittiert, wenn seine Anwendung gelang** (Gegenprüfung
+ * 2026-10-12, R3). Die Wege werfen bei einem Fehlschlag, statt ihn als „kein
+ * Ziel" zu tarnen; bis dahin quittierte der Zyklus einen Frame auch dann, wenn
+ * der Verlauf gar nicht erreichbar war (ein anderer Tab hatte seine Fassung
+ * angehoben), und die Löschung oder Bearbeitung war verloren. Liegen bleibt
+ * er dann für den nächsten Zyklus: eine Gruppen-Zustellung lässt sich erneut
+ * öffnen, solange keine spätere derselben Sitzung den Wasserstand
+ * weitergeschoben hat (`gruppe/wasserstand.ts`), ein Olm-Umschlag nicht mehr —
+ * dessen Sitzung ist schon weitergedreht. Den häufigsten Fall, den Riegel nach
+ * einem Fassungswechsel (`verlauf/verbindung.ts`), fangen Zyklus und
+ * `zustellungOeffnen.ts` schon vor dem Entschlüsseln ab.
+ *
  * Importfrei bis auf `.ts`-Pfade und Typen — die Wege kommen als Argument
  * (`ZyklusWege`), damit Nodes Testläufer den echten Ablauf prüft
  * (`test/krypto-zyklusAuswerten.test.ts`).
@@ -30,7 +42,8 @@ import type { ZustellungOffenErgebnis } from './zustellungOeffnen';
 import { frameZiele, lokaleIdsFuerLoeschung } from './loeschZiel.ts';
 import { quittierbareIds, type KanalGruppe } from './quittierbareIds.ts';
 
-/** Was die Auswertung an Verlauf, Anzeige und Anruf-Store braucht. */
+/** Was die Auswertung an Verlauf, Anzeige und Anruf-Store braucht. Die Wege
+ *  in den Verlauf werfen bei einem Fehlschlag (s. Modulkopf). */
 export interface ZyklusWege {
   /** Legt die Nachrichten eines Kanals ab (Anhänge vorher). Wirft bei einem
    *  Fehlschlag; Ergebnis: die IDs, die als Grabstein abgelegt wurden. */
@@ -144,9 +157,14 @@ export async function zyklusAuswerten(
   // trotzdem quittiert: seine Nachricht ist hier nie angekommen — und kommt
   // sie später, hält das Register eine Löschung fest; eine Bearbeitung oder
   // Reaktion auf eine Nachricht, die dieses Gerät nie hatte, geht verloren.
+  // Ein Frame, dessen Anwendung scheitert, bleibt liegen (s. Modulkopf).
   for (const aktion of aktionen) {
-    await aktionAnwenden(aktion, wege, wirkung);
-    ohneAblage.push(aktion.id);
+    try {
+      await aktionAnwenden(aktion, wege, wirkung);
+      ohneAblage.push(aktion.id);
+    } catch (err) {
+      wege.meldeFehler(err);
+    }
   }
 
   return {

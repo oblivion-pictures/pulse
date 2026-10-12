@@ -122,10 +122,11 @@
 import type { Message } from '../api/types';
 import {
   verlaufSpeichernPflicht,
-  verlaufGebundenGeloescht,
-  verlaufLokaleIdsFuerFrame,
-  verlaufBearbeitungAnwenden,
-  verlaufReaktionAnwenden
+  verlaufGebundenGeloeschtPflicht,
+  verlaufLokaleIdsFuerFramePflicht,
+  verlaufBearbeitungAnwendenPflicht,
+  verlaufReaktionAnwendenPflicht,
+  verlaufVerriegelt
 } from '../verlauf';
 import { zyklusAuswerten } from './zyklusAuswerten';
 import { messages } from '../stores/messages.svelte';
@@ -156,6 +157,14 @@ function cloudRoute(): { serverId?: string } {
 }
 
 async function postfachZyklus(): Promise<Message[]> {
+  // Der Riegel (Gegenprüfung 2026-10-12, R3, `verlauf/verbindung.ts`): ein
+  // anderer Tab hat die Verlaufs-Datenbank angehoben, dieser kann nichts mehr
+  // ablegen. Dann nichts abholen, nichts entschlüsseln, nichts quittieren —
+  // jede Sitzung bliebe sonst über eine Zustellung hinaus weitergedreht, die
+  // nirgends liegt, und kein Tab könnte sie mehr öffnen. Der neu geladene Tab
+  // holt alles ab. `zustellungOeffnen.ts` prüft ihn je Zustellung erneut.
+  if (verlaufVerriegelt()) return [];
+
   // `geraeteKennung()` wirft, wenn sich keine Kennung ermitteln laesst
   // (nicht angemeldet) — und genau das muss hier ANDERS enden als ein
   // durchgereichter Fehler: ohne diesen Fang wuerde der Wurf als
@@ -213,10 +222,12 @@ async function postfachZyklus(): Promise<Message[]> {
     },
     meldeFehler: (err) => verlaufZustand.melde(err),
     geladen: (kanalId) => messages.for(kanalId),
-    imVerlauf: verlaufLokaleIdsFuerFrame,
-    gebundenLoeschen: verlaufGebundenGeloescht,
-    reaktionAnwenden: verlaufReaktionAnwenden,
-    bearbeitungAnwenden: verlaufBearbeitungAnwenden,
+    // Die `…Pflicht`-Formen werfen bei einem Fehlschlag: ein Frame wird nur
+    // quittiert, wenn seine Anwendung gelang (`zyklusAuswerten.ts`, R3).
+    imVerlauf: verlaufLokaleIdsFuerFramePflicht,
+    gebundenLoeschen: verlaufGebundenGeloeschtPflicht,
+    reaktionAnwenden: verlaufReaktionAnwendenPflicht,
+    bearbeitungAnwenden: verlaufBearbeitungAnwendenPflicht,
     anzeigeEntfernen: (kanalId, id) => messages.remove(kanalId, id),
     anzeigeReaktionen: (kanalId, id, r) => messages.setReactions(kanalId, id, r),
     anzeigeInhalt: (kanalId, id, inhalt, am) => messages.bearbeiteInhalt(kanalId, id, inhalt, am),

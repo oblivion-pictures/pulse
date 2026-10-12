@@ -70,7 +70,7 @@ import { keysApi } from '../../api/keys';
 import type { PostfachNutzlast } from '../../api/postfach';
 import { serversStore } from '../../api/servers.svelte';
 import { auth } from '../../stores/auth.svelte';
-import { verlaufSpeichernPflicht } from '../../verlauf';
+import { verlaufSpeichernPflicht, verlaufRiegelPruefen } from '../../verlauf';
 import { verlaufZustand } from '../../verlauf/zustand.svelte';
 import { parseMentionMarkers } from '../../components/mentionMarkierungen';
 import { geraeteKennung } from '../geraeteKennung';
@@ -132,6 +132,7 @@ export async function sendeInKanal(
   if (!ABLAGE_KANAL_ENABLED) return { art: 'nicht_moeglich' };
 
   if (!auth.user) return { art: 'nicht_moeglich' };
+  verlaufRiegelPruefen(); // R3, s. `sendeInGruppe`
   const eigeneUserId = auth.user.id;
   const eigeneKennung = await geraeteKennung();
 

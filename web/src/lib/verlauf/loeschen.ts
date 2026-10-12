@@ -123,9 +123,11 @@ export function verlaufNachrichtGeloescht(
  * und Ablage-Kanäle, das Archiv nur für Direktnachrichten und private Gruppen.
  *
  * Ergebnis: die lokalen IDs der markierten Sätze — der Aufrufer nimmt sie
- * aus der Anzeige. Leer bei jedem Fehlschlag (gemeldet bei `verlaufZustand`).
+ * aus der Anzeige. Wirft bei einem Fehlschlag: der Postfach-Zyklus quittiert
+ * den Lösch-Frame dann nicht (Gegenprüfung 2026-10-12, R3,
+ * `krypto/zyklusAuswerten.ts`).
  */
-export async function verlaufGebundenGeloescht(
+export async function verlaufGebundenGeloeschtPflicht(
   kanalId: string,
   kennung: string,
   autorId: string
@@ -133,16 +135,26 @@ export async function verlaufGebundenGeloescht(
   if (!istGueltigeKennung(kennung)) return [];
   const kontoId = aktuellesKonto();
   if (kontoId === null) return [];
+  const { markiert, neuEingetragen } = await verlaufGebundenLoeschen(
+    kanalId,
+    kontoId,
+    autorId,
+    [kennung]
+  );
+  if (markiert.length > 0) void folgen(kanalId, kontoId, markiert);
+  else if (neuEingetragen) sicherungGrabstein(kanalId, kennung, { autorId, kryptoId: kennung });
+  return markiert.map((satz) => satz.nachrichtId);
+}
+
+/** Wie `verlaufGebundenGeloeschtPflicht`, aber leer bei jedem Fehlschlag
+ *  (gemeldet bei `verlaufZustand`) — für den Archiv-Leser (`archiv/lesen.ts`). */
+export async function verlaufGebundenGeloescht(
+  kanalId: string,
+  kennung: string,
+  autorId: string
+): Promise<string[]> {
   try {
-    const { markiert, neuEingetragen } = await verlaufGebundenLoeschen(
-      kanalId,
-      kontoId,
-      autorId,
-      [kennung]
-    );
-    if (markiert.length > 0) void folgen(kanalId, kontoId, markiert);
-    else if (neuEingetragen) sicherungGrabstein(kanalId, kennung, { autorId, kryptoId: kennung });
-    return markiert.map((satz) => satz.nachrichtId);
+    return await verlaufGebundenGeloeschtPflicht(kanalId, kennung, autorId);
   } catch (err) {
     verlaufZustand.melde(err);
     return [];

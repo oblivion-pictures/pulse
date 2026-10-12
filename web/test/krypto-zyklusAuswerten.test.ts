@@ -186,3 +186,21 @@ test('was der Verlauf als Grabstein ablegt (Register), wird quittiert, aber nich
   assert.deepEqual(erg.anzuzeigen.map((n) => n.id), ['z2']);
   assert.deepEqual(erg.quittierbar, ['z1', 'z2']);
 });
+
+// Gegenprüfung 2026-10-12, R3: ein Frame, dessen Anwendung scheitert, wurde
+// trotzdem quittiert — der Verlauf war nicht erreichbar (ein anderer Tab
+// hatte die Fassung angehoben), und die Löschung war verloren.
+test('R3: ein Frame, dessen Anwendung scheitert, bleibt unquittiert — die anderen nicht', async () => {
+  const w = wege({ verlauf: [{ id: 'z0', kryptoId: 'K', autorId: PARTNER }] });
+  w.gebundenLoeschen = async () => {
+    throw new Error('Verlauf verriegelt');
+  };
+  const erg = await zyklusAuswerten(
+    [loeschung('z1', 'K', PARTNER), bearbeitung('z2', 'K', PARTNER, 'neu')],
+    w
+  );
+  assert.deepEqual(erg.quittierbar, ['z2']);
+  assert.ok(w.aufrufe.includes('fehler Verlauf verriegelt'));
+  // Auch nicht aus der Anzeige genommen: die Löschung hat nicht stattgefunden.
+  assert.ok(!w.aufrufe.some((a) => a.startsWith('entfernen')));
+});

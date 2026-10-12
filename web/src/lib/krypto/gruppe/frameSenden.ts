@@ -43,6 +43,7 @@ import {
   baueAnrufSchluesselNutzlast
 } from '../nachrichtNutzlast';
 import { PRIVATE_GRUPPEN_ENABLED } from '../schalter';
+import { verlaufRiegelPruefen } from '../../verlauf';
 import { sitzungWaehlen, standNachSendung } from './sitzungswahl';
 import { bloeckeEinliefern, verteilUmschlaege } from './gruppenEinliefern';
 import { ART_GRUPPENNACHRICHT, baueGruppenhuelle, neueSitzungId } from './gruppenNutzlast';
@@ -146,7 +147,10 @@ async function versendeGruppenFrame(
  * Mitglieder-Geraete. `true` nur bei Zustellung; den lokalen Grabstein setzt
  * der Aufrufer unabhaengig davon.
  */
-export function sendeGruppenLoeschung(kanalId: string, nachrichtId: string): Promise<boolean> {
+export async function sendeGruppenLoeschung(kanalId: string, nachrichtId: string): Promise<boolean> {
+  // Der Riegel (Gegenprüfung 2026-10-12, R3), wie in `senden.ts::sendeInGruppe`
+  // — die Frames ändern den eigenen Verlauf. Der Anruf-Schlüssel unten nicht.
+  verlaufRiegelPruefen();
   return versendeGruppenFrame(kanalId, baueLoeschNutzlast(nachrichtId));
 }
 
@@ -156,12 +160,13 @@ export function sendeGruppenLoeschung(kanalId: string, nachrichtId: string): Pro
  * ID sieht je Geraet anders aus). `true` nur bei Zustellung; der Aufrufer
  * wendet die Reaktion erst DANN lokal an.
  */
-export function sendeGruppenReaktion(
+export async function sendeGruppenReaktion(
   kanalId: string,
   zielNachrichtId: string,
   emoji: string,
   entfernen: boolean
 ): Promise<boolean> {
+  verlaufRiegelPruefen(); // s. `sendeGruppenLoeschung`
   return versendeGruppenFrame(kanalId, baueReaktionsNutzlast(zielNachrichtId, emoji, entfernen));
 }
 
@@ -169,11 +174,12 @@ export function sendeGruppenReaktion(
  * Bearbeitet eine verschluesselte Gruppen-Nachricht: Bearbeitungs-Frame an
  * alle Mitglieder-Geraete. `zielNachrichtId` MUSS die KANONISCHE Form sein.
  */
-export function sendeGruppenBearbeitung(
+export async function sendeGruppenBearbeitung(
   kanalId: string,
   zielNachrichtId: string,
   inhalt: string
 ): Promise<boolean> {
+  verlaufRiegelPruefen(); // s. `sendeGruppenLoeschung`
   return versendeGruppenFrame(kanalId, baueBearbeitungsNutzlast(zielNachrichtId, inhalt));
 }
 

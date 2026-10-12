@@ -42,6 +42,7 @@ import {
 } from './gruppenSitzungen';
 import { wasserstandEntscheidung } from './wasserstand';
 import { kanalLaufwerkSchluesselSichern } from '../../ablage/kanalLaufwerkSchluessel';
+import { verlaufVerriegelt } from '../../verlauf';
 
 /** Ob diese Zustellung eine Megolm-Gruppennachricht ist. */
 export function istGruppennachricht(z: PostfachZustellung): boolean {
@@ -161,6 +162,14 @@ export async function oeffneGruppennachricht(
     huelle.sitzung
   );
   if (!empfang) return null;
+
+  // Der Riegel (Gegenprüfung 2026-10-12, R3, `verlauf/verbindung.ts`), VOR
+  // dem Entschlüsseln: kann der Verlauf nicht ablegen, bleibt die Zustellung
+  // unangetastet liegen — kein Ratchet gesichert, kein Wasserstand gehoben.
+  // Sonst wiese der nächste Tab sie als Wiedereinspiel ab, sobald eine
+  // spätere Nachricht derselben Sitzung den Wasserstand weitergeschoben hat
+  // (`wasserstand.ts`).
+  if (verlaufVerriegelt()) return null;
 
   let geoeffnet: { klartext(): Uint8Array; zaehler(): number };
   try {

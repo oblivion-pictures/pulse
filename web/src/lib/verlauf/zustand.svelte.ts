@@ -22,8 +22,21 @@ const GRUND_TEXT: Record<SpeicherLage, string> = {
 class VerlaufZustand {
   verfuegbar = $state(true);
   grund = $state<string | null>(null);
+  /**
+   * Der Riegel aus `verbindung.ts` (Gegenprüfung 2026-10-12, R3/R4): ein
+   * anderer Tab hat die Fassung angehoben, dieser Tab muss neu laden. Anders
+   * als `grund` fällt er nie wieder — kein erfolgreicher Zugriff hebt ihn
+   * auf (`erholt`), und das Banner in `routes/app/+layout.svelte` bleibt
+   * stehen, bis neu geladen ist.
+   */
+  verriegelt = $state(false);
   /** Wurde der aktuelle Grund bereits als Hinweis gezeigt? */
   private hingewiesen = false;
+
+  /** Nur `verbindung.ts` ruft das, wenn es den Riegel setzt. */
+  verriegeln(): void {
+    this.verriegelt = true;
+  }
 
   /**
    * Ein fehlgeschlagener lokaler Lese-/Schreibversuch. Setzt den Grund nur

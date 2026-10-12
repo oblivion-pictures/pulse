@@ -62,7 +62,7 @@ import { postfachApi, type PostfachNutzlast } from '../api/postfach';
 import { serversStore } from '../api/servers.svelte';
 import { auth } from '../stores/auth.svelte';
 import { directMessages } from '../stores/directMessages.svelte';
-import { verlaufSpeichernPflicht } from '../verlauf';
+import { verlaufSpeichernPflicht, verlaufRiegelPruefen } from '../verlauf';
 import { verlaufZustand } from '../verlauf/zustand.svelte';
 import { kryptoAccountLaden } from './account.svelte';
 import { geraeteKennung } from './geraeteKennung';
@@ -258,6 +258,11 @@ export async function sendeVerschluesselt(
   // sichtbar gemacht, statt als Klartext-Rueckfall gedeutet zu werden.
   const eigeneUserId = auth.user?.id ?? null;
   if (eigeneUserId === null) return null;
+  // Der Riegel (Gegenprüfung 2026-10-12, R3, `verlauf/verbindung.ts`): kann
+  // dieser Tab nicht ablegen, wäre die Nachricht zugestellt, die eigene Kopie
+  // aber nirgends. Wirft, bevor eine Sitzung weiterdreht; ebenso die Frames
+  // unten, nur der Anruf-Schlüssel nicht (er legt nichts ab).
+  verlaufRiegelPruefen();
   // Die eigene Kennung kommt aus der Krypto-Schicht, nicht mehr aus dem
   // Zertifikat (Spec §3b, s. `geraeteKennung.ts`) — der Wert ist derselbe,
   // die Quelle ueberlebt den Wegfall des Zertifikats. EINMAL geholt: sie
@@ -397,6 +402,7 @@ export async function sendeLoeschung(
   // einstufen lassen — die Empfänger prüfen Zuschreibung gegen Metadaten.
   const eigeneUserId = auth.user?.id ?? null;
   if (eigeneUserId === null) return false;
+  verlaufRiegelPruefen(); // s. `sendeVerschluesselt`
   const eigeneKennung = await geraeteKennung();
   return versendeFrame(
     kanalId,
@@ -413,13 +419,14 @@ export async function sendeLoeschung(
  * `true` nur bei Zustellung; der Aufrufer wendet die Reaktion erst DANN lokal
  * an (`verlaufReaktionAnwenden`), wie der Klartext-Weg auf sein WS-Echo wartet.
  */
-export function sendeReaktion(
+export async function sendeReaktion(
   kanalId: string,
   empfaengerUserId: string,
   zielNachrichtId: string,
   emoji: string,
   entfernen: boolean
 ): Promise<boolean> {
+  verlaufRiegelPruefen(); // s. `sendeVerschluesselt`
   return versendeFrame(
     kanalId,
     empfaengerUserId,
@@ -433,12 +440,13 @@ export function sendeReaktion(
  * `zielNachrichtId` MUSS die KANONISCHE Form sein. `true` nur bei Zustellung;
  * der Aufrufer wendet den neuen Inhalt erst DANN lokal an.
  */
-export function sendeBearbeitung(
+export async function sendeBearbeitung(
   kanalId: string,
   empfaengerUserId: string,
   zielNachrichtId: string,
   inhalt: string
 ): Promise<boolean> {
+  verlaufRiegelPruefen(); // s. `sendeVerschluesselt`
   return versendeFrame(kanalId, empfaengerUserId, baueBearbeitungsNutzlast(zielNachrichtId, inhalt));
 }
 

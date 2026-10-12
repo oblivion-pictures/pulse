@@ -14,11 +14,65 @@
  */
 import { DB_NAME, DB_VERSION, STORE_NACHRICHTEN, STORE_ANHAENGE, STORE_MEDIEN, INDEX_KANAL } from './schema';
 import { melde } from '$lib/diagnose/app-diagnose';
+import { verlaufZustand } from './zustand.svelte';
 
 let _dbPromise: Promise<IDBDatabase> | null = null;
-/** Schon einmal gemeldet, dass der Bestand jünger ist als dieser Code? Jeder
- *  Zugriff versucht es erneut und scheitert gleich — gemeldet wird einmal. */
-let zuNeuGemeldet = false;
+
+/**
+ * Der Riegel (Gegenprüfung 2026-10-12, R3): der Bestand ist jünger als dieser
+ * Code, ein anderer Tab hat die Fassung angehoben. Ab dann ist der lokale
+ * Verlauf in diesem Tab bis zum Neuladen aus — jeder Zugriff scheitert, und
+ * genau das darf nicht still geschehen.
+ *
+ * Für verschlüsselte Nachrichten ist der lokale Verlauf die einzige Kopie, und
+ * ihre Sitzungen liegen in einer ANDEREN Datenbank (`pulse-identity`), die der
+ * Fassungswechsel nicht berührt. Ohne Riegel entschlüsselte der alte Tab eine
+ * Zustellung weiter, sicherte die weitergedrehte Sitzung, scheiterte am
+ * Ablegen und quittierte nicht — danach konnte KEIN Tab den Umschlag mehr
+ * öffnen. Wer etwas dauerhaft ablegen muss, fragt deshalb vorher
+ * `verlaufVerriegelt()` und lässt dann alles liegen: der Postfach-Zyklus
+ * (`krypto/empfangen.ts`, `krypto/zustellungOeffnen.ts`), die
+ * Gruppen-Zustellung (`krypto/gruppe/empfangen.ts`) und jedes eigene Senden
+ * (`verlaufRiegelPruefen`).
+ *
+ * Gesetzt wird er beim ersten `VersionError` und schon dann, wenn ein anderer
+ * Tab eine höhere Fassung ANFORDERT (`onversionchange` unten) — das ist der
+ * früheste Zeitpunkt, und ein Zyklus, der gerade läuft, prüft ihn danach
+ * erneut. Ganz schließt das die Lücke nicht: eine Zustellung, die schon
+ * entschlüsselt ist, wenn die Anforderung kommt, scheitert beim Ablegen
+ * trotzdem. Er fällt nie wieder: der neu geladene Code kennt die Fassung.
+ */
+let verriegelt = false;
+
+function verriegeln(): void {
+  if (verriegelt) return;
+  verriegelt = true;
+  console.warn('[verlauf] lokale Datenbank in höherer Fassung — bitte neu laden');
+  melde('verlauf', 'verlauf_zu_neu', 'Bestand jünger als App (VersionError), nichts gelöscht', {
+    code_version: DB_VERSION
+  });
+  verlaufZustand.verriegeln();
+}
+
+/** Ob der lokale Verlauf in diesem Tab verriegelt ist (s. `verriegelt`). */
+export function verlaufVerriegelt(): boolean {
+  return verriegelt;
+}
+
+/** Was ein eigenes Senden wirft, solange der Riegel steht. Der Name ist
+ *  `VersionError`, damit `speicherfehler.ts` ihn wie den Auslöser deutet. */
+export class VerlaufVerriegelt extends Error {
+  constructor() {
+    super('Lokaler Verlauf pausiert — eine neuere App-Fassung hat ihn geöffnet. Bitte neu laden.');
+    this.name = 'VersionError';
+  }
+}
+
+/** Wirft `VerlaufVerriegelt`, solange der Riegel steht — für jeden eigenen
+ *  Sendeweg, VOR dem ersten Schritt, der eine Sitzung weiterdreht. */
+export function verlaufRiegelPruefen(): void {
+  if (verriegelt) throw new VerlaufVerriegelt();
+}
 
 function _openFresh(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -51,7 +105,12 @@ function _openFresh(): Promise<IDBDatabase> {
     req.onsuccess = () => {
       const db = req.result;
       const realClose = db.close.bind(db);
-      db.onversionchange = () => {
+      db.onversionchange = (ereignis) => {
+        // Ein anderer Tab hebt die Fassung an: der nächste Zugriff hier trifft
+        // `VersionError`. Riegel schon jetzt (s. `verriegelt`). `newVersion`
+        // ist `null`, wenn die Datenbank gelöscht wird („Öffentlicher
+        // Computer") — danach legt dieser Code sie wieder an, kein Riegel.
+        if (ereignis.newVersion !== null && ereignis.newVersion > DB_VERSION) verriegeln();
         _dbPromise = null;
         realClose();
       };
@@ -91,10 +150,12 @@ function _openFresh(): Promise<IDBDatabase> {
  * und der neue Tab legte danach eine leere Datenbank an. Ebenso nach einem
  * Rückroll-Deploy oder mit einem offenen Electron-Fenster der alten Fassung.
  *
- * Jetzt fällt `VersionError` einfach durch: `speicherfehler.ts` deutet ihn
- * als `zu_neu`, die Oberfläche bittet um ein Neuladen (`zustand.svelte.ts`),
+ * Jetzt fällt `VersionError` durch und setzt den Riegel (`verriegelt`):
+ * `speicherfehler.ts` deutet ihn als `zu_neu`, die Oberfläche bittet dauerhaft
+ * um ein Neuladen (`zustand.svelte.ts`, Banner in `routes/app/+layout.svelte`),
  * und der neu geladene Code kennt die Fassung. Bis dahin läuft der Tab ohne
- * lokalen Verlauf, verliert aber nichts. Ein Profil, das wirklich einen
+ * lokalen Verlauf; was er dabei nicht verlieren darf, hält der Riegel fest
+ * (mit der Lücke, die dort steht). Ein Profil, das wirklich einen
  * jüngeren Bestand aus einem Experimentier-Zweig hält, räumt man von Hand —
  * etwa über „Öffentlicher Computer" in den Einstellungen, das allerdings ALLE
  * lokalen Daten dieses Geräts löscht und abmeldet. Die App löscht den
@@ -103,13 +164,7 @@ function _openFresh(): Promise<IDBDatabase> {
 function openVerlaufDb(): Promise<IDBDatabase> {
   if (!_dbPromise) {
     const versuch = _openFresh().catch((err: unknown) => {
-      if (err instanceof DOMException && err.name === 'VersionError' && !zuNeuGemeldet) {
-        zuNeuGemeldet = true;
-        console.warn('[verlauf] lokale Datenbank in höherer Fassung vorgefunden — bitte neu laden');
-        melde('verlauf', 'verlauf_zu_neu', 'Bestand jünger als App (VersionError), nichts gelöscht', {
-          code_version: DB_VERSION
-        });
-      }
+      if (err instanceof DOMException && err.name === 'VersionError') verriegeln();
       throw err;
     });
     // Ein abgelehnter Versuch darf nicht kleben: sonst wehrt ein gespeicherter
@@ -153,6 +208,9 @@ function openVerlaufDb(): Promise<IDBDatabase> {
  * durch — kein zweiter, sinnloser Neuversuch.
  */
 export async function mitVerbindung<T>(aktion: (db: IDBDatabase) => Promise<T>): Promise<T> {
+  // Verriegelt: nicht erst öffnen — ein Öffnen gelänge sonst noch, solange
+  // der andere Tab seine Anhebung nicht abgeschlossen hat.
+  if (verriegelt) throw new DOMException('Bestand jünger als dieser Code', 'VersionError');
   const versucht = openVerlaufDb();
   const db = await versucht;
   try {
