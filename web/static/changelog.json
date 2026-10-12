@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-13.3",
+      "date": "2026-10-13",
+      "style": "Sachlich",
+      "title": "Heimserver",
+      "items": [
+        "Sprachkanäle auf einem Heimserver der Server-App funktionieren wieder aus dem eigenen Heimnetz, auch auf dem Rechner, auf dem der Server läuft. Dafür die Server-App auf Version 0.1.101 aktualisieren."
+      ]
+    },
+    {
       "id": "2026-10-13.2",
       "date": "2026-10-13",
       "style": "Sachlich",
