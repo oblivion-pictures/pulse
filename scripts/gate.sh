@@ -156,7 +156,10 @@ bereich_hash() {
 # `infra/self-host/tests` steht in den pytest-testpaths (pyproject.toml), war
 # aber bis 2026-10-08 kein Auslöser: eine Änderung an den s6-Skripten oder
 # ihren Tests allein fuhr deren pytest nie — die Tests sahen aus wie grün.
-BEREICH_backend="services shared plugins uv.lock pyproject.toml conftest.py infra/self-host"
+# `infra/livekit-fork` (seit 2026-10-13): seine Prüfungen
+# (`infra/self-host/tests/test_livekit_fork.py`) laufen im pytest mit — ohne
+# den Eintrag fuhr eine Änderung NUR am Fork-Rezept keinen einzigen Test.
+BEREICH_backend="services shared plugins uv.lock pyproject.toml conftest.py infra/self-host infra/livekit-fork"
 BEREICH_web="web plugins pnpm-lock.yaml package.json"
 BEREICH_desktop="desktop pnpm-lock.yaml package.json"
 # Der Auslieferer auf dem VPS läuft per Cron und meldet sich nur, wenn er etwas
