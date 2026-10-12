@@ -507,9 +507,9 @@ footer a { color: var(--ink-dim); }
   <h2>Before you start</h2>
 
   <ul class="checks">
-    <li><span><strong>An approved instance.</strong> In the app: create an
-      account, enable MFA, apply under <strong>Settings &rarr; Your own
-      server</strong>, wait for approval.</span></li>
+    <li><span><strong>A Pulse account.</strong> At the end of the installation
+      you connect the server to it; that account becomes the server&rsquo;s
+      admin.</span></li>
     <li><span><strong>A server</strong> with Docker and Docker Compose.</span></li>
     <li><span><strong>A DNS A record</strong> pointing at the server IP, for
       example <code>chat.example.com</code>. Set it <em>before</em> the first
@@ -548,11 +548,23 @@ ufw allow 8189/udp</pre>
 <!-- ═══ Installer ═══ -->
 <section id="installer">
   <h2>The fast way: installer script</h2>
-  <p>One command, and the server keeps itself up to date afterwards. Generate it
-  under <strong>Settings &rarr; Your own server &rarr; Set up server</strong>.</p>
+  <p>One command, and the server keeps itself up to date afterwards:</p>
 
   <div class="cmd">
-    <pre>curl -fsSL https://howispulse.com/install | PULSE_BOOTSTRAP_TOKEN=&lt;YOUR_TOKEN&gt; bash</pre>
+    <pre>curl -fsSL https://howispulse.com/install | bash</pre>
+  </div>
+
+  <p>The installer asks for your server&rsquo;s address, starts the server and
+  connects it to your Pulse account at the end: it shows a link and a short
+  code, and you confirm in the browser. Only confirm a code you just saw in
+  your own console.</p>
+
+  <p>Without a terminal (cloud-init, a CI job) pass the address up front and
+  connect afterwards:</p>
+
+  <div class="cmd">
+    <pre>curl -fsSL https://howispulse.com/install | PULSE_HOSTNAME=chat.example.com bash
+docker exec -it pulse pulse-connect</pre>
   </div>
 
   <p>Everything below is the <strong>manual</strong> route &mdash; for your own
@@ -585,77 +597,26 @@ ufw allow 8189/udp</pre>
         <p class="weg-was">The machine belongs to Pulse alone. The embedded Caddy
         fetches its own Let&rsquo;s Encrypt certificate, so 80 and 443 must be
         reachable from outside.</p>
-        <span class="weg-schritte">5 steps</span>
+        <span class="weg-schritte">4 steps</span>
       </div>
     </summary>
 
     <div class="weg-inhalt">
 
-      <div class="step"><span class="step-n">01</span><h3>Download the .env</h3></div>
-
-      <p><strong>Settings &rarr; Your own server &rarr; Set up server &rarr; Manual
-      installation &rarr; Download .env.</strong> The file is filled in completely.
-      You enter nothing by hand.</p>
-
-      <div class="note warn"><strong>One download only.</strong> Each one
-      generates a new secret and invalidates the previous. Keep the file safe
-      &mdash; it is also your registry password in step 3.</div>
-
-      <p>Check two values before you go on:</p>
-
-      <div class="cmd">
-        <pre>grep -E "^PULSE_(HOSTNAME|INSTANCE_OWNER_ID)=" .env</pre>
-      </div>
-
-      <div class="tbl">
-        <table>
-          <thead><tr><th>Value</th><th>Why it matters</th></tr></thead>
-          <tbody>
-            <tr>
-              <td><code>PULSE_INSTANCE_OWNER_ID</code></td>
-              <td>The account that applied for the instance. <strong>Only that
-              account becomes admin.</strong> There is no safety net &mdash;
-              getting it wrong means a database edit later. If it is not the
-              account you want, apply again now.</td>
-            </tr>
-            <tr>
-              <td><code>PULSE_HOSTNAME</code></td>
-              <td>Must be exactly the name the server will be reachable under.
-              The sign-in ticket is bound to it.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="step"><span class="step-n">02</span><h3>Get the files</h3></div>
+      <div class="step"><span class="step-n">01</span><h3>Get the files</h3></div>
 
       <div class="cmd">
         <pre>mkdir pulse &amp;&amp; cd pulse
 curl -fsSLO https://howispulse.com/self-host/docker-compose.yml
-
-mv ~/Downloads/pulse-instance-*.env .env</pre>
+printf 'PULSE_HOSTNAME=chat.example.com\n' &gt; .env</pre>
       </div>
 
-      <p>The filename <code>.env</code> is mandatory &mdash; Compose looks for
-      exactly that, in the same directory.</p>
+      <p>Use your own address instead of <code>chat.example.com</code>. The
+      filename <code>.env</code> is mandatory &mdash; Compose looks for exactly
+      that, in the same directory. Nothing else has to go into it; every other
+      switch has a safe default.</p>
 
-      <div class="step"><span class="step-n">03</span><h3>Sign in to the registry</h3></div>
-
-      <p>The image sits in a closed registry. Skip this and the start fails with
-      <code>pull access denied</code>. The credentials are already in your
-      <code>.env</code>:</p>
-
-      <div class="cmd">
-        <pre>grep -oP '^PULSE_CLOUD_CLIENT_SECRET=\K.*' .env \
-  | docker login registry.howispulse.com \
-      -u "$(grep -oP '^PULSE_CLOUD_CLIENT_ID=\K.*' .env)" --password-stdin</pre>
-      </div>
-
-      <p>Expect <code>Login Succeeded</code>. The pipe matters:
-      <code>--password-stdin</code> keeps the secret out of the process list and
-      your shell history.</p>
-
-      <div class="step"><span class="step-n">04</span><h3>Start it</h3></div>
+      <div class="step"><span class="step-n">02</span><h3>Start it</h3></div>
 
       <div class="cmd">
         <pre>docker compose up -d</pre>
@@ -671,24 +632,37 @@ mv ~/Downloads/pulse-instance-*.env .env</pre>
       <p>Some log lines on a first start look like errors and are not &mdash; the
       list is under <a href="#normal-logs">normal start-up messages</a>.</p>
 
-      <div class="step"><span class="step-n">05</span><h3>Verify and sign in</h3></div>
+      <div class="step"><span class="step-n">03</span><h3>Connect it to your Pulse account</h3></div>
+
+      <div class="cmd">
+        <pre>docker exec -it pulse pulse-connect</pre>
+      </div>
+
+      <p>It shows a link and a short code. Open the link, sign in to Pulse with
+      the account that should own the server and confirm. The console then says
+      <code>Connected to &lt;your name&gt;</code> and restarts the server (it is
+      back in about a minute). That account becomes the server&rsquo;s admin.</p>
+
+      <div class="note warn"><strong>Only confirm a code you just saw in your own
+      console.</strong> If someone sends you such a link, cancel it.</div>
+
+      <div class="step"><span class="step-n">04</span><h3>Verify</h3></div>
 
       <div class="cmd">
         <pre>curl https://chat.example.com/health                        <span class="c"># {"status":"ok"}</span>
 curl https://chat.example.com/.well-known/pulse-server-info</pre>
       </div>
 
-      <p>The second one carries the most information. It must show your
-      <code>instance_id</code> and, in <code>capabilities</code>, the entry
+      <p>The second one carries the most information. It must show
+      <code>"verbunden":true</code> and, in <code>capabilities</code>, the entry
       <strong><code>server-ticket</code></strong>.</p>
 
       <div class="note danger">No <code>server-ticket</code> means the server
       predates 28 August 2026 and will accept nobody. An update alone is not
       enough &mdash; it has to be set up again.</div>
 
-      <p>Then: <a href="https://howispulse.com">howispulse.com</a> &rarr;
-      <strong>Add server</strong> &rarr; your hostname. Sign in with the account
-      that applied (step 1) &mdash; only that one becomes admin.</p>
+      <p>The server now appears in Pulse on every device of your account. Open
+      it there and create the first community with its plus button.</p>
 
       <p>Finally run <strong>Settings &rarr; Your own server &rarr; My Instances
       &rarr; Check connection</strong>. That is the view from outside, and it
@@ -710,7 +684,7 @@ curl https://chat.example.com/.well-known/pulse-server-info</pre>
         <p class="weg-was">nginx, Traefik, Caddy or Nginx Proxy Manager already
         holds 80/443. Pulse leaves them alone and serves HTTP on 8080; TLS stays
         with your proxy.</p>
-        <span class="weg-schritte">6 steps</span>
+        <span class="weg-schritte">5 steps</span>
       </div>
     </summary>
 
@@ -720,77 +694,24 @@ curl https://chat.example.com/.well-known/pulse-server-info</pre>
       Every <code>docker compose</code> command carries
       <code>-f docker-compose.behind-proxy.yml</code>, updates included &mdash; or
       set <code>COMPOSE_FILE=docker-compose.behind-proxy.yml</code> in your shell
-      and drop the flag. And there is one extra step at the end: the proxy
-      rule.</div>
+      and drop the flag. And there is one extra step before you connect the
+      server: the proxy rule.</div>
 
-      <div class="step"><span class="step-n">01</span><h3>Download the .env</h3></div>
-
-      <p><strong>Settings &rarr; Your own server &rarr; Set up server &rarr; Manual
-      installation &rarr; Download .env.</strong> The file is filled in completely.
-      You enter nothing by hand.</p>
-
-      <div class="note warn"><strong>One download only.</strong> Each one
-      generates a new secret and invalidates the previous. Keep the file safe
-      &mdash; it is also your registry password in step 3.</div>
-
-      <p>Check two values before you go on:</p>
-
-      <div class="cmd">
-        <pre>grep -E "^PULSE_(HOSTNAME|INSTANCE_OWNER_ID)=" .env</pre>
-      </div>
-
-      <div class="tbl">
-        <table>
-          <thead><tr><th>Value</th><th>Why it matters</th></tr></thead>
-          <tbody>
-            <tr>
-              <td><code>PULSE_INSTANCE_OWNER_ID</code></td>
-              <td>The account that applied for the instance. <strong>Only that
-              account becomes admin.</strong> There is no safety net &mdash;
-              getting it wrong means a database edit later. If it is not the
-              account you want, apply again now.</td>
-            </tr>
-            <tr>
-              <td><code>PULSE_HOSTNAME</code></td>
-              <td>Must be exactly the name the server will be reachable under.
-              The sign-in ticket is bound to it.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <p><code>PULSE_TLS_MODE</code> is deliberately absent &mdash; this Compose
-      file sets it to <code>behind-proxy</code> itself.</p>
-
-      <div class="step"><span class="step-n">02</span><h3>Get the files</h3></div>
+      <div class="step"><span class="step-n">01</span><h3>Get the files</h3></div>
 
       <div class="cmd">
         <pre>mkdir pulse &amp;&amp; cd pulse
 curl -fsSLO https://howispulse.com/self-host/docker-compose.behind-proxy.yml
-
-mv ~/Downloads/pulse-instance-*.env .env</pre>
+printf 'PULSE_HOSTNAME=chat.example.com\n' &gt; .env</pre>
       </div>
 
-      <p>The filename <code>.env</code> is mandatory &mdash; Compose looks for
-      exactly that, in the same directory.</p>
+      <p>Use your own address instead of <code>chat.example.com</code>. The
+      filename <code>.env</code> is mandatory &mdash; Compose looks for exactly
+      that, in the same directory. <code>PULSE_TLS_MODE</code> is deliberately
+      absent &mdash; this Compose file sets it to <code>behind-proxy</code>
+      itself.</p>
 
-      <div class="step"><span class="step-n">03</span><h3>Sign in to the registry</h3></div>
-
-      <p>The image sits in a closed registry. Skip this and the start fails with
-      <code>pull access denied</code>. The credentials are already in your
-      <code>.env</code>:</p>
-
-      <div class="cmd">
-        <pre>grep -oP '^PULSE_CLOUD_CLIENT_SECRET=\K.*' .env \
-  | docker login registry.howispulse.com \
-      -u "$(grep -oP '^PULSE_CLOUD_CLIENT_ID=\K.*' .env)" --password-stdin</pre>
-      </div>
-
-      <p>Expect <code>Login Succeeded</code>. The pipe matters:
-      <code>--password-stdin</code> keeps the secret out of the process list and
-      your shell history.</p>
-
-      <div class="step"><span class="step-n">04</span><h3>Start it</h3></div>
+      <div class="step"><span class="step-n">02</span><h3>Start it</h3></div>
 
       <div class="cmd">
         <pre>docker compose -f docker-compose.behind-proxy.yml up -d</pre>
@@ -806,7 +727,7 @@ mv ~/Downloads/pulse-instance-*.env .env</pre>
       <p>Some log lines on a first start look like errors and are not &mdash; the
       list is under <a href="#normal-logs">normal start-up messages</a>.</p>
 
-      <div class="step"><span class="step-n">05</span><h3>Add the proxy rule</h3></div>
+      <div class="step"><span class="step-n">03</span><h3>Add the proxy rule</h3></div>
 
       <p><strong>One</strong> rule &mdash; the container routes the rest.</p>
 
@@ -869,24 +790,39 @@ docker compose -f docker-compose.behind-proxy.yml up -d</pre>
       <div class="note">Voice and HQ streaming bypass the proxy over UDP. Those
       ports must stay open either way.</div>
 
-      <div class="step"><span class="step-n">06</span><h3>Verify and sign in</h3></div>
+      <div class="step"><span class="step-n">04</span><h3>Connect it to your Pulse account</h3></div>
+
+      <div class="cmd">
+        <pre>docker exec -it pulse pulse-connect</pre>
+      </div>
+
+      <p>Pulse first checks from outside that the server answers under its
+      address, so the proxy rule from step 3 must be in place. Then it shows a
+      link and a short code. Open the link, sign in to Pulse with the account
+      that should own the server and confirm. The console then says
+      <code>Connected to &lt;your name&gt;</code> and restarts the server (it is
+      back in about a minute). That account becomes the server&rsquo;s admin.</p>
+
+      <div class="note warn"><strong>Only confirm a code you just saw in your own
+      console.</strong> If someone sends you such a link, cancel it.</div>
+
+      <div class="step"><span class="step-n">05</span><h3>Verify</h3></div>
 
       <div class="cmd">
         <pre>curl https://chat.example.com/health                        <span class="c"># {"status":"ok"}</span>
 curl https://chat.example.com/.well-known/pulse-server-info</pre>
       </div>
 
-      <p>The second one carries the most information. It must show your
-      <code>instance_id</code> and, in <code>capabilities</code>, the entry
+      <p>The second one carries the most information. It must show
+      <code>"verbunden":true</code> and, in <code>capabilities</code>, the entry
       <strong><code>server-ticket</code></strong>.</p>
 
       <div class="note danger">No <code>server-ticket</code> means the server
       predates 28 August 2026 and will accept nobody. An update alone is not
       enough &mdash; it has to be set up again.</div>
 
-      <p>Then: <a href="https://howispulse.com">howispulse.com</a> &rarr;
-      <strong>Add server</strong> &rarr; your hostname. Sign in with the account
-      that applied (step 1) &mdash; only that one becomes admin.</p>
+      <p>The server now appears in Pulse on every device of your account. Open
+      it there and create the first community with its plus button.</p>
 
       <p>Finally run <strong>Settings &rarr; Your own server &rarr; My Instances
       &rarr; Check connection</strong>. That is the view from outside, and it
@@ -993,7 +929,8 @@ docker compose -f docker-compose.behind-proxy.yml pull &amp;&amp; \
         <tr><td>Sign-in fails, server is running</td><td>Server cannot reach the Cloud</td><td>On the server: <code>curl https://howispulse.com/.well-known/jwks.json</code></td></tr>
         <tr><td><code>/health</code> says <code>degraded</code></td><td>Postgres or Redis down</td><td><code>docker compose logs pulse | tail -50</code></td></tr>
         <tr><td>&ldquo;ports already in use&rdquo;</td><td>Another service holds a media port</td><td>Bind Pulse to a second IP, see below</td></tr>
-        <tr><td>Not admin on your own server</td><td>Signed in with a different account than the one that applied</td><td>See below</td></tr>
+        <tr><td>Nobody can sign in, the log says &ldquo;not connected to a Pulse account&rdquo;</td><td>The server was never connected</td><td><code>docker exec -it pulse pulse-connect</code></td></tr>
+        <tr><td>Not admin on your own server</td><td>Signed in with a different account than the one that confirmed the connection</td><td>See below</td></tr>
       </tbody>
     </table>
   </div>
@@ -1008,16 +945,23 @@ docker compose -f docker-compose.behind-proxy.yml pull &amp;&amp; \
   </div>
 
   <h3>Not admin on your own server</h3>
-  <p>The server logs both the configured owner and who signed in:</p>
+  <p>The admin is the account that confirmed the connection. The server logs
+  both its owner and who signed in:</p>
 
   <div class="cmd">
     <pre>docker logs pulse 2&gt;&amp;1 | grep -iE "instance owner|Cloud account"</pre>
   </div>
 
-  <p>Two different numbers means the wrong account. To move the server to another
-  account, change <code>PULSE_INSTANCE_OWNER_ID</code> in the <code>.env</code>
-  and restart. Needs <code>PULSE_LOG_LEVEL=info</code>, which is the default
-  &mdash; if neither line appears, the container is running quieter than that.</p>
+  <p>Two different numbers means the wrong account. To hand the server to
+  another account, run <code>docker exec -it pulse pulse-connect</code> again and
+  confirm with that account. The current owner gets an email and has 72 hours
+  to object; once the 72 hours are over, run the same command again. To skip
+  the wait, the current owner deletes the server under
+  <em>My servers</em> first. Servers set up before October 2026 carry the owner
+  as <code>PULSE_INSTANCE_OWNER_ID</code> in their <code>.env</code> instead;
+  change it there and restart. Needs <code>PULSE_LOG_LEVEL=info</code>, which is
+  the default &mdash; if neither line appears, the container is running quieter
+  than that.</p>
 
   <h3>Certificate never arrives</h3>
   <p><code>pulse-doctor</code> compares what your hostname resolves to against

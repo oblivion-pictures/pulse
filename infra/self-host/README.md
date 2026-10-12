@@ -1,29 +1,26 @@
 # Pulse Self-Host — Single-Container Image (Phase 6.A)
 
-`registry.howispulse.com/pulse-allinone:stable` — one container that bundles every
+`ghcr.io/oblivion-pictures/pulse:stable` — one container that bundles every
 Pulse-Backend-Service, an embedded Postgres + Redis, LiveKit (voice SFU),
 MediaMTX (HQ-stream relay), Garage (S3 object store for message attachments),
 coturn (TURN/STUN), and Caddy (reverse proxy + auto-TLS), supervised by
 [s6-overlay](https://github.com/just-containers/s6-overlay) v3 as PID 1.
 
 This file documents the **build + run** flow for the image. End-user setup
-docs (Cloud-approval, DNS, port-forwarding) land in `docs/self-host-guide.html` —
-written in Phase 6.B.
+docs (DNS, ports, connecting the server to a Pulse account) are in
+`docs/self-host-guide.html`, served as https://howispulse.com/self-host/guide.
 
-**Two registries, one image.** `.github/workflows/allinone.yml` builds and
-pushes to `ghcr.io/oblivion-pictures/pulse` first, then its `merge`
-job mirrors every tag (`imagetools create`) to `registry.howispulse.com/pulse-allinone`
-under the identical tag name. **Operators pull from `registry.howispulse.com`,
-never from GHCR** — the `pulse-*` GHCR packages are private, while
-`registry.howispulse.com` gates access per-instance via the `PULSE_CLOUD_CLIENT_ID`/
-`PULSE_CLOUD_CLIENT_SECRET` from the Cloud approval (`docker login
-registry.howispulse.com -u <client_id> -p <client_secret>`). Both `:edge`
-(every `main` push) and `:stable` (tagged releases) exist on both registries;
-during the current early/security phase every `main` push tags **both**
-identically (see the `PHASEN-POLICY` comment in `allinone.yml`) — they diverge
-once real tagged releases start. The installer (`web/static/install.sh`)
-defaults to `:edge`, overridable via `PULSE_IMAGE`; this file's Compose/`docker
-run` examples below pin `:stable`.
+**One image, two addresses.** `.github/workflows/allinone.yml` builds and
+pushes `ghcr.io/oblivion-pictures/pulse` — **public, no login needed** — and
+its `merge` job mirrors every tag (`imagetools create`) to
+`registry.howispulse.com/pulse-allinone` under the identical tag name. The
+mirror only serves servers set up before October 2026: it gates access
+per-instance via their `PULSE_CLOUD_CLIENT_ID`/`PULSE_CLOUD_CLIENT_SECRET`
+(`docker login registry.howispulse.com`), and their update scripts keep pulling
+from it. New servers pull from GHCR. Both `:edge` (every `main` push) and
+`:stable` (tagged releases `vX.Y.Z` only) exist on both. The installer
+(`web/static/install.sh`) and the Compose files use `:stable`; the installer
+takes another image via `PULSE_IMAGE`.
 
 ## Build
 
@@ -58,16 +55,17 @@ Zwei fertige Compose-Varianten (auch ohne Repo-Clone beziehbar — URLs in
   exponiert nur `127.0.0.1:8080` (setzt `PULSE_TLS_MODE=behind-proxy` selbst).
 
 ```bash
-cp .env.example .env      # nur PULSE_HOSTNAME eintragen; die [VERBINDUNG]-Zeilen LEER lassen
+printf 'PULSE_HOSTNAME=chat.example.com\n' > .env   # einzige Pflicht-Variable
 docker compose up -d      # bzw. docker compose -f docker-compose.behind-proxy.yml up -d
-docker exec -it pulse pulse-connect   # verbindet den neuen Server mit deinem Pulse-Konto
+docker exec -it pulse pulse-connect   # Link + Code, im Browser bestätigen
 ```
 
-Ein neuer Server lässt die fünf `[VERBINDUNG]`-Zeilen der `.env` leer —
-`pulse-connect` füllt sie (in `/data/pulse/verbindung.env`). Nur Bestandsserver
-(eingerichtet vor Oktober 2026) tragen sie in der `.env` ein; der `.env`-Download
-via "Meine Instanzen" bringt sie fertig mit. Ein Wert in der `.env` gewinnt
-immer gegen `verbindung.env`; eine leere Zeile zählt als nicht gesetzt.
+Die `.env` braucht nur diese eine Zeile. Wer stattdessen `.env.example`
+kopiert, lässt die fünf `[VERBINDUNG]`-Zeilen leer — `pulse-connect` füllt die
+Werte (in `/data/pulse/verbindung.env`). Nur Bestandsserver (eingerichtet vor
+Oktober 2026) tragen sie in der `.env` ein; die `.env` aus der Freigabe-Zeit
+brachte sie fertig mit. Ein Wert in der `.env` gewinnt immer gegen
+`verbindung.env`; eine leere Zeile zählt als nicht gesetzt.
 
 Updates verwaltet der Compose-Pfad bewusst selbst — kein Auto-Updater-Container
 (siehe [Auto-update](#auto-update)).
@@ -75,8 +73,7 @@ Updates verwaltet der Compose-Pfad bewusst selbst — kein Auto-Updater-Containe
 ## Run (manuell, ohne Compose)
 
 ```bash
-docker login registry.howispulse.com -u <client_id> -p <client_secret>  # aus dem .env-Download
-docker run -d --name pulse \
+docker run -d --name pulse --restart unless-stopped \
     -v pulse-data:/data \
     -p 443:443 -p 80:80 \
     -p 7882-7892:7882-7892/udp \
@@ -84,13 +81,13 @@ docker run -d --name pulse \
     -p 49160-49200:49160-49200/udp \
     -p 1936:1936 -p 8189:8189/udp \
     -e PULSE_HOSTNAME=chat.example.com \
-    -e PULSE_INSTANCE_ID=... \
-    -e PULSE_INSTANCE_OWNER_ID=... \
-    -e PULSE_CLOUD_CLIENT_ID=... \
-    -e PULSE_CLOUD_CLIENT_SECRET=... \
-    -e PULSE_ADMIN_EMAIL=admin@example.com \
-    registry.howispulse.com/pulse-allinone:stable
+    ghcr.io/oblivion-pictures/pulse:stable
+docker exec -it pulse pulse-connect
 ```
+
+`--restart unless-stopped` ist Pflicht: `pulse-connect` startet die Dienste
+nach dem Verbinden neu, indem es den Container beendet — die Neustartregel
+holt ihn zurück. Ohne sie bliebe er nach dem Verbinden gestoppt.
 
 Der `49160-49200/udp`-Range sind die TURN-Relay-Ports — er MUSS mit
 `min-port`/`max-port` in `04-init-coturn.sh` übereinstimmen (Defaults
@@ -101,12 +98,15 @@ Zeile steht in `docker-compose.yml`).
 Updates richtest du auf dem manuellen Pfad (Compose wie `docker run`) selbst
 ein — siehe [Auto-update](#auto-update).
 
-Only `PULSE_HOSTNAME` is mandatory; cont-init aborts with a clear error without
-it. A server started without `PULSE_INSTANCE_ID`, `PULSE_INSTANCE_OWNER_ID`,
-`PULSE_CLOUD_CLIENT_ID` and `PULSE_CLOUD_CLIENT_SECRET` runs but admits nobody
-until it is connected: `docker exec -it pulse pulse-connect` (the values then
-live in `/data/pulse/verbindung.env`; values passed with `-e` win). Servers set
-up with a Cloud approval keep passing them with `-e` as before.
+Only `PULSE_HOSTNAME` is mandatory; cont-init aborts with a clear error
+without it. Until `docker exec -it pulse pulse-connect` has connected the
+server, it runs but admits nobody. `pulse-connect` fetches instance ID, owner
+and the cloud credentials once you confirm in the browser and stores them in
+the volume (`/data/pulse/verbindung.env`, `chmod 600`). Values set in the
+environment (`-e`, `.env`) win over that file — that is how servers set up
+before October 2026 (instance ID, owner and credentials in their `.env` or
+`-e`) keep running unchanged. `PULSE_ADMIN_EMAIL` is optional: without it,
+Let's Encrypt runs without an account address.
 All internal secrets (Postgres password, JWT keys, coturn shared-secret,
 LiveKit API key pair, Garage S3 credentials — still named `minio.*`
 internally) are **generated on first boot**
@@ -169,8 +169,9 @@ docker compose pull && docker compose up -d
 run manually, or wrapped in a host cron/systemd timer. A ready-made script as
 a template lives at `infra/self-host/pulse-update.sh` (download:
 `https://howispulse.com/self-host/pulse-update.sh` — drop it next to
-`docker-compose.yml`, it reads the registry credentials from `.env`; examples
-for cron/systemd are in its header). End-user docs:
+`docker-compose.yml`; it signs in to `registry.howispulse.com` only when the
+Compose file still pulls from there (servers set up before October 2026, with
+the credentials in `.env`); examples for cron/systemd are in its header). End-user docs:
 `docs/self-host-guide.html` → "Running it".
 
 ## Diagnose
