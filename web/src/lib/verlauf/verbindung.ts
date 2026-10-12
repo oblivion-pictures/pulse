@@ -16,6 +16,9 @@ import { DB_NAME, DB_VERSION, STORE_NACHRICHTEN, STORE_ANHAENGE, STORE_MEDIEN, I
 import { melde } from '$lib/diagnose/app-diagnose';
 
 let _dbPromise: Promise<IDBDatabase> | null = null;
+/** Schon einmal gemeldet, dass der Bestand jünger ist als dieser Code? Jeder
+ *  Zugriff versucht es erneut und scheitert gleich — gemeldet wird einmal. */
+let zuNeuGemeldet = false;
 
 function _openFresh(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -74,44 +77,40 @@ function _openFresh(): Promise<IDBDatabase> {
 }
 
 /**
- * Löscht die Verlaufs-Datenbank GANZ — ohne sie öffnen zu müssen (ein Öffnen
- * mit kleinerer Fassung wäre ja gerade der Fehlschlag). Einziger Aufrufer ist
- * die Fassungs-Stau-Heilung unten.
+ * Öffnet die geteilte Verbindung. **Eine höhere Fassung wird nie gelöscht.**
+ *
+ * Bis 2026-10-12 stand hier die „Fassungs-Stau-Heilung" (seit 2026-09-22):
+ * fand das Öffnen einen Bestand in HÖHERER Fassung vor (`VersionError`),
+ * löschte sie die ganze Datenbank und legte sie neu an. Gedacht war das für
+ * Profile, die einmal einen Experimentier-Zweig geladen hatten. Getroffen
+ * hätte es aber jeden Tab, der nach einem Deploy noch den alten Code fährt,
+ * sobald ein neuer Tab die Fassung anhebt — und für verschlüsselte
+ * Nachrichten ist der lokale Verlauf die einzige Kopie (Gegenprüfung
+ * 2026-10-12, Fund 5). Der Blockier-Schutz griff nicht: der neue Tab schließt
+ * seine Verbindung in `onversionchange` selbst, das Löschen lief also durch,
+ * und der neue Tab legte danach eine leere Datenbank an. Ebenso nach einem
+ * Rückroll-Deploy oder mit einem offenen Electron-Fenster der alten Fassung.
+ *
+ * Jetzt fällt `VersionError` einfach durch: `speicherfehler.ts` deutet ihn
+ * als `zu_neu`, die Oberfläche bittet um ein Neuladen (`zustand.svelte.ts`),
+ * und der neu geladene Code kennt die Fassung. Bis dahin läuft der Tab ohne
+ * lokalen Verlauf, verliert aber nichts. Ein Profil, das wirklich einen
+ * jüngeren Bestand aus einem Experimentier-Zweig hält, räumt man von Hand —
+ * etwa über „Öffentlicher Computer" in den Einstellungen, das allerdings ALLE
+ * lokalen Daten dieses Geräts löscht und abmeldet. Die App löscht den
+ * Bestand nie selbst.
  */
-function _loeschen(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(DB_NAME);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-    req.onblocked = () =>
-      reject(new Error('Löschen blockiert — ein Fenster mit der neueren Fassung läuft noch'));
-  });
-}
-
 function openVerlaufDb(): Promise<IDBDatabase> {
   if (!_dbPromise) {
     const versuch = _openFresh().catch((err: unknown) => {
-      // Fassungs-Stau-Heilung (2026-09-22, Michaels Dev-Profil): VersionError
-      // heißt, der gespeicherte Bestand ist HÖHER als DB_VERSION. Möglich ist
-      // das ausschließlich in einem Profil, das einmal einen Experimentier-
-      // Zweig mit jüngerer Fassung geladen hat (Nextcloud-/Mobil-Proben;
-      // ausgelieferte Builds haben die höhere Fassung nie gesehen und laufen
-      // beim echten Fassungs-Wechsel über onupgradeneeded, nicht hierher).
-      // Für genau solche Profile ist der Bestand eine Wegwerf-Kopie von
-      // Testdaten: löschen und frisch anlegen — Stillstand wäre schlimmer
-      // („Lokaler Verlauf ist gerade nicht verfügbar", bei JEDEM DM, für
-      // immer). Ist das experimental fenster noch offen, blockiert das
-      // Löschen und der Fehler fällt normal durch — speicherfehler.ts
-      // benennt die Lage dann ehrlich als `zu_neu`.
-      if (!(err instanceof DOMException && err.name === 'VersionError')) throw err;
-      console.warn('[verlauf] lokale Datenbank in höherer Fassung vorgefunden — lege neu an');
-      melde(
-        'verlauf',
-        'verlauf_fassungs_stau',
-        `Bestand jünger als App (VersionError) — Speicher neu angelegt`,
-        { code_version: DB_VERSION }
-      );
-      return _loeschen().then(() => _openFresh());
+      if (err instanceof DOMException && err.name === 'VersionError' && !zuNeuGemeldet) {
+        zuNeuGemeldet = true;
+        console.warn('[verlauf] lokale Datenbank in höherer Fassung vorgefunden — bitte neu laden');
+        melde('verlauf', 'verlauf_zu_neu', 'Bestand jünger als App (VersionError), nichts gelöscht', {
+          code_version: DB_VERSION
+        });
+      }
+      throw err;
     });
     // Ein abgelehnter Versuch darf nicht kleben: sonst wehrt ein gespeicherter
     // Fehler jeden künftigen Aufruf mit demselben Text ab, ohne es je erneut

@@ -10,10 +10,12 @@ const GRUND_TEXT: Record<SpeicherLage, string> = {
   nicht_verfuegbar:
     'Verlauf läuft nur online — der private Modus blockt den lokalen Speicher.',
   voll: 'Lokaler Speicher ist voll. Ältere Verläufe lassen sich in den Einstellungen freigeben.',
-  // Zeigt sich nur, wenn die Selbstheilung in verbindung.ts BLOCKIERT ist
-  // (das Fenster mit der neueren Fassung läuft noch parallel).
+  // Der Bestand trägt eine neuere Fassung, als dieser Code kennt — ein
+  // anderer Tab mit neuerem Code hat sie angehoben. `verbindung.ts` löscht ihn
+  // dafür nie (Gegenprüfung 2026-10-12, Fund 5); der neu geladene Code kennt
+  // die Fassung.
   zu_neu:
-    'Verlauf läuft nur online — der lokale Speicher wurde von einer neueren App-Fassung belegt. App-Neustart hebt das auf.',
+    'Lokaler Verlauf pausiert — eine neuere App-Fassung hat ihn geöffnet. Bitte neu laden, dabei geht nichts verloren.',
   fehler: 'Lokaler Verlauf ist gerade nicht verfügbar.'
 };
 

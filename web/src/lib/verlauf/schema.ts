@@ -34,16 +34,17 @@ export const DB_NAME = 'pulse-verlauf';
  * Kanaele). Bestandsdaten wandern nicht: der Index baut sich beim ersten
  * Schreiben ueber `verlaufPutSaetze` selbst.
  *
- * **Eine Fassung 4 ist heute gefährlich** (Befund 2026-10-12, beim
- * Grabstein-Register). Seit 2026-09-22 löscht `verbindung.ts` die ganze
- * Datenbank, wenn sie beim Öffnen eine HÖHERE Fassung vorfindet
- * („Fassungs-Stau-Heilung", gedacht für Experimentier-Profile). Ein Tab, der
- * nach einem Deploy noch den alten Code fährt, fände nach dem Aufstieg eines
- * anderen Tabs genau das vor — und löschte den Verlauf, für verschlüsselte
- * Nachrichten die einzige Kopie. Das Register liegt deshalb im Speicher
- * `nachrichten` (`grabsteinRegister.ts`); wer wirklich einen Speicher
- * braucht, entschärft zuerst die Heilung und lässt sie eine Auslieferung
- * lang draußen, bevor die Nummer steigt.
+ * **Eine Fassung 4 darf erst eine Auslieferung nach der Entschärfung
+ * kommen** (Befund 2026-10-12, beim Grabstein-Register). Von 2026-09-22 bis 2026-10-12 löschte
+ * `verbindung.ts` die ganze Datenbank, wenn sie beim Öffnen eine HÖHERE
+ * Fassung vorfand („Fassungs-Stau-Heilung", gedacht für Experimentier-
+ * Profile). Ein Tab, der nach einem Deploy noch den alten Code fährt, fände
+ * nach dem Aufstieg eines anderen Tabs genau das vor — und löschte den
+ * Verlauf, für verschlüsselte Nachrichten die einzige Kopie. Die Heilung ist
+ * seit 2026-10-12 entschärft (Gegenprüfung, Fund 5: `zu_neu` statt Löschen),
+ * aber Klienten mit dem alten Code laufen noch. Erst wenn die entschärfte
+ * Fassung eine Auslieferung lang draußen ist, darf die Nummer steigen. Das
+ * Register liegt deshalb im Speicher `nachrichten` (`grabsteinRegister.ts`).
  */
 export const DB_VERSION = 3;
 /** Die Sätze des Verlaufs — und seit 2026-10-12 auch die Einträge des

@@ -91,17 +91,22 @@ test('erfolgreiche Zugriffe heben einen gemeldeten Fehler wieder auf', () => {
   assert.match(quelle, /verlaufZustand\.erholt\(\)/);
 });
 
-// ── Fassungs-Stau-Selbstheilung (2026-09-22) ────────────────────────────────
-// Der Heilungspfad läuft im Browser (IndexedDB), im Node-Läufer unerreichbar —
-// deshalb Quelltext-Gegenproben auf die zwei versprochenen Eigenschaften:
-// erkennen UND neu anlegen (Löschen reicht nicht, sonst bleibt es beim Fehler).
+// ── Fassungs-Stau (Gegenprüfung 2026-10-12, Fund 5) ─────────────────────────
+// Von 2026-09-22 bis 2026-10-12 löschte `verbindung.ts` die ganze Datenbank,
+// sobald sie eine höhere Fassung vorfand — auch in einem Tab, der nach einem
+// Deploy noch den alten Code fuhr. Der Weg läuft im Browser (IndexedDB), im
+// Node-Läufer unerreichbar; den Ablauf belegt `tests/e2e/verlauf-fassung.spec.ts`.
+// Hier die Quelltext-Gegenprobe, dass das Löschen nicht zurückkommt.
 
-test('Fassungs-Stau heilt sich selbst: löschen UND neu anlegen', () => {
+test('Fassungs-Stau: ein jüngerer Bestand wird nie gelöscht, sondern als zu_neu gemeldet', () => {
   const quelle = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), '../src/lib/verlauf/verbindung.ts'),
     'utf8'
   );
   assert.match(quelle, /VersionError/);
-  assert.match(quelle, /deleteDatabase/);
-  assert.match(quelle, /_loeschen\(\)\.then\(\(\) => _openFresh\(\)\)/);
+  assert.doesNotMatch(quelle, /deleteDatabase/);
+  const gedeutet = deuteSpeicherfehler(
+    Object.assign(new Error('version'), { name: 'VersionError' })
+  );
+  assert.equal(gedeutet.art, 'zu_neu');
 });

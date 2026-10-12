@@ -16,8 +16,11 @@
 
 /** Die vier Lagen — Reihenfolge der Prüfung ist irrelevant, die Mengen sind
  *  disjunkt. `zu_neu` (2026-09-22): der gespeicherte Bestand trägt eine
- *  HÖHERE Fassung als der Code — nur möglich in Profilen, die einmal einen
- *  Experimentier-Zweig mit jüngerer Fassung geladen haben. */
+ *  HÖHERE Fassung als der Code — ein Tab mit altem Code, nachdem ein anderer
+ *  die Fassung angehoben hat (Deploy, Rückroll, offenes Electron-Fenster),
+ *  oder ein Profil, das einmal einen Experimentier-Zweig geladen hat. Seit
+ *  2026-10-12 wird der Bestand dafür nie gelöscht (`verbindung.ts`); die
+ *  Oberfläche bittet um ein Neuladen. */
 export type SpeicherLage = 'nicht_verfuegbar' | 'voll' | 'zu_neu' | 'fehler';
 
 type GedeuteterFehler = {

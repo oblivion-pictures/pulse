@@ -26,19 +26,21 @@
  * Nachrichten vorab „löschen".
  *
  * **Kein eigener Objektspeicher, mit Absicht.** Ein neuer Speicher ginge nur
- * über eine höhere `DB_VERSION`, und an genau der zerstört
- * `verbindung.ts::openVerlaufDb` den Bestand: ein noch offener Tab mit der
- * älteren Fassung bekommt beim nächsten Öffnen `VersionError`, und die
- * „Fassungs-Stau-Heilung" dort LÖSCHT daraufhin die ganze Datenbank — für
- * verschlüsselte Nachrichten die einzige Kopie. Die Einträge liegen deshalb
- * im Speicher `nachrichten`, unter einem Schlüssel mit eigenem Präfix, und
- * ohne die Felder `kanalId` und `kontoId`. Das hält sie aus jedem
- * bestehenden Leseweg heraus: die Kanal-Bereiche beginnen mit der Kanal-ID
- * (Ziffern, `satz.ts::sortierSchluessel`), `~` sortiert hinter jeder davon;
- * die vollen Scans filtern über `kontoFilter.ts::gehoertZuKonto`, und das
- * lehnt einen Satz ohne `kontoId` ab; der Index `nach_kanal` überspringt
- * Zeilen ohne `kanalId`. Wer einen neuen Leseweg über `nachrichten` baut,
- * filtert ebenso — oder prüft mit `istRegisterEintrag`.
+ * über eine höhere `DB_VERSION`, und an genau der zerstörte
+ * `verbindung.ts::openVerlaufDb` bis 2026-10-12 den Bestand: ein noch offener
+ * Tab mit der älteren Fassung bekam beim nächsten Öffnen `VersionError`, und
+ * die „Fassungs-Stau-Heilung" dort LÖSCHTE daraufhin die ganze Datenbank —
+ * für verschlüsselte Nachrichten die einzige Kopie. Seither ist sie
+ * entschärft, aber Klienten mit dem alten Code laufen noch (Kommentar zu
+ * `DB_VERSION` in `schema.ts`). Die Einträge liegen deshalb im Speicher
+ * `nachrichten`, unter einem Schlüssel mit eigenem Präfix, und ohne die
+ * Felder `kanalId` und `kontoId`. Das hält sie aus jedem bestehenden Leseweg
+ * heraus: die Kanal-Bereiche beginnen mit der Kanal-ID (Ziffern,
+ * `satz.ts::sortierSchluessel`), `~` sortiert hinter jeder davon; die vollen
+ * Scans filtern über `kontoFilter.ts::gehoertZuKonto`, und das lehnt einen
+ * Satz ohne `kontoId` ab; der Index `nach_kanal` überspringt Zeilen ohne
+ * `kanalId`. Wer einen neuen Leseweg über `nachrichten` baut, filtert
+ * ebenso — oder prüft mit `istRegisterEintrag`.
  *
  * Importfrei bis auf den `.ts`-Pfad der Identitätsregel (Nodes Testläufer).
  */
