@@ -664,6 +664,15 @@ mod tests {
     /// Musterformats, und ohne ihn waere die Sonde stumm ausgefallen, sobald
     /// eine Seite sich bewegt. Wandert die Datei erneut, ist DIESER Pfad
     /// nachzuziehen und nicht der Test abzuschalten.
+    ///
+    /// **Seit dem 2026-10-12 liegt die Python-Seite im internen Repo**
+    /// (`streaming/testbench/` wanderte mit den übrigen Labor-Ordnern aus,
+    /// eingehängt unter `intern/` des öffentlichen Klons). Der Test sucht sie
+    /// dort; wo das interne Repo nicht eingehängt ist (Mitwirkende, CI, ein
+    /// frischer Worktree), kann er nichts vergleichen und sagt das, statt rot
+    /// zu werden — der Vergleich läuft auf jedem Rechner, der beide Seiten hat.
+    /// Zwischen dem Umzug (#552) und dieser Anpassung war er auf main rot,
+    /// ohne dass es auffiel: kein Gate prüfte den unveränderten Player neu.
     #[test]
     fn musterformat_stimmt_mit_dem_python_teil_ueberein() {
         /// Eine Reihe so schreiben, wie die Python-Seite sie fuehrt:
@@ -676,10 +685,16 @@ mod tests {
             format!("({})", inhalt.join(", "))
         }
 
-        let py = std::fs::read_to_string(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../testbench/pattern_format.py"),
-        )
-        .expect("pattern_format.py");
+        let pfad = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../intern/streaming/testbench/pattern_format.py"
+        );
+        let Ok(py) = std::fs::read_to_string(pfad) else {
+            eprintln!(
+                "musterformat: {pfad} fehlt (internes Repo nicht eingehängt) — Vergleich übersprungen"
+            );
+            return;
+        };
         assert!(py.contains(&format!("BLOCK = {BLOCK}")), "BLOCK");
         assert!(py.contains(&format!("COUNTER_BITS = {COUNTER_BITS}")), "COUNTER_BITS");
         assert!(py.contains(&format!("MARKER = {MARKER:?}")), "MARKER");
