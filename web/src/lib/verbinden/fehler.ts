@@ -93,12 +93,14 @@ export function ausgangUngewiss(f: VerbindenFehler): boolean {
  *  `zu_viele_server` und `nachweis_fehlt`: der Vorgang wartet weiter, nach einem
  *  gelöschten Server oder einem reparierten Proxy genügt ein zweiter Klick. */
 export function vorgangVerbraucht(f: VerbindenFehler): boolean {
-  return (
-    f.art === 'uebernahme_gesperrt' ||
-    f.art === 'verbinden_gesperrt' ||
-    f.art === 'adresse_gesperrt' ||
-    f.art === 'nachsehen'
-  );
+  return f.art === 'uebernahme_gesperrt' || f.art === 'nachsehen' || istEndgueltig(f.art);
+}
+
+/** Konto oder Adresse gesperrt: die Cloud lehnt den Vorgang dabei selbst ab, ein
+ *  neuer Versuch mit demselben Code bekäme nur noch 404. Die Seite zeigt deshalb
+ *  weder die Frage noch „Erneut versuchen“. */
+export function istEndgueltig(art: string | null): boolean {
+  return art === 'verbinden_gesperrt' || art === 'adresse_gesperrt';
 }
 
 /** Paraglide-Schlüssel des Hinweistextes. `null` = die Seite wechselt in einen

@@ -249,6 +249,8 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
       await expect(page.getByTestId('verbinden-hinweis')).toHaveAttribute('data-fehler', fall.art);
       await expect(page.getByTestId('verbinden-bestaetigen')).toHaveCount(0);
       await expect(page.getByTestId('verbinden-abbrechen')).toHaveCount(0);
+      // Neu laden hülfe nicht: der Code ist verbraucht.
+      await expect(page.getByTestId('verbinden-erneut')).toHaveCount(0);
       await expect(page.getByTestId('verbinden-zu-pulse')).toBeVisible();
       expect(aktionen).toEqual(['verbinden']);
     }

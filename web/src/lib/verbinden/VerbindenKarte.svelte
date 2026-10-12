@@ -26,6 +26,7 @@
   import { m } from '$lib/paraglide/messages.js';
   import VerbindenAbschluss, { istAbschluss } from './VerbindenAbschluss.svelte';
   import VerbindenFrage, { IDS } from './VerbindenFrage.svelte';
+  import { istEndgueltig } from './fehler';
 
   let {
     zustand,
@@ -176,9 +177,11 @@
         </div>
       {:else}
         <div class="flex w-full flex-col gap-2">
-          <Button class="w-full" onclick={onErneut} data-testid="verbinden-erneut">
-            {m.verbinden_erneut()}
-          </Button>
+          {#if !istEndgueltig(fehlerArt)}
+            <Button class="w-full" onclick={onErneut} data-testid="verbinden-erneut">
+              {m.verbinden_erneut()}
+            </Button>
+          {/if}
           <Button variant="outline" class="w-full" onclick={onZuPulse} data-testid="verbinden-zu-pulse">
             {m.verbinden_zu_pulse()}
           </Button>

@@ -7,6 +7,7 @@ import {
   meldungsSchluessel,
   verbindenFehler,
   vorgangVerbraucht,
+  istEndgueltig,
   type VerbindenFehler
 } from '../src/lib/verbinden/fehler.ts';
 
@@ -206,4 +207,13 @@ test('Texte mit Datum nennen den Platzhalter in beiden Sprachen', () => {
       assert.match(katalog[schluessel], /\{datum\}/, `${sprache}: ${schluessel}`);
     }
   }
+});
+
+test('endgültig sind nur das gesperrte Konto und die gesperrte Adresse', () => {
+  assert.equal(istEndgueltig('verbinden_gesperrt'), true);
+  assert.equal(istEndgueltig('adresse_gesperrt'), true);
+  // Wiederholbar: nach einem gelöschten Server oder einem reparierten Proxy genügt ein zweiter Klick.
+  assert.equal(istEndgueltig('zu_viele_server'), false);
+  assert.equal(istEndgueltig('nachweis_fehlt'), false);
+  assert.equal(istEndgueltig(null), false);
 });

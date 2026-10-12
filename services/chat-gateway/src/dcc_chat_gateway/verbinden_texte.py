@@ -145,8 +145,9 @@ HINWEISE = {
         "Still waiting ..."
     ),
     "nachweis_fehlt": (
-        "Confirming in the browser failed: Pulse could not reach this server under {host}. "
-        "Check the proxy route, then click Connect again. Still waiting ..."
+        "Confirming in the browser failed: Pulse could not verify this server under {host}. "
+        "The page in the browser names the reason. Fix it, then click Connect again. "
+        "Still waiting ..."
     ),
 }
 UEBERNAHME_BEANTRAGT = (
