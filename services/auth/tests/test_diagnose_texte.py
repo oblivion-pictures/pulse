@@ -367,13 +367,12 @@ def test_platzhalter_ohne_wert_bleibt_stehen() -> None:
     assert "{container}" not in was_tun
 
 
-
 _VPS_HANDGRIFFE = ("pulse-connect", "docker", "Compose", "pulse.env", "Installer", "installer")
 
 
 @pytest.mark.parametrize("paar", sorted(_betreiber.BEFUNDE_HEIMSERVER))
 @pytest.mark.parametrize("sprache", ["de", "en"])
-def test_heimserver_bekommen_keine_vps_handgriffe(paar, sprache: str) -> None:
+def test_heimserver_bekommen_keine_vps_handgriffe(paar: tuple[str, str], sprache: str) -> None:
     """Ein Heim-Server läuft in der Server-App: kein Installer, kein Compose,
     kein ``docker exec``. Die Sätze dafür nennen deshalb die Server-App."""
     was_ist, was_tun = dt.erklaerung(
