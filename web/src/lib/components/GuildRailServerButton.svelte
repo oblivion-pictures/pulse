@@ -31,6 +31,7 @@
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
   import * as Tooltip from '$lib/components/ui/tooltip/index.js';
   import { instancesApi, type Instance } from '$lib/api/instances';
+  import InstanzStatus from '$lib/components/account/InstanzStatus.svelte';
   import { serversStore } from '$lib/api/servers.svelte';
   import { activeServer } from '$lib/stores/active-server.svelte';
   import { uiOverlays } from '$lib/stores/uiOverlays.svelte';
@@ -73,16 +74,12 @@
     if (eintrag) activeServer.set(eintrag.id);
     else void goto('/app/server');
   }
-
-  function statusClass(s: string): string {
-    return s === 'active' ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive';
-  }
 </script>
 
 <Tooltip.Root open={tipOffen && !menueOffen} onOpenChange={(v) => (tipOffen = v)}>
   <Tooltip.Trigger>
     {#snippet child({ props: tipProps })}
-      <div {...tipProps} class="relative shrink-0">
+      <div {...tipProps} class="shrink-0">
         <DropdownMenu.Root bind:open={menueOffen}>
           <DropdownMenu.Trigger>
             {#snippet child({ props })}
@@ -106,13 +103,7 @@
             <DropdownMenu.Label>{m.eigener_server_meine_server()}</DropdownMenu.Label>
             {#if !geladen}
               <p class="text-text-muted px-2 py-1.5 text-sm">{m.my_instances_loading()}</p>
-            {:else if eigene.length === 0}
-              {#if !ladefehler}
-                <p class="text-text-muted px-2 py-1.5 text-sm" data-testid="rail-server-empty">
-                  {m.eigener_server_liste_leer()}
-                </p>
-              {/if}
-            {:else}
+            {:else if eigene.length > 0}
               {#each eigene as inst (inst.id)}
                 {@const zeile = instanzZeile(
                   inst,
@@ -139,17 +130,13 @@
                       </span>
                     {/if}
                   </span>
-                  <span
-                    class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium {statusClass(
-                      inst.status
-                    )}"
-                  >
-                    {inst.status === 'active'
-                      ? m.eigener_server_status_aktiv()
-                      : m.my_instances_status_suspended()}
-                  </span>
+                  <InstanzStatus status={inst.status} />
                 </DropdownMenu.Item>
               {/each}
+            {:else if !ladefehler}
+              <p class="text-text-muted px-2 py-1.5 text-sm" data-testid="rail-server-empty">
+                {m.eigener_server_liste_leer()}
+              </p>
             {/if}
             <DropdownMenu.Separator />
             <!-- `onclick` wie die Dialog-Einträge im Konto-Menü (UserFooter:

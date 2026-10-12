@@ -29,6 +29,7 @@
   import { darfUmbenennen } from '$lib/servers/umbenennenRecht';
   import { serverRename } from '$lib/stores/serverRename.svelte';
   import InstanceDiagnose from './InstanceDiagnose.svelte';
+  import InstanzStatus from './InstanzStatus.svelte';
   import UebernahmeHinweis from './UebernahmeHinweis.svelte';
   import EmptyState from '$lib/components/feedback/EmptyState.svelte';
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
@@ -97,10 +98,6 @@
   }
 
   onMount(laden);
-
-  function statusClass(s: string): string {
-    return s === 'active' ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive';
-  }
 </script>
 
 <div class="flex flex-col gap-5" data-testid="my-instances">
@@ -142,15 +139,7 @@
                 })}
               </p>
             </div>
-            <!-- „Aktiv“ statt des früheren „Freigegeben“ (Skizze des Eigentümers,
-                 2026-10-10): eine Freigabe gibt es nicht mehr. Die Pille sagt
-                 weiter nur, ob die Cloud den Server gesperrt hat — nicht, ob er
-                 läuft; das beantwortet die Verbindungsprüfung darunter. -->
-            <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium {statusClass(inst.status)}">
-              {inst.status === 'active'
-                ? m.eigener_server_status_aktiv()
-                : m.my_instances_status_suspended()}
-            </span>
+            <InstanzStatus status={inst.status} />
           </div>
           {#if inst.uebernahme_frist_bis}
             <UebernahmeHinweis instanz={inst} onGeaendert={laden} />
