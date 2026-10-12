@@ -6,6 +6,10 @@
  *
  * Ersetzt heim-server.spec.ts: dessen Prüfungen (Download ohne Sperre, kein
  * Antragsformular) stehen jetzt hier am Dialog statt auf /app/server.
+ *
+ * Außerdem hier: der Rahmen (der Dialog darf in keiner Fenstergröße etwas
+ * abschneiden) und die vier Dateien zum Herunterladen in der Karte „Auf einem
+ * gemieteten Server“.
  */
 import {
   test,
@@ -104,6 +108,58 @@ function zuKleineFlaechen(dialog: Locator): Promise<string[]> {
   });
 }
 
+/** Passt der Inhalt in den Dialog? Gemessen, nicht gefolgert. Der Fehler, den
+ *  das hier festhält: die einzige Spalte des Dialog-Grids war `auto`, also so
+ *  breit wie der breiteste unumbrechbare Inhalt (die `curl`-Zeile). Sie wurde
+ *  breiter als der Dialog (+32 px am Rechner, +44 px am Tablet), die Karten
+ *  ragten über den rechten Innenabstand und wurden dort abgeschnitten: der
+ *  rechte Rand einer Karte oder des Schließen-Knopfs fehlte.
+ *
+ *  `seitwaerts` = Überstand des Inhalts nach rechts (`scrollWidth` −
+ *  `clientWidth`), `zuWeit` = Elemente, deren rechter Rand hinter dem
+ *  Innenabstand des Dialogs liegt, `imFenster` = Dialog liegt ganz im Fenster,
+ *  `befehlVerdeckt` = wie viel vom `curl`-Befehl in seinem Kasten weggescrollt
+ *  ist (er umbricht lieber, als dass das „bash“ am Ende verdeckt liegt). */
+function rahmenMessen(dialog: Locator): Promise<{
+  seitwaerts: number;
+  zuWeit: string[];
+  imFenster: boolean;
+  befehlVerdeckt: number;
+}> {
+  return dialog.evaluate(async (d) => {
+    await Promise.all(d.getAnimations({ subtree: true }).map((a) => a.finished));
+    const rahmen = d.getBoundingClientRect();
+    const innen = parseFloat(getComputedStyle(d).paddingRight) || 0;
+    // `clientWidth` statt Außenmaß: eine sichtbare Scrollleiste frisst Breite.
+    const grenze = rahmen.left + d.clientLeft + d.clientWidth - innen;
+    const zuWeit: string[] = [];
+    for (const id of [
+      'eigener-server-rechner',
+      'eigener-server-gemietet',
+      'eigener-server-gehostet',
+      'eigener-server-schliessen',
+      'self-host-install-command',
+      'self-host-install-copy'
+    ]) {
+      const el = d.querySelector(`[data-testid="${id}"]`);
+      if (!el) continue;
+      const rechts = el.getBoundingClientRect().right;
+      if (rechts > grenze + 0.5) zuWeit.push(`${id}: ${Math.round(rechts)}`);
+    }
+    const befehl = d.querySelector('[data-testid="self-host-install-command"]');
+    return {
+      seitwaerts: d.scrollWidth - d.clientWidth,
+      befehlVerdeckt: befehl ? befehl.scrollWidth - befehl.clientWidth : 0,
+      zuWeit,
+      imFenster:
+        rahmen.top >= -0.5 &&
+        rahmen.left >= -0.5 &&
+        rahmen.bottom <= window.innerHeight + 0.5 &&
+        rahmen.right <= window.innerWidth + 0.5
+    };
+  });
+}
+
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Eigenen Server einrichten', () => {
@@ -153,6 +209,108 @@ test.describe('Eigenen Server einrichten', () => {
     await page.close();
   });
 
+  test('am Rechner: der Dialog schneidet in gängigen Fenstergrößen nichts ab', async ({ browser }) => {
+    const page = await browser.newPage({ viewport: RECHNER });
+    await registrieren(page, `es_rahmen_${TAG}`);
+    await page.locator('[data-testid^="guild-create-menu-"]').first().click();
+    await page.getByTestId('guild-eigener-server').click();
+    const dialog = page.getByTestId('eigener-server-dialog');
+    await expect(dialog).toBeVisible();
+
+    // Auch das niedrige Laptop-Fenster (1280 x 600, Taskleiste): dort passt der
+    // Inhalt nicht mehr ganz hinein und muss scrollen, statt abgeschnitten zu
+    // werden.
+    for (const groesse of [
+      { width: 1280, height: 720 },
+      { width: 1366, height: 768 },
+      { width: 1440, height: 900 },
+      { width: 1920, height: 1080 },
+      { width: 1280, height: 600 }
+    ]) {
+      const wo = `${groesse.width} x ${groesse.height}`;
+      await page.setViewportSize(groesse);
+
+      const mass = await rahmenMessen(dialog);
+      expect(mass.seitwaerts, `Inhalt ragt seitlich über den Dialog (${wo})`).toBe(0);
+      expect(mass.zuWeit, `Elemente hinter dem Innenabstand (${wo})`).toEqual([]);
+      expect(mass.imFenster, `Dialog liegt nicht ganz im Fenster (${wo})`).toBe(true);
+      expect(mass.befehlVerdeckt, `Befehl verdeckt (${wo})`).toBe(0);
+
+      // Oben: Titel und Kreuz sichtbar ...
+      await dialog.evaluate((d) => {
+        d.scrollTop = 0;
+      });
+      await expect(dialog.getByText('Eigenen Server einrichten', { exact: true })).toBeInViewport();
+      await expect(dialog.locator('[data-slot="dialog-close"]')).toBeInViewport();
+      // ... unten: „Schließen“ erreichbar, auch wenn man dafür scrollen muss.
+      await dialog.evaluate((d) => {
+        d.scrollTop = d.scrollHeight;
+      });
+      await expect(dialog.getByTestId('eigener-server-schliessen'), wo).toBeInViewport({
+        ratio: 1
+      });
+    }
+    await page.close();
+  });
+
+  test('gemieteter Server: vier Dateien zum Herunterladen, Klick öffnet sie, ohne die App zu verlassen', async ({
+    browser
+  }) => {
+    const ctx = await browser.newContext({ viewport: RECHNER, locale: 'de-DE' });
+    // Die Klicks gehen an die echten Adressen der Cloud; im Test kommt dort
+    // nichts hin. Nur diese Pfade abfangen — alles andere an howispulse.com
+    // (z. B. die Sperrliste) bliebe sonst unbeantwortet.
+    const angefragt: string[] = [];
+    await ctx.route(/^https:\/\/howispulse\.com\/(self-host\/|install\.sh)/, (route) => {
+      angefragt.push(new URL(route.request().url()).pathname);
+      return route.fulfill({ status: 200, contentType: 'text/plain', body: '# Testinhalt\n' });
+    });
+    const page = await ctx.newPage();
+    await registrieren(page, `es_dateien_${TAG}`);
+    await page.locator('[data-testid^="guild-create-menu-"]').first().click();
+    await page.getByTestId('guild-eigener-server').click();
+    const dialog = page.getByTestId('eigener-server-dialog');
+    const dateien = dialog.getByTestId('self-host-dateien');
+    await expect(dateien).toBeVisible();
+
+    // Immer die Cloud, nie die Adresse der laufenden Seite: Self-Hosts liefern
+    // diese Dateien nicht aus.
+    const erwartet = [
+      ['docker-compose.yml', '/self-host/docker-compose.yml'],
+      ['docker-compose.behind-proxy.yml', '/self-host/docker-compose.behind-proxy.yml'],
+      ['pulse-update.sh', '/self-host/pulse-update.sh'],
+      ['install.sh', '/install.sh']
+    ];
+    for (const [name, pfad] of erwartet) {
+      const knopf = dateien.getByTestId(`self-host-datei-${name}`);
+      await expect(knopf).toBeVisible();
+      await expect(knopf).toHaveText(name);
+      await expect(knopf).toHaveAttribute('href', `https://howispulse.com${pfad}`);
+      await expect(knopf).toHaveAttribute('download', name);
+      // Gedacht für die Seite auf howispulse.com: dort speichert der Browser
+      // (gleicher Ursprung). Der Test läuft auf einer anderen Adresse — da wäre
+      // `download` wirkungslos und der Klick risse die App weg; deshalb neuer Tab.
+      await expect(knopf).toHaveAttribute('target', '_blank');
+      await expect(knopf).toHaveAttribute('rel', /noopener/);
+    }
+    // Die Anleitung dazu: was man mit den Dateien macht, steht beim Knopf.
+    await expect(dateien).toContainText('PULSE_HOSTNAME');
+    await expect(dateien).toContainText('docker compose up -d');
+    await expect(dateien).toContainText('docker exec -it pulse pulse-connect');
+    await expect(dateien.getByTestId('self-host-datei-docker-compose.behind-proxy.yml')).toBeVisible();
+
+    const [neuerTab] = await Promise.all([
+      page.waitForEvent('popup'),
+      dateien.getByTestId('self-host-datei-pulse-update.sh').click()
+    ]);
+    await neuerTab.waitForURL('https://howispulse.com/self-host/pulse-update.sh');
+    expect(angefragt).toEqual(['/self-host/pulse-update.sh']);
+    // Die App steht noch, der Dialog auch.
+    await expect(dialog).toBeVisible();
+    await neuerTab.close();
+    await ctx.close();
+  });
+
   test('am Handy: das Menü der Räume öffnet dasselbe als Blatt', async ({ browser }) => {
     // Geräteklasse hängt am ZEIGER (geraetKlasse.ts): ohne Finger-Emulation
     // wäre jede Breite nur ein schmales Desktop-Fenster.
@@ -175,6 +333,13 @@ test.describe('Eigenen Server einrichten', () => {
     await expect(rechner).toContainText('der Rechner, auf dem sie läuft, ist dein Server');
     await expect(rechner).not.toContainText('Auf diesem Rechner');
     await expect(rechner).not.toContainText('Dein Rechner ist der Server');
+
+    const blatt = await rahmenMessen(page.getByTestId('eigener-server-dialog'));
+    expect(blatt.seitwaerts, 'Inhalt ragt seitlich über das Blatt').toBe(0);
+    expect(blatt.zuWeit).toEqual([]);
+    // Am Handy reicht die Breite für den ganzen Befehl nicht in einer Zeile:
+    // er umbricht, statt hinter seinem Kasten wegzuscrollen.
+    expect(blatt.befehlVerdeckt, 'Befehl verdeckt').toBe(0);
 
     expect(
       await zuKleineFlaechen(page.getByTestId('eigener-server-dialog')),
@@ -205,6 +370,14 @@ test.describe('Eigenen Server einrichten', () => {
     await expect(rechner).toContainText('Auf einem eigenen Rechner');
     await expect(rechner).not.toContainText('Auf diesem Rechner');
 
+    const mass = await rahmenMessen(dialog);
+    expect(mass.seitwaerts, 'Inhalt ragt seitlich über den Dialog').toBe(0);
+    expect(mass.zuWeit).toEqual([]);
+    expect(mass.imFenster).toBe(true);
+    expect(mass.befehlVerdeckt, 'Befehl verdeckt').toBe(0);
+
+    // Auch die Datei-Knöpfe zählen: `zuKleineFlaechen` misst jeden Link.
+    await expect(dialog.getByTestId('self-host-datei-install.sh')).toBeVisible();
     expect(await zuKleineFlaechen(dialog), 'zu kleine Trefferflächen im Dialog').toEqual([]);
 
     await dialog.getByTestId('eigener-server-schliessen').click();

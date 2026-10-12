@@ -36,7 +36,17 @@
 			// Er zwang aber in jedem Animations-Frame (fade+zoom) zur
 			// Neu-Verwischung der gesamten Fläche dahinter und ruckelte so
 			// das Öffnen größerer Dialoge (z. B. Einstellungen).
-			"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-border grid max-w-[calc(100%-2rem)] gap-6 rounded-2xl p-6 text-sm ring-1 shadow-2xl duration-100 nicht-handy:max-w-md fixed top-1/2 left-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 outline-none",
+			//
+			// `grid-cols-[minmax(0,1fr)]`: ohne das ist die einzige Spalte des
+			// Grids `auto`, also mindestens so breit wie das breiteste
+			// unumbrechbare Kind (Befehlszeile mit `whitespace-nowrap`, lange
+			// URL). Die Spalte wurde dann breiter als der Dialog, der Inhalt
+			// schob sich über den rechten Innenabstand hinaus und wurde dort
+			// abgeschnitten (Dialog „Eigenen Server einrichten“, 32 px). Das
+			// `min-w-0` + `overflow-x-auto` an der Befehlszeile half nicht: es
+			// erlaubt nur ihr selbst zu schrumpfen, nicht ihrem Vorfahren im Grid
+			// (der Karte), dessen Mindestbreite aus dem unumbrechbaren Inhalt kommt.
+			"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-border grid grid-cols-[minmax(0,1fr)] max-w-[calc(100%-2rem)] gap-6 rounded-2xl p-6 text-sm ring-1 shadow-2xl duration-100 nicht-handy:max-w-md fixed top-1/2 left-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 outline-none",
 			className
 		)}
 		{...restProps}
