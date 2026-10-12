@@ -80,6 +80,15 @@ test.describe.serial('Archiv-Gerätewechsel: Verlauf auf jedem Gerät (§5)', ()
   test('Browser 1: Unterhaltung, Browser 2: gleicher Nutzer sieht den Verlauf', async ({
     browser
   }) => {
+    // Drei frische Browser-Kontexte, zwei Registrierungen, eine Abmeldung und
+    // eine Neuanmeldung in EINEM Test: allein die Seitenaufrufe kosten gegen
+    // den Vite-Dev-Server je ~3 s, dazu kommen 2 x 2,5 s Wartezeit auf einen
+    // Onboarding-Knopf, den es seit 2026-06-28 nicht mehr gibt. Gemessen
+    // (2026-10-12): 31,4 s, alle Erwartungen grün — der Standard von 30 s
+    // riss den Test im letzten Schritt ab ("Test timeout of 30000ms exceeded"),
+    // obwohl nichts Fachliches fehlte. Wie bei den übrigen Mehr-Gerät-Specs
+    // ein eigener Rahmen.
+    test.setTimeout(90_000);
     const ctxA = await browser.newContext();
     const ctxB1 = await browser.newContext();
     for (const ctx of [ctxA, ctxB1]) {
