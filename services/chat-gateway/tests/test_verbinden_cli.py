@@ -55,9 +55,11 @@ class Cloud:
         self.kennung_beim_start: str | None = None
         self.nachweis_beim_start: str | None = None
         self.kennungen_beim_abholen: list[str] = []
+        self.fristen: dict[str, dict] = {}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.pfade.append(request.url.path)
+        self.fristen[request.url.path] = request.extensions["timeout"]
         koerper = json.loads(request.content)
         if request.url.path == START:
             # Vertrag, Nachtrag 2: die Kennung selbst, nie der (öffentlich
@@ -262,14 +264,17 @@ def test_cloud_ausgelastet_verbraucht_nichts(tmp_path):
 
 
 def test_vorgang_laeuft_ist_kein_nachweis_befund(tmp_path):
-    """409 gibt es auch als Zeichenkette (``vorgang_laeuft``): derselbe Server
-    hat schon einen offenen Code. Das ist nicht „von aussen nicht erreichbar“
-    (Exit 3), und die Abhilfe ist eine andere."""
+    """409 gibt es auch als Zeichenkette (``vorgang_laeuft``). Die Cloud meldet es
+    nur für DIESELBE Kennung (``vorgang_anlegen``): der Start kam zweimal an. Das
+    ist nicht „von aussen nicht erreichbar“ (Exit 3), und es behauptet auch nicht,
+    ein anderer Versuch laufe — die Kennung ist bei jedem Lauf neu."""
     cloud = Cloud(tmp_path, start=(409, {"detail": "vorgang_laeuft"}))
     code, text, _ = _lauf(tmp_path, cloud)
 
     assert code == 1
-    assert "already running" in text
+    assert "arrived twice" in text
+    assert "Run pulse-connect again" in text
+    assert "already running" not in text
     assert "port 443" not in text
     assert not (tmp_path / NACHWEIS_DATEI).exists()
 
@@ -531,3 +536,56 @@ def test_neustart_nennt_den_handgriff_fuer_den_fall_dass_er_nicht_zurueckkommt(t
     assert code == 0
     assert "Restarting the server" in text
     assert "If it does not come back by itself, start it again: docker start pulse" in text
+
+
+# ── Härtung: Fristen und 5xx beim Start ───────────────────────────────────
+
+
+def test_start_bekommt_30_sekunden(tmp_path):
+    """Die Cloud prüft beim Start DNS (bis 5 s) und ruft den Nachweis ab (bis
+    8 s) — im schlechtesten Fall rund 13 s, mehr als die 15 s Grundfrist bei
+    Verbindungsaufbau und Antwort zusammen lassen."""
+    cloud = Cloud(tmp_path, abholen=[(200, ZUGANG)])
+    assert _lauf(tmp_path, cloud)[0] == 0
+    assert set(cloud.fristen[START].values()) == {30.0}
+
+
+@pytest.mark.parametrize("fehler", [httpx.ReadTimeout, httpx.ConnectTimeout])
+def test_cloud_antwortet_nicht_rechtzeitig(tmp_path, fehler):
+    def langsam(request: httpx.Request) -> httpx.Response:
+        raise fehler("zu langsam", request=request)
+
+    neustarts: list[str] = []
+    code, text, _ = _lauf(tmp_path, langsam, neustart=lambda: neustarts.append("halt"))
+    assert code == 1
+    assert "did not answer in time" in text
+    assert "please try again" in text
+    # Nicht die Meldung für „Netz weg“: die Cloud ist erreichbar, nur langsam.
+    assert "Could not reach" not in text
+    assert neustarts == []
+    assert not (tmp_path / NACHWEIS_DATEI).exists()
+
+
+@pytest.mark.parametrize("status", [502, 503, 504])
+def test_cloud_nicht_bereit_beim_start(tmp_path, status):
+    """Deploy der Cloud: Proxy oder Dienst antworten 5xx, oft mit HTML statt JSON."""
+
+    def proxy(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, content=b"<html>Service Unavailable</html>")
+
+    neustarts: list[str] = []
+    code, text, _ = _lauf(tmp_path, proxy, neustart=lambda: neustarts.append("halt"))
+    assert code == 1
+    assert f"HTTP {status}" in text
+    assert "please try again in a minute" in text
+    assert "Unexpected answer" not in text
+    assert neustarts == []
+    assert not (tmp_path / NACHWEIS_DATEI).exists()
+
+
+def test_503_nicht_verfuegbar_mit_json_ist_auch_nur_ein_spaeter_versuch(tmp_path):
+    cloud = Cloud(tmp_path, start=(503, {"detail": "verbinden_nicht_verfuegbar"}))
+    code, text, _ = _lauf(tmp_path, cloud)
+    assert code == 1
+    assert "please try again in a minute" in text
+    assert "busy checking servers" not in text  # das ist ``verbinden_ausgelastet``
