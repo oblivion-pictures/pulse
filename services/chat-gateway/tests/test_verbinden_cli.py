@@ -201,6 +201,9 @@ def test_ohne_neustart_bleibt_der_container_stehen(tmp_path):
     code, text, _ = _lauf(tmp_path, cloud, neustart=None)
     assert code == 0
     assert "Restarting" not in text
+    # Wer ``--no-restart`` selbst tippt, soll wissen, dass noch nichts gilt.
+    assert "only takes effect after the server restarts" in text
+    assert "docker restart pulse" in text
     assert (tmp_path / VERBINDUNG_DATEI).exists()
 
 
@@ -886,3 +889,21 @@ def test_dateisystem_ohne_flock_sperrt_den_betreiber_nicht_aus(tmp_path, monkeyp
 
     monkeypatch.setattr(fcntl, "flock", unterstuetzt_nicht)
     assert _lauf(tmp_path, Cloud(tmp_path, abholen=[(200, ZUGANG)]))[0] == 0
+
+
+def test_unlesbare_verbindung_env_ist_eine_meldung_kein_traceback(tmp_path):
+    """Keine gültige UTF-8-Datei (halb geschrieben, fremd bearbeitet): sagen, was
+    zu tun ist, statt mit ``UnicodeDecodeError`` abzubrechen — und nichts
+    überschreiben, was vielleicht eine gültige Verbindung war."""
+    kaputt = b"PULSE_INSTANCE_ID=\xff\xfe\x80\n"
+    (tmp_path / VERBINDUNG_DATEI).write_bytes(kaputt)
+    cloud = Cloud(tmp_path)
+    code, text, _ = _lauf(tmp_path, cloud, rueckfrage=lambda _f: True)
+
+    assert code == 1
+    assert str(tmp_path / VERBINDUNG_DATEI) in text
+    assert "not valid text" in text
+    assert "Nothing changed" in text
+    assert cloud.pfade == []
+    assert (tmp_path / VERBINDUNG_DATEI).read_bytes() == kaputt
+    assert not (tmp_path / NACHWEIS_DATEI).exists()

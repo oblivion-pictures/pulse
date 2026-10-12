@@ -103,7 +103,7 @@ LOKAL_URL_VORGABE = "http://127.0.0.1:8002"
 
 @dataclass(frozen=True)
 class Umgebung:
-    """Was ``pulse-connect`` über diesen Server wissen muss (aus env.sh)."""
+    """Was ``pulse-connect`` über diesen Server wissen muss (Hülle, env.sh, Settings)."""
 
     hostname: str
     cloud_origin: str
@@ -272,9 +272,11 @@ def verbinden(
         return abbruch.exit_code
     besitzer = anzeigbar(str(zugang.get("owner_name") or "your account"))
     ausgabe(texte.VERBUNDEN.format(besitzer=besitzer))
-    if neustart is not None:
-        ausgabe(texte.NEUSTART)
-        neustart()
+    if neustart is None:
+        ausgabe(texte.ERST_NACH_NEUSTART)
+        return 0
+    ausgabe(texte.NEUSTART)
+    neustart()
     return 0
 
 

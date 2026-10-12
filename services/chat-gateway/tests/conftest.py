@@ -66,7 +66,8 @@ _TEST_SETTINGS = chat_cfg.Settings(
     # bleibt die ganze Suite grün) — sie soll aber den Regelfall abbilden, damit ein
     # neuer Test nicht versehentlich gegen einen unverbundenen Server läuft
     # (``POST /session`` → 503). Tests des unverbundenen Zustands setzen 0 selbst
-    # (``test_start_ohne_verbindung.py``).
+    # (``test_start_ohne_verbindung.py``); ``_isolate_chat_settings`` unten stellt
+    # vor jedem Test wieder 100 her, ein gesetztes 0 leckt also nicht weiter.
     pulse_instance_id=100,
 )
 

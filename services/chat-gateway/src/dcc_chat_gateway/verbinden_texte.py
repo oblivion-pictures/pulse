@@ -67,6 +67,11 @@ SCHON_VERBUNDEN = (
     "Connect it to a different account? [y/N] "
 )
 NICHTS_GEAENDERT = "Nothing changed."
+VERBINDUNG_UNLESBAR = (
+    "{pfad} is not valid text, so pulse-connect cannot tell whether this server is "
+    "already connected. Nothing changed. To start fresh, delete the file "
+    "(docker exec pulse rm {pfad}) and run pulse-connect again."
+)
 LAEUFT_SCHON = (
     "pulse-connect is already running (in another terminal?). "
     "Finish or cancel that run first. Nothing changed."
@@ -138,6 +143,12 @@ VERBUNDEN = "Connected to {besitzer}. Your server now appears in Pulse."
 NEUSTART = (
     "Restarting the server to apply the connection. It is back in about a minute.\n"
     "If it does not come back by itself, start it again: docker start pulse"
+)
+#: ``--no-restart``: der Installer startet selbst neu, wer die Option von Hand tippt,
+#: soll wissen, dass bis dahin noch die alte Verbindung gilt.
+ERST_NACH_NEUSTART = (
+    "The connection only takes effect after the server restarts "
+    "(on the host: docker restart pulse)."
 )
 NEUSTART_VON_HAND = "Could not restart by itself. On the host, run: docker restart pulse"
 ABGEBROCHEN = "\nCancelled. Nothing changed."
