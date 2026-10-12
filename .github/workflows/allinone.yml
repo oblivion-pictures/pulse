@@ -12,6 +12,23 @@
 #   1. push to main         → :edge + :sha-<short>
 #   2. push tag v*.*.*      → :stable + :vX.Y.Z + :vX.Y + :vX + :sha-<short>
 #   3. workflow_dispatch    → :edge (no input) or :stable (release_version input)
+#                             — NUR wenn der Lauf auf main oder einem Tag v*.*.*
+#                             steht, sonst bricht `prepare` ab (nächster Absatz).
+#
+# VERÖFFENTLICHEN NUR VON main ODER EINEM RELEASE-TAG (2026-10-12). Ein
+# workflow_dispatch lässt sich auf JEDEM Zweig starten, und dieselben Tags
+# (:edge, :stable, :vX.Y.Z samt Spiegel) ziehen die Auto-Updater: Heimserver
+# per install.sh holen :stable alle fünf Minuten, die Server-App prüft :edge
+# täglich (containerEnv.ts). Ohne diese Sperre hätte ein Dispatch auf einem
+# beliebigen Zweig ungeprüften Code auf diese Server gebracht. Der erste Schritt von `prepare` bricht deshalb ab,
+# BEVOR etwas gebaut oder gepusht wird. Abbrechen statt „nur ohne Push bauen“,
+# weil alle drei Jobs ausschließlich veröffentlichen: eine Trockenfassung
+# bräuchte in `build` und `merge` einen zweiten Pfad, der selbst wieder
+# gepflegt werden will. Der legitime Weg bleibt unverändert: Push auf main
+# (:edge) und Tag v*.*.* (:stable, auch per Dispatch AUF dem Tag).
+# Grenze: die Prüfung steht im Workflow selbst — wer auf einem eigenen Zweig die
+# Datei ändern kann, umgeht sie. Dagegen helfen nur Repo-Einstellungen
+# (Environment mit „Deployment branches: main“, Ruleset für Tags v*).
 #
 # :stable bewegt sich seit v1.0.0 (Oktober 2026) nur noch mit getaggten
 # Releases. Bis dahin taggte jeder main-Push auch :stable (Phasen-Policy vom
@@ -84,6 +101,19 @@ jobs:
       short_sha: ${{ steps.meta.outputs.short_sha }}
       tags: ${{ steps.meta.outputs.tags }}
     steps:
+      - name: Nur von main oder einem Release-Tag veröffentlichen
+        env:
+          # Über env, nicht ${{ }} im Skript: Zweignamen sind frei wählbar.
+          REF: ${{ github.ref }}
+        run: |
+          case "$REF" in
+            refs/heads/main|refs/tags/v*.*.*) ;;
+            *)
+              echo "::error::Dieser Lauf steht auf '$REF'. :edge, :stable und :vX.Y.Z entstehen nur von refs/heads/main oder einem Tag v*.*.*. Nichts gebaut, nichts gepusht."
+              exit 1
+              ;;
+          esac
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Compute version + tags

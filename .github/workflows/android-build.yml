@@ -9,6 +9,15 @@ name: android-build
 # Der Wrapper laedt das Web-Frontend remote (server.url = howispulse.com/app), die
 # APK buendelt KEINE Web-Assets — nur native AEnderungen (z.B. SpeakerphoneRouter)
 # brauchen einen Rebuild. Laeuft bei main-Pushes, die mobile/ beruehren.
+#
+# Signieren und Veroeffentlichen NUR von main (2026-10-12): ein workflow_dispatch
+# laesst sich auf jedem Zweig starten und sieht dort dieselben Secrets (Keystore,
+# VPS-Zugang) — er haette eine signierte APK unter /downloads/pulse-latest.apk
+# ablegen koennen. Auf einem anderen Zweig entsteht deshalb nur die Debug-APK
+# als Artefakt, die Schluessel werden nicht einmal angefasst.
+# Grenze: die Bedingung steht im Workflow selbst — wer ihn auf einem eigenen
+# Zweig aendern kann, umgeht sie; dagegen helfen nur Repo-Einstellungen
+# (Environment mit „Deployment branches: main“ fuer die Secrets).
 
 on:
   push:
@@ -78,9 +87,10 @@ jobs:
       # --- Optionaler signierter Release-Pfad (nur wenn Keystore-Secrets da) ---
       # Setze die vier Secrets, um eine signierte Release-APK zu erzeugen + zu
       # veroeffentlichen. Ohne sie wird dieser Block uebersprungen.
+      # Alles Folgende (scp, GitHub-Release) haengt an steps.release.
       - name: Release-APK bauen + signieren
         id: release
-        if: ${{ env.HAS_KEYSTORE == 'true' }}
+        if: ${{ env.HAS_KEYSTORE == 'true' && github.ref == 'refs/heads/main' }}
         working-directory: mobile/android
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -100,7 +110,7 @@ jobs:
           rm -f /tmp/release.keystore
 
       - name: SSH fuer scp einrichten
-        if: ${{ steps.release.conclusion == 'success' }}
+        if: ${{ steps.release.conclusion == 'success' && github.ref == 'refs/heads/main' }}
         shell: bash
         env:
           SSH_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
@@ -112,7 +122,7 @@ jobs:
 
       # Stabiler Direktdownload: https://howispulse.com/downloads/pulse-latest.apk
       - name: Release-APK nach howispulse hochladen
-        if: ${{ steps.release.conclusion == 'success' }}
+        if: ${{ steps.release.conclusion == 'success' && github.ref == 'refs/heads/main' }}
         shell: bash
         run: |
           scp -i ~/.ssh/id_ed25519 /tmp/pulse-release.apk \

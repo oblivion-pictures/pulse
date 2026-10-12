@@ -19,6 +19,15 @@
 #
 # Build time: ~3 min cold, ~30 s with the gha cache warm.
 #
+# **Gepusht wird nur von main** (2026-10-12). Ein workflow_dispatch laesst sich
+# auf jedem Zweig starten; ohne die Sperre koennte er `latest` und den Versions-
+# Tag ueberschreiben, aus dem infra/self-host/Dockerfile den Fork kopiert. Auf
+# anderen Zweigen laeuft der Bau als Probebau durch (Anmeldung und Push
+# entfallen) — das Bild entsteht, es verlaesst den Laeufer nicht. Grenze: die
+# Bedingung steht im Workflow selbst; wer ihn auf einem eigenen Zweig aendern
+# kann, umgeht sie. Dagegen helfen nur Repo-Einstellungen (Environment mit
+# „Deployment branches: main“).
+#
 # **Zwei Architekturen, ohne Emulation** (seit 2026-09-07). Bis dahin baute
 # dieser Workflow ohne `platforms:` — also nur fuer die Architektur des
 # Laeufers, amd64. Das Self-Host-Bild (`allinone.yml`) wird dagegen fuer amd64
@@ -63,6 +72,7 @@ jobs:
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        if: github.ref == 'refs/heads/main'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -100,7 +110,7 @@ jobs:
           # Zusammenfuehren wie in `allinone.yml` (dort noetig, weil die Bilder
           # auf zwei verschiedenen Laeufern entstehen) entfaellt hier.
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: |
             ghcr.io/oblivion-pictures/pulse-mediamtx:${{ steps.ver.outputs.tag }}
             ghcr.io/oblivion-pictures/pulse-mediamtx:latest

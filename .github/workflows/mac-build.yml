@@ -168,9 +168,17 @@ jobs:
       # DATEIPFAD — das Secret ist base64, also einmal entschlüsseln. Fehlt das
       # Secret (z. B. Fork-PR), landet eine leere Datei da: electron-builder
       # überspringt Notarisierung dann still.
+      # Den Schlüssel gibt es nur auf main (wie das Zertifikat oben): auf jedem
+      # anderen Zweig bekommt der Schritt das Secret gar nicht erst und legt die
+      # leere Datei an — dasselbe Verhalten wie „Secret fehlt“. Grenze: die
+      # Bedingung steht im Workflow selbst; wer ihn auf einem eigenen Zweig
+      # ändern kann, umgeht sie (dagegen: Environment mit „Deployment branches:
+      # main“).
       - name: Notarisierungs-Key entschlüsseln
+        env:
+          APPLE_API_KEY_P8: ${{ github.ref == 'refs/heads/main' && secrets.APPLE_API_KEY_P8 || '' }}
         run: |
-          printf '%s' "${{ secrets.APPLE_API_KEY_P8 }}" | base64 -d > "$RUNNER_TEMP/AuthKey_643258YHJ2.p8"
+          printf '%s' "$APPLE_API_KEY_P8" | base64 -d > "$RUNNER_TEMP/AuthKey_643258YHJ2.p8"
 
       # esbuild-Bundle → cargo build --release (Sidecar UND Player) →
       # bundle-dylibs.sh (ein gemeinsamer Dylib-Satz für beide,
@@ -304,9 +312,13 @@ jobs:
           p12-file-base64: ${{ secrets.CSC_LINK }}
           p12-password: ${{ secrets.CSC_KEY_PASSWORD }}
 
+      # Nur auf main mit echtem Schlüssel, sonst leere Datei (Begründung beim
+      # Client-Job oben).
       - name: Notarisierungs-Key entschlüsseln (Server)
+        env:
+          APPLE_API_KEY_P8: ${{ github.ref == 'refs/heads/main' && secrets.APPLE_API_KEY_P8 || '' }}
         run: |
-          printf '%s' "${{ secrets.APPLE_API_KEY_P8 }}" | base64 -d > "$RUNNER_TEMP/AuthKey_643258YHJ2.p8"
+          printf '%s' "$APPLE_API_KEY_P8" | base64 -d > "$RUNNER_TEMP/AuthKey_643258YHJ2.p8"
 
       - name: Server-DMG bauen (signiert + notarisiert, mit Mac-Podman)
         env:

@@ -230,6 +230,14 @@ jobs:
 
   publish:
     needs: build
+    # NUR von main (2026-10-12): hier liegen der Signaturschlüssel und der
+    # VPS-Zugang, und ein workflow_dispatch lässt sich auf jedem Zweig starten.
+    # `build` sieht kein Geheimnis und läuft deshalb auch auf anderen Zweigen —
+    # als Probebau, der nichts veröffentlicht. Grenze: die Bedingung steht im
+    # Workflow selbst; wer ihn auf einem eigenen Zweig ändern kann, umgeht sie.
+    # Dagegen helfen nur Repo-Einstellungen (Environment mit „Deployment
+    # branches: main“ für die Secrets).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # Bewusst KEIN actions/checkout: hier läuft kein Code aus dem Repo und
