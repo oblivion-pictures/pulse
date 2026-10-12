@@ -4,7 +4,7 @@ Endpoints
 ---------
 GET  /admin/instances                      -- list registered instances
 DELETE /admin/instances/{id}               -- suspend (soft)
-POST /admin/instances/{id}/unsuspend
+POST /admin/instances/{id}/unsuspend       -- Sperre aufheben / Adresse freigeben
 POST /admin/instances/{id}/rotate-secret
 
 Die Antrags-Endpoints (``/admin/instance-applications``) leben seit dem
@@ -25,6 +25,11 @@ from sqlalchemy.orm import selectinload
 
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
+from dcc_auth.geloeschte_adresse import (
+    haelt_gesperrte_adresse,
+    haelt_gesperrte_adresse_sql,
+    platzhalter_hostname,
+)
 from dcc_auth.models import User
 from dcc_auth.models_instances import (
     InstanceDirectEndpoint,
@@ -157,7 +162,11 @@ async def list_instances(
     _actor: Annotated[User, Depends(_require_admin)],
     status_filter: Annotated[str, Query(alias="status")] = "all",
 ):
-    """List registered instances. Never exposes client_secret."""
+    """List registered instances. Never exposes client_secret.
+
+    ``status=suspended`` zählt auch gelöschte Einträge, die noch ihre echte
+    Adresse halten (``geloeschte_adresse.py``); ihr ``status`` bleibt ``deleted``.
+    """
     if status_filter not in ("active", "suspended", "deleted", "all"):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -168,7 +177,11 @@ async def list_instances(
         .order_by(RegisteredInstance.registered_at.desc())
         .options(selectinload(RegisteredInstance.registrar))
     )
-    if status_filter != "all":
+    if status_filter == "suspended":
+        stmt = stmt.where(
+            (RegisteredInstance.status == "suspended") | haelt_gesperrte_adresse_sql()
+        )
+    elif status_filter != "all":
         stmt = stmt.where(RegisteredInstance.status == status_filter)
 
     rows = (await session.execute(stmt)).scalars().all()
@@ -260,14 +273,33 @@ async def unsuspend_instance(
     session: SessionDep,
     _actor: Annotated[User, Depends(_require_admin)],
 ):
-    """Unsuspend: sets status='active', removes suspended_instances row."""
+    """Unsuspend: sets status='active', removes suspended_instances row.
+
+    Eine gelöschte Instanz wird nie wieder aktiv. Hält sie noch ihre echte
+    Adresse (``geloeschte_adresse.py``), gibt dieser Aufruf die ADRESSE frei:
+    Hostname → Platzhalter, Status und Sperrlisten-Eintrag bleiben. Sonst 409.
+    """
     instance = await session.get(RegisteredInstance, instance_id, with_for_update=True)
     if instance is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="instance not found")
     if instance.status == "deleted":
-        # Owner-Löschung ist endgültig — der Platzhalter-Hostname (deleted-*.invalid)
-        # darf nie wieder aktiv werden.
-        raise HTTPException(status.HTTP_409_CONFLICT, detail="instance was deleted by its owner")
+        if not haelt_gesperrte_adresse(instance):
+            # Owner-Löschung ist endgültig — der Platzhalter-Hostname
+            # (deleted-*.invalid) darf nie wieder aktiv werden.
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, detail="instance was deleted by its owner"
+            )
+        freigegeben = instance.hostname
+        instance.hostname = platzhalter_hostname(instance.id)
+        _audit(
+            session,
+            actor_id=_actor.id,
+            action="instance.release_address",
+            target_id=instance_id,
+            payload={"hostname": freigegeben},
+        )
+        await session.commit()
+        return  # Sperrliste (Kennungen) unverändert, ihr Cache stimmt weiter
     if instance.status == "active":
         return  # idempotent
 

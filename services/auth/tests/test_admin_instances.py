@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from dcc_auth.models import User
+from dcc_auth.models import AdminAuditLog, User
 from dcc_auth.models_instances import (
     InstanceApplication,
     RegisteredInstance,
@@ -517,6 +517,116 @@ async def test_unsuspend_idempotent(client, admin_token, session_factory, applic
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert r.status_code == 204
+
+
+# --------------------------------------------------------------------------- #
+# 9b. Gelöschte Instanz, die ihre Adresse noch hält                             #
+#     (der Besitzer hat eine GESPERRTE Instanz gelöscht, geloeschte_adresse.py) #
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_instanz(
+    session_factory, *, iid: int, hostname: str, status: str, user_id: int
+) -> None:
+    async with session_factory() as s:
+        s.add(
+            RegisteredInstance(
+                id=iid,
+                hostname=hostname,
+                client_id=f"adr-{iid}",
+                client_secret="$argon2id$v=19$m=65536,t=3,p=4$x",
+                status=status,
+                origin="vps",
+                registered_by=user_id,
+            )
+        )
+        if status != "active":
+            s.add(SuspendedInstance(instance_id=iid, reason="test"))
+        await s.commit()
+
+
+async def _liste(client, token: str, status_filter: str) -> list[tuple[str, str]]:
+    r = await client.get(
+        f"/admin/instances?status={status_filter}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 200, r.text
+    return sorted((i["id"], i["status"]) for i in r.json())
+
+
+@pytest.mark.asyncio
+async def test_list_suspended_includes_deleted_with_real_address(
+    client, admin_token, session_factory, applicant_user_id
+):
+    """Ohne diese Zeilen hätte der Admin keinen Weg, die Adresse freizugeben.
+    Eine gelöschte Instanz mit Platzhalter ist nichts Gesperrtes mehr."""
+    uid = applicant_user_id
+    await _seed_instanz(session_factory, iid=970001, hostname="a.example.org",
+                        status="suspended", user_id=uid)
+    await _seed_instanz(session_factory, iid=970002, hostname="b.example.org",
+                        status="deleted", user_id=uid)
+    await _seed_instanz(session_factory, iid=970003, hostname="deleted-970003.invalid",
+                        status="deleted", user_id=uid)
+    await _seed_instanz(session_factory, iid=970004, hostname="d.example.org",
+                        status="active", user_id=uid)
+
+    assert await _liste(client, admin_token, "suspended") == [
+        ("970001", "suspended"),
+        ("970002", "deleted"),
+    ]
+    # Die anderen Filter bleiben, was sie waren.
+    assert await _liste(client, admin_token, "deleted") == [
+        ("970002", "deleted"),
+        ("970003", "deleted"),
+    ]
+    assert await _liste(client, admin_token, "active") == [("970004", "active")]
+
+
+@pytest.mark.asyncio
+async def test_unsuspend_releases_address_of_deleted_instance(
+    client, admin_token, session_factory, applicant_user_id
+):
+    await _seed_instanz(session_factory, iid=970010, hostname="frei.example.org",
+                        status="deleted", user_id=applicant_user_id)
+
+    r = await client.post(
+        "/admin/instances/970010/unsuspend",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert r.status_code == 204, r.text
+
+    async with session_factory() as s:
+        inst = await s.get(RegisteredInstance, 970010)
+        sperre = await s.get(SuspendedInstance, 970010)
+        spur = (
+            await s.execute(
+                select(AdminAuditLog).where(AdminAuditLog.action == "instance.release_address")
+            )
+        ).scalar_one()
+    # Nie wieder aktiv, nie wieder von der Sperrliste: nur die Adresse ist frei.
+    assert (inst.status, inst.hostname) == ("deleted", "deleted-970010.invalid")
+    assert sperre is not None
+    assert (spur.target_id, spur.payload) == (970010, {"hostname": "frei.example.org"})
+
+
+@pytest.mark.asyncio
+async def test_unsuspend_409_for_deleted_without_address(
+    client, admin_token, session_factory, applicant_user_id
+):
+    """Normal gelöscht (Platzhalter) oder schon freigegeben: nichts freizugeben."""
+    await _seed_instanz(session_factory, iid=970020, hostname="deleted-970020.invalid",
+                        status="deleted", user_id=applicant_user_id)
+    r = await client.post(
+        "/admin/instances/970020/unsuspend",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert r.status_code == 409
+    async with session_factory() as s:
+        spuren = (
+            await s.execute(
+                select(AdminAuditLog).where(AdminAuditLog.action == "instance.release_address")
+            )
+        ).scalars().all()
+    assert spuren == []
 
 
 # --------------------------------------------------------------------------- #

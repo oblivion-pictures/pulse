@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from dcc_auth import email_verbinden, routes_verbinden, verbinden_uebernahme
 from dcc_auth.models import User
-from dcc_auth.models_instances import RegisteredInstance, UserInstanceMembership
+from dcc_auth.models_instances import RegisteredInstance, SuspendedInstance, UserInstanceMembership
 from dcc_auth.routes_suspended_instances import _BODY_KEY, _ETAG_KEY
 from dcc_auth.security import verify_password
 from dcc_auth.verbinden import (
@@ -567,6 +567,72 @@ async def test_gesperrter_eintrag_wird_nicht_uebernommen(
     assert r.status_code == 403
     assert r.json()["detail"] == {"code": "instance_suspended"}
     assert (await _abholen(client)).status_code == 410
+
+
+async def test_gesperrt_geloeschte_adresse_bleibt_gesperrt_bis_zur_freigabe(
+    client, session_factory, mit_redis, nachweis
+):
+    """Der Besitzer darf eine gesperrte Instanz löschen. Bliebe die Adresse
+    danach frei, verbände er sich sofort neu und die Sperre wäre umgangen. Es
+    sperrt für JEDES Konto, bis der Admin die Adresse freigibt."""
+    besitzer = await _konto(client, "gesperrtbesitzer")
+    fremd = await _konto(client, "gesperrtfremd")
+    admin = await _konto(client, "gesperrtadmin")
+    async with session_factory() as s:
+        (await s.get(User, admin["id"])).is_admin = True
+        await s.commit()
+    token = (
+        await client.post(
+            "/login",
+            json={
+                "email_or_username": "gesperrtadmin@dcc-test.example.com",
+                "password": "correct horse battery staple",
+            },
+        )
+    ).json()["access_token"]
+    await _eintrag(session_factory, besitzer["id"], 962210, status="suspended")
+    async with session_factory() as s:
+        s.add(SuspendedInstance(instance_id=962210, reason="admin"))
+        await s.commit()
+
+    r = await client.delete("/me/instances/962210", headers={"Cookie": besitzer["cookie"]})
+    assert r.status_code == 204, r.text
+    code = (await _start(client)).json()["code"]
+
+    for konto in (besitzer, fremd):
+        r = await _entscheiden(client, konto, code, "verbinden")
+        assert r.status_code == 403, r.text
+        assert r.json()["detail"] == "instance_suspended"
+    (eintrag,) = await _eintraege(session_factory)
+    assert (eintrag.id, eintrag.status) == (962210, "deleted")
+
+    r = await client.post(
+        "/admin/instances/962210/unsuspend", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 204, r.text
+
+    r = await _entscheiden(client, fremd, code, "verbinden")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "verbunden"
+    (neu,) = await _eintraege(session_factory)
+    assert (neu.id != 962210, neu.status, neu.registered_by) == (True, "active", fremd["id"])
+
+
+async def test_geloeschte_adresse_ohne_sperre_ist_sofort_frei(
+    client, session_factory, mit_redis, nachweis
+):
+    """Gegenstück: wer eine NICHT gesperrte Instanz löscht, verbindet sich
+    unter derselben Adresse gleich wieder."""
+    besitzer = await _konto(client, "loeschtfrei")
+    await _eintrag(session_factory, besitzer["id"], 962220)
+    r = await client.delete("/me/instances/962220", headers={"Cookie": besitzer["cookie"]})
+    assert r.status_code == 204, r.text
+
+    code = (await _start(client)).json()["code"]
+    r = await _entscheiden(client, besitzer, code, "verbinden")
+    assert r.status_code == 200, r.text
+    (neu,) = await _eintraege(session_factory)
+    assert (neu.id != 962220, neu.status) == (True, "active")
 
 
 @pytest.mark.parametrize("zustand", ["deleted", "suspended", "ohne_besitzer", "verschwunden"])

@@ -528,6 +528,61 @@ async def test_delete_me_with_owned_instance_soft_deletes_it(
 
 
 @pytest.mark.asyncio
+async def test_delete_me_with_suspended_instance_keeps_address_blocked(
+    client, session_factory, chat_purge_calls
+):
+    """Auch die Konto-Löschung gibt die Adresse einer GESPERRTEN Instanz nicht
+    frei (``soft_delete_instance`` ist dieselbe wie bei der Instanz-Löschung):
+    sonst wäre sie der Weg um die Sperre — Konto löschen, neues anlegen, die
+    Adresse verbinden. Der Sperr-Eintrag des Admins bleibt."""
+    from dcc_auth.models_instances import RegisteredInstance, SuspendedInstance
+    from dcc_auth.snowflake import next_id
+    from dcc_auth.verbinden_eintrag import InstanzGesperrt, instanz_verbinden
+
+    tokens = await _register(client)
+    bearer = {"Authorization": f"Bearer {tokens['access_token']}"}
+    inst_id = next_id()
+    async with session_factory() as s:
+        user = (await s.execute(select(User))).scalar_one()
+        s.add(
+            RegisteredInstance(
+                id=inst_id,
+                hostname="gesperrt.alice.example.org",
+                client_id="inst-alice-gesperrt",
+                client_secret="x" * 32,
+                status="suspended",
+                registered_by=user.id,
+            )
+        )
+        s.add(SuspendedInstance(instance_id=inst_id, reason="admin"))
+        await s.commit()
+
+    r = await client.request(
+        "DELETE",
+        "/me",
+        json={"password": REG["password"], "confirm_username": REG["username"]},
+        headers=bearer,
+    )
+    assert r.status_code == 204, r.text
+
+    async with session_factory() as s:
+        inst = (await s.execute(select(RegisteredInstance))).scalar_one()
+        assert (inst.status, inst.hostname) == ("deleted", "gesperrt.alice.example.org")
+        assert inst.registered_by is None
+        sperre = (await s.execute(select(SuspendedInstance))).scalar_one()
+        assert (sperre.instance_id, sperre.reason) == (inst_id, "admin")
+
+    # Ein anderes Konto kommt unter der Adresse ebenfalls nicht hinein.
+    bob_reg = {**REG, "username": "bob", "email": "bob@dcc-test.example.com"}
+    r = await client.post("/register", json=bob_reg)
+    assert r.status_code == 201, r.text
+    async with session_factory() as s:
+        bob = (await s.execute(select(User).where(User.username == "bob"))).scalar_one()
+        with pytest.raises(InstanzGesperrt):
+            await instanz_verbinden(s, bob, "gesperrt.alice.example.org")
+
+
+@pytest.mark.asyncio
 async def test_delete_me_with_rejected_application_only(
     client, session_factory, chat_purge_calls
 ):

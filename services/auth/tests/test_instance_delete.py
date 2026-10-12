@@ -2,7 +2,9 @@
 
 Deckt ab: Happy-Path (Status/Hostname-Platzhalter/Kill-Switch-Eintrag),
 Sichtbarkeit (Liste/Snippet/Bootstrap-Token nach Löschung), Ownership-404,
-Hostname-Freigabe für Neuanträge und die Admin-Guards gegen 'deleted'.
+Hostname-Freigabe für Neuanträge, die Admin-Guards gegen 'deleted' und die
+Ausnahme: eine GESPERRT gelöschte Instanz behält ihre Adresse, bis der Admin
+sie freigibt.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ import secrets
 
 import pytest
 import pytest_asyncio
-from dcc_auth.models import User
+from dcc_auth.models import AdminAuditLog, User
 from dcc_auth.models_instances import RegisteredInstance, SuspendedInstance
 from sqlalchemy import select
 
@@ -36,6 +38,14 @@ _LOGIN_OTHER = {"email_or_username": _REG_OTHER["email"], "password": _REG_OTHER
 
 _HOSTNAME = "delete-me.example.com"
 _INSTANCE_ID = 10000000000000042
+_PLATZHALTER = f"deleted-{_INSTANCE_ID}.invalid"
+
+_APP_PAYLOAD = {
+    "hostname": _HOSTNAME,
+    "purpose": "privat",
+    "expected_users": 5,
+    "contact_email": "owner@dcc-test.example.com",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +290,40 @@ async def test_delete_suspended_instance_keeps_single_suspend_entry(
     assert suspend_rows[0].reason == "admin"
 
 
+async def _gesperrte_instanz_saeen(session_factory, client, owner_cookie: str) -> None:
+    """Eine vom Admin gesperrte Instanz samt Sperrlisten-Eintrag."""
+    await _seed_instance(session_factory, client, owner_cookie, status="suspended")
+    async with session_factory() as session:
+        session.add(SuspendedInstance(instance_id=_INSTANCE_ID, reason="admin"))
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_delete_suspended_instance_keeps_address_blocked(
+    client, owner_cookie, session_factory
+):
+    """Der Besitzer darf eine gesperrte Instanz löschen — die Adresse wird dadurch
+    nicht frei, sonst verbände er sich unter ihr sofort neu und die Sperre wäre
+    umgangen. Der echte Hostname bleibt stehen, bis der Admin sie freigibt."""
+    await _gesperrte_instanz_saeen(session_factory, client, owner_cookie)
+
+    r = await client.delete(f"/me/instances/{_INSTANCE_ID}", headers={"Cookie": owner_cookie})
+    assert r.status_code == 204, r.text
+
+    inst = await _fetch_instance(session_factory)
+    assert inst is not None and inst.status == "deleted"
+    assert inst.hostname == _HOSTNAME
+    # Der Sperr-Eintrag des Admins bleibt unverändert die einzige Zeile.
+    (sperre,) = await _fetch_suspend_rows(session_factory)
+    assert sperre.reason == "admin"
+
+    # Auch der alte Antragsweg findet die Adresse weiter belegt.
+    r = await client.post(
+        "/me/instance-applications", json=_APP_PAYLOAD, headers={"Cookie": owner_cookie}
+    )
+    assert r.status_code == 409
+
+
 # ---------------------------------------------------------------------------
 # Admin-Guards gegen 'deleted'
 # ---------------------------------------------------------------------------
@@ -412,3 +456,48 @@ async def test_delete_cleans_memberships_directory_and_application(
     r = await client.get("/me/instance-applications", headers={"Cookie": owner_cookie})
     assert r.status_code == 200
     assert [a["status"] for a in r.json()] == ["closed"]
+
+
+@pytest.mark.asyncio
+async def test_admin_gibt_die_adresse_einer_gesperrt_geloeschten_instanz_frei(
+    client, owner_cookie, session_factory, admin_token
+):
+    await _gesperrte_instanz_saeen(session_factory, client, owner_cookie)
+    r = await client.delete(f"/me/instances/{_INSTANCE_ID}", headers={"Cookie": owner_cookie})
+    assert r.status_code == 204, r.text
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # Der Admin sieht sie bei den gesperrten — sonst gäbe es keinen Weg zur Freigabe.
+    r = await client.get("/admin/instances?status=suspended", headers=headers)
+    assert [(i["id"], i["status"], i["hostname"]) for i in r.json()] == [
+        (str(_INSTANCE_ID), "deleted", _HOSTNAME)
+    ]
+
+    r = await client.post(f"/admin/instances/{_INSTANCE_ID}/unsuspend", headers=headers)
+    assert r.status_code == 204, r.text
+
+    # Gelöscht bleibt gelöscht; frei ist nur die Adresse. Der Sperrlisten-Eintrag
+    # bleibt, gelöschte Instanzen stehen dauerhaft darauf.
+    inst = await _fetch_instance(session_factory)
+    assert (inst.status, inst.hostname) == ("deleted", _PLATZHALTER)
+    assert len(await _fetch_suspend_rows(session_factory)) == 1
+    async with session_factory() as s:
+        spur = (
+            await s.execute(
+                select(AdminAuditLog).where(AdminAuditLog.action == "instance.release_address")
+            )
+        ).scalar_one()
+    assert spur.target_id == _INSTANCE_ID
+    assert spur.payload == {"hostname": _HOSTNAME}
+
+    # Sie steht nicht mehr bei den gesperrten, und es ist nichts mehr freizugeben.
+    r = await client.get("/admin/instances?status=suspended", headers=headers)
+    assert r.json() == []
+    r = await client.post(f"/admin/instances/{_INSTANCE_ID}/unsuspend", headers=headers)
+    assert r.status_code == 409
+
+    # Die Adresse ist wieder zu haben.
+    r = await client.post(
+        "/me/instance-applications", json=_APP_PAYLOAD, headers={"Cookie": owner_cookie}
+    )
+    assert r.status_code == 201, r.text

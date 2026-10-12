@@ -145,5 +145,12 @@ Genehmigte Instanz sperren (z.B. nach Beschwerde):
 
 Endgültige Löschung: Status `deleted`; der Hostname wird beim Löschen sofort
 auf `deleted-<id>.invalid` umgeschrieben (`routes_instance_delete.py`) und ist
-damit für Neuanträge frei. Statuswerte einer Instanz: `active` | `suspended` |
-`deleted` — nach Freigabe heißt sie `active`, nicht `approved`.
+damit für Neuanträge frei. **Ausnahme: eine gesperrte Instanz** — löscht der
+Besitzer sie (oder sein Konto), behält die Zeile ihren echten Hostnamen, und die
+Adresse bleibt gesperrt (`instanz_verbinden` weist sie ab, kein Konto kommt
+darunter hinein). Der Admin sieht den Eintrag unter „Gesperrt“ und gibt die
+Adresse mit „Adresse freigeben“ frei (`POST /admin/instances/{id}/unsuspend`,
+Audit `instance.release_address`): der Hostname wird zum Platzhalter, der Status
+bleibt `deleted`, der Sperrlisten-Eintrag bleibt. Statuswerte einer Instanz:
+`active` | `suspended` | `deleted` — nach Freigabe heißt sie `active`, nicht
+`approved`.

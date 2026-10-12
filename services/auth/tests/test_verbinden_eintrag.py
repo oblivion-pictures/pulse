@@ -21,6 +21,7 @@ from dcc_auth.models_instances import (
     SuspendedInstance,
     UserInstanceMembership,
 )
+from dcc_auth.routes_instance_delete import soft_delete_instance
 from dcc_auth.security import verify_password
 from dcc_auth.verbinden_eintrag import (
     HOECHSTENS_SERVER,
@@ -172,6 +173,58 @@ async def test_gesperrter_server_ist_nicht_zu_uebernehmen(client, session_factor
         await _verbinden(session_factory, uid, "sperr.example.org")
     async with session_factory() as s:
         assert (await s.get(RegisteredInstance, 950003)).status == "suspended"
+
+
+async def _loeschen(session_factory, iid: int) -> None:
+    """Der Besitzer löscht den Eintrag (``DELETE /me/instances/{id}``)."""
+    async with session_factory() as s:
+        await soft_delete_instance(s, await s.get(RegisteredInstance, iid))
+        await s.commit()
+
+
+async def test_gesperrt_und_geloescht_haelt_die_adresse_gesperrt(client, session_factory):
+    """Der Besitzer darf eine gesperrte Instanz löschen. Bliebe die Adresse
+    danach frei, verbände er sich sofort neu: die Sperre wäre umgangen."""
+    besitzer = await _konto(client, "ve_gloe")
+    fremder = await _konto(client, "ve_gloe2")
+    await _instanz(
+        session_factory, iid=950010, hostname="gloe.example.org", besitzer=besitzer,
+        status="suspended",
+    )
+    async with session_factory() as s:
+        s.add(SuspendedInstance(instance_id=950010, reason="admin"))
+        await s.commit()
+    await _loeschen(session_factory, 950010)
+
+    for konto in (besitzer, fremder):
+        with pytest.raises(InstanzGesperrt):
+            await _verbinden(session_factory, konto, "gloe.example.org")
+
+    async with session_factory() as s:
+        eintraege = (
+            await s.execute(
+                select(RegisteredInstance).where(RegisteredInstance.hostname == "gloe.example.org")
+            )
+        ).scalars().all()
+    # Nichts Neues angelegt, der gelöschte Eintrag unangetastet.
+    assert [(e.id, e.status) for e in eintraege] == [(950010, "deleted")]
+
+
+@pytest.mark.parametrize("konto_ist_besitzer", [True, False])
+async def test_normal_geloescht_gibt_die_adresse_frei(client, session_factory, konto_ist_besitzer):
+    """Gegenstück: wer eine NICHT gesperrte Instanz löscht, gibt die Adresse frei."""
+    besitzer = await _konto(client, "ve_frei")
+    fremder = await _konto(client, "ve_frei2")
+    await _instanz(session_factory, iid=950011, hostname="frei.example.org", besitzer=besitzer)
+    await _loeschen(session_factory, 950011)
+
+    konto = besitzer if konto_ist_besitzer else fremder
+    ergebnis = await _verbinden(session_factory, konto, "frei.example.org")
+    assert ergebnis.instanz.id != 950011
+    assert ergebnis.abgeloest is None
+    async with session_factory() as s:
+        alt = await s.get(RegisteredInstance, 950011)
+    assert (alt.status, alt.hostname) == ("deleted", "deleted-950011.invalid")
 
 
 async def test_grenze_gilt_fuer_neue_adressen(client, session_factory):
