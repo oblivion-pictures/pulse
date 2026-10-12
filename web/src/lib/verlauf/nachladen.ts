@@ -198,7 +198,9 @@ async function reconciliereAeltereSeite(
     void verlaufSpeichern(channelId, ohneFrischeGrabsteine(vomServer, frischGeloeschteIds));
     messages.reconcile(channelId, vomServer);
     for (const id of ermittleGeloeschteIds(lokal, vomServer)) {
-      verlaufNachrichtGeloescht(channelId, id);
+      // `ermittleGeloeschteIds` nimmt Verschlüsseltes schon aus
+      // (`abgleich.ts`); `nurKlartext` hält das auch im Verlauf fest.
+      verlaufNachrichtGeloescht(channelId, id, { nurKlartext: true });
       messages.remove(channelId, id);
     }
   } catch {

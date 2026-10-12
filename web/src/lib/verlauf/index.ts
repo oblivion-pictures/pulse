@@ -93,6 +93,10 @@ function baueSaetze(kanalId: string, nachrichten: unknown[], kontoId: string) {
  * Wirft nie: siehe Kommentar oben. Fuer den C1/C2-Lesepfad (der Server hat
  * ohnehin eine eigene Kopie) — der Krypto-Pfad braucht `verlaufSpeichernPflicht`.
  *
+ * Alle Aufrufer legen Server-Fassungen ab (WS-Ereignisse, Verlaufsseiten,
+ * Lückenfüller); einen verschlüsselten Satz unter demselben Schlüssel
+ * überschreiben sie deshalb nie (`db.ts::verlaufPutSaetze`, `nurUeberKlartext`).
+ *
  * Ohne angemeldetes Konto (Befund 1) gibt es nichts zu speichern — derselbe
  * "nichts zu tun"-Fall wie ein unbekannter Kanal.
  */
@@ -102,7 +106,7 @@ export function verlaufSpeichern(kanalId: string, nachrichten: unknown[]): Promi
   if (kontoId === null) return Promise.resolve(0);
   const saetze = baueSaetze(kanalId, nachrichten, kontoId);
   if (saetze.length === 0) return Promise.resolve(0);
-  return verlaufPutSaetze(saetze)
+  return verlaufPutSaetze(saetze, { nurUeberKlartext: true })
     .then(() => {
       // Ein geglueckter Schreibzugriff hebt einen gemeldeten FEHLER auf
       // (er war voruebergehend) — sonst klebte der Auskleber fuer immer.

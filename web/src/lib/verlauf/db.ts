@@ -44,6 +44,13 @@ export {
  *  Nachrichten-IDs, die deshalb als Grabstein abgelegt wurden (der
  *  Empfangsweg zeigt sie nicht an und spiegelt sie nicht in die Sicherung).
  *
+ *  `nurUeberKlartext` (Server-Weg, Gegenprüfung 2026-10-12 Fund 4): ein hier
+ *  liegender VERSCHLÜSSELTER Satz desselben Kontos bleibt unangetastet. Der
+ *  Server kennt keine verschlüsselte Nachricht (`Message.verschluesselt`
+ *  setzt er nie), eine Server-Fassung unter demselben Schlüssel kann also
+ *  nur eine Verwechslung oder eine Fälschung sein — blind darübergelegt,
+ *  hob sie einen Grabstein auf und nahm Kennung und Reaktionen mit.
+ *
  *  Zweit-Schreibweg `medien` (Stufe B1): die Anhänge eines Satzes wandern
  *  als Index-Zeilen (`schema.ts::MedienZeile`) mit in dieselbe Transaktion.
  *  Das MUSS in den Schreibpforten passieren und nirgends sonst —
@@ -55,7 +62,10 @@ export {
  *  Index-Zeilen bleiben bei einem Grabstein stehen (der Nachzug darf sie
  *  weiter zeigen — der Server hat die Zeile ohnehin weggeräumt, sie ist hier
  *  der letzte Rest, bis B2 das aufräumt). */
-export function verlaufPutSaetze(saetze: Satz[]): Promise<string[]> {
+export function verlaufPutSaetze(
+  saetze: Satz[],
+  opts: { nurUeberKlartext?: boolean } = {}
+): Promise<string[]> {
   if (saetze.length === 0) return Promise.resolve([]);
   return mitVerbindung(
     (db) =>
@@ -64,10 +74,22 @@ export function verlaufPutSaetze(saetze: Satz[]): Promise<string[]> {
         const store = tx.objectStore(STORE_NACHRICHTEN);
         const medien = tx.objectStore(STORE_MEDIEN);
         const alsGrabstein: string[] = [];
-        for (const satz of saetze) {
+        const ablegen = (satz: Satz): void =>
           ablegenMitRegister(store, medien, satz, (abgelegt) => {
             if (abgelegt.geloescht && !satz.geloescht) alsGrabstein.push(satz.nachrichtId);
           });
+        for (const satz of saetze) {
+          if (!opts.nurUeberKlartext) {
+            ablegen(satz);
+            continue;
+          }
+          const anfrage = store.get(satz.schluessel);
+          anfrage.onsuccess = () => {
+            const vorhanden = anfrage.result as Satz | undefined;
+            const liegtVerschluesselt =
+              vorhanden?.verschluesselt && gehoertZuKonto(vorhanden, satz.kontoId);
+            if (!liegtVerschluesselt) ablegen(satz);
+          };
         }
         tx.oncomplete = () => resolve(alsGrabstein);
         tx.onerror = () => reject(tx.error);

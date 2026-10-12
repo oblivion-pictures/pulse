@@ -459,6 +459,71 @@ test.describe.serial('E2E-verschluesselte Direktnachrichten (Etappe D2, Nachweis
       .toBe(0);
   });
 
+  test('Fund 4: ein Server-Ereignis mit der ID einer verschlüsselten Nachricht ändert sie nicht', async () => {
+    // Der Server kennt keine verschlüsselte Nachricht. Bearbeiten und Löschen
+    // reisen für sie als Aktions-Frames durchs Postfach — ein
+    // `message_update`/`message_delete` des Servers mit ihrer ID kann nur
+    // eine Verwechslung oder eine Fälschung sein. Bis 2026-10-12 schrieb das
+    // erste blind über den Satz, das zweite löschte ihn samt Stein in der
+    // Sicherung. Hier gehen beide Ereignisse durch den ECHTEN Handler
+    // (`ws/handlers/chat.ts`, über `handler-registry.ts::dispatch`).
+    const KLARTEXT_2 = 'und hier gleich noch eine, in derselben Sitzung';
+    await alicePage.goto(`/app/@me/${dmChannelId}`);
+    const zeile = alicePage.locator('[data-testid="message-content"]', { hasText: KLARTEXT_2 });
+    await expect(zeile).toBeVisible({ timeout: 10_000 });
+
+    const satzNachher = await alicePage.evaluate(
+      async ({ kanalId, text }) => {
+        // @ts-expect-error - Vite-served path resolved at browser runtime
+        const db = await import('/src/lib/verlauf/db.ts');
+        // @ts-expect-error - Vite-served path resolved at browser runtime
+        const konto = await import('/src/lib/verlauf/konto.ts');
+        // @ts-expect-error - Vite-served path resolved at browser runtime
+        const ws = await import('/src/lib/ws/handler-registry.ts');
+        type S = {
+          nachrichtId: string;
+          autorId: string;
+          inhalt: string;
+          geloescht: boolean;
+          verschluesselt: boolean;
+          erstelltAm: string;
+        };
+        const kontoId = konto.aktuellesKonto() as string;
+        const lesen = async (): Promise<S[]> =>
+          (await db.verlaufLesenSaetze(kanalId, { anzahl: 100 }, kontoId)) as S[];
+        const vorher = (await lesen()).find((s) => s.inhalt === text);
+        if (!vorher?.verschluesselt) throw new Error('kein verschlüsselter Satz gefunden');
+        await ws.dispatch({
+          op: 'message_update',
+          data: {
+            id: vorher.nachrichtId,
+            channel_id: kanalId,
+            author_id: vorher.autorId,
+            content: 'vom Server untergeschoben',
+            nonce: null,
+            created_at: vorher.erstelltAm,
+            edited_at: new Date().toISOString()
+          }
+        });
+        await ws.dispatch({
+          op: 'message_delete',
+          data: { channel_id: kanalId, id: vorher.nachrichtId }
+        });
+        // Die Schreibwege feuern und vergessen — kurz warten, dann nachlesen.
+        // Gesucht wird über die ID: ein überschriebener Satz trüge einen
+        // anderen Inhalt und wäre über den Text nicht mehr zu finden.
+        await new Promise((r) => setTimeout(r, 1_000));
+        return (await lesen()).find((s) => s.nachrichtId === vorher.nachrichtId);
+      },
+      { kanalId: dmChannelId, text: KLARTEXT_2 }
+    );
+    expect(satzNachher).toMatchObject({ inhalt: KLARTEXT_2, geloescht: false, verschluesselt: true });
+    await expect(zeile).toBeVisible();
+    await expect(
+      alicePage.locator('[data-testid="message-content"]', { hasText: 'vom Server untergeschoben' })
+    ).toHaveCount(0);
+  });
+
   /**
    * Gegenprobe zu Befund 1 (Bughunt 2026-08-28): eine verschluesselte DM hat
    * keine `messages`-Zeile — Bearbeiten/Loeschen liefen vor der Reparatur

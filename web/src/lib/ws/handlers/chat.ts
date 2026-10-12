@@ -181,6 +181,11 @@ export function postfachAbholenUndAnzeigen(istAboniert: (kanalId: string) => boo
     });
 }
 
+/** Ob die Anzeige unter dieser ID eine verschlüsselte Nachricht zeigt. */
+function verschluesseltAngezeigt(kanalId: string, id: string): boolean {
+  return messages.for(kanalId).some((m) => m.id === id && m.verschluesselt === true);
+}
+
 export function register(ctx: HandlerContext): void {
   registerWsHandler('message', (evt) => {
     messages.upsert(evt.data);
@@ -199,14 +204,25 @@ export function register(ctx: HandlerContext): void {
     }
   });
 
+  // Bearbeiten und Löschen vom Server gelten nur für Klartext (Gegenprüfung
+  // 2026-10-12, Fund 4). Eine verschlüsselte Nachricht kennt der Server nicht
+  // — ihre Bearbeitung und Löschung reisen als Aktions-Frames durchs Postfach
+  // (`krypto/empfangen.ts`). Ein Server-Ereignis mit ihrer ID schrieb bis
+  // dahin blind über sie (Grabstein aufgehoben, Kennung und Reaktionen weg)
+  // bzw. löschte sie ohne Autorprüfung, samt Stein in der Sicherung, der
+  // beim Wiederherstellen jede Kopie traf. Jetzt bleiben Anzeige und
+  // Verlauf unangetastet (`verlaufSpeichern` überschreibt keinen
+  // verschlüsselten Satz, `nurKlartext` beim Löschen).
   registerWsHandler('message_update', (evt) => {
-    messages.update(evt.data);
+    if (!verschluesseltAngezeigt(evt.data.channel_id, evt.data.id)) messages.update(evt.data);
     void verlaufSpeichern(evt.data.channel_id, [evt.data]);
   });
 
   registerWsHandler('message_delete', (evt) => {
-    messages.remove(evt.data.channel_id, evt.data.id);
-    verlaufNachrichtGeloescht(evt.data.channel_id, evt.data.id);
+    if (!verschluesseltAngezeigt(evt.data.channel_id, evt.data.id)) {
+      messages.remove(evt.data.channel_id, evt.data.id);
+    }
+    verlaufNachrichtGeloescht(evt.data.channel_id, evt.data.id, { nurKlartext: true });
   });
 
   registerWsHandler('reaction_add', (evt) => {
