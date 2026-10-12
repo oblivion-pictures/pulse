@@ -1,7 +1,7 @@
 """Die Sätze zum Betreiber-Glied der Erreichbarkeitsprüfung.
 
-Eigenes Modul, weil ``diagnose_texte.py`` mit 348 Zeilen an der weichen Grenze
-der Größen-Policy steht (PLAN.md §12.1). Es mischt die drei Tabellen hier in
+Eigenes Modul, weil ``diagnose_texte.py`` schon über der weichen Grenze der
+Größen-Policy liegt (PLAN.md §12.1). Es mischt die drei Tabellen hier in
 seine eigenen — **die einzige Quelle für Diagnose-Texte bleibt damit
 ``diagnose_texte``**, hier liegt nur ein Teil davon.
 
@@ -141,59 +141,68 @@ BEFUNDE: dict[tuple[str, str], tuple[tuple[str, str], tuple[str, str]]] = {
 
 
 #: Heim-Server (``origin="app_host"``, die Server-App): kein Installer, kein
-#: Compose, kein ``docker exec`` — die Server-App schreibt Betriebsart und
-#: Besitzer bei jedem Start selbst in die Konfiguration
-#: (``desktop/electron/localBackend/nativeBackend/envContract.ts``,
-#: ``containerEnv.ts``) und führt für jedes angemeldete Konto einen eigenen
-#: Server. Befunde, die hier fehlen, gelten für beide Arten gleich.
+#: Compose, kein ``docker exec``. Die Server-App führt für jedes angemeldete
+#: Konto einen eigenen Server (``desktop/electron/main.ts::wendeBenutzerAn``)
+#: und legt ihn bei jedem Start aus den gespeicherten Zugangsdaten neu an; der
+#: Besitzer darin ist ``registered_by`` vom Einrichten (``envContract.ts``,
+#: ``containerEnv.ts``). Ein falscher oder fehlender Besitzer kommt deshalb vor
+#: allem daher, dass unter der Adresse gerade der Server eines ANDEREN Kontos
+#: läuft, oder von einem veralteten Lauf — sonst ist es ein Fehler der App.
+#: Befunde, die hier fehlen, gelten für beide Arten gleich.
 BEFUNDE_HEIMSERVER: dict[tuple[str, str], tuple[tuple[str, str], tuple[str, str]]] = {
     ("betreiber", "andere_kennung"): (
         (
             "Dieser Server hält ein anderes Konto für seinen Betreiber als dich. Deshalb bist du dort "
             "ein gewöhnliches Mitglied: Du kannst keine Community anlegen und die "
             "Server-Einstellungen nicht öffnen, obwohl der Server dir gehört.",
-            "Melde dich in der Server-App mit dem Konto an, dem dieser Server gehört, und starte ihn "
-            "dort neu (Server stoppen, Server starten). Die Server-App führt für jedes Konto einen "
-            "eigenen Server und schreibt beim Start den Besitzer neu in seine Konfiguration. Danach "
-            "in der App einmal neu laden.",
+            "Die Server-App führt für jedes Konto einen eigenen Server, und unter dieser Adresse "
+            "läuft vermutlich gerade der eines anderen Kontos. Melde dich in der Server-App mit dem "
+            "Konto an, dem dieser Server gehört, und starte ihn dort (Server stoppen, Server "
+            "starten); danach in der App einmal neu laden. Bleibt der Befund, ist es ein Fehler der "
+            "Server-App: melde ihn mit dem Ergebnis dieser Prüfung.",
         ),
         (
             "This server considers a different account its owner than you. That makes you an ordinary "
             "member there: you cannot create a community or open the server settings, even though the "
             "server is yours.",
-            "Sign in to the server app with the account that owns this server and restart it there "
-            "(stop the server, start the server). The server app keeps a separate server for each "
-            "account and writes the owner into its configuration on every start. Afterwards reload "
-            "the app once.",
+            "The server app keeps a separate server for each account, and at this address the one of "
+            "a different account is probably running right now. Sign in to the server app with the "
+            "account that owns this server and start it there (stop the server, start the server); "
+            "afterwards reload the app once. If the finding stays, it is a fault of the server app: "
+            "report it together with the result of this check.",
         ),
     ),
     ("betreiber", "nicht_konfiguriert"): (
         (
             "Dieser Server weiß nicht, wem er gehört. So kann ihn niemand verwalten, auch du nicht.",
             "Starte den Server in der Server-App neu (Server stoppen, Server starten), angemeldet mit "
-            "dem Konto, dem er gehört. Beim Start schreibt die Server-App den Besitzer in seine "
-            "Konfiguration.",
+            "dem Konto, dem er gehört; dabei legt sie ihn mit den gespeicherten Zugangsdaten neu "
+            "an. Bleibt der Befund, ist es ein Fehler der Server-App: melde ihn mit dem Ergebnis "
+            "dieser Prüfung.",
         ),
         (
             "This server does not know who it belongs to. Nobody can administer it that way, not "
             "even you.",
             "Restart the server in the server app (stop the server, start the server) while signed in "
-            "with the account that owns it. On start the server app writes the owner into its "
-            "configuration.",
+            "with the account that owns it; it recreates the server from the stored credentials. If "
+            "the finding stays, it is a fault of the server app: report it together with the result "
+            "of this check.",
         ),
     ),
     ("betreiber", "kein_self_host"): (
         (
             "Dieser Server läuft nicht in der Betriebsart für eigene Server. In dieser Einstellung "
             "wird niemand zum Verwalter ernannt, auch nicht mit der richtigen Kennung.",
-            "Die Server-App setzt diese Betriebsart bei jedem Start selbst. Bring sie auf den "
-            "neuesten Stand und starte den Server neu (Server stoppen, Server starten).",
+            "Ein Heim-Server läuft immer in dieser Betriebsart; der Befund deutet auf eine veraltete "
+            "Server-App. Bring sie auf den neuesten Stand und starte den Server neu (Server "
+            "stoppen, Server starten).",
         ),
         (
             "This server is not running in the mode meant for your own servers. In that setting "
             "nobody is made an administrator, not even with the correct identifier.",
-            "The server app sets this mode itself on every start. Update it to the latest version "
-            "and restart the server (stop the server, start the server).",
+            "A home server always runs in this mode; the finding points to an outdated server app. "
+            "Update it to the latest version and restart the server (stop the server, start the "
+            "server).",
         ),
     ),
     ("betreiber", "signatur_abgelehnt"): (
