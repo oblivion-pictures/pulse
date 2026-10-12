@@ -39,7 +39,7 @@ import type { Message } from '../api/types.ts';
 import { ausSatz, ausWire, grabstein, type AblageNachricht } from '../ablage/nutzlast.ts';
 import type { AblageAdapter } from '../ablage/adapter.ts';
 import { openIdentityDb, idbPutIdentity, idbGetIdentity } from '../identity/idb-shared.ts';
-import { verlaufAlleLesen, satzAnhangIds } from '../verlauf/db.ts';
+import { verlaufAlleLesen } from '../verlauf/db.ts';
 import { sicherungAnhaenge } from './anhaengeSpiegeln.ts';
 import { aktuellesKonto } from '../verlauf/konto.ts';
 import { istGueltigeKennung } from '../verlauf/identitaet.ts';
@@ -272,20 +272,29 @@ export function sicherungSpiegeln(kanalId: string, nachrichten: Message[]): void
  * Wiederherstellungs-Leser zum Absturz (Gegenprüfung 2026-10-12, Fund 1). Eine
  * `kryptoId`, die keine Kennung ist, fällt aus dem Stein heraus (`grabstein`
  * nimmt dann die ID).
+ *
+ * `anhangDateien` sind die Anhang-Dateien, die mit der Nachricht das Laufwerk
+ * verlassen. Welche das sind, entscheidet der Aufrufer
+ * (`verlauf/loeschFolgen.ts`): nur eigene, und nur, was kein anderer
+ * sichtbarer Satz trägt. Bis 2026-10-12 nahm diese Funktion jeden Anhang des
+ * gelöschten Satzes mit, auch bei einer fremden Löschung — eine Archiv-Zeile
+ * mit der ID meines Bildes und eine Grabstein-Zeile dazu räumten meine
+ * Laufwerk-Kopie (Gegenprüfung 2026-10-12, Fund 2).
  */
 export function sicherungGrabstein(
 	kanalId: string,
 	nachrichtId: string,
-	satz: { autorId: string; kryptoId?: string | null; anhaenge?: unknown[] },
+	satz: { autorId: string; kryptoId?: string | null },
+	anhangDateien: readonly string[] = [],
 ): void {
 	if (!SICHERUNG_ENABLED || !istGueltigeKennung(nachrichtId)) return;
 	void (async () => {
-		// Anhänge der gelöschten Nachricht aus ALLEN Zielen entfernen —
-		// gelöscht heißt gelöscht: der Klumpen überlebt die Nachricht nicht
-		// im Archiv (Lücke 2026-09-02: die Bytes-Datei blieb bislang liegen).
-		// Der alte deutsche Dateiname bleibt im Fallback mit drin.
+		// Die freigegebenen Anhänge aus ALLEN Zielen entfernen — gelöscht
+		// heißt gelöscht: der Klumpen überlebt die Nachricht nicht im Archiv
+		// (Lücke 2026-09-02: die Bytes-Datei blieb bislang liegen). Der alte
+		// deutsche Dateiname bleibt im Fallback mit drin.
 		try {
-			const ids = satzAnhangIds(satz);
+			const ids = anhangDateien.filter((id) => istGueltigeKennung(id));
 			if (ids.length > 0) {
 				const adapter = await adapterLieferant();
 				for (const id of ids) {

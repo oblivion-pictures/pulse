@@ -12,21 +12,29 @@
  */
 import { STORE_NACHRICHTEN, STORE_ANHAENGE, STORE_MEDIEN, type Satz } from './schema';
 import { mitVerbindung } from './verbindung';
-import { sortierSchluessel, satzErgaenzen, nachSchluesselVerdichten, type Nachschub } from './satz';
+import {
+  sortierSchluessel,
+  satzErgaenzen,
+  satzAnhangIds,
+  nachSchluesselVerdichten,
+  type Nachschub
+} from './satz';
 import { gehoertZuKonto } from './kontoFilter';
 import { ablegenMitRegister, kanalBereich, OBERE_ID } from './dbRegister';
-import { istGueltigeKennung } from './identitaet';
+import { anhaengeVerwaistLoeschen } from './dbAnhaenge';
 
-// Medien-Index und Anhang-Bytes liegen in `dbAnhaenge.ts`; die Aufrufer
-// importieren sie weiter von hier.
+// Medien-Index und Anhang-Bytes liegen in `dbAnhaenge.ts`, `satzAnhangIds`
+// in `satz.ts`; die Aufrufer importieren sie weiter von hier.
 export {
   medienLesen,
   medienIdVorhanden,
   medienSchreiben,
   anhangBytesSichern,
   anhangBytesLesen,
-  anhangBytesLoeschen
+  anhangBytesLoeschen,
+  anhaengeVerwaistLoeschen
 } from './dbAnhaenge';
+export { satzAnhangIds } from './satz';
 // Die Lösch-Wege (mit Grabstein-Register) liegen in `dbLoeschen.ts`.
 export {
   verlaufMarkiereGeloescht,
@@ -307,22 +315,6 @@ export function verlaufAlleLesen(kontoId: string): Promise<Satz[]> {
   );
 }
 
-/** Die Anhang-IDs eines Satzes, oder `[]` — für den Grabstein-Weg, der die
- *  zugehörigen Anhang-Dateien aus Archiv und Geräte-Cache mitentfernen muss.
- *  Ein Anhang ohne gültige Kennung als `id` fällt heraus
- *  (`identitaet.ts::istGueltigeKennung`): aus der ID wird ein Dateiname im
- *  Laufwerk (`sicherung/geraete.ts::anhangDateiName`), und ein Altsatz von vor
- *  der Prüfung kann eine frei gewählte tragen (Gegenprüfung 2026-10-12,
- *  Fund 1). */
-export function satzAnhangIds(satz: { anhaenge?: unknown[] } | undefined): string[] {
-  const anhaenge = satz?.anhaenge;
-  if (!Array.isArray(anhaenge)) return [];
-  return anhaenge.flatMap((a) => {
-    const id = a && typeof a === 'object' ? (a as { id?: unknown }).id : undefined;
-    return istGueltigeKennung(id) ? [id] : [];
-  });
-}
-
 /**
  * Bughunt Runde 5: Alle Sätze (+ Anhang-Bytes) EINES Kanals verwerfen —
  * der einzige bisherige Räumweg war `verlaufAllesLoeschen` (Kopplungs-
@@ -334,45 +326,42 @@ export function satzAnhangIds(satz: { anhaenge?: unknown[] } | undefined): strin
  * ein Satz eines fremden Kontos unter derselben Kanal-ID bleibt unangetastet.
  * Invalide `kontoId` (`null`/'') → No-Op, sonst wäre das ein Flächenräumung.
  *
+ * Die Anhang-Bytes gehen nur mit, wo kein verbliebener sichtbarer Satz sie
+ * noch trägt — in einem anderen Kanal oder unter einem anderen Konto
+ * (`dbAnhaenge.ts::anhaengeVerwaistLoeschen`, Gegenprüfung 2026-10-12,
+ * Fund 2): eine Anhang-ID wählt der Absender frei, und ein Gesprächspartner
+ * konnte die ID eines Anhangs aus einem anderen Gespräch in seine Nachricht
+ * schreiben — das Vergessen seines Gesprächs nahm dann die Bytes des anderen
+ * mit.
+ *
  * Die Einträge des Grabstein-Registers (`grabsteinRegister.ts`) bleiben
  * stehen: sie tragen keinen Inhalt, nur Autor und Kennung, und halten eine
  * gelöschte Nachricht auch dann gelöscht, wenn der Kanal später wieder
  * Bestand bekommt (Archiv, Sicherung).
  */
-export function verlaufKanalVergessen(kanalId: string, kontoId: string): Promise<void> {
-  if (!kanalId || !kontoId) return Promise.resolve();
-  return mitVerbindung(
+export async function verlaufKanalVergessen(kanalId: string, kontoId: string): Promise<void> {
+  if (!kanalId || !kontoId) return;
+  const kandidaten = await mitVerbindung(
     (db) =>
-      new Promise<void>((resolve, reject) => {
-        const tx = db.transaction([STORE_NACHRICHTEN, STORE_ANHAENGE], 'readwrite');
-        const store = tx.objectStore(STORE_NACHRICHTEN);
-        const satzSchluessel: string[] = [];
+      new Promise<string[]>((resolve, reject) => {
+        const tx = db.transaction(STORE_NACHRICHTEN, 'readwrite');
         const anhangIds: string[] = [];
-        const req = store.openCursor(kanalBereich(kanalId));
+        const req = tx.objectStore(STORE_NACHRICHTEN).openCursor(kanalBereich(kanalId));
         req.onsuccess = () => {
           const cursor = req.result;
           if (!cursor) return;
           const satz = cursor.value as Satz;
           if (typeof satz.kontoId === 'string' && satz.kontoId === kontoId) {
-            satzSchluessel.push(String(cursor.primaryKey));
-            for (const a of Array.isArray(satz.anhaenge) ? satz.anhaenge : []) {
-              const id = (a as { id?: unknown } | null)?.id;
-              if (typeof id === 'string') anhangIds.push(id);
-            }
+            anhangIds.push(...satzAnhangIds(satz));
             cursor.delete();
           }
           cursor.continue();
         };
-        tx.oncomplete = () => {
-          const anhangStore = db
-            .transaction(STORE_ANHAENGE, 'readwrite')
-            .objectStore(STORE_ANHAENGE);
-          for (const id of anhangIds) anhangStore.delete(id);
-          resolve();
-        };
+        tx.oncomplete = () => resolve(anhangIds);
         tx.onerror = () => reject(tx.error);
       })
   );
+  await anhaengeVerwaistLoeschen(kandidaten);
 }
 
 /**

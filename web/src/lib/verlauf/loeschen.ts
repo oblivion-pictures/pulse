@@ -18,39 +18,50 @@
  */
 import { sortierSchluessel } from './satz';
 import type { Satz } from './schema';
-import {
-  anhangBytesLoeschen,
-  satzAnhangIds,
-  verlaufGebundenLoeschen,
-  verlaufSatzLoeschen
-} from './db';
+import { anhaengeVerwaistLoeschen, verlaufGebundenLoeschen, verlaufSatzLoeschen } from './db';
+import { anhangKandidaten, laufwerkDateien } from './loeschFolgen';
 import { aktuellesKonto } from './konto';
 import { istLokalerKanal } from './kanalArt';
 import { istGueltigeKennung } from './identitaet';
 import { verlaufZustand } from './zustand.svelte';
 
 /** Was der Sicherungs-Stein über die gelöschte Nachricht wissen muss. */
-type SteinAngaben = { autorId: string; kryptoId: string | null; anhaenge?: unknown[] };
+type SteinAngaben = { autorId: string; kryptoId: string | null };
 
 /** Der Lösch-Haken der Sicherung: die Löschung wandert als Grabstein-Frame
- *  in den Archiv-Ordner, damit das Archiv nicht stärker ist als die App.
- *  Feuert und vergisst wie der Spiegel-Haken in `index.ts`. */
-function sicherungGrabstein(kanalId: string, nachrichtId: string, angaben: SteinAngaben): void {
+ *  in den Archiv-Ordner, damit das Archiv nicht stärker ist als die App, und
+ *  `anhangDateien` verlassen das Laufwerk. Feuert und vergisst wie der
+ *  Spiegel-Haken in `index.ts`. */
+function sicherungGrabstein(
+  kanalId: string,
+  nachrichtId: string,
+  angaben: SteinAngaben,
+  anhangDateien: readonly string[] = []
+): void {
   void import('$lib/sicherung/andock')
-    .then(({ sicherungGrabstein }) => sicherungGrabstein(kanalId, nachrichtId, angaben))
+    .then(({ sicherungGrabstein }) =>
+      sicherungGrabstein(kanalId, nachrichtId, angaben, anhangDateien)
+    )
     .catch(() => {
       /* die Sicherung darf den Verlaufsweg nie stören — s. andock.ts */
     });
 }
 
-/** Die Folgen einer Löschung je markiertem Satz: seine Anhang-Bytes aus dem
- *  Geräte-Cache (gelöscht heißt gelöscht) und ein Stein in der Sicherung —
- *  mit Autor und Kennung des Satzes, und erst NACH dem gelungenen Markieren:
- *  ein Stein in der Sicherung lässt sich nicht zurücknehmen. */
-function folgen(kanalId: string, markiert: Satz[]): void {
+/**
+ * Die Folgen einer Löschung, erst NACH dem gelungenen Markieren: ein Stein
+ * in der Sicherung lässt sich nicht zurücknehmen. Je markiertem Satz ein
+ * Stein mit Autor und Kennung. Die Anhang-Bytes gehen nur, wo kein anderer
+ * sichtbarer Satz sie trägt, die Laufwerk-Datei zusätzlich nur bei einem
+ * eigenen Satz (Regeln und Begründung in `loeschFolgen.ts`). Wirft nie: ein
+ * Fehler beim Bytes-Prüfen nimmt keine Datei mit, die Steine kommen trotzdem.
+ */
+async function folgen(kanalId: string, kontoId: string, markiert: Satz[]): Promise<void> {
+  const verwaist = await anhaengeVerwaistLoeschen(anhangKandidaten(markiert)).catch((err) => {
+    verlaufZustand.melde(err);
+    return new Set<string>();
+  });
   for (const satz of markiert) {
-    for (const id of satzAnhangIds(satz)) void anhangBytesLoeschen(id).catch(() => {});
-    sicherungGrabstein(kanalId, satz.nachrichtId, satz);
+    sicherungGrabstein(kanalId, satz.nachrichtId, satz, laufwerkDateien(satz, kontoId, verwaist));
   }
 }
 
@@ -73,7 +84,7 @@ export function verlaufNachrichtGeloescht(
   const kontoId = aktuellesKonto();
   if (kontoId === null) return;
   void verlaufSatzLoeschen(sortierSchluessel(kanalId, nachrichtId), kontoId, opts.nurKlartext === true)
-    .then((markiert) => folgen(kanalId, markiert))
+    .then((markiert) => folgen(kanalId, kontoId, markiert))
     .catch((err) => {
       verlaufZustand.melde(err);
     });
@@ -113,7 +124,7 @@ export async function verlaufGebundenGeloescht(
       autorId,
       [kennung]
     );
-    if (markiert.length > 0) folgen(kanalId, markiert);
+    if (markiert.length > 0) void folgen(kanalId, kontoId, markiert);
     else if (neuEingetragen) sicherungGrabstein(kanalId, kennung, { autorId, kryptoId: kennung });
     return markiert.map((satz) => satz.nachrichtId);
   } catch (err) {

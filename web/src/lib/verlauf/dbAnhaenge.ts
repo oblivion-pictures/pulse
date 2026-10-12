@@ -6,9 +6,17 @@
  *
  * Im Node-Testläufer NICHT prüfbar (kein `indexedDB` dort).
  */
-import { STORE_ANHAENGE, STORE_MEDIEN, type AnhangBytes, type MedienZeile } from './schema';
+import {
+  STORE_ANHAENGE,
+  STORE_MEDIEN,
+  STORE_NACHRICHTEN,
+  type AnhangBytes,
+  type MedienZeile,
+  type Satz
+} from './schema';
 import { mitVerbindung } from './verbindung';
 import { gehoertZuKonto } from './kontoFilter';
+import { satzAnhangIds } from './satz';
 
 /**
  * Der geraeteweite Medien-Index dieses Kontos, neueste zuerst — fuer das
@@ -123,6 +131,51 @@ export function anhangBytesLoeschen(id: string): Promise<void> {
         const tx = db.transaction(STORE_ANHAENGE, 'readwrite');
         tx.objectStore(STORE_ANHAENGE).delete(id);
         tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      })
+  );
+}
+
+/**
+ * Löscht die Bytes der Anhänge unter `ids`, die kein sichtbarer Satz mehr
+ * trägt, und nennt genau diese IDs — die Folge einer Löschung
+ * (`loeschen.ts`, `db.ts::verlaufKanalVergessen`).
+ *
+ * **Warum nicht einfach die Anhänge des gelöschten Satzes** (Gegenprüfung
+ * 2026-10-12, Fund 2): die Anhang-ID wählt der Absender frei. Bob kannte die
+ * ID meines Bildes (er hat es von mir bekommen), lieferte eine Archiv-Zeile
+ * mit ihr ein und löschte sie wieder — seine Löschung nahm die Bytes MEINES
+ * Bildes von meinem Gerät, und die Laufwerk-Kopie gleich mit. Nach der
+ * Quittung gibt es die Bytes nirgends sonst (`schema.ts::AnhangBytes`).
+ *
+ * Sichtbar heißt: kein Grabstein, gleich welches Konto — der Speicher
+ * `anhaenge` ist geräteweit, nicht je Konto. Register-Einträge tragen keine
+ * Anhänge. Prüfen und Löschen in EINER Transaktion, damit kein Satz mit
+ * derselben ID dazwischen ankommt. Ein voller Durchlauf durch den Verlauf,
+ * aber nur, wenn es überhaupt Kandidaten gibt — eine Löschung mit Anhang
+ * ist selten.
+ */
+export function anhaengeVerwaistLoeschen(ids: readonly string[]): Promise<Set<string>> {
+  if (ids.length === 0) return Promise.resolve(new Set());
+  return mitVerbindung(
+    (db) =>
+      new Promise<Set<string>>((resolve, reject) => {
+        const tx = db.transaction([STORE_NACHRICHTEN, STORE_ANHAENGE], 'readwrite');
+        const verwaist = new Set(ids);
+        const req = tx.objectStore(STORE_NACHRICHTEN).openCursor();
+        req.onsuccess = () => {
+          const cursor = req.result;
+          if (!cursor) {
+            const anhaenge = tx.objectStore(STORE_ANHAENGE);
+            for (const id of verwaist) anhaenge.delete(id);
+            return;
+          }
+          const satz = cursor.value as Satz;
+          if (!satz.geloescht) for (const id of satzAnhangIds(satz)) verwaist.delete(id);
+          cursor.continue();
+        };
+        req.onerror = () => reject(req.error);
+        tx.oncomplete = () => resolve(verwaist);
         tx.onerror = () => reject(tx.error);
       })
   );

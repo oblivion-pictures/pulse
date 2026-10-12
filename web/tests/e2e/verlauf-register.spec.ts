@@ -136,6 +136,62 @@ function sichtbar(saetze: Satz[]): string[] {
   return saetze.filter((s) => !s.geloescht).map((s) => s.nachrichtId);
 }
 
+/** Meldet das Konto KONTO an und führt KANAL als Direktnachricht mit Bob —
+ *  ohne Server, nur die beiden Stores, an denen `verlauf/loeschen.ts` hängt
+ *  (`aktuellesKonto`, `istLokalerKanal`). Lädt `loeschen.ts` dazu. */
+async function alsKontoImGespraech(page: Page): Promise<void> {
+  await page.evaluate(
+    async ({ kontoId, kanalId, bob }) => {
+      const w = window as unknown as Record<string, unknown>;
+      // @ts-expect-error - Vite-served path resolved at browser runtime
+      const { auth } = await import('/src/lib/stores/auth.svelte.ts');
+      // @ts-expect-error - Vite-served path resolved at browser runtime
+      const { directMessages } = await import('/src/lib/stores/directMessages.svelte.ts');
+      auth.user = { id: kontoId };
+      directMessages.seed([
+        { id: kanalId, other_user_id: bob, last_message_id: null, created_at: '2026-10-12T00:00:00Z' }
+      ]);
+      // @ts-expect-error - Vite-served path resolved at browser runtime
+      w.__loeschen = await import('/src/lib/verlauf/loeschen.ts');
+    },
+    { kontoId: KONTO, kanalId: KANAL, bob: BOB }
+  );
+}
+
+/** Eine gebundene Löschung über den echten Weg (`loeschen.ts`), samt Folgen. */
+async function gebundenGeloescht(page: Page, kennung: string, autor: string): Promise<string[]> {
+  return page.evaluate(
+    ({ kanalId, kennung, autor }) =>
+      (window as unknown as { __loeschen: { verlaufGebundenGeloescht: Function } }).__loeschen
+        .verlaufGebundenGeloescht(kanalId, kennung, autor),
+    { kanalId: KANAL, kennung, autor }
+  );
+}
+
+/** Legt Bytes für einen Anhang ab (`anhangBytesSichern`). */
+async function anhangBytesAblegen(page: Page, id: string): Promise<void> {
+  await page.evaluate(
+    ({ id, kanalId }) =>
+      (window as unknown as { __db: Record<string, Function> }).__db.anhangBytesSichern({
+        id,
+        kanalId,
+        daten: new Blob(['bild']),
+        vorschau: null
+      }),
+    { id, kanalId: KANAL }
+  );
+}
+
+/** Liegen die Bytes unter dieser Anhang-ID noch im Geräte-Cache? */
+async function anhangDa(page: Page, id: string): Promise<boolean> {
+  return page.evaluate(
+    async (id) =>
+      (await (window as unknown as { __db: Record<string, Function> }).__db.anhangBytesLesen(id)) !==
+      undefined,
+    id
+  );
+}
+
 /** Alle Schlüssel des Speichers `nachrichten`, an jedem Leseweg vorbei —
  *  auch die Einträge des Grabstein-Registers. */
 async function rohSchluessel(page: Page): Promise<string[]> {
@@ -401,6 +457,58 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     // Gegenprobe: eine echte Kennung trägt ein.
     expect(await gebundenLoeschen(page, ALICE, [K])).toEqual({ markiert: [], neu: true });
     expect(await rohSchluessel(page)).toHaveLength(1);
+  });
+
+  test('Fund 2 (zweite Gegenprüfung): eine fremde Löschung nimmt keine Anhang-Bytes mit, die ein anderer Satz trägt', async ({ page }) => {
+    await alsKontoImGespraech(page);
+    const BILD = '700000000000007001';
+    const BOBS_ZEILE = '700000000000005002';
+    await anhangBytesAblegen(page, BILD);
+    // Alices Nachricht mit ihrem Bild. Daneben eine Zeile, die Bob mit
+    // derselben Anhang-ID eingeliefert hat — er kennt sie, er hat das Bild
+    // von ihr bekommen.
+    await ablegen(page, 'put', [
+      { id: K, autor: ALICE, verschluesselt: true, anhaenge: [{ id: BILD }] },
+      { id: BOBS_ZEILE, autor: BOB, kryptoId: BOBS_ZEILE, verschluesselt: true, anhaenge: [{ id: BILD }] }
+    ]);
+    // Bob löscht seine Zeile, gebunden an ihn und über den echten Weg
+    // (`verlauf/loeschen.ts`). Bis 2026-10-12 nahm das Alices Bytes mit.
+    expect(await gebundenGeloescht(page, BOBS_ZEILE, BOB)).toEqual([BOBS_ZEILE]);
+    // Die Folgen laufen nach dem Markieren nebenher.
+    await page.waitForTimeout(1_000);
+    expect(await anhangDa(page, BILD)).toBe(true);
+    // Löscht Alice ihre Nachricht, trägt kein sichtbarer Satz das Bild mehr:
+    // jetzt gehen die Bytes.
+    expect(await gebundenGeloescht(page, K, ALICE)).toEqual([K]);
+    await expect.poll(() => anhangDa(page, BILD)).toBe(false);
+  });
+
+  test('Fund 2 (zweite Gegenprüfung): ein vergessenes Gespräch nimmt keine Bytes eines anderen mit', async ({ page }) => {
+    const BILD = '700000000000007002';
+    const ANDERER_KANAL = '700000000000000200';
+    await anhangBytesAblegen(page, BILD);
+    // Bobs Zeile in unserem Gespräch trägt die ID eines Bildes aus einem
+    // anderen Gespräch.
+    await ablegen(page, 'put', [{ id: D, autor: BOB, anhaenge: [{ id: BILD }] }]);
+    await page.evaluate(
+      ({ kanalId, kontoId, k, alice, bild }) => {
+        const w = window as unknown as { __db: Record<string, Function>; __satz: { zuSatz: Function } };
+        const satz = w.__satz.zuSatz(
+          kanalId,
+          { id: k, author_id: alice, content: 'mein Bild', created_at: '2026-10-12T00:00:00Z', attachments: [{ id: bild }] },
+          kontoId
+        );
+        return w.__db.verlaufPutSaetze([satz]);
+      },
+      { kanalId: ANDERER_KANAL, kontoId: KONTO, k: K, alice: ALICE, bild: BILD }
+    );
+    await page.evaluate(
+      ({ kanalId, kontoId }) =>
+        (window as unknown as { __db: Record<string, Function> }).__db.verlaufKanalVergessen(kanalId, kontoId),
+      { kanalId: KANAL, kontoId: KONTO }
+    );
+    expect(await kanal(page)).toEqual([]);
+    expect(await anhangDa(page, BILD)).toBe(true);
   });
 
   test('Register-Einträge erscheinen in keinem Leseweg', async ({ page }) => {

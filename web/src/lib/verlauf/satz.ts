@@ -193,6 +193,21 @@ function anhangId(anhang: unknown): string | null {
   return typeof id === 'string' ? id : null;
 }
 
+/** Die Anhang-IDs eines Satzes, oder `[]` — für die Lösch-Wege, die die
+ *  zugehörigen Anhang-Bytes und Laufwerk-Dateien mitentfernen
+ *  (`loeschFolgen.ts`).
+ *
+ *  Ein Anhang ohne gültige Kennung als `id` fällt heraus
+ *  (`identitaet.ts::istGueltigeKennung`): aus der ID wird ein Dateiname im
+ *  Laufwerk (`sicherung/geraete.ts::anhangDateiName`), und ein Altsatz von vor
+ *  der Prüfung kann eine frei gewählte tragen (Gegenprüfung 2026-10-12,
+ *  Fund 1). */
+export function satzAnhangIds(satz: { anhaenge?: unknown[] } | undefined): string[] {
+  const anhaenge = satz?.anhaenge;
+  if (!Array.isArray(anhaenge)) return [];
+  return anhaenge.map(anhangId).filter(istGueltigeKennung);
+}
+
 /**
  * Woher ein Nachschub kommt — und damit, wie viel er an einem liegenden Satz
  * ergänzen darf (`satzErgaenzen`):
