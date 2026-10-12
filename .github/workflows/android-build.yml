@@ -25,6 +25,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # contents:write für den GitHub-Release-Schritt (infra/release/github-release.sh).
+    # Der Workflow läuft nur auf main-Pushes und workflow_dispatch, nie für PRs.
+    permissions:
+      contents: write
     # secrets duerfen nicht direkt in step-if stehen -> hier auf einen env-Flag
     # mappen und unten darauf pruefen.
     env:
@@ -113,6 +117,23 @@ jobs:
         run: |
           scp -i ~/.ssh/id_ed25519 /tmp/pulse-release.apk \
             ${{ secrets.VPS_SSH_ZIEL }}:pulse/downloads/pulse-latest.apk
+
+      # Zusätzlich als GitHub-Release (Schritt 1 des Download-Umzugs auf GitHub,
+      # 2026-10-12): ein Release je Version, feste Dateinamen — Mechanik im Kopf
+      # von infra/release/github-release.sh. netcup bleibt vorerst die Quelle für
+      # die Links; dieser Schritt läuft danach, ein Fehler hier färbt
+      # den Lauf rot, ohne den Feed zu berühren.
+      # Die APK landet im Release der aktuellen DESKTOP-Version — so liegen alle
+      # Downloads in einem Release, und `releases/latest/download/Pulse-Android.apk`
+      # trifft immer die neueste.
+      - name: Release-APK auf GitHub Releases veröffentlichen
+        if: ${{ steps.release.conclusion == 'success' && github.ref == 'refs/heads/main' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash infra/release/github-release.sh "$(node -p "require('./desktop/package.json').version")" \
+            "Pulse-Android.apk=/tmp/pulse-release.apk"
 
       - name: SSH-Key entfernen
         if: always()

@@ -161,8 +161,9 @@ BEREICH_web="web plugins pnpm-lock.yaml package.json"
 BEREICH_desktop="desktop pnpm-lock.yaml package.json"
 # Der Auslieferer auf dem VPS läuft per Cron und meldet sich nur, wenn er etwas
 # tut — ein Fehler darin sieht aus wie „es passiert nichts". Seine
-# Entscheidungslogik hat deshalb einen eigenen Prüfstand.
-BEREICH_infra="infra/prod infra/self-host"
+# Entscheidungslogik hat deshalb einen eigenen Prüfstand. Dasselbe gilt für
+# das Release-Skript der Bau-Workflows (infra/release): es läuft nur auf main.
+BEREICH_infra="infra/prod infra/self-host infra/release"
 
 haupt_baum=""
 git rev-parse -q --verify origin/main >/dev/null 2>&1 &&
@@ -317,6 +318,9 @@ if [ "${infra_grund#ja}" != "$infra_grund" ]; then
   echo "  Auslieferer-Fälle (infra/self-host)…"
   bash infra/self-host/tests/pulse-update-faelle.sh \
     || { echo "✗ self-host pulse-update-Fälle ROT — abgebrochen." >&2; exit 1; }
+  echo "  Release-Fälle (infra/release)…"
+  bash infra/release/tests/github-release-faelle.sh \
+    || { echo "✗ github-release-Fälle ROT — abgebrochen." >&2; exit 1; }
   # shellcheck disable=SC2086
   stempeln infra $BEREICH_infra
 fi

@@ -51,6 +51,10 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
+    # contents:write für den GitHub-Release-Schritt (infra/release/github-release.sh).
+    # Der Workflow läuft nur auf main-Pushes und workflow_dispatch, nie für PRs.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -254,6 +258,22 @@ jobs:
           scp -i ~/.ssh/id_ed25519 \
             "$EXE" \
             ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win/Pulse-Setup-latest.exe
+
+      # Zusätzlich als GitHub-Release (Schritt 1 des Download-Umzugs auf GitHub,
+      # 2026-10-12): ein Release je Version, feste Dateinamen — Mechanik im Kopf
+      # von infra/release/github-release.sh. netcup bleibt vorerst die Quelle für
+      # Auto-Update und Links; dieser Schritt läuft danach, ein Fehler hier färbt
+      # den Lauf rot, ohne den Feed zu berühren.
+      - name: Auf GitHub Releases veröffentlichen
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EXE=$(ls desktop/release/Pulse-Setup-*.exe)
+          bash infra/release/github-release.sh "$(node -p "require('./desktop/package.json').version")" \
+            "Pulse-Setup-Windows.exe=$EXE" \
+            "Pulse-Setup-Windows.exe.blockmap=$EXE.blockmap"
 
       - name: SSH-Key wieder entfernen
         if: always()

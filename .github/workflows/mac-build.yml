@@ -78,6 +78,10 @@ jobs:
   build:
     # macos-latest = Apple Silicon (arm64) → matcht das arm64-DMG + --enable-neon.
     runs-on: macos-latest
+    # contents:write für den GitHub-Release-Schritt (infra/release/github-release.sh).
+    # Der Workflow läuft nur auf main-Pushes und workflow_dispatch, nie für PRs.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -244,6 +248,23 @@ jobs:
             desktop/release/*.zip.blockmap \
             ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-mac/
 
+      # Zusätzlich als GitHub-Release (Schritt 1 des Download-Umzugs auf GitHub,
+      # 2026-10-12): ein Release je Version, feste Dateinamen — Mechanik im Kopf
+      # von infra/release/github-release.sh. netcup bleibt vorerst die Quelle für
+      # Auto-Update und Links; dieser Schritt läuft danach, ein Fehler hier färbt
+      # den Lauf rot, ohne den Feed zu berühren.
+      - name: Auf GitHub Releases veröffentlichen
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DMG=$(ls desktop/release/Pulse-*.dmg | head -n1)
+          ZIP=$(ls desktop/release/*.zip | head -n1)
+          bash infra/release/github-release.sh "$(node -p "require('./desktop/package.json').version")" \
+            "Pulse-macOS.dmg=$DMG" \
+            "Pulse-macOS.zip=$ZIP" \
+            "Pulse-macOS.zip.blockmap=$ZIP.blockmap"
+
       - name: SSH-Key wieder entfernen
         if: always()
         run: rm -f ~/.ssh/id_ed25519
@@ -256,6 +277,10 @@ jobs:
   # geteilt bleiben; Upload nur von main (wie der Client).
   build-server:
     runs-on: macos-latest
+    # contents:write für den GitHub-Release-Schritt (infra/release/github-release.sh).
+    # Der Workflow läuft nur auf main-Pushes und workflow_dispatch, nie für PRs.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -326,6 +351,23 @@ jobs:
             desktop/release-server/*.zip \
             desktop/release-server/*.zip.blockmap \
             ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-mac-server/
+
+      # Zusätzlich als GitHub-Release (Schritt 1 des Download-Umzugs auf GitHub,
+      # 2026-10-12): ein Release je Version, feste Dateinamen — Mechanik im Kopf
+      # von infra/release/github-release.sh. netcup bleibt vorerst die Quelle für
+      # Auto-Update und Links; dieser Schritt läuft danach, ein Fehler hier färbt
+      # den Lauf rot, ohne den Feed zu berühren.
+      - name: Auf GitHub Releases veröffentlichen
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DMG=$(ls desktop/release-server/*.dmg | head -n1)
+          ZIP=$(ls desktop/release-server/*.zip | head -n1)
+          bash infra/release/github-release.sh "$(node -p "require('./desktop/package.json').version")" \
+            "Pulse-Server-macOS.dmg=$DMG" \
+            "Pulse-Server-macOS.zip=$ZIP" \
+            "Pulse-Server-macOS.zip.blockmap=$ZIP.blockmap"
 
       - name: SSH-Key wieder entfernen
         if: always()
