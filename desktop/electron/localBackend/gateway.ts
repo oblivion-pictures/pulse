@@ -1,6 +1,7 @@
 // Default-Gateway-Discovery für NAT-PMP/PCP (UDP 5351 zum Gateway).
 // Node hat keine Stdlib-API → Plattform-Route-Befehl parsen, Subnetz-Fallback.
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { networkInterfaces } from 'node:os';
 
@@ -55,6 +56,31 @@ export function parseGateway(platform: NodeJS.Platform, routeOutput: string): st
   return (best as { gw: string } | null)?.gw ?? null;
 }
 
+/** Gateway der Default-Route aus `/proc/net/route` (Linux) — kleinste
+ *  Metrik, nur Zeilen mit Ziel 0.0.0.0 und gesetztem RTF_GATEWAY (0x2).
+ *  Die Adressen stehen dort als Hex in Host-Byte-Reihenfolge; die
+ *  ausgelieferten Linux-Bauten sind amd64 bzw. arm64, beide Little-Endian —
+ *  daher rückwärts gelesen.
+ *
+ *  Gebraucht in der Flatpak-Server-App: die Laufzeit
+ *  org.freedesktop.Platform 25.08 bringt kein `ip` mit (nachgesehen
+ *  2026-10-12), `/proc/net/route` ist mit `--share=network` aber lesbar. Ohne
+ *  das fiel die Suche auf die Subnetz-Heuristik unten zurück, die nur rät. */
+export function parseProcNetRoute(text: string): string | null {
+  let best: { gw: string; metric: number } | null = null;
+  for (const zeile of text.split('\n').slice(1)) {
+    const f = zeile.trim().split(/\s+/);
+    if (f.length < 8 || f[1] !== '00000000' || !/^[0-9A-Fa-f]{8}$/.test(f[2])) continue;
+    if ((parseInt(f[3], 16) & 0x2) === 0) continue;
+    const n = parseInt(f[2], 16);
+    const gw = [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, n >>> 24].join('.');
+    const metric = Number(f[6]);
+    if (gw === '0.0.0.0') continue;
+    if (!best || metric < best.metric) best = { gw, metric };
+  }
+  return (best as { gw: string } | null)?.gw ?? null;
+}
+
 function subnetFallbackGateway(): string | null {
   for (const addrs of Object.values(networkInterfaces())) {
     for (const a of addrs ?? []) {
@@ -76,7 +102,11 @@ export async function discoverGateway(): Promise<string | null> {
       });
       const gw = parseGateway(process.platform, stdout);
       if (gw) return gw;
-    } catch { /* fällt auf Subnetz-Heuristik */ }
+    } catch { /* fällt auf /proc/net/route bzw. die Subnetz-Heuristik */ }
+  }
+  if (process.platform === 'linux') {
+    const gw = await readFile('/proc/net/route', 'utf8').then(parseProcNetRoute, () => null);
+    if (gw) return gw;
   }
   return subnetFallbackGateway();
 }

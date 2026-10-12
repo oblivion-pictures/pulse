@@ -753,20 +753,21 @@ function wireHost(getWin: () => Electron.BrowserWindow | null): void {
   // Nur im Server-Modus, und nur gegen das AUTOMATISCHE Schlafen — ein
   // bewusstes Zuklappen oder „Bereitschaft" bleibt dem Nutzer.
   let schlafSperre: number | null = null;
-  // Öffentliche IP ↔ LiveKit (oeffentlicheIp.ts): Heimanschlüsse haben keine
-  // feste IP. LiveKit bekommt die Adresse fest vorgegeben (sonst bekommt
-  // Firefox im selben Heimnetz keinen Medienweg) und folgt ihr deshalb nicht
-  // selbst — der Abgleich hier zieht sie nach und startet bei einem Wechsel
-  // NUR LiveKit neu. Takt: alle 2 Minuten, kurz nach jedem Live-Gehen und
-  // nach dem Aufwachen (nach einem Ruhezustand ist ein Wechsel am
-  // wahrscheinlichsten).
+  // Öffentliche IP + LAN-IP ↔ LiveKit (oeffentlicheIp.ts): Heimanschlüsse
+  // haben keine feste IP, die LAN-Adresse kann per DHCP wechseln. LiveKit
+  // bekommt beide fest vorgegeben (die öffentliche als node_ip, die LAN-
+  // Adresse daneben — sonst bräuchten Geräte im Heimnetz Hairpin-NAT) und
+  // folgt ihnen deshalb nicht selbst — der Abgleich hier zieht sie nach und
+  // startet bei einem Wechsel NUR LiveKit neu. Takt: alle 2 Minuten, kurz nach
+  // jedem Live-Gehen und nach dem Aufwachen (nach einem Ruhezustand ist ein
+  // Wechsel am wahrscheinlichsten).
   let ipAbgleichLaeuft = false;
   const ipAbgleich = async (): Promise<void> => {
     if (!SERVER_MODE || ipAbgleichLaeuft || hl.getStatus().phase !== 'live') return;
     ipAbgleichLaeuft = true;
     try {
       const r = await manager.abgleichOeffentlicheIp();
-      if (r === 'gesetzt') console.warn('[host] öffentliche IP gewechselt — LiveKit-Adresse nachgezogen');
+      if (r === 'gesetzt') console.warn('[host] öffentliche oder LAN-IP gewechselt — LiveKit-Adressen nachgezogen');
     } catch (err) {
       console.warn('[host] IP-Abgleich fehlgeschlagen:', (err as Error).message);
     } finally {
@@ -1273,13 +1274,19 @@ function wireHost(getWin: () => Electron.BrowserWindow | null): void {
       );
     }
     // Linux + Docker-Bridge: LiveKit sieht im Container nur 172.17.x und per
-    // STUN die öffentliche Adresse, nicht die LAN-Adresse dieses Rechners —
-    // und kann in der Bridge keine zusätzliche ankündigen (mediatransportutil:
-    // NodeIP wird bei use_external_ip von STUN überschrieben). Geräte im
-    // selben WLAN brauchen dann Hairpin-NAT am Router oder einen Browser, der
-    // seine echten Adressen zeigt. Unter rootless Podman/pasta sieht der
-    // Container die LAN-Adresse selbst — dort trägt der Weg (Linux-E2E).
-    if (rt?.kind === 'docker' && process.platform === 'linux' && laeuft) {
+    // STUN die öffentliche Adresse, nicht die LAN-Adresse dieses Rechners.
+    // Geräte im selben WLAN brauchen dann Hairpin-NAT am Router oder einen
+    // Browser, der seine echten Adressen zeigt. Seit 2026-10-12 reicht die
+    // Server-App die LAN-Adresse selbst hinein, und der Pulse-Fork von
+    // LiveKit kündigt sie als `extra_node_ips` an (oeffentlicheIp.ts) — der
+    // Befund gilt deshalb nur noch, wenn im Container KEINE LAN-Adresse steht:
+    // Image älter als dieser Stand, keine LAN-Adresse ermittelbar, oder STUN-
+    // Weg (keine öffentliche IPv4 beim Start). Im STUN-Weg trägt rootless
+    // Podman/pasta den Heimnetz-Weg selbst (der Container sieht die LAN-
+    // Adresse, advertise_internal_ip) — deshalb nur Docker.
+    if (rt?.kind === 'docker' && process.platform === 'linux' && laeuft
+      && manager instanceof ContainerBackendManager
+      && !(await manager.livekitLanAdresse().catch(() => null))) {
       push(
         'heimnetz-sprache', S('Sprache im Heimnetz', 'Voice on the home network'), false,
         S('Mit Docker kennt der Sprachserver die Adresse dieses Rechners im Heimnetz nicht. Geräte im selben WLAN kommen je nach Router und Browser nicht in den Sprachkanal; Gäste aus dem Internet sind nicht betroffen. Streams sind nicht betroffen.',

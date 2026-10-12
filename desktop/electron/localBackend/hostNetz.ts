@@ -1,13 +1,17 @@
 /**
- * Host-Netz-Auswahl für den Container-Weg: welche Host-IPv4s kündigt der
- * Container an, welche ist die bevorzugte, und läuft WSL im Mirrored-Modus?
+ * Host-Netz-Auswahl: welche Host-IPv4s kündigt der Container an, welche ist
+ * die bevorzugte, läuft WSL im Mirrored-Modus — und welche LAN-Adresse
+ * bekommt LiveKit neben der öffentlichen (Container- und nativer Weg)?
  *
  * Reine Funktionen über ein injizierbares `ifaces`-Argument (Form von
- * `os.networkInterfaces()`), damit die Windows-Fälle unter Linux testbar sind.
+ * `os.networkInterfaces()`), damit die Windows-Fälle unter Linux testbar sind
+ * — einzige Ausnahme ist die dünne Hülle ermittleStandardLanIpv4.
  * Keine Electron-Imports (node:test-tauglich).
  */
 
 import { networkInterfaces } from 'node:os';
+
+import { discoverGateway } from './gateway.ts';
 
 export interface IfaceAdresse {
   family: string;
@@ -85,6 +89,35 @@ export function hostLanIpv4s(
     }
   }
   return [...vorn, ...mitte, ...hinten];
+}
+
+/** DIE LAN-IPv4 des Rechners für LiveKits `extra_node_ips` (Heimserver der
+ *  Server-App, s. oeffentlicheIp.ts): die Adresse der Schnittstelle, über die
+ *  die Standardroute geht — ihr Subnetz enthält das Default-Gateway.
+ *  Ausgeschlossen wie in hostLanIpv4s (interne, IPv6, APIPA, virtuelle
+ *  Brücken) und zusätzlich alles NACHRANGIGE (VPN, Host-Only, Hotspot):
+ *  hostLanIpv4s reiht solche Adapter nur nach hinten, hier gibt es genau EINE
+ *  Antwort, und eine Tunnel-Adresse erreicht kein Gerät im Heimnetz.
+ *  null ohne Gateway oder ohne passende Schnittstelle — dann bleibt es bei der
+ *  öffentlichen Adresse allein. */
+export function standardLanIpv4(ifaces: IfaceTabelle, gateway: string | null | undefined): string | null {
+  if (!gateway) return null;
+  for (const [name, list] of Object.entries(ifaces)) {
+    if (VIRTUELLE_BRUECKE.test(name) || NACHRANGIG.test(name)) continue;
+    for (const a of list ?? []) {
+      if (a.internal || a.family !== 'IPv4' || a.address.startsWith('169.254.')) continue;
+      if (imSubnetz(a.address, a.netmask, gateway)) return a.address;
+    }
+  }
+  return null;
+}
+
+/** standardLanIpv4 gegen die echten Adapter und das frisch ermittelte
+ *  Gateway — für den Start und den Abgleich im Betrieb (DHCP kann die
+ *  Adresse wechseln). */
+export async function ermittleStandardLanIpv4(): Promise<string | null> {
+  const gateway = await discoverGateway().catch(() => null);
+  return standardLanIpv4(networkInterfaces() as never, gateway);
 }
 
 /** WSL-Mirrored-Modus: die VM teilt die Adapter des Hosts, ihre „VM-IP" ist

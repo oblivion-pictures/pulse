@@ -22,8 +22,18 @@ import { templatesDir } from './paths.ts';
 
 /** `oeffentlicheIp` gesetzt: feste `node_ip` statt STUN — LiveKit schaltet
  *  sonst Firefox auf „nur öffentliche Adresse" um, und ein Firefox-Gast im
- *  selben Heimnetz scheitert am fehlenden Hairpin-NAT (oeffentlicheIp.ts). */
-export function renderLivekitYaml(secrets: NativeSecrets, voicePort: number, oeffentlicheIp?: string): string {
+ *  selben Heimnetz scheitert am fehlenden Hairpin-NAT (oeffentlicheIp.ts).
+ *
+ *  `lanIp` (nur mit `oeffentlicheIp`): die LAN-IPv4 als `extra_node_ips`
+ *  daneben. Im node_ip-Weg ersetzt LiveKit jede lokale Adresse durch node_ip
+ *  — ohne die Zusatzadresse bräuchte jedes Gerät im Heimnetz, auch dieser
+ *  Rechner, Hairpin-NAT. Die Option kennt nur der Pulse-Fork; der Aufrufer
+ *  gibt `lanIp` deshalb nur neben einem Binary mit Fork-Stempel mit
+ *  (livekitIp.ts::livekitKenntExtraNodeIps). Gleich der öffentlichen: weglassen. */
+export function renderLivekitYaml(
+  secrets: NativeSecrets, voicePort: number, oeffentlicheIp?: string, lanIp?: string,
+): string {
+  const zusatz = oeffentlicheIp && lanIp && lanIp !== oeffentlicheIp ? `\n  extra_node_ips: [${lanIp}]` : '';
   return `port: ${NATIVE_PORTS.livekitApi}
 # Signal/Twirp-API nur auf Loopback — von außen kommt man ausschließlich über
 # Caddy (/livekit, erreicht über frpc oder den direct-adapter, beide lokal).
@@ -37,10 +47,11 @@ rtc:
   port_range_start: ${NATIVE_MEDIA_PORTS.livekitUdpStart}
   port_range_end: ${NATIVE_MEDIA_PORTS.livekitUdpEnd}
   # Öffentliche Adresse: fest vorgegeben, wenn die Server-App sie ermitteln
-  # konnte (s. renderLivekitYaml-Kommentar); sonst STUN in LiveKit selbst —
-  # nativ sieht STUN die echte öffentliche IP, kein WSL-Doppel-NAT davor.
+  # konnte, die LAN-Adresse dann daneben (s. renderLivekitYaml-Kommentar);
+  # sonst STUN in LiveKit selbst — nativ sieht STUN die echte öffentliche IP,
+  # kein WSL-Doppel-NAT davor. advertise_internal_ip wirkt nur im STUN-Weg.
 ${oeffentlicheIp
-    ? `  use_external_ip: false\n  node_ip: ${oeffentlicheIp}`
+    ? `  use_external_ip: false\n  node_ip: ${oeffentlicheIp}${zusatz}`
     : '  use_external_ip: true\n  skip_external_ip_validation: true'}
   advertise_internal_ip: true
   # IPv6-Kandidaten unterdrücken — gleiche Begründung wie im Template

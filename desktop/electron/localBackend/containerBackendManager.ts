@@ -43,7 +43,9 @@ import {
 import { RelaySteuerung, type RelayZiel, type RelayZustand } from './relaySteuerung.ts';
 import { pullMitWegwerfLogin } from './registryAuth.ts';
 import { meldeDirektOffline, renderContainerEnv, resolveImage, udpGatewayAusFuer } from './containerEnv.ts';
-import { gleicheContainerIpAb, oeffentlicheIpFuerStart } from './containerIpAbgleich.ts';
+import {
+  gleicheContainerIpAb, lanIpFuerStart, livekitLanImContainer, oeffentlicheIpFuerStart,
+} from './containerIpAbgleich.ts';
 import { serverNameContainer, setzeServerNameContainer } from './serverName.ts';
 
 // Bestands-Exporte (Tests, Aufrufer) — die Quellen liegen in hostNetz.ts,
@@ -194,9 +196,10 @@ export class ContainerBackendManager {
     }
     const gateway = await discoverGateway().catch(() => null);
     const lanIps = hostLanIpv4s(undefined, { gateway, vmIp });
+    const oeffentlicheIp = await oeffentlicheIpFuerStart();
     const envInhalt = renderContainerEnv(
       creds, adminEmail, lanIps, vmBetrieb ? lanIps[0] : undefined, udpGatewayAusFuer(),
-      await oeffentlicheIpFuerStart(),
+      oeffentlicheIp, lanIpFuerStart(oeffentlicheIp, gateway),
     );
 
     const { image, local } = resolveImage();
@@ -322,10 +325,16 @@ export class ContainerBackendManager {
     return name === undefined ? serverNameContainer(rt) : setzeServerNameContainer(rt, name);
   }
 
-  /** Öffentliche IP ↔ LiveKit nachziehen (containerIpAbgleich.ts). */
+  /** Öffentliche IP + LAN-IP ↔ LiveKit nachziehen (containerIpAbgleich.ts). */
   async abgleichOeffentlicheIp(): Promise<string> {
     const rt = await this.ensureRuntime();
     return rt ? gleicheContainerIpAb(rt) : 'nicht-zustaendig';
+  }
+
+  /** Die LAN-Adresse, die LiveKit im Container ankündigt — null, wenn keine. */
+  async livekitLanAdresse(): Promise<string | null> {
+    const rt = await this.ensureRuntime();
+    return rt ? livekitLanImContainer(rt) : null;
   }
 
   /** Läuft der `pulse-host`-Container gerade (unabhängig davon, ob diese

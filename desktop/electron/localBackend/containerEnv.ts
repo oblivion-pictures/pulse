@@ -107,7 +107,14 @@ export function resolveImage(env: Record<string, string | undefined> = process.e
  *
  *  `oeffentlicheIp` (nur Linux): die öffentliche IPv4 als feste LiveKit-
  *  `node_ip` (05-init-livekit.sh → pulse-livekit-node-ip). Ein Image ohne
- *  diese Behandlung ignoriert die Zeile und bleibt beim STUN-Weg. */
+ *  diese Behandlung ignoriert die Zeile und bleibt beim STUN-Weg.
+ *
+ *  `livekitLanIp` (nur Linux, nur MIT `oeffentlicheIp`): die LAN-IPv4 der
+ *  Standardroute (hostNetz.ts::standardLanIpv4), die LiveKit als
+ *  `extra_node_ips` daneben ankündigt — sonst bräuchte jedes Gerät im
+ *  Heimnetz Hairpin-NAT (oeffentlicheIp.ts). Gleich der öffentlichen: keine
+ *  Zeile. Ein Image ohne LAN-Teil ignoriert die Zeile; geschrieben wird das
+ *  Feld nur vom Image selbst, weil nur dessen LiveKit es kennt. */
 export function renderContainerEnv(
   creds: BootstrapCreds,
   adminEmail?: string,
@@ -115,6 +122,7 @@ export function renderContainerEnv(
   vmAnnounceIp?: string,
   udpGatewayAus = false,
   oeffentlicheIp?: string,
+  livekitLanIp?: string,
 ): string {
   const hostname = creds.relaySubdomain ?? creds.hostname;
   const lines = [
@@ -150,6 +158,9 @@ export function renderContainerEnv(
   // Öffentliche IPv4 als feste LiveKit-node_ip (Linux, oeffentlicheIp.ts) —
   // Stichtag ist der Start; Wechsel zieht der Abgleich im Betrieb nach.
   if (oeffentlicheIp) lines.push(`PULSE_PUBLIC_IPV4=${oeffentlicheIp}`);
+  if (oeffentlicheIp && livekitLanIp && livekitLanIp !== oeffentlicheIp) {
+    lines.push(`PULSE_LAN_IPV4=${livekitLanIp}`);
+  }
   // Relay-Zeilen nur, wenn ALLE drei Werte da sind (Bestandsinstanzen) —
   // leere PULSE_RELAY_*-Strings gälten im Image als "Relay konfiguriert";
   // das Erkennungsmuster ist FEHLENDE Variablen.

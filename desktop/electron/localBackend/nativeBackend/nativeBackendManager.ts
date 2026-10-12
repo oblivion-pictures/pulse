@@ -32,7 +32,7 @@ import {
   templatesDir,
 } from './paths.ts';
 import { ensureNativeSecrets } from './secrets.ts';
-import { NativeLivekitIp, oeffentlicheIpFuerStart } from './livekitIp.ts';
+import { NativeLivekitIp, lanIpFuerStart, livekitKenntExtraNodeIps, oeffentlicheIpFuerStart } from './livekitIp.ts';
 import { serverNameNativ } from '../serverName.ts';
 import { renderNativeEnv } from './envContract.ts';
 import {
@@ -212,7 +212,9 @@ export class NativeBackendManager {
     const weedS3JsonPath = join(dirs.run, 'weed-s3.json');
     const garnetConfPath = join(dirs.run, 'garnet.conf');
     const oeffentlicheIp = await oeffentlicheIpFuerStart();
-    writeFileSync(livekitYamlPath, renderLivekitYaml(secrets, NATIVE_PORTS.voice, oeffentlicheIp), { encoding: 'utf-8' });
+    const kannLan = livekitKenntExtraNodeIps();
+    const lanIp = await lanIpFuerStart(oeffentlicheIp, kannLan);
+    writeFileSync(livekitYamlPath, renderLivekitYaml(secrets, NATIVE_PORTS.voice, oeffentlicheIp, lanIp), { encoding: 'utf-8' });
     writeFileSync(mediamtxYmlPath, renderMediamtxYml(publicHostname, dirs.certs, NATIVE_PORTS.mtxHook), { encoding: 'utf-8' });
     writeFileSync(caddyfilePath, renderCaddyfile(NATIVE_PORTS.caddyHttp, NATIVE_PORTS.caddyDesktop, templatesDir()), { encoding: 'utf-8' });
     const signingKey = randomBytes(32).toString('base64');
@@ -273,6 +275,7 @@ export class NativeBackendManager {
       if (spec.name === 'livekit') {
         this.livekitIp = new NativeLivekitIp({
           yamlPfad: livekitYamlPath, secrets, voicePort: NATIVE_PORTS.voice, prozess: proc, gesetzt: oeffentlicheIp,
+          gesetztLan: lanIp, kannLan,
         });
       }
       mitPidDatei(proc, dirs.run, spec.name, spec.command);
@@ -310,7 +313,7 @@ export class NativeBackendManager {
     return serverNameNativ(datenDirs(datenRoot(userData)).secrets, NATIVE_PORTS.chat, name);
   }
 
-  /** Öffentliche IP ↔ LiveKit nachziehen (livekitIp.ts). */
+  /** Öffentliche IP + LAN-IP ↔ LiveKit nachziehen (livekitIp.ts). */
   async abgleichOeffentlicheIp(): Promise<string> {
     return this.livekitIp ? this.livekitIp.abgleichen() : 'nicht-zustaendig';
   }
