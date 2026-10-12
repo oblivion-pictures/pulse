@@ -39,12 +39,10 @@ describe('aktiverBereich', () => {
     assert.equal(aktiverBereich('/app/discover'), 'rooms');
   });
 
-  it('ordnet den eigenen Server den Raeumen zu', () => {
-    // `/app/server` ist der Self-Host-Bereich, erreichbar aus dem Fuss der
-    // Rail (Desktop) und dem Fuss der Raeume-Liste (Tablet/Handy). Ohne
-    // Eintrag stuende auf schmalen Geraeten kein Bereich hervorgehoben da,
-    // waehrend man aus den Raeumen kommt.
-    assert.equal(aktiverBereich('/app/server'), 'rooms');
+  it('ordnet „Meine Server“ dem Du-Bereich zu', () => {
+    // `/app/server` ist „Meine Server“; auf Tablet und Handy sitzt der
+    // Einstieg seit 2026-10 im Du-Bereich (vorher am Fuss der Raeume-Liste).
+    assert.equal(aktiverBereich('/app/server'), 'me');
   });
 
   it('unterscheidet /app/me von /app/@me', () => {
@@ -88,6 +86,12 @@ describe('istDetailScreen', () => {
     // darueber, wo man ist.
     assert.equal(istDetailScreen('/app/discover'), true);
     assert.equal(aktiverBereich('/app/discover'), 'rooms');
+  });
+
+  it('zaehlt „Meine Server“ als Detail, obwohl es eine eigene Wurzel ist', () => {
+    // Aufgeschoben aus dem Du-Bereich wie `/app/me/<sektion>` — dort ist die
+    // Leiste ebenfalls weg und der Pfeil oben fuehrt zurueck.
+    assert.equal(istDetailScreen('/app/server'), true);
   });
 
   it('ist wahr, sobald ein Detail geoeffnet ist', () => {
