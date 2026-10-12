@@ -22,6 +22,8 @@
   import type { DMChannel } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { viewport } from '$lib/stores/viewport.svelte';
+  import { browserSpeicher } from '$lib/einladung/gemerkt';
+  import { gemerkteVerbindung, gemerkteVerbindungVerwerfen } from '$lib/verbinden/gemerkt';
 
   // Darf ich auf dem AKTIVEN Server eine Community anlegen? Rechnung in
   // ``lib/servers/erstellrecht.ts`` (eine Stelle für alle drei Aufrufer).
@@ -62,6 +64,18 @@
     if (add === 'create' || add === 'join') {
       createMode = add;
       creating = true;
+      return;
+    }
+    // Rückweg der Server-Bestätigung (lib/verbinden/gemerkt.ts): Registrieren
+    // und E-Mail-Bestätigung enden beide hier auf /app; die Anmeldung springt
+    // über `?redirect=/verbinden` direkt hin. Hier statt im Layout, weil diese
+    // Seite ohnehin die Startweiterleitung (/app/friends) vornimmt — zwei
+    // Weiterleitungen aus zwei Komponenten liefen um die Wette. Sie läuft erst,
+    // wenn das Layout fertig hydriert ist (Anmeldung und E-Mail-Riegel geprüft).
+    const verbindenCode = gemerkteVerbindung(browserSpeicher(), Date.now());
+    if (verbindenCode) {
+      gemerkteVerbindungVerwerfen(browserSpeicher());
+      void goto(`/verbinden#${verbindenCode}`, { replaceState: true });
       return;
     }
     // Auto-Connect-Ziel gewinnt gegen den Default-Landing (Freunde-Seite):
