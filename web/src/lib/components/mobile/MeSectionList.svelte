@@ -1,6 +1,7 @@
 <script lang="ts">
   /**
-   * Die Liste des Du-Bereichs: Profil, Status, Medien, Meine Server (nur mit eigenem Server), Einstellungen, Abmelden.
+   * Die Liste des Du-Bereichs: Profil, Status, Medien, Meine Server (nur mit
+   * eigenem Server), Einstellungen, Abmelden.
    *
    * Am Rechner öffnen die Einstellungen als Dialog mit Reiter-Leiste; auf dem
    * Telefon ist ein Dialog mit Seitenleiste der falsche Behälter — hier ist es

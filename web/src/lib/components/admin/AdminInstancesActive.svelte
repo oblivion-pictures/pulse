@@ -47,9 +47,7 @@
   let rotateResult = $state<RotateSecretResult | null>(null);
   let rotateDialogOpen = $state(false);
 
-  onMount(async () => {
-    await reload();
-  });
+  onMount(reload);
 
   async function reload() {
     loading = true;

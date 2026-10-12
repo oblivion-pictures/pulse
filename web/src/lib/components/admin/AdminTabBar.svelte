@@ -1,8 +1,8 @@
 <!--
-  Gemeinsame Unterstreichungs-Tab-Leiste für die Admin-Bereiche mit Badge
+  Gemeinsame Unterstreichungs-Tab-Leiste für die Admin-Bereiche
   (AdminComplaints + AdminInstances). Labels kommen als Props (die m.*-Keys der
   Aufrufer) — die Komponente bleibt textfrei. Der optionale Badge sitzt auf
-  genau einem Tab (z. B. „pending" bei den Instanz-Anträgen).
+  genau einem Tab (z. B. „open" bei den Beschwerden).
 -->
 <script lang="ts">
   let {

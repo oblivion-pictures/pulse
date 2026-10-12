@@ -40,7 +40,7 @@
     };
   }
 
-  async function widersprechen() {
+  async function widersprechen(): Promise<void> {
     if (laeuft) return;
     laeuft = true;
     fehlertext = null;

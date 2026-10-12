@@ -17,7 +17,7 @@
  * diesen Zustand nicht mehr: verbunden heißt abgeholt (Spec E3).
  */
 export function hatEigeneServer(
-  server: ReadonlyArray<{ isCloud: boolean; role?: string | null }>
+  servers: ReadonlyArray<{ isCloud: boolean; role?: string | null }>
 ): boolean {
-  return server.some((s) => !s.isCloud && s.role === 'owner');
+  return servers.some((s) => !s.isCloud && s.role === 'owner');
 }

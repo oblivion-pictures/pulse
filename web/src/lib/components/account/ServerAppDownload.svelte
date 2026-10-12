@@ -22,6 +22,13 @@
   const DMG_URL = 'https://howispulse.com/downloads/Pulse-Server-latest.dmg';
   const FLATPAKREF = 'https://howispulse.com/flatpak/com.howispulse.PulseServer.flatpakref';
 
+  // Im Blatt des Dialogs (Handy) 48 dp hoch; `data-blatt` setzt
+  // `EigenerServerDialog`.
+  const KNOPF =
+    'inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors';
+  const PRIMAER = `${KNOPF} bg-primary hover:bg-primary/90 text-white`;
+  const SEKUNDAER = `${KNOPF} border border-border text-text-bright hover:bg-bg-hover`;
+
   // Erkannte Plattform zuerst; ohne Signal alle drei (User wählt selbst).
   const showWindows = $derived(isWindows());
   const showMac = $derived(!showWindows && isMac());
@@ -34,11 +41,7 @@
 <section class="flex flex-col gap-4" data-testid="server-app-download">
   {#if showWindows}
     <div class="flex flex-col gap-2">
-      <a
-        href={WIN_URL}
-        class="bg-primary hover:bg-primary/90 inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
-        data-testid="server-app-download-windows"
-      >
+      <a href={WIN_URL} class={PRIMAER} data-testid="server-app-download-windows">
         <DownloadIcon class="size-4" />
         {m.server_app_download_windows_btn()}
       </a>
@@ -46,11 +49,7 @@
     </div>
   {:else if showMac}
     <div class="flex flex-col gap-2">
-      <a
-        href={DMG_URL}
-        class="bg-primary hover:bg-primary/90 inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
-        data-testid="server-app-download-mac"
-      >
+      <a href={DMG_URL} class={PRIMAER} data-testid="server-app-download-mac">
         <DownloadIcon class="size-4" />
         {m.server_app_download_mac_btn()}
       </a>
@@ -58,11 +57,7 @@
     </div>
   {:else if showFlatpak}
     <div class="flex flex-col gap-2">
-      <a
-        href={FLATPAKREF}
-        class="bg-primary hover:bg-primary/90 inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
-        data-testid="server-app-download-linux"
-      >
+      <a href={FLATPAKREF} class={PRIMAER} data-testid="server-app-download-linux">
         <DownloadIcon class="size-4" />
         {m.server_app_download_linux_btn()}
       </a>
@@ -72,27 +67,15 @@
 
   {#if showAll}
     <div class="flex flex-col gap-2" data-testid="server-app-download-all">
-      <a
-        href={WIN_URL}
-        class="bg-primary hover:bg-primary/90 inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-colors"
-        data-testid="server-app-download-windows"
-      >
+      <a href={WIN_URL} class={PRIMAER} data-testid="server-app-download-windows">
         <DownloadIcon class="size-4" />
         {m.server_app_download_windows_btn()}
       </a>
-      <a
-        href={DMG_URL}
-        class="border-border text-text-bright hover:bg-bg-hover inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors"
-        data-testid="server-app-download-mac"
-      >
+      <a href={DMG_URL} class={SEKUNDAER} data-testid="server-app-download-mac">
         <DownloadIcon class="size-4" />
         {m.server_app_download_mac_btn()}
       </a>
-      <a
-        href={FLATPAKREF}
-        class="border-border text-text-bright hover:bg-bg-hover inline-flex in-data-[blatt]:min-h-12 w-fit items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors"
-        data-testid="server-app-download-linux"
-      >
+      <a href={FLATPAKREF} class={SEKUNDAER} data-testid="server-app-download-linux">
         <DownloadIcon class="size-4" />
         {m.server_app_download_linux_btn()}
       </a>
