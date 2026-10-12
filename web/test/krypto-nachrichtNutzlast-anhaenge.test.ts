@@ -57,7 +57,7 @@ const BILD: AnhangAngabe = {
 describe('Anhang-Angaben in der Nutzlast', () => {
   test('ueberstehen den Hin- und Rueckweg vollstaendig', () => {
     const gelesen = leseNachrichtNutzlast(
-      baueNachrichtNutzlast('schau mal', 'msg-1', null, [BILD])
+      baueNachrichtNutzlast('schau mal', '1760000000000000001', null, [BILD])
     );
     assert.equal(gelesen.text, 'schau mal');
     assert.deepEqual(gelesen.anhaenge, [BILD]);
@@ -66,7 +66,7 @@ describe('Anhang-Angaben in der Nutzlast', () => {
   test('mehrere Anhaenge behalten ihre Reihenfolge', () => {
     const zweiter: AnhangAngabe = { ...BILD, id: '111', name: 'zweites.pdf', vorschau: null };
     const gelesen = leseNachrichtNutzlast(
-      baueNachrichtNutzlast('', 'msg-2', null, [BILD, zweiter])
+      baueNachrichtNutzlast('', '1760000000000000002', null, [BILD, zweiter])
     );
     assert.deepEqual(
       gelesen.anhaenge.map((a) => a.id),
@@ -75,13 +75,13 @@ describe('Anhang-Angaben in der Nutzlast', () => {
   });
 
   test('eine Nutzlast OHNE Anhang-Feld wird weiterhin gelesen', () => {
-    const gelesen = leseNachrichtNutzlast(baueNachrichtNutzlast('nur text', 'msg-3', null));
+    const gelesen = leseNachrichtNutzlast(baueNachrichtNutzlast('nur text', '1760000000000000003', null));
     assert.equal(gelesen.text, 'nur text');
-    assert.equal(gelesen.id, 'msg-3');
+    assert.equal(gelesen.id, '1760000000000000003');
     assert.deepEqual(gelesen.anhaenge, []);
     // Und das Feld steht auch nicht als leere Liste in den Bytes — eine
     // gewoehnliche Nachricht soll davon nicht groesser werden.
-    const roh = new TextDecoder().decode(baueNachrichtNutzlast('nur text', 'msg-3', null));
+    const roh = new TextDecoder().decode(baueNachrichtNutzlast('nur text', '1760000000000000003', null));
     assert.ok(!roh.includes('anhaenge'));
   });
 
@@ -95,10 +95,10 @@ describe('Anhang-Angaben in der Nutzlast', () => {
     // Der Kern der Vertraeglichkeit: haette die Aenderung die Fassungsnummer
     // angehoben, faende der alte Leser hier kein `v === 1` mehr, fiele in
     // seinen Legacy-Zweig und zeigte dem Nutzer das rohe JSON als Nachricht.
-    const bytes = baueNachrichtNutzlast('der text muss ankommen', 'msg-4', null, [BILD]);
+    const bytes = baueNachrichtNutzlast('der text muss ankommen', '1760000000000000004', null, [BILD]);
     const alt = alterLeser(bytes);
     assert.equal(alt.text, 'der text muss ankommen');
-    assert.equal(alt.id, 'msg-4');
+    assert.equal(alt.id, '1760000000000000004');
   });
 
   test('ein unvollstaendiger Anhang wird verworfen, der Text bleibt', () => {
@@ -106,7 +106,7 @@ describe('Anhang-Angaben in der Nutzlast', () => {
     const roh = JSON.stringify({
       v: 1,
       text: 'mit kaputtem anhang',
-      id: 'msg-5',
+      id: '1760000000000000005',
       anhaenge: [{ id: '1', name: 'x', typ: 'image/png', groesse: 10 }, BILD]
     });
     const gelesen = leseNachrichtNutzlast(new TextEncoder().encode(roh));
@@ -121,7 +121,7 @@ describe('Anhang-Angaben in der Nutzlast', () => {
     const roh = JSON.stringify({
       v: 1,
       text: '',
-      id: 'msg-6',
+      id: '1760000000000000006',
       anhaenge: [{ ...BILD, vorschau: { schluessel: 'x' } }]
     });
     const gelesen = leseNachrichtNutzlast(new TextEncoder().encode(roh));

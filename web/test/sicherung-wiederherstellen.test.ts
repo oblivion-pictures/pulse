@@ -5,7 +5,7 @@ import { leseSicherungKanalSeite, KANAL_ORDNER_MUSTER } from '../src/lib/sicheru
 import { ordnerAdapter, SicherungsSpiegel } from '../src/lib/sicherung/spiegel.ts';
 import { erzeugeDek } from '../src/lib/sicherung/krypto.ts';
 import { speicherAdapter } from '../src/lib/ablage/adapter.ts';
-import { ausWire, type AblageNachricht } from '../src/lib/ablage/nutzlast.ts';
+import { ausWire, grabstein, type AblageNachricht } from '../src/lib/ablage/nutzlast.ts';
 import type { SicherungEintrag } from '../src/lib/sicherung/nutzlast.ts';
 import type { SicherungLeseStaende } from '../src/lib/sicherung/wiederherstellen.ts';
 
@@ -193,7 +193,7 @@ test('zwei Geräte spiegeln dieselbe Nachricht — die kryptoId-Verngabelung lie
 		edited_at: null,
 		reply_to_id: null,
 		attachments: [],
-		krypto_id: 'kanon-1',
+		krypto_id: '1760000000000000001',
 	} as unknown as Parameters<typeof ausWire>[0]);
 	const kopieB = { ...kopieA, id: '6002' };
 	const spiegelA = new SicherungsSpiegel(ordnerAdapter(basis, kanalId), dek, 'dev-aaaa1111-', {
@@ -213,7 +213,7 @@ test('zwei Geräte spiegeln dieselbe Nachricht — die kryptoId-Verngabelung lie
 
 	const seite = await leseSicherungKanalSeite(ordnerAdapter(basis, kanalId), dek, {}, 50);
 	assert.equal(seite.eintraege.length, 1, 'eine logische Nachricht = ein Eintrag');
-	assert.equal(seite.eintraege[0]!.nachricht.kryptoId, 'kanon-1');
+	assert.equal(seite.eintraege[0]!.nachricht.kryptoId, '1760000000000000001');
 });
 
 test('Verfasser-Kette ohne kryptoId + Empfänger-Kette mit kryptoId: EIN Eintrag (Gerätewechsel, 2026-10-11)', async () => {
@@ -242,4 +242,43 @@ test('Verfasser-Kette ohne kryptoId + Empfänger-Kette mit kryptoId: EIN Eintrag
 	b.beenden();
 	const seite = await leseSicherungKanalSeite(ordnerAdapter(basis, kanalId), dek, {}, Infinity);
 	assert.equal(seite.eintraege.length, 1);
+});
+
+// Gegenprüfung 2026-10-12, Fund 1 (Altbestand): seit e27257b0 schrieb eine
+// gebundene Löschung ohne lokalen Treffer einen Stein mit der Kennung des
+// Lösch-Frames als ID — und die wählt der Absender frei. Der Leser sortierte
+// mit `BigInt` und warf: jede Wiederherstellung des Kanals brach ab, der
+// Lesestand rückte nie vor. Solche Rahmen liest er jetzt ohne Absturz und
+// überspringt sie.
+test('Fund 1: ein Stein mit frei gewählter ID bricht den Leser nicht ab und wird übersprungen', async () => {
+	const kanalId = 'kanal-a';
+	const basis = speicherAdapter();
+	const dek = erzeugeDek();
+	const spiegel = new SicherungsSpiegel(ordnerAdapter(basis, kanalId), dek, 'dev-aaaa1111-', {
+		verzoegerungMs: 10,
+		schwelle: 50,
+	});
+	spiegel.aufnehmen(kanalId, [
+		nachricht('1001', 'vorher'),
+		grabstein('x', { autorId: '100', kryptoId: 'x' }),
+		{ ...nachricht('1002', 'mit fremden Bezügen'), kryptoId: 'y', antwortAuf: '../z' },
+		nachricht('1003', 'nachher'),
+	]);
+	await spiegel.jetztSpuelen();
+	spiegel.beenden();
+
+	const seite = await leseSicherungKanalSeite(ordnerAdapter(basis, kanalId), dek, {}, Infinity);
+	assert.deepEqual(
+		seite.eintraege.map((e) => e.nachricht.id),
+		['1003', '1002', '1001'],
+	);
+	// Der Lesestand rückt über den übersprungenen Rahmen hinweg vor.
+	const danach = await leseSicherungKanalSeite(ordnerAdapter(basis, kanalId), dek, seite.lesestand, Infinity);
+	assert.deepEqual(danach.eintraege, []);
+	// Eine ungültige Kennung und ein ungültiger Bezug fallen weg, die
+	// Nachricht selbst bleibt.
+	const fremd = seite.eintraege.find((e) => e.nachricht.id === '1002')!;
+	assert.equal(fremd.nachricht.inhalt, 'mit fremden Bezügen');
+	assert.equal(fremd.nachricht.kryptoId, undefined);
+	assert.equal(fremd.nachricht.antwortAuf, null);
 });

@@ -15,6 +15,7 @@ import { mitVerbindung } from './verbindung';
 import { sortierSchluessel, satzErgaenzen, nachSchluesselVerdichten, type Nachschub } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
 import { ablegenMitRegister, kanalBereich, OBERE_ID } from './dbRegister';
+import { istGueltigeKennung } from './identitaet';
 
 // Medien-Index und Anhang-Bytes liegen in `dbAnhaenge.ts`; die Aufrufer
 // importieren sie weiter von hier.
@@ -308,13 +309,17 @@ export function verlaufAlleLesen(kontoId: string): Promise<Satz[]> {
 
 /** Die Anhang-IDs eines Satzes, oder `[]` — für den Grabstein-Weg, der die
  *  zugehörigen Anhang-Dateien aus Archiv und Geräte-Cache mitentfernen muss.
- *  Ein Anhang ohne `id` als Zeichenkette fällt heraus. */
+ *  Ein Anhang ohne gültige Kennung als `id` fällt heraus
+ *  (`identitaet.ts::istGueltigeKennung`): aus der ID wird ein Dateiname im
+ *  Laufwerk (`sicherung/geraete.ts::anhangDateiName`), und ein Altsatz von vor
+ *  der Prüfung kann eine frei gewählte tragen (Gegenprüfung 2026-10-12,
+ *  Fund 1). */
 export function satzAnhangIds(satz: { anhaenge?: unknown[] } | undefined): string[] {
   const anhaenge = satz?.anhaenge;
   if (!Array.isArray(anhaenge)) return [];
   return anhaenge.flatMap((a) => {
     const id = a && typeof a === 'object' ? (a as { id?: unknown }).id : undefined;
-    return typeof id === 'string' ? [id] : [];
+    return istGueltigeKennung(id) ? [id] : [];
   });
 }
 

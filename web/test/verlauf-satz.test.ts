@@ -29,6 +29,19 @@ test('zuSatz weist Fremdmaterial ab statt es abzulegen', () => {
   assert.equal(zuSatz('k1', { id: 5, content: 'x' }, 'konto-a'), null); // id muss Zeichenkette sein
 });
 
+test('zuSatz legt nur ab, was eine Kennung traegt (Gegenpruefung 2026-10-12, Fund 1)', () => {
+  // Die letzte Wand vor dem Ablegen: eine frei gewaehlte ID wie `"x"` brachte
+  // den Sicherungs-Leser zum Absturz.
+  const roh = { author_id: '7', content: 'x', created_at: '2026-08-28T00:00:00Z' };
+  assert.equal(zuSatz('k1', { ...roh, id: 'x' }, 'konto-a'), null);
+  assert.equal(zuSatz('k1', { ...roh, id: '0042' }, 'konto-a'), null);
+  // Kennung und Antwortbezug, die keine sind, fallen weg — der Satz bleibt.
+  const satz = zuSatz('k1', { ...roh, id: '42', krypto_id: 'x', reply_to_id: '../y' }, 'konto-a');
+  assert.ok(satz);
+  assert.equal(satz.kryptoId, null);
+  assert.equal(satz.antwortAufId, null);
+});
+
 test('zuSatz uebernimmt genau die gebrauchten Felder', () => {
   const satz = zuSatz('k1', {
     id: '42', author_id: '7', content: 'hallo',
@@ -66,6 +79,11 @@ test('eine geloeschte Nachricht bleibt als Grabstein', () => {
 
 // ── satzErgaenzen (2026-10-11): Nachschub ergänzt, ersetzt nicht ─────────────
 
+// Kennungen in der Form echter IDs — `zuSatz` nimmt seit Fund 1 der zweiten
+// Gegenprüfung keine andere `krypto_id` mehr an.
+const K = '1760000000000123456';
+const X = '1760000000000654321';
+
 function beispielSatz(felder: Record<string, unknown> = {}) {
   const s = zuSatz(
     'k1',
@@ -86,7 +104,7 @@ function beispielSatz(felder: Record<string, unknown> = {}) {
 
 test('satzErgaenzen: ein Grabstein bleibt einer, auch gegen einen reicheren Nachschub', () => {
   const stein = { ...beispielSatz(), geloescht: true };
-  const reicher = beispielSatz({ krypto_id: 'K', attachments: [{ id: 'a1' }] });
+  const reicher = beispielSatz({ krypto_id: K, attachments: [{ id: '501' }] });
   assert.equal(satzErgaenzen(stein, reicher, 'sicherung'), null);
   assert.equal(satzErgaenzen(stein, reicher, 'archiv'), null);
 });
@@ -96,36 +114,36 @@ test('satzErgaenzen: Inhalt, Bearbeitung und Reaktionen des liegenden Satzes gew
     ...beispielSatz({ content: 'bearbeitet', edited_at: '2026-10-11T00:00:00Z' }),
     reaktionen: [{ emoji: 'x', userId: '9' }]
   };
-  const neu = beispielSatz({ content: 'alt', krypto_id: 'K' });
+  const neu = beispielSatz({ content: 'alt', krypto_id: K });
   for (const herkunft of ['sicherung', 'archiv'] as const) {
     const ergebnis = satzErgaenzen(liegend, neu, herkunft);
     assert.ok(ergebnis, herkunft);
     assert.equal(ergebnis.inhalt, 'bearbeitet');
     assert.equal(ergebnis.bearbeitetAm, '2026-10-11T00:00:00Z');
     assert.deepEqual(ergebnis.reaktionen, [{ emoji: 'x', userId: '9' }]);
-    assert.equal(ergebnis.kryptoId, 'K', 'die fehlende Kennung kommt dazu');
+    assert.equal(ergebnis.kryptoId, K, 'die fehlende Kennung kommt dazu');
   }
 });
 
 test('satzErgaenzen: die Kennung des liegenden Satzes wird nicht überschrieben, verschluesselt bleibt an', () => {
   // Der Archiv-Nachschub kam blind über einen Empfangs-Satz und nahm ihm die
   // kryptoId — mit ihr die Duplikat-Erkennung und den Lesestand-Anker.
-  const liegend = beispielSatz({ krypto_id: 'K', verschluesselt: true });
+  const liegend = beispielSatz({ krypto_id: K, verschluesselt: true });
   assert.equal(satzErgaenzen(liegend, beispielSatz({ verschluesselt: false }), 'sicherung'), null);
-  assert.equal(satzErgaenzen(liegend, beispielSatz({ krypto_id: 'X' }), 'archiv'), null);
+  assert.equal(satzErgaenzen(liegend, beispielSatz({ krypto_id: X }), 'archiv'), null);
 });
 
 test('satzErgaenzen: aus der eigenen Sicherung kommen fehlende Anhänge dazu, bekannte nicht doppelt', () => {
-  const liegend = beispielSatz({ attachments: [{ id: 'a1' }] });
+  const liegend = beispielSatz({ attachments: [{ id: '501' }] });
   const ergebnis = satzErgaenzen(
     liegend,
-    beispielSatz({ attachments: [{ id: 'a1' }, { id: 'a2' }] }),
+    beispielSatz({ attachments: [{ id: '501' }, { id: '502' }] }),
     'sicherung'
   );
   assert.ok(ergebnis);
   assert.deepEqual(
     ergebnis.anhaenge.map((a) => (a as { id: string }).id),
-    ['a1', 'a2']
+    ['501', '502']
   );
 });
 
@@ -141,8 +159,8 @@ test('satzErgaenzen: fremde Anhänge aus dem Archiv landen nicht an der eigenen 
     content: 'gefälscht',
     krypto_id: '42',
     verschluesselt: true,
-    reply_to_id: 'fremder-bezug',
-    attachments: [{ id: 'bild-des-partners', verschluesselt: true, schluessel: 'x' }]
+    reply_to_id: '777',
+    attachments: [{ id: '503', verschluesselt: true, schluessel: 'x' }]
   });
   const ergebnis = satzErgaenzen(meine, gefaelscht, 'archiv');
   // Höchstens die Kennung kommt dazu — sie ist hier die eigene ID.
@@ -163,15 +181,15 @@ test('satzErgaenzen: das Archiv schaltet einen Klartext-Satz nicht auf verschlü
 });
 
 test('satzErgaenzen: ein anderer Autor unter demselben Schlüssel überschreibt nichts', () => {
-  const fremd = beispielSatz({ author_id: '8', krypto_id: 'K', content: 'fremd' });
+  const fremd = beispielSatz({ author_id: '8', krypto_id: K, content: 'fremd' });
   assert.equal(satzErgaenzen(beispielSatz(), fremd, 'sicherung'), null);
   assert.equal(satzErgaenzen(beispielSatz(), fremd, 'archiv'), null);
 });
 
 test('satzErgaenzen: nichts Neues heißt nichts zu schreiben', () => {
-  const satz = beispielSatz({ krypto_id: 'K' });
-  assert.equal(satzErgaenzen(satz, beispielSatz({ krypto_id: 'K' }), 'sicherung'), null);
-  assert.equal(satzErgaenzen(satz, beispielSatz({ krypto_id: 'K' }), 'archiv'), null);
+  const satz = beispielSatz({ krypto_id: K });
+  assert.equal(satzErgaenzen(satz, beispielSatz({ krypto_id: K }), 'sicherung'), null);
+  assert.equal(satzErgaenzen(satz, beispielSatz({ krypto_id: K }), 'archiv'), null);
 });
 
 // Gegenprüfung 2026-10-12, Fund 5: zwei Sätze desselben Schlüssels in EINEM
@@ -179,7 +197,7 @@ test('satzErgaenzen: nichts Neues heißt nichts zu schreiben', () => {
 // früheren.
 test('nachSchluesselVerdichten: der erste gewinnt, ein späterer ergänzt ihn höchstens', () => {
   const echt = beispielSatz({ content: 'echt' });
-  const gefaelscht = beispielSatz({ content: 'gefälscht', krypto_id: '42', attachments: [{ id: 'fremd' }] });
+  const gefaelscht = beispielSatz({ content: 'gefälscht', krypto_id: '42', attachments: [{ id: '504' }] });
   const anderer = beispielSatz({ id: '43', content: 'andere Nachricht' });
   const aus = nachSchluesselVerdichten([echt, anderer, gefaelscht], 'archiv');
   assert.deepEqual(aus.map((s) => s.nachrichtId), ['42', '43']);

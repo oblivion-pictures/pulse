@@ -155,15 +155,24 @@ export async function sicherungArchivLaden(): Promise<number> {
 	}
 	let gesamt = 0;
 	for (const kanalId of kanalIds) {
-		// B10: der Leser meldet die Erschöpfung selbst (`erschoepft`) — der
-		// frühere zweite Lauf (lieferte 0) lud je Kanal-Ordner ALLE Dateien
-		// erneut aus dem Drive, nur um sie zu bestätigen. Mit `Infinity`
-		// trifft die `anzahl`-Grenze nie zu, ein Lauf ist also stets
-		// erschöpft: genau ein Lauf je Ordner, die Schleife bricht sofort.
-		for (;;) {
-			const seite = await kanalSeiteFüttern(adapter, entpackt.dek, kontoId, kanalId, Infinity);
-			gesamt += seite.anzahl;
-			if (seite.erschoepft) break;
+		// Je Kanal gefangen (Gegenprüfung 2026-10-12, Fund 1): ein Kanal, der
+		// beim Lesen oder Ablegen wirft, nahm bis dahin jeden FOLGENDEN Kanal
+		// mit — der Knopf brach ab, und der Rest des Bestands kam nie an. Der
+		// Lesestand des kaputten Kanals bleibt stehen, sein nächster Lauf liest
+		// ihn neu.
+		try {
+			// B10: der Leser meldet die Erschöpfung selbst (`erschoepft`) — der
+			// frühere zweite Lauf (lieferte 0) lud je Kanal-Ordner ALLE Dateien
+			// erneut aus dem Drive, nur um sie zu bestätigen. Mit `Infinity`
+			// trifft die `anzahl`-Grenze nie zu, ein Lauf ist also stets
+			// erschöpft: genau ein Lauf je Ordner, die Schleife bricht sofort.
+			for (;;) {
+				const seite = await kanalSeiteFüttern(adapter, entpackt.dek, kontoId, kanalId, Infinity);
+				gesamt += seite.anzahl;
+				if (seite.erschoepft) break;
+			}
+		} catch (fehler) {
+			console.warn('[sicherung] Kanal nicht wiederherstellbar, die übrigen laufen weiter', fehler);
 		}
 	}
 	return gesamt;

@@ -42,6 +42,7 @@ import { openIdentityDb, idbPutIdentity, idbGetIdentity } from '../identity/idb-
 import { verlaufAlleLesen, satzAnhangIds } from '../verlauf/db.ts';
 import { sicherungAnhaenge } from './anhaengeSpiegeln.ts';
 import { aktuellesKonto } from '../verlauf/konto.ts';
+import { istGueltigeKennung } from '../verlauf/identitaet.ts';
 import {
 	SicherungsSpiegel,
 	aufbauAdapter,
@@ -265,13 +266,19 @@ export function sicherungSpiegeln(kanalId: string, nachrichten: Message[]): void
  * schrieb, wenn keiner lag, einen Stein OHNE Autor — einen, der beim
  * Wiederherstellen jede Nachricht unter dieser lokalen ID trifft, egal von
  * wem.
+ *
+ * Nur für eine gültige ID (`verlauf/identitaet.ts::istGueltigeKennung`): ein
+ * Stein lässt sich nicht zurücknehmen, und einer mit der ID `"x"` brachte den
+ * Wiederherstellungs-Leser zum Absturz (Gegenprüfung 2026-10-12, Fund 1). Eine
+ * `kryptoId`, die keine Kennung ist, fällt aus dem Stein heraus (`grabstein`
+ * nimmt dann die ID).
  */
 export function sicherungGrabstein(
 	kanalId: string,
 	nachrichtId: string,
 	satz: { autorId: string; kryptoId?: string | null; anhaenge?: unknown[] },
 ): void {
-	if (!SICHERUNG_ENABLED) return;
+	if (!SICHERUNG_ENABLED || !istGueltigeKennung(nachrichtId)) return;
 	void (async () => {
 		// Anhänge der gelöschten Nachricht aus ALLEN Zielen entfernen —
 		// gelöscht heißt gelöscht: der Klumpen überlebt die Nachricht nicht
@@ -289,7 +296,8 @@ export function sicherungGrabstein(
 		} catch {
 			/* kein Ziel bedienbar — die Datei fällt mit dem Verfall des Postfachs */
 		}
-		const stein = grabstein(nachrichtId, satz);
+		const kryptoId = istGueltigeKennung(satz.kryptoId) ? satz.kryptoId : null;
+		const stein = grabstein(nachrichtId, { autorId: satz.autorId, kryptoId });
 		await pufferLegen(kanalId, [stein]);
 		const bereit = await spiegelFallsBereit(kanalId);
 		bereit?.aufnehmen(kanalId, [stein]);

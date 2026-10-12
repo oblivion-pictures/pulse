@@ -15,53 +15,76 @@ import { sortierSchluessel } from '../src/lib/verlauf/satz.ts';
 // (Konto, Kanal, Autor, kanonische Kennung), nicht den Satz. Die Regeln hier,
 // der Ablauf in IndexedDB: `tests/e2e/verlauf-register.spec.ts`.
 
+// Autor und Kennung haben die Form echter IDs — seit Fund 1 der zweiten
+// Gegenprüfung nimmt das Register nichts anderes mehr an.
+const ALICE = '200';
+const BOB = '300';
+const K = '1760000000000123456';
+const D = '120000000000000001';
+
 const satz = (felder: Record<string, unknown> = {}) => ({
   kontoId: 'konto',
   kanalId: '100',
-  autorId: 'alice',
-  nachrichtId: 'K',
+  autorId: ALICE,
+  nachrichtId: K,
   kryptoId: null as string | null,
   ...felder
 });
 
 test('Register: ohne Autor, Kennung oder Konto gibt es keinen Eintrag — nie über eine bloße ID', () => {
-  assert.equal(registerSchluessel('konto', '100', '', 'K'), null);
-  assert.equal(registerSchluessel('konto', '100', 'alice', ''), null);
-  assert.equal(registerSchluessel('', '100', 'alice', 'K'), null);
-  assert.equal(registerEintrag('konto', '100', '', 'K'), null);
+  assert.equal(registerSchluessel('konto', '100', '', K), null);
+  assert.equal(registerSchluessel('konto', '100', ALICE, ''), null);
+  assert.equal(registerSchluessel('', '100', ALICE, K), null);
+  assert.equal(registerEintrag('konto', '100', '', K), null);
   assert.equal(registerSchluesselFuerSatz(satz({ autorId: '' })), null);
+});
+
+test('Register: eine Kennung, die keine Ziffernfolge ist, trägt nichts ein (Fund 1)', () => {
+  // Die Kennung eines Lösch-Frames wählt der Absender frei. `"x"` stand bis
+  // hierher als Eintrag im Register und als Stein in der Sicherung, und deren
+  // Leser warf beim Sortieren (`BigInt("x")`).
+  for (const kennung of ['x', '12a', '-1', '0123', '1'.repeat(21), ' 12']) {
+    assert.equal(registerSchluessel('konto', '100', ALICE, kennung), null, kennung);
+    assert.equal(registerEintrag('konto', '100', ALICE, kennung), null, kennung);
+  }
+  // Ebenso ein Autor, der keine Konto-ID ist.
+  assert.equal(registerSchluessel('konto', '100', 'alice', K), null);
+  assert.equal(registerSchluesselFuerSatz(satz({ kryptoId: 'x' })), null);
+  // Die Grenzen echter IDs bleiben gültig.
+  assert.ok(registerSchluessel('konto', '100', ALICE, '9'.repeat(20)));
+  assert.ok(registerSchluessel('konto', '100', ALICE, '1'));
 });
 
 test('Register: der Autor gehört zum Schlüssel — Bobs Löschung ist nicht Alices', () => {
   assert.notEqual(
-    registerSchluessel('konto', '100', 'alice', 'K'),
-    registerSchluessel('konto', '100', 'bob', 'K')
+    registerSchluessel('konto', '100', ALICE, K),
+    registerSchluessel('konto', '100', BOB, K)
   );
   // Ebenso Kanal und Konto.
   assert.notEqual(
-    registerSchluessel('konto', '100', 'alice', 'K'),
-    registerSchluessel('konto', '101', 'alice', 'K')
+    registerSchluessel('konto', '100', ALICE, K),
+    registerSchluessel('konto', '101', ALICE, K)
   );
   assert.notEqual(
-    registerSchluessel('konto', '100', 'alice', 'K'),
-    registerSchluessel('anderes', '100', 'alice', 'K')
+    registerSchluessel('konto', '100', ALICE, K),
+    registerSchluessel('anderes', '100', ALICE, K)
   );
 });
 
 test('Register: Empfangs-Kopie (D, Kennung K) und Verfasser-Kopie (K) haben denselben Schlüssel', () => {
-  const verfasser = registerSchluesselFuerSatz(satz({ nachrichtId: 'K' }));
-  const empfang = registerSchluesselFuerSatz(satz({ nachrichtId: 'D', kryptoId: 'K' }));
+  const verfasser = registerSchluesselFuerSatz(satz({ nachrichtId: K }));
+  const empfang = registerSchluesselFuerSatz(satz({ nachrichtId: D, kryptoId: K }));
   assert.ok(verfasser);
   assert.equal(empfang, verfasser);
-  assert.equal(verfasser, registerSchluessel('konto', '100', 'alice', 'K'));
-  assert.deepEqual(registerEintragFuerSatz(satz({ nachrichtId: 'D', kryptoId: 'K' })), {
+  assert.equal(verfasser, registerSchluessel('konto', '100', ALICE, K));
+  assert.deepEqual(registerEintragFuerSatz(satz({ nachrichtId: D, kryptoId: K })), {
     schluessel: verfasser,
-    grabstein: { konto: 'konto', kanal: '100', autor: 'alice', kennung: 'K' }
+    grabstein: { konto: 'konto', kanal: '100', autor: ALICE, kennung: K }
   });
 });
 
 test('Register: Einträge liegen außerhalb jedes Kanal-Bereichs und tragen kein kanalId/kontoId', () => {
-  const eintrag = registerEintrag('konto', '700000000000000100', 'alice', '1');
+  const eintrag = registerEintrag('konto', '700000000000000100', ALICE, '1');
   assert.ok(eintrag);
   // Der Bereich eines Kanals (`verlauf/db.ts::verlaufLesenSaetze`).
   const unten = sortierSchluessel('700000000000000100', '');
@@ -77,7 +100,7 @@ test('Register: Einträge liegen außerhalb jedes Kanal-Bereichs und tragen kein
 });
 
 test('alsGrabstein: gelöscht, ohne Inhalt und Anhänge, Autor und Kennung bleiben', () => {
-  const nachschub = { ...satz({ nachrichtId: 'K', kryptoId: 'K' }), geloescht: false, inhalt: 'geheim', anhaenge: [{ id: 'a' }] };
+  const nachschub = { ...satz({ nachrichtId: K, kryptoId: K }), geloescht: false, inhalt: 'geheim', anhaenge: [{ id: '5' }] };
   assert.deepEqual(alsGrabstein(nachschub), {
     ...nachschub,
     geloescht: true,

@@ -1,10 +1,13 @@
 /**
- * Form des lokalen Verlaufs — importfrei, damit Nodes Testlaeufer sie sieht.
+ * Form des lokalen Verlaufs — importfrei bis auf den `.ts`-Pfad der
+ * Kennungs-Regel, damit Nodes Testlaeufer sie sieht.
  *
  * EIGENE Datenbank, nicht die der Identitaet (`pulse-identity`): deren
  * Version wurde nie erhoeht, es gibt also kein erprobtes Migrationsverfahren,
  * und ein Fehlgriff dort kostet den Geraeteschluessel und damit die Anmeldung.
  */
+import { istGueltigeKennung } from './identitaet.ts';
+
 export const DB_NAME = 'pulse-verlauf';
 /**
  * FASSUNG 2 (Etappe E): der Speicher `anhaenge` ist dazugekommen. Eine
@@ -189,9 +192,10 @@ export type MedienZeile = {
 
 /** Die Index-Zeilen der Anhaenge EINES Satzes — der Zweit-Schreibweg in
  *  `verlaufPutSaetze` und `verlaufSaetzeErgaenzen`. Reine Rechnung
- *  (importfrei, Node-testbar). Fail-closed wie `zuSatz`: ein Anhang ohne
- *  kennbaren `id`-String wird uebersprungen, statt Muell in den Index zu
- *  legen. Grabstein-Saetze liefern bewusst keine
+ *  (Node-testbar). Fail-closed wie `zuSatz`: ein Anhang ohne gueltige
+ *  Kennung als `id` wird uebersprungen, statt Muell in den Index zu legen —
+ *  `dbAnhaenge.ts::medienLesen` sortiert die Zeilen mit `BigInt` (Gegenpruefung
+ *  2026-10-12, Fund 1). Grabstein-Saetze liefern bewusst keine
  *  Zeilen — ein geloeschtes Medium ist keins mehr, und der Server liefert
  *  seine Zeile ebenfalls nicht mehr. */
 export function medienZeilenAusSatz(satz: Satz): MedienZeile[] {
@@ -200,7 +204,7 @@ export function medienZeilenAusSatz(satz: Satz): MedienZeile[] {
   for (const a of satz.anhaenge) {
     if (typeof a !== 'object' || a === null) continue;
     const roh = a as Record<string, unknown>;
-    if (typeof roh.id !== 'string' || roh.id === '') continue;
+    if (!istGueltigeKennung(roh.id)) continue;
     zeilen.push({
       id: roh.id,
       kontoId: satz.kontoId,

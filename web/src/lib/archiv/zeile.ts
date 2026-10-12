@@ -32,13 +32,22 @@
  * ein älterer Klient legt sie dadurch nicht als leere Nachricht ab, sondern
  * verwirft sie still (`verlauf/satz.ts::zuSatz` verlangt beides).
  *
- * Import-frei bis auf Typen (Node-Testläufer-Regel, s. `verlauf/schema.ts`).
+ * **Jede Kennung einer Zeile wählt der Einliefernde frei** (Gegenprüfung
+ * 2026-10-12, Fund 1): `i`, `g`, `r`, `a` und die Anhang-IDs. `leseZeile`
+ * nimmt nur an, was die Form einer Kennung hat
+ * (`verlauf/identitaet.ts::istGueltigeKennung`); eine Grabstein-Zeile `{g:"x"}`
+ * landete sonst als Eintrag im Grabstein-Register und als Stein in der
+ * Sicherung, an dem jede Wiederherstellung des Kanals scheiterte.
+ *
+ * Laufzeit-Importe nur mit `.ts`-Endung (Node-Testläufer-Regel, s.
+ * `verlauf/schema.ts`); sonst nur Typen.
  */
 import type { Message } from '../api/types';
 import type { AnhangAngabe } from '../krypto/nachrichtNutzlast';
 // .ts-Endung: dieses Modul läuft im Node-Testläufer (Konvention s.
 // `verlauf/schema.ts`) — der Bundler akzeptiert die Endung unverändert.
 import { attachmentZuAngabe, anhangAngabeZuAttachment } from '../krypto/anhangAnzeige.ts';
+import { istGueltigeKennung } from '../verlauf/identitaet.ts';
 
 type ArchivZeileKlar = {
 	i: string;
@@ -73,7 +82,10 @@ export function baueZeilenKlar(nachricht: Message): Uint8Array {
  *  Kopien aus Sicherung/Archiv (`messages.svelte.ts::prepend`, Befund
  *  2026-09-17); ohne dieses Feld erschien dieselbe Nachricht doppelt. */
 export function leseZeilenKlar(kanalId: string, roh: string): Message {
-	const inhalt = JSON.parse(roh) as ArchivZeileKlar;
+	return zuNachricht(kanalId, JSON.parse(roh) as ArchivZeileKlar);
+}
+
+function zuNachricht(kanalId: string, inhalt: ArchivZeileKlar): Message {
 	return {
 		id: inhalt.i,
 		channel_id: kanalId,
@@ -131,12 +143,25 @@ export function leseZeile(
 ): ArchivEintrag | null {
 	const inhalt = JSON.parse(roh) as Partial<ArchivZeileKlar & GrabsteinZeileKlar>;
 	const vomAutor = einlieferer !== null && inhalt.a === einlieferer;
-	if (typeof inhalt.g === 'string') {
-		return vomAutor && inhalt.g !== ''
+	if (inhalt.g !== undefined) {
+		return vomAutor && istGueltigeKennung(inhalt.g)
 			? { art: 'grabstein', autorId: einlieferer, kennung: inhalt.g }
 			: null;
 	}
 	const angenommeneBestandszeile = einlieferer === null && BESTANDSZEILEN_ANNEHMEN;
 	if (!vomAutor && !angenommeneBestandszeile) return null;
-	return { art: 'nachricht', nachricht: leseZeilenKlar(kanalId, roh) };
+	if (!istGueltigeKennung(inhalt.i) || !istGueltigeKennung(inhalt.a)) return null;
+	return { art: 'nachricht', nachricht: zuNachricht(kanalId, ohneUngueltigeBezuege(inhalt)) };
+}
+
+/** Der Antwortbezug und die Anhänge einer Zeile, soweit sie Kennungen sind —
+ *  ein ungültiger Bezug fällt weg, ein Anhang ohne gültige ID ebenso (dieselbe
+ *  Regel wie `krypto/nachrichtNutzlast.ts::leseAnhang`). Der Text bleibt. */
+function ohneUngueltigeBezuege(inhalt: Partial<ArchivZeileKlar>): ArchivZeileKlar {
+	const { r, anh, ...rest } = inhalt as ArchivZeileKlar;
+	return {
+		...rest,
+		...(istGueltigeKennung(r) ? { r } : {}),
+		anh: Array.isArray(anh) ? anh.filter((a) => istGueltigeKennung(a?.id)) : []
+	};
 }

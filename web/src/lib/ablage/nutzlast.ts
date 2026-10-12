@@ -15,7 +15,7 @@
  */
 
 import type { Message } from '../api/types.ts';
-import { kanonischeId } from '../verlauf/identitaet.ts';
+import { istGueltigeKennung, kanonischeId } from '../verlauf/identitaet.ts';
 
 export const NUTZLAST_FASSUNG = 1;
 
@@ -203,7 +203,20 @@ export function kodiereNachricht(n: AblageNachricht): Uint8Array {
 	);
 }
 
-/** Strenger Parse: jede Abweichung vom Schema ist ein Befund. */
+/**
+ * Strenger Parse: jede Abweichung vom Schema ist ein Befund.
+ *
+ * **Die ID muss eine Kennung sein** (`verlauf/identitaet.ts::istGueltigeKennung`,
+ * Gegenprüfung 2026-10-12, Fund 1). Ein Stein mit der frei gewählten ID `"x"`
+ * stand seit e27257b0 in der Sicherung, und der Wiederherstellungs-Leser warf
+ * beim Sortieren (`BigInt`) — der Kanal ließ sich nie mehr wiederherstellen.
+ * Ein solcher Rahmen ist jetzt ein Befund wie jede andere Abweichung: die
+ * Leser überspringen ihn (`sicherung/wiederherstellen.ts`,
+ * `ablage/kanalLeseweg.ts`). Was nur ein Bezug ist, verliert dagegen bloß
+ * sich selbst: eine ungültige `kryptoId` fällt weg, ein ungültiger
+ * Antwortbezug wird `null`, ein Anhang ohne gültige ID fällt aus der Liste —
+ * die Nachricht selbst bleibt lesbar.
+ */
 export function leseNachricht(bytes: Uint8Array): AblageNachricht {
 	const roh = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
 	if (roh.fassung !== NUTZLAST_FASSUNG) {
@@ -213,6 +226,9 @@ export function leseNachricht(bytes: Uint8Array): AblageNachricht {
 		if (typeof roh[feld] !== 'string') {
 			throw new NutzlastFehler(`${feld} fehlt oder ist kein String`);
 		}
+	}
+	if (!istGueltigeKennung(roh.id)) {
+		throw new NutzlastFehler('id ist keine Kennung');
 	}
 	if (roh.bearbeitet !== null && typeof roh.bearbeitet !== 'string') {
 		throw new NutzlastFehler('bearbeitet ist weder String noch null');
@@ -231,33 +247,35 @@ export function leseNachricht(bytes: Uint8Array): AblageNachricht {
 	if (roh.kryptoId !== undefined && typeof roh.kryptoId !== 'string') {
 		throw new NutzlastFehler('kryptoId ist kein String');
 	}
-	const anhaenge = roh.anhaenge.map((a) => {
-		const anhang = a as Record<string, unknown>;
-		if (typeof anhang.id !== 'string' || typeof anhang.groesse !== 'number') {
-			throw new NutzlastFehler('Anhang ohne id oder groesse');
-		}
-		// Verbatim: Fremdfelder (z. B. der Dateischlüssel verschlüsselter
-		// Anhänge) bleiben erhalten — das Wiederherstellen braucht sie.
-		return {
-			...anhang,
-			id: anhang.id,
-			name: anhang.name === null ? null : String(anhang.name),
-			mime: anhang.mime === null ? null : String(anhang.mime),
-			groesse: anhang.groesse,
-		};
-	});
+	const anhaenge = roh.anhaenge
+		.map((a) => {
+			const anhang = a as Record<string, unknown>;
+			if (typeof anhang.id !== 'string' || typeof anhang.groesse !== 'number') {
+				throw new NutzlastFehler('Anhang ohne id oder groesse');
+			}
+			// Verbatim: Fremdfelder (z. B. der Dateischlüssel verschlüsselter
+			// Anhänge) bleiben erhalten — das Wiederherstellen braucht sie.
+			return {
+				...anhang,
+				id: anhang.id,
+				name: anhang.name === null ? null : String(anhang.name),
+				mime: anhang.mime === null ? null : String(anhang.mime),
+				groesse: anhang.groesse,
+			};
+		})
+		.filter((anhang) => istGueltigeKennung(anhang.id));
 	return {
 		fassung: NUTZLAST_FASSUNG,
-		id: roh.id as string,
+		id: roh.id,
 		autor: roh.autor as string,
 		inhalt: roh.inhalt as string,
 		zeit: roh.zeit as string,
 		bearbeitet: roh.bearbeitet as string | null,
-		antwortAuf: roh.antwortAuf as string | null,
+		antwortAuf: istGueltigeKennung(roh.antwortAuf) ? roh.antwortAuf : null,
 		anhaenge,
 		// Absent bleibt absent (weder `false` noch ein undefined-Schlüssel) —
 		// der Rundlauf einer normalen Nachricht ergibt wieder dasselbe Objekt.
 		...(roh.geloescht === true ? { geloescht: true } : {}),
-		...(typeof roh.kryptoId === 'string' ? { kryptoId: roh.kryptoId } : {}),
+		...(istGueltigeKennung(roh.kryptoId) ? { kryptoId: roh.kryptoId } : {}),
 	};
 }

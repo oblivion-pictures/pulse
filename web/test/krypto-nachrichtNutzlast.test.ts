@@ -8,18 +8,18 @@ import {
 } from '../src/lib/krypto/nachrichtNutzlast.ts';
 
 test('Autor-ID und Antwort-Kennung ueberstehen Hin- und Rueckweg', () => {
-  const bytes = baueNachrichtNutzlast('hallo zurueck', 'msg-1', '123456789');
+  const bytes = baueNachrichtNutzlast('hallo zurueck', '1760000000000000001', '123456789');
   const gelesen = leseNachrichtNutzlast(bytes);
   assert.equal(gelesen.text, 'hallo zurueck');
-  assert.equal(gelesen.id, 'msg-1');
+  assert.equal(gelesen.id, '1760000000000000001');
   assert.equal(gelesen.replyToId, '123456789');
 });
 
 test('ohne Antwortbezug bleibt replyToId null, id bleibt gesetzt', () => {
-  const bytes = baueNachrichtNutzlast('einfacher text', 'msg-2', null);
+  const bytes = baueNachrichtNutzlast('einfacher text', '1760000000000000002', null);
   const gelesen = leseNachrichtNutzlast(bytes);
   assert.equal(gelesen.text, 'einfacher text');
-  assert.equal(gelesen.id, 'msg-2');
+  assert.equal(gelesen.id, '1760000000000000002');
   assert.equal(gelesen.replyToId, null);
 });
 

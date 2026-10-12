@@ -43,9 +43,19 @@
  * das Parsen als Fassung-1-Objekt, gilt der komplette entschluesselte Text
  * als Nachrichtentext ohne Kennung und ohne Antwortbezug.
  *
- * Importfrei, damit Nodes eingebauter Testlaeufer die Datei ohne Bundler
- * prueft (s. CLAUDE.md „Die Falle").
+ * **Jede Kennung aus der Nutzlast ist feindliche Eingabe** (Gegenpruefung
+ * 2026-10-12, Fund 1): `id`, `replyToId`, das Ziel eines Reaktions- oder
+ * Bearbeitungs-Frames und jede Anhang-ID waehlt der Absender frei. Was keine
+ * Kennung ist (`verlauf/identitaet.ts::istGueltigeKennung`), wird hier
+ * verworfen, bevor es im Verlauf, im Grabstein-Register oder in der Sicherung
+ * landet. Ein Aktions-Frame mit ungueltigem Ziel wird als Ganzes verworfen
+ * (`verworfen`), eine gewoehnliche Nachricht verliert nur die Kennung.
+ *
+ * Importfrei bis auf den `.ts`-Pfad der Kennungs-Regel, damit Nodes
+ * eingebauter Testlaeufer die Datei ohne Bundler prueft (s. CLAUDE.md „Die
+ * Falle").
  */
+import { istGueltigeKennung } from '../verlauf/identitaet.ts';
 
 const FASSUNG = 1;
 
@@ -138,6 +148,10 @@ export type NachrichtNutzlast = {
   /** Leer, wenn die Nutzlast keine Anhaenge trug ODER von einem Sender vor
    *  Etappe E stammt — beides sieht beim Lesen gleich aus und soll es auch. */
   anhaenge: AnhangAngabe[];
+  /** Ein Aktions-Frame (Loeschung, Reaktion, Bearbeitung), dessen Ziel keine
+   *  gueltige Kennung ist (Modulkopf). Er wird weder angewendet noch als
+   *  (leere) Nachricht angezeigt, nur quittiert (`rahmenAusNutzlast`). */
+  verworfen?: true;
 };
 
 function istZahl(wert: unknown): wert is number {
@@ -153,7 +167,7 @@ function leseAnhang(wert: unknown): AnhangAngabe | null {
   if (wert === null || typeof wert !== 'object') return null;
   const a = wert as Record<string, unknown>;
   if (
-    typeof a.id !== 'string' ||
+    !istGueltigeKennung(a.id) ||
     typeof a.name !== 'string' ||
     typeof a.typ !== 'string' ||
     typeof a.schluessel !== 'string' ||
@@ -247,7 +261,7 @@ export function baueReaktionsNutzlast(
 function leseReaktion(wert: unknown): ReaktionsAngabe | null {
   if (wert === null || typeof wert !== 'object') return null;
   const r = wert as Record<string, unknown>;
-  if (typeof r.ziel !== 'string' || r.ziel === '' || typeof r.emoji !== 'string' || r.emoji === '') {
+  if (!istGueltigeKennung(r.ziel) || typeof r.emoji !== 'string' || r.emoji === '') {
     return null;
   }
   return { ziel: r.ziel, emoji: r.emoji, ...(r.entfernen === true ? { entfernen: true as const } : {}) };
@@ -260,7 +274,7 @@ function leseReaktion(wert: unknown): ReaktionsAngabe | null {
 function leseBearbeitung(wert: unknown): BearbeitungsAngabe | null {
   if (wert === null || typeof wert !== 'object') return null;
   const b = wert as Record<string, unknown>;
-  if (typeof b.ziel !== 'string' || b.ziel === '' || typeof b.inhalt !== 'string' || b.inhalt === '') {
+  if (!istGueltigeKennung(b.ziel) || typeof b.inhalt !== 'string' || b.inhalt === '') {
     return null;
   }
   return { ziel: b.ziel, inhalt: b.inhalt };
@@ -316,6 +330,9 @@ function leseAnrufSchluessel(wert: unknown): AnrufSchluesselAngabe | null {
  * Zustellungs-Absender, und wird hier nur durchgereicht.
  */
 export type RahmenErgebnis =
+  /** Ein Frame mit ungueltigem Ziel (`NachrichtNutzlast.verworfen`): nur
+   *  quittieren, nichts ablegen, nichts anzeigen. */
+  | { art: 'ohneAblage'; id: string }
   | { art: 'loeschung'; id: string; channelId: string; nachrichtId: string; absenderUserId: string }
   | {
       art: 'reaktion';
@@ -354,6 +371,7 @@ export function rahmenAusNutzlast(
   channelId: string,
   autorId: string
 ): RahmenErgebnis | null {
+  if (gelesen.verworfen) return { art: 'ohneAblage', id };
   if (gelesen.geloescht && gelesen.id !== null) {
     // absenderUserId = die authentisierte Zuschreibung des Aufrufers — nur
     // der Verfasser darf seine Sätze löschen (s. `loeschZiel.ts`).
@@ -393,6 +411,33 @@ export function rahmenAusNutzlast(
   return null;
 }
 
+/** Ob ein Wert da ist, aber keine Kennung — anders als ein fehlender Wert,
+ *  der beim Lesen ein Feld nur weglaesst. */
+function vorhandenAberUngueltig(wert: unknown): boolean {
+  return wert !== undefined && wert !== null && !istGueltigeKennung(wert);
+}
+
+/** Das `ziel` einer rohen Reaktions- oder Bearbeitungs-Angabe, oder
+ *  `undefined`, wo keine Angabe da ist. */
+function zielVon(angabe: unknown): unknown {
+  return angabe !== null && typeof angabe === 'object'
+    ? (angabe as Record<string, unknown>).ziel
+    : undefined;
+}
+
+/** Ob ein Aktions-Frame ein Ziel nennt, das keine Kennung ist (Modulkopf):
+ *  ein Loesch-Frame mit ungueltiger `id`, ein Reaktions- oder
+ *  Bearbeitungs-Frame mit ungueltigem `ziel`. Bisher landete die Kennung
+ *  eines Loesch-Frames ungeprueft im Grabstein-Register und als Stein in der
+ *  Sicherung. */
+function zielVerworfen(o: Record<string, unknown>): boolean {
+  return (
+    (o.geloescht === true && vorhandenAberUngueltig(o.id)) ||
+    vorhandenAberUngueltig(zielVon(o.reaktion)) ||
+    vorhandenAberUngueltig(zielVon(o.bearbeitung))
+  );
+}
+
 export function leseNachrichtNutzlast(bytes: Uint8Array): NachrichtNutzlast {
   const roh = new TextDecoder().decode(bytes);
   try {
@@ -416,15 +461,16 @@ export function leseNachrichtNutzlast(bytes: Uint8Array): NachrichtNutzlast {
       const anrufSchluessel = leseAnrufSchluessel(o.anrufSchluessel);
       return {
         text: o.text as string,
-        id: typeof o.id === 'string' ? o.id : null,
-        replyToId: typeof o.replyToId === 'string' ? o.replyToId : null,
+        id: istGueltigeKennung(o.id) ? o.id : null,
+        replyToId: istGueltigeKennung(o.replyToId) ? o.replyToId : null,
         absenderNutzer: typeof o.absenderNutzer === 'string' ? o.absenderNutzer : null,
         absenderGeraet: typeof o.absenderGeraet === 'string' ? o.absenderGeraet : null,
         anhaenge,
         ...(o.geloescht === true ? { geloescht: true as const } : {}),
         ...(reaktion ? { reaktion } : {}),
         ...(bearbeitung ? { bearbeitung } : {}),
-        ...(anrufSchluessel ? { anrufSchluessel } : {})
+        ...(anrufSchluessel ? { anrufSchluessel } : {}),
+        ...(zielVerworfen(o) ? { verworfen: true as const } : {})
       };
     }
   } catch {

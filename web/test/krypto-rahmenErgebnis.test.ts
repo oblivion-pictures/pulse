@@ -20,10 +20,12 @@ import {
 const AUTOR = 'autor-1';
 const KANAL = 'kanal-42';
 const ZUSTELLUNG = 'zustell-77';
+/** Die Kennung der Ziel-Nachricht — eine Ziffernfolge wie jede echte ID. */
+const ZIEL = '1760000000000000009';
 
 test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
   const loeschung = rahmenAusNutzlast(
-    leseNachrichtNutzlast(baueLoeschNutzlast('nachricht-9')),
+    leseNachrichtNutzlast(baueLoeschNutzlast(ZIEL)),
     ZUSTELLUNG,
     KANAL,
     AUTOR
@@ -32,12 +34,12 @@ test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
     art: 'loeschung',
     id: ZUSTELLUNG,
     channelId: KANAL,
-    nachrichtId: 'nachricht-9',
+    nachrichtId: ZIEL,
     absenderUserId: AUTOR
   });
 
   const reaktion = rahmenAusNutzlast(
-    leseNachrichtNutzlast(baueReaktionsNutzlast('nachricht-9', '👍', false)),
+    leseNachrichtNutzlast(baueReaktionsNutzlast(ZIEL, '👍', false)),
     ZUSTELLUNG,
     KANAL,
     AUTOR
@@ -47,13 +49,13 @@ test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
     id: ZUSTELLUNG,
     channelId: KANAL,
     autorId: AUTOR,
-    ziel: 'nachricht-9',
+    ziel: ZIEL,
     emoji: '👍',
     entfernen: false
   });
 
   const reaktionZurueck = rahmenAusNutzlast(
-    leseNachrichtNutzlast(baueReaktionsNutzlast('nachricht-9', '👍', true)),
+    leseNachrichtNutzlast(baueReaktionsNutzlast(ZIEL, '👍', true)),
     ZUSTELLUNG,
     KANAL,
     AUTOR
@@ -62,7 +64,7 @@ test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
   assert.equal(reaktionZurueck.entfernen, true);
 
   const bearbeitung = rahmenAusNutzlast(
-    leseNachrichtNutzlast(baueBearbeitungsNutzlast('nachricht-9', 'Neuer Text')),
+    leseNachrichtNutzlast(baueBearbeitungsNutzlast(ZIEL, 'Neuer Text')),
     ZUSTELLUNG,
     KANAL,
     AUTOR
@@ -73,7 +75,7 @@ test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
     id: ZUSTELLUNG,
     channelId: KANAL,
     autorId: AUTOR,
-    ziel: 'nachricht-9',
+    ziel: ZIEL,
     inhalt: 'Neuer Text'
   });
 });
@@ -81,7 +83,7 @@ test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
 test('Kein Frame: gewoehnliche Nachricht und Loesch-Frame ohne ID fallen durch', () => {
   // Gewoehnliche Nachricht (mit Text und ID) — keine der Frame-Marken gesetzt.
   const nachricht = leseNachrichtNutzlast(
-    new TextEncoder().encode(JSON.stringify({ v: 1, text: 'Hallo', id: 'nachricht-9' }))
+    new TextEncoder().encode(JSON.stringify({ v: 1, text: 'Hallo', id: ZIEL }))
   );
   assert.equal(rahmenAusNutzlast(nachricht, ZUSTELLUNG, KANAL, AUTOR), null);
 
@@ -92,4 +94,57 @@ test('Kein Frame: gewoehnliche Nachricht und Loesch-Frame ohne ID fallen durch',
     new TextEncoder().encode(JSON.stringify({ v: 1, text: '', geloescht: true }))
   );
   assert.equal(rahmenAusNutzlast(kaputt, ZUSTELLUNG, KANAL, AUTOR), null);
+});
+
+// Gegenprüfung 2026-10-12, Fund 1: jede Kennung der Nutzlast wählt der
+// Absender frei. Ein Lösch-Frame mit `id: "x"` landete bis dahin im
+// Grabstein-Register und als Stein in der Sicherung, an dem jede
+// Wiederherstellung des Kanals scheiterte.
+test('Fund 1: ein Aktions-Frame mit ungültigem Ziel wird verworfen, nicht angezeigt', () => {
+  const roh = (objekt: Record<string, unknown>) =>
+    leseNachrichtNutzlast(new TextEncoder().encode(JSON.stringify({ v: 1, text: '', ...objekt })));
+  for (const frame of [
+    { geloescht: true, id: 'x' },
+    { geloescht: true, id: '0123' },
+    { geloescht: true, id: '1'.repeat(21) },
+    { reaktion: { ziel: 'x', emoji: '👍' } },
+    { bearbeitung: { ziel: '12a', inhalt: 'neu' } }
+  ]) {
+    const gelesen = roh(frame);
+    assert.equal(gelesen.verworfen, true, JSON.stringify(frame));
+    assert.deepEqual(
+      rahmenAusNutzlast(gelesen, ZUSTELLUNG, KANAL, AUTOR),
+      { art: 'ohneAblage', id: ZUSTELLUNG },
+      JSON.stringify(frame)
+    );
+  }
+  // Gegenprobe: mit gültigem Ziel bleibt es ein Lösch-Frame.
+  assert.equal(rahmenAusNutzlast(roh({ geloescht: true, id: ZIEL }), ZUSTELLUNG, KANAL, AUTOR)?.art, 'loeschung');
+});
+
+test('Fund 1: eine gewöhnliche Nachricht verliert nur ihre ungültigen Kennungen', () => {
+  const gelesen = leseNachrichtNutzlast(
+    new TextEncoder().encode(
+      JSON.stringify({
+        v: 1,
+        text: 'hallo',
+        id: 'x',
+        replyToId: '../y',
+        anhaenge: [
+          { id: '../datei', name: 'a', typ: 'image/png', groesse: 1, schluessel: 's' },
+          { id: '7', name: 'b', typ: 'image/png', groesse: 1, schluessel: 's' }
+        ]
+      })
+    )
+  );
+  assert.equal(gelesen.text, 'hallo');
+  assert.equal(gelesen.id, null);
+  assert.equal(gelesen.replyToId, null);
+  // Aus der Anhang-ID wird ein Dateiname im Laufwerk — `../datei` fällt heraus.
+  assert.deepEqual(
+    gelesen.anhaenge.map((a) => a.id),
+    ['7']
+  );
+  assert.equal(gelesen.verworfen, undefined);
+  assert.equal(rahmenAusNutzlast(gelesen, ZUSTELLUNG, KANAL, AUTOR), null);
 });

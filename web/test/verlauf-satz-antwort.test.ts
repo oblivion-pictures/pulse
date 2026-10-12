@@ -45,10 +45,10 @@ test('zuSatz legt krypto_id (kanonische Autor-ID) mit ab', () => {
     author_id: '7',
     content: 'empfangen',
     created_at: '2026-08-28T00:00:00Z',
-    krypto_id: 'autor-kanonisch-1'
+    krypto_id: '1760000000000000001'
   }, 'konto-a');
   assert.ok(satz);
-  assert.equal(satz.kryptoId, 'autor-kanonisch-1');
+  assert.equal(satz.kryptoId, '1760000000000000001');
 });
 
 test('satzZuNachricht liefert krypto_id beim Nachladen zurueck, damit spaetere Antworten sie wiederfinden', () => {
@@ -57,9 +57,9 @@ test('satzZuNachricht liefert krypto_id beim Nachladen zurueck, damit spaetere A
     author_id: '7',
     content: 'empfangen',
     created_at: '2026-08-28T00:00:00Z',
-    krypto_id: 'autor-kanonisch-1'
+    krypto_id: '1760000000000000001'
   }, 'konto-a');
   assert.ok(satz);
   const nachricht = satzZuNachricht(satz);
-  assert.equal(nachricht.krypto_id, 'autor-kanonisch-1');
+  assert.equal(nachricht.krypto_id, '1760000000000000001');
 });

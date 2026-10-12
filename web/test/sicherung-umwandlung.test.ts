@@ -32,7 +32,7 @@ function empfangsSatz() {
 			reply_to_id: null,
 			krypto_id: K,
 			verschluesselt: true,
-			attachments: [{ id: 'a1', filename: 'f.png', mime: 'image/png', size: 3, schluessel: 'geheim' }],
+			attachments: [{ id: '501', filename: 'f.png', mime: 'image/png', size: 3, schluessel: 'geheim' }],
 		},
 		'konto-a',
 	);
@@ -69,7 +69,7 @@ test('M1: ausSatz und ausWire liefern für dieselbe Nachricht dieselbe Bestand-F
 		edited_at: null,
 		reply_to_id: null,
 		krypto_id: K,
-		attachments: [{ id: 'a1', filename: 'f.png', mime: 'image/png', size: 3, schluessel: 'geheim' }],
+		attachments: [{ id: '501', filename: 'f.png', mime: 'image/png', size: 3, schluessel: 'geheim' }],
 	} as unknown as Message);
 	assert.deepEqual(ausSatz(satz), vomWire);
 });
@@ -86,12 +86,12 @@ test('M1: Erstsicherung einer Archiv-Kopie und Spiegel des Altgeräts werden EIN
 });
 
 test('ausSatz verträgt Altbestand: fehlende Anhang-Felder werden aufgefüllt, Fremdes fällt raus', () => {
-	const satz = { ...empfangsSatz(), anhaenge: [{ id: 'a2' }, null, 'kaputt'] };
+	const satz = { ...empfangsSatz(), anhaenge: [{ id: '502' }, null, 'kaputt'] };
 	const bytes = kodiereSicherungEintrag(sicherungEintrag('777', ausSatz(satz)));
 	// Ohne Auffüllen wiese der strenge Leser den ganzen Rahmen ab.
 	const gelesen = leseSicherungEintrag(bytes);
 	assert.deepEqual(
 		gelesen.nachricht.anhaenge.map((a) => [a.id, a.name, a.groesse]),
-		[['a2', null, 0]],
+		[['502', null, 0]],
 	);
 });

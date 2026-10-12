@@ -76,10 +76,10 @@ describe('Ablage-Nutzlast: Wire wird Bestand', () => {
 		// Mit krypto_id: das Merkmal überlebt Kodieren und Lesen — ohne es
 		// erkennt der Wiederherstellungs-Leser die Kopie des anderen Geräts
 		// nicht und die Nachricht erscheint doppelt (Frischgerät + Sicherung).
-		const mit = ausWire(wireNachricht({ krypto_id: 'kanon-42' }));
-		assert.equal(mit.kryptoId, 'kanon-42');
+		const mit = ausWire(wireNachricht({ krypto_id: '1760000000000000042' }));
+		assert.equal(mit.kryptoId, '1760000000000000042');
 		const gelesen = leseNachricht(kodiereNachricht(mit));
-		assert.equal(gelesen.kryptoId, 'kanon-42');
+		assert.equal(gelesen.kryptoId, '1760000000000000042');
 
 		// Ohne krypto_id: Feld bleibt absent, und der JSON-Bestand ist
 		// byte-identisch mit dem Stand vor der Erweiterung (Fassung 1).
@@ -112,5 +112,43 @@ describe('Ablage-Nutzlast: Wire wird Bestand', () => {
 			}),
 		);
 		assert.throws(() => leseNachricht(ohneAnhangFelder), /groesse/);
+	});
+
+	it('Fund 1: eine ID, die keine Kennung ist, ist ein Befund; Bezüge verlieren nur sich selbst', () => {
+		// Gegenprüfung 2026-10-12: ein Sicherungs-Stein mit der frei gewählten
+		// ID `"x"` brachte den Wiederherstellungs-Leser zum Absturz.
+		const roh = (felder: Record<string, unknown>) =>
+			new TextEncoder().encode(
+				JSON.stringify({
+					fassung: NUTZLAST_FASSUNG,
+					id: '1001',
+					autor: '100',
+					inhalt: 'y',
+					zeit: 'z',
+					bearbeitet: null,
+					antwortAuf: null,
+					anhaenge: [],
+					...felder,
+				}),
+			);
+		for (const id of ['x', '0123', '1'.repeat(21), '']) {
+			assert.throws(() => leseNachricht(roh({ id })), NutzlastFehler, id);
+		}
+		const gelesen = leseNachricht(
+			roh({
+				kryptoId: 'x',
+				antwortAuf: '../z',
+				anhaenge: [
+					{ id: '../datei', name: null, mime: null, groesse: 1 },
+					{ id: '9', name: null, mime: null, groesse: 1 },
+				],
+			}),
+		);
+		assert.ok(!('kryptoId' in gelesen));
+		assert.equal(gelesen.antwortAuf, null);
+		assert.deepEqual(
+			gelesen.anhaenge.map((a) => a.id),
+			['9'],
+		);
 	});
 });

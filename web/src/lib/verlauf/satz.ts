@@ -1,10 +1,12 @@
 /**
- * Nachricht → Satz des lokalen Verlaufs — importfrei, damit Nodes
- * Testlaeufer sie sieht (kein erweiterungsloser Laufzeit-Import moeglich).
+ * Nachricht → Satz des lokalen Verlaufs — importfrei bis auf den `.ts`-Pfad
+ * der Kennungs-Regel, damit Nodes Testlaeufer sie sieht (kein
+ * erweiterungsloser Laufzeit-Import moeglich).
  *
  * Die Satzform selbst (`Satz`) steht in `schema.ts`; hier nur der
- * strukturell identische Rueckgabetyp, um KEINEN Import zu brauchen.
+ * strukturell identische Rueckgabetyp, um sie nicht importieren zu muessen.
  */
+import { istGueltigeKennung } from './identitaet.ts';
 
 type Satz = {
   schluessel: string;
@@ -48,6 +50,12 @@ export function sortierSchluessel(kanalId: string, nachrichtId: string): string 
  * `null` zurueck statt Muell abzulegen — sonst faellt der Fehler erst beim
  * Lesen auf, Wochen spaeter.
  *
+ * Die ID muss eine Kennung sein (`identitaet.ts::istGueltigeKennung`), und
+ * `kryptoId` und Antwortbezug zaehlen nur als Kennung (sonst `null`) — die
+ * letzte Wand vor dem Ablegen, falls ein Leseweg eine frei gewaehlte Kennung
+ * durchliesse (Gegenpruefung 2026-10-12, Fund 1: eine Kennung `"x"` brachte
+ * den Sicherungs-Leser zum Absturz).
+ *
  * `kontoId` kommt vom Aufrufer (`verlauf/index.ts`, ueber
  * `verlauf/konto.ts::aktuellesKonto`) — diese Datei ist importfrei und darf
  * den angemeldeten Nutzer nicht selbst ermitteln.
@@ -56,7 +64,7 @@ export function zuSatz(kanalId: string, nachricht: unknown, kontoId: string): Sa
   if (typeof nachricht !== 'object' || nachricht === null) return null;
   const n = nachricht as Record<string, unknown>;
   const { id, author_id, content } = n;
-  if (typeof id !== 'string' || typeof author_id !== 'string' || typeof content !== 'string') {
+  if (!istGueltigeKennung(id) || typeof author_id !== 'string' || typeof content !== 'string') {
     return null;
   }
   const created_at = n.created_at;
@@ -64,8 +72,8 @@ export function zuSatz(kanalId: string, nachricht: unknown, kontoId: string): Sa
   const edited_at = typeof n.edited_at === 'string' ? n.edited_at : null;
   const deleted_at = typeof n.deleted_at === 'string' ? n.deleted_at : null;
   const anhaenge = Array.isArray(n.attachments) ? n.attachments : [];
-  const antwortAufId = typeof n.reply_to_id === 'string' ? n.reply_to_id : null;
-  const kryptoId = typeof n.krypto_id === 'string' ? n.krypto_id : null;
+  const antwortAufId = istGueltigeKennung(n.reply_to_id) ? n.reply_to_id : null;
+  const kryptoId = istGueltigeKennung(n.krypto_id) ? n.krypto_id : null;
 
   return {
     schluessel: sortierSchluessel(kanalId, id),

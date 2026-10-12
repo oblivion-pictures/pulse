@@ -42,7 +42,7 @@
  *
  * Importfrei bis auf den `.ts`-Pfad der Identitätsregel (Nodes Testläufer).
  */
-import { kanonischeId, nachrichtIdentitaet } from './identitaet.ts';
+import { istGueltigeKennung, kanonischeId, nachrichtIdentitaet } from './identitaet.ts';
 
 /** Präfix der Register-Schlüssel — sortiert hinter jeder Kanal-ID. */
 const PRAEFIX = '~grabstein|';
@@ -54,14 +54,18 @@ export type RegisterEintrag = {
 };
 
 /** Der Schlüssel eines Eintrags, oder `null`, wenn die Löschung nicht
- *  gebunden ist (kein Autor, keine Kennung, kein Konto). */
+ *  gebunden ist (kein Konto, Autor oder Kennung, die keine Kennung ist).
+ *  Autor und Kennung müssen die Form einer Kennung haben
+ *  (`identitaet.ts::istGueltigeKennung`): die Kennung wählt der Absender frei,
+ *  und ein Eintrag mit beliebigem Wert flutete den Speicher und landete als
+ *  Stein in der Sicherung (Gegenprüfung 2026-10-12, Fund 1). */
 export function registerSchluessel(
   kontoId: string,
   kanalId: string,
   autorId: string,
   kennung: string
 ): string | null {
-  if (kontoId === '' || autorId === '' || kennung === '') return null;
+  if (kontoId === '' || !istGueltigeKennung(autorId) || !istGueltigeKennung(kennung)) return null;
   return `${PRAEFIX}${kontoId}|${kanalId}|${nachrichtIdentitaet(autorId, kennung)}`;
 }
 

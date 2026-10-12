@@ -136,6 +136,26 @@ function sichtbar(saetze: Satz[]): string[] {
   return saetze.filter((s) => !s.geloescht).map((s) => s.nachrichtId);
 }
 
+/** Alle Schlüssel des Speichers `nachrichten`, an jedem Leseweg vorbei —
+ *  auch die Einträge des Grabstein-Registers. */
+async function rohSchluessel(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      new Promise<string[]>((fertig, fehler) => {
+        const offen = indexedDB.open('pulse-verlauf');
+        offen.onsuccess = () => {
+          const anfrage = offen.result.transaction('nachrichten').objectStore('nachrichten').getAllKeys();
+          anfrage.onsuccess = () => {
+            offen.result.close();
+            fertig(anfrage.result.map(String));
+          };
+          anfrage.onerror = () => fehler(anfrage.error);
+        };
+        offen.onerror = () => fehler(offen.error);
+      })
+  );
+}
+
 test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
   test.beforeEach(async ({ page }) => {
     await vorbereiten(page);
@@ -357,6 +377,30 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     expect(ausSicherung.inhalt).toBe('echt');
     expect(ausSicherung.anhaenge.map((a) => a.id)).toEqual(['bild-des-partners']);
     expect(ausSicherung.antwortAufId).toBe('700000000000000999');
+  });
+
+  test('Fund 1 (zweite Gegenprüfung): eine Kennung, die keine ist, trägt nichts ein und legt nichts ab', async ({ page }) => {
+    // Ein Lösch-Frame oder eine Grabstein-Zeile mit `"x"`: bis hierher ein
+    // Register-Eintrag und ein Stein in der Sicherung, an dem jede
+    // Wiederherstellung des Kanals scheiterte.
+    for (const kennung of ['x', '0123', '1'.repeat(21)]) {
+      expect(await gebundenLoeschen(page, ALICE, [kennung])).toEqual({ markiert: [], neu: false });
+    }
+    // Eine Kopie mit einer solchen ID wird gar nicht erst ein Satz (`zuSatz`).
+    const satz = await page.evaluate(
+      ({ kanalId, kontoId, alice }) =>
+        (window as unknown as { __satz: { zuSatz: Function } }).__satz.zuSatz(
+          kanalId,
+          { id: 'x', author_id: alice, content: 'x', created_at: '2026-10-12T00:00:00Z' },
+          kontoId
+        ),
+      { kanalId: KANAL, kontoId: KONTO, alice: ALICE }
+    );
+    expect(satz).toBeNull();
+    expect(await rohSchluessel(page)).toEqual([]);
+    // Gegenprobe: eine echte Kennung trägt ein.
+    expect(await gebundenLoeschen(page, ALICE, [K])).toEqual({ markiert: [], neu: true });
+    expect(await rohSchluessel(page)).toHaveLength(1);
   });
 
   test('Register-Einträge erscheinen in keinem Leseweg', async ({ page }) => {

@@ -49,8 +49,33 @@
  * Nachrichten-Rahmen der eigenen Sicherung, nicht aus dem Stein.
  *
  * Importfrei, damit Nodes eingebauter Testläufer die Datei ohne Bundler prüft
- * (s. CLAUDE.md „Die Falle").
+ * (s. CLAUDE.md „Die Falle"). Aus demselben Grund steht hier auch die Prüfung
+ * der Kennungs-Form (`istGueltigeKennung`): Frame-Leser, Archiv-Zeile,
+ * Grabstein-Register und Sicherungs-Leser holen sie alle von hier.
  */
+
+const KENNUNG = /^[1-9][0-9]{0,19}$/;
+
+/**
+ * Ob ein Wert als Kennung taugt: eine Ziffernfolge mit 1 bis 20 Stellen ohne
+ * führende Null — die Form jeder echten ID (Server-Snowflakes,
+ * `krypto/lokaleNachrichtId.ts` mit 19 Stellen, Altbestand mit 20).
+ *
+ * **Alles, was ein Gesprächspartner frei wählt, ist feindliche Eingabe**
+ * (Gegenprüfung 2026-10-12, Fund 1): die Kennung eines Lösch-Frames, die ID
+ * einer Archiv-Zeile, eine Anhang-ID. Eine Kennung `"x"` landete bis dahin
+ * über eine gebundene Löschung ohne lokalen Treffer im Grabstein-Register und
+ * als Stein in der Sicherung, und deren Leser rechnete mit `BigInt`: jede
+ * Wiederherstellung des Kanals warf, auf Dauer. Geprüft wird deshalb, bevor
+ * etwas dauerhaft abgelegt wird.
+ *
+ * Ohne führende Null, weil `satz.ts::sortierSchluessel` auf 20 Stellen
+ * auffüllt: `"0123"` und `"123"` landeten unter demselben Schlüssel, ein
+ * zweiter Name für denselben Platz. Mehr als 20 Stellen hat keine 64-Bit-Zahl.
+ */
+export function istGueltigeKennung(wert: unknown): wert is string {
+  return typeof wert === 'string' && KENNUNG.test(wert);
+}
 
 /** Die geräteübergreifende Kennung einer Nachricht: die vom Verfasser
  *  gewählte `kryptoId`, wo der Satz sie führt, sonst die eigene ID (beim

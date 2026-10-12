@@ -148,4 +148,51 @@ describe('archiv/zeile', () => {
 		const stein = new TextDecoder().decode(baueGrabsteinKlar('1', '42', '2026-10-12T00:00:00.000Z'));
 		assert.equal(zuSatz('999', leseZeilenKlar('999', stein), 'konto'), null);
 	});
+
+	// ── Kennungen (Gegenprüfung 2026-10-12, Fund 1) ────────────────────────
+	// `i`, `g`, `r`, `a` und die Anhang-IDs wählt der Einliefernde frei. Eine
+	// Grabstein-Zeile `{g:"x"}` landete bis dahin im Grabstein-Register und
+	// als Stein in der Sicherung, deren Leser daran abbrach.
+
+	test('Fund 1: eine Grabstein-Zeile mit ungültiger Kennung wird verworfen', () => {
+		for (const kennung of ['x', '', '0123', '1'.repeat(21), '12 ']) {
+			const stein = new TextDecoder().decode(
+				baueGrabsteinKlar(kennung, '42', '2026-10-12T00:00:00.000Z')
+			);
+			assert.equal(leseZeile('999', stein, '42'), null, kennung);
+		}
+		// Ebenso eine `g`, die gar keine Zeichenkette ist.
+		assert.equal(leseZeile('999', '{"g":7,"a":"42","z":"2026-10-12T00:00:00.000Z"}', '42'), null);
+	});
+
+	test('Fund 1: eine Zeile mit ungültiger ID oder ungültigem Autor wird verworfen', () => {
+		assert.equal(leseZeile('999', klar(nachricht({ id: 'x' })), '42'), null);
+		assert.equal(leseZeile('999', klar(nachricht({ id: 'x' })), null), null);
+		// Eine Bestandszeile nennt ihren Autor selbst — auch er muss eine
+		// Konto-ID sein.
+		assert.equal(leseZeile('999', klar(nachricht({ author_id: 'alice' })), null), null);
+	});
+
+	test('Fund 1: ungültiger Antwortbezug und ungültige Anhang-IDs fallen weg, der Text bleibt', () => {
+		const roh = JSON.stringify({
+			i: '1234567890123',
+			t: 'mit Bezug',
+			a: '42',
+			z: '2026-10-05T10:00:00.000Z',
+			r: 'x',
+			anh: [
+				{ id: '../datei', name: 'a', typ: 'image/png', groesse: 1, schluessel: 's' },
+				{ id: '8', name: 'b', typ: 'image/png', groesse: 1, schluessel: 's' }
+			]
+		});
+		const eintrag = leseZeile('999', roh, '42');
+		assert.equal(eintrag?.art, 'nachricht');
+		const nachricht = eintrag?.art === 'nachricht' ? eintrag.nachricht : null;
+		assert.equal(nachricht?.content, 'mit Bezug');
+		assert.equal(nachricht?.reply_to_id, null);
+		assert.deepEqual(
+			nachricht?.attachments?.map((a) => a.id),
+			['8']
+		);
+	});
 });

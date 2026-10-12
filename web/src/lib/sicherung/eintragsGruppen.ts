@@ -49,6 +49,7 @@
 
 import type { SicherungEintrag } from './nutzlast.ts';
 import { kanonischeId, nachrichtIdentitaet } from '../verlauf/identitaet.ts';
+import { vergleicheSnowflakeArtigeId } from '../utils/snowflakeZeit.ts';
 
 interface Gruppe {
 	eintrag: SicherungEintrag;
@@ -107,10 +108,16 @@ function reicher(neu: SicherungEintrag, alt: SicherungEintrag): boolean {
 	return neu.nachricht.anhaenge.length > alt.nachricht.anhaenge.length;
 }
 
-/** Neueste zuerst (Nachricht-Snowflake), bei gleicher ID nach Kanal. */
+/** Neueste zuerst (Nachricht-Snowflake), bei gleicher ID nach Kanal. Mit
+ *  `vergleicheSnowflakeArtigeId` statt `BigInt`: der Vergleich wirft auf
+ *  keiner ID, auch nicht auf einer frei gewählten aus dem Altbestand — mit
+ *  `BigInt("x")` riss bis 2026-10-12 jede Wiederherstellung des Kanals ab
+ *  (Gegenprüfung 2026-10-12, Fund 1). Er ordnet außerdem nach der Zeit wie die
+ *  Anzeige, statt eine lokale ID (19 Stellen) stets hinter jede Snowflake
+ *  (18 Stellen) zu stellen. */
 function neuesteZuerst(a: SicherungEintrag, b: SicherungEintrag): number {
 	if (a.nachricht.id === b.nachricht.id) return a.kanalId.localeCompare(b.kanalId);
-	return BigInt(a.nachricht.id) > BigInt(b.nachricht.id) ? -1 : 1;
+	return vergleicheSnowflakeArtigeId(b.nachricht.id, a.nachricht.id);
 }
 
 export class EintragsGruppen {

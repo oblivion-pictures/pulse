@@ -161,7 +161,7 @@ describe('Medien-Index aus Satz (Zweit-Schreibweg von verlaufPutSaetze)', () => 
       ...basis,
       anhaenge: [
         {
-          id: 'a-1',
+          id: '601',
           filename: 'geheim.png',
           mime: 'image/png',
           size: 42,
@@ -169,15 +169,17 @@ describe('Medien-Index aus Satz (Zweit-Schreibweg von verlaufPutSaetze)', () => 
           schluessel: 'SCHLUESSEL',
           thumb_schluessel: 'THUMB'
         },
-        { id: 'a-2', filename: 'lesbar.pdf', mime: 'application/pdf', size: 7, url: 'https://x', thumb_url: 'https://t' },
+        { id: '602', filename: 'lesbar.pdf', mime: 'application/pdf', size: 7, url: 'https://x', thumb_url: 'https://t' },
         { kaputt: true }, // ohne id — wird fail-closed uebersprungen
+        // Keine Kennung — `medienLesen` sortiert mit `BigInt` (Fund 1, 2026-10-12).
+        { id: '../x', filename: 'f', mime: 'image/png', size: 1 },
         null
       ]
     };
     const zeilen = medienZeilenAusSatz(satz);
     assert.equal(zeilen.length, 2);
 
-    assert.equal(zeilen[0]!.id, 'a-1');
+    assert.equal(zeilen[0]!.id, '601');
     assert.equal(zeilen[0]!.kanalId, '42');
     assert.equal(zeilen[0]!.kontoId, KONTO);
     assert.equal(zeilen[0]!.autorId, 'nutzer-9');
@@ -187,7 +189,7 @@ describe('Medien-Index aus Satz (Zweit-Schreibweg von verlaufPutSaetze)', () => 
     assert.equal(zeilen[0]!.hatThumb, true);
     assert.equal(zeilen[0]!.schluessel, 'SCHLUESSEL');
 
-    assert.equal(zeilen[1]!.id, 'a-2');
+    assert.equal(zeilen[1]!.id, '602');
     assert.equal(zeilen[1]!.verschluesselt, false);
     assert.equal(zeilen[1]!.schluessel, null);
     assert.equal(zeilen[1]!.hatThumb, true);
@@ -197,7 +199,7 @@ describe('Medien-Index aus Satz (Zweit-Schreibweg von verlaufPutSaetze)', () => 
     const satz = {
       ...basis,
       geloescht: true,
-      anhaenge: [{ id: 'a-1', filename: 'x', mime: 'text/plain', size: 1 }]
+      anhaenge: [{ id: '601', filename: 'x', mime: 'text/plain', size: 1 }]
     };
     assert.deepEqual(medienZeilenAusSatz(satz), []);
   });

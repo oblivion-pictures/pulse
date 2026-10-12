@@ -26,6 +26,7 @@ import {
 } from './db';
 import { aktuellesKonto } from './konto';
 import { istLokalerKanal } from './kanalArt';
+import { istGueltigeKennung } from './identitaet';
 import { verlaufZustand } from './zustand.svelte';
 
 /** Was der Sicherungs-Stein über die gelöschte Nachricht wissen muss. */
@@ -88,6 +89,12 @@ export function verlaufNachrichtGeloescht(
  * und Sicherung wenden ihre Grabsteine bei jedem Lesen erneut an), passiert
  * nichts weiter.
  *
+ * Eine Kennung, die keine ist (`identitaet.ts::istGueltigeKennung`), löscht
+ * nichts und schreibt nichts: ohne lokalen Treffer entstünde aus ihr ein Stein
+ * in der Sicherung, und eine frei gewählte Kennung `"x"` brachte deren Leser
+ * zum Absturz (Gegenprüfung 2026-10-12, Fund 1). Die Leser verwerfen sie
+ * schon vorher; dies ist die Wand an der Stelle, die dauerhaft schreibt.
+ *
  * Ergebnis: die lokalen IDs der markierten Sätze — der Aufrufer nimmt sie
  * aus der Anzeige. Leer bei jedem Fehlschlag (gemeldet bei `verlaufZustand`).
  */
@@ -96,7 +103,7 @@ export async function verlaufGebundenGeloescht(
   kennung: string,
   autorId: string
 ): Promise<string[]> {
-  if (!istLokalerKanal(kanalId)) return [];
+  if (!istLokalerKanal(kanalId) || !istGueltigeKennung(kennung)) return [];
   const kontoId = aktuellesKonto();
   if (kontoId === null) return [];
   try {
