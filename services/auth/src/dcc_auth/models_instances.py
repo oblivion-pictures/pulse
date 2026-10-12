@@ -62,9 +62,9 @@ class RegisteredInstance(Base):
     worker_id_media: Mapped[int | None] = mapped_column(SmallInteger, nullable=True, unique=True)
     # active | suspended
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
-    # vps | app_host — Herkunft der Instanz. App-Host-Instanzen (Ein-Knopf-
-    # Container aus der Desktop-App, synthetischer Hostname) erscheinen nur in
-    # der App-Hosting-Karte, nicht in "Meine Instanzen". Explizites Feld statt
+    # vps | app_host — Herkunft der Instanz: vps = gemieteter Server mit eigener
+    # Adresse, app_host = Heim-Server (Server-App). Die Liste „Meine Server“
+    # führt beide und beschriftet die Heim-Server. Explizites Feld statt
     # Hostname-Heuristik (Migration 0040).
     origin: Mapped[str] = mapped_column(Text, nullable=False, server_default="vps")
     # ②a Relay-Provisionierung: stabile Subdomain (Slug) + Tunnel-Token-Hash.

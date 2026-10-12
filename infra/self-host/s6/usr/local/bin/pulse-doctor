@@ -111,7 +111,7 @@ elif [ "$TLS_MODE" = "behind-proxy" ]; then
     if tcp_offen "$HTTP_PORT"; then
         ja "interner Caddy lauscht auf ${HTTP_PORT} (TLS macht der Proxy davor)"
         rat "Ob der Proxy richtig zeigt, sagt nur die Prüfung von aussen:"
-        rat "in der App unter Meine Instanzen -> Verbindung pruefen."
+        rat "in der App unter Meine Server -> Verbindung pruefen."
     else
         nein "interner Caddy lauscht NICHT auf ${HTTP_PORT}"
     fi
@@ -129,7 +129,7 @@ else
         rat "nicht erreichbar — ODER dieses Netz kann den eigenen"
         rat "oeffentlichen Namen nicht aufloesen (fehlendes Hairpin-NAT)."
         rat "Entschieden wird das nur von aussen: in der App unter"
-        rat "Meine Instanzen -> Verbindung pruefen."
+        rat "Meine Server -> Verbindung pruefen."
     fi
 fi
 
@@ -205,7 +205,7 @@ echo
 if [ "$FEHLER" -eq 0 ]; then
     printf '%sNichts gefunden, was von hier aus sichtbar wäre.%s\n' "$GRUEN" "$AUS"
     echo "Ob der Server von DRAUSSEN ankommt, sagt nur die Prüfung aus der Cloud:"
-    echo "in der App unter Meine Instanzen -> Verbindung pruefen."
+    echo "in der App unter Meine Server -> Verbindung pruefen."
 else
     printf '%s%d Punkt(e) offen.%s\n' "$ROT" "$FEHLER" "$AUS"
 fi

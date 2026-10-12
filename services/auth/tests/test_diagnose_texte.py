@@ -328,3 +328,18 @@ def test_eingebettetes_zeilenende_wird_nicht_durchgelassen() -> None:
     dieselbe Zeichenkette wie ein abgeschnittener Treffer."""
     assert dt.container_name("pulse\n") == "pulse"
     assert dt.container_name("mein-server\n") == "pulse"
+
+
+@pytest.mark.parametrize("befund", ["andere_kennung", "nicht_konfiguriert"])
+@pytest.mark.parametrize("sprache", ["de", "en"])
+def test_betreiber_texte_zeigen_auf_pulse_connect(befund: str, sprache: str) -> None:
+    """Seit Oktober 2026 entsteht der Besitzer beim Verbinden, nicht in einer
+    ``.env`` aus „Meine Instanzen". Der Handgriff muss deshalb ``pulse-connect``
+    nennen — und darf keinen Pfad behaupten, den kein Installer je schreibt
+    (``/etc/pulse/pulse.env`` stand hier, der Installer schreibt nach
+    ``/opt/pulse`` bzw. ``~/.pulse``)."""
+    _, was_tun = dt.erklaerung("betreiber", befund, False, sprache, container="mein-server")
+    assert "docker exec -it mein-server pulse-connect" in was_tun
+    assert "/etc/pulse/pulse.env" not in was_tun
+    assert "Meine Instanzen" not in was_tun
+    assert "My instances" not in was_tun
