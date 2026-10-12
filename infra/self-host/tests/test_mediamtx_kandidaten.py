@@ -48,8 +48,8 @@ def test_ohne_env_keine_zeile(zeile):
 
 
 def test_docker_bridge_kuendigt_host_lan_ips_an(zeile):
-    assert _hosts(zeile("", "192.168.178.87,10.0.0.5", "172.17.0.2")) == [
-        "192.168.178.87",
+    assert _hosts(zeile("", "192.0.2.87,10.0.0.5", "172.17.0.2")) == [
+        "192.0.2.87",
         "10.0.0.5",
     ]
 
@@ -59,8 +59,8 @@ def test_echtes_lan_im_172er_bereich_kommt_durch(zeile):
 
 
 def test_vm_ankuendigung_und_lan_ips_zusammengefuehrt_ohne_doppel(zeile):
-    assert _hosts(zeile("192.168.178.87", "192.168.178.87,100.64.0.3", "172.28.1.4")) == [
-        "192.168.178.87",
+    assert _hosts(zeile("192.0.2.87", "192.0.2.87,100.64.0.3", "172.28.1.4")) == [
+        "192.0.2.87",
         "100.64.0.3",
     ]
 
@@ -70,8 +70,8 @@ def test_nur_vm_ankuendigung_wie_bisher(zeile):
 
 
 def test_pasta_sieht_lan_ip_selbst_kein_doppel(zeile):
-    eigene = "192.168.178.87 fd37:47e:be16:0:6019:fd65:ffcc:3e52 2a02:2455:17dc:1100::1"
-    assert zeile("", "192.168.178.87", eigene) == ""
+    eigene = "192.0.2.87 fd00:db8::42 2001:db8:0:1100::1"
+    assert zeile("", "192.0.2.87", eigene) == ""
 
 
 def test_nur_ipv4_und_kaputtes_faellt_heraus(zeile):

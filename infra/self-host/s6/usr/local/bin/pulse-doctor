@@ -136,7 +136,7 @@ fi
 # ── 4b. Zeigt der Name ueberhaupt auf DIESE Maschine? ─────────────────────
 #
 # Der Fall, der am 2026-07-29 zwei Tage gekostet hat: der A-Eintrag zeigte auf
-# 217.111.109.226, die Maschine meldete sich nach draussen als .228. Caddy holte
+# 203.0.113.10, die Maschine meldete sich nach draussen als .11. Caddy holte
 # vergeblich ein Zertifikat, und aus dem Log war das nur zu erkennen, wenn man
 # zwei weit auseinanderliegende Zeilen nebeneinanderhielt.
 #

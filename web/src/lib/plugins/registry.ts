@@ -27,7 +27,7 @@
  * Plugins are not isolated — they run in the host bundle with full DOM +
  * `$lib` access. The soft-sandbox is a defence against *accidental*
  * capability inflation, not malicious plugins (see
- * `memory/plugin-sandbox-future.md` for the long-term path).
+ * internal notes, not part of this repo, for the long-term path).
  */
 import { listSections, registerSettingsSection } from '$lib/settings-registry';
 import {

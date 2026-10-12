@@ -378,7 +378,7 @@ async def test_token_uebernimmt_stuhl_von_zweitgeraet(client, app, auth_signer, 
     voice_disconnect mit Grund ``geraete_uebernahme`` veröffentlicht, damit
     das alte Gerät sauber abreißt und einen Hinweis zeigt — statt dass
     derselbe Mensch mit Handy + Desktop doppelt/dreifach als Kachel steht
-    (Kuriiko-Vorfall 05.10.)."""
+    (Befund 05.10.)."""
     import json as _json
 
     monkeypatch.setattr(voice_routes.get_settings(), "chat_gateway_url", "http://chat-gateway.test")

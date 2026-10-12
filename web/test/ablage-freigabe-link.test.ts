@@ -36,15 +36,16 @@ test('eine Nextcloud in einem Unterverzeichnis behält ihren Pfad', () => {
 	assert.equal(z.basis, 'https://example.org/nextcloud/public.php/dav/files/AbCdEf123');
 });
 
-test('die echte Testinstanz ergibt genau die Basis, die gemessen wurde', () => {
-	// Gegenprobe zum Feldversuch vom 2026-08-31: gegen genau diese Basis
-	// liefen schreiben 201, lesen 200, loeschen 204 und die Verbindungsprobe
-	// `{gut:true}`. Das Token ist hier durch ein Beispiel ersetzt — es ist ein
-	// Schluessel und gehoert in keinen Test.
-	const z = ausFreigabeLink('https://nx50337.your-storageshare.de/s/BeispielToken');
+test('eine gehostete Nextcloud mit eigener Subdomain ergibt genau die gemessene Basis', () => {
+	// Gegenprobe zum Feldversuch vom 2026-08-31 gegen eine gehostete Nextcloud:
+	// gegen genau diese Form von Basis liefen schreiben 201, lesen 200,
+	// loeschen 204 und die Verbindungsprobe `{gut:true}`. Host und Token sind
+	// hier durch Beispiele ersetzt — das Token ist ein Schluessel und gehoert
+	// in keinen Test.
+	const z = ausFreigabeLink('https://nextcloud.example.com/s/BeispielToken');
 	assert.equal(
 		z.basis,
-		'https://nx50337.your-storageshare.de/public.php/dav/files/BeispielToken'
+		'https://nextcloud.example.com/public.php/dav/files/BeispielToken'
 	);
 });
 

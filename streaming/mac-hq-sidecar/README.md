@@ -46,8 +46,10 @@ i/o timeout (the original "macOS HQ stream never starts" bug). Our build uses
 `--enable-openssl --disable-securetransport`. It is also **LGPL** (no x264/x265;
 VideoToolbox covers H.264/HEVC), so the same build is what we redistribute with
 bundled dylibs. `.cargo/config.toml` points `PKG_CONFIG_PATH` at the build's
-`lib/pkgconfig` (default `~/src/ffmpeg-openssl`). Run `scripts/build-ffmpeg.sh`
-once before `cargo build`.
+`lib/pkgconfig` (default `~/src/ffmpeg-openssl`). Cargo cannot expand `$HOME`
+there, so the path in that file is a template (`/Users/<benutzer>/…`): put your
+user name in, or export `PKG_CONFIG_PATH` yourself (an exported value wins).
+Run `scripts/build-ffmpeg.sh` once before `cargo build`.
 
 ### First-publish reliability (constant frame rate)
 

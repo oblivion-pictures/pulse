@@ -71,9 +71,9 @@ services:
   # service for webhook delivery. voice-signaling listens on 127.0.0.1:8003;
   # the host's UFW DROP policy blocks traffic from a bridged container, so a
   # bridge + host.docker.internal does not work on this setup. Host networking
-  # also avoids per-port iptables rules for the RTC UDP range (see
-  # memory/feedback_docker_ports.md). LiveKit binds 7880 (HTTP/signalling),
-  # 7881 (TCP fallback) and 7882-7892/UDP directly on the host.
+  # also avoids per-port iptables rules for the RTC UDP range. LiveKit binds
+  # 7880 (HTTP/signalling), 7881 (TCP fallback) and 7882-7892/UDP directly on
+  # the host.
   livekit:
     image: livekit/livekit-server:latest
     container_name: dcc_night_livekit

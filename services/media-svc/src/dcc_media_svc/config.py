@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     pulse_instance_owner_id: str = ""
 
     # Public WebRTC base for the WHEP playback URL (dev: local MediaMTX webrtc;
-    # prod later: https://stream.unicutmedia.com).
+    # prod later: https://stream.example.com).
     mediamtx_public_base: str = "http://localhost:8889"
 
     # Stream-token TTL — long enough for a whole streaming session. The token is
