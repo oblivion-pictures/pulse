@@ -10,13 +10,15 @@ import { errText } from '$lib/utils/errText';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
   import { adminApi, type ChatSettings } from '$lib/api/admin';
+  import { bytesToMiB, dmSizeToSave } from './dmLimitFormat';
   import SaveIcon from '@lucide/svelte/icons/save';
   import FieldError from '$lib/components/feedback/FieldError.svelte';
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
   let current = $state<ChatSettings | null>(null);
-  let sizeMB = $state(0);
+  // number | null: ein geleertes <input type="number"> bindet null.
+  let sizeMB = $state<number | null>(0);
   let count = $state(0);
   let busy = $state(false);
   let error = $state<string | null>(null);
@@ -25,17 +27,21 @@ import { errText } from '$lib/utils/errText';
     try {
       const cs = await adminApi.getDmLimits();
       current = cs;
-      sizeMB = Math.round(cs.dm_attachment_max_size_bytes / 1024 / 1024);
+      sizeMB = bytesToMiB(cs.dm_attachment_max_size_bytes);
       count = cs.dm_attachment_max_count_per_message;
     } catch (e) {
       error = errText(e);
     }
   });
 
+  // Die Größe geht nur mit, wenn das Feld geändert wurde (s. dmLimitFormat.ts):
+  // die Anzeige ist gerundet, der gespeicherte Wert nicht.
+  const sizeToSave = $derived(
+    current === null ? undefined : dmSizeToSave(sizeMB, current.dm_attachment_max_size_bytes)
+  );
   const dirty = $derived(
     current !== null &&
-      (sizeMB !== Math.round(current.dm_attachment_max_size_bytes / 1024 / 1024) ||
-        count !== current.dm_attachment_max_count_per_message)
+      (sizeToSave !== undefined || count !== current.dm_attachment_max_count_per_message)
   );
 
   async function save() {
@@ -43,10 +49,13 @@ import { errText } from '$lib/utils/errText';
     busy = true;
     try {
       const next = await adminApi.patchDmLimits({
-        dm_attachment_max_size_bytes: Math.max(1024, sizeMB * 1024 * 1024),
+        dm_attachment_max_size_bytes: sizeToSave,
         dm_attachment_max_count_per_message: count
       });
       current = next;
+      // Anzeige = gespeicherter Wert, auch wenn der Server (oder die
+      // Untergrenze) etwas anderes zurückgibt als eingetippt.
+      sizeMB = bytesToMiB(next.dm_attachment_max_size_bytes);
       toast.success(m.admin_attachments_limits_updated());
     } catch (e) {
       toast.error(m.admin_attachments_save_failed(), {
@@ -74,9 +83,9 @@ import { errText } from '$lib/utils/errText';
         <span class="text-text-base text-sm">{m.admin_attachments_max_size_label()}</span>
         <Input
           type="number"
-          min="1"
+          min="0.001"
           max="4096"
-          step="1"
+          step="any"
           bind:value={sizeMB}
           data-testid="dm-max-size-input"
         />
