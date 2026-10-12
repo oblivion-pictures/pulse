@@ -32,7 +32,7 @@ const UI_EN = {
   'Server wird gestartet …': 'Server is starting …',
   'Einrichten …': 'Setting up …',
   'Bereit zum Einrichten.': 'Ready to set up.',
-  'Automatische Einrichtung fehlgeschlagen — Token-Fallback.': 'Automatic setup failed — token fallback.',
+  'Automatische Einrichtung fehlgeschlagen — versuche es mit „Server einrichten“ erneut.': 'Automatic setup failed — try again with "Set up server".',
   'Kein Podman/Docker erkannt — Container-Runtime wird benötigt.': 'No Podman/Docker detected — a container runtime is required.',
   'Server nicht mehr registriert.': 'Server is no longer registered.',
   'Auf ein anderes Gerät umgezogen.': 'Moved to another device.',
@@ -51,7 +51,6 @@ const UI_EN = {
   ' — alles danach hängt daran.': ' — everything after this depends on it.',
   'Cloud-Prüfung nicht erreichbar: ': 'Cloud check unreachable: ',
   'Einrichtung fehlgeschlagen: ': 'Setup failed: ',
-  'Verbinden fehlgeschlagen: ': 'Pairing failed: ',
   'Start fehlgeschlagen: ': 'Start failed: ',
   'Die Windows-Abfrage wurde abgebrochen — WSL2 ist nicht installiert.': 'The Windows prompt was cancelled — WSL2 is not installed.',
   'WSL2 ist installiert. Bitte Windows neu starten und danach den Server starten.': 'WSL2 is installed. Please restart Windows, then start the server.',
@@ -372,9 +371,6 @@ async function refresh() {
   $('btnStopRow').classList.toggle('hidden', phase !== 'live');
   $('nameRow').classList.toggle('hidden', phase !== 'live' || !host.serverName);
   if (phase === 'live') ladeServerName();
-  // Token-Fallback nur, wenn automatische Provisionierung fehl schlug.
-  $('pairRow').classList.toggle('hidden', paired || !provisionFailed || superseded);
-  $('btnPairRow').classList.toggle('hidden', paired || !provisionFailed || superseded);
   $('supersededRow').classList.toggle('hidden', !superseded);
   if (superseded) {
     // 'deleted' (Instanz in der Cloud gelöscht) → "Neu einrichten" als
@@ -403,7 +399,7 @@ async function refresh() {
   }
 
   if (!paired && !running && phase === 'idle') {
-    $('statustext').textContent = provisionFailed ? ui('Automatische Einrichtung fehlgeschlagen — Token-Fallback.') : ui('Bereit zum Einrichten.');
+    $('statustext').textContent = provisionFailed ? ui('Automatische Einrichtung fehlgeschlagen — versuche es mit „Server einrichten“ erneut.') : ui('Bereit zum Einrichten.');
   }
   if (!runtimeOk && !running && !superseded) {
     $('statustext').textContent = ui('Kein Podman/Docker erkannt — Container-Runtime wird benötigt.');
@@ -455,14 +451,6 @@ function bind() {
     const r = await host.setAutostart(on).catch(() => ({ ok: false }));
     // Konnte das OS den Wunsch nicht übernehmen → Schalter ehrlich zurückdrehen.
     if (!r || !r.ok) $('autostartToggle').checked = !on;
-  };
-  $('btnPair').onclick = async () => {
-    const t = $('token').value.trim();
-    if (!t) return;
-    $('btnPair').disabled = true;
-    try { const r = await host.pair(t); if (r && r.error) alert(ui('Verbinden fehlgeschlagen: ') + r.error); }
-    catch (e) { alert(ui('Verbinden fehlgeschlagen: ') + e.message); }
-    finally { $('btnPair').disabled = false; refresh(); }
   };
   $('btnStart').onclick = async () => {
     // Bughunt Runde 8: in der Phase "needs-windows-setup" (Windows ohne
@@ -559,7 +547,7 @@ function bind() {
     $('giveupHint').classList.toggle('hidden', !cloudFailed);
     if (cloudFailed) {
       $('giveupHint').textContent =
-        'Die Registrierung in der Cloud konnte nicht gelöscht werden — melde dich im Pulse-Client an und lösche den Server unter Einstellungen → Self-Host → Meine Instanzen.';
+        'Die Registrierung in der Cloud konnte nicht gelöscht werden — melde dich in Pulse an und lösche den Server unter „Meine Server“ (Konto-Menü).';
     }
     if (r && r.dataDeleted === false) alert('Die lokalen Serverdaten konnten nicht gelöscht werden (Volume pulse-host-data).');
   };
@@ -610,10 +598,7 @@ if (SPRACHE !== 'de') {
     'Selbst-gehosteter Pulse-Server auf diesem Gerät.': 'Your self-hosted Pulse server on this device.',
     'Initialisiere …': 'Initializing …',
     'Server einrichten': 'Set up server',
-    'Du bist eingeloggt. Die Einrichtung findet deine freigegebene Instanz und verbindet dieses Gerät automatisch.': 'You are signed in. Setup will find your provisioned instance and connect this device automatically.',
-    'Bootstrap-Token (Fallback)': 'Bootstrap token (fallback)',
-    'Automatische Einrichtung fehlgeschlagen — minte das Token manuell in deinem Konto und füge es ein.': 'Automatic setup failed — mint the token manually in your account and paste it here.',
-    'Gerät verbinden': 'Connect device',
+    'Du bist eingeloggt. Die Einrichtung legt deinen Server in deinem Konto an (oder findet ihn, falls es ihn schon gibt) und verbindet dieses Gerät automatisch.': 'You are signed in. Setup creates your server in your account (or finds it if it already exists) and connects this device automatically.',
     'Server starten': 'Start server',
     'Server stoppen': 'Stop server',
     'Dieser Server wurde auf ein anderes Gerät umgezogen.': 'This server was moved to another device.',
