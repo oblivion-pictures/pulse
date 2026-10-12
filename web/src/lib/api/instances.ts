@@ -194,8 +194,9 @@ export const instancesApi = {
 
   /**
    * Eigene Instanz löschen (Soft-Delete, irreversibel). Die Adresse wird
-   * wieder frei; ein noch laufender Server landet auf der Sperrliste und
-   * stellt den Betrieb ein.
+   * wieder frei, außer der Server war gesperrt — dann bleibt sie gesperrt, bis
+   * der Admin sie freigibt. Ein noch laufender Server landet auf der
+   * Sperrliste und stellt den Betrieb ein.
    */
   deleteMyInstance(instanceId: string): Promise<void> {
     return cookieFetch<void>(`/me/instances/${instanceId}`, { method: 'DELETE' });

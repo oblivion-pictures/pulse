@@ -1936,7 +1936,6 @@
   "my_instances_delete_action": "Delete permanently",
   "my_instances_delete_button": "Delete",
   "my_instances_delete_cancel": "Cancel",
-  "my_instances_delete_description": "{hostname} will be permanently removed from your account. A still-running server will cease operation; the hostname becomes available for new applications. The data on your server (Docker volume) is untouched — you delete that yourself. This cannot be undone.",
   "my_instances_delete_error": "Could not delete the instance. Please try again.",
   "my_instances_delete_success": "Instance deleted.",
   "my_instances_delete_title": "Delete instance?",
