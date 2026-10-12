@@ -124,6 +124,7 @@
   activeDMId={null}
   onSelect={(dm: DMChannel) => goto(`/app/@me/${dm.id}`)}
   handy={viewport.isMobile}
+  serverKnopf={viewport.isDesktop}
 />
 
 <div class="glass-panel text-text-muted flex flex-1 items-center justify-center rounded-none text-sm nicht-handy:rounded-2xl">

@@ -26,7 +26,14 @@
   // `compact`: nur das Avatar-Symbol, kein Name + kein Chip-Hintergrund — für
   // die mobile GuildRail, wo der eigene User unten in der Server-Spalte sitzt.
   // Default = volle Variante (Name + Chip) im Sidebar-Footer auf Desktop.
-  let { compact = false }: { compact?: boolean } = $props();
+  //
+  // `serverKnopf`: sitzt auf diesem Gerät der Server-Knopf in der GuildRail?
+  // Dann wohnt „Meine Server“ dort und fehlt in diesem Menü. Der Wert kommt von
+  // der Route (Geräteklasse), über ChannelList/DMChannelList und SidebarFooter
+  // herein — so wie `handy`. Ohne Knopf (Tablet: der Fuss steht dort, die
+  // GuildRail nicht) bleibt der Eintrag hier, sonst gäbe es keinen Weg dorthin.
+  let { compact = false, serverKnopf = false }: { compact?: boolean; serverKnopf?: boolean } =
+    $props();
 
   let displayName = $derived(
     auth.user ? (auth.user.display_name ?? auth.user.username) : ''
@@ -37,9 +44,10 @@
   let avatarUrl = $derived(safeAvatarUrl(auth.user?.avatar_url));
 
   // „Meine Server“ nur, wenn das Konto einen eigenen Server hat (Spec
-  // 2026-10-09 §5). Die Rolle kommt aus der Server-Liste des Kontos, nicht vom
-  // aktiven Server — Begründung in `selfhost/eigeneServer.ts`.
-  let meineServer = $derived(hatEigeneServer(serversStore.servers));
+  // 2026-10-09 §5) und kein Server-Knopf es übernimmt. Die Rolle kommt aus der
+  // Server-Liste des Kontos, nicht vom aktiven Server — Begründung in
+  // `selfhost/eigeneServer.ts`.
+  let meineServer = $derived(!serverKnopf && hatEigeneServer(serversStore.servers));
 
   async function onSignOut() {
     const t = loadTokens();
@@ -76,8 +84,9 @@
 {#snippet menuItems()}
   <!-- Profilbild ändern/löschen wohnt ausschließlich im Profil-Tab der
        Einstellungen — hier bewusst nur Einstellungen, „Meine Server“ (nur mit
-       eigenem Server), Problem melden und Abmelden, damit das Menü schlank
-       bleibt und nichts doppelt anbietet. -->
+       eigenem Server und nur dort, wo kein Server-Knopf in der Leiste sitzt),
+       Problem melden und Abmelden, damit das Menü schlank bleibt und nichts
+       doppelt anbietet. -->
   <DropdownMenu.Item onclick={() => uiOverlays.openSettings()} data-testid="open-settings">
     <SettingsIcon class="size-4" />
     {m.user_footer_settings()}

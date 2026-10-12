@@ -62,6 +62,7 @@
   import RenameGuildDialog from './RenameGuildDialog.svelte';
   import ServerAdminButton from './ServerAdminButton.svelte';
   import GuildRailPlusMenu from './GuildRailPlusMenu.svelte';
+  import GuildRailServerButton from './GuildRailServerButton.svelte';
   import StandplatzRailButton from '$lib/devices/components/StandplatzRailButton.svelte';
   import GuildSettingsDialog from './settings/GuildSettingsDialog.svelte';
   import GuildVoiceTooltip from './GuildVoiceTooltip.svelte';
@@ -404,8 +405,8 @@
     <!-- Sidebar-Variante B: pro Server eine eigene Sektion. Section-Header =
          Server-Label + Status-Dot. Darunter die Communitys DIESES Servers,
          dann ein "+" (GuildRailPlusMenu) zum Anlegen einer neuen Community auf
-         DIESEM Server — und, in jedem Plus gleich, „Eigenen Server einrichten“.
-         Einen globalen Server-Knopf am Ende der Leiste gibt es nicht mehr. -->
+         DIESEM Server. Eigene Server einrichten und verwalten gehört nicht in
+         die Gruppen, sondern an den Server-Knopf am Ende der Leiste. -->
     <!-- Gestoppte Heim-Server stehen nicht in der Leiste (istSichtbar,
          lib/servers/anzeige.ts — Entscheid 2026-10-08: für alle). -->
     {#each serversStore.servers.filter(istSichtbar) as server, sectionIdx (server.id)}
@@ -674,9 +675,9 @@
       {/each}
 
       <!-- Per-Server-„+": Mini-Menü für DIESEN Server (GuildRailPlusMenu).
-           IMMER sichtbar (jedes Mitglied kann einer Community beitreten und
-           einen eigenen Server einrichten); nur „Community erstellen“ ist
-           gegatet (``canCreateOnServer`` = Admin oder allow_guild_creation). -->
+           IMMER sichtbar (jedes Mitglied kann einer Community beitreten); nur
+           „Community erstellen“ ist gegatet (``canCreateOnServer`` = Admin oder
+           allow_guild_creation). -->
       {#if onCreateClick || onJoinClick}
         <GuildRailPlusMenu
           serverId={server.id}
@@ -691,11 +692,11 @@
   <!-- Unten in der Rail (mt-auto schiebt den Block ans Ende): der Remote-
        Rechner-Einstieg (Standplatz, unter Windows die Fernsteuerung), der
        Käfer (Wunsch 2026-09-22 — im Störfall ohne Scrollen und ohne
-       Menü-Klick erreichbar) und das Admin-Schild (nur Admins). Der
-       Server-Knopf ist seit 2026-10 weg: Einrichten steckt im Plus jeder
-       Server-Gruppe, „Meine Server“ im Konto-Menü. Der eigene User wohnt im
-       Sidebar-Footer mit Name + Chip (auf Handgeraeten im Raeume-Bereich —
-       die Rail ist dort ausgeblendet, ein Avatar hier waere tot).
+       Menü-Klick erreichbar), der Server-Knopf (eigene Server wechseln,
+       einrichten, verwalten) und das Admin-Schild (nur Admins). Der eigene
+       User wohnt im Sidebar-Footer mit Name + Chip (auf Handgeraeten im
+       Raeume-Bereich — die Rail ist dort ausgeblendet, ein Avatar hier waere
+       tot).
        Innerhalb des Tooltip.Provider: der Käfer-Tooltip braucht dessen
        Context — außerhalb crasht der Render (nachgewiesen über den
        Konsole-Fang: „Context \"Tooltip.Provider\" not found"). -->
@@ -718,6 +719,7 @@
       </Tooltip.Trigger>
       <Tooltip.Content side="right">{m.diagnose_melden()}</Tooltip.Content>
     </Tooltip.Root>
+    <GuildRailServerButton />
     <ServerAdminButton />
   </div>
   </Tooltip.Provider>

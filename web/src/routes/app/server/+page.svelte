@@ -1,13 +1,15 @@
 <!--
-  /app/server — „Meine Server“: die eigenen Server des Kontos mit Diagnose und
-  Löschen (Spec 2026-10-09 §5). Seit dem Wegfall der Freigabe (2026-10) steht
-  hier nur noch die Verwaltung; Einrichten läuft über den Dialog „Eigenen
-  Server einrichten“ (Plus der Leiste, Menü der Räume).
+  /app/server — „Meine Server“: die eigenen Server des Kontos mit Diagnose,
+  Umbenennen und Löschen (Spec 2026-10-09 §5). Seit dem Wegfall der Freigabe
+  (2026-10) steht hier nur noch die Verwaltung; Einrichten läuft über den Dialog
+  „Eigenen Server einrichten“ (Server-Knopf der Leiste, Menü der Räume).
 
-  Einstiege: „Meine Server“ im Konto-Menü (am Rechner) und im Du-Bereich (Handy
-  und Tablet), beide nur mit eigenem Server; dazu der Betreiber-Hinweis
-  „Verlassen geht nicht“ und „Eigene Server verwalten“ im Kontextmenü eines
-  eigenen Servers in der Leiste.
+  Einstiege: „Server verwalten“ im Menü des Server-Knopfs unten in der Leiste
+  (am Rechner, nur mit eigenem Server) und „Meine Server“ im Du-Bereich (Handy
+  und Tablet, ebenfalls nur mit eigenem Server; auf dem Tablet zusätzlich im
+  Konto-Menü, denn dort gibt es keine Leiste und damit keinen Server-Knopf);
+  dazu der Betreiber-Hinweis „Verlassen geht nicht“ und „Eigene Server
+  verwalten“ im Kontextmenü eines eigenen Servers in der Leiste.
 
   Der Rahmen folgt `/app/invites`: am Rechner die GuildRail daneben, darunter
   ein Vollbild mit Zurück-Kopf wie `/app/me/[section]`.
@@ -24,7 +26,7 @@
   import { m } from '$lib/paraglide/messages.js';
 
   // Zurück dorthin, wo der Einstieg steht: auf Handgeräten der Du-Bereich, am
-  // Rechner die Startseite (das Konto-Menü ist kein Ort, zu dem man
+  // Rechner die Startseite (der Server-Knopf der Leiste ist kein Ort, zu dem man
   // zurückkehrt). Klasse statt Fensterbreite — s. `viewport.svelte.ts`.
   let zurueckZiel = $derived(viewport.isDesktop ? '/app' : '/app/me');
 </script>

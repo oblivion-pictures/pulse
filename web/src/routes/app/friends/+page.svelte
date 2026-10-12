@@ -107,7 +107,12 @@
      private Gespraeche ein eigener Bereich (Chats), eine zweite Liste hier
      waere derselbe Inhalt an zwei Orten. -->
 {#if !viewport.isMobile}
-  <DMChannelList activeDMId={null} onSelect={selectDM} handy={false} />
+  <DMChannelList
+    activeDMId={null}
+    onSelect={selectDM}
+    handy={false}
+    serverKnopf={viewport.isDesktop}
+  />
 {/if}
 
 <section

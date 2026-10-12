@@ -374,6 +374,7 @@
   guild={activeGuild ?? null}
   channels={channelsForGuild}
   handy={false}
+  serverKnopf={viewport.isDesktop}
   {activeChannelId}
   onSelect={selectChannel}
   onCreateClick={() => (creatingChannel = true)}
