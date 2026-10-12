@@ -245,6 +245,8 @@ async def test_vorschaubild_hat_eine_eigene_kleine_grenze(
         headers=_auth(token_a),
     )
     assert zu_gross.status_code == 413, zu_gross.text
+    # Derselbe stabile Text wie im Klartext-Weg: der Klient vergleicht ihn wörtlich.
+    assert zu_gross.json()["detail"] == "thumbnail too large"
     assert mock_s3.put_calls == []
 
     ok = await client.post(

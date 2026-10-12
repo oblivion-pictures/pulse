@@ -20,7 +20,7 @@
 import { chatApi } from '$lib/api/chat';
 import { aufnahmeDauerRegister } from './aufnahmeKern';
 import { erzeugeVorschaubild } from './vorschaubild';
-import { vorschauBehalten } from './vorschauWahl';
+import { ticketAnfordern, vorschauBehalten } from './vorschauWahl';
 import { putMitFortschritt } from './putMitFortschritt';
 import type { AnhangAngabe } from '$lib/krypto/nachrichtNutzlast';
 
@@ -103,18 +103,24 @@ export function startUpload(
       const thumb = erzeugt && vorschauBehalten(erzeugt.blob.size) ? erzeugt : null;
       if (cancelled) return;
 
-      // 2. Ask the server for an upload URL (+ optional thumb URL).
-      const presign = await chatApi.requestAttachmentUploadUrl(channelId, {
-        filename: file.name,
-        mime: file.type || 'application/octet-stream',
-        size: file.size,
-        width: erzeugt?.origWidth,
-        height: erzeugt?.origHeight,
-        has_thumb: thumb !== null,
-        thumb_size: thumb?.blob.size,
-        thumb_width: thumb?.thumbWidth,
-        thumb_height: thumb?.thumbHeight
-      });
+      // 2. Ask the server for an upload URL (+ optional thumb URL). Lehnt der
+      //    Server nur das Vorschaubild ab (kleine Dateigrenze der Community),
+      //    fragt `ticketAnfordern` einmal ohne es neu.
+      const { antwort: presign, mitVorschau } = await ticketAnfordern(
+        (mitThumb) =>
+          chatApi.requestAttachmentUploadUrl(channelId, {
+            filename: file.name,
+            mime: file.type || 'application/octet-stream',
+            size: file.size,
+            width: erzeugt?.origWidth,
+            height: erzeugt?.origHeight,
+            has_thumb: mitThumb,
+            thumb_size: mitThumb ? thumb?.blob.size : undefined,
+            thumb_width: mitThumb ? thumb?.thumbWidth : undefined,
+            thumb_height: mitThumb ? thumb?.thumbHeight : undefined
+          }),
+        thumb !== null
+      );
       if (cancelled) return;
 
       row.attachmentId = presign.id;
@@ -138,7 +144,7 @@ export function startUpload(
       );
       if (cancelled) return;
 
-      if (thumb && presign.thumb_upload_url) {
+      if (mitVorschau && thumb && presign.thumb_upload_url) {
         await putMitFortschritt(
           presign.thumb_upload_url,
           thumb.blob,

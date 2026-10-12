@@ -20,8 +20,10 @@
  * eines PNG von 1 bis 2 MB, und das ist für diese Nutzer schlechter als der
  * Kontingentverbrauch.
  *
- * Weggelassen wird nur, was die Grenze des Servers sprengt (sonst käme ein 413
- * und der ganze Upload bräche ab). Dann bleibt die Datei selbst unberührt: der
+ * Weggelassen wird, was die Grenze des Servers sprengt (sonst käme ein 413
+ * und der ganze Upload bräche ab). Die feste Grenze (4 MiB) kennt der Klient;
+ * die kleinere der Community (`min(4 MiB, Dateigrenze)`) nicht - dafür gibt es
+ * `ticketAnfordern`, das nach einer Vorschaubild-Absage einmal ohne es neu fragt. Dann bleibt die Datei selbst unberührt: der
  * Server kennt Uploads ohne Vorschaubild (`has_thumb: false`, so laufen schon
  * heute alle Bilder, die der Browser nicht dekodieren kann), und die Oberfläche
  * zeigt das Original (`thumb_url ?? url`).
@@ -45,4 +47,45 @@ export const KLUMPEN_ZUSATZ_BYTES = 12 + 16;
  */
 export function vorschauBehalten(bytes: number, zusatzBytes = 0): boolean {
   return bytes + zusatzBytes <= VORSCHAU_MAX_BYTES;
+}
+
+/** `detail` der 413, wenn NUR das Vorschaubild zu groß ist - Spiegel von
+ *  `THUMB_TOO_LARGE_DETAIL` (`routes/attachments.py`). Synchron halten. Die
+ *  Absage „Datei zu groß“ hat einen anderen Text (`file too large (…)`). */
+export const VORSCHAU_ZU_GROSS = 'thumbnail too large';
+
+/** Ist das die Absage „Vorschaubild zu groß“? Erwartet die Form von `ApiError`
+ *  (`status`, `message` = `detail`); der Vergleich ist wörtlich und streng. */
+export function istVorschauAbsage(fehler: unknown): boolean {
+  if (typeof fehler !== 'object' || fehler === null) return false;
+  const { status, message } = fehler as { status?: unknown; message?: unknown };
+  return status === 413 && message === VORSCHAU_ZU_GROSS;
+}
+
+/**
+ * Fordert das Upload-Ticket an und fällt EINMAL auf „ohne Vorschaubild“ zurück.
+ *
+ * Warum: die Grenze für das Vorschaubild ist `min(4 MiB, Dateigrenze der
+ * Community)`, und die Dateigrenze kennt der Klient beim Hochladen nicht. In
+ * einer Community mit kleiner Grenze (etwa 0,5 MB) liefert Safari ein
+ * PNG-Vorschaubild darüber, der Server lehnt es ab, und ohne diesen Rückfall
+ * bräche der ganze Upload ab, obwohl die Datei selbst passt.
+ *
+ * `anfordern(mitVorschau)` stellt das Ticket aus. Nur die Vorschaubild-Absage
+ * (`istVorschauAbsage`) löst den Neuversuch aus - „Datei zu groß“ und jeder
+ * andere Fehler gehen unverändert durch, denn ohne Vorschaubild änderte sich
+ * nichts. Es gibt genau einen Neuversuch: scheitert er, geht sein Fehler durch.
+ * Rückgabe: die Antwort und ob das Vorschaubild darin noch enthalten ist.
+ */
+export async function ticketAnfordern<T>(
+  anfordern: (mitVorschau: boolean) => Promise<T>,
+  mitVorschau: boolean
+): Promise<{ antwort: T; mitVorschau: boolean }> {
+  if (!mitVorschau) return { antwort: await anfordern(false), mitVorschau: false };
+  try {
+    return { antwort: await anfordern(true), mitVorschau: true };
+  } catch (fehler) {
+    if (!istVorschauAbsage(fehler)) throw fehler;
+    return { antwort: await anfordern(false), mitVorschau: false };
+  }
 }

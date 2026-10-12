@@ -219,6 +219,16 @@ async def _enforce_storage_quota(
 #: bleibt deutlich darüber; und das Vorschaubild zählt ins Kontingent.
 MAX_THUMB_BYTES = 4 * 1024 * 1024
 
+#: ``detail`` der 413, wenn NUR das Vorschaubild zu groß ist. Ein stabiler Text,
+#: den der Klient wörtlich vergleicht (``VORSCHAU_ZU_GROSS`` in
+#: ``web/src/lib/attachments/vorschauWahl.ts``) - nicht ändern, ohne ihn dort
+#: mitzuziehen. Er trennt diese Absage von „Datei zu groß“ (``file too large
+#: (… bytes)``, gleicher Status): bei ihr fordert der Klient das Ticket einmal
+#: ohne Vorschaubild neu an, bei jener hülfe das nichts. Nötig, weil die
+#: Vorschaubild-Grenze ``min(MAX_THUMB_BYTES, Dateigrenze)`` ist und der Klient
+#: die Dateigrenze der Community beim Hochladen nicht kennt.
+THUMB_TOO_LARGE_DETAIL = "thumbnail too large"
+
 
 def thumb_bytes_or_raise(
     *, has_thumb: bool, thumb_size: int | None, max_size: int
@@ -234,7 +244,7 @@ def thumb_bytes_or_raise(
     if thumb_size is None:
         raise HTTPException(400, detail="thumb_size required when has_thumb=true")
     if thumb_size > min(MAX_THUMB_BYTES, max_size):
-        raise HTTPException(413, detail="thumbnail too large")
+        raise HTTPException(413, detail=THUMB_TOO_LARGE_DETAIL)
     return thumb_size
 
 
