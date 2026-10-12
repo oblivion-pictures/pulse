@@ -128,7 +128,14 @@ def _pulse_selbst(verzeichnis: Path):
 
 
 def _lauf(
-    tmp_path, cloud, *, verzeichnis=None, instanz_id=0, rueckfrage=_nein, neustart=None, lokal=None
+    tmp_path,
+    cloud,
+    *,
+    verzeichnis=None,
+    aus_umgebung=False,
+    rueckfrage=_nein,
+    neustart=None,
+    lokal=None,
 ):
     zeilen: list[str] = []
     uhr = Uhr()
@@ -136,7 +143,7 @@ def _lauf(
         hostname=HOST,
         cloud_origin=CLOUD,
         verzeichnis=verzeichnis or tmp_path,
-        instanz_id=instanz_id,
+        aus_umgebung=aus_umgebung,
         modus="self-host",
         lokal_url=LOKAL,
     )
@@ -333,7 +340,7 @@ def test_schon_verbunden_fragt_nach(tmp_path):
         return False
 
     cloud = Cloud(tmp_path)
-    code, _text, _ = _lauf(tmp_path, cloud, instanz_id=4711, rueckfrage=merke)
+    code, _text, _ = _lauf(tmp_path, cloud, rueckfrage=merke)
     assert code == 1
     assert cloud.pfade == []
     assert "already connected" in fragen[0]
@@ -345,20 +352,46 @@ def test_schon_verbunden_fragt_nach(tmp_path):
 def test_mit_ja_verbindet_er_neu(tmp_path):
     (tmp_path / VERBINDUNG_DATEI).write_text("PULSE_INSTANCE_ID=4711\n")
     cloud = Cloud(tmp_path, abholen=[(200, ZUGANG)])
-    code, _text, _ = _lauf(tmp_path, cloud, instanz_id=4711, rueckfrage=lambda _f: True)
+    code, _text, _ = _lauf(tmp_path, cloud, rueckfrage=lambda _f: True)
     assert code == 0
     assert "PULSE_INSTANCE_ID=73315227868860500" in (tmp_path / VERBINDUNG_DATEI).read_text()
 
 
-def test_verbindung_aus_der_umgebung_bleibt_unangetastet(tmp_path):
+@pytest.mark.parametrize(
+    "datei", [None, "PULSE_INSTANCE_ID=4711\n"], ids=["ohne-datei", "mit-datei"]
+)
+def test_verbindung_aus_der_umgebung_bleibt_unangetastet(tmp_path, datei):
     """Bestandsserver: die Nummer steht in der .env, nicht in der Datei. Eine
-    neue Datei verlöre gegen die Umgebung — also gar nicht erst anfangen."""
+    neue Datei verlöre gegen die Umgebung — also gar nicht erst anfangen. Das
+    gilt auch dann, wenn zufällig eine Datei mit derselben Nummer daneben liegt."""
+    if datei:
+        (tmp_path / VERBINDUNG_DATEI).write_text(datei)
     cloud = Cloud(tmp_path)
-    code, text, _ = _lauf(tmp_path, cloud, instanz_id=77, rueckfrage=lambda _f: True)
+    fragen: list[str] = []
+    code, text, _ = _lauf(
+        tmp_path, cloud, aus_umgebung=True, rueckfrage=lambda f: fragen.append(f) or True
+    )
     assert code == 1
     assert cloud.pfade == []
+    assert fragen == []  # keine Frage, deren Antwort doch nichts ändern könnte
     assert "PULSE_INSTANCE_ID" in text
     assert not (tmp_path / NACHWEIS_DATEI).exists()
+
+
+def test_veraltete_verbindung_env_nach_no_restart_ist_kein_umgebungswert(tmp_path):
+    """Erster Lauf mit ``--no-restart`` (Installer), zweiter vor dem Neustart:
+    ``/etc/pulse/env.sh`` trägt noch die alte Nummer, die Datei schon die neue.
+    Aus der Umgebung stammt keine von beiden — die Hülle sagt es ausdrücklich,
+    statt dass die CLI env.sh gegen die Datei vergleicht (und hier irrt)."""
+    (tmp_path / VERBINDUNG_DATEI).write_text("PULSE_INSTANCE_ID=999\n")
+    fragen: list[str] = []
+    cloud = Cloud(tmp_path, abholen=[(200, ZUGANG)])
+    code, _text, _ = _lauf(
+        tmp_path, cloud, aus_umgebung=False, rueckfrage=lambda f: fragen.append(f) or True
+    )
+    assert code == 0
+    assert len(fragen) == 1  # die übliche Frage „schon verbunden“
+    assert "PULSE_INSTANCE_ID=73315227868860500" in (tmp_path / VERBINDUNG_DATEI).read_text()
 
 
 def test_unerwartete_zugangsdaten_werden_nicht_geschrieben(tmp_path):
@@ -398,6 +431,7 @@ def test_main_reicht_die_schalter_durch(monkeypatch):
 
     monkeypatch.setattr(verbinden_cli, "verbinden", falsch)
     monkeypatch.setenv("PULSE_HOSTNAME", HOST)
+    monkeypatch.delenv("PULSE_CONNECT_AUS_UMGEBUNG", raising=False)
     assert verbinden_cli.main(["--no-restart", "--yes"]) == 0
     assert verbinden_cli.main([]) == 0
     (umgebung, neustart_a, frage_a), (_u, neustart_b, frage_b) = gesehen
@@ -406,6 +440,26 @@ def test_main_reicht_die_schalter_durch(monkeypatch):
     assert frage_a("?") is True
     assert neustart_b is verbinden_cli.container_neustarten
     assert frage_b is verbinden_cli.frage_im_terminal
+
+
+@pytest.mark.parametrize(
+    ("signal", "erwartet"), [(None, False), ("", False), ("0", False), ("1", True)]
+)
+def test_main_liest_das_umgebungssignal_der_huelle(monkeypatch, signal, erwartet):
+    """Allein die Hülle weiss, was der Container wirklich bekam (sie sichert es
+    vor ``. /etc/pulse/env.sh``). Was env.sh über die Nummer sagt, zählt nicht."""
+    gesehen = []
+    monkeypatch.setattr(
+        verbinden_cli, "verbinden", lambda umgebung, *_a, **_k: gesehen.append(umgebung) or 0
+    )
+    monkeypatch.setenv("PULSE_HOSTNAME", HOST)
+    monkeypatch.setenv("PULSE_INSTANCE_ID", "4711")  # wie aus env.sh gerendert
+    if signal is None:
+        monkeypatch.delenv("PULSE_CONNECT_AUS_UMGEBUNG", raising=False)
+    else:
+        monkeypatch.setenv("PULSE_CONNECT_AUS_UMGEBUNG", signal)
+    verbinden_cli.main([])
+    assert gesehen[0].aus_umgebung is erwartet
 
 
 def test_alter_nachweis_wird_ersetzt(tmp_path):
