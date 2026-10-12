@@ -50,9 +50,9 @@ from dcc_auth.security import hash_password
 def _require_cloud() -> None:
     """Gate the whole Self-Host-instance admin surface to the Cloud.
 
-    Approving/suspending Self-Host instances is a cloud-only privilege — the
-    Cloud (howispulse.com) is the single authority that decides who may
-    self-host. On any non-cloud deployment (``PULSE_INSTANCE_MODE`` defaults to
+    Suspending Self-Host instances (and releasing a held address) is a
+    cloud-only privilege — the Cloud (howispulse.com) is the single authority
+    over the instance registry. On any non-cloud deployment (``PULSE_INSTANCE_MODE`` defaults to
     ``self-host``) these routes 403, so a self-host admin can't authorise
     further instances. Defense-in-depth alongside the frontend hiding the tab.
     """
@@ -88,9 +88,9 @@ class InstanceOut(BaseModel):
     status: str
     registered_at: datetime
     registrar_username: str
-    # 'app_host'-Instanzen entstehen automatisch bei der App-Hosting-Approval —
-    # das Admin-UI blendet sie in "Self-Host-Instanzen" aus (sie leben im
-    # App-Hosting-Anträge-Tab). Ohne das Feld konnte es nicht unterscheiden.
+    # 'app_host' = Heim-Server, angelegt von der Server-App selbst
+    # (``POST /me/instances``); die Admin-Liste zeigt die Herkunft als Chip.
+    # Ohne das Feld könnte sie die beiden nicht unterscheiden.
     origin: str = "vps"
     # Eintrag aus dem Verbinden per Gerätecode (Migration 0056). Das Feld ist
     # für die Admin-Oberfläche da; deren Anzeige (Vermerk „ohne Freigabe“,
