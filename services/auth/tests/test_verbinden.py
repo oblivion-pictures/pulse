@@ -185,6 +185,57 @@ async def test_entscheiden_ohne_vorgang_ist_false(redis_echt):
     )
 
 
+class _HinweisDazwischen:
+    """Schreibt nach dem ersten Lesen in der Pipeline einen Hinweis, wie ein
+    zweiter Tab, dessen Bestätigen gerade an ``zu_viele_server`` scheitert."""
+
+    def __init__(self, redis) -> None:
+        self.redis = redis
+        self.geschrieben = False
+
+    def pipeline(self, *args, **kwargs):
+        return _HinweisPipeline(self.redis.pipeline(*args, **kwargs), self)
+
+    def __getattr__(self, name):
+        return getattr(self.redis, name)
+
+
+class _HinweisPipeline:
+    def __init__(self, pipe, aussen: _HinweisDazwischen) -> None:
+        self._pipe = pipe
+        self._aussen = aussen
+
+    async def __aenter__(self):
+        await self._pipe.__aenter__()
+        return self
+
+    async def __aexit__(self, *ausnahme):
+        return await self._pipe.__aexit__(*ausnahme)
+
+    async def get(self, schluessel):
+        wert = await self._pipe.get(schluessel)
+        if not self._aussen.geschrieben:
+            self._aussen.geschrieben = True
+            assert await v.vorgang_hinweis_setzen(self._aussen.redis, _NACHWEIS, "zu_viele_server")
+        return wert
+
+    def __getattr__(self, name):
+        return getattr(self._pipe, name)
+
+
+async def test_ein_hinweis_zwischen_lesen_und_schreiben_kostet_den_klick_nicht(redis_echt):
+    """Der Hinweis ändert den beobachteten Schlüssel (WatchError), der Vorgang wartet
+    aber noch — der zweite Durchgang entscheidet ihn."""
+    await v.vorgang_anlegen(redis_echt, "hinweis.example.org", _NACHWEIS)
+    dazwischen = _HinweisDazwischen(redis_echt)
+    assert await v.vorgang_entscheiden(
+        dazwischen, _NACHWEIS, "bestaetigt", instance_id="9", user_id="9"
+    )
+    assert dazwischen.geschrieben
+    vorgang = await v.vorgang_per_nachweis(redis_echt, _NACHWEIS)
+    assert (vorgang.status, vorgang.instance_id) == ("bestaetigt", "9")
+
+
 async def test_gleichzeitiges_entscheiden_hat_genau_einen_gewinner(redis_echt):
     """Alle fünf lesen ``wartet``, bevor einer schreibt — nur WATCH/MULTI trennt sie."""
     await v.vorgang_anlegen(redis_echt, "rennen.example.org", _NACHWEIS)
