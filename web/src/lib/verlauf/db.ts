@@ -12,7 +12,7 @@
  */
 import { STORE_NACHRICHTEN, STORE_ANHAENGE, STORE_MEDIEN, type Satz } from './schema';
 import { mitVerbindung } from './verbindung';
-import { sortierSchluessel, satzErgaenzen, type Nachschub } from './satz';
+import { sortierSchluessel, satzErgaenzen, nachSchluesselVerdichten, type Nachschub } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
 import { ablegenMitRegister, kanalBereich, OBERE_ID } from './dbRegister';
 
@@ -127,7 +127,9 @@ export function verlaufSaetzeErgaenzen(
         const store = tx.objectStore(STORE_NACHRICHTEN);
         const medien = tx.objectStore(STORE_MEDIEN);
         let geschrieben = 0;
-        for (const neu of saetze) {
+        // Erst innerhalb des Nachschubs verdichten (Fund 5): die Leseanfragen
+        // unten sehen die Schreibvorgänge desselben Aufrufs nicht.
+        for (const neu of nachSchluesselVerdichten(saetze, herkunft)) {
           const getReq = store.get(neu.schluessel);
           getReq.onsuccess = () => {
             const vorhanden = getReq.result as Satz | undefined;

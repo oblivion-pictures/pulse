@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { zuSatz, sortierSchluessel, satzErgaenzen } from '../src/lib/verlauf/satz.ts';
+import {
+  zuSatz,
+  sortierSchluessel,
+  satzErgaenzen,
+  nachSchluesselVerdichten
+} from '../src/lib/verlauf/satz.ts';
 
 test('Sortierschluessel ordnet nach Nachrichten-ID, nicht als Zahl', () => {
   // Snowflakes sind Zeichenketten, weil sie als Zahl nicht exakt sind. Ein
@@ -167,4 +172,21 @@ test('satzErgaenzen: nichts Neues heißt nichts zu schreiben', () => {
   const satz = beispielSatz({ krypto_id: 'K' });
   assert.equal(satzErgaenzen(satz, beispielSatz({ krypto_id: 'K' }), 'sicherung'), null);
   assert.equal(satzErgaenzen(satz, beispielSatz({ krypto_id: 'K' }), 'archiv'), null);
+});
+
+// Gegenprüfung 2026-10-12, Fund 5: zwei Sätze desselben Schlüssels in EINEM
+// Nachschub liefen beide gegen „liegt nichts", der spätere blind über den
+// früheren.
+test('nachSchluesselVerdichten: der erste gewinnt, ein späterer ergänzt ihn höchstens', () => {
+  const echt = beispielSatz({ content: 'echt' });
+  const gefaelscht = beispielSatz({ content: 'gefälscht', krypto_id: '42', attachments: [{ id: 'fremd' }] });
+  const anderer = beispielSatz({ id: '43', content: 'andere Nachricht' });
+  const aus = nachSchluesselVerdichten([echt, anderer, gefaelscht], 'archiv');
+  assert.deepEqual(aus.map((s) => s.nachrichtId), ['42', '43']);
+  assert.equal(aus[0].inhalt, 'echt');
+  assert.deepEqual(aus[0].anhaenge, []);
+  assert.equal(aus[0].kryptoId, '42');
+  // Ein fremder Autor unter demselben Schlüssel verdrängt den ersten nicht.
+  const fremd = beispielSatz({ author_id: '8', content: 'fremd' });
+  assert.equal(nachSchluesselVerdichten([echt, fremd], 'sicherung')[0].inhalt, 'echt');
 });

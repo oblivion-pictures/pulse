@@ -46,8 +46,27 @@ interface Gruppe {
 	/** Autor aus den Nachrichten-Rahmen — leer, solange nur ein Stein ohne
 	 *  Autor die Gruppe kennt. */
 	autor: string;
-	/** Kanonische Kennung, sobald ein Nachrichten-Rahmen sie verraten hat. */
+	/** Kanonische Kennung, sobald ein Rahmen sie verraten hat. */
 	kanonisch: string | null;
+	/** Ob `kanonisch` eine echte Kennung ist (eine `kryptoId`, die von der
+	 *  lokalen ID abweicht) und nicht der Rückfall auf die eigene ID. */
+	kennungEcht: boolean;
+}
+
+/** Übernimmt eine Kennung in die Gruppe — eine echte geht vor dem Rückfall
+ *  auf die lokale ID, egal in welcher Reihenfolge die Rahmen kommen
+ *  (Gegenprüfung 2026-10-12, Fund 6). Bis dahin setzte der ERSTE Rahmen
+ *  die Kennung: kam ein Rahmen ohne `kryptoId` (Zustellungs-ID D, aus der
+ *  Zeit vor 2ca26243) vor dem mit `kryptoId` K, trugen die Steine der
+ *  Gruppe D als Kennung und trafen die Kopie unter K nie. */
+function kennungUebernehmen(gruppe: Gruppe, kennung: string | null, echt: boolean): void {
+	if (kennung === null) return;
+	if (echt && !gruppe.kennungEcht) {
+		gruppe.kanonisch = kennung;
+		gruppe.kennungEcht = true;
+	} else {
+		gruppe.kanonisch ??= kennung;
+	}
 }
 
 /** Die Kennung K eines Steins, der seinen Autor nennt (seit 2026-10-11,
@@ -121,7 +140,7 @@ export class EintragsGruppen {
 		}
 		for (const id of gb.lokaleIds) ga.lokaleIds.add(id);
 		ga.autor ||= gb.autor;
-		ga.kanonisch ??= gb.kanonisch;
+		kennungUebernehmen(ga, gb.kanonisch, gb.kennungEcht);
 		this.gruppen.delete(b);
 		this.weiter.set(b, a);
 	}
@@ -133,6 +152,7 @@ export class EintragsGruppen {
 			lokaleIds: new Set(lokaleIds),
 			autor,
 			kanonisch: null,
+			kennungEcht: false,
 		});
 		return schluessel;
 	}
@@ -171,7 +191,8 @@ export class EintragsGruppen {
 		}
 		gruppe.lokaleIds.add(n.id);
 		gruppe.autor ||= n.autor;
-		gruppe.kanonisch ??= kanonischeId(n.id, n.kryptoId);
+		const kennung = kanonischeId(n.id, n.kryptoId);
+		kennungUebernehmen(gruppe, kennung, kennung !== n.id);
 		this.lokaleIdMerken(kanalId, n.id, ziel);
 		if (!this.jeIdentitaet.has(identitaet)) this.jeIdentitaet.set(identitaet, ziel);
 	}
@@ -198,7 +219,8 @@ export class EintragsGruppen {
 		if (!istStein(gruppe.eintrag)) gruppe.eintrag = stein;
 		gruppe.autor ||= n.autor;
 		// Die Kennung eines Steins mit Autor gilt wie die eines Rahmens.
-		gruppe.kanonisch ??= steinKennung(stein);
+		const kennung = steinKennung(stein);
+		kennungUebernehmen(gruppe, kennung, kennung !== null && kennung !== n.id);
 		for (const id of ziele) {
 			gruppe.lokaleIds.add(id);
 			this.lokaleIdMerken(kanalId, id, ziel);

@@ -276,3 +276,26 @@ export function satzErgaenzen<S extends Satz>(
     anhaenge: [...liegend, ...fehlend]
   };
 }
+
+/**
+ * Legt die Sätze EINES Nachschubs zusammen, die denselben Schlüssel tragen —
+ * mit derselben Regel wie gegen den liegenden Bestand (`satzErgaenzen`): der
+ * erste gewinnt, ein späterer ergänzt ihn höchstens.
+ *
+ * Gegenprüfung 2026-10-12, Fund 5: `db.ts::verlaufSaetzeErgaenzen` stellt
+ * alle Leseanfragen, bevor die erste Antwort kommt, und sah die eigenen
+ * Schreibvorgänge desselben Aufrufs deshalb nicht. Zwei Archiv-Zeilen mit
+ * derselben ID (eine Zeile eines Mitglieds mit der ID einer fremden
+ * Nachricht, oder einfach doppelt eingeliefert) liefen beide gegen „liegt
+ * nichts" und wurden beide geschrieben — die spätere blind über die
+ * frühere. Die Reihenfolge bleibt die des ersten Auftretens.
+ */
+export function nachSchluesselVerdichten<S extends Satz>(saetze: S[], herkunft: Nachschub): S[] {
+  const jeSchluessel = new Map<string, S>();
+  for (const satz of saetze) {
+    const erster = jeSchluessel.get(satz.schluessel);
+    if (erster === undefined) jeSchluessel.set(satz.schluessel, satz);
+    else jeSchluessel.set(satz.schluessel, satzErgaenzen(erster, satz, herkunft) ?? erster);
+  }
+  return [...jeSchluessel.values()];
+}

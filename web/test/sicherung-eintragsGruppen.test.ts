@@ -129,3 +129,32 @@ test('ein Stein mit fremdem Autor löscht die Nachricht derselben ID nicht', () 
     [ALICE]
   );
 });
+
+// Gegenprüfung 2026-10-12, Fund 6: die Kennung der Gruppe setzte der ERSTE
+// Rahmen. Ein Rahmen ohne kryptoId (Zustellungs-ID D, aus der Zeit vor
+// 2ca26243) vor dem mit kryptoId K — und alle Steine der Gruppe trugen D als
+// Kennung, die Kopie unter K traf beim Wiederherstellen keiner.
+test('Fund 6: eine echte kryptoId geht vor dem Rückfall auf die lokale ID, in jeder Reihenfolge', () => {
+  const altOhneKennung = eintrag({ id: D });
+  for (const reihe of [
+    [altOhneKennung, empfang, alterStein(D)],
+    [empfang, altOhneKennung, alterStein(D)],
+    [alterStein(D), altOhneKennung, empfang]
+  ]) {
+    const aus = lies(...reihe);
+    assert.ok(aus.length > 0);
+    for (const e of aus) {
+      assert.equal(e.nachricht.geloescht, true);
+      assert.equal(e.nachricht.kryptoId, K, `Reihenfolge ${reihe.map((r) => r.nachricht.id).join(',')}`);
+    }
+  }
+});
+
+test('Fund 6: ein Stein mit Autor und abweichender Kennung gilt als echte Kennung', () => {
+  const stein = eintrag({ id: D, inhalt: '', geloescht: true, kryptoId: K });
+  const aus = lies(eintrag({ id: D }), stein);
+  assert.deepEqual(
+    aus.map((e) => e.nachricht.kryptoId),
+    aus.map(() => K)
+  );
+});
