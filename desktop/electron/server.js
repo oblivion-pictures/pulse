@@ -547,7 +547,7 @@ function bind() {
     $('giveupHint').classList.toggle('hidden', !cloudFailed);
     if (cloudFailed) {
       $('giveupHint').textContent =
-        'Die Registrierung in der Cloud konnte nicht gelöscht werden — melde dich in Pulse an und lösche den Server unter „Meine Server“ (Konto-Menü).';
+        'Die Registrierung in der Cloud konnte nicht gelöscht werden — melde dich in Pulse an und lösche den Server unter „Meine Server“ (am Rechner über den Server-Knopf unten links in der Leiste, am Handy unter „Du“).';
     }
     if (r && r.dataDeleted === false) alert('Die lokalen Serverdaten konnten nicht gelöscht werden (Volume pulse-host-data).');
   };

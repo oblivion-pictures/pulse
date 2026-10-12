@@ -375,7 +375,7 @@ export async function fetchCloudStatus(
 /** "Server aufgeben": Cloud-Registrierung löschen (Soft-Delete im Backend,
  *  routes_instance_delete.py). Läuft wie provision() über den
  *  pulse_session-Cookie — ohne gültige Session 'unauthorized', damit die UI
- *  auf den Client-Weg („Meine Server“ im Konto-Menü) verweisen kann. */
+ *  auf den Client-Weg („Meine Server“ über den Server-Knopf der Leiste) verweisen kann. */
 export async function deleteInstanceRegistration(
   cloudOrigin: string,
   instanceId: string,
