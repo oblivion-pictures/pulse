@@ -1,3 +1,0 @@
-{
-  "_comment": "Geteilte Projekt-Settings für Claude Code (auf jedem Rechner). Lokale, ungeteilte Overrides gehören in .claude/settings.local.json (gitignored). Aktuell ist NICHTS verdrahtet: die Simplifier-Gates sind seit 2026-06-28 draussen (s. .claude/hooks/README.md), die beiden graphify-Hooks seit 2026-09-02 — graphify ist deinstalliert."
-}

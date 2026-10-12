@@ -114,7 +114,6 @@ streaming/server/certs/
 
 # Bau-Cache der Player-Proben. Eigenständige Crates, kein Workspace-Mitglied —
 # ihr `target/` liegt deshalb je Probe und nicht zentral.
-/streaming/player-labor/*/target/
 
 # Bau-Cache des Windows-Input-PoC (~54 MB). Dieselbe Falle wie eine Zeile
 # darueber, nur mit dem Quelltext auf `feat/remote-control-windows`: Der PoC
@@ -148,10 +147,7 @@ desktop/resources-podman-mac/*
 desktop/resources-native/*
 
 # Nebenprodukte der Pruefstand-Browserlaeufe (SDP-Mitschriften je Lauf)
-streaming/testbench/sdp-*.txt
 
-# Bau-Cache der VAAPI-DMA-BUF-Probe (wie die uebrigen player-labor-Kisten).
-streaming/player-labor/vaapi-dmabuf-export/target/
 
 # Ablage-Integrationstests: Nachspiel-Tokens der Anbieter (nie committen)
 web/.ablage-int/
@@ -168,3 +164,17 @@ dump.rdb
 web/data/
 # Lokaler Dev-Stack auf Windows (scripts/dev-local.mjs): Binaries, Logs, Config
 .dev-local/
+
+# Interne Arbeitsdokumente liegen im privaten Repo pulse-intern, eingehängt
+# per scripts/intern-einhaengen.sh; CLAUDE.md ist eine Verknüpfung dorthin.
+/intern/
+/CLAUDE.md
+# Von Tests erzeugte VAPID-Schlüssel (Prod liest den Schlüssel aus der Umgebung).
+**/data/vapid.json
+# Labor- und Messordner: Werkzeuge liegen seit 2026-10-12 in pulse-intern
+# (intern/streaming/…); was hier noch liegt, sind lokale Messdaten und Bauten.
+/streaming/testbench/
+/streaming/hq-labor/
+/streaming/win-hq-labor/
+/streaming/mac-hq-labor/
+/streaming/player-labor/
