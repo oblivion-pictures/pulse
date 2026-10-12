@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import secrets
 from pathlib import Path
 
 from dcc_chat_gateway.verbindung import VERBINDUNG_DATEI
@@ -41,15 +42,23 @@ def lies_verbindung(verzeichnis: Path) -> dict[str, str]:
 
 def schreibe_atomar(ziel: Path, inhalt: str, modus: int) -> None:
     """Erst eine Nachbardatei, dann umbenennen: ein Abbruch mittendrin hinterlässt
-    nie eine halbe ``verbindung.env``, die 07-render-env.sh dann läse."""
-    zwischen = ziel.with_name(f".{ziel.name}.{os.getpid()}.tmp")
-    fd = os.open(zwischen, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, modus)
+    nie eine halbe ``verbindung.env``, die 07-render-env.sh dann läse.
+
+    Der Name der Nachbardatei ist zufällig, und sie wird mit ``O_EXCL`` und
+    ``O_NOFOLLOW`` neu angelegt: das Verzeichnis gehört dem Dienstkonto, und
+    ``pulse-connect`` läuft als root. Ein dort vorbereiteter Symlink (die
+    Prozessnummer als Name errät jeder im Container) dürfte sonst root dazu
+    bringen, eine fremde Datei zu überschreiben. Unter Windows gibt es
+    ``O_NOFOLLOW`` nicht; ``pulse-connect`` läuft nur im Linux-Container."""
+    zwischen = ziel.with_name(f".{ziel.name}.{secrets.token_hex(8)}.tmp")
+    flaggen = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(zwischen, flaggen, modus)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as datei:
+            os.fchmod(datei.fileno(), modus)  # die umask darf den Modus nicht verändern
             datei.write(inhalt)
             datei.flush()
             os.fsync(datei.fileno())
-        os.chmod(zwischen, modus)  # die umask darf den Modus nicht verändern
         os.replace(zwischen, ziel)
     except BaseException:
         zwischen.unlink(missing_ok=True)
