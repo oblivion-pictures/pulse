@@ -124,6 +124,31 @@ ZUGANG_NICHT_GESPEICHERT = (
     "again to get fresh ones. Nothing was applied to this server."
 )
 ABGELEHNT = "The connection was declined in the browser. Nothing changed."
+#: Hier hat niemand im Browser abgelehnt, sondern die Cloud selbst (``verbinden_gesperrt``
+#: und ``instance_suspended`` als ``code`` von ``abholen``): ein zweiter Klick ändert
+#: nichts, also endet der Lauf, statt 15 Minuten zu warten. Nicht zu verwechseln mit
+#: ``ADRESSE_GESPERRT`` (die Adresse gehört Pulse selbst, schon beim Start).
+KONTO_GESPERRT = (
+    "This Pulse account is not allowed to connect servers. "
+    "Contact the operator of howispulse.com. Nothing changed."
+)
+EINTRAG_GESPERRT = (
+    "{host} is suspended in Pulse. Contact the operator of howispulse.com. Nothing changed."
+)
+#: Der ``hinweis`` eines 202 von ``abholen``: das Bestätigen ist gescheitert, ein zweiter
+#: Klick kann helfen, der Lauf wartet weiter. Schlüssel = die Namen, die der auth-svc
+#: setzt (``routes_verbinden.py``); ein Name, den es hier nicht gibt, bleibt stumm.
+HINWEISE = {
+    "zu_viele_server": (
+        "Confirming in the browser failed: this account already has the maximum number "
+        'of servers. Remove one under "My servers", then click Connect again. '
+        "Still waiting ..."
+    ),
+    "nachweis_fehlt": (
+        "Confirming in the browser failed: Pulse could not reach this server under {host}. "
+        "Check the proxy route, then click Connect again. Still waiting ..."
+    ),
+}
 UEBERNAHME_BEANTRAGT = (
     "The account that confirmed this code does not own {host} in Pulse. A takeover "
     "request was filed: the current owner has been notified and can object until "

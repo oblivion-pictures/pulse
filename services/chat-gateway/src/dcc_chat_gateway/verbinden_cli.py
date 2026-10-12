@@ -19,7 +19,9 @@ Muster „Device Authorization Grant“ (RFC 8628), Spec
    im Anfragekörper, könnte jeder Mitleser einen Vorgang für diesen Server
    anlegen (Vertrag, Nachtrag 2).
 4. Link und Code zeigen und alle ``abstand_s`` Sekunden abholen, bis der
-   Betreiber im Browser bestätigt oder ablehnt, höchstens 15 Minuten.
+   Betreiber im Browser bestätigt oder ablehnt, höchstens 15 Minuten. Scheitert
+   das Bestätigen behebbar (``hinweis`` im 202), steht der Grund einmal im
+   Terminal, und der Lauf wartet auf den zweiten Klick weiter.
 5. Die Zugangsdaten atomar nach ``verbindung.env`` schreiben (0600), den
    Nachweis löschen und den Container neu starten: erst der Neustart rendert
    ``/etc/pulse/env.sh`` neu (07-render-env.sh liest die Datei dort).
@@ -40,7 +42,8 @@ hält einen zweiten Aufruf (anderes Terminal) draußen: er meldet das und fasst
 weder Nachweis noch Dateien des ersten an. Der Kernel gibt sie frei, wenn der
 Prozess endet, auch bei SIGKILL oder geschlossenem Terminal.
 
-Exit-Codes: 0 verbunden · 1 Fehler · 2 abgelehnt, abgelaufen oder die Adresse
+Exit-Codes: 0 verbunden · 1 Fehler · 2 abgelehnt (im Browser, oder von der Cloud
+selbst, weil das Konto oder der Eintrag gesperrt ist), abgelaufen oder die Adresse
 ist gerade gesperrt · 3 der Nachweis wird nicht ausgeliefert (Pulse selbst oder
 von außen nicht erreichbar) · 4 das bestätigende Konto besitzt die Adresse
 nicht, ein Übernahme-Antrag läuft (kein Neustart: es gibt nichts anzuwenden).
@@ -69,6 +72,7 @@ from dcc_chat_gateway.verbinden_hilfen import (
     anzeigbar,
     detail,
     entferne_still,
+    hinweis,
     lies_verbindung,
     lokal_pruefen,
     lokaler_client,
@@ -191,9 +195,11 @@ def _abholen(
     vorgang: _Vorgang,
     schlafen: Callable[[float], None],
     uhr: Callable[[], float],
+    ausgabe: Callable[[str], None],
 ) -> dict:
     url = f"{umgebung.cloud_origin}/api/auth/selfhost/verbinden/abholen"
     ende = uhr() + vorgang.gueltig_s
+    gezeigt = None  # der zuletzt gezeigte Hinweis: nur ein neuer bekommt eine Zeile
 
     def warten() -> None:  # nie über die Frist hinaus
         schlafen(max(0.0, min(vorgang.abstand_s, ende - uhr())))
@@ -206,6 +212,11 @@ def _abholen(
             continue  # Netzaussetzer: weiter warten, die Frist läuft mit
         if antwort.status_code == 200:
             return zugang_aus(antwort)
+        if antwort.status_code == 202:
+            neu = hinweis(antwort)
+            if neu in texte.HINWEISE and neu != gezeigt:
+                gezeigt = neu
+                ausgabe(texte.HINWEISE[neu].format(host=umgebung.hostname))
         if antwort.status_code in (403, 409):
             abholen_entschieden(umgebung.hostname, antwort)
         if antwort.status_code == 410:
@@ -240,7 +251,7 @@ def _durchlaufen(
         vorgang = _starten(umgebung, client, kennung)
         minuten = vorgang.gueltig_s // 60
         ausgabe(texte.ANLEITUNG.format(link=vorgang.link, code=vorgang.code, minuten=minuten))
-        zugang = _abholen(umgebung, client, kennung, vorgang, schlafen, uhr)
+        zugang = _abholen(umgebung, client, kennung, vorgang, schlafen, uhr, ausgabe)
         # Scheitert das Speichern, ist das Secret in der Cloud schon rotiert.
         ziel = umgebung.verzeichnis / VERBINDUNG_DATEI
         ablegen(ziel, verbindung_env(zugang), 0o600, texte.ZUGANG_NICHT_GESPEICHERT)

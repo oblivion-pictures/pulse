@@ -237,6 +237,119 @@ def test_abgelehnt_oder_abgelaufen(tmp_path, antwort):
     assert not (tmp_path / NACHWEIS_DATEI).exists()
 
 
+@pytest.mark.parametrize(
+    "detail", ["abgelehnt", {"code": "gibt_es_noch_nicht"}, {"code": None}, {}]
+)
+def test_403_ohne_bekannten_namen_heisst_im_browser_abgelehnt(tmp_path, detail):
+    """Der Rückfall für alte und neue Stände: jedes 403, dessen Namen dieser Stand nicht
+    kennt, endet wie bisher mit „im Browser abgelehnt“."""
+    cloud = Cloud(tmp_path, abholen=[WARTET, (403, {"detail": detail})])
+    code, text, _ = _lauf(tmp_path, cloud)
+    assert code == 2
+    assert "declined in the browser" in text
+    assert not (tmp_path / VERBINDUNG_DATEI).exists()
+
+
+@pytest.mark.parametrize(
+    ("name", "satz"),
+    [
+        ("verbinden_gesperrt", "This Pulse account is not allowed to connect servers."),
+        ("instance_suspended", f"{HOST} is suspended in Pulse."),
+    ],
+)
+def test_endgueltige_ablehnung_der_cloud_endet_sofort_mit_exit_2(tmp_path, name, satz):
+    """Die Cloud hat den Vorgang selbst abgelehnt: ein zweiter Klick ändert nichts,
+    also wartet ``pulse-connect`` nicht 15 Minuten, sondern sagt es."""
+    cloud = Cloud(tmp_path, abholen=[WARTET, (403, {"detail": {"code": name}})])
+    neustarts: list[str] = []
+    code, text, uhr = _lauf(tmp_path, cloud, neustart=lambda: neustarts.append("halt"))
+
+    assert code == 2
+    assert cloud.pfade == [START, ABHOLEN, ABHOLEN]
+    assert uhr.jetzt == 10  # zwei Abfragen, nicht die ganze Frist
+    assert satz in text
+    assert "Contact the operator of howispulse.com." in text
+    # Nicht die Meldung für „im Browser abgelehnt“ und nicht die für die Pulse-eigene Adresse.
+    assert "declined" not in text
+    assert "belongs to Pulse itself" not in text
+    assert neustarts == []
+    assert not (tmp_path / VERBINDUNG_DATEI).exists()
+    assert not (tmp_path / NACHWEIS_DATEI).exists()
+
+
+def _hinweis(name) -> tuple[int, dict]:
+    return 202, {"status": "wartet", "hinweis": name}
+
+
+ZU_VIELE = "this account already has the maximum number of servers"
+NACHWEIS = f"Pulse could not reach this server under {HOST}"
+
+
+def test_hinweis_steht_einmal_und_der_lauf_wartet_weiter(tmp_path):
+    """Wiederholbar (zu viele Server, Nachweis fehlt): der Vorgang bleibt offen, der Grund
+    erscheint einmal je Wechsel, und der zweite Klick führt zum Erfolg."""
+    abholen = [
+        WARTET,
+        _hinweis("zu_viele_server"),
+        _hinweis("zu_viele_server"),
+        _hinweis("nachweis_fehlt"),
+        _hinweis("nachweis_fehlt"),
+        _hinweis("zu_viele_server"),
+        (200, ZUGANG),
+    ]
+    cloud = Cloud(tmp_path, abholen=abholen)
+    code, text, _ = _lauf(tmp_path, cloud)
+
+    assert code == 0
+    assert cloud.pfade == [START] + [ABHOLEN] * 7
+    # Drei Wechsel (zu viele → Nachweis → zu viele), nicht fünf Abfragen mit Hinweis.
+    assert text.count("Confirming in the browser failed") == 3
+    assert text.count(ZU_VIELE) == 2
+    assert text.count(NACHWEIS) == 1
+    assert text.count("Still waiting ...") == 3
+    assert text.index(ZU_VIELE) < text.index(NACHWEIS)
+    assert 'Remove one under "My servers", then click Connect again.' in text
+    assert "Check the proxy route, then click Connect again." in text
+    assert (tmp_path / VERBINDUNG_DATEI).exists()
+
+
+def test_hinweis_erst_wenn_die_cloud_einen_nennt(tmp_path):
+    cloud = Cloud(tmp_path, abholen=[WARTET, WARTET, _hinweis("zu_viele_server"), (200, ZUGANG)])
+    code, text, _ = _lauf(tmp_path, cloud)
+    assert code == 0
+    assert text.count("Confirming in the browser failed") == 1
+
+
+def test_ohne_hinweis_keine_solche_zeile(tmp_path):
+    cloud = Cloud(tmp_path, abholen=[WARTET, WARTET, (200, ZUGANG)])
+    code, text, _ = _lauf(tmp_path, cloud)
+    assert code == 0
+    assert "Confirming in the browser failed" not in text
+
+
+@pytest.mark.parametrize("name", ["gibt_es_noch_nicht", "", None, 42, ["zu_viele_server"]])
+def test_unbekannter_hinweis_bleibt_stumm(tmp_path, name):
+    """Eine neuere Cloud darf einen Namen nennen, den dieser Stand nicht kennt: der Lauf
+    wartet wie bisher, ohne Zeile und ohne Absturz."""
+    cloud = Cloud(tmp_path, abholen=[_hinweis(name), _hinweis(name), (200, ZUGANG)])
+    code, text, _ = _lauf(tmp_path, cloud)
+    assert code == 0
+    assert "Confirming in the browser failed" not in text
+
+
+def test_hinweis_laeuft_mit_der_frist_ab_wie_jedes_warten(tmp_path):
+    cloud = Cloud(
+        tmp_path,
+        start=(201, {**VORGANG, "gueltig_s": 15}),
+        abholen=[_hinweis("nachweis_fehlt")] * 3,
+    )
+    code, text, uhr = _lauf(tmp_path, cloud)
+    assert code == 2
+    assert uhr.jetzt >= 15
+    assert text.count(NACHWEIS) == 1
+    assert "expired" in text
+
+
 def _antrag(frist_bis) -> tuple[int, dict]:
     return 409, {"detail": {"code": "uebernahme_beantragt", "frist_bis": frist_bis}}
 

@@ -184,8 +184,9 @@ def detail(antwort: httpx.Response) -> object:
 
 
 def abholen_entschieden(host: str, antwort: httpx.Response) -> None:
-    """403 und 409 von ``abholen``. Ein 403 ohne Namen heißt „im Browser abgelehnt“;
-    ein 409 ohne Namen kennt der Vertrag nicht und zählt als „wartet“."""
+    """403 und 409 von ``abholen``. Ein 403 ohne bekannten Namen heißt „im Browser
+    abgelehnt“ (so deuten es auch Stände, die die Namen noch nicht kennen); ein 409
+    ohne Namen kennt der Vertrag nicht und zählt als „wartet“."""
     info = detail(antwort)
     name = info.get("code") if isinstance(info, dict) else None
     if antwort.status_code == 409 and name == "uebernahme_beantragt":
@@ -193,8 +194,22 @@ def abholen_entschieden(host: str, antwort: httpx.Response) -> None:
         raise Abbruch(4, texte.UEBERNAHME_BEANTRAGT.format(host=host, frist=frist))
     if antwort.status_code == 403 and name == "uebernahme_gesperrt":
         raise Abbruch(2, texte.UEBERNAHME_GESPERRT.format(bis=texte.utc_minute(info.get("bis"))))
+    if antwort.status_code == 403 and name == "verbinden_gesperrt":
+        raise Abbruch(2, texte.KONTO_GESPERRT)
+    if antwort.status_code == 403 and name == "instance_suspended":
+        raise Abbruch(2, texte.EINTRAG_GESPERRT.format(host=host))
     if antwort.status_code == 403:
         raise Abbruch(2, texte.ABGELEHNT)
+
+
+def hinweis(antwort: httpx.Response) -> str | None:
+    """Der ``hinweis`` im 202 von ``abholen``: warum das Bestätigen im Browser zuletzt
+    scheiterte. ``None``, wenn die Cloud keinen nennt (auch eine ältere kennt ihn nicht)."""
+    try:
+        name = antwort.json().get("hinweis")
+    except (ValueError, AttributeError):
+        return None
+    return name if isinstance(name, str) else None
 
 
 def lokal_pruefen(url: str, lokal: httpx.Client, nachweis: str) -> None:
