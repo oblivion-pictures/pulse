@@ -33,11 +33,16 @@ rtc:
   # im selben Netz, ohne Hairpin am Router) bringt das NUR, wenn der Container
   # die LAN-IP selbst am Interface sieht — rootless Podman/pasta. Unter der
   # Docker-Bridge ist die interne Adresse 172.17.x, für ein zweites Gerät im
-  # WLAN unerreichbar. Eine zusätzliche Host-LAN-IP lässt sich hier nicht
-  # nachreichen: bei use_external_ip überschreibt LiveKit die NodeIP mit der
-  # STUN-Adresse, und es gibt nur EINE IPv4 (mediatransportutil, Stand 1.13.3).
-  # MediaMTX hat dafür webrtcAdditionalHosts (08-init-mediamtx.sh), LiveKit
-  # nicht.
+  # WLAN unerreichbar. Eine zusätzliche Host-LAN-IP lässt sich in DIESEM
+  # (STUN-)Weg nicht nachreichen: bei use_external_ip überschreibt LiveKit die
+  # NodeIP mit der STUN-Adresse, und es gibt nur EINE IPv4 (mediatransportutil,
+  # Stand 1.13.3). MediaMTX hat dafür webrtcAdditionalHosts (08-init-mediamtx.sh).
+  #
+  # Der Heimserver der Server-App (Linux) verlässt diesen Weg:
+  # pulse-livekit-node-ip setzt die öffentliche IPv4 als feste node_ip und die
+  # LAN-IPv4 als `extra_node_ips` — eine Option des Pulse-Forks
+  # (infra/livekit-fork/). Im node_ip-Weg wirkt advertise_internal_ip NICHT:
+  # dort ersetzt LiveKit jede lokale Adresse durch node_ip (+ extra_node_ips).
   advertise_internal_ip: true
   # IPv6-Kandidaten unterdrücken: Fritz!Box blockt eingehendes IPv6 → Gäste
   # laufen auf v6-Kandidaten nur in Timeouts (bekannter Dauer-Fallstrick,

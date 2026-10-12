@@ -51,13 +51,27 @@ if [ -n "${PULSE_VM_ANNOUNCE_IP:-}" ]; then
 fi
 
 # App-Host ohne VM (Linux): die Server-App reicht die öffentliche IPv4 mit
-# (PULSE_PUBLIC_IPV4). Fest vorgegeben statt per STUN, damit LiveKit Firefox
-# nicht auf „nur öffentliche Adresse" umschaltet — Begründung und Wechsel-
-# Behandlung in pulse-livekit-node-ip (infra/self-host/livekit-node-ip.sh).
-# Ohne die Variable bleibt der STUN-Weg wie bisher.
+# (PULSE_PUBLIC_IPV4) und, seit 2026-10-12, die LAN-IPv4 des Rechners
+# (PULSE_LAN_IPV4). Die öffentliche wird fest vorgegebene node_ip statt STUN,
+# damit LiveKit Firefox nicht auf „nur öffentliche Adresse" umschaltet; die
+# LAN-Adresse steht daneben in extra_node_ips (Pulse-Fork), denn im node_ip-Weg
+# ersetzt LiveKit sonst jede lokale Adresse durch die öffentliche, und Geräte
+# im Heimnetz bräuchten Hairpin-NAT. Begründung, Wechsel-Behandlung und wer
+# extra_node_ips schreiben darf: pulse-livekit-node-ip
+# (infra/self-host/livekit-node-ip.sh).
+#
+# Ohne PULSE_PUBLIC_IPV4 bleibt der STUN-Weg wie bisher — so laufen alle
+# VPS-Self-Hosts (Installer/Compose setzen die Variable nicht). Scheitert die
+# LAN-Adresse an der Prüfung, gilt wenigstens die öffentliche.
 if [ -z "${PULSE_VM_ANNOUNCE_IP:-}" ] && [ -n "${PULSE_PUBLIC_IPV4:-}" ]; then
-    LIVEKIT_YAML=/etc/livekit/livekit.yaml /usr/local/bin/pulse-livekit-node-ip "${PULSE_PUBLIC_IPV4}" \
-        || echo "[05-init-livekit] WARN: PULSE_PUBLIC_IPV4 nicht übernommen — STUN-Weg bleibt"
+    if [ -n "${PULSE_LAN_IPV4:-}" ] \
+        && LIVEKIT_YAML=/etc/livekit/livekit.yaml /usr/local/bin/pulse-livekit-node-ip "${PULSE_PUBLIC_IPV4}" --lan "${PULSE_LAN_IPV4}"; then
+        :
+    else
+        [ -n "${PULSE_LAN_IPV4:-}" ] && echo "[05-init-livekit] WARN: PULSE_LAN_IPV4 nicht übernommen — nur die öffentliche Adresse"
+        LIVEKIT_YAML=/etc/livekit/livekit.yaml /usr/local/bin/pulse-livekit-node-ip "${PULSE_PUBLIC_IPV4}" \
+            || echo "[05-init-livekit] WARN: PULSE_PUBLIC_IPV4 nicht übernommen — STUN-Weg bleibt"
+    fi
 fi
 
 chown pulse:pulse /etc/livekit/livekit.yaml
