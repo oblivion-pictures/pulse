@@ -61,6 +61,7 @@
   import AnrufOverlay from '$lib/components/anrufe/AnrufOverlay.svelte';
   import { page } from '$app/state';
   import UpdateBanner from '$lib/components/server/UpdateBanner.svelte';
+  import VerlaufNeuLadenBanner from '$lib/components/feedback/VerlaufNeuLadenBanner.svelte';
   import SelfHostDisclaimer from '$lib/components/server/SelfHostDisclaimer.svelte';
   import EinladungDialog from '$lib/einladung/EinladungDialog.svelte';
   import ServerRenameDialog from '$lib/components/server/ServerRenameDialog.svelte';
@@ -517,6 +518,9 @@
     <UpdateBanner />
     <SelfHostDisclaimer />
   {/if}
+  <!-- Bitte neu laden (Riegel aus `verlauf/verbindung.ts`, R3/R4): auf jedem
+       Bildschirm, solange er steht, auch vor dem Hydrieren. -->
+  <VerlaufNeuLadenBanner />
   <!-- pt-[var(--safe-top)]: clears the iOS notch / status bar in the installed
        PWA and the Android APK (no-op as a browser tab). md restores the
        regular padding. -->

@@ -3014,6 +3014,8 @@
   "user_profile_sheet_close": "Profil schließen",
   "useragent_browser_on_os": "{browser} auf {os}",
   "useragent_unknown_device": "Unbekanntes Gerät",
+  "verlauf_neu_laden_banner": "Eine neuere App-Fassung hat den lokalen Verlauf in einem anderen Fenster oder Tab geöffnet. Bis du hier neu lädst, werden hier keine verschlüsselten Nachrichten gesendet oder empfangen. Dabei geht nichts verloren.",
+  "verlauf_neu_laden_knopf": "Neu laden",
   "verify_email_brand_description": "Wir verifizieren deine Adresse — gleich kannst du wieder loslegen.",
   "verify_email_brand_feature_link_validity": "Link gilt 24 Stunden",
   "verify_email_brand_feature_no_relogin": "Kein erneutes Anmelden nötig",

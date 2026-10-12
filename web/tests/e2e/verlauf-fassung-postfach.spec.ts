@@ -231,6 +231,9 @@ test('ein Tab mit altem Code lässt eine Zustellung liegen, der neue bekommt sie
     await neu1.goto(`/app/@me/${dmId}`);
     await expect(zeile(neu1, 'erste, vor dem Wechsel')).toBeVisible({ timeout: 15_000 });
     await neu1.close();
+    // Der alte Tab hat die Anforderung mitbekommen: das Banner steht, ohne
+    // dass er selbst zugegriffen hätte (R4, `onversionchange`).
+    await expect(alt.getByTestId('verlauf-neu-laden-banner')).toBeVisible({ timeout: 5_000 });
 
     // Die zweite Nachricht erreicht nur den alten Tab. Er bekommt den
     // Weckruf und läuft seinen Zyklus — und darf dabei nichts anrühren.
@@ -239,6 +242,20 @@ test('ein Tab mit altem Code lässt eine Zustellung liegen, der neue bekommt sie
     await expect.poll(() => weckrufe, { timeout: 10_000 }).toBeGreaterThan(vorher);
     await alt.waitForTimeout(4_000);
     expect(offeneZustellungen(dmId), 'die Zustellung muss auf dem Server liegen bleiben').toBe(1);
+
+    // Eigenes Senden ist im alten Tab gesperrt: die Nachricht ginge hinaus,
+    // ihre einzige eigene Kopie aber nirgends hin (R3).
+    await schreiben(alt, 'aus dem alten Tab');
+    await alt.waitForTimeout(3_000);
+    await expect(zeile(alice, 'aus dem alten Tab')).toHaveCount(0);
+
+    // Das Banner steht auf jedem Bildschirm: hier eine andere Seite, mit dem
+    // alten Code neu geladen — der Riegel kommt dann vom ersten Zugriff
+    // (`VersionError`), und der Zyklus beim Start lässt die Zustellung liegen.
+    await alt.goto('/app/friends');
+    await expect(alt.getByTestId('verlauf-neu-laden-banner')).toBeVisible({ timeout: 15_000 });
+    await alt.waitForTimeout(2_000);
+    expect(offeneZustellungen(dmId), 'der neu geladene alte Tab hat quittiert').toBe(1);
 
     // Der neue Tab holt sie ab und kann sie öffnen. Sichtbar wäre sie auch
     // über das Server-Archiv — geöffnet hat er sie erst, wenn er quittiert.

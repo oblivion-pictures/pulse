@@ -3014,6 +3014,8 @@
   "user_profile_sheet_close": "Close profile",
   "useragent_browser_on_os": "{browser} on {os}",
   "useragent_unknown_device": "Unknown device",
+  "verlauf_neu_laden_banner": "A newer version of the app opened the local history in another window or tab. Until you reload here, no encrypted messages are sent or received here. Nothing is lost.",
+  "verlauf_neu_laden_knopf": "Reload",
   "verify_email_brand_description": "We're verifying your address — you'll be ready to go in a moment.",
   "verify_email_brand_feature_link_validity": "Link valid for 24 hours",
   "verify_email_brand_feature_no_relogin": "No need to sign in again",
