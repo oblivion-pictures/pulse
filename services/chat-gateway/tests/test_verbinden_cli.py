@@ -282,7 +282,7 @@ def _hinweis(name) -> tuple[int, dict]:
 
 
 ZU_VIELE = "this account already has the maximum number of servers"
-NACHWEIS = f"Pulse could not reach this server under {HOST}"
+NACHWEIS = f"Pulse could not verify this server under {HOST}"
 
 
 def test_hinweis_steht_einmal_und_der_lauf_wartet_weiter(tmp_path):
@@ -309,7 +309,7 @@ def test_hinweis_steht_einmal_und_der_lauf_wartet_weiter(tmp_path):
     assert text.count("Still waiting ...") == 3
     assert text.index(ZU_VIELE) < text.index(NACHWEIS)
     assert 'Remove one under "My servers", then click Connect again.' in text
-    assert "Check the proxy route, then click Connect again." in text
+    assert "The page in the browser names the reason." in text
     assert (tmp_path / VERBINDUNG_DATEI).exists()
 
 
