@@ -355,8 +355,8 @@
      Klasse (Handgeraete navigieren ueber `MobileTabBar` bzw. `TabletNavRail`,
      die Server-Icons wohnen dort im Raeume-Bereich). Gatet an EINER Stelle
      statt an den vier Routen, die sie rendern — sonst haette eine kuenftige
-     fuenfte Route sie wieder. Die Klasse haengt an der Geraeteklasse des
-     Wurzel-Divs (`hidden desktop:flex`), nicht an einer Viewport-Abfrage. -->
+     fuenfte Route sie wieder. Die Klasse haengt an der Geraeteklasse am
+     `<html>`-Element (`hidden desktop:flex`), nicht an einer Viewport-Abfrage. -->
 <nav
   class="glass-panel hidden desktop:flex h-full w-20 flex-col items-center gap-2 overflow-y-auto overflow-x-hidden rounded-none py-3 nicht-handy:w-16 nicht-handy:rounded-2xl"
   data-testid="guild-rail"

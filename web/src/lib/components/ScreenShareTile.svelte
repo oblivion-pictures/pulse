@@ -337,7 +337,7 @@
       <!-- IMMER das ganze Bild (contain) — Beschneiden ist keine Option. Mobil
            ohne schwarzen Grund: behält das Bild ein anderes Seitenformat, geht
            der Rand im Panel-Ton auf statt als harte Balken. Die Klasse hängt
-           an der Geraeteklasse des Wurzel-Divs, nicht an einer Viewport-
+           an der Geraeteklasse am `<html>`-Element, nicht an einer Viewport-
            Abfrage hier. -->
       <video
         bind:this={videoEl}

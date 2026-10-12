@@ -7,13 +7,17 @@
 @custom-variant dark (&:is(.dark *));
 
 /* Geräte-Varianten (Geräte-Trennung, Regel seit 2026-09-04): Die drei
-   Geräteklassen aus `geraetKlasse.ts` hängen am Wurzel-Div des Root-Layouts
-   (`geraet-desktop` / `geraet-tablet` / `geraet-handy`) — am GERAET, nie an
-   der Fensterbreite. Diese Varianten ersetzen die Fensterbreiten-Klassen
-   (`md:`/`lg:`/`sm:` …): Handy bekommt seine eigene Anordnung (Basis-Klasse),
-   Desktop/Tablet die geteilte (`nicht-handy:`), reine Desktop-Feinjustierung
-   (`desktop:`). Ein schmales Fenster am Rechner bleibt die Desktop-Anordnung,
-   ein quer gedrehtes Handy die Handy-Anordnung.
+   Geräteklassen aus `geraetKlasse.ts` hängen am <html>-Element
+   (`geraet-desktop` / `geraet-tablet` / `geraet-handy`, gesetzt vom Root-
+   Layout) — am GERAET, nie an der Fensterbreite. Am <html> und nicht an einem
+   Div der App, damit sie auch für Inhalte gelten, die ein Portal direkt an den
+   <body> hängt (Dialoge, Blätter von unten): an einem Div stünden sie außerhalb
+   und `nicht-handy:` träfe dort am Handy immer zu.
+   Diese Varianten ersetzen die Fensterbreiten-Klassen (`md:`/`lg:`/`sm:` …):
+   Handy bekommt seine eigene Anordnung (Basis-Klasse), Desktop/Tablet die
+   geteilte (`nicht-handy:`), reine Desktop-Feinjustierung (`desktop:`). Ein
+   schmales Fenster am Rechner bleibt die Desktop-Anordnung, ein quer gedrehtes
+   Handy die Handy-Anordnung.
    ponytail-Grenze: die alten Fensterstufen sm→md→lg kollabieren in diese
    Zweistufung (Gerät statt Fenster) — Feinjustierung innerhalb einer Klasse
    über konkrete Werte, nicht über neue Stufen.
