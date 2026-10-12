@@ -11,7 +11,10 @@ from __future__ import annotations
 import errno
 import json
 import os
+import signal
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import httpx
@@ -22,6 +25,7 @@ from dcc_chat_gateway.verbinden_cli import Umgebung, nachweis_aus_kennung, verbi
 from dcc_chat_gateway.verbindung import (
     NACHWEIS_DATEI,
     NACHWEIS_PFAD,
+    SPERR_DATEI,
     VERBINDUNG_DATEI,
     nachweis_lesen,
 )
@@ -102,6 +106,11 @@ class Uhr:
 
 def _nein(_frage: str) -> bool:
     return False
+
+
+def _dateien(verzeichnis: Path) -> list[str]:
+    """Was ein Lauf zurücklässt — die Sperrdatei selbst ist leer und bleibt stehen."""
+    return sorted(p.name for p in verzeichnis.iterdir() if p.name != SPERR_DATEI)
 
 
 def _pulse_selbst(verzeichnis: Path):
@@ -443,7 +452,7 @@ def test_nachweis_nicht_schreibbar_ohne_traceback(tmp_path):
     assert "no code was used up" in text
     # Auch das Aufräumen scheitert hier (unlink auf ein Verzeichnis) — und schweigt;
     # die Nachbardatei bleibt nicht liegen.
-    assert [p.name for p in tmp_path.iterdir()] == [NACHWEIS_DATEI]
+    assert _dateien(tmp_path) == [NACHWEIS_DATEI]
 
 
 def test_platte_voll_nach_dem_abholen_nennt_die_folge(tmp_path, monkeypatch):
@@ -468,7 +477,7 @@ def test_platte_voll_nach_dem_abholen_nennt_die_folge(tmp_path, monkeypatch):
     assert ZUGANG["client_secret"] not in text
     assert neustarts == []
     # Weder Nachweis noch Zwischendatei noch halbe verbindung.env bleiben liegen.
-    assert list(tmp_path.iterdir()) == []
+    assert _dateien(tmp_path) == []
 
 
 def test_verbindung_env_nicht_schreibbar_ohne_traceback(tmp_path):
@@ -713,3 +722,113 @@ def test_lokaler_client_geht_nie_ueber_einen_umgebungs_proxy(monkeypatch):
     finally:
         server.shutdown()
         server.server_close()
+
+
+# ── Härtung: ein Lauf zugleich ────────────────────────────────────────────
+
+
+def test_zweiter_lauf_fasst_den_nachweis_des_ersten_nicht_an(tmp_path):
+    """Zwei Terminals: der zweite Lauf legte sonst seinen Nachweis über den des
+    ersten (die Cloud fragte den falschen ab) und löschte ihn beim Ende."""
+    erste = Cloud(tmp_path, abholen=[(200, ZUGANG)])
+    zweiter: dict = {}
+
+    def mit_zweitem_lauf(request: httpx.Request) -> httpx.Response:
+        if request.url.path == ABHOLEN and not zweiter:  # der erste wartet gerade
+            zweiter["nachweis_vorher"] = (tmp_path / NACHWEIS_DATEI).read_text()
+            zweiter["cloud"] = Cloud(tmp_path)
+            zweiter["lokal"] = []
+
+            def lokal(req: httpx.Request) -> httpx.Response:
+                zweiter["lokal"].append(req)
+                return _pulse_selbst(tmp_path)(req)
+
+            zweiter["ergebnis"] = _lauf(tmp_path, zweiter["cloud"], lokal=lokal)
+            zweiter["nachweis_nachher"] = (tmp_path / NACHWEIS_DATEI).read_text()
+        return erste(request)
+
+    code, _text, _ = _lauf(tmp_path, mit_zweitem_lauf)
+
+    assert code == 0  # der erste Lauf ist ungestört zu Ende gegangen
+    code2, text2, _ = zweiter["ergebnis"]
+    assert code2 == 1
+    assert "pulse-connect is already running" in text2
+    assert zweiter["cloud"].pfade == []  # nichts bei der Cloud angefragt
+    assert zweiter["lokal"] == []  # und auch nichts am eigenen Server
+    assert zweiter["nachweis_nachher"] == zweiter["nachweis_vorher"]
+    assert (tmp_path / VERBINDUNG_DATEI).exists()
+
+
+def test_nach_jedem_ende_ist_der_naechste_lauf_frei(tmp_path):
+    abbruch = Cloud(tmp_path, abholen=[(403, {"detail": "abgelehnt"})])
+    assert _lauf(tmp_path, abbruch)[0] == 2
+    assert _lauf(tmp_path, Cloud(tmp_path, abholen=[(200, ZUGANG)]))[0] == 0
+
+
+def test_nach_strg_c_ist_der_naechste_lauf_frei(tmp_path):
+    def strg_c(request: httpx.Request) -> httpx.Response:
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        _lauf(tmp_path, strg_c)
+    assert _lauf(tmp_path, Cloud(tmp_path, abholen=[(200, ZUGANG)]))[0] == 0
+
+
+_HALTER = (
+    "import sys, time\n"
+    "from pathlib import Path\n"
+    "from dcc_chat_gateway.verbinden_hilfen import sperre\n"
+    "with sperre(Path(sys.argv[1])):\n"
+    "    print('gesperrt', flush=True)\n"
+    "    time.sleep(60)\n"
+)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="flock gibt es nur unter Linux/macOS")
+def test_sperre_haelt_ueber_prozesse_und_ein_getoeteter_halter_gibt_sie_frei(tmp_path):
+    """Der Betreiber schliesst das Terminal oder ``docker exec`` stirbt: das ``finally``
+    von pulse-connect läuft dann nicht. Eine Sperre, die dort stehen bliebe (eine
+    ``O_EXCL``-Datei), sperrte jeden weiteren Aufruf bis zum Neustart des Containers."""
+    halter = subprocess.Popen(
+        [sys.executable, "-c", _HALTER, str(tmp_path / SPERR_DATEI)],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert halter.stdout.readline().strip() == "gesperrt"
+        code, text, _ = _lauf(tmp_path, Cloud(tmp_path))
+        assert code == 1
+        assert "pulse-connect is already running" in text
+        halter.send_signal(signal.SIGKILL)
+        halter.wait(timeout=10)
+        assert _lauf(tmp_path, Cloud(tmp_path, abholen=[(200, ZUGANG)]))[0] == 0
+    finally:
+        halter.kill()
+        halter.wait()
+        halter.stdout.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Symlinks: Linux/macOS")
+def test_sperrdatei_folgt_keinem_symlink(tmp_path):
+    opfer = tmp_path / "opfer"
+    opfer.write_text("unberuehrt")
+    (tmp_path / SPERR_DATEI).symlink_to(opfer)
+    cloud = Cloud(tmp_path)
+    code, text, _ = _lauf(tmp_path, cloud)
+    assert code == 1
+    assert "Could not write to" in text
+    assert cloud.pfade == []
+    assert opfer.read_text() == "unberuehrt"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="flock gibt es nur unter Linux/macOS")
+def test_dateisystem_ohne_flock_sperrt_den_betreiber_nicht_aus(tmp_path, monkeypatch):
+    """Ohne Sperre läuft pulse-connect wie vor der Sperre; sie schützt nur vor
+    dem Doppelstart und ist keinen Ausfall des Werkzeugs wert."""
+    import fcntl
+
+    def unterstuetzt_nicht(_fd, _operation):
+        raise OSError(errno.ENOLCK, os.strerror(errno.ENOLCK))
+
+    monkeypatch.setattr(fcntl, "flock", unterstuetzt_nicht)
+    assert _lauf(tmp_path, Cloud(tmp_path, abholen=[(200, ZUGANG)]))[0] == 0

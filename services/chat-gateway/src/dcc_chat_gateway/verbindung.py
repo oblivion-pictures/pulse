@@ -28,6 +28,10 @@ VERBINDUNG_DATEI = "verbindung.env"
 #: Wo die Route den Nachweis ausliefert (``routes/verbinden_nachweis.py``). Die
 #: Cloud ruft ihn über die öffentliche Adresse ab, ``pulse-connect`` vorab bei sich.
 NACHWEIS_PFAD = "/.well-known/pulse-verbinden"
+#: Die Sperre gegen einen zweiten gleichzeitigen Lauf von ``pulse-connect``. Die
+#: Datei selbst ist leer und bleibt stehen; gesperrt ist sie nur, solange ein
+#: Prozess sie hält.
+SPERR_DATEI = ".pulse-connect.lock"
 
 #: Englisch, weil die Zeile im Log fremder Betreiber steht (Regel aus
 #: ``owner_admin_log.py``). Der Befehl ist derselbe, den Installer und

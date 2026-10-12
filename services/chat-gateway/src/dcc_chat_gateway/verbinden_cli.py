@@ -35,6 +35,11 @@ Dienst liest trotzdem alles: ``/data/pulse`` gehört ``pulse`` (uid 10001,
 allein 07-render-env.sh, das als root läuft. Beim nächsten Start macht
 ``chown -R pulse:pulse /data`` ohnehin alles zu ``pulse``.
 
+**Ein Lauf zugleich.** Eine ``flock``-Sperre auf ``/data/pulse/.pulse-connect.lock``
+hält einen zweiten Aufruf (anderes Terminal) draußen: er meldet das und fasst
+weder Nachweis noch Dateien des ersten an. Der Kernel gibt sie frei, wenn der
+Prozess endet, auch bei SIGKILL oder geschlossenem Terminal.
+
 Exit-Codes: 0 verbunden · 1 Fehler · 2 abgelehnt, abgelaufen oder die Adresse
 ist gerade gesperrt · 3 der Nachweis wird nicht ausgeliefert (Pulse selbst oder
 von außen nicht erreichbar) · 4 das bestätigende Konto besitzt die Adresse
@@ -59,19 +64,23 @@ from dcc_chat_gateway import config as chat_config
 from dcc_chat_gateway import verbinden_texte as texte
 from dcc_chat_gateway.verbinden_hilfen import (
     Abbruch,
+    abholen_entschieden,
+    ablegen,
     anzeigbar,
+    detail,
     entferne_still,
-    grund,
     lies_verbindung,
+    lokal_pruefen,
     lokaler_client,
     nachweis_aus_kennung,
-    schreibe_atomar,
+    sperre,
     verbindung_env,
     zugang_aus,
 )
 from dcc_chat_gateway.verbindung import (
     NACHWEIS_DATEI,
     NACHWEIS_PFAD,
+    SPERR_DATEI,
     VERBINDUNG_DATEI,
 )
 
@@ -112,11 +121,15 @@ class _Vorgang:
     abstand_s: int
 
 
-def _vorpruefung(umgebung: Umgebung, rueckfrage: Callable[[str], bool]) -> None:
+def _vorpruefung(umgebung: Umgebung) -> None:
+    """Was ohne jeden Zugriff auf Dateien feststeht."""
     if umgebung.modus != "self-host":
         raise Abbruch(1, texte.NUR_SELF_HOST)
     if not umgebung.hostname:
         raise Abbruch(1, texte.OHNE_ADRESSE)
+
+
+def _bestehende_verbindung(umgebung: Umgebung, rueckfrage: Callable[[str], bool]) -> None:
     datei_id = lies_verbindung(umgebung.verzeichnis).get("PULSE_INSTANCE_ID", "")
     # Eine Instanz-Nummer, die nicht aus der Datei stammt, steht in der Umgebung —
     # und die gewinnt (07-render-env.sh). Eine neue Datei bliebe wirkungslos.
@@ -124,13 +137,6 @@ def _vorpruefung(umgebung: Umgebung, rueckfrage: Callable[[str], bool]) -> None:
         raise Abbruch(1, texte.AUS_DER_UMGEBUNG)
     if datei_id and not rueckfrage(texte.SCHON_VERBUNDEN):
         raise Abbruch(1, texte.NICHTS_GEAENDERT)
-
-
-def _detail(antwort: httpx.Response) -> object:
-    try:
-        return antwort.json().get("detail")
-    except (ValueError, AttributeError):
-        return None
 
 
 def _starten(umgebung: Umgebung, client: httpx.Client, kennung: str) -> _Vorgang:
@@ -144,20 +150,20 @@ def _starten(umgebung: Umgebung, client: httpx.Client, kennung: str) -> _Vorgang
         raise Abbruch(1, texte.CLOUD_ZU_LANGSAM) from None
     except httpx.HTTPError:
         raise Abbruch(1, texte.CLOUD_WEG.format(origin=umgebung.cloud_origin)) from None
-    detail = _detail(antwort)
-    if antwort.status_code == 409 and detail == "vorgang_laeuft":
+    info = detail(antwort)
+    if antwort.status_code == 409 and info == "vorgang_laeuft":
         raise Abbruch(1, texte.VORGANG_LAEUFT.format(host=host))
     if antwort.status_code == 409:
-        befund = detail.get("befund") if isinstance(detail, dict) else None
+        befund = info.get("befund") if isinstance(info, dict) else None
         text = texte.BEFUNDE.get(befund, texte.BEFUND_UNBEKANNT).format(host=host)
         raise Abbruch(3, f"{text}\n{texte.NACHWEIS_HILFE}")
     if antwort.status_code == 400:
-        gesperrt = detail == "adresse_gesperrt"
+        gesperrt = info == "adresse_gesperrt"
         vorlage = texte.ADRESSE_GESPERRT if gesperrt else texte.ADRESSE_UNGUELTIG
         raise Abbruch(1, vorlage.format(host=host))
     if antwort.status_code == 429:
         raise Abbruch(1, texte.ZU_VIELE)
-    if antwort.status_code == 503 and detail == "verbinden_ausgelastet":
+    if antwort.status_code == 503 and info == "verbinden_ausgelastet":
         raise Abbruch(1, texte.AUSGELASTET)
     if antwort.status_code in (502, 503, 504):  # Deploy der Cloud: später noch einmal
         raise Abbruch(1, texte.CLOUD_NICHT_BEREIT.format(status=antwort.status_code))
@@ -173,32 +179,6 @@ def _starten(umgebung: Umgebung, client: httpx.Client, kennung: str) -> _Vorgang
         )
     except (ValueError, KeyError, TypeError):
         raise Abbruch(1, texte.UNERWARTET.format(status=201)) from None
-
-
-def _lokal_pruefen(umgebung: Umgebung, lokal: httpx.Client, nachweis: str) -> None:
-    """Liefert Pulse selbst den Nachweis aus? Sonst scheitert der Start der Cloud
-    mit ``kein_nachweis`` und kostet einen ihrer 10 Starts je Stunde."""
-    try:
-        antwort = lokal.get(umgebung.lokal_url + NACHWEIS_PFAD)
-        gemeldet = antwort.json().get("nachweis") if antwort.status_code == 200 else None
-    except (httpx.HTTPError, ValueError, AttributeError):
-        gemeldet = None
-    if gemeldet != nachweis:
-        raise Abbruch(3, texte.LOKAL_OHNE_NACHWEIS)
-
-
-def _entschieden(umgebung: Umgebung, antwort: httpx.Response) -> None:
-    """403 und 409 von ``abholen``. Ein 403 ohne Namen heißt „im Browser abgelehnt“;
-    ein 409 ohne Namen kennt der Vertrag nicht und zählt als „wartet“."""
-    detail = _detail(antwort)
-    name = detail.get("code") if isinstance(detail, dict) else None
-    if antwort.status_code == 409 and name == "uebernahme_beantragt":
-        frist = texte.utc_minute(detail.get("frist_bis"))
-        raise Abbruch(4, texte.UEBERNAHME_BEANTRAGT.format(host=umgebung.hostname, frist=frist))
-    if antwort.status_code == 403 and name == "uebernahme_gesperrt":
-        raise Abbruch(2, texte.UEBERNAHME_GESPERRT.format(bis=texte.utc_minute(detail.get("bis"))))
-    if antwort.status_code == 403:
-        raise Abbruch(2, texte.ABGELEHNT)
 
 
 def _abholen(
@@ -224,7 +204,7 @@ def _abholen(
         if antwort.status_code == 200:
             return zugang_aus(antwort)
         if antwort.status_code in (403, 409):
-            _entschieden(umgebung, antwort)
+            abholen_entschieden(umgebung.hostname, antwort)
         if antwort.status_code == 410:
             break
         if antwort.status_code == 429:
@@ -233,17 +213,37 @@ def _abholen(
     raise Abbruch(2, texte.ABGELAUFEN)
 
 
-def _ablegen(ziel: Path, inhalt: str, modus: int, vorlage: str) -> None:
-    """Schreiben; ein ``OSError`` (Platte voll, keine Rechte) wird zur Meldung."""
-    try:
-        ziel.parent.mkdir(parents=True, exist_ok=True)
-        schreibe_atomar(ziel, inhalt, modus)
-    except OSError as fehler:
-        raise Abbruch(1, vorlage.format(pfad=ziel, grund=grund(fehler))) from None
-
-
 def _drucke(text: str) -> None:
     print(text, flush=True)
+
+
+def _durchlaufen(
+    umgebung: Umgebung,
+    client: httpx.Client,
+    lokal: httpx.Client,
+    schlafen: Callable[[float], None],
+    uhr: Callable[[], float],
+    ausgabe: Callable[[str], None],
+) -> dict:
+    """Nachweis ablegen und prüfen, Code anfragen, abholen, Zugang speichern."""
+    ausgabe(texte.BEGINN.format(host=umgebung.hostname))
+    kennung = secrets.token_urlsafe(32)
+    nachweis_datei = umgebung.verzeichnis / NACHWEIS_DATEI
+    try:
+        # VOR der Anfrage: die Cloud ruft den Nachweis sofort von außen ab.
+        nachweis = nachweis_aus_kennung(kennung)
+        ablegen(nachweis_datei, nachweis + "\n", 0o644, texte.DATEN_NICHT_BESCHREIBBAR)
+        lokal_pruefen(umgebung.lokal_url + NACHWEIS_PFAD, lokal, nachweis)
+        vorgang = _starten(umgebung, client, kennung)
+        minuten = vorgang.gueltig_s // 60
+        ausgabe(texte.ANLEITUNG.format(link=vorgang.link, code=vorgang.code, minuten=minuten))
+        zugang = _abholen(umgebung, client, kennung, vorgang, schlafen, uhr)
+        # Scheitert das Speichern, ist das Secret in der Cloud schon rotiert.
+        ziel = umgebung.verzeichnis / VERBINDUNG_DATEI
+        ablegen(ziel, verbindung_env(zugang), 0o600, texte.ZUGANG_NICHT_GESPEICHERT)
+        return zugang
+    finally:
+        entferne_still(nachweis_datei)
 
 
 def verbinden(
@@ -259,24 +259,11 @@ def verbinden(
 ) -> int:
     """Der ganze Ablauf; gibt den Exit-Code zurück. ``neustart=None`` = ``--no-restart``."""
     try:
-        _vorpruefung(umgebung, rueckfrage)
-        ausgabe(texte.BEGINN.format(host=umgebung.hostname))
-        kennung = secrets.token_urlsafe(32)
-        nachweis_datei = umgebung.verzeichnis / NACHWEIS_DATEI
-        try:
-            # VOR der Anfrage: die Cloud ruft den Nachweis sofort von außen ab.
-            nachweis = nachweis_aus_kennung(kennung) + "\n"
-            _ablegen(nachweis_datei, nachweis, 0o644, texte.DATEN_NICHT_BESCHREIBBAR)
-            _lokal_pruefen(umgebung, lokal, nachweis.strip())
-            vorgang = _starten(umgebung, client, kennung)
-            minuten = vorgang.gueltig_s // 60
-            ausgabe(texte.ANLEITUNG.format(link=vorgang.link, code=vorgang.code, minuten=minuten))
-            zugang = _abholen(umgebung, client, kennung, vorgang, schlafen, uhr)
-            # Scheitert das Speichern, ist das Secret in der Cloud schon rotiert.
-            ziel = umgebung.verzeichnis / VERBINDUNG_DATEI
-            _ablegen(ziel, verbindung_env(zugang), 0o600, texte.ZUGANG_NICHT_GESPEICHERT)
-        finally:
-            entferne_still(nachweis_datei)
+        _vorpruefung(umgebung)
+        # Ab hier schreibt dieser Lauf in /data/pulse: nie zwei zugleich.
+        with sperre(umgebung.verzeichnis / SPERR_DATEI):
+            _bestehende_verbindung(umgebung, rueckfrage)
+            zugang = _durchlaufen(umgebung, client, lokal, schlafen, uhr, ausgabe)
     except Abbruch as abbruch:
         ausgabe(abbruch.meldung)
         return abbruch.exit_code
