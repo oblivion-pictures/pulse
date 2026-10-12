@@ -285,31 +285,34 @@ test.describe.serial('admin-panel E2E', () => {
 
   test('Nutzerliste: „Darf Server verbinden“ statt Hosting-Schalter', async () => {
     // Das Feld `server_verbinden_gesperrt` kommt aus Etappe 1 (Cloud-Routen), die
-    // auf diesem Zweig noch nicht liegt: das Backend lässt es im PATCH fallen und
-    // liefert es nicht mit. Die Antworten werden deshalb ergänzt — Nutzer und
-    // Liste bleiben echt, nur das Feld wird von hier aus geführt. Mit Etappe 1
-    // im Baum darf der Block samt `unroute` entfallen.
+    // auf diesem Zweig noch nicht liegt: das Backend liefert es hier weder in
+    // der Liste noch im PATCH mit und lässt es im PATCH fallen. Beide Antworten
+    // kommen deshalb weiter vom echten Backend (`route.fetch()`); NUR ein
+    // FEHLENDES Feld wird ergänzt, und zwar aus dem, was die Oberfläche gesendet
+    // hat. Sobald Etappe 1 im Baum ist, fehlt nichts mehr, die Ergänzung greift
+    // nicht, und der Test prüft das echte Verhalten — dann darf der Block samt
+    // `unroute` entfallen.
     const gesperrt = new Map<string, boolean>();
-    const bekannt = new Map<string, Record<string, unknown>>();
     let patchBody: Record<string, unknown> | null = null;
     const liste = /\/api\/auth\/admin\/users\?/;
     const einzeln = /\/api\/auth\/admin\/users\/[^/?]+$/;
-    const mitFeld = (n: Record<string, unknown>) => ({
-      ...n,
-      server_verbinden_gesperrt: gesperrt.get(String(n.id)) ?? false
-    });
+    const ergaenzt = (n: Record<string, unknown>) =>
+      'server_verbinden_gesperrt' in n
+        ? n
+        : { ...n, server_verbinden_gesperrt: gesperrt.get(String(n.id)) ?? false };
     await page.route(liste, async (route) => {
       const antwort = await route.fetch();
       const nutzer = (await antwort.json()) as Record<string, unknown>[];
-      for (const n of nutzer) bekannt.set(String(n.id), n);
-      await route.fulfill({ status: antwort.status(), json: nutzer.map(mitFeld) });
+      await route.fulfill({ status: antwort.status(), json: nutzer.map(ergaenzt) });
     });
     await page.route(einzeln, async (route) => {
       if (route.request().method() !== 'PATCH') return route.fallback();
-      const id = route.request().url().split('/').pop()!;
       patchBody = route.request().postDataJSON() as Record<string, unknown>;
-      gesperrt.set(id, patchBody.server_verbinden_gesperrt === true);
-      await route.fulfill({ json: mitFeld(bekannt.get(id) ?? { id }) });
+      const antwort = await route.fetch();
+      if (!antwort.ok()) return route.fulfill({ response: antwort });
+      const nutzer = (await antwort.json()) as Record<string, unknown>;
+      gesperrt.set(String(nutzer.id), patchBody.server_verbinden_gesperrt === true);
+      await route.fulfill({ status: antwort.status(), json: ergaenzt(nutzer) });
     });
 
     await openAdminTab('users');
