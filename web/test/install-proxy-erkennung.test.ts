@@ -343,9 +343,9 @@ test('bei mehreren Netzen wird nicht geraten, sondern abgebrochen', () => {
   for (const n of ['crewconnect-net', 'cs-trading-net', 'pulse-selfhost-net']) {
     assert.match(ergebnis.meldung, new RegExp(n));
   }
-  // Der Abbruch liegt vor der Token-Einloesung — das muss die Meldung sagen,
-  // sonst befuerchtet der Admin einen verbrannten Token.
-  assert.match(ergebnis.meldung, /consumed/);
+  // Der Abbruch liegt vor jeder Änderung — das muss die Meldung sagen, sonst
+  // befürchtet der Admin einen halb eingerichteten Server.
+  assert.match(ergebnis.meldung, /Nothing has been\s+changed yet/);
 });
 
 test('bei genau einem Netz wird es genommen', () => {

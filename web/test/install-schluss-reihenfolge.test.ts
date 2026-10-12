@@ -10,12 +10,11 @@
  *      meldete trotzdem einen grünen Plan. Fix: beide Prüfungen laufen jetzt
  *      VOR dem Dry-Run-Ausstieg.
  *   2. `mkdir -p "$PULSE_DIR"` war der erste Dateisystemzugriff des ganzen
- *      Laufs und lief NACH der Token-Einlösung. Wer `PULSE_DIR` ohne
- *      Schreibrechte setzt, verbrannte den Einmal-Token trotzdem — eine rohe
- *      `mkdir`-Fehlermeldung unter `set -e` sagt das nicht. Fix: eine neue
- *      `pruefe_pulse_dir_schreibbar()` läuft vor der Token-Einlösung, mit
- *      derselben "nothing has been consumed yet"-Meldungsform wie
- *      `check_ports`/`pruefe_container_konflikt`. Bewusst NACH dem
+ *      Laufs und lief erst beim Schreiben der Konfiguration. Wer `PULSE_DIR`
+ *      ohne Schreibrechte setzt, bekam eine rohe `mkdir`-Fehlermeldung unter
+ *      `set -e`. Fix: `pruefe_pulse_dir_schreibbar()` läuft vor der ersten
+ *      Änderung, mit derselben "Nothing has been changed yet"-Meldungsform
+ *      wie `check_ports`/`pruefe_container_konflikt`. Bewusst NACH dem
  *      Dry-Run-Ausstieg (anders als 1.): sie legt `$PULSE_DIR` tatsächlich
  *      an — ein echter, wenn auch harmloser Seiteneffekt, den ein Dry-Run
  *      ("nothing changed") nicht haben soll.
@@ -23,8 +22,8 @@
  * **Wie das geht:** ein wörtlich aus `install.sh` herausgeschnittener
  * ZUSAMMENHÄNGENDER Ausschnitt des Hauptablaufs (`bereich()`, Muster aus
  * `install-fremder-container.test.ts`) — von der `decide_mode`-Zeile bis zur
- * `pruefe_pulse_dir_schreibbar`-Zeile, beides VOR der eigentlichen
- * Token-Einlösung (die selbst nicht mehr im Ausschnitt steckt). Ein Test, der
+ * `pruefe_pulse_dir_schreibbar`-Zeile, beides VOR dem Schreiben der
+ * Konfiguration (das selbst nicht mehr im Ausschnitt steckt). Ein Test, der
  * nur behauptet „die Prüfungen laufen vor dem Ausstieg" (weil er sie in
  * dieser Reihenfolge selbst zusammenbaut), würde eine künftige Umsortierung
  * im echten Skript nicht bemerken — nur echter, an Ort und Stelle
@@ -32,7 +31,8 @@
  * `print_plan` sind hier bewusst gefälscht (ihre eigene Logik hat eigene
  * Tests, u. a. `install-overrides.test.ts`) — echt bleibt nur, WAS in
  * welcher Reihenfolge läuft: `check_ports`, `ist_unser_container`,
- * `pruefe_container_konflikt`, `pruefe_pulse_dir_schreibbar`.
+ * `pruefe_container_konflikt`, `pruefe_registry_zugang`,
+ * `pruefe_pulse_dir_schreibbar`.
  */
 
 import { test as testAlle } from 'node:test';
@@ -148,7 +148,9 @@ esac
   const skript = `
 set -euo pipefail
 CONTAINER=pulse
-IMAGE="registry.howispulse.com/pulse-allinone:edge"
+IMAGE="ghcr.io/oblivion-pictures/pulse:stable"
+CLIENT_ID=""
+CLIENT_SECRET=""
 HTTP_PORT=8080
 PULSE_DIR="${pulseDir}"
 DRY_RUN="${optionen.dryRun ? '1' : ''}"
@@ -166,6 +168,7 @@ print_plan() { log "Detected mode: \${MODE}"; }
 ${funktion(quelle, 'check_ports')}
 ${funktion(quelle, 'ist_unser_container')}
 ${funktion(quelle, 'pruefe_container_konflikt')}
+${funktion(quelle, 'pruefe_registry_zugang')}
 ${funktion(quelle, 'pruefe_pulse_dir_schreibbar')}
 ${bereich(quelle, 'decide_mode', 'pruefe_pulse_dir_schreibbar')}
 echo __UEBERLEBT__
@@ -218,7 +221,7 @@ test('--dry-run zeigt weiterhin den Plan, wenn nichts kollidiert (Gegenprobe)', 
   assert.equal(e.ueberlebt, false, 'der Dry-Run haette bei "exit 0" enden müssen, nicht bei pruefe_pulse_dir_schreibbar');
 });
 
-test('ein unbeschreibbares PULSE_DIR bricht ab, bevor irgendetwas verbraucht wird', () => {
+test('ein unbeschreibbares PULSE_DIR bricht ab, bevor irgendetwas verändert wird', () => {
   // Ein Verzeichnis unter einem Pfad, der selbst nicht existiert UND nicht
   // anlegbar ist (Elternverzeichnis 0500 — lesbar/betretbar, nicht
   // beschreibbar): `mkdir -p` scheitert daran zuverlässig, ohne root-Rechte
@@ -229,16 +232,15 @@ test('ein unbeschreibbares PULSE_DIR bricht ab, bevor irgendetwas verbraucht wir
     const e = laufe({ pulseDir: join(basis, 'pulse-data') });
     assert.equal(e.abgebrochen, true, `erwartet Abbruch, bekommen: ${JSON.stringify(e)}`);
     assert.match(e.meldung, /Cannot create or write/);
-    // Zeilenumbrüche in der Meldung: die Wendung "consumed yet" bricht
-    // absichtlich um, daher whitespace-tolerant statt eines wörtlichen
-    // Regex-Treffers über die Zeilengrenze.
-    assert.match(e.meldung.replace(/\s+/g, ' '), /nothing has been consumed yet/i);
+    // Zeilenumbrüche in der Meldung: whitespace-tolerant statt eines
+    // wörtlichen Regex-Treffers über eine Zeilengrenze.
+    assert.match(e.meldung.replace(/\s+/g, ' '), /nothing has been changed yet/i);
   } finally {
     chmodSync(basis, 0o700);
   }
 });
 
-test('ein beschreibbares PULSE_DIR läuft bis zur Token-Einlösung durch (Gegenprobe)', () => {
+test('ein beschreibbares PULSE_DIR läuft bis zum Schreiben der Konfiguration durch (Gegenprobe)', () => {
   const e = laufe({});
   assert.equal(e.abgebrochen, false, e.meldung);
   assert.equal(e.ueberlebt, true, 'der Ausschnitt haette pruefe_pulse_dir_schreibbar erreichen müssen');

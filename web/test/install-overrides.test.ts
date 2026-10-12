@@ -184,11 +184,11 @@ test('ein unbekannter PULSE_TLS_MODE bricht ab statt still zu wirken', () => {
   assert.match(e.meldung, /auto/);
   assert.match(e.meldung, /provided/);
   assert.match(e.meldung, /behind-proxy/);
-  // Und sie muss vor der Token-Einloesung sitzen — das ist hier strukturell
-  // erzwungen (der Test ruft nur decide_mode/build_run_args auf, niemals den
-  // Token-Einloese-Teil), diese Zeile haelt die Erwartung trotzdem explizit
-  // fest.
-  assert.match(e.meldung, /consumed/);
+  // Und sie muss sagen, dass noch nichts verändert wurde — sonst fürchtet der
+  // Admin einen halb eingerichteten Server. Strukturell ist das ohnehin so
+  // (der Test ruft nur decide_mode/build_run_args auf), diese Zeile hält die
+  // Erwartung an die Meldung trotzdem fest.
+  assert.match(e.meldung, /Nothing has been changed yet/);
 });
 
 test('PULSE_NETWORK wirkt auch aus hostproxy heraus', () => {

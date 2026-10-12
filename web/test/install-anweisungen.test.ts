@@ -318,10 +318,10 @@ interface StubErgebnis {
 }
 
 /**
- * Führt die echten Schritte 5–7 aus `install.sh` End-zu-Ende aus (Schritt 5:
- * Auto-Update-Einrichtung; Schritt 6: Startfortschritt, hier vom gefälschten
- * `docker` sofort als „fertig" gemeldet — kein 60×5s-Warten im Test; Schritt
- * 7: die Proxy-Route). `id` wird gefälscht, damit IMMER der Crontab-Zweig
+ * Führt die echten Schritte 4–6 aus `install.sh` End-zu-Ende aus (Schritt 4:
+ * Auto-Update-Einrichtung; Schritt 5: Startfortschritt über `warte_auf_start`,
+ * hier vom gefälschten `docker` sofort als „fertig" gemeldet — kein
+ * 60×5s-Warten im Test; Schritt 6: die Proxy-Route). `id` wird gefälscht, damit IMMER der Crontab-Zweig
  * greift (s. Docstring oben, warum nicht der systemd-Zweig).
  */
 function laufMitStub(optionen: { crontabRc: number }): StubErgebnis {
@@ -358,7 +358,7 @@ esac
   );
   chmodSync(join(dir, 'crontab'), 0o755);
 
-  // Endanker ist NICHT das schliessende `EOF` des Route-Heredocs (Schritt 7
+  // Endanker ist NICHT das schliessende `EOF` des Route-Heredocs (Schritt 6
   // hat danach noch ein `fi`, das den `if [ "$MODE" = … ]`-Block von weiter
   // oben schliesst — ohne dieses `fi` bricht die generierte Shell mit
   // "Unerwartetes Dateiende" ab). `fi` selbst waere als Anker mehrdeutig (acht
@@ -366,8 +366,8 @@ esac
   // Kommentar direkt danach — als reiner Kommentar harmlos mitgeschnitten.
   const bereichText = bereich(
     quelle,
-    '# 5) Auto-Update — Host-systemd-Timer statt eines socket-haltenden Containers.',
-    '# Bericht der Aussen-Pruefung — eine Checkliste, kein Protokollauszug.'
+    '# 4) Auto-Update — Host-systemd-Timer statt eines socket-haltenden Containers.',
+    '# 7) Antwortet der Server unter seiner eigenen Adresse?'
   );
 
   const skript = `
@@ -387,12 +387,17 @@ IMAGE="ghcr.io/beispiel/pulse-allinone:edge"
 CLIENT_ID="dummy-client"
 CLIENT_SECRET="dummy-secret"
 RUN_ARGS=( -d --name "$CONTAINER" --restart unless-stopped "$IMAGE" )
+# Die Routen-Frage liest aus TTY_GERAET; /dev/null beantwortet sie sofort.
+# Aus einem Terminal heraus läse \`read\` sonst wirklich von dort.
+TTY_GERAET=/dev/null
 log() { :; }
 warn() { printf '__WARN__%s\\n' "$*"; }
 err() { printf '__ERR__%s\\n' "$*" >&2; }
 die() { err "$*"; exit 1; }
 ${funktion(quelle, 'write_update_script')}
 ${funktion(quelle, 'install_update_cron')}
+${funktion(quelle, 'schritt_text')}
+${funktion(quelle, 'warte_auf_start')}
 ${bereichText}
 `;
 
