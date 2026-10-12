@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 // Die Gästereihe lebt in einer .svelte-Komponente, der Zustand in einem
 // .svelte.ts-Store (Runes) — beides ist im Node-Runner nicht importierbar
 // (``pnpm test:unit``-Falle, s. CLAUDE.md). Deshalb hier die Quellsicherung,
-// wie sonst bei ``selfhost-einstieg-gating``.
+// wie sonst bei ``postfach-ready-echte-abos``.
 
 const WURZEL = join(dirname(fileURLToPath(import.meta.url)), '..');
 const REIHE = readFileSync(

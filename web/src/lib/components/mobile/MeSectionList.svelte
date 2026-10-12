@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Die Liste des Du-Bereichs: Profil, Status, Einstellungen, Abmelden.
+   * Die Liste des Du-Bereichs: Profil, Status, Medien, Meine Server (nur mit eigenem Server), Einstellungen, Abmelden.
    *
    * Am Rechner öffnen die Einstellungen als Dialog mit Reiter-Leiste; auf dem
    * Telefon ist ein Dialog mit Seitenleiste der falsche Behälter — hier ist es
@@ -15,6 +15,7 @@
   import { goto } from '$app/navigation';
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import ImageIcon from '@lucide/svelte/icons/image';
+  import ServerIcon from '@lucide/svelte/icons/server';
   import BereichsKopf from './BereichsKopf.svelte';
   import LogOutIcon from '@lucide/svelte/icons/log-out';
   import MedienArchivSheet from './MedienArchivSheet.svelte';
@@ -26,6 +27,8 @@
     sichtbareReiterJetzt
   } from '$lib/components/settings/reiterAuswahl.svelte';
   import StatusPicker from '$lib/components/StatusPicker.svelte';
+  import { serversStore } from '$lib/api/servers.svelte';
+  import { hatEigeneServer } from '$lib/selfhost/eigeneServer';
   import { initialen } from '$lib/utils/initialen';
   import { safeAvatarUrl } from '$lib/avatar';
   import { m } from '$lib/paraglide/messages.js';
@@ -85,6 +88,10 @@
    *  Einstellungsliste; oeffnet als Blatt statt als /app/me-Sektion, weil es
    *  keine Einstellung ist, sondern ein Bestand. */
   let medienOffen = $state(false);
+
+  /** „Meine Server“ — nur mit eigenem Server (Rechnung in
+   *  `selfhost/eigeneServer.ts`, dieselbe wie im Konto-Menü am Rechner). */
+  let meineServer = $derived(hatEigeneServer(serversStore.servers));
 </script>
 
 <div
@@ -115,7 +122,7 @@
       <StatusPicker />
     </div>
 
-    <!-- Medien-Archiv -->
+    <!-- Medien-Archiv und eigene Server: Bestände, keine Einstellungen -->
     <div
       class="border-border bg-bg-input mb-4 overflow-hidden rounded-[14px] border shadow-[0_6px_14px_-8px_rgba(0,0,0,0.7)]"
     >
@@ -130,6 +137,19 @@
         >
         <ChevronRightIcon class="text-text-muted size-4 shrink-0" />
       </button>
+      {#if meineServer}
+        <button
+          class="hover:bg-bg-hover border-border flex min-h-12 w-full items-center gap-3 border-t px-3 py-3 text-left transition-colors"
+          onclick={() => goto('/app/server')}
+          data-testid="me-meine-server"
+        >
+          <ServerIcon class="text-text-muted size-5 shrink-0" />
+          <span class="text-text-bright flex-1 truncate text-sm font-medium"
+            >{m.eigener_server_meine_server()}</span
+          >
+          <ChevronRightIcon class="text-text-muted size-4 shrink-0" />
+        </button>
+      {/if}
     </div>
 
     <!-- Einstellungen -->

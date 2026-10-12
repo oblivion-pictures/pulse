@@ -317,15 +317,8 @@ class AuthStore {
       } catch {
         /* ignore */
       }
-      // Self-Host-Antrags-Beobachter zurücksetzen (Memory pendingSetup + die
-      // flachen Watch-/Ack-Keys), sonst zeigt der neue User den „genehmigt"-
-      // Punkt des Vorgängers — und _poll räumt eine approved Watch-Map nie.
-      void import('$lib/stores/myInstanceApplications.svelte').then((mod) =>
-        mod.myInstanceApplications.reset(),
-      );
-      // App-Host-Antrags-Beobachter + „Beigetreten"-Marker des Vorgängers —
-      // konsistent zu signOut, sonst erbt der neue User die App-Host-Liste bzw.
-      // ausgegraute Beitreten-Buttons.
+      // „Beigetreten"-Marker des Vorgängers — konsistent zu signOut, sonst
+      // erbt der neue User ausgegraute Beitreten-Buttons.
       void import('$lib/stores/joinedInvites.svelte').then((mod) =>
         mod.joinedInvites.clear(),
       );
@@ -454,15 +447,6 @@ class AuthStore {
     for (const s of serversStore.servers) {
       if (!s.isCloud) sessionTokens.clear(s.id);
     }
-    // Self-Host-Antrags-Beobachter (gerätelokaler Watch-/Ack-State + roter
-    // Punkt) leeren — sonst erbt der nächste User am selben Gerät den
-    // „genehmigt"-Punkt des Vorgängers (dyn. Import gegen Circular-Import).
-    void import('$lib/stores/myInstanceApplications.svelte').then((mod) =>
-      mod.myInstanceApplications.reset(),
-    );
-    // App-Host-Antrags-Beobachter desselben Vorgängers (Liste + localStorage-
-    // Watch-Map) — analog myInstanceApplications, sonst bleibt die App-Host-
-    // Antragsliste des alten Users stehen.
     // „Beigetreten"-Marker (gerätelokal) leeren — sonst graut die Invite-Karte
     // dem nächsten User Beitreten-Buttons für Communitys des Vorgängers aus.
     void import('$lib/stores/joinedInvites.svelte').then((mod) =>

@@ -60,7 +60,6 @@
   import RenameGuildDialog from './RenameGuildDialog.svelte';
   import ServerAdminButton from './ServerAdminButton.svelte';
   import GuildRailPlusMenu from './GuildRailPlusMenu.svelte';
-  import SelfHostRailButton from '$lib/components/selfhost/SelfHostRailButton.svelte';
   import StandplatzRailButton from '$lib/devices/components/StandplatzRailButton.svelte';
   import GuildSettingsDialog from './settings/GuildSettingsDialog.svelte';
   import GuildVoiceTooltip from './GuildVoiceTooltip.svelte';
@@ -703,9 +702,10 @@
 
   <!-- Unten in der Rail (mt-auto schiebt den Block ans Ende): der Remote-
        Rechner-Einstieg (Standplatz, unter Windows die Fernsteuerung), der
-       Käfer DIREKT über dem Server-Symbol (Wunsch 2026-09-22 — im Störfall
-       ohne Scrollen und ohne Menü-Klick erreichbar), der Server-Symbol-
-       Einstieg und das Admin-Schild (nur Admins). Der eigene User wohnt im
+       Käfer (Wunsch 2026-09-22 — im Störfall ohne Scrollen und ohne
+       Menü-Klick erreichbar) und das Admin-Schild (nur Admins). Der
+       Server-Knopf ist seit 2026-10 weg: Einrichten steckt im Plus jeder
+       Server-Gruppe, „Meine Server“ im Konto-Menü. Der eigene User wohnt im
        Sidebar-Footer mit Name + Chip (auf Handgeraeten im Raeume-Bereich —
        die Rail ist dort ausgeblendet, ein Avatar hier waere tot).
        Innerhalb des Tooltip.Provider: der Käfer-Tooltip braucht dessen
@@ -730,7 +730,6 @@
       </Tooltip.Trigger>
       <Tooltip.Content side="right">{m.diagnose_melden()}</Tooltip.Content>
     </Tooltip.Root>
-    <SelfHostRailButton />
     <ServerAdminButton />
   </div>
   </Tooltip.Provider>
@@ -753,13 +752,13 @@
   </AlertDialog.Content>
 </AlertDialog.Root>
 
-<!-- Betreiber-Hinweis: Verlassen unmöglich, Löschen geht in den Einstellungen -->
+<!-- Betreiber-Hinweis: Verlassen unmöglich, Löschen geht unter „Meine Server“ -->
 <AlertDialog.Root bind:open={ownerLeaveOpen}>
   <AlertDialog.Content data-testid="owner-leave-dialog">
     <AlertDialog.Header>
       <AlertDialog.Title>{m.guild_rail_owner_leave_title()}</AlertDialog.Title>
       <AlertDialog.Description>
-        {m.guild_rail_owner_leave_body({ label: ownerLeaveLabel })}
+        {m.eigener_server_verlassen_text({ label: ownerLeaveLabel })}
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>
@@ -768,7 +767,7 @@
         onclick={() => { ownerLeaveOpen = false; void goto('/app/server'); }}
         data-testid="owner-leave-open-settings"
       >
-        {m.guild_rail_owner_leave_open_settings()}
+        {m.eigener_server_meine_server()}
       </AlertDialog.Action>
     </AlertDialog.Footer>
   </AlertDialog.Content>

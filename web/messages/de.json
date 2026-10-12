@@ -3423,5 +3423,21 @@
   "eigener_server_kopieren": "Kopieren",
   "eigener_server_kopiert": "Kopiert",
   "eigener_server_anleitung": "Ausführliche Anleitung",
-  "eigener_server_schliessen": "Schließen"
+  "eigener_server_schliessen": "Schließen",
+  "eigener_server_meine_server": "Meine Server",
+  "eigener_server_liste_leer": "Du hast noch keinen eigenen Server.",
+  "eigener_server_status_aktiv": "Aktiv",
+  "eigener_server_eingetragen_am": "Eingetragen am {date}",
+  "eigener_server_loeschen_text": "{hostname} wird endgültig aus deinem Konto entfernt. Ein noch laufender Server stellt den Betrieb ein, und die Adresse wird wieder frei. Die Daten auf deinem Server (Docker-Volume) bleiben unberührt, die löschst du selbst. Das kann nicht rückgängig gemacht werden.",
+  "eigener_server_verlassen_text": "{label} gehört dir, verlassen geht nicht. Wenn du den Server loswerden willst, lösche ihn unter „Meine Server“.",
+  "meine_server_uebernahme_text": "Ein anderes Pulse-Konto möchte diesen Server übernehmen. Ohne Widerspruch geschieht das frühestens am {datum}. Hast du den Server nicht abgegeben?",
+  "meine_server_uebernahme_widersprechen": "Widersprechen",
+  "meine_server_uebernahme_abgegeben": "Hast du ihn abgegeben, musst du nichts tun — oder lösche ihn, dann geht es sofort.",
+  "meine_server_uebernahme_widersprochen": "Widerspruch eingelegt. Die Übernahme findet nicht statt.",
+  "meine_server_uebernahme_fehler_ohne_server": "Dein Server antwortet unter dieser Adresse nicht. Widersprechen kannst du nur, solange er dort läuft — versuche es später erneut.",
+  "meine_server_uebernahme_fehler_nicht_mehr": "Dieser Übernahme-Antrag besteht nicht mehr.",
+  "meine_server_uebernahme_fehler_ausgelastet": "Pulse prüft gerade viele Server. Bitte versuche es gleich noch einmal.",
+  "meine_server_uebernahme_fehler_gebremst": "Zu viele Versuche in kurzer Zeit. Warte eine Weile und versuche es dann noch einmal.",
+  "meine_server_uebernahme_fehler_abgemeldet": "Deine Anmeldung ist abgelaufen. Melde dich neu an und versuche es dann noch einmal.",
+  "meine_server_uebernahme_fehler_sonst": "Der Widerspruch ist nicht angekommen. Versuche es gleich noch einmal."
 }

@@ -1,29 +1,21 @@
 /**
- * Hosting-Anträge in Echtzeit — beide Richtungen.
+ * Hosting-Anträge in Echtzeit — nur noch die Admin-Seite.
  *
  * `admin_application_pending` (admin:events → nur Admin-Sockets): ein neuer
- * Antrag liegt vor. `application_decided` (user:events → nur der
- * Antragsteller): der Admin hat entschieden.
+ * Antrag liegt vor. Das Gegenstück `application_decided` an den Antragsteller
+ * ist mit „Meine Server“ entfallen (2026-10): es gibt keinen eigenen Antrag
+ * mehr zu beobachten.
  *
- * Beide Ereignisse tragen nur das Signal, keine Antragsdaten — der jeweilige
- * Store lädt seine Liste danach über den regulären REST-Endpoint nach und
- * erzeugt daraus Toast und roten Punkt. Ohne sie wartete jede Seite bis zu
- * einem Poll-Intervall (60 s bzw. 90 s).
+ * Das Ereignis trägt nur das Signal, keine Antragsdaten — der Store lädt seine
+ * Liste danach über den regulären REST-Endpoint nach.
  */
 import { pendingAppHostApplications } from '$lib/stores/pendingAppHostApplications.svelte';
 import { pendingInstanceApps } from '$lib/stores/pendingInstanceApps.svelte';
-import { myInstanceApplications } from '$lib/stores/myInstanceApplications.svelte';
 import { registerWsHandler } from '../handler-registry';
 
 export function register(): void {
   registerWsHandler('admin_application_pending', (evt) => {
     if (evt.kind === 'app_host') pendingAppHostApplications.refresh();
     else pendingInstanceApps.refresh();
-  });
-
-  registerWsHandler('application_decided', () => {
-    // app_host-Anträge sind seit dem Heim-Server-Entscheid (2026-09-27) tot —
-    // über application_decided läuft nur noch der VPS-Weg.
-    myInstanceApplications.refresh();
   });
 }

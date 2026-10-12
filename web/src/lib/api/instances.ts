@@ -81,6 +81,12 @@ export interface Instance {
   anzeigename?: string | null;
   /** Nur Heim-Server (`app_host`): läuft er? `null` = unbekannt (VPS). */
   online?: boolean | null;
+  /** Fristende (ISO) eines Übernahme-Antrags, den ein ANDERES Konto für diese
+   *  Adresse gestellt hat (Widerspruchsfrist, Spec 2026-10-09 Nachtrag
+   *  2026-10-11). Nur am eigenen Eintrag gesetzt, solange ein lebendiger Antrag
+   *  vorliegt; sonst `null`. Optional, weil eine ältere Cloud das Feld nicht
+   *  schickt — dort gilt es wie `null`. */
+  uebernahme_frist_bis?: string | null;
 }
 
 /** Spiegelt ApplicationOut (Admin-Route — trägt applicant_username). */
@@ -278,6 +284,21 @@ export const instancesApi = {
    */
   diagnose(instanceId: string): Promise<DiagnoseErgebnis> {
     return cookieFetch<DiagnoseErgebnis>(`/selfhost/diagnose/${instanceId}`, {
+      method: 'POST'
+    });
+  },
+
+  /**
+   * Widerspruch gegen einen Übernahme-Antrag eines anderen Kontos (Widerspruchsfrist,
+   * Spec 2026-10-09 Nachtrag 2026-10-11). 204 = der Antrag ist erledigt und die
+   * Adresse für fremde Konten gesperrt. Fehler kommen als `ApiError`:
+   * 404 (kein eigener Eintrag oder kein lebendiger Antrag), 409
+   * `widerspruch_ohne_server` (unter der Adresse antwortet nicht mehr dieser
+   * Server), 503 `verbinden_ausgelastet`, 429, 401 — gedeutet in
+   * `selfhost/widerspruch.ts`.
+   */
+  widersprechen(instanceId: string): Promise<void> {
+    return cookieFetch<void>(`/me/instances/${instanceId}/uebernahme/widerspruch`, {
       method: 'POST'
     });
   },

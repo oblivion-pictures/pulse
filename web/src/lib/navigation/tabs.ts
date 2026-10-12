@@ -38,11 +38,12 @@ export const BEREICHE: readonly Bereich[] = [
 /**
  * Alle Pfad-Wurzeln je Bereich, laengste zuerst geprueft.
  *
- * `/app/guilds/...`, `/app/discover` und `/app/server` gehoeren zu „Raeume",
- * obwohl sie nicht unter `/app/rooms` liegen: der Kanal-Chat ist die dritte Ebene des
+ * `/app/guilds/...` und `/app/discover` gehoeren zu „Raeume", obwohl sie nicht
+ * unter `/app/rooms` liegen: der Kanal-Chat ist die dritte Ebene des
  * Raeume-Bereichs, und Entdecken ist der Ausgang aus seinem Leerzustand. Wer
  * hier nur das erste Segment vergleicht, verliert im offenen Kanal die
- * Hervorhebung.
+ * Hervorhebung. `/app/server` („Meine Server“) gehoert aus demselben Grund zu
+ * „Du“.
  */
 const WURZELN: readonly (readonly [string, TabId])[] = [
   // `/app/@me` VOR `/app/me` — sonst genuegte die Segmentgrenze nicht, um die
@@ -51,11 +52,11 @@ const WURZELN: readonly (readonly [string, TabId])[] = [
   ['/app/rooms', 'rooms'],
   ['/app/guilds', 'rooms'],
   ['/app/discover', 'rooms'],
-  // Der eigene Server gehoert zu „Raeume", obwohl er nicht darunter liegt:
-  // beide Einstiege sitzen am Fuss der Community-Liste (Rail am Rechner,
-  // `/app/rooms` auf Tablet und Handy). Ohne den Eintrag stuende beim
-  // Oeffnen kein Bereich mehr hervorgehoben da.
-  ['/app/server', 'rooms'],
+  // „Meine Server“ gehoert zu „Du“, obwohl es nicht darunter liegt: auf Tablet
+  // und Handy sitzt der Einstieg im Du-Bereich (seit 2026-10, vorher am Fuss
+  // der Raeume-Liste). Ohne den Eintrag stuende beim Oeffnen kein Bereich
+  // hervorgehoben da.
+  ['/app/server', 'me'],
   ['/app/friends', 'friends'],
   ['/app/me', 'me']
 ];
@@ -101,12 +102,12 @@ export function aktiverBereich(pfad: string): TabId | null {
  */
 export function istDetailScreen(pfad: string): boolean {
   const p = normalisieren(pfad);
-  // Entdecken ist ein AUFGESCHOBENER Bildschirm ueber den Raeumen, kein
-  // fuenfter Bereich: man kommt aus dem Raeume-Bereich dorthin und mit dem
-  // Pfeil oben wieder zurueck. Ohne diese Zeile stuenden Zurueck-Pfeil UND
-  // Bereichs-Leiste gleichzeitig da — das liest sich wie zwei Aussagen
+  // Entdecken und „Meine Server“ sind AUFGESCHOBENE Bildschirme ueber ihrem
+  // Bereich (Raeume bzw. Du), kein fuenfter Bereich: man kommt von dort hin und
+  // mit dem Pfeil oben wieder zurueck. Ohne diese Zeile stuenden Zurueck-Pfeil
+  // UND Bereichs-Leiste gleichzeitig da — das liest sich wie zwei Aussagen
   // darueber, wo man gerade ist.
-  if (p === '/app/discover') return true;
+  if (p === '/app/discover' || p === '/app/server') return true;
   for (const [wurzel, _id] of WURZELN) {
     if (!liegtUnter(p, wurzel)) continue;
     // Die Community-Übersicht `/app/rooms/<guildId>` ist KEIN Detail-Screen:

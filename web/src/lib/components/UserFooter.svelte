@@ -16,9 +16,12 @@
   import SettingsDialog from './SettingsDialog.svelte';
   import KaeferDialog from './diagnose/KaeferDialog.svelte';
   import StatusPicker from './StatusPicker.svelte';
+  import { serversStore } from '$lib/api/servers.svelte';
+  import { hatEigeneServer } from '$lib/selfhost/eigeneServer';
   import SettingsIcon from '@lucide/svelte/icons/settings';
   import LogOutIcon from '@lucide/svelte/icons/log-out';
   import BugIcon from '@lucide/svelte/icons/bug';
+  import ServerIcon from '@lucide/svelte/icons/server';
 
   // `compact`: nur das Avatar-Symbol, kein Name + kein Chip-Hintergrund — für
   // die mobile GuildRail, wo der eigene User unten in der Server-Spalte sitzt.
@@ -33,11 +36,10 @@
 
   let avatarUrl = $derived(safeAvatarUrl(auth.user?.avatar_url));
 
-  // Der „dein Antrag ist durch"-Punkt sass bis 2026-08-27 HIER am Avatar und
-  // führte über das Konto-Menü in die Einstellungen. Mit dem Self-Host-Bereich
-  // ist er auf dessen Einstiege gewandert (SelfHostRailButton /
-  // SelfHostRoomsButton, Rechnung in `lib/selfhost/hinweis.svelte.ts`) — am
-  // Avatar hätte er auf eine Fläche gezeigt, die den Reiter nicht mehr hat.
+  // „Meine Server“ nur, wenn das Konto einen eigenen Server hat (Spec
+  // 2026-10-09 §5). Die Rolle kommt aus der Server-Liste des Kontos, nicht vom
+  // aktiven Server — Begründung in `selfhost/eigeneServer.ts`.
+  let meineServer = $derived(hatEigeneServer(serversStore.servers));
 
   async function onSignOut() {
     const t = loadTokens();
@@ -72,13 +74,20 @@
 {/snippet}
 
 {#snippet menuItems()}
-  <!-- Profilbild ändern/löschen wohnt jetzt ausschließlich im Profil-Tab der
-       Einstellungen — hier bewusst nur noch Einstellungen + Abmelden, damit das
-       Menü schlank bleibt und nichts doppelt anbietet. -->
+  <!-- Profilbild ändern/löschen wohnt ausschließlich im Profil-Tab der
+       Einstellungen — hier bewusst nur Einstellungen, „Meine Server“ (nur mit
+       eigenem Server), Problem melden und Abmelden, damit das Menü schlank
+       bleibt und nichts doppelt anbietet. -->
   <DropdownMenu.Item onclick={() => uiOverlays.openSettings()} data-testid="open-settings">
     <SettingsIcon class="size-4" />
     {m.user_footer_settings()}
   </DropdownMenu.Item>
+  {#if meineServer}
+    <DropdownMenu.Item onclick={() => goto('/app/server')} data-testid="user-footer-meine-server">
+      <ServerIcon class="size-4" />
+      {m.eigener_server_meine_server()}
+    </DropdownMenu.Item>
+  {/if}
   <DropdownMenu.Item onclick={() => (uiOverlays.diagnoseOpen = true)} data-testid="open-diagnose">
     <BugIcon class="size-4" />
     {m.diagnose_melden()}

@@ -21,7 +21,6 @@
   import { initActivityHeartbeat, disposeActivityHeartbeat } from '$lib/ws/activity';
   import { pendingInstanceApps } from '$lib/stores/pendingInstanceApps.svelte';
   import { pendingComplaints } from '$lib/stores/pendingComplaints.svelte';
-  import { myInstanceApplications } from '$lib/stores/myInstanceApplications.svelte';
   import { viewport } from '$lib/stores/viewport.svelte';
   import { voice, resumeVoiceIfPending } from '$lib/voice/livekit.svelte';
   import { autoConnectIfConfigured } from '$lib/voice/autoconnect.svelte';
@@ -278,9 +277,6 @@
     appHostAnwesenheit.start();
     // Dasselbe für offene Betreiber-Beschwerden (gelbe Badge im UserFooter).
     pendingComplaints.start();
-    // Owner-Benachrichtigung: toastet, wenn ein eigener Antrag genehmigt/
-    // abgelehnt wird. Interner Guard pollt nur bei offenem eigenen Antrag.
-    myInstanceApplications.start();
     // Ablage: Festigung für jedes Laufwerk, das DIESES Gerät besitzt —
     // Kanäle wie Communities, und in Abständen neu nachgesehen, damit ein
     // während der Sitzung verbundenes Laufwerk nicht bis zum nächsten
@@ -288,9 +284,6 @@
     if (ABLAGE_KANAL_ENABLED) {
       _stoppeKanalFestigung = starteHintergrundFestigung();
     }
-    // Dasselbe für App-Hosting-Anträge — app-weit, nicht erst wenn die
-    // Hosting-Karte gemountet ist: sonst gäbe es keinen roten Punkt, der den
-    // frisch freigeschalteten User überhaupt erst dorthin führt.
 
     // Channel-prefetch: now that Ready has populated guilds.byId, kick off
     // a `listChannels` for every guild in the background. Fire-and-forget
@@ -363,7 +356,6 @@
     pendingInstanceApps.stop();
     appHostAnwesenheit.stop();
     pendingComplaints.stop();
-    myInstanceApplications.stop();
     _stoppeKanalFestigung?.();
     _stoppeKanalFestigung = null;
     gateway.disconnect();
