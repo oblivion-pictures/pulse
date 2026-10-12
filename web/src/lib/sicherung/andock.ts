@@ -39,14 +39,9 @@ import type { Message } from '../api/types.ts';
 import { ausSatz, ausWire, grabstein, type AblageNachricht } from '../ablage/nutzlast.ts';
 import type { AblageAdapter } from '../ablage/adapter.ts';
 import { openIdentityDb, idbPutIdentity, idbGetIdentity } from '../identity/idb-shared.ts';
-import {
-	verlaufAlleLesen,
-	anhangBytesLesen,
-	satzAnhangIds,
-	verlaufSatzLesen,
-} from '../verlauf/db.ts';
+import { verlaufAlleLesen, satzAnhangIds } from '../verlauf/db.ts';
+import { sicherungAnhaenge } from './anhaengeSpiegeln.ts';
 import { aktuellesKonto } from '../verlauf/konto.ts';
-import { verschlüsseleEintrag } from './krypto.ts';
 import {
 	SicherungsSpiegel,
 	aufbauAdapter,
@@ -257,21 +252,27 @@ export function sicherungSpiegeln(kanalId: string, nachrichten: Message[]): void
  * Spiegelt eine Löschung als Grabstein-Frame in den Kanal-Ordner — der
  * Gegenpol zu `sicherungSpiegeln`: das Archiv soll nicht stärker sein als
  * die App, eine gelöschte Nachricht also auch dort als gelöscht lesbar.
- * Der Stein trägt die Id und, wo der Satz lokal noch liegt, dessen Autor und
- * Kennung (`ablage/nutzlast.ts::grabstein`) — keinen Inhalt. Der
+ * Der Stein trägt die Id, Autor und Kennung der Nachricht
+ * (`ablage/nutzlast.ts::grabstein`) — keinen Inhalt. Der
  * Wiederherstellungs-Leser (`leseSicherungKanalSeite`) erkennt ihn am
  * `geloescht`-Feld und die Andock-Lesewege legen ihn NIE als sichtbaren Satz
  * an (`steinAnwenden`). Feuert und vergisst wie der Spiegel-Haken; derselbe
  * Puffer-vor-Spiegel-Weg (Regel 2).
+ *
+ * `satz` gibt der Aufrufer mit (`verlauf/loeschen.ts`): der markierte Satz,
+ * oder bei einer gebundenen Löschung ohne lokalen Treffer Autor und Kennung
+ * aus dem Frame. Bis 2026-10-12 las diese Funktion den Satz selbst nach und
+ * schrieb, wenn keiner lag, einen Stein OHNE Autor — einen, der beim
+ * Wiederherstellen jede Nachricht unter dieser lokalen ID trifft, egal von
+ * wem.
  */
-export function sicherungGrabstein(kanalId: string, nachrichtId: string): void {
+export function sicherungGrabstein(
+	kanalId: string,
+	nachrichtId: string,
+	satz: { autorId: string; kryptoId?: string | null; anhaenge?: unknown[] },
+): void {
 	if (!SICHERUNG_ENABLED) return;
 	void (async () => {
-		const kontoId = aktuellesKonto();
-		const satz =
-			kontoId === null
-				? undefined
-				: await verlaufSatzLesen(kanalId, nachrichtId, kontoId).catch(() => undefined);
 		// Anhänge der gelöschten Nachricht aus ALLEN Zielen entfernen —
 		// gelöscht heißt gelöscht: der Klumpen überlebt die Nachricht nicht
 		// im Archiv (Lücke 2026-09-02: die Bytes-Datei blieb bislang liegen).
@@ -295,41 +296,6 @@ export function sicherungGrabstein(kanalId: string, nachrichtId: string): void {
 	})().catch(() => {
 		/* Diagnose-frei nach Absicht — s. Regel 1 im Modulkopf. */
 	});
-}
-
-/**
- * Spiegelt die LOKAL vorhandenen Anhang-Bytes der Nachrichten in das
- * Archiv (verschlüsselt mit dem DEK). Die Bytes muss dieses Gerät haben —
- * empfangende Geräte holen sie vor dem Spiegeln, sendende behalten sie im
- * Empfangsfall ihrer Gegenseite. Fehlen sie hier, überspringt der Lauf
- * den Anhang still: die Gegenseite hat dieselben Bytes und spiegelt sie.
- */
-async function sicherungAnhaenge(kanalId: string, nachrichten: AblageNachricht[]): Promise<void> {
-	const dek = (await dekAusZwischenlager())?.dek;
-	if (dek === undefined) return;
-	const adapter = await adapterLieferant();
-	for (const nachricht of nachrichten) {
-			// Autorenschafts-Regel (2026-09-02): spiegelt wird nur, was DIESES
-			// Konto selbst gesendet hat — der Absender ist der natürliche
-			// Allein-Schreiber eines Anhangs. Empfängergeräte überspringen;
-			// ohne die Regel schrieben beide Geräte desselben Kontos denselben
-			// Klumpen und trieben Doppel-Dateien ins Drive.
-			if (nachricht.autor !== aktuellesKonto()) continue;
-		for (const anhang of nachricht.anhaenge) {
-			try {
-				// Dedup: Bei mehreren Geräten desselben Kontos hat JEDES die
-				// Bytes im Cache — ohne diese Prüfung überschriebe jedes sie
-				// mit identischem Inhalt (verschwendeter Upload, kein Verlust).
-				if ((await adapter.lese(anhangDateiName(anhang.id))) !== null) continue;
-				const lokal = await anhangBytesLesen(anhang.id);
-				if (!lokal) continue;
-				const klar = new Uint8Array(await lokal.daten.arrayBuffer());
-				await adapter.schreibe(anhangDateiName(anhang.id), await verschlüsseleEintrag(dek, klar));
-			} catch {
-				/* Anhang überspringen — die Nachricht selbst ist längst gesichert */
-			}
-		}
-	}
 }
 
 /** „Jetzt sichern" der Oberfläche — spült ALLE gebauten Kanal-Spiegel. */

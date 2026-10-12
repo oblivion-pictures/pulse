@@ -30,8 +30,24 @@ export const DB_NAME = 'pulse-verlauf';
  * Server-Metadaten, die lokal nie als Satz anlagen (alte Uploads, ferne
  * Kanaele). Bestandsdaten wandern nicht: der Index baut sich beim ersten
  * Schreiben ueber `verlaufPutSaetze` selbst.
+ *
+ * **Eine Fassung 4 ist heute gefährlich** (Befund 2026-10-12, beim
+ * Grabstein-Register). Seit 2026-09-22 löscht `verbindung.ts` die ganze
+ * Datenbank, wenn sie beim Öffnen eine HÖHERE Fassung vorfindet
+ * („Fassungs-Stau-Heilung", gedacht für Experimentier-Profile). Ein Tab, der
+ * nach einem Deploy noch den alten Code fährt, fände nach dem Aufstieg eines
+ * anderen Tabs genau das vor — und löschte den Verlauf, für verschlüsselte
+ * Nachrichten die einzige Kopie. Das Register liegt deshalb im Speicher
+ * `nachrichten` (`grabsteinRegister.ts`); wer wirklich einen Speicher
+ * braucht, entschärft zuerst die Heilung und lässt sie eine Auslieferung
+ * lang draußen, bevor die Nummer steigt.
  */
 export const DB_VERSION = 3;
+/** Die Sätze des Verlaufs — und seit 2026-10-12 auch die Einträge des
+ *  Grabstein-Registers, unter eigenem Schlüssel-Präfix und ohne
+ *  `kanalId`/`kontoId` (Begründung in `grabsteinRegister.ts`). Wer einen
+ *  neuen Leseweg über diesen Speicher baut, filtert über
+ *  `kontoFilter.ts::gehoertZuKonto` oder `istRegisterEintrag`. */
 export const STORE_NACHRICHTEN = 'nachrichten';
 /** Entschluesselte Anhang-Bytes (Etappe E) — s. `anhangSchema` unten. */
 export const STORE_ANHAENGE = 'anhaenge';

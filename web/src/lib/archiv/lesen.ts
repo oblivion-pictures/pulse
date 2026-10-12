@@ -30,11 +30,7 @@ import { kanalSchluesselHolen } from './kanalSchluessel';
 import { entschluesseleZeile } from './krypto';
 import { leseZeile, type Grabstein } from './zeile';
 import { archivPaar } from './konto';
-import {
-	verlaufErgaenzen,
-	verlaufLokaleIdsFuerFrame,
-	verlaufNachrichtGeloescht
-} from '$lib/verlauf';
+import { verlaufErgaenzen, verlaufGebundenGeloescht } from '$lib/verlauf';
 import { messages } from '$lib/stores/messages.svelte';
 
 const SEITEN_GROESSE = 500;
@@ -114,10 +110,12 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 }
 
 /** Eine Grabstein-Zeile: jeden lokalen Satz DIESES Autors mit dieser Kennung
- *  löschen (`loeschZiel.ts::trifftFrame`), im Verlauf und in der Anzeige. */
+ *  löschen (`loeschZiel.ts::trifftFrame`), im Verlauf und in der Anzeige,
+ *  und die Löschung ins Grabstein-Register eintragen — eine ältere Seite mit
+ *  der Nachricht selbst kommt erst NACH dieser (gelesen wird neu nach alt)
+ *  und landet dann als Grabstein. */
 async function grabsteinAnwenden(kanalId: string, stein: Grabstein): Promise<void> {
-	for (const id of await verlaufLokaleIdsFuerFrame(kanalId, stein.kennung, stein.autorId)) {
-		verlaufNachrichtGeloescht(kanalId, id, stein.autorId);
+	for (const id of await verlaufGebundenGeloescht(kanalId, stein.kennung, stein.autorId)) {
 		messages.remove(kanalId, id);
 	}
 }

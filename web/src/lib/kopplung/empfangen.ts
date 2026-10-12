@@ -19,12 +19,21 @@
  * Teuer ist daran nur die Leitung, und die Alternative — ein eigener
  * Fortschritts-Speicher im Klienten — waere eine zweite Wahrheit neben dem
  * lokalen Verlauf.
+ *
+ * **Grabsteine des alten Geräts gelten hier weiter** (2026-10-12). Das
+ * Ablegen läuft durch das Grabstein-Register (`verlauf/grabsteinRegister.ts`)
+ * — eine hier schon gelöschte Nachricht kommt nicht sichtbar zurück —, und
+ * nach dem letzten Stück trägt `verlaufRegisterAbgleichen` jeden
+ * übernommenen Grabstein ins Register ein. Das Register des alten Geräts
+ * reist nicht mit, nur seine Grabstein-Sätze: ohne den Abgleich hätte eine
+ * Kopie derselben Nachricht unter einer anderen lokalen ID (Archiv-Kopie
+ * unter K, Grabstein unter D) hier sichtbar weitergestanden.
  */
 import { serversStore } from '../api/servers.svelte';
 import { kopplungApi } from '../api/kopplung';
 import { geraeteKennung } from '../krypto/geraeteKennung';
 import { veroeffentlicheSchluessel } from '../krypto/veroeffentlichen';
-import { verlaufPutSaetze } from '../verlauf/db';
+import { verlaufPutSaetze, verlaufRegisterAbgleichen } from '../verlauf/db';
 import { aktuellesKonto } from '../verlauf/konto';
 import type { Satz } from '../verlauf/schema';
 import { codeNormalisieren } from './code';
@@ -162,6 +171,7 @@ export async function verlaufUebernehmen(
     uebernommen += inhalt.saetze.length;
     melde(folge + 1, gesamt);
   }
+  await verlaufRegisterAbgleichen(kontoId);
 
   // Erst NACH dem letzten erfolgreichen Ablegen aufraeumen. Umgekehrt waere
   // ein Fehler im letzten Stueck ein endgueltiger Verlust — der Server haelt

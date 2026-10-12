@@ -10,18 +10,11 @@
  * — zwischen beidem kann ein Absturz den Schreibvorgang stillschweigend
  * verwerfen).
  */
-import {
-  STORE_NACHRICHTEN,
-  STORE_ANHAENGE,
-  STORE_MEDIEN,
-  INDEX_KANAL,
-  type Satz,
-  medienZeilenAusSatz
-} from './schema';
+import { STORE_NACHRICHTEN, STORE_ANHAENGE, STORE_MEDIEN, type Satz } from './schema';
 import { mitVerbindung } from './verbindung';
 import { sortierSchluessel, satzErgaenzen, type Nachschub } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
-import { trifftFrame } from '../krypto/loeschZiel';
+import { ablegenMitRegister, kanalBereich, OBERE_ID } from './dbRegister';
 
 // Medien-Index und Anhang-Bytes liegen in `dbAnhaenge.ts`; die Aufrufer
 // importieren sie weiter von hier.
@@ -33,9 +26,23 @@ export {
   anhangBytesLesen,
   anhangBytesLoeschen
 } from './dbAnhaenge';
+// Die Lösch-Wege (mit Grabstein-Register) liegen in `dbLoeschen.ts`.
+export {
+  verlaufMarkiereGeloescht,
+  verlaufGebundenLoeschen,
+  verlaufSatzLoeschen,
+  verlaufSatzIdsFuerFrame,
+  verlaufRegisterAbgleichen
+} from './dbLoeschen';
 
 /** Legt mehrere Sätze in einer einzigen Transaktion ab (put = Upsert über den
  *  Primärschlüssel — ein Grabstein überschreibt seine frühere Fassung).
+ *
+ *  Grabstein-Register (2026-10-12, `grabsteinRegister.ts`): steht die
+ *  Identität eines Satzes dort, landet er als Grabstein — in derselben
+ *  Transaktion geprüft (`dbRegister.ts::ablegenMitRegister`). Ergebnis: die
+ *  Nachrichten-IDs, die deshalb als Grabstein abgelegt wurden (der
+ *  Empfangsweg zeigt sie nicht an und spiegelt sie nicht in die Sicherung).
  *
  *  Zweit-Schreibweg `medien` (Stufe B1): die Anhänge eines Satzes wandern
  *  als Index-Zeilen (`schema.ts::MedienZeile`) mit in dieselbe Transaktion.
@@ -48,19 +55,21 @@ export {
  *  Index-Zeilen bleiben bei einem Grabstein stehen (der Nachzug darf sie
  *  weiter zeigen — der Server hat die Zeile ohnehin weggeräumt, sie ist hier
  *  der letzte Rest, bis B2 das aufräumt). */
-export function verlaufPutSaetze(saetze: Satz[]): Promise<void> {
-  if (saetze.length === 0) return Promise.resolve();
+export function verlaufPutSaetze(saetze: Satz[]): Promise<string[]> {
+  if (saetze.length === 0) return Promise.resolve([]);
   return mitVerbindung(
     (db) =>
-      new Promise<void>((resolve, reject) => {
+      new Promise<string[]>((resolve, reject) => {
         const tx = db.transaction([STORE_NACHRICHTEN, STORE_MEDIEN], 'readwrite');
         const store = tx.objectStore(STORE_NACHRICHTEN);
         const medien = tx.objectStore(STORE_MEDIEN);
+        const alsGrabstein: string[] = [];
         for (const satz of saetze) {
-          store.put(satz);
-          for (const zeile of medienZeilenAusSatz(satz)) medien.put(zeile);
+          ablegenMitRegister(store, medien, satz, (abgelegt) => {
+            if (abgelegt.geloescht && !satz.geloescht) alsGrabstein.push(satz.nachrichtId);
+          });
         }
-        tx.oncomplete = () => resolve();
+        tx.oncomplete = () => resolve(alsGrabstein);
         tx.onerror = () => reject(tx.error);
       })
   );
@@ -78,8 +87,10 @@ export function verlaufPutSaetze(saetze: Satz[]): Promise<void> {
  * Ein Satz eines FREMDEN Kontos unter demselben Schlüssel wird wie bisher
  * überschrieben — an dieser Stelle ändert sich gegenüber `verlaufPutSaetze`
  * nur der Fall „eigener Satz liegt schon da". `herkunft` sagt, wie viel der
- * Nachschub dabei ergänzen darf (`satz.ts::Nachschub`). Ergebnis: wie viele
- * Sätze geschrieben wurden.
+ * Nachschub dabei ergänzen darf (`satz.ts::Nachschub`). Was geschrieben
+ * wird, läuft wie dort durch das Grabstein-Register: eine gelöschte
+ * Nachricht kommt über den Nachschub nicht zurück, auch nicht unter einer
+ * anderen lokalen ID. Ergebnis: wie viele Sätze geschrieben wurden.
  */
 export function verlaufSaetzeErgaenzen(
   saetze: Satz[],
@@ -103,60 +114,12 @@ export function verlaufSaetzeErgaenzen(
                 ? satzErgaenzen(vorhanden, neu, herkunft)
                 : neu;
             if (satz === null) return;
-            store.put(satz);
-            for (const zeile of medienZeilenAusSatz(satz)) medien.put(zeile);
+            ablegenMitRegister(store, medien, satz);
             geschrieben++;
           };
           getReq.onerror = () => reject(getReq.error);
         }
         tx.oncomplete = () => resolve(geschrieben);
-        tx.onerror = () => reject(tx.error);
-      })
-  );
-}
-
-/**
- * Markiert einen vorhandenen Satz als Grabstein (`geloescht: true`), ohne ihn
- * zu entfernen. `message_delete` trägt am WS nur `channel_id`+`id` — kein
- * `content`/`author_id`, also keine volle Nachricht, aus der `zuSatz` einen
- * Satz bauen könnte. Gab es lokal noch keinen Satz zu diesem Schlüssel
- * (Nachricht nie gesehen, z. B. ein Guild-Kanal), ist das ein stiller No-Op.
- *
- * `kontoId` (Befund 1, 2026-08-29): gehoert der vorgefundene Satz einem
- * ANDEREN Konto (`kontoFilter.ts::gehoertZuKonto`), bleibt er unangetastet —
- * ein fremder Grabstein waere selbst ein Schreibzugriff auf Daten, die dieses
- * Konto nicht sehen darf.
- *
- * `autorId` (2026-10-11): gesetzt, wenn die Löschung von einem Lösch-Frame
- * kommt — dann trifft sie nur einen Satz DIESES Autors, geprüft in derselben
- * Transaktion, in der geschrieben wird. Der Aufrufer bekommt seine Ziele
- * schon gebunden (`krypto/loeschZiel.ts`); die Prüfung hier ist die zweite
- * Wand, damit kein künftiger Aufrufer den Rückfall wieder einbaut, der am
- * 2026-10-11 fremde Lösch-Frames auf eigene Nachrichten durchließ.
- *
- * Ergebnis: ob ein Grabstein gesetzt wurde.
- */
-export function verlaufMarkiereGeloescht(
-  schluessel: string,
-  kontoId: string,
-  autorId?: string
-): Promise<boolean> {
-  return mitVerbindung(
-    (db) =>
-      new Promise<boolean>((resolve, reject) => {
-        const tx = db.transaction(STORE_NACHRICHTEN, 'readwrite');
-        const store = tx.objectStore(STORE_NACHRICHTEN);
-        let markiert = false;
-        const getReq = store.get(schluessel);
-        getReq.onsuccess = () => {
-          const satz = getReq.result as Satz | undefined;
-          if (!satz || satz.geloescht || !gehoertZuKonto(satz, kontoId)) return;
-          if (autorId !== undefined && satz.autorId !== autorId) return;
-          store.put({ ...satz, geloescht: true });
-          markiert = true;
-        };
-        getReq.onerror = () => reject(getReq.error);
-        tx.oncomplete = () => resolve(markiert);
         tx.onerror = () => reject(tx.error);
       })
   );
@@ -234,11 +197,6 @@ export function verlaufSatzVorhanden(
       })
   );
 }
-
-/** Obere Grenze fuer den Primaerschluessel-Bereich eines Kanals ohne `vor` —
- *  20 Neunen sind lexikografisch groesser als jede echte gepolsterte ID
- *  (deren Ziffern hoechstens 9 sind), dient nur als Bereichsende. */
-const OBERE_ID = '9'.repeat(20);
 
 /**
  * Liest bis zu `anzahl` Saetze eines Kanals — laeuft ueber den PRIMAERschluessel
@@ -324,90 +282,16 @@ export function verlaufAlleLesen(kontoId: string): Promise<Satz[]> {
   );
 }
 
-/** Der Satz unter dieser Nachrichten-ID, wenn er diesem Konto gehört —
- *  sonst `undefined`. */
-export function verlaufSatzLesen(
-  kanalId: string,
-  nachrichtId: string,
-  kontoId: string
-): Promise<Satz | undefined> {
-  const schluessel = sortierSchluessel(kanalId, nachrichtId);
-  return mitVerbindung(
-    (db) =>
-      new Promise<Satz | undefined>((resolve, reject) => {
-        const tx = db.transaction(STORE_NACHRICHTEN, 'readonly');
-        const anfrage = tx.objectStore(STORE_NACHRICHTEN).get(schluessel);
-        anfrage.onsuccess = () => {
-          const satz = anfrage.result as Satz | undefined;
-          resolve(satz !== undefined && gehoertZuKonto(satz, kontoId) ? satz : undefined);
-        };
-        anfrage.onerror = () => reject(anfrage.error);
-      })
-  );
-}
-
 /** Die Anhang-IDs eines Satzes, oder `[]` — für den Grabstein-Weg, der die
  *  zugehörigen Anhang-Dateien aus Archiv und Geräte-Cache mitentfernen muss.
  *  Ein Anhang ohne `id` als Zeichenkette fällt heraus. */
-export function satzAnhangIds(satz: Satz | undefined): string[] {
+export function satzAnhangIds(satz: { anhaenge?: unknown[] } | undefined): string[] {
   const anhaenge = satz?.anhaenge;
   if (!Array.isArray(anhaenge)) return [];
   return anhaenge.flatMap((a) => {
     const id = a && typeof a === 'object' ? (a as { id?: unknown }).id : undefined;
     return typeof id === 'string' ? [id] : [];
   });
-}
-
-/** `satzAnhangIds` des Satzes unter dieser Nachrichten-ID (`verlaufSatzLesen`). */
-export async function verlaufSatzAnhangIds(
-  kanalId: string,
-  nachrichtId: string,
-  kontoId: string
-): Promise<string[]> {
-  return satzAnhangIds(await verlaufSatzLesen(kanalId, nachrichtId, kontoId));
-}
-
-/** Die lokalen Nachrichten-IDs aller Sätze, die ein Frame mit `frameId`
- *  trifft — für Lösch-, Reaktions- und Bearbeitungs-Frames (s.
- *  `krypto/loeschZiel.ts`): ein empfangener Satz liegt unter der
- *  Zustellungs-ID und führt die Frame-ID als `kryptoId`, der eigene Satz
- *  des Verfassers (oder eine Archiv-Kopie) trägt sie als `nachrichtId`.
- *  Dieselbe Regel wie für die geladene Anzeige (`trifftFrame`), mit
- *  Autor-Bindung, sobald `autorId` gesetzt ist. Bereichs-Cursor über den
- *  Kanal wie in `verlaufLesenSaetze`; leer, wenn kein Satz dieses Kontos
- *  getroffen wird. */
-export function verlaufSatzIdsFuerFrame(
-  kanalId: string,
-  frameId: string,
-  kontoId: string,
-  autorId?: string
-): Promise<string[]> {
-  const bereich = IDBKeyRange.bound(
-    sortierSchluessel(kanalId, ''),
-    sortierSchluessel(kanalId, OBERE_ID)
-  );
-  return mitVerbindung(
-    (db) =>
-      new Promise<string[]>((resolve, reject) => {
-        const tx = db.transaction(STORE_NACHRICHTEN, 'readonly');
-        const treffer: string[] = [];
-        const req = tx.objectStore(STORE_NACHRICHTEN).openCursor(bereich);
-        req.onsuccess = () => {
-          const cursor = req.result;
-          if (!cursor) {
-            resolve(treffer);
-            return;
-          }
-          const satz = cursor.value as Satz;
-          const kandidat = { id: satz.nachrichtId, kryptoId: satz.kryptoId, autorId: satz.autorId };
-          if (trifftFrame(frameId, kandidat, autorId) && gehoertZuKonto(satz, kontoId)) {
-            treffer.push(satz.nachrichtId);
-          }
-          cursor.continue();
-        };
-        req.onerror = () => reject(req.error);
-      })
-  );
 }
 
 /**
@@ -420,6 +304,11 @@ export function verlaufSatzIdsFuerFrame(
  * `kontoId`-Filter wie beim Grabstein: nur Sätze des laufenden Kontos —
  * ein Satz eines fremden Kontos unter derselben Kanal-ID bleibt unangetastet.
  * Invalide `kontoId` (`null`/'') → No-Op, sonst wäre das ein Flächenräumung.
+ *
+ * Die Einträge des Grabstein-Registers (`grabsteinRegister.ts`) bleiben
+ * stehen: sie tragen keinen Inhalt, nur Autor und Kennung, und halten eine
+ * gelöschte Nachricht auch dann gelöscht, wenn der Kanal später wieder
+ * Bestand bekommt (Archiv, Sicherung).
  */
 export function verlaufKanalVergessen(kanalId: string, kontoId: string): Promise<void> {
   if (!kanalId || !kontoId) return Promise.resolve();
@@ -428,13 +317,9 @@ export function verlaufKanalVergessen(kanalId: string, kontoId: string): Promise
       new Promise<void>((resolve, reject) => {
         const tx = db.transaction([STORE_NACHRICHTEN, STORE_ANHAENGE], 'readwrite');
         const store = tx.objectStore(STORE_NACHRICHTEN);
-        const range = IDBKeyRange.bound(
-          sortierSchluessel(kanalId, ''),
-          sortierSchluessel(kanalId, OBERE_ID)
-        );
         const satzSchluessel: string[] = [];
         const anhangIds: string[] = [];
-        const req = store.openCursor(range);
+        const req = store.openCursor(kanalBereich(kanalId));
         req.onsuccess = () => {
           const cursor = req.result;
           if (!cursor) return;

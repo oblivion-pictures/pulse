@@ -33,12 +33,20 @@
  * an einem liegenden Satz desselben Kontos ergänzt er höchstens die Kennung
  * (`satz.ts::satzErgaenzen`).
  *
- * **Grabsteine werden NICHT über diese Regel aufgelöst.** Ein Grabstein-Rahmen
- * der Sicherung trifft eine Nachricht über ihre lokalen IDs, nie über diesen
- * Schlüssel. Ältere Steine tragen nur ihre ID; ein Stein, der seinen Autor
- * nennt (seit 2026-10-11), zählt seine Kennung zusätzlich als lokale ID —
- * und trifft damit nur Sätze dieses Autors, genau wie ein Lösch-Frame von
- * ihm (`sicherung/eintragsGruppen.ts`, `sicherung/andock.ts::steinAnwenden`).
+ * **Eine Löschung gilt über diese Regel nur, wenn ihr Autor feststeht.** Das
+ * Grabstein-Register (`grabsteinRegister.ts`, seit 2026-10-12) hält
+ * Löschungen genau unter diesem Schlüssel fest, damit eine Kopie unter einer
+ * anderen lokalen ID gelöscht bleibt — eingetragen aber nur von einer
+ * GEBUNDENEN Löschung: Lösch-Frame (Absender aus der Zustellung),
+ * Grabstein-Zeile im Archiv (Einlieferer = Autor), Sicherungs-Stein mit
+ * Autor, eigene Löschung (Autor aus dem liegenden Satz). Ein Sicherungs-
+ * Stein ohne Autor (vor 2026-10-11) löst keine Identität auf: auf dem
+ * wiederherstellenden Gerät trifft er nur den Satz unter seiner lokalen ID
+ * (`sicherung/andockLesen.ts::steinAnwenden`). Im Leser der Sicherung
+ * selbst legt er dagegen die Gruppe dieser ID still, samt ihrer anderen
+ * lokalen IDs, und gibt für jede einen Stein mit dem Autor der Gruppe aus
+ * (`sicherung/eintragsGruppen.ts`) — der Autor kommt dann aus den
+ * Nachrichten-Rahmen der eigenen Sicherung, nicht aus dem Stein.
  *
  * Importfrei, damit Nodes eingebauter Testläufer die Datei ohne Bundler prüft
  * (s. CLAUDE.md „Die Falle").

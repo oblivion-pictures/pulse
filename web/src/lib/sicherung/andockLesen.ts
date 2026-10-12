@@ -13,7 +13,7 @@ import type { AblageNachricht } from '../ablage/nutzlast.ts';
 import {
 	verlaufSaetzeErgaenzen,
 	verlaufMarkiereGeloescht,
-	verlaufSatzIdsFuerFrame,
+	verlaufGebundenLoeschen,
 } from '../verlauf/db.ts';
 import { aktuellesKonto } from '../verlauf/konto.ts';
 import { sortierSchluessel, zuSatz } from '../verlauf/satz.ts';
@@ -87,13 +87,12 @@ async function kanalSeiteFüttern(
 	if (saetze.length > 0) await verlaufSaetzeErgaenzen(saetze, kontoId, 'sicherung');
 	// Grabsteine NACH den sichtbaren Sätzen: was diese Seite gerade abgelegt
 	// hat, kann ein Stein mit Autor und Kennung noch treffen. Sie werden
-	// NICHT als Satz angelegt — fehlt jeder Treffer, bleibt es ein stiller
-	// No-Op. ponytail: kam der Stein auf einer FRÜHEREN Seite als die
-	// Nachricht (lesen läuft neu nach alt — zwei Geräte-Ketten können beide
-	// Reihenfolgen liefern), markiert er nichts, und die spätere Seite legt
-	// die Nachricht sichtbar an. Dasselbe, wenn das Server-Archiv eine Kopie
-	// erst nach diesem Lauf ablegt. Konsequent wäre ein Gelöscht-Merkmal im
-	// Lesestand — Upgrade-Pfad dort.
+	// NICHT als Satz angelegt. Ein Stein mit Autor trägt seine Löschung ins
+	// Grabstein-Register ein (`verlauf/grabsteinRegister.ts`): kommt die
+	// Nachricht erst auf einer SPÄTEREN Seite (gelesen wird neu nach alt, zwei
+	// Geräte-Ketten können beide Reihenfolgen liefern) oder legt das
+	// Server-Archiv eine Kopie erst nach diesem Lauf ab, landet sie trotzdem
+	// als Grabstein. Bis 2026-10-12 stand sie dann wieder sichtbar da.
 	for (const eintrag of eintraege) {
 		if (eintrag.nachricht.geloescht === true) {
 			await steinAnwenden(kanalId, eintrag.nachricht, kontoId);
@@ -107,30 +106,29 @@ async function kanalSeiteFüttern(
 }
 
 /**
- * Wendet einen gelesenen Grabstein auf den lokalen Verlauf an: seine lokale
- * ID — und trägt er Autor und Kennung (`ablage/nutzlast.ts::grabstein`), jeden
- * lokalen Satz, den ein Lösch-Frame DIESES Autors mit dieser Kennung träfe
- * (`krypto/loeschZiel.ts::trifftFrame`): die Archiv-Kopie unter K ebenso wie
- * eine Empfangs-Kopie unter einer anderen Zustellungs-ID. Ohne diesen Schritt
- * traf ein Stein auf D die Archiv-Kopie K nie (Befund N3). Gebunden an den
- * Autor, sobald der Stein einen nennt — die Kennung allein wählt der Absender
- * frei. Ein älterer Stein ohne Autor trifft nur seine ID, wie bisher.
+ * Wendet einen gelesenen Grabstein auf den lokalen Verlauf an. Nennt er
+ * seinen Autor (`ablage/nutzlast.ts::grabstein`), ist das eine gebundene
+ * Löschung (`verlauf/dbLoeschen.ts::verlaufGebundenLoeschen`): seine lokale
+ * ID und seine Kennung gehen ins Grabstein-Register, und jeder lokale Satz
+ * DIESES Autors, den ein Lösch-Frame mit einer der beiden träfe
+ * (`krypto/loeschZiel.ts::trifftFrame`), wird Grabstein — die Archiv-Kopie
+ * unter K ebenso wie eine Empfangs-Kopie unter einer anderen Zustellungs-ID
+ * (Befund N3). Gebunden an den Autor: die Kennung allein wählt der Absender
+ * frei. Ein älterer Stein ohne Autor trifft nur den Satz unter seiner
+ * lokalen ID und trägt nichts ins Register ein — er löst nie eine Identität
+ * auf.
  */
-async function steinAnwenden(
+export async function steinAnwenden(
 	kanalId: string,
 	stein: AblageNachricht,
 	kontoId: string,
 ): Promise<void> {
-	const autor = stein.autor !== '' ? stein.autor : undefined;
-	const ziele = new Set([stein.id]);
-	if (autor !== undefined && stein.kryptoId) {
-		for (const id of await verlaufSatzIdsFuerFrame(kanalId, stein.kryptoId, kontoId, autor)) {
-			ziele.add(id);
-		}
+	if (stein.autor === '') {
+		await verlaufMarkiereGeloescht(sortierSchluessel(kanalId, stein.id), kontoId);
+		return;
 	}
-	for (const id of ziele) {
-		await verlaufMarkiereGeloescht(sortierSchluessel(kanalId, id), kontoId, autor);
-	}
+	const kennungen = stein.kryptoId ? [stein.id, stein.kryptoId] : [stein.id];
+	await verlaufGebundenLoeschen(kanalId, kontoId, stein.autor, kennungen);
 }
 
 /**

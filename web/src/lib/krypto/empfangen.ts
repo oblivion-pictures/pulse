@@ -121,12 +121,12 @@
 import type { Message } from '../api/types';
 import {
   verlaufSpeichernPflicht,
-  verlaufNachrichtGeloescht,
+  verlaufGebundenGeloescht,
   verlaufLokaleIdsFuerFrame,
   verlaufBearbeitungAnwenden,
   verlaufReaktionAnwenden
 } from '../verlauf';
-import { frameZiele } from './loeschZiel';
+import { frameZiele, lokaleIdsFuerLoeschung } from './loeschZiel';
 import { messages } from '../stores/messages.svelte';
 import { auth } from '../stores/auth.svelte';
 import { verlaufZustand } from '../verlauf/zustand.svelte';
@@ -240,29 +240,28 @@ async function postfachZyklus(): Promise<Message[]> {
     if (!ergebnis) continue;
     if (ergebnis.art === 'loeschung') {
       // Lösch-Frame (2026-09-02): lokal Grabstein setzen (zusammen mit dem
-      // Sicherungs-Grabstein in `verlaufNachrichtGeloescht`) und aus der
-      // Anzeige nehmen — nichts abzulegen, direkt quittierbar.
+      // Sicherungs-Grabstein, `verlauf/loeschen.ts`) und aus der Anzeige
+      // nehmen — nichts abzulegen, direkt quittierbar.
       //
       // Der Frame nennt die ABSENDER-ID; hier liegt die Nachricht unter der
       // Zustellungs-ID mit der Absender-ID als `krypto_id` (s.
-      // `loeschZiel.ts`, aufgeloest in `lokaleZielIds`) — mit Absender-
-      // Bindung: nur der Verfasser darf seine Sätze löschen (Bughunt
-      // 2026-09-23). Ohne Treffer passiert NICHTS: bis 2026-10-11 ging der
-      // Grabstein dann auf die Frame-ID selbst, und genau so löschte ein
-      // fremder Frame die eigene Nachricht des Empfängers, die bei ihm unter
-      // dieser ID liegt (Begründung in `loeschZiel.ts::frameZiele`). Der
-      // Frame wird trotzdem quittiert — eine Nachricht, die hier nicht
-      // liegt, kann auch nicht stehen bleiben. `verlaufNachrichtGeloescht`
-      // prüft den Autor ein zweites Mal, in der Schreib-Transaktion.
-      const ziele = await lokaleZielIds(
-        ergebnis.channelId,
-        ergebnis.nachrichtId,
-        ergebnis.absenderUserId
-      );
-      for (const lokaleId of ziele) {
-        verlaufNachrichtGeloescht(ergebnis.channelId, lokaleId, ergebnis.absenderUserId);
-        messages.remove(ergebnis.channelId, lokaleId);
-      }
+      // `loeschZiel.ts::trifftFrame`) — mit Absender-Bindung: nur der
+      // Verfasser darf seine Sätze löschen (Bughunt 2026-09-23). Ohne
+      // Treffer wird NICHTS markiert: bis 2026-10-11 ging der Grabstein dann
+      // auf die Frame-ID selbst, und genau so löschte ein fremder Frame die
+      // eigene Nachricht des Empfängers, die bei ihm unter dieser ID liegt
+      // (Begründung in `loeschZiel.ts::frameZiele`). Die Löschung geht
+      // trotzdem ins Grabstein-Register
+      // (`verlauf/grabsteinRegister.ts`), gebunden an den Absender: eine
+      // Kopie, die erst danach ankommt (Archiv, Sicherung, Kopplung, eine
+      // spätere Zustellung), landet als Grabstein. Gesucht, eingetragen und
+      // markiert wird in EINER Transaktion (`verlaufGebundenGeloescht`).
+      const { channelId, nachrichtId, absenderUserId } = ergebnis;
+      const ziele = new Set([
+        ...lokaleIdsFuerLoeschung(nachrichtId, messages.for(channelId), absenderUserId),
+        ...(await verlaufGebundenGeloescht(channelId, nachrichtId, absenderUserId))
+      ]);
+      for (const lokaleId of ziele) messages.remove(channelId, lokaleId);
       schonQuittierbar.push(ergebnis.id);
       continue;
     }

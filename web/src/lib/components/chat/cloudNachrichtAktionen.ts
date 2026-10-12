@@ -98,10 +98,15 @@ export async function nachrichtLoeschen(
   // Der Loesch-Frame je nach Gespraechsart: Gruppe -> Gruppen-Sendeweg
   // (Megolm an alle Mitglieder-Geraete), DM -> Olm-Paarung an die
   // Gegenstelle. `null` = es gibt keinen Frame-Weg (lokal genug).
+  // Er nennt die KANONISCHE Kennung, wie der Bearbeitungs-Frame: auf einem
+  // Zweitgerät liegt die eigene Nachricht unter ihrer Zustellungs-ID, und
+  // ein Frame mit dieser ID traf auf keinem anderen Gerät etwas — und
+  // landete im Grabstein-Register unter einer Kennung, die niemand führt.
+  const kennung = kanonischeId(msg.id, msg.krypto_id);
   const loeschFrame = opts.gruppe
-    ? () => sendeGruppenLoeschung(msg.channel_id, msg.id)
+    ? () => sendeGruppenLoeschung(msg.channel_id, kennung)
     : opts.partnerId
-      ? () => sendeLoeschung(msg.channel_id, opts.partnerId as string, msg.id)
+      ? () => sendeLoeschung(msg.channel_id, opts.partnerId as string, kennung)
       : null;
   // E2EE: keine Server-Zeile — der Grabstein läuft lokal (Verlauf +
   // Sicherungs-Archiv), als Grabstein-Zeile ins Server-Archiv (nur für eine
@@ -113,7 +118,6 @@ export async function nachrichtLoeschen(
     verlaufNachrichtGeloescht(msg.channel_id, msg.id);
     messages.remove(msg.channel_id, msg.id);
     if (msg.author_id === auth.user?.id) {
-      const kennung = kanonischeId(msg.id, msg.krypto_id);
       // Dynamisch wie der Sendeweg (`krypto/senden.ts`); `archiviereGrabstein` wirft nie.
       void import('$lib/archiv/senden')
         .then((a) => a.archiviereGrabstein(msg.channel_id, kennung))

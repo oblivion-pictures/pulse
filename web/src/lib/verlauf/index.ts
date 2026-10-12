@@ -48,13 +48,10 @@ import { zuSatz, sortierSchluessel, satzZuNachricht, type SatzAlsNachricht } fro
 import {
   verlaufPutSaetze,
   verlaufSaetzeErgaenzen,
-  verlaufMarkiereGeloescht,
   verlaufSatzUmschreiben,
   verlaufLesenSaetze,
   verlaufSatzVorhanden,
-  verlaufSatzAnhangIds,
   verlaufSatzIdsFuerFrame,
-  anhangBytesLoeschen,
   verlaufKanalVergessen
 } from './db';
 import { aktuellesKonto } from './konto';
@@ -67,69 +64,13 @@ import {
   reaktionenZuAggregat,
   type ReaktionsAggregat
 } from '../krypto/reaktionen';
-import { directMessages } from '$lib/stores/directMessages.svelte';
-import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
-import { guilds } from '$lib/stores/guilds.svelte';
-import { ABLAGE_KANAL_ENABLED } from '$lib/featureFlags';
-import { brauchtLokalenVerlauf } from './ablageEntscheidung';
+import { istLokalerKanal } from './kanalArt';
 import type { Message } from '$lib/api/types';
 
 export { VerlaufSpeichernFehlgeschlagen };
 export { verlaufKanalVergessen };
-
-/**
- * Ob `kanalId` ein Ablage-Kanal ist (Guild-Kanal mit `ablage: true`) —
- * genau wie eine private Gruppe von Geburt an verschluesselt, nur ueber die
- * Guild-Kanalliste statt `privateGruppen` erreichbar, s. `kanalSenden.ts`-
- * Modulkopf.
- *
- * **Hinter dem Merkmal-Schalter.** Aus heisst: wie ein gewoehnlicher
- * Guild-Kanal behandeln, unabhaengig vom `ablage`-Feld — der Schalter ist
- * ein Schalter, kein Versteck (CLAUDE.md), aber solange er aus ist, darf
- * sich an diesem Weg nichts aendern.
- */
-function istAblageKanal(kanalId: string): boolean {
-  const guildId = guilds.guildIdForChannel(kanalId);
-  if (!guildId) return false;
-  const channel = guilds.channelsByGuild[guildId]?.find((c) => c.id === kanalId);
-  return brauchtLokalenVerlauf(ABLAGE_KANAL_ENABLED, channel);
-}
-
-/**
- * Nur DM-Kanäle, private Gruppen und Ablage-Kanäle werden lokal abgelegt —
- * gewöhnliche Community-Kanäle bleiben serverseitig (Spec §9). Die
- * Unterscheidung läuft über die Kanal-ID, nicht über die Aufrufstelle:
- * `chat.ts`/`gapFill.ts`/`MessageList.svelte` bedienen DM- UND Guild-Kanäle
- * gleichermassen, ein Filter nach Aufrufstelle träfe das falsch.
- *
- * **Private Gruppen UND Ablage-Kanäle sind für die lokale Ablage nicht nur
- * die bevorzugte, sondern die EINZIGE Kopie** — beide sind von Geburt an
- * verschlüsselt (Spec §9), der Server hat also nie einen Klartext gesehen,
- * auf den man zurückfallen könnte. Bei einer DM gibt es diesen Rückfall
- * solange, wie der Klartext-Weg mitläuft.
- */
-function istLokalerKanal(kanalId: string): boolean {
-  return (
-    kanalId in directMessages.byId ||
-    privateGruppen.istGruppe(kanalId) ||
-    istAblageKanal(kanalId)
-  );
-}
-
-/**
- * Ob es zu diesem Kanal ueberhaupt einen Verlauf auf dem Server gibt.
- *
- * Nicht die Umkehrung von `istLokalerKanal`: eine DM ist beides — sie liegt
- * lokal UND (solange der Klartext-Weg mitlaeuft) auf dem Server. Eine
- * private Gruppe oder ein Ablage-Kanal hat dort nichts, weil der Server
- * ihren Klartext nie gesehen hat. Wer das nicht prueft, schickt beim
- * Hochscrollen in einer Gruppe/einem Ablage-Kanal eine Anfrage, die der
- * Server abweist — und deutet die Abweisung dann als Ladefehler statt als
- * „mehr gibt es nicht".
- */
-export function hatServerVerlauf(kanalId: string): boolean {
-  return !privateGruppen.istGruppe(kanalId) && !istAblageKanal(kanalId);
-}
+export { hatServerVerlauf } from './kanalArt';
+export { verlaufNachrichtGeloescht, verlaufGebundenGeloescht } from './loeschen';
 
 /** Baut die zu schreibenden Saetze — geteilte Rechnung von
  *  `verlaufSpeichern`/`verlaufSpeichernPflicht`. Kein expliziter Rueckgabetyp:
@@ -217,11 +158,17 @@ export function verlaufErgaenzen(kanalId: string, nachrichten: unknown[]): Promi
  * KEIN Lesepfad je wieder findet (`kontoFilter.ts::gehoertZuKonto` lehnt ein
  * fehlendes `kontoId` fail-closed ab) — derselbe stille Verlust, den FIX 1
  * fuer die anderen beiden Faelle schon verhindert.
+ *
+ * Ergebnis: die IDs der Nachrichten, die als Grabstein abgelegt wurden,
+ * weil ihre Löschung schon im Grabstein-Register stand
+ * (`grabsteinRegister.ts` — etwa ein Lösch-Frame, der vor der Nachricht
+ * ankam). Sie gelten als sicher verwahrt (die Quittung darf folgen), werden
+ * aber nicht angezeigt und nicht in die Sicherung gespiegelt.
  */
 export async function verlaufSpeichernPflicht(
   kanalId: string,
   nachrichten: unknown[]
-): Promise<number> {
+): Promise<string[]> {
   const kontoId = aktuellesKonto();
   if (kontoId === null) {
     throw new VerlaufSpeichernFehlgeschlagen('kein angemeldetes Konto');
@@ -240,9 +187,10 @@ export async function verlaufSpeichernPflicht(
   // Bewusst nicht abgewartet und nicht ausgewertet — ein „Nein" aendert am
   // Ablauf nichts, und `dauerhaftenSpeicherAnfordern` wirft nie.
   void dauerhaftenSpeicherAnfordern();
-  await verlaufPutSaetze(saetze);
-  sicherungSpiegeln(kanalId, nachrichten as Message[]);
-  return saetze.length;
+  const alsGrabstein = await verlaufPutSaetze(saetze);
+  const sichtbar = (nachrichten as Message[]).filter((n) => !alsGrabstein.includes(n.id));
+  if (sichtbar.length > 0) sicherungSpiegeln(kanalId, sichtbar);
+  return alsGrabstein;
 }
 
 /**
@@ -256,62 +204,6 @@ function sicherungSpiegeln(kanalId: string, nachrichten: Message[]): void {
     .then(({ sicherungSpiegeln }) => sicherungSpiegeln(kanalId, nachrichten))
     .catch(() => {
       /* die Sicherung darf den Verlaufsweg nie stören — s. andock.ts */
-    });
-}
-
-/** Der Lösch-Haken derselben Sicherheit: die Löschung wandert als Grabstein-
- *  Frame in den Archiv-Ordner, damit das Archiv nicht stärker ist als die
- *  App. Gleicher Stil wie `sicherungSpiegeln` oben — feuert und vergisst. */
-function sicherungGrabstein(kanalId: string, nachrichtId: string): void {
-  void import('$lib/sicherung/andock')
-    .then(({ sicherungGrabstein }) => sicherungGrabstein(kanalId, nachrichtId))
-    .catch(() => {
-      /* die Sicherung darf den Verlaufsweg nie stören — s. andock.ts */
-    });
-}
-
-/**
- * Setzt den Grabstein für eine gelöschte Nachricht. `message_delete` trägt
- * am WS keine volle Nachricht (nur `channel_id`+`id`) — deshalb kein Umweg
- * über `verlaufSpeichern`/`zuSatz`, sondern direkt über den Schlüssel.
- * Wirft nie: siehe Kommentar oben.
- *
- * `autorId` setzt nur der Lösch-Frame (`krypto/empfangen.ts`): dann zählt
- * die Löschung nur, wenn der lokale Satz von genau diesem Autor stammt, und
- * erst NACH dem gelungenen Grabstein wandern Anhang-Bytes und
- * Sicherungs-Grabstein mit — ein Stein in der Sicherung lässt sich nicht
- * zurücknehmen, er darf nicht auf eine bloße Behauptung hin entstehen.
- * Ohne `autorId` (eigene Löschung, Server-Ereignis) bleibt es beim
- * bisherigen Ablauf.
- */
-export function verlaufNachrichtGeloescht(
-  kanalId: string,
-  nachrichtId: string,
-  autorId?: string
-): void {
-  if (!istLokalerKanal(kanalId)) return;
-  const kontoId = aktuellesKonto();
-  // Die lokalen Anhang-Bytes der Nachricht wandern mit — gelöscht heißt
-  // gelöscht, auch im Geräte-Cache. Danach in die Sicherung — sie braucht
-  // weder Konto noch lokalen Satz, nur die Id. Nur gespiegelte Kanäle
-  // (E2EE-Weg) kommen dort überhaupt durch.
-  const folgen = (): void => {
-    if (kontoId !== null) {
-      void verlaufSatzAnhangIds(kanalId, nachrichtId, kontoId)
-        .then((ids) => Promise.all(ids.map((id) => anhangBytesLoeschen(id))))
-        .catch(() => {});
-    }
-    sicherungGrabstein(kanalId, nachrichtId);
-  };
-  if (autorId === undefined) folgen();
-  if (kontoId === null) return;
-  void verlaufMarkiereGeloescht(sortierSchluessel(kanalId, nachrichtId), kontoId, autorId)
-    .then((markiert) => {
-      if (markiert && autorId !== undefined) folgen();
-    })
-    .catch((err) => {
-      verlaufZustand.melde(err);
-      /* wirft nie nach aussen — s. Kommentar oben */
     });
 }
 
