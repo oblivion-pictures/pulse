@@ -32,3 +32,15 @@ export function unitStrToBytes(s: unknown, unit: number): number | null {
   const n = numOrNull(s);
   return n == null ? null : Math.round(n * unit);
 }
+
+/** Instanz-Standards der zwei Datei-Obergrenzen — Spiegel von
+ *  ``DEFAULT_ATTACHMENT_MAX_SIZE_BYTES`` / ``DEFAULT_ATTACHMENT_MAX_COUNT``
+ *  (guild_limits.py). Synchron halten. */
+export const DEFAULT_ATTACH_MAX_SIZE_BYTES = 26214400;
+export const DEFAULT_ATTACH_MAX_COUNT = 4;
+
+/** Die Obergrenze, die tatsächlich gilt: die des Betreibers, sonst der
+ *  Instanz-Standard. Der Server liefert für „nicht gesetzt" `null` — als Zahl
+ *  gelesen wäre das 0 („Aktuell: 0") und sagte das Gegenteil. */
+export const ceilingOrDefault = (v: number | null | undefined, standard: number): number =>
+  v ?? standard;

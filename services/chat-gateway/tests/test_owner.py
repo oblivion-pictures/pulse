@@ -279,6 +279,86 @@ async def test_set_and_clear_community_limits(client, owner_token, session_facto
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("sendet_null", [True, False], ids=["explizit-null", "feld-fehlt"])
+async def test_empty_attachment_ceilings_leave_them_unchanged(
+    client, owner_token, session_factory, sendet_null
+):
+    """Dateigroesse und Dateizahl sind Obergrenzen mit Instanz-Standard (25 MiB
+    / 4): ein leeres Feld im Betreiber-Formular heisst „nicht aendern", nicht
+    „Obergrenze loeschen". Vor dem Fix schrieb ein leeres Feld NULL in die
+    Obergrenze — das ist nicht „unbegrenzt", sondern der Rueckfall auf den
+    Standard, und ``clamp_to_ceilings`` holte jeden hoeheren Wert der Community
+    still darauf herunter (hier: 40 MiB -> 25 MiB)."""
+    from dcc_chat_gateway.models import Guild
+
+    token, owner_uid = owner_token
+    gid = await _seed_guild(session_factory, owner_id=owner_uid, name="Boosted")
+    ceiling_size = 50 * 1024 * 1024
+    r = await client.patch(
+        f"/owner/communities/{gid}/limits",
+        json={
+            "attachment_max_size_bytes": ceiling_size,
+            "attachment_max_count_per_message": 10,
+        },
+        headers=_auth(token),
+    )
+    assert r.status_code == 200, r.text
+    # Die Community hat sich selbst auf 40 MiB / 8 gestellt (unter der Grenze).
+    async with session_factory() as s:
+        g = await s.get(Guild, gid)
+        g.attachment_max_size_bytes = 40 * 1024 * 1024
+        g.attachment_max_count_per_message = 8
+        await s.commit()
+
+    # Der Betreiber aendert etwas ANDERES; die zwei Felder bleiben leer.
+    rumpf = {"voice_bitrate_max_kbps": 128}
+    if sendet_null:
+        rumpf |= {
+            "attachment_max_size_bytes": None,
+            "attachment_max_count_per_message": None,
+        }
+    r = await client.patch(
+        f"/owner/communities/{gid}/limits", json=rumpf, headers=_auth(token)
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["voice_bitrate_max_kbps"] == 128
+    assert body["attachment_max_size_bytes"] == ceiling_size
+    assert body["attachment_max_count_per_message"] == 10
+    async with session_factory() as s:
+        g = await s.get(Guild, gid)
+        assert g.attachment_max_size_ceiling_bytes == ceiling_size
+        assert g.attachment_max_count_ceiling == 10
+        # Nichts wurde geklemmt: der eigene Wert der Community steht noch.
+        assert g.attachment_max_size_bytes == 40 * 1024 * 1024
+        assert g.attachment_max_count_per_message == 8
+
+
+@pytest.mark.asyncio
+async def test_empty_storage_quota_still_means_unlimited(
+    client, owner_token, session_factory
+):
+    """Das Gegenstueck, damit der Fix oben nicht zu weit greift: beim
+    Gesamt-Speicher IST leer die Wahl „unbegrenzt" (Beschriftung des Feldes:
+    „leer = unbegrenzt") und bleibt es."""
+    token, owner_uid = owner_token
+    gid = await _seed_guild(session_factory, owner_id=owner_uid, name="Quota")
+    r = await client.patch(
+        f"/owner/communities/{gid}/limits",
+        json={"attachment_storage_quota_bytes": 5 * 1024**3},
+        headers=_auth(token),
+    )
+    assert r.json()["attachment_storage_quota_bytes"] == 5 * 1024**3
+    r = await client.patch(
+        f"/owner/communities/{gid}/limits",
+        json={"attachment_storage_quota_bytes": None},
+        headers=_auth(token),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["attachment_storage_quota_bytes"] is None
+
+
+@pytest.mark.asyncio
 async def test_set_limits_rejects_bad_resolution(client, owner_token, session_factory):
     token, owner_uid = owner_token
     gid = await _seed_guild(session_factory, owner_id=owner_uid)

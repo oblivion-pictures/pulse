@@ -1100,10 +1100,10 @@ class CommunityOut(BaseModel):
     stream_bitrate_max_kbps: int | None = None
     stream_fps_max: int | None = None
     stream_resolution_max: str | None = None
-    # Storage caps. size/count always have a value (non-nullable columns); the
-    # total quota is nullable (NULL = unlimited).
-    # Obergrenzen (NULL = Instanz-Standard). Waren bis 0057 die Werte selbst,
-    # weshalb sie damals nicht-nullable mit Zahl-Default standen.
+    # Storage caps. size/count sind Obergrenzen: NULL = nicht gesetzt, dann gilt
+    # der Instanz-Standard (25 MiB / 4) — bis 0057 waren es die Werte selbst und
+    # standen deshalb nicht-nullable mit Zahl-Default da. Die Gesamt-Quota ist
+    # nullable mit anderer Bedeutung (NULL = unbegrenzt).
     attachment_max_size_bytes: int | None = None
     attachment_max_count_per_message: int | None = None
     attachment_storage_quota_bytes: int | None = None
@@ -1139,7 +1139,9 @@ class CommunityLimitsIn(BaseModel):
     ] = None
     stream_fps_max: Annotated[int | None, Field(default=None, ge=1, le=1000)] = None
     stream_resolution_max: str | None = None
-    # Storage. size/count: None = leave unchanged (non-nullable columns).
+    # Storage. size/count (Obergrenzen mit Instanz-Standard): None = leave
+    # unchanged — NULL in der Spalte ist nicht „unbegrenzt", sondern der
+    # Rückfall auf den Standard, und klemmt die Community-Werte herunter.
     # quota: None = unlimited (explicitly cleared). Bounds mirror GuildPatchIn.
     attachment_max_size_bytes: Annotated[
         int | None, Field(default=None, ge=1024, le=1024 * 1024 * 1024)

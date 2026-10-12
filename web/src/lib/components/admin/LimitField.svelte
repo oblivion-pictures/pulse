@@ -6,6 +6,10 @@
   Ausfüllen hat: *welcher* Standard? Deshalb nimmt sie den tatsächlich
   wirkenden Wert entgegen und zeigt ihn an („Standard: 128"). Wo es keinen
   Zahlenwert gibt, weil leer schlicht „ohne Grenze" heißt, steht „Unbegrenzt".
+
+  `keep`: leer bedeutet hier „nicht ändern" statt „Standard" (die zwei
+  Datei-Obergrenzen). Der Platzhalter sagt dann „Aktuell: …" — „Standard: 50"
+  wäre falsch, sobald 50 eine Anhebung des Betreibers ist.
 -->
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
@@ -18,7 +22,8 @@
     testid,
     min,
     max,
-    step
+    step,
+    keep = false
   }: {
     label: string;
     value?: string | number;
@@ -29,6 +34,8 @@
     min?: string;
     max?: string;
     step?: string;
+    /** Leer = unverändert lassen; der Platzhalter nennt den aktuellen Wert. */
+    keep?: boolean;
   } = $props();
 
   // Zahlen werden mit der Locale des Browsers gesetzt (1000 → „1.000"), damit
@@ -36,7 +43,9 @@
   const placeholder = $derived(
     fallback === 'unlimited'
       ? m.admin_communities_limits_placeholder_unlimited()
-      : m.admin_communities_limits_placeholder_default({
+      : (keep
+          ? m.admin_communities_limits_placeholder_current
+          : m.admin_communities_limits_placeholder_default)({
           value: new Intl.NumberFormat().format(fallback)
         })
   );
