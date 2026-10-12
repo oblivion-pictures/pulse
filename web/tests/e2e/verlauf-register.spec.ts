@@ -71,6 +71,8 @@ async function ablegen(
     antwortAuf?: string;
     /** Zeilen-ID einer Archiv-Zeile (`archiv/zeile.ts::leseZeile`). */
     zeile?: string;
+    /** Archiv-Bestandszeile ohne geprüften Autor (`verlauf/herkunft.ts`). */
+    ungeprueft?: boolean;
   }[]
 ): Promise<string[] | number> {
   return page.evaluate(
@@ -92,7 +94,8 @@ async function ablegen(
             ...(s.geloescht ? { deleted_at: '2026-10-12T00:00:01Z' } : {}),
             ...(s.anhaenge ? { attachments: s.anhaenge } : {}),
             ...(s.antwortAuf ? { reply_to_id: s.antwortAuf } : {}),
-            ...(s.zeile ? { archiv_zeile: s.zeile } : {})
+            ...(s.zeile ? { archiv_zeile: s.zeile } : {}),
+            ...(s.ungeprueft ? { archiv_ungeprueft: true } : {})
           },
           kontoId
         )
@@ -575,6 +578,31 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
       `${R_ALICE} alice ${K} echt`,
       `${R_BOB_2} bob ${R_ALICE} vorab`
     ]);
+  });
+
+  test('Fund 4 (zweite Gegenprüfung): eine ungeprüfte Archiv-Kopie weicht der eigenen Sicherung, nie umgekehrt', async ({ page }) => {
+    // Eine Bestandszeile ohne Einlieferer nennt Alice als Autorin, Inhalt und
+    // Anhang hat ein anderer geschrieben. Bis 2026-10-12 gewann der liegende
+    // Satz, und die Sicherung ergänzte ihn höchstens.
+    const ungepruefteKopie = {
+      id: K,
+      autor: ALICE,
+      kryptoId: K,
+      inhalt: 'gefälscht',
+      ungeprueft: true,
+      anhaenge: [{ id: '700000000000007003' }]
+    };
+    await ablegen(page, 'archiv', [ungepruefteKopie]);
+    let [satz] = await kanal(page);
+    expect(satz).toMatchObject({ inhalt: 'gefälscht', ungeprueft: true });
+    await ablegen(page, 'sicherung', [{ id: K, autor: ALICE, inhalt: 'echt' }]);
+    [satz] = await kanal(page);
+    expect(satz).toMatchObject({ inhalt: 'echt', kryptoId: K, anhaenge: [] });
+    expect(satz).not.toHaveProperty('ungeprueft');
+    // Eine weitere ungeprüfte Kopie ändert am geprüften Satz nichts mehr.
+    await ablegen(page, 'archiv', [ungepruefteKopie]);
+    [satz] = await kanal(page);
+    expect(satz).toMatchObject({ inhalt: 'echt', anhaenge: [] });
   });
 
   test('Register-Einträge erscheinen in keinem Leseweg', async ({ page }) => {

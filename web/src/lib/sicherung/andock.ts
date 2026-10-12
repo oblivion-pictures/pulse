@@ -43,6 +43,7 @@ import { verlaufAlleLesen } from '../verlauf/db.ts';
 import { sicherungAnhaenge } from './anhaengeSpiegeln.ts';
 import { aktuellesKonto } from '../verlauf/konto.ts';
 import { istGueltigeKennung } from '../verlauf/identitaet.ts';
+import { fuerErstsicherung } from '../verlauf/herkunft.ts';
 import {
 	SicherungsSpiegel,
 	aufbauAdapter,
@@ -391,8 +392,9 @@ export async function sicherungGespraechEntfernen(
  *
  * Anhang-Bytes wandern über `sicherungAnhaenge` mit, soweit das Gerät sie
  * noch hält und das Konto sie selbst gesendet hat; gelöschte Zeilen bleiben
- * außen vor. Anders als der laufende Spiegel nimmt die Erstsicherung JEDEN
- * Satz des Kontos mit, auch Klartext-Sätze von DMs.
+ * außen vor, ebenso Sätze aus Archiv-Zeilen mit ungeprüftem Autor. Anders als
+ * der laufende Spiegel nimmt die Erstsicherung sonst JEDEN Satz des Kontos
+ * mit, auch Klartext-Sätze von DMs.
  */
 const MERKER_ERSTSICHERUNG = 'pulse.sicherung-erstsicherung-ok';
 
@@ -416,10 +418,10 @@ export async function sicherungErstsicherung(): Promise<number> {
 	}
 	const kontoId = aktuellesKonto();
 	if (kontoId === null) throw new Error('kein angemeldetes Konto');
-	const saetze = await verlaufAlleLesen(kontoId);
+	// Ohne Grabsteine und ohne Ungeprüftes (`verlauf/herkunft.ts`, Fund 4).
+	const saetze = fuerErstsicherung(await verlaufAlleLesen(kontoId));
 	const nachKanal = new Map<string, AblageNachricht[]>();
 	for (const satz of saetze) {
-		if (satz.geloescht) continue;
 		const liste = nachKanal.get(satz.kanalId) ?? [];
 		// Dieselbe Anhang-Umwandlung wie der Wire-Weg (`ausWire`), samt
 		// `kryptoId` (`ablage/nutzlast.ts::ausSatz`). Anhang-Metadaten kommen

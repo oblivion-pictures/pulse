@@ -117,7 +117,7 @@ export type Grabstein = { art: 'grabstein'; autorId: string; kennung: string };
  *  ausweicht, wenn unter ihrer eigenen ID `i` schon ein Satz eines anderen
  *  Autors liegt (`verlauf/platzWahl.ts`; `verlauf/satz.ts::zuSatz` übernimmt
  *  sie in den Satz). */
-export type ArchivNachricht = Message & { archiv_zeile?: string };
+export type ArchivNachricht = Message & { archiv_zeile?: string; archiv_ungeprueft?: true };
 
 /** Was eine Archiv-Zeile ist, nachdem `leseZeile` sie angenommen hat. */
 export type ArchivEintrag = { art: 'nachricht'; nachricht: ArchivNachricht } | Grabstein;
@@ -132,7 +132,10 @@ export type ArchivEintrag = { art: 'nachricht'; nachricht: ArchivNachricht } | G
  * Archiv-Verlauf bis zur Umstellung. Eine Bestandszeile kann trotzdem nichts
  * an einem liegenden Satz ändern als seine Kennung
  * (`verlauf/satz.ts::satzErgaenzen`), und eine Grabstein-Zeile gibt es nur
- * mit Einlieferer. Produktentscheidung, offen gemeldet am 2026-10-12.
+ * mit Einlieferer. Der Satz aus einer Bestandszeile trägt `ungeprueft` und
+ * wird nie eigene Wahrheit: keine Erstsicherung, keine Kopplung, jeder
+ * geprüfte Satz ersetzt ihn (`verlauf/herkunft.ts`, Gegenprüfung 2026-10-12,
+ * Fund 4). Produktentscheidung, offen gemeldet am 2026-10-12.
  */
 const BESTANDSZEILEN_ANNEHMEN = true;
 
@@ -161,11 +164,12 @@ export function leseZeile(
 	const angenommeneBestandszeile = einlieferer === null && BESTANDSZEILEN_ANNEHMEN;
 	if (!vomAutor && !angenommeneBestandszeile) return null;
 	if (!istGueltigeKennung(inhalt.i) || !istGueltigeKennung(inhalt.a)) return null;
-	const nachricht = zuNachricht(kanalId, ohneUngueltigeBezuege(inhalt));
-	return {
-		art: 'nachricht',
-		nachricht: istGueltigeKennung(zeilenId) ? { ...nachricht, archiv_zeile: zeilenId } : nachricht
-	};
+	const nachricht: ArchivNachricht = zuNachricht(kanalId, ohneUngueltigeBezuege(inhalt));
+	if (istGueltigeKennung(zeilenId)) nachricht.archiv_zeile = zeilenId;
+	// Den Autor einer Bestandszeile hat niemand geprüft — der Satz daraus
+	// wird nie eigene Wahrheit (`verlauf/herkunft.ts`, Fund 4).
+	if (angenommeneBestandszeile) nachricht.archiv_ungeprueft = true;
+	return { art: 'nachricht', nachricht };
 }
 
 /** Der Antwortbezug und die Anhänge einer Zeile, soweit sie Kennungen sind —

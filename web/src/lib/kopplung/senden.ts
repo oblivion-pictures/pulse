@@ -49,6 +49,7 @@ import { serversStore } from '../api/servers.svelte';
 import { kopplungApi } from '../api/kopplung';
 import { geraeteKennung } from '../krypto/geraeteKennung';
 import { verlaufAlleLesen } from '../verlauf/db';
+import { fuerUmzug } from '../verlauf/herkunft';
 import { aktuellesKonto } from '../verlauf/konto';
 import type { Satz } from '../verlauf/schema';
 import { codeErzeugen } from './code';
@@ -131,7 +132,11 @@ export async function verlaufSchieben(
   // die eines fremden Kontos, das je auf diesem Geraet angemeldet war.
   const kontoId = aktuellesKonto();
   if (kontoId === null) throw new Error('kein angemeldetes Konto');
-  const alle = await verlaufAlleLesen(kontoId);
+  // Ohne Sätze aus Archiv-Zeilen mit ungeprüftem Autor (`verlauf/herkunft.ts`,
+  // Gegenprüfung 2026-10-12, Fund 4): was die Kopplung bringt, legt das neue
+  // Gerät als Bestand des eigenen Geräts ab. Die Zeile selbst liegt weiter
+  // im Archiv, und das neue Gerät liest sie dort, mit derselben Prüfung.
+  const alle = fuerUmzug(await verlaufAlleLesen(kontoId));
   const stuecke = stueckeSchneiden(
     alle,
     (satz) => ENC.encode(JSON.stringify(satz)).length,

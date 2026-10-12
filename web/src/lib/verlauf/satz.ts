@@ -30,6 +30,8 @@ type Satz = {
   nichtZugestellt?: boolean;
   /** S. `schema.ts::Satz.archivZeile`. */
   archivZeile?: string;
+  /** S. `schema.ts::Satz.ungeprueft`. */
+  ungeprueft?: true;
 };
 
 /**
@@ -94,7 +96,8 @@ export function zuSatz(kanalId: string, nachricht: unknown, kontoId: string): Sa
     kryptoId,
     kontoId,
     ...(n.nicht_zugestellt === true ? { nichtZugestellt: true } : {}),
-    ...(archivZeile !== null ? { archivZeile } : {})
+    ...(archivZeile !== null ? { archivZeile } : {}),
+    ...(n.archiv_ungeprueft === true ? { ungeprueft: true as const } : {})
   };
 }
 
@@ -243,6 +246,8 @@ export type Nachschub = 'sicherung' | 'archiv';
  * wirklich mehr weiß (die Kennung, einen Anhang).
  *
  *   - Ein Grabstein bleibt einer — der Nachschub kann ihn nicht aufheben.
+ *   - Ein ungeprüfter Satz (`herkunft.ts`) wird durch jeden geprüften
+ *     desselben Autors ersetzt, auch durch eine geprüfte Archiv-Zeile.
  *   - Ein anderer Autor unter demselben Schlüssel ist nicht dieselbe
  *     Nachricht; der liegende Satz bleibt unangetastet. Wohin der Nachschub
  *     dann geht, entscheidet `platzWahl.ts`.
@@ -268,7 +273,8 @@ export type Nachschub = 'sicherung' | 'archiv';
  * dieselbe ID wie die des liegenden Satzes.
  *
  * Ergänzen löscht nie: ein neuer Satz mit `geloescht` hebt den liegenden
- * nicht auf (die Lösch-Wege laufen über `verlaufMarkiereGeloescht`).
+ * nicht auf (die Lösch-Wege laufen über `verlaufMarkiereGeloescht`), auch
+ * keinen ungeprüften.
  */
 export function satzErgaenzen<S extends Satz>(
   vorhanden: S,
@@ -276,6 +282,11 @@ export function satzErgaenzen<S extends Satz>(
   herkunft: Nachschub
 ): S | null {
   if (vorhanden.geloescht || vorhanden.autorId !== neu.autorId) return null;
+  // Ein ungeprüfter Satz (Archiv-Bestandszeile) weicht jedem geprüften
+  // desselben Autors ganz, nie umgekehrt (`herkunft.ts`, Fund 4).
+  if (vorhanden.ungeprueft && !neu.ungeprueft && !neu.geloescht) {
+    return { ...neu, kryptoId: neu.kryptoId ?? vorhanden.kryptoId } as S;
+  }
   const kryptoId = vorhanden.kryptoId ?? neu.kryptoId;
   if (herkunft === 'archiv') {
     return kryptoId === vorhanden.kryptoId ? null : { ...vorhanden, kryptoId };

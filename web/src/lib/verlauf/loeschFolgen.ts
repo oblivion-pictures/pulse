@@ -22,25 +22,29 @@
  * Importfrei bis auf den `.ts`-Pfad (Nodes Testläufer).
  */
 import { satzAnhangIds } from './satz.ts';
+import { istUngeprueft } from './herkunft.ts';
 
 /** Der Ausschnitt eines gelöschten Satzes, den die Regeln lesen. */
-type GeloeschterSatz = { autorId: string; anhaenge?: unknown[] };
+type GeloeschterSatz = { autorId: string; anhaenge?: unknown[]; ungeprueft?: true };
 
 /** Die Anhang-IDs, deren Bytes die Löschung dieser Sätze mitnehmen darf,
  *  ohne Doppel. Nur Kandidaten: gelöscht wird erst, wenn kein sichtbarer Satz
- *  sie mehr trägt. */
+ *  sie mehr trägt. Ein ungeprüfter Satz (`herkunft.ts`) gibt nichts frei:
+ *  seine Anhang-Liste hat ein Fremder geschrieben, auch wenn der Satz einen
+ *  anderen Autor nennt (Fund 4). */
 export function anhangKandidaten(markiert: readonly GeloeschterSatz[]): string[] {
-  return [...new Set(markiert.flatMap((satz) => satzAnhangIds(satz)))];
+  const geprueft = markiert.filter((satz) => !istUngeprueft(satz));
+  return [...new Set(geprueft.flatMap((satz) => satzAnhangIds(satz)))];
 }
 
 /** Die Anhang-Dateien in der eigenen Sicherung, die die Löschung DIESES
- *  Satzes mitnimmt: nur bei einem eigenen Satz, und nur, was kein sichtbarer
- *  Satz mehr trägt (`verwaist`). */
+ *  Satzes mitnimmt: nur bei einem eigenen, geprüften Satz, und nur, was kein
+ *  sichtbarer Satz mehr trägt (`verwaist`). */
 export function laufwerkDateien(
   satz: GeloeschterSatz,
   kontoId: string,
   verwaist: ReadonlySet<string>
 ): string[] {
-  if (satz.autorId !== kontoId) return [];
+  if (satz.autorId !== kontoId || istUngeprueft(satz)) return [];
   return satzAnhangIds(satz).filter((id) => verwaist.has(id));
 }

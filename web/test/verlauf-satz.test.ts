@@ -211,3 +211,29 @@ test('nachSchluesselVerdichten: der erste gewinnt, ein späterer ergänzt ihn h�
   const beide = nachSchluesselVerdichten([echt, fremd], 'sicherung');
   assert.deepEqual(beide.map((s) => s.inhalt), ['echt', 'fremd']);
 });
+
+// Gegenprüfung 2026-10-12, Fund 4: eine Archiv-Bestandszeile ohne
+// Einlieferer nennt ihren Autor selbst. Bob gab `{i: K, a: Alice, t: "gefälscht"}`
+// als Alices Nachricht aus; über die Erstsicherung wurde sie zu Alices
+// eigener Wahrheit. Ihr Satz trägt `ungeprueft` (`verlauf/herkunft.ts`).
+test('satzErgaenzen: ein ungeprüfter Satz weicht jedem geprüften desselben Autors, nie umgekehrt', () => {
+  const ungeprueft = beispielSatz({
+    content: 'gefälscht',
+    krypto_id: K,
+    archiv_ungeprueft: true,
+    attachments: [{ id: '505' }]
+  });
+  assert.equal(ungeprueft.ungeprueft, true);
+  const echt = beispielSatz({ content: 'echt', krypto_id: K });
+  for (const herkunft of ['sicherung', 'archiv'] as const) {
+    const ersetzt = satzErgaenzen(ungeprueft, echt, herkunft);
+    assert.ok(ersetzt, herkunft);
+    assert.equal(ersetzt.inhalt, 'echt');
+    assert.deepEqual(ersetzt.anhaenge, []);
+    assert.equal(ersetzt.ungeprueft, undefined);
+  }
+  // Umgekehrt ergänzt ein ungeprüfter höchstens die Kennung.
+  assert.equal(satzErgaenzen(echt, ungeprueft, 'archiv'), null);
+  // Ein Grabstein bleibt einer, auch gegen einen geprüften Nachschub.
+  assert.equal(satzErgaenzen({ ...ungeprueft, geloescht: true }, echt, 'sicherung'), null);
+});

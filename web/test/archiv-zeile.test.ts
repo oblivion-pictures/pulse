@@ -205,4 +205,15 @@ describe('archiv/zeile', () => {
 		const ohne = leseZeile('999', klar(nachricht()), '42', 'x');
 		assert.equal(ohne?.art === 'nachricht' && 'archiv_zeile' in ohne.nachricht, false);
 	});
+
+	test('Fund 4: eine Bestandszeile ohne Einlieferer trägt die Marke „ungeprüft", eine geprüfte nicht', () => {
+		const bestand = leseZeile('999', klar(nachricht()), null);
+		assert.equal(bestand?.art === 'nachricht' && bestand.nachricht.archiv_ungeprueft, true);
+		assert.equal(
+			bestand?.art === 'nachricht' ? zuSatz('999', bestand.nachricht, 'konto')?.ungeprueft : null,
+			true
+		);
+		const geprueft = leseZeile('999', klar(nachricht()), '42');
+		assert.equal(geprueft?.art === 'nachricht' && 'archiv_ungeprueft' in geprueft.nachricht, false);
+	});
 });

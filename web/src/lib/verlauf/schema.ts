@@ -132,6 +132,14 @@ export type Satz = {
    * eindeutig. Kein `DB_VERSION`-Bump (neues FELD, s. `antwortAufId`).
    */
   archivZeile?: string;
+  /**
+   * Nur an einem Satz aus einer Archiv-Bestandszeile, deren Einlieferer der
+   * Server nicht kennt: der Autor ist ungeprüft (Gegenprüfung 2026-10-12,
+   * Fund 4). Ein solcher Satz wandert nie in die eigene Sicherung oder eine
+   * Kopplung, und jeder geprüfte Satz desselben Autors ersetzt ihn
+   * (`herkunft.ts`). Kein `DB_VERSION`-Bump (neues FELD).
+   */
+  ungeprueft?: true;
 };
 
 /**
