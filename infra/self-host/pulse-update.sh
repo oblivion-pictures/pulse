@@ -51,9 +51,10 @@ service="$(docker compose config --services | head -n1)"
 image="$(docker compose config --images | head -n1)"
 [ -n "$image" ] || { echo "pulse-update: kein Image in compose config" >&2; exit 1; }
 
-# Registry-Login nur für den Spiegel registry.howispulse.com. Den ziehen allein
+# Registry-Login nur für den Spiegel registry.howispulse.com. Den nutzen nur
 # Installationen aus der Freigabe-Zeit (vor Oktober 2026), deren .env die
-# Zugangsdaten trägt. Das öffentliche Bild auf GHCR braucht keine Anmeldung —
+# Zugangsdaten trägt; der Spiegel selbst nähme die jeder aktiven Instanz an.
+# Das öffentliche Bild auf GHCR braucht keine Anmeldung —
 # und ein Login-Fehler hielte das Update dort grundlos an. Ein LEERES Secret
 # (`PULSE_CLOUD_CLIENT_SECRET=` aus einer kopierten .env.example) zählt als
 # nicht vorhanden: ein Login mit leeren Daten scheiterte bei jedem Takt.

@@ -559,11 +559,14 @@ ufw allow 8189/udp</pre>
   code, and you confirm in the browser. Only confirm a code you just saw in
   your own console.</p>
 
-  <p>Without a terminal (cloud-init, a CI job) pass the address up front and
-  connect afterwards:</p>
+  <p>Without a terminal (cloud-init, a CI job) pass the address up front. The
+  installer then skips the connection step, and you connect afterwards from an
+  SSH session &mdash; the second command needs a terminal (<code>-it</code>) and
+  fails without one:</p>
 
   <div class="cmd">
     <pre>curl -fsSL https://howispulse.com/install | PULSE_HOSTNAME=chat.example.com bash
+# later, from an SSH session:
 docker exec -it pulse pulse-connect</pre>
   </div>
 
@@ -958,8 +961,11 @@ docker compose -f docker-compose.behind-proxy.yml pull &amp;&amp; \
   to object; once the 72 hours are over, run the same command again. To skip
   the wait, the current owner deletes the server under
   <em>My servers</em> first. Servers set up before October 2026 carry the owner
-  as <code>PULSE_INSTANCE_OWNER_ID</code> in their <code>.env</code> instead;
-  change it there and restart. Needs <code>PULSE_LOG_LEVEL=info</code>, which is
+  as <code>PULSE_INSTANCE_OWNER_ID</code> in their <code>.env</code> instead
+  (<code>pulse.env</code> if the installer set them up); change it there and
+  recreate the container &mdash; <code>docker compose up -d</code>, or run the
+  installer again. A plain restart keeps the old value. Needs
+  <code>PULSE_LOG_LEVEL=info</code>, which is
   the default &mdash; if neither line appears, the container is running quieter
   than that.</p>
 
