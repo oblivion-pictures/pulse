@@ -75,20 +75,20 @@ export async function renewSession(): Promise<boolean> {
 }
 
 /**
- * Ein Cookie-Request OHNE `cookieFetch`-Parsing — für Aufrufer, die die rohe
+ * Ein GET mit Cookie OHNE `cookieFetch`-Parsing — für Aufrufer, die die rohe
  * `Response` brauchen (Telefonbuch-Nachschlag, Anwesenheits-Takt). Anders als
  * ein nacktes `fetch(…, { credentials: 'include' })` geht die Anfrage erst
  * raus, wenn eine Cloud-Sitzung besteht (`sitzungsFrische.ts`); sonst stünde
  * ein vermeidbares 401 rot in der Konsole. `null` = keine Sitzung, die
  * Anfrage wurde nicht gestellt.
  */
-export function mitCloudCookie(url: string, init: RequestInit = {}): Promise<Response | null> {
-  return mitCloudSitzung<Response>({
+export function mitCloudCookie(url: string): Promise<Response | null> {
+  return mitCloudSitzung({
     jetzt: Date.now,
     belegtAm: () => _cookieGepraegtAm,
     erneuerungLaeuft: () => _renewInflight !== null,
     erneuere: renewSession,
-    anfrage: () => fetch(url, { ...init, credentials: 'include' })
+    anfrage: () => fetch(url, { credentials: 'include' })
   });
 }
 

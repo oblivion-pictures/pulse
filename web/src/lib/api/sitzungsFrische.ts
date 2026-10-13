@@ -20,8 +20,8 @@
  * Zweiter Auslöser, derselbe Mechanismus: der App-Start. `auth.hydrate()`
  * erneuert das Cookie im Hintergrund (nicht abgewartet), der Takt der
  * Anwesenheit feuert zugleich — nach einer Pause über 30 Minuten ohne Cookie.
- * Beide Lagen sind im Browser nachgestellt (`tests/e2e/telefonbuch-sitzung.
- * spec.ts`: ohne die Absicherung 401, mit ihr 404 der Cloud). Aus dem Code
+ * Beide Lagen sind im Browser nachgestellt (ohne die Absicherung 401, mit ihr
+ * 404 der Cloud; `tests/e2e/telefonbuch-sitzung.spec.ts`). Aus dem Code
  * gefolgert, nicht gemessen: selbst MIT Cookie kann die Erneuerung das alte
  * gerade widerrufen (`/session/renew` entwertet die abgelöste Sitzung),
  * während eine Anfrage damit noch unterwegs ist.

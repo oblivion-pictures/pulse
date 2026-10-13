@@ -24,14 +24,20 @@ export function istAbspielAbbruch(fehler: unknown): boolean {
   );
 }
 
-/** `el.play()`, ein überholter Versuch (`AbortError`) endet still; jeder andere
- *  Fehler wird weitergereicht. */
-export async function spieleAb(el: Pick<HTMLMediaElement, 'play'>): Promise<void> {
+/** Führt `aktion` aus; ein Abspiel-Abbruch endet still, jeder andere Fehler
+ *  wird weitergereicht. */
+async function ohneAbbruch(aktion: () => Promise<void>): Promise<void> {
   try {
-    await el.play();
+    await aktion();
   } catch (fehler) {
     if (!istAbspielAbbruch(fehler)) throw fehler;
   }
+}
+
+/** `el.play()`, ein überholter Versuch (`AbortError`) endet still; jeder andere
+ *  Fehler wird weitergereicht. */
+export function spieleAb(el: Pick<HTMLMediaElement, 'play'>): Promise<void> {
+  return ohneAbbruch(() => el.play());
 }
 
 /**
@@ -53,11 +59,5 @@ export async function spieleAb(el: Pick<HTMLMediaElement, 'play'>): Promise<void
  */
 export function startAudioAbbruchfest(raum: { startAudio: () => Promise<void> }): void {
   const original = raum.startAudio;
-  raum.startAudio = async () => {
-    try {
-      await original();
-    } catch (fehler) {
-      if (!istAbspielAbbruch(fehler)) throw fehler;
-    }
-  };
+  raum.startAudio = () => ohneAbbruch(original);
 }
