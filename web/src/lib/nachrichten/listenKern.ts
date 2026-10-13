@@ -39,7 +39,11 @@ function merken(ids: Set<string>, krypto: Set<string>, m: Message): void {
  *  in der Liste sind — nur das macht die Dublettenprüfung ehrlich (eine
  *  weggekappte Nachricht darf nach dem Hochscrollen wieder aufgenommen werden).
  *  Beide Mengen gehen stets zusammen, damit sie nicht auseinanderlaufen. Ändert
- *  die übergebenen Mengen an Ort und Stelle. */
+ *  die übergebenen Mengen an Ort und Stelle.
+ *  Mit dem Abgleich fällt auch eine `krypto_id` aus `krypto`, die `remove` dort
+ *  absichtlich als Grabstein einer gelöschten Nachricht stehen ließ; kommt danach
+ *  eine Kopie derselben Nachricht unter anderer Id, erscheint sie wieder. Das
+ *  betrifft nur Kanäle, die über die Kappungsgrenze (`cap`) wachsen, und wird bewusst hingenommen. */
 function mengenAbgleichen(
   ids: Set<string>,
   krypto: Set<string>,
