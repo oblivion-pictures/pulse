@@ -16,13 +16,14 @@
  * später an einer fehlenden Oberfläche.
  */
 
-const wert = (name: string, vorgabe: string): string => {
+/** Wert der Variablen; leer gilt wie nicht gesetzt (wie bei den Ports). */
+function gesetzt(name: string): string | undefined {
   const raw = process.env[name];
-  return raw === undefined || raw === '' ? vorgabe : raw;
-};
+  return raw === '' ? undefined : raw;
+}
 
-const datenbank = (name: string, vorgabe: string): string => {
-  const db = wert(name, vorgabe);
+function datenbank(name: string, vorgabe: string): string {
+  const db = gesetzt(name) ?? vorgabe;
   // Der Name wird unquotiert in Shell-Befehle und SQL (`CREATE DATABASE`)
   // eingesetzt. Lautes Scheitern statt eines Befehls, der anders endet als
   // gemeint — dieselbe Haltung wie bei den Ports.
@@ -30,16 +31,17 @@ const datenbank = (name: string, vorgabe: string): string => {
     throw new Error(`${name}="${db}" ist kein Datenbankname (erlaubt: Buchstaben, Ziffern, _).`);
   }
   return db;
-};
+}
 
-const redisDb = (name: string, vorgabe: number): number => {
-  const raw = wert(name, String(vorgabe));
+function redisDb(name: string, vorgabe: number): number {
+  const raw = gesetzt(name);
+  if (raw === undefined) return vorgabe;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0) {
     throw new Error(`${name}="${raw}" ist keine Redis-Datenbanknummer.`);
   }
   return n;
-};
+}
 
 export const E2E_DB = datenbank('PULSE_E2E_DB', 'dcc_test');
 export const E2E_REDIS_DB = redisDb('PULSE_E2E_REDIS_DB', 1);

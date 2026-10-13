@@ -132,9 +132,8 @@ test.describe.serial('Overnight T19 — Entdecken und Plugins', () => {
     await register(owner, OWNER);
     await register(joiner, JOINER);
 
-    // Dieselbe Datenbank wie der Lauf — mit isolierter DB (PULSE_E2E_DB,
-    // s. _globalSetup.ts) landet das UPDATE sonst in der falschen, und der
-    // Owner blieb unverwandelt.
+    // Dieselbe Datenbank wie der Lauf — mit isolierter DB (PULSE_E2E_DB, s. _db.ts)
+    // landet das UPDATE sonst in der falschen, und der Owner blieb unverwandelt.
     execSync(
       `${CONTAINER_EXEC} exec -i dcc_night_postgres psql -U dcc -d ${E2E_DB} -c "UPDATE auth.users SET is_admin=true WHERE username='${OWNER.username}'"`,
       { stdio: 'ignore' }

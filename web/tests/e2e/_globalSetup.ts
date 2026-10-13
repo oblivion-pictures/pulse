@@ -339,18 +339,16 @@ export default async function globalSetup() {
   // parallel fährt (mehrere Bughunt-Agenten teilen sich Postgres und Redis),
   // setzt PULSE_E2E_DB/PULSE_E2E_REDIS_DB — sonst löscht das TRUNCATE eines
   // Laufs die Nutzer mitten im Lauf des anderen.
-  const testDb = E2E_DB;
-  const redisDb = E2E_REDIS_DB;
-  ensureTestDb(pgUser, testDb);
+  ensureTestDb(pgUser, E2E_DB);
 
   const baseEnv: NodeJS.ProcessEnv = {
     ...process.env,
     ...dotenv,
     POSTGRES_HOST: 'localhost',
     POSTGRES_PORT: pgPort,
-    POSTGRES_DB: testDb,
-    DATABASE_URL: `postgresql+asyncpg://${pgUser}:${pgPassword}@localhost:${pgPort}/${testDb}`,
-    REDIS_URL: `redis://localhost:6380/${redisDb}`,
+    POSTGRES_DB: E2E_DB,
+    DATABASE_URL: `postgresql+asyncpg://${pgUser}:${pgPassword}@localhost:${pgPort}/${E2E_DB}`,
+    REDIS_URL: `redis://localhost:6380/${E2E_REDIS_DB}`,
     AUTH_JWKS_URL: `http://127.0.0.1:${E2E_AUTH_PORT}/.well-known/jwks.json`,
     // Der chat-gateway fragt Archiv-Public-Keys beim AUTH-Dienst — ohne
     // diese Zeile landete die Anfrage beim DEV-auth (8001), der die
@@ -398,7 +396,7 @@ export default async function globalSetup() {
   await applyMigrations(baseEnv, 'dcc-auth', resolve(ROOT, 'services/auth'));
   await applyMigrations(baseEnv, 'dcc-chat-gateway', resolve(ROOT, 'services/chat-gateway'));
   await truncateDb(baseEnv);
-  clearSharedAuthRedisCache(baseEnv.REDIS_URL ?? `redis://localhost:6380/${redisDb}`);
+  clearSharedAuthRedisCache(baseEnv.REDIS_URL ?? `redis://localhost:6380/${E2E_REDIS_DB}`);
 
   // Kill only previously-spawned test services (from the last run's pid file).
   // This cleans up stale test processes after a crash without touching the

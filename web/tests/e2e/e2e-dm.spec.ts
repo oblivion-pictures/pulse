@@ -243,10 +243,9 @@ function pgQuery(sql: string): string {
   }
   const pgUser = dotenv.POSTGRES_USER ?? 'dcc';
   // Dieselbe Datenbank wie der Lauf: wer parallel mit eigener DB fährt
-  // (`PULSE_E2E_DB`, s. `_globalSetup.ts`), sähe sonst die Tabellen eines
-  // ANDEREN Laufs — „Postfach leer" und „Server hat nie Klartext gesehen"
-  // wären dann Aussagen über die falsche Datenbank (die zweite sogar
-  // trivial wahr).
+  // (`E2E_DB`, s. `_db.ts`), sähe sonst die Tabellen eines ANDEREN Laufs —
+  // „Postfach leer" und „Server hat nie Klartext gesehen" wären dann Aussagen
+  // über die falsche Datenbank (die zweite sogar trivial wahr).
   return execFileSync(
     'docker',
     ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', E2E_DB, '-tAc', sql],
