@@ -19,6 +19,7 @@ import { DirectConnection, DirectFingerprintMismatch } from './connection';
 import { fehlenderEintragIstDauerhaft } from './policy';
 import type { DirectFailureReason, DirectPolicyServer } from './policy';
 import { CLOUD_HOSTNAME } from '$lib/api/servers.svelte';
+import { mitCloudCookie } from '$lib/api/cookie-client';
 
 /**
  * Telefonbuch + Offer-Signaling leben in der Cloud, bei der der Client
@@ -108,9 +109,12 @@ async function lookup(
   instanceId: string,
   server: DirectPolicyServer | null | undefined,
 ): Promise<{ entry: DirectoryEntry | null; dauerhaft: boolean }> {
-  const r = await fetch(`${cloudAuthBasis()}/me/instances/${instanceId}/direct-endpoint`, {
-    credentials: 'include',
-  });
+  // Erst wenn eine Cloud-Sitzung besteht (s. `mitCloudCookie`): das Cookie
+  // stirbt 30 Minuten nach der letzten Erneuerung, ein Nachschlag danach
+  // stünde als rotes 401 in der Konsole. Ohne Sitzung wie bisher bei 401:
+  // kein Eintrag, nicht dauerhaft.
+  const r = await mitCloudCookie(`${cloudAuthBasis()}/me/instances/${instanceId}/direct-endpoint`);
+  if (!r) return { entry: null, dauerhaft: false };
   if (!r.ok) return { entry: null, dauerhaft: fehlenderEintragIstDauerhaft(r.status, server) };
   const entry = (await r.json()) as DirectoryEntry;
   // Ein veralteter Eintrag (online=false) ist kein endgültiges Nein — die

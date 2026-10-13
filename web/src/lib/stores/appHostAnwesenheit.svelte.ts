@@ -19,6 +19,7 @@
  */
 
 import { serversStore } from '$lib/api/servers.svelte';
+import { mitCloudCookie } from '$lib/api/cookie-client';
 import { cloudAuthBasis } from '$lib/direct/registry';
 import { deuteTelefonbuch } from '$lib/direct/policy';
 
@@ -108,13 +109,18 @@ class AppHostAnwesenheit {
 
   /** Eine Messung (Deutung s. deuteTelefonbuch): offline wird gemessen und
    *  frisch vermerkt; unbekannt ändert nichts — der alte Eintrag verfällt
-   *  über FRISCH_MS, bis wieder eine belastbare Antwort kommt. */
+   *  über FRISCH_MS, bis wieder eine belastbare Antwort kommt.
+   *
+   *  Die Abfrage geht erst raus, wenn eine Cloud-Sitzung besteht
+   *  (`mitCloudCookie`): das Cookie stirbt 30 Minuten nach der letzten
+   *  Erneuerung, und der erste Takt beim App-Start läuft der Erneuerung davon
+   *  — beides stand als rotes 401 in der Konsole. Ohne Sitzung: unbekannt. */
   private async _messe(instanceId: string): Promise<boolean> {
     try {
-      const r = await fetch(
+      const r = await mitCloudCookie(
         `${cloudAuthBasis()}/me/instances/${instanceId}/direct-endpoint`,
-        { credentials: 'include' },
       );
+      if (!r) return false;
       const online =
         r.status >= 200 && r.status < 300
           ? ((await r.json()) as { online?: boolean }).online

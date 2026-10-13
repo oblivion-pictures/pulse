@@ -22,6 +22,17 @@
 import { AUTH_BASE, getCloudBearer, parseResponse } from './client';
 import { clearTokens, loadTokens } from './storage';
 import { safeParse, extractDetail } from './parse';
+import { mitCloudSitzung } from './sitzungsFrische';
+
+/** Wann das Cookie zuletzt (wieder) geprägt wurde — Grundlage für
+ *  `mitCloudCookie`. Das Cookie läuft 30 Minuten nach DIESEM Zeitpunkt ab,
+ *  nicht nach der letzten Benutzung (`sitzungsFrische.ts`). */
+let _cookieGepraegtAm: number | null = null;
+
+/** Abmelden/Konto weg: der Zeitstempel gehörte dem Cookie von eben. */
+export function cloudSitzungVergessen(): void {
+  _cookieGepraegtAm = null;
+}
 
 /**
  * Etabliert den `pulse_session`-Cookie neu aus einem gültigen Login.
@@ -47,10 +58,12 @@ export async function renewSession(): Promise<boolean> {
         // Kein 403-Fall: der (Preemptive-)E-Mail-Gate-Bounce darf hier nicht
         // ausgelöst werden.
         clearTokens();
+        cloudSitzungVergessen();
         if (typeof sessionStorage !== 'undefined') {
           sessionStorage.setItem('pulse.session_expired', '1');
         }
       }
+      if (resp.ok) _cookieGepraegtAm = Date.now();
       return resp.ok;
     } catch {
       return false;
@@ -59,6 +72,24 @@ export async function renewSession(): Promise<boolean> {
     }
   })();
   return _renewInflight;
+}
+
+/**
+ * Ein Cookie-Request OHNE `cookieFetch`-Parsing — für Aufrufer, die die rohe
+ * `Response` brauchen (Telefonbuch-Nachschlag, Anwesenheits-Takt). Anders als
+ * ein nacktes `fetch(…, { credentials: 'include' })` geht die Anfrage erst
+ * raus, wenn eine Cloud-Sitzung besteht (`sitzungsFrische.ts`); sonst stünde
+ * ein vermeidbares 401 rot in der Konsole. `null` = keine Sitzung, die
+ * Anfrage wurde nicht gestellt.
+ */
+export function mitCloudCookie(url: string, init: RequestInit = {}): Promise<Response | null> {
+  return mitCloudSitzung<Response>({
+    jetzt: Date.now,
+    belegtAm: () => _cookieGepraegtAm,
+    erneuerungLaeuft: () => _renewInflight !== null,
+    erneuere: renewSession,
+    anfrage: () => fetch(url, { ...init, credentials: 'include' })
+  });
 }
 
 export async function cookieFetch<T>(

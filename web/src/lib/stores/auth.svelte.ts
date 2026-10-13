@@ -28,7 +28,7 @@ import { geraeteKennungWischen } from '$lib/krypto/geraeteKennung';
 import { keypairStore } from '$lib/identity/keypair.svelte';
 import { idbIdentityLeeren } from '$lib/identity/idb-shared';
 import { clearLegacyStreamCredentials } from '$lib/stream/persistence';
-import { renewSession } from '$lib/api/cookie-client';
+import { renewSession, cloudSitzungVergessen } from '$lib/api/cookie-client';
 
 const ACCESS_KEY = 'dcc.tokens.access';
 
@@ -400,6 +400,9 @@ class AuthStore {
     // hier weiter die Post des Vorgängers. Best-effort wie oben.
     void import('$lib/platform/fcm').then((m) => m.abmeldeFcmToken(pushBearer));
     clearTokens();
+    // Das Cookie, dessen Prägezeit der Klient sich merkt, gehört dem Konto von
+    // eben — der nächste Cookie-Request muss erst wieder erneuern.
+    cloudSitzungVergessen();
     // Voice-Resume verwerfen — nach explizitem Logout darf der nächste Boot
     // nicht in den alten Channel zurückspringen.
     clearVoiceResume();
