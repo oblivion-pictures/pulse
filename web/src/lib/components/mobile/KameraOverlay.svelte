@@ -34,6 +34,7 @@
   import VideoIcon from '@lucide/svelte/icons/video';
   import XIcon from '@lucide/svelte/icons/x';
   import { aufnahmeDauerRegister, formatiereDauer } from '$lib/attachments/aufnahmeKern';
+  import { spieleAb } from '$lib/audio/abspielen';
   import { m } from '$lib/paraglide/messages.js';
   import { Portal } from 'bits-ui';
   import { untrack } from 'svelte';
@@ -250,7 +251,9 @@
       setTimeout(resolve, 1000); // Notfall: ohne seeked nicht ewig warten
     });
     rekorder.start();
-    void vorschau.play();
+    // Das pause() unten überholt ein noch offenes play() (kurzer Schnitt):
+    // AbortError, kein Fehler.
+    void spieleAb(vorschau);
     await new Promise<void>((resolve) => {
       const wache = setInterval(() => {
         if (!vorschau || vorschau.paused || vorschau.currentTime >= schnittEnde - 0.03) {

@@ -42,6 +42,7 @@ import { m } from '$lib/paraglide/messages.js';
 import { anrufSystemzeile, type AnrufZeilenSchluessel } from './systemzeileKern';
 import { warteAufAnrufSchluessel } from './schluesselWarten';
 import { E2E_DMS_ENABLED, PRIVATE_GRUPPEN_ENABLED } from '$lib/krypto/schalter';
+import { startAudioAbbruchfest } from '$lib/audio/abspielen';
 
 const KLINGEL_TIMEOUT_MS = 45_000;
 
@@ -531,6 +532,8 @@ class AnrufStore {
         encryption = { keyProvider, worker: e2eeWorker() };
       }
       const room = new Room(encryption ? { encryption } : undefined);
+      // Vor room.connect() (dort wird das Ereignis verdrahtet), s. Helfer.
+      startAudioAbbruchfest(room);
       if (encryption) await room.setE2EEEnabled(true);
       this.#room = room;
       room

@@ -33,6 +33,7 @@ import { effectiveNsLimits, effectiveVoiceBitrateMaxKbps } from '$lib/stream/gui
 import { clampNsResolution } from '$lib/settings-registry/sections/screenShare';
 import { AudioDevices } from './audioDevices.svelte';
 import { applySinkId } from '$lib/audio/applySinkId';
+import { startAudioAbbruchfest } from '$lib/audio/abspielen';
 import { ballistics, ClipHold, LEVEL_DECAY, PEAK_DECAY } from './meter';
 import { createSendProcessor, type SendProcessorHandle, type SendProcessorMode } from './noiseFilter';
 import { LocalMicAnalyser } from './localMicAnalyser';
@@ -437,6 +438,8 @@ class VoiceRoom {
     if (gen !== this.#connectGen) return;
 
     const room = new Room(this.#roomOptions());
+    // Vor room.connect() (dort wird das Ereignis verdrahtet), s. Helfer.
+    startAudioAbbruchfest(room);
     this.#room = room;
     this.#applyPlaybackSettings();
     // Vor room.connect() verdrahten, sonst gehen Handshake-Events verloren.

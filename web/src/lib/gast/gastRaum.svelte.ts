@@ -28,6 +28,7 @@ import {
 import { createSendProcessor } from '$lib/voice/noiseFilter';
 import { NOISE_GATE_DB_DEFAULT } from '$lib/settings-registry/sections/audio';
 import { isMobile } from '$lib/platform/runtime';
+import { startAudioAbbruchfest } from '$lib/audio/abspielen';
 import { toast } from 'svelte-sonner';
 import { m } from '$lib/paraglide/messages.js';
 import { istGastKennung } from '$lib/stores/voicePresence.svelte';
@@ -175,6 +176,8 @@ class GastRaum {
         dynacast: true,
         audioCaptureDefaults: this.#aufnahmeVorgaben()
       });
+      // Vor room.connect() (dort wird das Ereignis verdrahtet), s. Helfer.
+      startAudioAbbruchfest(room);
       this.#room = room;
       this.#verdrahten(room);
       await room.connect(tok.ws_url, tok.token);

@@ -2,6 +2,7 @@ import type { RemoteAudioTrack } from 'livekit-client';
 import { isMobile } from '$lib/platform/runtime';
 import type { SpatialMode } from '$lib/stores/settings.svelte';
 import { applySinkId } from '$lib/audio/applySinkId';
+import { spieleAb } from '$lib/audio/abspielen';
 import type { SpatialLayout } from './spatial/layout';
 import { loadResonance } from './spatial/resonanceLoader';
 import { SpatialScene, resolveQuality } from './spatial/spatialScene';
@@ -157,8 +158,9 @@ export class RemoteAudioElements {
       };
       this.#nodes.set(sid, node);
       this.#indexUser(userId, sid);
-      const p = anchor.play();
-      if (p) void p.catch(() => onBlocked());
+      // Überholt (Track schon wieder abgehängt) ist nicht gesperrt — nur ein
+      // echter Fehler (Autoplay-Sperre) meldet „blockiert“.
+      void spieleAb(anchor).catch(() => onBlocked());
       return;
     }
 

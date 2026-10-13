@@ -15,6 +15,7 @@
   import PauseIcon from '@lucide/svelte/icons/pause';
   import PlayIcon from '@lucide/svelte/icons/play';
   import { formatiereDauer, naechstesTempo } from '$lib/attachments/aufnahmeKern';
+  import { spieleAb } from '$lib/audio/abspielen';
   import { m } from '$lib/paraglide/messages.js';
 
   let { src, bekannteDauer = null }: { src: string | undefined; bekannteDauer?: number | null } =
@@ -34,7 +35,7 @@
 
   function umschalten(): void {
     if (!audio) return;
-    if (audio.paused) void audio.play();
+    if (audio.paused) void spieleAb(audio);
     else audio.pause();
   }
 </script>
