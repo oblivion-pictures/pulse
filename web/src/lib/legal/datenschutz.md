@@ -159,9 +159,9 @@ ggf. der E-Mail-Versanddienst). Mit diesen bestehen Verträge zur
 Auftragsverarbeitung nach Art. 28 DSGVO. Eine darüber hinausgehende Weitergabe
 oder ein Verkauf von Daten findet nicht statt.
 
-Beim Herunterladen der Apps (Ziffer 21) verbindet sich dein Gerät direkt mit
-GitHub. GitHub ist dabei kein Auftragsverarbeiter von uns; wir geben keine Daten
-an GitHub weiter, dein Gerät übermittelt sie selbst.
+Beim Herunterladen der Apps und ihrer Updates (Ziffer 21) verbindet sich dein
+Gerät direkt mit GitHub. GitHub ist dabei kein Auftragsverarbeiter von uns; wir
+geben keine Daten an GitHub weiter, dein Gerät übermittelt sie selbst.
 
 ## 15. Drittlandübermittlung
 
@@ -247,17 +247,21 @@ Nutzung von howispulse.com selbst wird kein solcher Ausweis ausgestellt.
 
 ## 21. Download der Apps über GitHub
 
-Die Installationsdateien der Apps für Windows, macOS und Android sowie der Pulse
-Server-App für Windows und macOS stellen wir über **GitHub Releases** bereit. Das
-Flatpak für Linux laden wir weiterhin von unseren eigenen Servern. GitHub
-verarbeitet die Daten, die beim Herunterladen anfallen, in eigener Verantwortung
-(laut seiner Datenschutzerklärung die GitHub, Inc., 88 Colin P. Kelly Jr. St.,
-San Francisco, CA 94107, USA, bzw. die GitHub B.V., Prins Bernhardplein 200, 1097
-JB Amsterdam, Niederlande).
+Die Installationsdateien und Updates der Apps für Windows, macOS und Android
+sowie der Pulse Server-App für Windows und macOS stellen wir über **GitHub
+Releases** bereit. Das Flatpak für Linux laden wir weiterhin von unseren eigenen
+Servern. GitHub verarbeitet die Daten, die beim Herunterladen anfallen, in
+eigener Verantwortung (laut seiner Datenschutzerklärung die GitHub, Inc., 88
+Colin P. Kelly Jr. St., San Francisco, CA 94107, USA, bzw. die GitHub B.V.,
+Prins Bernhardplein 200, 1097 JB Amsterdam, Niederlande).
 
-- **Wann Daten fließen:** Erst wenn du einen Download-Knopf oder -Link anklickst,
-  verbindet sich dein Gerät mit GitHub. Beim bloßen Aufruf unserer Webseite
-  werden keine Daten an GitHub übertragen; wir binden von GitHub keine Skripte,
+- **Wann Daten fließen:** Auf unserer Webseite verbindet sich dein Gerät erst
+  mit GitHub, wenn du einen Download-Knopf oder -Link anklickst. Die
+  installierten Apps für Windows und macOS, auch die Pulse Server-App, fragen
+  beim Start und danach regelmäßig bei howispulse.com nach, ob eine neue Version
+  bereitsteht (siehe Ziffer 4). Gibt es eine, laden sie sie ohne weiteren Klick
+  im Hintergrund von GitHub herunter. Beim bloßen Aufruf unserer Webseite werden
+  keine Daten an GitHub übertragen; wir binden von GitHub keine Skripte,
   Schriftarten oder Bilder ein. Ältere Download-Adressen auf howispulse.com
   leiten zu GitHub weiter; unsere Server verarbeiten die Anfrage dabei zunächst
   wie jede andere (siehe Ziffer 4).
@@ -268,15 +272,16 @@ JB Amsterdam, Niederlande).
   Diese Daten verarbeitet GitHub nach seiner eigenen Datenschutzerklärung; uns
   werden sie nicht übermittelt. Sichtbar ist uns höchstens, wie oft eine Datei
   insgesamt heruntergeladen wurde.
-- **Zweck und Rechtsgrundlage:** Die Installationsdateien sind teils sehr groß
-  (über 100 Megabyte). GitHub liefert sie schnell und zuverlässig aus, ohne dass
-  wir dafür eigene Server-Kapazität vorhalten müssen. Rechtsgrundlage ist
-  Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einer zuverlässigen und
-  effizienten Bereitstellung unserer Software).
+- **Zweck und Rechtsgrundlage:** Die Installationsdateien und Updates sind teils
+  sehr groß (über 100 Megabyte). GitHub liefert sie schnell und zuverlässig aus,
+  ohne dass wir dafür eigene Server-Kapazität vorhalten müssen. Rechtsgrundlage
+  ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einer zuverlässigen
+  und effizienten Bereitstellung unserer Software).
 - **Drittland:** GitHub verarbeitet Daten auch in den USA — siehe Ziffer 15.
 - **Alternativen:** Wenn du keine Verbindung zu GitHub aufbauen möchtest, kannst
   du Pulse im Browser nutzen (ohne Download) oder unter Linux das Flatpak von
-  unseren Servern installieren.
+  unseren Servern installieren. In den installierten Apps für Windows und macOS
+  lässt sich das automatische Update nicht abschalten.
 
 Weitere Informationen findest du in der
 [Datenschutzerklärung von GitHub](https://docs.github.com/de/site-policy/privacy-policies/github-general-privacy-statement).
