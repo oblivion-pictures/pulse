@@ -14,14 +14,15 @@
   import { isLinux, isWindows, isMac } from '$lib/platform/runtime';
   import { m } from '$lib/paraglide/messages.js';
   import DownloadIcon from '@lucide/svelte/icons/download';
+  import {
+    WINDOWS_SERVER_INSTALLER_URL as WIN_URL,
+    MAC_SERVER_DMG_URL as DMG_URL,
+    LINUX_SERVER_FLATPAKREF_URL as FLATPAKREF
+  } from '$lib/downloads/appDownloads';
 
-  // Download-Ziele — dieselben Pfade, die die CI-Jobs füllen:
-  //  - win-build-server.yml → /updates/win-server/ (NSIS + Update-Feed)
-  //  - mac-build.yml (build-server-Job) → /downloads/Pulse-Server-latest.dmg
-  //  - flatpak.yml → Flatpak-Repo (flatpakref)
-  const WIN_URL = 'https://howispulse.com/updates/win-server/Pulse-Server-Setup-latest.exe';
-  const DMG_URL = 'https://howispulse.com/downloads/Pulse-Server-latest.dmg';
-  const FLATPAKREF = 'https://howispulse.com/flatpak/com.howispulse.PulseServer.flatpakref';
+  // Download-Ziele stehen an EINER Stelle (`appDownloads.ts`, Quellen dort
+  // erklärt): Windows/macOS aus dem GitHub-Release, das Flatpak vom eigenen
+  // Server.
 
   // Am Finger (Handy, Tablet) 48 dp hoch (Basis-Klasse), am Rechner ohne
   // Mindesthöhe (`desktop:`).

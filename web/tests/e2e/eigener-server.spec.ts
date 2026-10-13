@@ -187,7 +187,11 @@ test.describe('Eigenen Server einrichten', () => {
     );
     // Heim-Server ohne Sperre und ohne Antrag; „Desktop Chrome“ meldet Windows.
     await expect(dialog.getByTestId('server-app-download')).toBeVisible();
-    await expect(dialog.getByTestId('server-app-download-windows')).toBeVisible();
+    // Der Installer kommt aus dem GitHub-Release (Namen: infra/release/github-release.sh).
+    await expect(dialog.getByTestId('server-app-download-windows')).toHaveAttribute(
+      'href',
+      'https://github.com/oblivion-pictures/pulse/releases/latest/download/Pulse-Server-Setup-Windows.exe'
+    );
     // „Von Pulse gehostet“ gibt es noch nicht: ausgegraut UND ausgezeichnet —
     // `aria-disabled` allein auf einem Div ohne Rolle liest kein Hilfsmittel.
     const gehostet = dialog.getByTestId('eigener-server-gehostet');

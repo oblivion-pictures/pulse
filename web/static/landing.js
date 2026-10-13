@@ -19,19 +19,22 @@
 // KOPIE von `web/src/lib/downloads/appDownloads.ts` — synchron halten.
 // Diese Datei kann nicht importieren (kein Bundler, siehe Kopf), und die
 // Landingpage muss dieselben Artefakte anbieten wie Login-Screen und
-// Einstellungen. Wer dort eine URL aendert, aendert sie hier mit.
+// Einstellungen. Wer dort eine URL aendert, aendert sie hier mit
+// (`web/test/landing.test.ts` vergleicht beide). Die Kacheln in `landing.html`
+// tragen dieselben Adressen fest im HTML.
 const BASE = 'https://howispulse.com';
+const GITHUB_LATEST = 'https://github.com/oblivion-pictures/pulse/releases/latest/download';
 import { WOERTERBUCH, uebersetzen } from './landing-woerterbuch.js';
 
-export const WINDOWS_INSTALLER_URL = `${BASE}/updates/win/Pulse-Setup-latest.exe`;
-export const ANDROID_APK_URL = `${BASE}/downloads/pulse-latest.apk`;
-export const MAC_DMG_URL = `${BASE}/downloads/Pulse-latest.dmg`;
+export const WINDOWS_INSTALLER_URL = `${GITHUB_LATEST}/Pulse-Setup-Windows.exe`;
+export const ANDROID_APK_URL = `${GITHUB_LATEST}/Pulse-Android.apk`;
+export const MAC_DMG_URL = `${GITHUB_LATEST}/Pulse-macOS.dmg`;
 export const LINUX_FLATPAKREF_URL = `${BASE}/flatpak/com.howispulse.Pulse.flatpakref`;
 export const LINUX_INSTALL_COMMAND = `flatpak install --from ${LINUX_FLATPAKREF_URL}`;
 // Pulse Server (App-Hosting) — s. appDownloads.ts; macOS-DMG baut der
 // build-server-Job in mac-build.yml (seit dem Heim-Server-Merge 2026-10-02).
-export const WINDOWS_SERVER_INSTALLER_URL = `${BASE}/updates/win-server/Pulse-Server-Setup-latest.exe`;
-export const MAC_SERVER_DMG_URL = `${BASE}/downloads/Pulse-Server-latest.dmg`;
+export const WINDOWS_SERVER_INSTALLER_URL = `${GITHUB_LATEST}/Pulse-Server-Setup-Windows.exe`;
+export const MAC_SERVER_DMG_URL = `${GITHUB_LATEST}/Pulse-Server-macOS.dmg`;
 export const LINUX_SERVER_FLATPAKREF_URL = `${BASE}/flatpak/com.howispulse.PulseServer.flatpakref`;
 export const LINUX_SERVER_INSTALL_COMMAND = `flatpak install --from ${LINUX_SERVER_FLATPAKREF_URL}`;
 

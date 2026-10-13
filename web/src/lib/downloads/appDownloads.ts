@@ -1,13 +1,23 @@
 /**
  * App-Download-Quellen für die Webseite (Login-Screen + Einstellungen).
  *
- * Die Artefakte liegen auf dem Prod-Server (siehe infra/prod/web-nginx.conf):
- *  - Windows: NSIS-Installer aus dem Auto-Update-Feed (/updates/win/,
- *    `Pulse-Setup-latest.exe` zeigt immer auf den neuesten Build).
- *  - Linux: Flatpak-Repo unter /flatpak/ — kein Einzeldatei-Download,
- *    Installation per `flatpak install --from <flatpakref>` (oder die
- *    .flatpakref-Datei in GNOME Software öffnen).
- *  - Android: manuell bereitgestellte APK unter /downloads/.
+ * Wo was liegt (Eigentümer-Entscheid 2026-10-12, Schritt 2 des Umzugs):
+ *  - Windows, macOS, Android und die Server-App für Windows/macOS: GitHub
+ *    Releases. Jede Desktop-Version bekommt ein Release `desktop-v<version>`
+ *    mit FESTEN Dateinamen (`infra/release/github-release.sh`);
+ *    `releases/latest/download/<Name>` zeigt auf das jüngste vollständige.
+ *  - Linux: Flatpak-Repo auf dem eigenen Server (`/flatpak/`) — kein
+ *    Einzeldatei-Download, Installation per
+ *    `flatpak install --from <flatpakref>` (oder die .flatpakref-Datei in GNOME
+ *    Software öffnen). Das Flatpak bleibt bewusst dort.
+ *  - NICHT hierher gehört der Auto-Update-Feed der Windows-/macOS-Apps
+ *    (`/updates/win/`, `/updates/win-server/`, `/updates/mac/` …): der liegt
+ *    weiter auf dem eigenen Server und wird von electron-updater gelesen,
+ *    nicht von Menschen (Schritt 3 des Umzugs, noch offen).
+ *
+ * Die alten Bequem-Adressen `howispulse.com/updates/win/Pulse-Setup-latest.exe`
+ * u. ä. leitet nginx auf dieselben GitHub-Adressen weiter
+ * (`infra/prod/web-nginx.conf`) — das README verlinkt sie noch.
  *
  * Absolute URLs (nicht relativ), damit die Links auch aus einer lokalen
  * Dev-Umgebung heraus auf die echten Artefakte zeigen.
@@ -15,28 +25,28 @@
  * ACHTUNG — dieselben Konstanten stehen ein zweites Mal in
  * `web/static/landing.js` (Landingpage auf `/`). Die Datei laeuft ohne
  * Bundler und kann hier nicht importieren, also **synchron halten**: wer eine
- * URL hier aendert, aendert sie dort mit.
+ * URL hier aendert, aendert sie dort mit (`web/test/landing.test.ts` vergleicht
+ * beide). Dieselben Adressen stehen außerdem fest in `web/static/landing.html`
+ * (Plattform-Kacheln) und `web/static/native.json` (macOS-Link des Update-
+ * Hinweises).
  */
 
 const BASE = 'https://howispulse.com';
+const GITHUB_LATEST = 'https://github.com/oblivion-pictures/pulse/releases/latest/download';
 
-export const WINDOWS_INSTALLER_URL = `${BASE}/updates/win/Pulse-Setup-latest.exe`;
-export const ANDROID_APK_URL = `${BASE}/downloads/pulse-latest.apk`;
-// macOS: unsigned Apple-Silicon .dmg, served from /downloads/ like the APK
-// (scp the build to ~/pulse/downloads/Pulse-latest.dmg). First launch needs
-// right-click → Open (Gatekeeper), since it isn't notarized.
-export const MAC_DMG_URL = `${BASE}/downloads/Pulse-latest.dmg`;
+export const WINDOWS_INSTALLER_URL = `${GITHUB_LATEST}/Pulse-Setup-Windows.exe`;
+export const ANDROID_APK_URL = `${GITHUB_LATEST}/Pulse-Android.apk`;
+// macOS: Apple-Silicon .dmg aus dem GitHub-Release (Dateiname fest, s. oben).
+export const MAC_DMG_URL = `${GITHUB_LATEST}/Pulse-macOS.dmg`;
 export const LINUX_FLATPAKREF_URL = `${BASE}/flatpak/com.howispulse.Pulse.flatpakref`;
 export const LINUX_INSTALL_COMMAND = `flatpak install --from ${LINUX_FLATPAKREF_URL}`;
 
 // ── Pulse Server (App-Hosting, seit 0.1.92) ─────────────────────────────────
-// Eigenes Server-Hosting aus der App heraus. Windows hat einen EIGENEN
-// Auto-Update-Feed (/updates/win-server/, CI win-build-server.yml schreibt
-// Pulse-Server-Setup-latest.exe dort hin); Linux teilt sich das Flatpak-Repo,
-// eigene App-ID com.howispulse.PulseServer; macOS zieht der build-server-Job
-// in mac-build.yml als unsigniertes DMG nach /downloads/ (gleiches Muster wie
-// der Client).
-export const WINDOWS_SERVER_INSTALLER_URL = `${BASE}/updates/win-server/Pulse-Server-Setup-latest.exe`;
-export const MAC_SERVER_DMG_URL = `${BASE}/downloads/Pulse-Server-latest.dmg`;
+// Eigenes Server-Hosting aus der App heraus. Windows und macOS kommen wie beim
+// Client aus dem GitHub-Release (win-build-server.yml bzw. der build-server-Job
+// in mac-build.yml legen sie dort ab); Linux teilt sich das Flatpak-Repo auf
+// dem eigenen Server, eigene App-ID com.howispulse.PulseServer.
+export const WINDOWS_SERVER_INSTALLER_URL = `${GITHUB_LATEST}/Pulse-Server-Setup-Windows.exe`;
+export const MAC_SERVER_DMG_URL = `${GITHUB_LATEST}/Pulse-Server-macOS.dmg`;
 export const LINUX_SERVER_FLATPAKREF_URL = `${BASE}/flatpak/com.howispulse.PulseServer.flatpakref`;
 export const LINUX_SERVER_INSTALL_COMMAND = `flatpak install --from ${LINUX_SERVER_FLATPAKREF_URL}`;

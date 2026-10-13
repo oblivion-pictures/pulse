@@ -22,9 +22,9 @@ const INTERNE_ROUTEN = ['/', '/login', '/impressum', '/datenschutz'];
 
 /** Kopie aus `web/static/landing.js` bzw. `web/src/lib/downloads/appDownloads.ts`. */
 const DOWNLOADS = [
-  'https://howispulse.com/updates/win/Pulse-Setup-latest.exe',
-  'https://howispulse.com/downloads/Pulse-latest.dmg',
-  'https://howispulse.com/downloads/pulse-latest.apk',
+  'https://github.com/oblivion-pictures/pulse/releases/latest/download/Pulse-Setup-Windows.exe',
+  'https://github.com/oblivion-pictures/pulse/releases/latest/download/Pulse-macOS.dmg',
+  'https://github.com/oblivion-pictures/pulse/releases/latest/download/Pulse-Android.apk',
   'https://howispulse.com/flatpak/com.howispulse.Pulse.flatpakref'
 ];
 

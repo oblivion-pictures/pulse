@@ -70,15 +70,15 @@ test('unbekannte Plattform liefert null statt einer Vermutung', () => {
 test('appLadenZiel liefert je Plattform die exakte Quelle', () => {
   assert.deepEqual(appLadenZiel('windows'), {
     art: 'download',
-    url: 'https://howispulse.com/updates/win/Pulse-Setup-latest.exe'
+    url: 'https://github.com/oblivion-pictures/pulse/releases/latest/download/Pulse-Setup-Windows.exe'
   });
   assert.deepEqual(appLadenZiel('mac'), {
     art: 'download',
-    url: 'https://howispulse.com/downloads/Pulse-latest.dmg'
+    url: 'https://github.com/oblivion-pictures/pulse/releases/latest/download/Pulse-macOS.dmg'
   });
   assert.deepEqual(appLadenZiel('android'), {
     art: 'download',
-    url: 'https://howispulse.com/downloads/pulse-latest.apk'
+    url: 'https://github.com/oblivion-pictures/pulse/releases/latest/download/Pulse-Android.apk'
   });
   assert.deepEqual(appLadenZiel('linux'), {
     art: 'flatpak',

@@ -9,8 +9,10 @@
 # Das waechst bei aktuellem Tempo um rund 2,5 GB im Monat und hoert nie auf.
 #
 # **Was wirklich gebraucht wird.** `latest.yml` verweist auf GENAU EINE Datei;
-# electron-updater holt sich nur die. Dazu `Pulse-Setup-latest.exe` fuer den
-# Direktdownload von der Webseite. Alles andere ist Archiv.
+# electron-updater holt sich nur die. Dazu `Pulse-Setup-latest.exe`, den alten
+# Direktdownload: nginx leitet diese Adresse seit 2026-10-13 nach GitHub
+# Releases um, der Win-Build laedt die Datei aber weiter hoch — sie bleibt als
+# Rueckfall liegen. Alles andere ist Archiv.
 #
 # **Die Blockmaps bleiben ALLE liegen, und zwar mit Absicht.** Sie sind je rund
 # 155 KB, zusammen also wenige Megabyte, und sie sind es, aus denen
