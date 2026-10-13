@@ -219,8 +219,9 @@ test('zwei Geräte spiegeln dieselbe Nachricht — die kryptoId-Verngabelung lie
 test('Verfasser-Kette ohne kryptoId + Empfänger-Kette mit kryptoId: EIN Eintrag (Gerätewechsel, 2026-10-11)', async () => {
 	// Der Fall der Doppelzeile nach Gerätewechsel und Wiederherstellung: das
 	// Gerät des Verfassers spiegelt seine Nachricht unter ihrer eigenen Id
-	// (ohne kryptoId — `senden.ts` setzt keine), das Empfängergerät unter
-	// der Zustellungs-Id mit der Kennung als kryptoId.
+	// (ohne kryptoId — `senden.ts` setzt sie erst seit 2026-10-13, Bestand
+	// von davor bleibt so), das Empfängergerät unter der Zustellungs-Id mit
+	// der Kennung als kryptoId.
 	const kanalId = '779';
 	const dek = erzeugeDek();
 	const basis = speicherAdapter();
@@ -281,4 +282,151 @@ test('Fund 1: ein Stein mit frei gewählter ID bricht den Leser nicht ab und wir
 	assert.equal(fremd.nachricht.inhalt, 'mit fremden Bezügen');
 	assert.equal(fremd.nachricht.kryptoId, undefined);
 	assert.equal(fremd.nachricht.antwortAuf, null);
+});
+
+/* ————————————————————————————————————————————————————————————————
+ * Zwei eigene Geräte spiegeln dieselbe selbst gesendete Nachricht
+ * (2026-10-13): das Sendegerät seine Kopie unter der Autor-Id A — bis zu
+ * diesem Tag OHNE kryptoId —, das Zweitgerät die Selbstzustellung unter der
+ * Zustellungs-Id Z mit kryptoId A.
+ * ———————————————————————————————————————————————————————————————— */
+
+const AUTOR_ID = '1791841626624331125';
+const ZUSTELLUNG = '103281734567890123';
+
+function kopie(id: string, kryptoId: string | undefined, extra: Partial<AblageNachricht> = {}) {
+	return {
+		...ausWire({
+			id,
+			author_id: '100',
+			content: 'selbst gesendet',
+			created_at: '2026-10-13T09:00:00Z',
+			edited_at: null,
+			reply_to_id: null,
+			attachments: [],
+			...(kryptoId ? { krypto_id: kryptoId } : {}),
+		} as unknown as Parameters<typeof ausWire>[0]),
+		...extra,
+	};
+}
+
+/** Je Gerät eine Kette im selben Kanal-Ordner, gelesen als eine Seite. */
+async function zweiKetten(
+	ketten: Array<{ praefix: string; nachrichten: AblageNachricht[] }>,
+): Promise<SicherungEintrag[]> {
+	const kanalId = 'kanal-a';
+	const dek = erzeugeDek();
+	const basis = speicherAdapter();
+	for (const { praefix, nachrichten } of ketten) {
+		const spiegel = new SicherungsSpiegel(ordnerAdapter(basis, kanalId), dek, praefix, {
+			verzoegerungMs: 10,
+		});
+		spiegel.aufnehmen(kanalId, nachrichten);
+		await spiegel.jetztSpuelen();
+		spiegel.beenden();
+	}
+	return (await leseSicherungKanalSeite(ordnerAdapter(basis, kanalId), dek, {}, 50)).eintraege;
+}
+
+for (const [fall, absenderKryptoId] of [
+	['Altbestand ohne kryptoId', undefined],
+	['neu mit kryptoId = id', AUTOR_ID],
+] as const) {
+	// Die Ketten werden in Schreibreihenfolge gelesen (gleicher Segment-
+	// Index) — beide Reihenfolgen, weil der Abgleich in beide Richtungen
+	// greifen muss.
+	for (const senderZuerst of [true, false]) {
+		test(`Absender-Kopie (${fall}) + Kopie des Zweitgeräts → EIN Eintrag (${senderZuerst ? 'Sendegerät' : 'Zweitgerät'} zuerst gelesen)`, async () => {
+			const sender = { praefix: 'dev-aaaa1111-', nachrichten: [kopie(AUTOR_ID, absenderKryptoId)] };
+			const zweit = { praefix: 'dev-bbbb2222-', nachrichten: [kopie(ZUSTELLUNG, AUTOR_ID)] };
+			const eintraege = await zweiKetten(senderZuerst ? [sender, zweit] : [zweit, sender]);
+			assert.equal(eintraege.length, 1, 'eine logische Nachricht = ein Eintrag');
+		});
+	}
+}
+
+test('drei Kopien aus drei Ketten (Sendegerät im Altbestand, zwei Zweitgeräte) → EIN Eintrag', async () => {
+	const eintraege = await zweiKetten([
+		{ praefix: 'dev-aaaa1111-', nachrichten: [kopie(AUTOR_ID, undefined)] },
+		{ praefix: 'dev-bbbb2222-', nachrichten: [kopie(ZUSTELLUNG, AUTOR_ID)] },
+		{ praefix: 'dev-cccc3333-', nachrichten: [kopie('103281734567890999', AUTOR_ID)] },
+	]);
+	assert.equal(eintraege.length, 1);
+});
+
+// Eigentümer-Entscheid 2026-10-13 („sicher: nie über die Kennung"): ein
+// Grabstein OHNE Autor löst nie über eine Kennung auf und löscht nur seinen
+// eigenen Eintrag. Hier stand bis dahin das Gegenteil (main, 24e9c790: der
+// Stein des Sendegeräts verdrängte die Kopie des Zweitgeräts).
+//
+// Warum: Steine ohne Autor stammen aus der Zeit vor 2026-10-11, und zu
+// ihnen gehören die des N1-Rückfalls (`krypto/empfangen.ts`). Der löschte
+// auf Lösch-Frames hin, die die Autor-Bindung abgewiesen hatte — ein
+// Gesprächspartner, der die Kennung einer meiner Nachrichten in einen
+// Lösch-Frame schrieb, hinterliess so in meiner Sicherung einen autorlosen
+// Stein unter genau dieser Kennung. Löste der Leser ihn über die Kennung
+// auf, nähme jede Wiederherstellung auch die übrigen Kopien der Nachricht
+// mit. Was der Entscheid kostet: hat das Zweitgerät die Löschung damals
+// nicht selbst als Stein gespiegelt, steht seine Kopie nach der
+// Wiederherstellung wieder da.
+test('Grabstein des Sendegeräts ohne Autor löscht nur seinen eigenen Eintrag — die Kopie des Zweitgeräts bleibt', async () => {
+	const stein: AblageNachricht = {
+		...kopie(AUTOR_ID, undefined),
+		autor: '',
+		inhalt: '',
+		geloescht: true,
+	};
+	const steinKette = { praefix: 'dev-aaaa1111-', nachrichten: [stein] };
+	const kopieKette = { praefix: 'dev-bbbb2222-', nachrichten: [kopie(ZUSTELLUNG, AUTOR_ID)] };
+	for (const ketten of [[steinKette, kopieKette], [kopieKette, steinKette]]) {
+		const eintraege = await zweiKetten(ketten);
+		const steine = eintraege.filter((e) => e.nachricht.geloescht === true);
+		const sichtbar = eintraege.filter((e) => e.nachricht.geloescht !== true);
+		assert.deepEqual(steine.map((e) => e.nachricht.id), [AUTOR_ID], 'der Stein steht nur für sich');
+		assert.deepEqual(sichtbar.map((e) => e.nachricht.id), [ZUSTELLUNG], 'die Kopie bleibt sichtbar');
+	}
+});
+
+test('Leser-Fall: Bobs Nachricht unter Alices Kennung ersetzt Alices nicht, sein Stein löscht sie nicht', async () => {
+	// Alices Sendegerät spiegelt ihre Nachricht K, ihr Zweitgerät die
+	// Nachricht, die Bob mit derselben Kennung K geschickt hat — samt Anhang,
+	// also der „reicheren" Fassung. Ohne Autor-Bindung legte der Leser beide
+	// zusammen, Bobs Fassung gewann, und löschte Bob seine, war Alices weg.
+	const ALICE = '100';
+	const BOB = '300';
+	const alices = kopie(AUTOR_ID, AUTOR_ID, { inhalt: 'von alice' });
+	const bobs = kopie(ZUSTELLUNG, AUTOR_ID, {
+		autor: BOB,
+		inhalt: 'von bob',
+		anhaenge: [{ id: '501', name: 'b.png', mime: 'image/png', groesse: 3 }],
+	});
+	const alicesKette = { praefix: 'dev-aaaa1111-', nachrichten: [alices] };
+	const bobsStein = grabstein(ZUSTELLUNG, { autorId: BOB, kryptoId: AUTOR_ID });
+	for (const geloescht of [false, true]) {
+		const bobsKette = {
+			praefix: 'dev-bbbb2222-',
+			nachrichten: geloescht ? [bobs, bobsStein] : [bobs],
+		};
+		for (const ketten of [[alicesKette, bobsKette], [bobsKette, alicesKette]]) {
+			const eintraege = await zweiKetten(ketten);
+			const alice = eintraege.filter((e) => e.nachricht.autor === ALICE);
+			assert.equal(alice.length, 1, 'Alices Nachricht steht genau einmal da');
+			assert.equal(alice[0]!.nachricht.geloescht, undefined, 'und ist nicht gelöscht');
+			assert.equal(alice[0]!.nachricht.inhalt, 'von alice');
+			assert.deepEqual(alice[0]!.nachricht.anhaenge, []);
+			// Bobs Zeile bleibt eine eigene — gelöscht als Stein je lokaler ID
+			// seiner Gruppe (D und die Kennung K, beide mit Bob als Autor).
+			const bob = eintraege.filter((e) => e.nachricht.autor === BOB);
+			assert.ok(bob.length >= 1);
+			assert.ok(bob.every((e) => (e.nachricht.geloescht === true) === geloescht));
+		}
+	}
+});
+
+test('Altbestand ohne jede kryptoId: verschiedene Ids bleiben zwei Einträge', async () => {
+	const eintraege = await zweiKetten([
+		{ praefix: 'dev-aaaa1111-', nachrichten: [kopie(AUTOR_ID, undefined)] },
+		{ praefix: 'dev-bbbb2222-', nachrichten: [kopie(ZUSTELLUNG, undefined)] },
+	]);
+	assert.equal(eintraege.length, 2);
 });

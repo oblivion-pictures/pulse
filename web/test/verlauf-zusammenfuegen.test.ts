@@ -151,6 +151,76 @@ test('gleiche id mit kryptoId ueberschreibt weiter (Bearbeitungen unberuehrt)', 
   assert.equal(ergebnis[0].inhalt, 'neu');
 });
 
+// ── Kopie des Absenders (2026-10-13) ───────────────────────────────────────
+// Die Kopie des Absenders liegt unter der vom Autor gewaehlten Id A; bis zum
+// 2026-10-13 trug sie KEINE kryptoId (Altbestand), seither kryptoId = A. Das
+// zweite eigene Geraet legt die Selbstzustellung unter seiner Zustellungs-Id
+// mit kryptoId A ab, der Empfaenger ebenso. Alle drei sind EINE Nachricht.
+
+const A = '1791841626624331125';
+const Z_ZWEITGERAET = '103281734567890123';
+const Z_EMPFAENGER = '103281734567890124';
+
+/** Alle Reihenfolgen einer kleinen Liste. */
+function reihenfolgen<T>(liste: T[]): T[][] {
+  if (liste.length <= 1) return [liste];
+  return liste.flatMap((x, i) =>
+    reihenfolgen([...liste.slice(0, i), ...liste.slice(i + 1)]).map((rest) => [x, ...rest])
+  );
+}
+
+for (const [fall, absender] of [
+  ['Altbestand ohne kryptoId', posten(A, 'hallo')],
+  ['neu mit kryptoId = id', posten(A, 'hallo', { kryptoId: A })]
+] as const) {
+  test(`Absender- + Empfaenger- + Zweitgeraet-Kopie ergeben genau eine Zeile (${fall}, jede Reihenfolge)`, () => {
+    const kopien = [
+      absender,
+      posten(Z_ZWEITGERAET, 'hallo', { kryptoId: A }),
+      posten(Z_EMPFAENGER, 'hallo', { kryptoId: A })
+    ];
+    for (const folge of reihenfolgen(kopien)) {
+      // Alles lokal (Sicherungs-Ruecklauf) …
+      assert.equal(zusammenfuegen(folge, []).length, 1, `lokal: ${folge.map((p) => p.id)}`);
+      // … und verteilt auf beide Quellen.
+      assert.equal(
+        zusammenfuegen(folge.slice(0, 1), folge.slice(1)).length,
+        1,
+        `verteilt: ${folge.map((p) => p.id)}`
+      );
+    }
+  });
+}
+
+test('der bereits liegende Posten gewinnt auch gegen die Absender-Kopie', () => {
+  const ergebnis = zusammenfuegen(
+    [posten(Z_ZWEITGERAET, 'hallo', { kryptoId: A })],
+    [posten(A, 'hallo')]
+  );
+  assert.deepEqual(ergebnis.map((p) => p.id), [Z_ZWEITGERAET]);
+});
+
+test('Grabstein der Absender-Kopie (Altbestand) deckt die Kopie des Zweitgeraets ab — in beiden Reihenfolgen', () => {
+  const stein = posten(A, '', { geloescht: true });
+  const kopie = posten(Z_ZWEITGERAET, 'hallo', { kryptoId: A });
+  for (const folge of [[stein, kopie], [kopie, stein]]) {
+    const ergebnis = zusammenfuegen(folge, []);
+    assert.equal(ergebnis.length, 1);
+    assert.equal(ergebnis[0].geloescht, true, `Reihenfolge ${folge.map((p) => p.id)}`);
+  }
+});
+
+test('Altbestand ohne jede kryptoId bleibt wie vorher', () => {
+  // Verschiedene ids: verschiedene Nachrichten, auch bei gleichem Text …
+  assert.equal(zusammenfuegen([posten(A, 'x')], [posten(Z_ZWEITGERAET, 'x')]).length, 2);
+  // … gleiche id: eine, der Server gewinnt bei einer Bearbeitung.
+  const gleich = zusammenfuegen(
+    [posten(A, 'alt')],
+    [posten(A, 'neu', { bearbeitetAm: '2026-10-13T00:00:00Z' })]
+  );
+  assert.deepEqual(gleich.map((p) => p.inhalt), ['neu']);
+});
+
 // ── Identität mit Autor-Bindung (2026-10-11) ────────────────────────────────
 // Die Verfasser-Kopie trägt keine kryptoId (ihre id IST die Kennung), die
 // Empfangs-Kopie trägt sie neben der Zustellungs-ID. Bis 2026-10-11 verglich
@@ -201,4 +271,47 @@ test('Autor-Bindung: gleiche Kennung eines fremden Autors verdrängt nichts und 
     ergebnis.filter((p) => !p.geloescht).map((p) => p.inhalt),
     ['von alice']
   );
+});
+
+// ── Fälschungsfälle gegen die Identität ohne Autor (2026-10-13) ─────────────
+// Die Kennung K wählt der Absender frei. Eine Identität aus Kennung allein
+// (main, c5a25317) legte deshalb Bobs Nachricht mit Alices K mit Alices
+// zusammen — gegen jeden der drei Fälle hier war sie offen. Alices Kopie
+// liegt in beiden Formen vor: aus dem Altbestand ohne kryptoId und seit
+// 2026-10-13 mit kryptoId = id.
+
+const ALICE = '200';
+const BOB = '300';
+const D_ALICE = '120000000000000011';
+const D_BOB = '120000000000000012';
+const alicesFormen = [
+  ['Altbestand', posten(K, 'von alice', { autorId: ALICE })],
+  ['kryptoId = id', posten(K, 'von alice', { kryptoId: K, autorId: ALICE })]
+] as const;
+
+function sichtbar(liste: Posten[]): string[] {
+  return liste.filter((p) => !p.geloescht).map((p) => p.inhalt);
+}
+
+for (const [form, alice] of alicesFormen) {
+  test(`F1 Sendegerät (${form}): Bob schickt K und löscht sie selbst — Alices Nachricht bleibt`, () => {
+    const bobsStein = posten(D_BOB, '', { kryptoId: K, autorId: BOB, geloescht: true });
+    for (const folge of [[alice, bobsStein], [bobsStein, alice]]) {
+      assert.deepEqual(sichtbar(zusammenfuegen(folge, [])), ['von alice']);
+      assert.deepEqual(sichtbar(zusammenfuegen(folge.slice(0, 1), folge.slice(1))), ['von alice']);
+    }
+  });
+
+  test(`F3 (${form}): Bobs sichtbare Nachricht vor Alices Kopie — beide bleiben`, () => {
+    const bobs = posten(D_BOB, 'von bob', { kryptoId: K, autorId: BOB });
+    assert.deepEqual(sichtbar(zusammenfuegen([bobs, alice], [])).sort(), ['von alice', 'von bob']);
+    assert.deepEqual(sichtbar(zusammenfuegen([bobs], [alice])).sort(), ['von alice', 'von bob']);
+  });
+}
+
+test('F2 Empfangsgerät: Alices Kopie zuerst, Bobs Stein unter derselben Kennung danach — Alices bleibt', () => {
+  const alices = posten(D_ALICE, 'von alice', { kryptoId: K, autorId: ALICE });
+  const bobsStein = posten(D_BOB, '', { kryptoId: K, autorId: BOB, geloescht: true });
+  assert.deepEqual(sichtbar(zusammenfuegen([alices, bobsStein], [])), ['von alice']);
+  assert.deepEqual(sichtbar(zusammenfuegen([alices], [bobsStein])), ['von alice']);
 });
