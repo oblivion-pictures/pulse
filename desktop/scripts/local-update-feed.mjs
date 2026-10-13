@@ -8,7 +8,9 @@
  *
  * Nur Node-Builtins, keine Dependencies (Python-frei). Range-Support ist für
  * den differentiellen Download / Resume da; ein frischer Full-Download geht auch
- * ohne. Bindet bewusst nur an 127.0.0.1.
+ * ohne. Es versteht nur EINZELNE Bereiche (bei `bytes=a-b,c-d` antwortet es mit
+ * dem ersten) — `dev-app-update.yml` setzt deshalb `useMultipleRangeRequest:
+ * false`, wie die ausgelieferten Builds. Bindet bewusst nur an 127.0.0.1.
  *
  *   node scripts/local-update-feed.mjs [dir]     # default: release
  *   PORT=9000 node scripts/local-update-feed.mjs

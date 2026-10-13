@@ -78,6 +78,9 @@ mac:
   publish:
     provider: generic
     url: https://howispulse.com/updates/mac-server/
+    # Nur Einzelbereiche, Begründung: Win-Block am Dateiende
+    # (GitHub-Assets lehnen Mehrfach-Bereiche mit 501 ab).
+    useMultipleRangeRequest: false
   extraResources:
     - from: resources-podman-mac
       to: podman
@@ -128,3 +131,11 @@ nsis:
 publish:
   provider: generic
   url: https://howispulse.com/updates/win-server/
+  # Delta-Updates laufen nur mit EINZELNEN Bereichsanfragen. Der Asset-Server der
+  # GitHub-Releases (release-assets.githubusercontent.com) beantwortet eine
+  # Anfrage mit mehreren Bereichen mit 501 (gemessen 2026-10-13, Einzelbereich
+  # 206); electron-updater fiele dann auf den vollen Download zurück. Die
+  # Einstellung liest er aus der EINGEBAUTEN app-update.yml, nicht aus dem Feed
+  # (providerFactory.js, Zweig "generic") — sie wirkt also erst, wenn die App
+  # mit ihr ausgeliefert ist. Auf netcup unschädlich (nginx kann beides).
+  useMultipleRangeRequest: false

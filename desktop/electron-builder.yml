@@ -181,6 +181,14 @@ nsis:
 publish:
   provider: generic
   url: https://howispulse.com/updates/win/
+  # Delta-Updates laufen nur mit EINZELNEN Bereichsanfragen. Der Asset-Server der
+  # GitHub-Releases (release-assets.githubusercontent.com) beantwortet eine
+  # Anfrage mit mehreren Bereichen mit 501 (gemessen 2026-10-13, Einzelbereich
+  # 206); electron-updater fiele dann auf den vollen Download zurück. Die
+  # Einstellung liest er aus der EINGEBAUTEN app-update.yml, nicht aus dem Feed
+  # (providerFactory.js, Zweig "generic") — sie wirkt also erst, wenn die App
+  # mit ihr ausgeliefert ist. Auf netcup unschädlich (nginx kann beides).
+  useMultipleRangeRequest: false
 # ── macOS ─────────────────────────────────────────────────────────────────────
 # Erzeugt eine .app in einem .dmg (Drag-Install) + ein .zip (Auto-Update-Artefakt).
 #
@@ -212,6 +220,10 @@ mac:
   publish:
     provider: generic
     url: https://howispulse.com/updates/mac/
+    # Nur Einzelbereiche, Begründung: Win-Block weiter oben (`publish:` auf Wurzelebene)
+    # (GitHub-Assets lehnen Mehrfach-Bereiche mit 501 ab). Gilt auch für das
+    # Delta des Mac-Zips.
+    useMultipleRangeRequest: false
   # HQ-Streaming-Sidecar UND nativer Player: the SELF-CONTAINED bundle dir
   # produced by `scripts/bundle-dylibs.sh <outdir> <binary...>` (both binaries +
   # ONE shared set of @loader_path-rewritten FFmpeg/openssl/opus dylibs, ad-hoc

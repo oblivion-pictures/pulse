@@ -25,3 +25,8 @@
 provider: generic
 url: http://localhost:8888/
 updaterCacheDirName: pulse-updater-dev
+# Wie die ausgelieferten Builds (electron-builder*.yml, dort begründet): nur
+# Einzelbereiche. local-update-feed.mjs beantwortet ohnehin nur den ERSTEN
+# Bereich einer Mehrfach-Anfrage — ohne die Zeile liefe der lokale Test also
+# anders als die App, die später ausgeliefert wird.
+useMultipleRangeRequest: false
