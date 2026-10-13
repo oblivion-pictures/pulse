@@ -269,9 +269,10 @@ export type Nachschub = 'sicherung' | 'kopplung' | 'archiv';
  * Namen MEINER Nachricht ein, und auf meinem Gerät zeigte meine Nachricht
  * danach sein Bild (`krypto/anhangHolen.ts`), und die nächste Erstsicherung
  * schrieb es als meines in die Sicherung. Die Kennung dagegen ändert nichts,
- * was angezeigt wird: eine Archiv-Zeile führt ihre eigene ID als Kennung
- * (`archiv/zeile.ts::leseZeilenKlar`), und bei gleichem Schlüssel ist das
- * dieselbe ID wie die des liegenden Satzes.
+ * was angezeigt wird: eine Archiv-Zeile führt ihre `i` als Kennung
+ * (`archiv/zeile.ts::leseZeile`), und unter `i` liegt sie nur als eigene
+ * Zeile oder als Bestandszeile — dann ist das dieselbe ID wie die des
+ * liegenden Satzes.
  *
  * Ergänzen löscht nie: ein neuer Satz mit `geloescht` hebt den liegenden
  * nicht auf (die Lösch-Wege laufen über `verlaufMarkiereGeloescht`), auch

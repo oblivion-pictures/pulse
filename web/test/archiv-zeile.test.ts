@@ -9,10 +9,10 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+	baueBearbeitungKlar,
 	baueGrabsteinKlar,
 	baueZeilenKlar,
-	leseZeile,
-	leseZeilenKlar
+	leseZeile
 } from '../src/lib/archiv/zeile.ts';
 import { satzErgaenzen, sortierSchluessel, zuSatz } from '../src/lib/verlauf/satz.ts';
 import type { Message } from '../src/lib/api/types';
@@ -31,10 +31,17 @@ function nachricht(mit: Partial<Message> = {}): Message {
 	};
 }
 
+/** Eine Zeile ihres Autors, von ihm selbst gelesen, als Nachricht. */
+function eigeneLesen(roh: string): Message {
+	const eintrag = leseZeile('999', roh, { einlieferer: '42', zeilenId: '900000000000000002', konto: '42' });
+	assert.equal(eintrag?.art, 'nachricht');
+	return (eintrag as { nachricht: Message }).nachricht;
+}
+
 describe('archiv/zeile', () => {
 	test('Rundtrip ohne Anhang und ohne Antwort', () => {
 		const klar = baueZeilenKlar(nachricht());
-		const zurueck = leseZeilenKlar('999', new TextDecoder().decode(klar));
+		const zurueck = eigeneLesen(new TextDecoder().decode(klar));
 		assert.equal(zurueck.id, '1234567890123');
 		assert.equal(zurueck.content, 'Hallo Archiv');
 		assert.equal(zurueck.author_id, '42');
@@ -48,7 +55,7 @@ describe('archiv/zeile', () => {
 			reply_to_id: '777',
 			attachments: [
 				{
-					id: 'anhang-1',
+					id: '501',
 					filename: 'foto.jpg',
 					mime: 'image/jpeg',
 					size: 1234,
@@ -63,7 +70,7 @@ describe('archiv/zeile', () => {
 					thumb_schluessel: 'a2V5Mg=='
 				},
 				{
-					id: 'anhang-2',
+					id: '502',
 					filename: null,
 					mime: null,
 					size: 5,
@@ -74,11 +81,11 @@ describe('archiv/zeile', () => {
 				}
 			]
 		});
-		const zurueck = leseZeilenKlar('999', new TextDecoder().decode(baueZeilenKlar(quelle)));
+		const zurueck = eigeneLesen(new TextDecoder().decode(baueZeilenKlar(quelle)));
 		assert.equal(zurueck.reply_to_id, '777');
 		assert.equal(zurueck.attachments?.length, 2);
 		const eins = zurueck.attachments![0];
-		assert.equal(eins.id, 'anhang-1');
+		assert.equal(eins.id, '501');
 		assert.equal(eins.filename, 'foto.jpg');
 		assert.equal(eins.mime, 'image/jpeg');
 		assert.equal(eins.size, 1234);
@@ -94,10 +101,7 @@ describe('archiv/zeile', () => {
 	});
 
 	test('Legacy-Zeile ohne anh-Feld bleibt lesbar (Fassung vor 2026-10-05)', () => {
-		const zurueck = leseZeilenKlar(
-			'999',
-			'{"i":"1","t":"alt","a":"42","z":"2026-10-04T00:00:00.000Z","v":2}'
-		);
+		const zurueck = eigeneLesen('{"i":"1","t":"alt","a":"42","z":"2026-10-04T00:00:00.000Z","v":2}');
 		assert.equal(zurueck.content, 'alt');
 		assert.equal(zurueck.attachments, undefined);
 	});
@@ -147,12 +151,16 @@ describe('archiv/zeile', () => {
 		assert.equal(leseZeile('999', stein, von(null)), null);
 	});
 
-	test('eine Grabstein-Zeile ist für einen älteren Klienten keine Nachricht', () => {
-		// Ältere Klienten kennen `g` nicht und lesen die Zeile als Nachricht;
-		// ohne `i` und `t` verwirft `zuSatz` sie still, statt eine leere
-		// Nachricht anzulegen.
-		const stein = new TextDecoder().decode(baueGrabsteinKlar('1', '42', '2026-10-12T00:00:00.000Z'));
-		assert.equal(zuSatz('999', leseZeilenKlar('999', stein), 'konto'), null);
+	test('Grabstein- und Bearbeitungs-Zeile sind für einen älteren Klienten keine Nachricht', () => {
+		// Ältere Klienten kennen `g` und `e` nicht und lesen jede Zeile als
+		// Nachricht mit `id = i`; ohne `i` verwirft `zuSatz` sie still, statt
+		// eine leere Nachricht anzulegen.
+		const zeit = '2026-10-12T00:00:00.000Z';
+		for (const bytes of [baueGrabsteinKlar('1', '42', zeit), baueBearbeitungKlar('1', '42', 'neu', zeit)]) {
+			const z = JSON.parse(new TextDecoder().decode(bytes));
+			const wieAlt = { id: z.i, channel_id: '999', author_id: z.a, content: z.t, created_at: z.z };
+			assert.equal(zuSatz('999', wieAlt, 'konto'), null);
+		}
 	});
 
 	// ── Kennungen (Gegenprüfung 2026-10-12, Fund 1) ────────────────────────

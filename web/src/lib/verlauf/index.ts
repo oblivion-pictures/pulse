@@ -75,7 +75,6 @@ export {
   verlaufReaktionAnwendenPflicht,
   verlaufBearbeitungAnwenden,
   verlaufBearbeitungAnwendenPflicht,
-  verlaufLokaleIdsFuerFrame,
   verlaufLokaleIdsFuerFramePflicht,
   verlaufArchivBearbeitungenAnwenden
 } from './frameAnwenden';

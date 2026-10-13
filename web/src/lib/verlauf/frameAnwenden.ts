@@ -16,6 +16,9 @@
  *     Aktionen (`components/chat/cloudNachrichtAktionen.ts`), deren Frame
  *     schon zugestellt ist, wenn sie lokal nachziehen.
  *
+ * Die Frame-Suche (`verlaufLokaleIdsFuerFramePflicht`) gibt es nur in der
+ * werfenden Form; die andere hatte keinen Aufrufer und ist entfallen.
+ *
  * Ein lokal nicht geführter Kanal und ein fehlendes Konto sind in beiden
  * Formen kein Fehler, sondern „nichts zu tun" — wie bisher.
  */
@@ -44,8 +47,8 @@ function gemeldet<T>(arbeit: Promise<T>, ersatz: T): Promise<T> {
 /**
  * Wendet EINE Reaktion (eigene oder per Umschlag empfangene) auf den Satz
  * `nachrichtId` an — `nachrichtId` ist die LOKALE ID; eine kanonische ID aus
- * einem Umschlag loest der Aufrufer vorher auf (`verlaufLokaleIdsFuerFrame`,
- * s. `krypto/empfangen.ts`). Gibt die neue Anzeige-Form zurueck, oder `null`,
+ * einem Umschlag loest der Aufrufer vorher auf
+ * (`verlaufLokaleIdsFuerFramePflicht`, s. `krypto/empfangen.ts`). Gibt die neue Anzeige-Form zurueck, oder `null`,
  * wenn nichts geschrieben wurde: kein solcher Satz, Grabstein, fremdes
  * Konto, oder der Umschlag aenderte nichts (doppelt angekommen, s.
  * `krypto/reaktionen.ts`). Wirft bei einem Fehlschlag (s. Modulkopf).
@@ -137,14 +140,6 @@ export async function verlaufLokaleIdsFuerFramePflicht(
   return verlaufSatzIdsFuerFrame(kanalId, frameId, kontoId, autorId);
 }
 
-/** Wie `verlaufLokaleIdsFuerFramePflicht`, wirft aber nie. */
-export function verlaufLokaleIdsFuerFrame(
-  kanalId: string,
-  frameId: string,
-  autorId?: string
-): Promise<string[]> {
-  return gemeldet(verlaufLokaleIdsFuerFramePflicht(kanalId, frameId, autorId), []);
-}
 
 /** Die Bearbeitungs-Zeilen des Server-Archivs (`archivBearbeitung.ts`) auf
  *  die Sätze dieses Kontos im Kanal anwenden — sie ergänzen nur

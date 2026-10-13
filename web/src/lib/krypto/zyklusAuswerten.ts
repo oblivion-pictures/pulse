@@ -51,7 +51,7 @@ export interface ZyklusWege {
   meldeFehler(err: unknown): void;
   /** Die geladene Anzeige eines Kanals. */
   geladen(kanalId: string): ReadonlyArray<{ id: string; krypto_id?: string; author_id?: string }>;
-  /** Die lokalen IDs, die ein Frame im Verlauf trifft (`verlaufLokaleIdsFuerFrame`). */
+  /** Die lokalen IDs, die ein Frame im Verlauf trifft (`verlaufLokaleIdsFuerFramePflicht`). */
   imVerlauf(kanalId: string, frameId: string, autorId?: string): Promise<string[]>;
   /** Gebundene Löschung samt Register (`verlaufGebundenGeloescht`). */
   gebundenLoeschen(kanalId: string, kennung: string, autorId: string): Promise<string[]>;

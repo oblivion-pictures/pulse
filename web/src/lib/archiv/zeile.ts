@@ -14,7 +14,7 @@
  * Cloud-Sicherung oder gar nicht (`krypto/anhangHolen.ts`).
  *
  * Vor der Gruppen-Erweiterung trug die Zeile statt `anh` nur die Anzahl
- * (`v`) — `leseZeilenKlar` toleriert beide Fassungen, es gibt dort nichts
+ * (`v`) — `leseZeile` toleriert beide Fassungen, es gibt dort nichts
  * anzuzeigen.
  *
  * **Den Autor `a` schreibt der Einliefernde selbst hinein** — und einliefern
@@ -110,17 +110,13 @@ export function baueZeilenKlar(nachricht: Message): Uint8Array {
 	return new TextEncoder().encode(JSON.stringify(klar));
 }
 
-/** Archiv-Zeilen-Klartext → Nachricht für den lokalen Verlauf. Die Kanal-Id
- *  kommt aus der Zeilen-Position beim Server, nicht aus der Nutzlast.
+/** Archiv-Zeilen-Klartext → Nachricht für den lokalen Verlauf, unter
+ *  `lokaleId` (s. Modulkopf). Die Kanal-Id kommt aus der Zeilen-Position
+ *  beim Server, nicht aus der Nutzlast.
  *  `krypto_id` = kanonische Autoren-Id — live empfangene Nachrichten tragen
  *  die zustellungs-eigene Id als `id` und dedupeln über `krypto_id` gegen
  *  Kopien aus Sicherung/Archiv (`messages.svelte.ts::prepend`, Befund
  *  2026-09-17); ohne dieses Feld erschien dieselbe Nachricht doppelt. */
-export function leseZeilenKlar(kanalId: string, roh: string): Message {
-	const inhalt = JSON.parse(roh) as ArchivZeileKlar;
-	return zuNachricht(kanalId, inhalt, inhalt.i);
-}
-
 function zuNachricht(kanalId: string, inhalt: ArchivZeileKlar, lokaleId: string): Message {
 	return {
 		id: lokaleId,
