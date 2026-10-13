@@ -8,7 +8,7 @@ stream-token request on, media-svc when it mints the token — so the ceiling ha
 to be one number, not two.
 
 **Why this lives in ``dcc_shared`` while the Redis key NAMES deliberately do
-not**: the "these services share no code on purpose" rule (CLAUDE.md,
+not**: the "these services share no code on purpose" rule (intern/docs/wissen/hq-streaming.md,
 ``streamkeys.py``) is about media-svc ↔ **mediamtx-auth-hook**, and the
 auth-hook is the one service with no ``dcc-shared`` dependency at all — it
 cannot import this. chat-gateway and media-svc already depend on

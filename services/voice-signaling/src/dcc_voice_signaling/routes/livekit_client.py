@@ -62,7 +62,7 @@ def _temp_api_client() -> tuple[lk.LiveKitAPI, bool] | None:
         return None
     # Server-seitige Calls bevorzugen die interne livekit_api_url (wie der
     # Singleton in app.py): die öffentliche livekit_url geht über den
-    # Reverse-Proxy → 502 genau während eines Deploys (CLAUDE.md-Gotcha).
+    # Reverse-Proxy → 502 genau während eines Deploys (intern/docs/wissen/voice.md, Gotcha).
     # LiveKitAPI wants the HTTP variant; ws:// → http:// is enough for
     # the room-service endpoints we use.
     api_url = settings.livekit_api_url or settings.livekit_url

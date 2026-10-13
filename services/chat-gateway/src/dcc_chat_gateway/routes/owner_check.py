@@ -39,7 +39,7 @@ sie einem künftigen Fehler auszusetzen.
 
 Der Pfad braucht eine Zeile im ``Caddyfile.template``. Ohne sie greift der
 SPA-Rückfall und liefert HTML statt JSON — dieselbe Falle, die die Cloud-Poller
-schon einmal erwischt hat (s. ``CLAUDE.md``, well-known-Endpoints).
+schon einmal erwischt hat (s. ``intern/docs/wissen/selfhost-sperre-erreichbarkeit.md``, well-known-Endpoints).
 """
 
 from __future__ import annotations

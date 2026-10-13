@@ -99,7 +99,7 @@ def _stueck_groesse(daten_b64: str) -> int:
     """Bytes VOR der Base64-Kodierung — wie ``_envelope_groesse`` im Postfach.
 
     Der Klient kodiert ohne Fuellzeichen (vodozemacs ``STANDARD_NO_PAD``,
-    s. CLAUDE.md), Python verlangt sie: ``"=="`` anhaengen ist bei
+    s. intern/docs/wissen/e2e-krypto.md), Python verlangt sie: ``"=="`` anhaengen ist bei
     ueberzaehliger Polsterung gefahrlos.
     """
     try:

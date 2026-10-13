@@ -53,7 +53,7 @@ async def test_zu_alter_server_ist_ein_mangel():
 async def test_spa_rueckfall_ist_kein_fehlalarm():
     """Fehlt die Proxy-Zeile, liefert der SPA-Rueckfall die Startseite.
 
-    Dieselbe Falle hat die Cloud-Poller schon einmal erwischt (s. CLAUDE.md,
+    Dieselbe Falle hat die Cloud-Poller schon einmal erwischt (s. intern/docs/wissen/selfhost-sperre-erreichbarkeit.md,
     well-known-Endpunkte) — sie scheiterten still mit einem JSONDecodeError.
     """
     async with _klient(200, text="<!doctype html><html>…") as k:

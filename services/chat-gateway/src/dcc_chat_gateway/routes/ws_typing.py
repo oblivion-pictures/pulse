@@ -33,7 +33,7 @@ _TYPING_THROTTLE_S = 2.0
 def _session_factory(mgr: object):
     """Die Sitzungsquelle des ConnectionManagers, nicht das Modul-``SessionLocal``.
 
-    Steht so in CLAUDE.md und ist kein Stilgeschmack: die ws_app-Tests patchen
+    Steht so in intern/docs/wissen/plugins.md und ist kein Stilgeschmack: die ws_app-Tests patchen
     die Speicher-Datenbank am Manager. Wer ``SessionLocal`` direkt importiert,
     sieht dort die ungepatchte Datenbank — im Testlauf als "no such table",
     in Produktion gar nicht, weil beide dasselbe Objekt sind. Gleiches Muster

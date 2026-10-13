@@ -5,7 +5,7 @@ Warum eine eigene Datei: ``test_private_gruppen.py`` deckt Modelle und Routen
 Pruefstelle — den Weg, auf dem ein Weckruf zu den offenen Sockets faechert.
 
 **Warum das ueberhaupt zweimal geprueft wird.** Dieselbe Doppelung wie bei den
-Standplatz-Geraeten (CLAUDE.md, „Der Kanal ist der Rechteanker … zweifach
+Standplatz-Geraeten (intern/docs/wissen/fernsteuerung.md, „Der Kanal ist der Rechteanker … zweifach
 geprueft — Route UND Ereignisweg"): die Route entscheidet, wer einliefern
 darf, der Ereignisweg entscheidet, wer es zu sehen bekommt. Wer nur die Route
 prueft, laesst ein entferntes Mitglied weiter mitlesen, solange sein Socket

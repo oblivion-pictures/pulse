@@ -38,8 +38,8 @@
 // Release — der Pulse-Fork (`ghcr.io/…/pulse-mediamtx:1.19.1-pulse5`, Prod)
 // basiert auf 1.19.1. MediaMTX ändert gelegentlich Config-Schlüssel; gegen eine
 // neuere Version kann die Vorlage hier still falsch laufen. Der native Binary
-// hat die fünf Pulse-Patches NICHT (Vollbild-Rückweg, Keyframe-Takt, FlexFEC,
-// Dependency-Descriptor) — für App-Entwicklung reicht er, für Messläufe zu
+// hat die sieben Pulse-Patches NICHT (AV1-Temporal-Delimiter, Vollbild-Rückweg,
+// Keyframe-Takt, FlexFEC, Dependency-Descriptor, Vollbild nach Verwurf) — für App-Entwicklung reicht er, für Messläufe zu
 // diesen Features gilt: Linux-Dev-Stack oder Testserver.
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process';

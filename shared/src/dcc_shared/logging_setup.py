@@ -49,7 +49,7 @@ in ``routes/{chat_gateway,overrides_state,livekit_client}``). Nicht
 angeschlossen sind **media-svc** und **mediamtx-auth-hook** — beide loggen
 ausschliesslich über structlog, hätten also nichts davon. Beim auth-hook kommt
 ein zweiter Grund dazu, der wichtiger ist als Einheitlichkeit: er hat
-**bewusst keine ``dcc-shared``-Abhängigkeit** (siehe ``CLAUDE.md``), und die
+**bewusst keine ``dcc-shared``-Abhängigkeit** (siehe ``intern/docs/wissen/hq-streaming.md``), und die
 wegen einer Logger-Einstellung einzuführen wäre der falsche Handel.
 """
 

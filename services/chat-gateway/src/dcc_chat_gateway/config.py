@@ -173,7 +173,7 @@ class Settings(BaseSettings):
 
     # Zwischenlager der Community-Dateiablage (Design §7, Etappe E8): ein
     # Chiffrat wartet hier, bis ein Geraet des Besitzers es festigt. Werte
-    # gerechnet gegen die Prod-Kiste aus CLAUDE.md (38 GB Platte, 77 % voll
+    # gerechnet gegen die Kiste aus intern/docs/wissen/remote-dev-stack.md (38 GB Platte, 77 % voll
     # -> rund 8,7 GB frei, geteilt mit Postgres/Redis/MinIO/allen anderen
     # Diensten). Je Datei 64 MiB deckt praktisch jede Datei, die ein Mitglied
     # bewusst ablegt (Fotos, Dokumente, kurze Videoclips), ohne das

@@ -2,7 +2,7 @@
 
 Route und Ereignisweg werden getrennt geprueft — dieselbe Doppelung wie bei
 den privaten Gruppen (``test_private_gruppen_ereignisweg.py``) und den
-Standplatz-Geraeten (CLAUDE.md, „Der Kanal ist der Rechteanker … zweifach
+Standplatz-Geraeten (intern/docs/wissen/fernsteuerung.md, „Der Kanal ist der Rechteanker … zweifach
 geprueft — Route UND Ereignisweg").
 
 **Warum hier kein eigener Filter noetig ist, anders als bei privaten
