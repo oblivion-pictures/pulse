@@ -21,6 +21,44 @@ cat > "$arbeit/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 z="$GH_ZUSTAND"; r="$z/releases"; mkdir -p "$r"; touch "$z/reihenfolge"
+if [ "$1" = api ]; then
+  # Nur die zwei Formen, die das Skript braucht: ID eines Assets lesen und
+  # per PATCH umbenennen. IDs der Attrappe sind "ID-<Name>".
+  shift; methode=GET; pfad=""; jq=""; felder=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --method) methode="$2"; shift ;;
+      --jq) jq="$2"; shift ;;
+      -f) felder+=("$2"); shift ;;
+      -*) echo "attrappe: unbekannte api-Option $1" >&2; exit 9 ;;
+      *) pfad="$1" ;;
+    esac
+    shift
+  done
+  case "$methode $pfad" in
+    "GET repos/o/r/releases/tags/"*)
+      tag="${pfad##*/}"; [ -d "$r/$tag" ] || exit 1
+      n="$(sed -n 's/.*select(\.name==\"\([^"]*\)\").*/\1/p' <<<"$jq")"
+      [ -n "$n" ] || { echo "attrappe: --jq nicht verstanden: $jq" >&2; exit 9; }
+      [ -e "$r/$tag/$n" ] && echo "ID-$n"
+      exit 0 ;;
+    "PATCH repos/o/r/releases/assets/ID-"*)
+      alt="${pfad##*/ID-}"; neu=""
+      for f in "${felder[@]}"; do case "$f" in name=*) neu="${f#name=}" ;; esac; done
+      d=""; for x in "$r"/*/; do [ -e "$x$alt" ] && d="$x"; done
+      [ -n "$d" ] && [ -n "$neu" ] || exit 1
+      if [ "${UMBENENNEN_SCHEITERT:-}" = immer ]; then echo "attrappe: Umbenennen scheitert" >&2; exit 1; fi
+      if [ -n "${EINDRINGLING:-}" ] && [ ! -e "$z/eindringling-erledigt" ]; then
+        # Ein anderer Lauf legt genau jetzt eine Datei unter dem Zielnamen an.
+        touch "$z/eindringling-erledigt"; printf 'FREMD' > "$d$neu"
+        echo "attrappe: 422 already_exists" >&2; exit 1
+      fi
+      [ -e "$d$neu" ] && { echo "attrappe: 422 already_exists" >&2; exit 1; }
+      mv "$d$alt" "$d$neu"; echo "RENAME $(basename "$d") $alt $neu" >> "$z/protokoll"
+      exit 0 ;;
+  esac
+  echo "attrappe: unerwartetes api: $methode $pfad" >&2; exit 9
+fi
 [ "$1" = release ] || { echo "attrappe: unerwartet: $*" >&2; exit 9; }
 sub="$2"; shift 2
 tag=""; dateien=(); json=""; muster=""; ziel=""; latest=""; notes=""; clobber=""
@@ -34,6 +72,7 @@ while [ $# -gt 0 ]; do
     --latest) latest=ja ;;
     --latest=false) latest=nein ;;
     --clobber) clobber=ja ;;
+    --yes) ;;
     -*) echo "attrappe: unbekannte Option $1" >&2; exit 9 ;;
     *) if [ -z "$tag" ] && [ "$sub" != list ]; then tag="$1"; else dateien+=("$1"); fi ;;
   esac
@@ -57,6 +96,9 @@ case "$sub" in
     [ -d "$r/$tag" ] || exit 1
     for d in "${dateien[@]}"; do
       n="$(basename "$d")"
+      if [ -n "${UPLOAD_SCHEITERT_MUSTER:-}" ] && [[ "$n" == *"$UPLOAD_SCHEITERT_MUSTER"* ]]; then
+        echo "attrappe: Upload scheitert" >&2; exit 1
+      fi
       # Wettlauf nachstellen: ein anderer Lauf legt dieselbe Datei genau jetzt ab.
       if [ -n "${RENNEN:-}" ] && [ "$n" = "$RENNEN" ] && [ -z "$clobber" ]; then
         printf 'FRISCH' > "$r/$tag/$n"
@@ -69,6 +111,11 @@ case "$sub" in
     [ -d "$r/$tag" ] || exit 1
     [ "$latest" = ja ] && { rm -f "$r"/*/_latest; touch "$r/$tag/_latest"; echo "LATEST $tag" >> "$z/protokoll"; }
     exit 0 ;;
+  delete-asset)
+    n="${dateien[0]}"
+    [ -d "$r/$tag" ] && [ -e "$r/$tag/$n" ] || { echo "asset $n not found" >&2; exit 1; }
+    if [ "${DELETE_SCHEITERT_FUER:-}" = "$n" ]; then echo "attrappe: Löschen scheitert" >&2; exit 1; fi
+    rm -f "$r/$tag/$n"; echo "DELETE $tag $n" >> "$z/protokoll"; exit 0 ;;
   list)
     # Neueste Anlage zuerst, ALLE Tags (auch fremde) — gefiltert wird im Skript.
     sed '1!G;h;$!d' "$z/reihenfolge"; exit 0 ;;
@@ -86,7 +133,7 @@ ok()   { echo "✓ $1"; }
 nein() { echo "✗ $1" >&2; fehler=1; }
 lauf() {  # lauf <zustand> <args…> — gibt den Exit-Code zurück, Ausgabe nach $zustand/ausgabe
   local z="$1"; shift
-  env PATH="$arbeit/bin:$PATH" GH_ZUSTAND="$z" GITHUB_REPOSITORY=o/r GITHUB_SHA=abc123 \
+  env PATH="$arbeit/bin:$PATH" GH_ZUSTAND="$z" GITHUB_REPOSITORY=o/r GITHUB_SHA=abc123 GITHUB_RELEASE_PAUSE=0 \
     bash "$skript" "$@" > "$z/ausgabe" 2>&1
 }
 neu() { local z="$arbeit/z$1"; mkdir -p "$z/releases"; touch "$z/reihenfolge" "$z/protokoll"; echo "$z"; }
@@ -204,5 +251,84 @@ if RENNEN=Pulse-Android.apk lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/s
    && grep -q "inzwischen ein anderer Lauf" "$z/ausgabe"; then
   ok "übernommene alte APK überschreibt nie eine frische"
 else nein "APK-Wettlauf: $(cat "$z/ausgabe")"; fi
+
+# 13. Ersetzen einer vorhandenen Datei ohne Lücke: erst unter Zwischennamen
+#     hoch (die alte wird weiter ausgeliefert), dann löschen, dann umbenennen —
+#     direkt hintereinander. Nie ein Upload auf den Namen der alten Datei
+#     (das `--clobber` von gh löschte erst und lüde dann 337 MB hoch).
+z="$(neu 13)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"; printf 'ALT-MAP' > "$z/releases/$t/Pulse-Setup-Windows.exe.blockmap"
+if lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" "Pulse-Setup-Windows.exe.blockmap=$arbeit/setup.exe.blockmap" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe.blockmap")" = MAP ] \
+   && ! ls "$z/releases/$t" | grep -q '\.neu-' \
+   && ! grep -qE "^UPLOAD $t Pulse-Setup-Windows.exe(.blockmap)?$" "$z/protokoll" \
+   && [ "$(grep -n -E "^(UPLOAD $t Pulse-Setup-Windows.exe.neu-|DELETE $t Pulse-Setup-Windows.exe$|RENAME $t Pulse-Setup-Windows.exe.neu-.* Pulse-Setup-Windows.exe$)" "$z/protokoll" | cut -d: -f1 | tr '\n' ' ')" = "1 2 3 " ] \
+   && [ "$(head -n 3 "$z/protokoll" | cut -d' ' -f1 | tr '\n' ' ')" = "UPLOAD DELETE RENAME " ]; then
+  ok "vorhandene Datei: Zwischenname hoch, alte löschen, umbenennen — in genau dieser Reihenfolge, keine Zwischendatei bleibt"
+else nein "lückenlos ersetzen: $(cat "$z/ausgabe"; cat "$z/protokoll")"; fi
+
+# 14. Abbruch ZWISCHEN Upload und Umbenennen (die alte lässt sich nicht löschen):
+#     die alte Datei bleibt stehen und wird weiter ausgeliefert, die Zwischendatei
+#     ist weggeräumt.
+z="$(neu 14)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if ! DELETE_SCHEITERT_FUER=Pulse-Setup-Windows.exe lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = ALT ] \
+   && ! ls "$z/releases/$t" | grep -q '\.neu-' && grep -q "die alte Datei\|sie bleibt" "$z/ausgabe"; then
+  ok "Abbruch vor dem Löschen: alte Datei bleibt, Zwischendatei weg"
+else nein "Abbruch nach Upload: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+
+# 15. Der Zwischen-Upload selbst scheitert: nichts wurde angefasst.
+z="$(neu 15)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if ! UPLOAD_SCHEITERT_MUSTER=.neu- lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = ALT ] && ! grep -q DELETE "$z/protokoll"; then
+  ok "Zwischen-Upload scheitert: alte Datei unangetastet, nichts gelöscht"
+else nein "Zwischen-Upload: $(cat "$z/ausgabe")"; fi
+
+# 16. Abbruch NACH dem Löschen, beim Umbenennen: die neue Datei liegt als
+#     Zwischendatei im Release (der Lauf sagt es), und der nächste Lauf stellt
+#     alles her und räumt die Zwischendatei weg.
+z="$(neu 16)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if ! UMBENENNEN_SCHEITERT=immer lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ ! -e "$z/releases/$t/Pulse-Setup-Windows.exe" ] \
+   && [ "$(cat "$z/releases/$t"/Pulse-Setup-Windows.exe.neu-*)" = EXE ] && grep -q "liegt als" "$z/ausgabe" \
+   && lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-'; then
+  ok "Abbruch beim Umbenennen: neue Datei als Zwischendatei, der nächste Lauf heilt und räumt auf"
+else nein "Abbruch beim Umbenennen: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+
+# 17. Paralleler Lauf (der Fall im Betrieb): beim Umbenennen legt ein anderer
+#     Lauf selbst eine Datei dieses Namens an — etwa die Übernahme einer alten
+#     APK. Die frisch gebaute gewinnt.
+z="$(neu 17)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'APK-ALT' > "$z/releases/$t/Pulse-Android.apk"
+if EINDRINGLING=1 lauf "$z" 0.1.101 "Pulse-Android.apk=$arbeit/app.apk" \
+   && [ "$(cat "$z/releases/$t/Pulse-Android.apk")" = APK ] && ! ls "$z/releases/$t" | grep -q '\.neu-' \
+   && [ "$(grep -c '^DELETE' "$z/protokoll")" = 2 ]; then
+  ok "paralleler Lauf legt die Datei beim Umbenennen an: die frische gewinnt, Zwischendatei weg"
+else nein "Eindringling: $(cat "$z/ausgabe"; cat "$z/protokoll")"; fi
+
+# 18. Paralleler Lauf bei einer NEUEN Datei: zwischen Auflisten und Hochladen
+#     legt ein anderer Lauf sie an — dann gilt der Fall „vorhanden“.
+z="$(neu 18)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+if RENNEN=Pulse-Setup-Windows.exe lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-'; then
+  ok "neue Datei, die ein anderer Lauf gerade anlegt: wird ersetzt statt abzubrechen"
+else nein "neue Datei im Wettlauf: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+
+# 19. Zwischendateien früherer, abgebrochener Läufe (anderer Lauf-/Prozessnummer)
+#     werden weggeräumt, fremde Dateien nicht.
+z="$(neu 19)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+printf 'JUNK' > "$z/releases/$t/Pulse-Setup-Windows.exe.neu-99-1"
+printf 'ANDERE' > "$z/releases/$t/Pulse-macOS.dmg"
+if lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ ! -e "$z/releases/$t/Pulse-Setup-Windows.exe.neu-99-1" ] && [ -e "$z/releases/$t/Pulse-macOS.dmg" ] \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ]; then
+  ok "alte Zwischendatei wird weggeräumt, andere Dateien bleiben"
+else nein "Aufräumen: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
 
 [ "$fehler" = 0 ] && echo "✓ github-release: alle Fälle wie erwartet" || exit 1

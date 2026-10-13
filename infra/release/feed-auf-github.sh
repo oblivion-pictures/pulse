@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # Schreibt einen electron-builder-Update-Feed (latest.yml / latest-mac.yml) so
-# um, dass seine Dateien aus dem GitHub-Release kommen — aufgerufen von den
-# Bau-Workflows (win-build, win-build-server, mac-build) NACH
-# `github-release.sh` und VOR dem Hochladen des Feeds.
+# um, dass seine Dateien aus dem GitHub-Release kommen, und prüft danach, ob
+# diese Adressen wirklich abrufbar sind — aufgerufen von den Bau-Workflows
+# (win-build, win-build-server, mac-build):
+#
+#   1. umschreiben:  VOR `github-release.sh`. Das Skript braucht nur die lokalen
+#      Dateien; ein Prüfabbruch darf nie erst eintreten, nachdem github-release.sh
+#      Dateien im Release ersetzt hat, auf die der LIVE-Feed noch zeigt.
+#   2. --pruefen:    NACH `github-release.sh`, VOR dem Hochladen des Feeds.
 #
 #   GITHUB_REPOSITORY=o/r bash infra/release/feed-auf-github.sh \
 #       <version> <Feed-Datei> <Fester Name>=<lokale Datei> [...]
+#   bash infra/release/feed-auf-github.sh --pruefen <Feed-Datei>
 #
 # electron-builder schreibt relative Adressen (`url: Pulse-Setup-0.1.101.exe`),
 # die electron-updater gegen die Adresse des Feeds auflöst — also gegen den
@@ -14,16 +20,17 @@
 # `url:` unter `files:` und das `path:` durch
 #   https://github.com/<repo>/releases/download/desktop-v<version>/<Fester Name>
 # Der Feed selbst bleibt auf netcup: nur dort kennen die installierten Apps ihn
-# (`app-update.yml`), und er ist das Letzte, was bei einem Bau umspringt.
+# (`app-update.yml`).
 #
 # Die Adresse trägt die VERSION (`releases/download/desktop-v<version>/…`), nie
-# `releases/latest/download/…`: für das Delta-Update leitet electron-updater die
-# Blockmap der alten Fassung ab, indem er die neue Versionsnummer im Pfad durch
-# die alte ersetzt (Provider.getBlockMapFiles). Ohne Version im Pfad gäbe es
-# keine alte Blockmap, und `latest` wäre obendrein ein Wettlauf zwischen den
-# parallelen Bau-Workflows. Gab es zu einer älteren Fassung kein Release (und
-# damit keine Blockmap), fällt der Client für diesen einen Schritt auf den
-# vollen Download zurück.
+# `releases/latest/download/…`. Erstens leitet electron-updater für Clients OHNE
+# zwischengespeicherte Blockmap (Erstinstallation von Hand, geleerter Cache) die
+# Blockmap der alten Fassung aus der Versionsnummer im Pfad ab, indem er die neue
+# durch die alte ersetzt (Provider.getBlockMapFiles); sonst nimmt er
+# `current.blockmap` aus dem Update-Cache (AppUpdater.js:695-699). Gab es zu einer
+# älteren Fassung kein Release, lädt ein Client ohne Cache für diesen einen
+# Schritt voll. Zweitens wäre `latest` ein Wettlauf: das Release wird erst
+# „Latest“, wenn alle Bauten fertig sind, der Feed gilt aber ab dem Upload.
 #
 # Die Zuordnung ist dieselbe Liste, die github-release.sh bekommt: der Workflow
 # baut sie einmal und reicht sie an beide weiter, damit die Adressen im Feed auf
@@ -41,42 +48,28 @@
 #     jemand hat eine andere Quelle eingetragen — beides soll auffallen).
 # Zeilenenden werden dabei auf LF gebracht; sonst bleibt jede Zeile, wie sie war.
 #
-# Geschrieben für die drei Runner-Arten (Ubuntu, macOS mit bash 3.2, Git Bash
-# unter Windows): keine bash-4-Funktionen (`mapfile`, `declare -A`), awk nur im
-# POSIX-Umfang (keine Zeichenklassen, keine gawk-Erweiterungen). Braucht openssl
-# und awk; kein yq. Die Fälle in tests/feed-auf-github-faelle.sh laufen mit dem
-# awk der Maschine, auf der man sie startet — ob mawk (Ubuntu) und BSD-awk
-# (macOS) das Skript verdauen, zeigt erst ein Bau auf dem jeweiligen Runner.
+# --pruefen fragt jede `url:` des (schon umgeschriebenen) Feeds ANONYM ab
+# (`curl -fsIL`, ohne Token) und vergleicht die Content-Length mit `size:`.
+# github-release.sh sieht nur den Exit-Code von `gh`, mit Token: ein Entwurf
+# gleichen Tags, ein privat gestelltes Repo oder ein falscher Eigentümer in
+# GITHUB_REPOSITORY blieben unbemerkt und gäben bei allen Clients ein 404. Drei
+# Versuche mit Pause (FEED_PRUEFEN_PAUSE, Vorgabe 5 s); scheitert es, wird der
+# Feed nicht hochgeladen. Bei einem Neubau derselben Version steht dann im
+# Release schon die neue Datei, und der Live-Feed nennt noch das sha512 der alten
+# — bis zum nächsten grünen Lauf scheitern Updates mit „sha512 checksum mismatch“
+# (sicher, aber vergeblich).
+#
+# Geschrieben für die Runner der Workflows: Git Bash mit gawk (Windows) und
+# macOS mit bash 3.2 und BSD-awk. Deshalb keine bash-4-Funktionen (`mapfile`,
+# `declare -A`) und awk nur im POSIX-Umfang (keine Zeichenklassen, keine gawk-
+# Erweiterungen). Braucht openssl, awk und (für --pruefen) curl; kein yq. Die
+# Fälle in tests/feed-auf-github-faelle.sh laufen mit dem awk der Maschine, auf
+# der man sie startet (gawk, auch mit --posix und --traditional). Eine
+# unabhängige Prüfung am 2026-10-13 fuhr sie zusätzlich mit Apples awk
+# 20200816 (dem der macOS-Runner) und unter bash 3.2 mit BusyBox-awk grün.
 set -euo pipefail
 
 die() { echo "feed-auf-github: $*" >&2; exit 1; }
-
-version="${1:-}"
-feed="${2:-}"
-shift 2 2>/dev/null || true
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "keine gültige Version: '${version}'"
-[ -n "$feed" ] && [ -f "$feed" ] || die "Feed-Datei fehlt: '${feed}'"
-[ $# -gt 0 ] || die "keine Dateien angegeben (<Fester Name>=<Datei>)"
-: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY fehlt}"
-[[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || die "GITHUB_REPOSITORY ist nicht <Eigentümer>/<Name>: '${GITHUB_REPOSITORY}'"
-command -v openssl >/dev/null 2>&1 || die "openssl fehlt"
-basis="https://github.com/${GITHUB_REPOSITORY}/releases/download/desktop-v${version}"
-
-# Zuordnung lesen: FESTE[i] ist der Name im Release, LOKAL[i] die Datei dazu.
-FESTE=(); LOKAL=()
-for paar in "$@"; do
-  name="${paar%%=*}"
-  datei="${paar#*=}"
-  [ -n "$name" ] && [ "$name" != "$paar" ] || die "Angabe ohne '=': '$paar'"
-  [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]] || die "Zielname mit unerlaubten Zeichen: '$name'"
-  [ -f "$datei" ] || die "Datei fehlt: '$datei' (für $name)"
-  for schon in "${FESTE[@]+"${FESTE[@]}"}"; do
-    [ "$schon" != "$name" ] || die "Zielname doppelt: '$name'"
-  done
-  FESTE+=("$name"); LOKAL+=("$datei")
-done
-
-sha512_b64() { openssl dgst -sha512 -binary "$1" | openssl base64 -A; }
 
 # Beide awk-Programme brauchen denselben Zugriff auf den Wert einer Zeile
 # (`key: wert` oder `- key: wert`, ohne Rand und ohne umgebende Anführungszeichen
@@ -146,6 +139,71 @@ infiles && z ~ /^[ \t]*-[ \t]+url:/ {
 }
 { print z }
 AWK
+
+# ── --pruefen <Feed> ─────────────────────────────────────────────────────────
+if [ "${1:-}" = "--pruefen" ]; then
+  feed="${2:-}"
+  [ -n "$feed" ] && [ -f "$feed" ] || die "Feed-Datei fehlt: '${feed}'"
+  command -v curl >/dev/null 2>&1 || die "curl fehlt"
+  pause="${FEED_PRUEFEN_PAUSE:-5}"
+  geprueft=0
+  while IFS=$'\037' read -r art a b c; do
+    case "$art" in
+      FEHLER) die "$feed: $a" ;;
+      DATEI)
+        case "$a" in
+          https://*) ;;
+          *) die "Eintrag '$a' ist keine https-Adresse — Feed nicht umgeschrieben?" ;;
+        esac
+        [ -n "$c" ] || die "Eintrag '$a': der Feed nennt keine Größe"
+        versuch=1
+        while :; do
+          # Content-Length der LETZTEN Antwort nach den Weiterleitungen; ohne
+          # Token, mit leerem Standard-Eingang.
+          if laenge="$(curl -fsIL --max-time 60 -o /dev/null -w '%{content_length_download}' "$a" < /dev/null)"; then
+            laenge="${laenge%%.*}"
+            [ "$laenge" = "$c" ] && break
+            grund="Content-Length ${laenge:-?} weicht von size: ${c} ab"
+          else
+            grund="nicht anonym abrufbar (curl-Exit $?) — Entwurf, privates Repo oder falscher Eigentümer?"
+          fi
+          [ "$versuch" -lt 3 ] || die "Eintrag '$a': $grund"
+          versuch=$((versuch + 1)); sleep "$pause"
+        done
+        geprueft=$((geprueft + 1)) ;;
+    esac
+  done < <(awk "$AWK_WERT"$'\n'"$AWK_LESEN" "$feed")
+  [ "$geprueft" -gt 0 ] || die "$feed enthält keine Einträge unter files:"
+  echo "feed-auf-github: ${geprueft} Adressen aus ${feed} sind anonym abrufbar, Größen stimmen"
+  exit 0
+fi
+
+version="${1:-}"
+feed="${2:-}"
+shift 2 2>/dev/null || true
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "keine gültige Version: '${version}'"
+[ -n "$feed" ] && [ -f "$feed" ] || die "Feed-Datei fehlt: '${feed}'"
+[ $# -gt 0 ] || die "keine Dateien angegeben (<Fester Name>=<Datei>)"
+: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY fehlt}"
+[[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || die "GITHUB_REPOSITORY ist nicht <Eigentümer>/<Name>: '${GITHUB_REPOSITORY}'"
+command -v openssl >/dev/null 2>&1 || die "openssl fehlt"
+basis="https://github.com/${GITHUB_REPOSITORY}/releases/download/desktop-v${version}"
+
+# Zuordnung lesen: FESTE[i] ist der Name im Release, LOKAL[i] die Datei dazu.
+FESTE=(); LOKAL=()
+for paar in "$@"; do
+  name="${paar%%=*}"
+  datei="${paar#*=}"
+  [ -n "$name" ] && [ "$name" != "$paar" ] || die "Angabe ohne '=': '$paar'"
+  [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]] || die "Zielname mit unerlaubten Zeichen: '$name'"
+  [ -f "$datei" ] || die "Datei fehlt: '$datei' (für $name)"
+  for schon in "${FESTE[@]+"${FESTE[@]}"}"; do
+    [ "$schon" != "$name" ] || die "Zielname doppelt: '$name'"
+  done
+  FESTE+=("$name"); LOKAL+=("$datei")
+done
+
+sha512_b64() { openssl dgst -sha512 -binary "$1" | openssl base64 -A; }
 
 # Relativ zum Checkout, nicht unter /tmp (Begründung: github-release.sh).
 arbeit="$(mktemp -d ./.feed-auf-github.XXXXXX)"

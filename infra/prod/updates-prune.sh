@@ -13,8 +13,10 @@
 # hier im Ordner. Zeigt der Feed auf GitHub (`infra/release/feed-auf-github.sh`),
 # steht dort stattdessen eine Adresse, und der Installer dieser Version
 # (`Pulse-Setup-<version>.exe`, Version aus `version:`) gilt als ausgeliefert:
-# er bleibt liegen, weil der Feed wieder auf ihn zeigt, sobald man das
-# Umschreiben aus dem Workflow nimmt. Dazu `Pulse-Setup-latest.exe`, den alten
+# er bleibt liegen, weil man den LIVE-Feed von Hand wieder auf den relativen
+# Dateinamen zurueckstellen kann (nimmt man das Umschreiben aus dem Workflow,
+# betrifft das erst den Feed des NAECHSTEN Baus, und der zeigt auf dessen
+# eigenen Installer). Dazu `Pulse-Setup-latest.exe`, den alten
 # Direktdownload: nginx leitet diese Adresse seit 2026-10-13 nach GitHub
 # Releases um, der Win-Build laedt die Datei aber weiter hoch — sie bleibt als
 # Rueckfall liegen. Alles andere ist Archiv.

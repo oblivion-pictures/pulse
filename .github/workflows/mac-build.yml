@@ -1,10 +1,12 @@
 name: mac-build
 
 # Baut das macOS-DMG (Pulse-Desktop inkl. HQ-Streaming-Sidecar und nativem
-# Player) und lädt es per scp auf den Cloud-VPS, von wo nginx es unter
-# https://howispulse.com/downloads/Pulse-latest.dmg ausliefert (matcht MAC_DMG_URL
-# in web/src/lib/downloads/appDownloads.ts). Gleiches Deploy-Muster wie
-# win-build.yml / flatpak.yml — selbe VPS-SSH-Secrets.
+# Player). DMG, .zip und Blockmap gehen als GitHub-Release raus (feste
+# Dateinamen, Links in web/src/lib/downloads/appDownloads.ts); der Update-Feed
+# `latest-mac.yml` liegt per scp auf dem Cloud-VPS und zeigt auf das Release.
+# Als Rückfall liegen DMG, .zip und Blockmap zusätzlich dort (nginx leitet
+# https://howispulse.com/downloads/Pulse-latest.dmg nach GitHub um). Gleiches
+# Deploy-Muster wie win-build.yml / flatpak.yml — selbe VPS-SSH-Secrets.
 #
 # Stufe B (Stand 2026-10-05): SIGNIERT + NOTARISIERT. Das Developer-ID-Zertifikat
 # (CSC_LINK/CSC_KEY_PASSWORD) wird via apple-actions/import-codesign-certs in
@@ -13,8 +15,8 @@ name: mac-build
 # Runnern kaputt, s. Kommentar beim Import-Step). APPLE_API_KEY_P8/KEY_ID/ISSUER
 # (notarytool) als Secrets; electron-builder signiert mit Hardened Runtime und
 # schickt die .app durch Notarisierung. electron-updater ist auf macOS aktiv:
-# Client-Feed /updates/mac/, Server-Feed /updates/mac-server/ (je latest-mac.yml
-# + .zip). Ohne Secrets (z. B. Fork-PR) fällt der Build auf unsigniert-ad-hoc
+# Client-Feed /updates/mac/, Server-Feed /updates/mac-server/ (je latest-mac.yml,
+# das auf das .zip im GitHub-Release zeigt). Ohne Secrets (z. B. Fork-PR) fällt der Build auf unsigniert-ad-hoc
 # zurück (afterPack.cjs-Gate) und überspringt die Notarisierung still. Konzept:
 # docs/plans/2026-06-15-macos-client.md.
 #
@@ -233,29 +235,33 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      # Unter festem Dateinamen ablegen → stabiler Direktdownload, matcht
-      # MAC_DMG_URL (/downloads/Pulse-latest.dmg). Das Zielverzeichnis
-      # ~/pulse/downloads/ muss auf dem Server existieren (scp legt es nicht an).
-      - name: DMG nach howispulse hochladen
-        if: github.ref == 'refs/heads/main'
-        run: |
-          DMG=$(ls desktop/release/Pulse-*.dmg | head -n1)
-          scp -i ~/.ssh/id_ed25519 \
-            "$DMG" \
-            ${{ secrets.VPS_SSH_ZIEL }}:pulse/downloads/Pulse-latest.dmg
-
       # Die Dateien liegen als GitHub-Release (Schritte 1 und 3 des Download-
       # Umzugs auf GitHub): ein Release je Version, feste Dateinamen — Mechanik im
-      # Kopf von infra/release/github-release.sh. Danach schreibt
-      # infra/release/feed-auf-github.sh latest-mac.yml so um, dass seine Adressen
-      # (zip UND dmg) auf dieses Release zeigen (Mechanik und Prüfungen im Kopf
-      # des Skripts).
+      # Kopf von infra/release/github-release.sh. Der Update-Feed (latest-mac.yml)
+      # zeigt auf dieses Release (infra/release/feed-auf-github.sh; Mechanik und
+      # Prüfungen im Kopf des Skripts), zip UND dmg.
       #
-      # Beides in EINEM Schritt und aus EINER Liste: der Feed zeigt damit auf
-      # genau die Dateien, die hochgeladen wurden. Der Schritt steht VOR dem
-      # Feed-Upload — andersherum zeigte der Feed kurz auf Dateien, die es noch
-      # nicht gibt (404 bei jedem Client, der in der Lücke prüft). Scheitert er,
-      # bleibt der Feed auf netcup bei der alten Version.
+      # Drei Aufrufe aus EINER Dateiliste (der Feed zeigt damit auf genau die
+      # Dateien, die hochgeladen werden), in dieser Reihenfolge:
+      #   1. Feed umschreiben, nur lokal. Ein Prüfabbruch kann so nie mehr nach dem
+      #      Ersetzen von Dateien im Release eintreten.
+      #   2. Release befüllen. Bei einer NEUEN Version sind das Dateien, die noch
+      #      kein Client kennt. Bei einem Neubau derselben Version (Rerun) ersetzt
+      #      es die Dateien, auf die der LIVE-Feed zeigt: ohne 404-Fenster
+      #      (Zwischenname, dann umbenennen), aber der Feed nennt bis zu seinem
+      #      Upload noch das sha512 der alten Fassung.
+      #   3. Die Adressen anonym abfragen (--pruefen). Danach kommt SOFORT der
+      #      Feed-Upload, noch vor den Rückfallkopien auf netcup.
+      # Scheitert 1 oder 3, bleibt der Feed auf netcup bei der alten Fassung. Bei
+      # einer neuen Version bleibt das ohne Folgen; bei einem Neubau derselben
+      # Version bleibt er bis zum nächsten grünen Lauf auf dem alten sha512, und
+      # Updates scheitern an der Prüfsumme (sicher, aber vergeblich).
+      #
+      # Die festen Namen tragen keine Architektur. MacUpdater wählt aber am Namen
+      # (MacUpdater.js:70-76: Einträge mit "arm64" in Adresse oder Name). Heute gibt
+      # es nur einen arm64-Bau, und er findet das .zip trotzdem; käme je ein x64-
+      # oder Universal-Bau dazu, brauchten die festen Namen die Architektur
+      # (z. B. Pulse-macOS-arm64.zip) — samt Anpassung in appDownloads.ts.
       - name: Auf GitHub Releases veröffentlichen
         if: github.ref == 'refs/heads/main'
         env:
@@ -265,29 +271,40 @@ jobs:
           ZIP=$(ls desktop/release/*.zip | head -n1)
           VERSION=$(node -p "require('./desktop/package.json').version")
           DATEIEN=("Pulse-macOS.dmg=$DMG" "Pulse-macOS.zip=$ZIP" "Pulse-macOS.zip.blockmap=$ZIP.blockmap")
-          bash infra/release/github-release.sh "$VERSION" "${DATEIEN[@]}"
           bash infra/release/feed-auf-github.sh "$VERSION" desktop/release/latest-mac.yml "${DATEIEN[@]}"
+          bash infra/release/github-release.sh "$VERSION" "${DATEIEN[@]}"
+          bash infra/release/feed-auf-github.sh --pruefen desktop/release/latest-mac.yml
 
-      # Mac-Auto-Update-Feed (Stufe B): latest-mac.yml, .zip und .blockmap nach
-      # ~/pulse/updates-mac/ (nginx: /updates/mac/). electron-updater lädt das
-      # .zip (NICHT die DMG — die bleibt der Direktdownload unter /downloads/).
-      #
-      # Der Feed bleibt auf netcup — dort kennen ihn die installierten Apps
-      # (app-update.yml) —, zeigt aber seit dem Umschreiben oben auf GitHub.
-      # .zip und .blockmap liegen hier nur noch als Rückfall: nimmt man
-      # feed-auf-github.sh aus dem Workflow, stimmen die relativen Adressen im
-      # Feed wieder. latest-mac.yml geht als LETZTES hoch: erst wenn alles andere
-      # liegt, darf der Feed auf die neue Version zeigen.
+      # Mac-Auto-Update-Feed (Stufe B): latest-mac.yml nach ~/pulse/updates-mac/
+      # (nginx: /updates/mac/). Der Feed bleibt auf netcup — dort kennen ihn die
+      # installierten Apps (app-update.yml) —, zeigt aber auf GitHub und geht direkt
+      # nach dem GitHub-Schritt hoch. electron-updater lädt das .zip, auf das er
+      # zeigt (NICHT die DMG — die bleibt der Direktdownload).
       - name: Mac-Update-Feed nach howispulse hochladen
         if: github.ref == 'refs/heads/main'
         run: |
+          scp -i ~/.ssh/id_ed25519 \
+            desktop/release/latest-mac.yml \
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-mac/
+
+      # Rückfallkopien auf netcup: .zip, .blockmap und die DMG unter festem Namen
+      # (stabiler Direktdownload /downloads/Pulse-latest.dmg; nginx leitet die
+      # Adresse seit 2026-10-13 nach GitHub um, die Datei ist der Rückfall, falls
+      # die Umleitung wieder raus muss). Niemand liest sie im Normalbetrieb — nimmt
+      # man feed-auf-github.sh aus dem Workflow, stimmen die relativen Adressen im
+      # Feed wieder. Die Zielverzeichnisse müssen auf dem Server existieren (scp
+      # legt sie nicht an).
+      - name: Rückfallkopien nach howispulse hochladen
+        if: github.ref == 'refs/heads/main'
+        run: |
+          DMG=$(ls desktop/release/Pulse-*.dmg | head -n1)
           scp -i ~/.ssh/id_ed25519 \
             desktop/release/*.zip \
             desktop/release/*.zip.blockmap \
             ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-mac/
           scp -i ~/.ssh/id_ed25519 \
-            desktop/release/latest-mac.yml \
-            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-mac/
+            "$DMG" \
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/downloads/Pulse-latest.dmg
 
       - name: SSH-Key wieder entfernen
         if: always()
@@ -361,16 +378,11 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      - name: Server-DMG nach howispulse hochladen
-        if: github.ref == 'refs/heads/main'
-        run: |
-          DMG=$(ls desktop/release-server/*.dmg | head -n1)
-          scp -i ~/.ssh/id_ed25519 \
-            "$DMG" \
-            ${{ secrets.VPS_SSH_ZIEL }}:pulse/downloads/Pulse-Server-latest.dmg
-
-      # Die Dateien liegen als GitHub-Release, der Feed zeigt darauf — Begründung
-      # und Reihenfolge wie beim Client-Job oben (Release zuerst, Feed zuletzt).
+      # Die Dateien liegen als GitHub-Release, der Feed (latest-mac.yml) zeigt darauf —
+      # Begründung, Reihenfolge und Umgang mit Neubauten wie beim Client-Job oben:
+      # Feed lokal umschreiben, Release befüllen, Adressen anonym prüfen, Feed
+      # SOFORT hochladen, erst danach die Rückfallkopien auf netcup. Zu den festen
+      # Namen ohne Architektur siehe ebenfalls oben.
       - name: Auf GitHub Releases veröffentlichen
         if: github.ref == 'refs/heads/main'
         env:
@@ -380,23 +392,34 @@ jobs:
           ZIP=$(ls desktop/release-server/*.zip | head -n1)
           VERSION=$(node -p "require('./desktop/package.json').version")
           DATEIEN=("Pulse-Server-macOS.dmg=$DMG" "Pulse-Server-macOS.zip=$ZIP" "Pulse-Server-macOS.zip.blockmap=$ZIP.blockmap")
-          bash infra/release/github-release.sh "$VERSION" "${DATEIEN[@]}"
           bash infra/release/feed-auf-github.sh "$VERSION" desktop/release-server/latest-mac.yml "${DATEIEN[@]}"
+          bash infra/release/github-release.sh "$VERSION" "${DATEIEN[@]}"
+          bash infra/release/feed-auf-github.sh --pruefen desktop/release-server/latest-mac.yml
 
       # Server-Mac-Update-Feed (Stufe B): eigener Feed /updates/mac-server/ —
       # die Server-App hat eigene Versionen/appId (electron-builder-server.yml).
-      # Wie beim Client: der Feed bleibt auf netcup, zeigt aber auf GitHub; .zip
-      # und .blockmap liegen hier als Rückfall, latest-mac.yml geht zuletzt hoch.
+      # Wie beim Client: der Feed bleibt auf netcup, zeigt aber auf GitHub und geht
+      # direkt nach dem GitHub-Schritt hoch.
       - name: Server-Mac-Update-Feed nach howispulse hochladen
         if: github.ref == 'refs/heads/main'
         run: |
+          scp -i ~/.ssh/id_ed25519 \
+            desktop/release-server/latest-mac.yml \
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-mac-server/
+
+      # Rückfallkopien auf netcup (wie beim Client): .zip, .blockmap und die DMG
+      # unter festem Namen (/downloads/Pulse-Server-latest.dmg).
+      - name: Rückfallkopien nach howispulse hochladen
+        if: github.ref == 'refs/heads/main'
+        run: |
+          DMG=$(ls desktop/release-server/*.dmg | head -n1)
           scp -i ~/.ssh/id_ed25519 \
             desktop/release-server/*.zip \
             desktop/release-server/*.zip.blockmap \
             ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-mac-server/
           scp -i ~/.ssh/id_ed25519 \
-            desktop/release-server/latest-mac.yml \
-            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-mac-server/
+            "$DMG" \
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/downloads/Pulse-Server-latest.dmg
 
       - name: SSH-Key wieder entfernen
         if: always()

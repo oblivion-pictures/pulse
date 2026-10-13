@@ -8,8 +8,10 @@
 # Auto-Update: electron-updater (s. `electron/updater.ts`) pollt beim Start den
 # generic-Feed unter `publish.url` (→ `latest.yml`), lädt neue Versionen selbst
 # und installiert sie beim nächsten Beenden bzw. sofort per Banner-Button. Die
-# CI (`.github/workflows/win-build.yml`) rsynct Setup-.exe + latest.yml +
-# .blockmap nach howispulse.com (gleiches Muster wie der Flatpak-OSTree-Push).
+# CI (`.github/workflows/win-build.yml`) legt Setup-.exe + .blockmap als
+# GitHub-Release ab und scpt latest.yml nach howispulse.com; dessen Adressen
+# zeigen auf das Release (`infra/release/feed-auf-github.sh`). Setup-.exe +
+# .blockmap liegen dort zusätzlich als Rückfall.
 #
 # Eine .exe deckt NVIDIA *und* AMD ab — der Sidecar erkennt die GPU selbst und
 # wählt den Pfad (NVIDIA-Zero-Copy / AMD-CPU).
@@ -173,8 +175,9 @@ nsis:
 # Auto-Update-Feed (generic). electron-builder schreibt daraus `app-update.yml`
 # in resources/ (electron-updater liest es zur Laufzeit) und erzeugt `latest.yml`
 # neben der Setup-.exe in release/. Der tatsächliche Upload macht NICHT
-# electron-builder (Build läuft mit `--publish never`), sondern der rsync-Step
-# in win-build.yml — diese URL muss exakt der nginx-Route /updates/win/ matchen.
+# electron-builder (Build läuft mit `--publish never`), sondern win-build.yml
+# (GitHub-Release, dann latest.yml per scp) — diese URL muss exakt der
+# nginx-Route /updates/win/ matchen, wo latest.yml liegt.
 #
 # Lokaler Test: ueberschreibbar via CLI `electron-builder --win
 # --config.publish.url=http://localhost:8888/` (keine Edit-/Reset-Pflicht).
@@ -199,7 +202,8 @@ publish:
 # (Credentials via APPLE_API_KEY/APPLE_API_KEY_ID/APPLE_API_ISSUER, Team
 # 6FRUC2UST8). Ohne vorliegende Identity springt afterPack.cjs auf die alte
 # Ad-hoc-Signatur zurück (Stufe A als Fallback). electron-updater ist auf macOS
-# aktiv (s. updater.ts) und liest `latest-mac.yml` + `.zip` aus dem Feed unten.
+# aktiv (s. updater.ts): sie liest `latest-mac.yml` aus dem Feed unten und lädt
+# das `.zip`, auf das dessen Adresse zeigt (GitHub-Release).
 # Voll-Konzept: docs/plans/2026-06-15-macos-client.md.
 mac:
   target:

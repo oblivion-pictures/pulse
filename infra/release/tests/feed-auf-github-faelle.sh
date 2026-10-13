@@ -14,6 +14,11 @@
 # nicht mit dem Werkzeug des Skripts): ein Test, der seine Eingabe mit demselben
 # Verfahren erzeugt, prüft nur, dass das Verfahren zu sich selbst passt.
 #
+# `--pruefen` (Fälle 20 bis 26) fragt die Adressen anonym per curl ab; hier
+# antwortet eine curl-Attrappe, damit der Test weder Netz noch ein echtes
+# Release braucht. Was die Attrappe NICHT zeigt: dass GitHub einen Entwurf
+# anonym wirklich mit 404 beantwortet (steht so in der GitHub-Doku).
+#
 # Aufruf:  bash infra/release/tests/feed-auf-github-faelle.sh
 set -euo pipefail
 
@@ -33,6 +38,27 @@ INH_SDMG='SRV-MAC-DMG-0.1.101';         SHA_SDMG='Zznud8ZCPkVM6q/nNklKTLVLPROB7U
 SHA_ABC='3a81oZNherrMQXNJriBBMRLm+k6JqX6iCp7u5ktV05ohkpkqJ0/BqDa6PCOj/uu9RU1EI2Q86A4qmslPpUyknw=='
 
 B='https://github.com/o/r/releases/download/desktop-v0.1.101'
+
+# curl-Attrappe. Antworten stehen in $CURL_ZUSTAND/antworten, eine je Zeile:
+#   <URL><TAB><Größe>            antwortet mit dieser Content-Length
+#   <URL><TAB>404                curl-Exit 22 (wie `-f` bei einem 404)
+#   <URL><TAB>FLACKERT:<Größe>   erster Aufruf Exit 22, danach die Größe
+mkdir -p "$arbeit/bin"
+cat > "$arbeit/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+z="$CURL_ZUSTAND"; echo "$*" >> "$z/aufrufe"
+url="${*: -1}"
+antwort="$(awk -F'\t' -v u="$url" '$1==u { print $2 }' "$z/antworten")"
+[ -n "$antwort" ] || { echo "curl-attrappe: keine Antwort für $url" >&2; exit 6; }
+case "$antwort" in
+  404) exit 22 ;;
+  FLACKERT:*)
+    if [ ! -e "$z/flackert-erledigt" ]; then touch "$z/flackert-erledigt"; exit 22; fi
+    printf '%s' "${antwort#FLACKERT:}" ;;
+  *) printf '%s' "$antwort" ;;
+esac
+STUB
+chmod +x "$arbeit/bin/curl"
 
 fehler=0
 ok()   { echo "✓ $1"; }
@@ -114,6 +140,14 @@ EOF
 lauf() {
   local d="$1"; shift
   ( cd "$d" && env GITHUB_REPOSITORY=o/r bash "$skript" "$@" ) > "$d/ausgabe" 2>&1
+}
+# pruefen <Verzeichnis> <Feed> — `--pruefen` mit der curl-Attrappe; die Antworten
+# stehen vorher in <Verz>/curl/antworten.
+pruefen() {
+  local d="$1"; shift
+  mkdir -p "$d/curl"
+  ( cd "$d" && env PATH="$arbeit/bin:$PATH" CURL_ZUSTAND="$d/curl" FEED_PRUEFEN_PAUSE=0 \
+      bash "$skript" --pruefen "$@" ) > "$d/ausgabe" 2>&1
 }
 # Arbeitsordner des Skripts dürfen nie liegen bleiben (Erfolg wie Abbruch).
 sauber() { ! compgen -G "$1/.feed-auf-github.*" > /dev/null; }
@@ -319,5 +353,67 @@ if lauf "$d" 0.1.101 latest.yml "Pulse-X.bin=$d/release/abc.bin" \
    && grep -qxF "path: ${B}/Pulse-X.bin" "$d/latest.yml"; then
   ok "bekannte Antwort SHA-512(\"abc\") stimmt mit dem Digest des Skripts überein"
 else nein "bekannte Antwort: $(cat "$d/ausgabe")"; fi
+
+# ── --pruefen ───────────────────────────────────────────────────────────────
+
+# 20. Alle Adressen abrufbar, Größen stimmen: grün. Der Aufruf ist `curl -fsIL`
+#     (Kopfabfrage, folgt Weiterleitungen, Fehler bei 4xx) ohne jeden Zugang.
+d="$(neu 20)"; cp "$arbeit/fall1-ergebnis" "$d/latest.yml"; mkdir -p "$d/curl"
+printf '%s\t%s\n' "${B}/Pulse-Setup-Windows.exe" "$GR_WIN" > "$d/curl/antworten"
+if pruefen "$d" latest.yml \
+   && [ "$(wc -l < "$d/curl/aufrufe" | tr -d ' ')" = 1 ] \
+   && grep -q -- "-fsIL" "$d/curl/aufrufe" && grep -qF -- "${B}/Pulse-Setup-Windows.exe" "$d/curl/aufrufe" \
+   && ! grep -qiE -- "authorization|--header| -H |--user| -u |token" "$d/curl/aufrufe"; then
+  ok "--pruefen: Adresse abrufbar, Größe stimmt, anonymer Aufruf"
+else nein "--pruefen ok: $(cat "$d/ausgabe"; cat "$d/curl/aufrufe" 2>&1)"; fi
+
+# 21. Content-Length weicht von size: ab (falsche Datei im Release).
+d="$(neu 21)"; cp "$arbeit/fall1-ergebnis" "$d/latest.yml"; mkdir -p "$d/curl"
+printf '%s\t%s\n' "${B}/Pulse-Setup-Windows.exe" "$((GR_WIN + 1))" > "$d/curl/antworten"
+if ! pruefen "$d" latest.yml && grep -q "weicht von size" "$d/ausgabe" \
+   && [ "$(wc -l < "$d/curl/aufrufe" | tr -d ' ')" = 3 ]; then
+  ok "--pruefen: falsche Größe → Abbruch (nach drei Versuchen)"
+else nein "--pruefen Größe: $(cat "$d/ausgabe")"; fi
+
+# 22. 404 (Entwurf, privates Repo, falscher Eigentümer).
+d="$(neu 22)"; cp "$arbeit/fall1-ergebnis" "$d/latest.yml"; mkdir -p "$d/curl"
+printf '%s\t%s\n' "${B}/Pulse-Setup-Windows.exe" 404 > "$d/curl/antworten"
+if ! pruefen "$d" latest.yml && grep -q "nicht anonym abrufbar (curl-Exit 22)" "$d/ausgabe"; then
+  ok "--pruefen: 404 → Abbruch mit Hinweis auf Entwurf/privat/Eigentümer"
+else nein "--pruefen 404: $(cat "$d/ausgabe")"; fi
+
+# 23. Der Feed wurde nie umgeschrieben (relative Adressen): Abbruch, ohne dass
+#     curl auch nur gestartet wird.
+d="$(neu 23)"; feed_win > "$d/latest.yml"; mkdir -p "$d/curl"; : > "$d/curl/antworten"
+if ! pruefen "$d" latest.yml && grep -q "keine https-Adresse" "$d/ausgabe" && [ ! -s "$d/curl/aufrufe" ]; then
+  ok "--pruefen: nicht umgeschriebener Feed → Abbruch ohne Abfrage"
+else nein "--pruefen relativ: $(cat "$d/ausgabe")"; fi
+
+# 24. Ein Aussetzer beim ersten Versuch ist kein Abbruchgrund.
+d="$(neu 24)"; cp "$arbeit/fall1-ergebnis" "$d/latest.yml"; mkdir -p "$d/curl"
+printf '%s\tFLACKERT:%s\n' "${B}/Pulse-Setup-Windows.exe" "$GR_WIN" > "$d/curl/antworten"
+if pruefen "$d" latest.yml && [ "$(wc -l < "$d/curl/aufrufe" | tr -d ' ')" = 2 ]; then
+  ok "--pruefen: erster Versuch scheitert, zweiter geht durch"
+else nein "--pruefen Aussetzer: $(cat "$d/ausgabe")"; fi
+
+# 25. macOS: BEIDE Einträge (zip und dmg) werden abgefragt, und die falsche
+#     Größe des zweiten genügt zum Abbruch.
+d="$(neu 25)"; feed_mac > "$d/latest-mac.yml"
+lauf "$d" 0.1.101 latest-mac.yml "Pulse-macOS.dmg=$d/release/Pulse-0.1.101-arm64.dmg" \
+  "Pulse-macOS.zip=$d/release/Pulse-0.1.101-arm64-mac.zip" > /dev/null
+mkdir -p "$d/curl"
+printf '%s\t%s\n%s\t%s\n' "${B}/Pulse-macOS.zip" "$GR_MZIP" "${B}/Pulse-macOS.dmg" "$GR_MDMG" > "$d/curl/antworten"
+ok_zwei=0; pruefen "$d" latest-mac.yml && [ "$(wc -l < "$d/curl/aufrufe" | tr -d ' ')" = 2 ] && ok_zwei=1
+rm -f "$d/curl/aufrufe"
+printf '%s\t%s\n%s\t%s\n' "${B}/Pulse-macOS.zip" "$GR_MZIP" "${B}/Pulse-macOS.dmg" "$((GR_MDMG - 1))" > "$d/curl/antworten"
+if [ "$ok_zwei" = 1 ] && ! pruefen "$d" latest-mac.yml && grep -q "Pulse-macOS.dmg" "$d/ausgabe"; then
+  ok "--pruefen macOS: zip und dmg werden abgefragt, die falsche Größe des dmg bricht ab"
+else nein "--pruefen mac: $(cat "$d/ausgabe")"; fi
+
+# 26. Aufruf ohne Feed / mit fehlender Datei.
+d="$(neu 26)"
+if ! pruefen "$d" && ! pruefen "$d" gibts-nicht.yml; then
+  ok "--pruefen: fehlender Feed wird abgewiesen"
+else nein "--pruefen ohne Feed: $(cat "$d/ausgabe")"; fi
 
 [ "$fehler" = 0 ] && echo "✓ feed-auf-github: alle Fälle wie erwartet" || exit 1

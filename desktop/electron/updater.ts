@@ -22,9 +22,12 @@
  * (`app-update.yml`). Die Adressen darin zeigen aber auf die GitHub-Releases
  * (`…/releases/download/desktop-v<version>/<fester Name>`), wohin der Bau-
  * Workflow sie mit `infra/release/feed-auf-github.sh` umschreibt. Die Adresse
- * trägt bewusst die Version, nicht `latest`: electron-updater holt die
- * Blockmap der Vorgängerfassung, indem er die neue Version im Pfad durch die
- * alte ersetzt — ohne Version im Pfad gäbe es kein Delta.
+ * trägt bewusst die Version, nicht `latest`: Clients OHNE zwischengespeicherte
+ * Blockmap (Erstinstallation von Hand, geleerter Cache) holen die der
+ * Vorgängerfassung, indem electron-updater die neue Version im Pfad durch die
+ * alte ersetzt; alle anderen nehmen `current.blockmap` aus dem Update-Cache.
+ * Außerdem liefe `latest` dem Release-Zustand hinterher (Latest wird das
+ * Release erst, wenn alle Bauten fertig sind, der Feed gilt ab dem Upload).
  *
  * LOKALER TEST (ohne Image-Push): `PULSE_DEV_UPDATE=1` hebt die
  * `app.isPackaged`-Sperre auf und setzt `forceDevUpdateConfig`, sodass der ganze

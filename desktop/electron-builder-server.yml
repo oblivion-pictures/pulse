@@ -18,8 +18,9 @@
 #
 # Bauen:  cd desktop && pnpm run dist:win:server
 #   → release-server/Pulse-Server-Setup-<version>.exe + latest.yml + .blockmap
-# CI (.github/workflows/win-build-server.yml) rsynct/scpt die drei Artefakte
-# nach howispulse.com/updates/win-server/ (analog win-build.yml).
+# CI (.github/workflows/win-build-server.yml) legt Setup-.exe + .blockmap als
+# GitHub-Release ab und scpt latest.yml nach howispulse.com/updates/win-server/;
+# dessen Adressen zeigen auf das Release (analog win-build.yml).
 #
 # LOKAL auf Windows (einmalig): electron-builder entpackt winCodeSign-2.6.0.7z,
 # dessen darwin/-Ordner Symlinks enthält — ohne Admin-/Developer-Mode-Recht
@@ -125,9 +126,9 @@ nsis:
 # Auto-Update-Feed (generic) — EIGENER Feed für die Server-App, getrennt vom
 # Client-Feed /updates/win/. electron-builder schreibt daraus app-update.yml
 # (electron-updater liest sie zur Laufzeit) + latest.yml neben der Setup-.exe.
-# Build läuft mit `--publish never`; der Upload macht der scp-Step in
-# win-build-server.yml. Diese URL muss exakt der nginx-Route /updates/win-server/
-# matchen.
+# Build läuft mit `--publish never`; den Upload (GitHub-Release, dann latest.yml
+# per scp) macht win-build-server.yml. Diese URL muss exakt der nginx-Route
+# /updates/win-server/ matchen, wo latest.yml liegt.
 publish:
   provider: generic
   url: https://howispulse.com/updates/win-server/

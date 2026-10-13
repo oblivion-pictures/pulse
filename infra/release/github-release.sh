@@ -13,8 +13,22 @@
 #
 # Die Workflows laufen parallel; wer zuerst kommt, legt das Release an, die
 # anderen hängen ihre Dateien an. Ein `create`, das scheitert, weil ein anderer
-# Lauf schneller war, ist deshalb kein Fehler. `--clobber`: ein Neubau
-# derselben Version ersetzt die Dateien (wie bisher auf dem netcup-Server).
+# Lauf schneller war, ist deshalb kein Fehler.
+#
+# Ein Neubau derselben Version ERSETZT die Dateien (wie bisher auf dem netcup-
+# Server) — und zwar die, auf die der Update-Feed der installierten Apps zeigt.
+# `gh release upload --clobber` löscht das alte Asset zuerst und lädt dann hoch
+# (gh, pkg/cmd/release/shared/upload.go: uploadWithDelete); bei 337 MB bekäme
+# jeder Client, der in dieser Zeit prüft, ein 404. Deshalb: die neue Fassung
+# unter einem Zwischennamen hochladen (`<Name>.neu-<Lauf>-<PID>`, die alte wird
+# währenddessen weiter ausgeliefert), dann die alte löschen und die neue per
+# Asset-API umbenennen. Die Lücke schrumpft von der Dauer des Uploads auf zwei
+# API-Aufrufe. Bricht ein Lauf vorher ab, bleibt die alte Datei stehen; bricht
+# er dazwischen ab, liegt die neue als Zwischendatei im Release, und der
+# nächste Lauf lädt hoch und räumt sie weg. Rechte: Löschen und Umbenennen eines
+# Assets verlangen wie das Hochladen „Contents: write“ (REST-Doku „Update a
+# release asset“ / „Delete a release asset“), also reicht das GITHUB_TOKEN mit
+# `contents: write`, das die Workflows ohnehin haben.
 #
 # Android baut nur, wenn sich mobile/ ändert — ein NEUES Release übernimmt die
 # APK deshalb aus dem jüngsten Vorgänger, sonst fehlte sie nach jedem
@@ -94,9 +108,6 @@ if ! gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
   fi
 fi
 
-gh release upload "$tag" --repo "$repo" --clobber "$arbeit"/hoch/*
-echo "github-release: hochgeladen nach ${tag}: $(ls "$arbeit/hoch" | tr '\n' ' ')"
-
 # Alle Desktop-Releases, neueste Anlage zuerst. Gefiltert wird hier, nicht per
 # --jq: fremde Tags (Self-Host `v1.0.0`) stehen in derselben Liste.
 desktop_tags() {
@@ -106,6 +117,74 @@ desktop_tags() {
 dateien_von() {  # dateien_von <tag>
   gh release view "$1" --repo "$repo" --json assets --jq '.assets[].name' | tr -d '\r'
 }
+
+PAUSE="${GITHUB_RELEASE_PAUSE:-2}"   # Sekunden zwischen Wiederholungen (Tests: 0)
+
+# Numerische REST-ID eines Assets im Release (leer, wenn es keins dieses Namens
+# gibt). `gh release view --json assets` liefert nur die GraphQL-ID, die der
+# REST-Umbenennung nicht genügt. Namen sind oben auf [A-Za-z0-9._-] geprüft und
+# dürfen deshalb in den jq-Ausdruck. Kein führender Schrägstrich im Pfad: die
+# Git Bash unter Windows würde ihn in einen Dateipfad umdeuten.
+asset_id() {  # asset_id <name>
+  gh api "repos/${repo}/releases/tags/${tag}" \
+    --jq ".assets[] | select(.name==\"$1\") | .id" | tr -d '\r'
+}
+asset_weg() {  # asset_weg <name> — löscht ein Asset; Exit-Code von gh
+  gh release delete-asset "$tag" "$1" --repo "$repo" --yes
+}
+
+# Ersetzt ein vorhandenes Asset ohne langes 404-Fenster (Begründung im Kopf).
+ersetzen() {  # ersetzen <name>
+  local name="$1" zwischen="$1.neu-${GITHUB_RUN_ID:-lokal}-$$" id versuch=1
+  mkdir -p "$arbeit/neu"
+  cp "$arbeit/hoch/$name" "$arbeit/neu/$zwischen"
+  gh release upload "$tag" --repo "$repo" "$arbeit/neu/$zwischen" \
+    || die "konnte ${name} nicht unter dem Zwischennamen hochladen — die alte Datei bleibt"
+  # Ab hier liegt die neue Fassung im Release, die alte wird noch ausgeliefert.
+  if ! asset_weg "$name"; then
+    if dateien_von "$tag" | grep -qxF "$name"; then
+      asset_weg "$zwischen" || true
+      die "konnte die alte ${name} nicht entfernen — sie bleibt, die Zwischendatei ist weggeräumt"
+    fi
+    # Sie ist schon weg (ein anderer Lauf war schneller): weiter mit dem Umbenennen.
+  fi
+  while :; do
+    id="$(asset_id "$zwischen")"
+    if [ -n "$id" ] && gh api --method PATCH "repos/${repo}/releases/assets/${id}" \
+         -f "name=${name}" > /dev/null; then
+      echo "github-release: ${name} ersetzt (über ${zwischen})"
+      return 0
+    fi
+    [ "$versuch" -lt 3 ] || die "konnte ${zwischen} nicht in ${name} umbenennen — die alte Datei ist weg, die neue liegt als ${zwischen} im Release; der nächste Lauf lädt sie neu hoch und räumt auf"
+    # Hat inzwischen ein anderer Lauf eine Datei dieses Namens angelegt (z. B.
+    # die Übernahme einer alten APK, s. unten), gilt DIE als alt: die frisch
+    # gebaute gewinnt immer.
+    if dateien_von "$tag" | grep -qxF "$name"; then asset_weg "$name" || true; fi
+    versuch=$((versuch + 1)); sleep "$PAUSE"
+  done
+}
+
+vorhanden="$(dateien_von "$tag")"
+for pfad in "$arbeit"/hoch/*; do
+  name="${pfad##*/}"
+  if grep -qxF "$name" <<<"$vorhanden"; then
+    ersetzen "$name"
+  elif ! gh release upload "$tag" --repo "$repo" "$pfad"; then
+    # Ein anderer Lauf hat dieselbe Datei in der Zwischenzeit angelegt: dann
+    # gilt der Fall „vorhanden“. Sonst ist es ein echter Fehler.
+    dateien_von "$tag" | grep -qxF "$name" || die "konnte ${name} nicht hochladen"
+    ersetzen "$name"
+  fi
+done
+# Zwischendateien früherer, abgebrochener Läufe wegräumen. Die Workflows eines
+# Namens laufen nie gleichzeitig (concurrency), daher gehört keine fremde
+# Zwischendatei einem Lauf, der sie noch braucht.
+while read -r vorh; do
+  for pfad in "$arbeit"/hoch/*; do
+    case "$vorh" in "${pfad##*/}".neu-*) asset_weg "$vorh" || true ;; esac
+  done
+done < <(dateien_von "$tag")
+echo "github-release: hochgeladen nach ${tag}: $(ls "$arbeit/hoch" | tr '\n' ' ')"
 
 # Fehlende Dauer-Dateien (APK) aus dem jüngsten Vorgänger übernehmen.
 vorhanden="$(dateien_von "$tag")"

@@ -1,9 +1,12 @@
 name: win-build
 
 # Baut den Windows-NSIS-Installer (Pulse-Desktop inkl. HQ-Streaming-Sidecar)
-# samt Auto-Update-Artefakten und lädt sie per scp auf den Cloud-VPS, von wo nginx sie
-# unter https://howispulse.com/updates/win/ ausliefert. electron-updater in der
-# App pollt dort `latest.yml`. Gleiches Deploy-Muster wie der Flatpak-OSTree-Push
+# samt Auto-Update-Artefakten. Installer + Blockmap gehen als GitHub-Release raus
+# (feste Dateinamen); der Update-Feed `latest.yml` liegt per scp auf dem Cloud-VPS,
+# von wo nginx ihn unter https://howispulse.com/updates/win/ ausliefert — dort
+# pollt ihn electron-updater in der App —, und seine Adressen zeigen auf das
+# Release. Installer, Blockmap und die -latest-Kopie liegen zusätzlich als
+# Rückfall auf dem VPS. Gleiches Deploy-Muster wie der Flatpak-OSTree-Push
 # (flatpak.yml) — selbe VPS-SSH-Secrets. Eine .exe deckt NVIDIA *und* AMD ab —
 # der Sidecar erkennt die GPU selbst.
 #
@@ -238,15 +241,26 @@ jobs:
 
       # Die Dateien liegen als GitHub-Release (Schritte 1 und 3 des Download-
       # Umzugs auf GitHub): ein Release je Version, feste Dateinamen — Mechanik im
-      # Kopf von infra/release/github-release.sh. Danach schreibt
-      # infra/release/feed-auf-github.sh latest.yml so um, dass seine Adressen auf
-      # dieses Release zeigen (Mechanik und Prüfungen im Kopf des Skripts).
+      # Kopf von infra/release/github-release.sh. Der Update-Feed (latest.yml) zeigt
+      # auf dieses Release (infra/release/feed-auf-github.sh; Mechanik und
+      # Prüfungen im Kopf des Skripts).
       #
-      # Beides in EINEM Schritt und aus EINER Liste: der Feed zeigt damit auf
-      # genau die Dateien, die hochgeladen wurden. Der Schritt steht VOR dem
-      # Feed-Upload — andersherum zeigte der Feed kurz auf Dateien, die es noch
-      # nicht gibt (404 bei jedem Client, der in der Lücke prüft). Scheitert er,
-      # bleibt der Feed auf netcup bei der alten Version.
+      # Drei Aufrufe aus EINER Dateiliste (der Feed zeigt damit auf genau die
+      # Dateien, die hochgeladen werden), in dieser Reihenfolge:
+      #   1. Feed umschreiben, nur lokal. Ein Prüfabbruch kann so nie mehr nach dem
+      #      Ersetzen von Dateien im Release eintreten.
+      #   2. Release befüllen. Bei einer NEUEN Version sind das Dateien, die noch
+      #      kein Client kennt. Bei einem Neubau derselben Version (Rerun; bei der
+      #      Windows-Server-App schon jeder Push auf services/** oder shared/**) ersetzt
+      #      es die Dateien, auf die der LIVE-Feed zeigt: ohne 404-Fenster
+      #      (Zwischenname, dann umbenennen), aber der Feed nennt bis zu seinem
+      #      Upload noch das sha512 der alten Fassung.
+      #   3. Die Adressen anonym abfragen (--pruefen). Danach kommt SOFORT der
+      #      Feed-Upload, noch vor den Rückfallkopien auf netcup.
+      # Scheitert 1 oder 3, bleibt der Feed auf netcup bei der alten Fassung. Bei
+      # einer neuen Version bleibt das ohne Folgen; bei einem Neubau derselben
+      # Version bleibt er bis zum nächsten grünen Lauf auf dem alten sha512, und
+      # Updates scheitern an der Prüfsumme (sicher, aber vergeblich).
       - name: Auf GitHub Releases veröffentlichen
         if: github.ref == 'refs/heads/main'
         shell: bash
@@ -256,23 +270,31 @@ jobs:
           EXE=$(ls desktop/release/Pulse-Setup-*.exe)
           VERSION=$(node -p "require('./desktop/package.json').version")
           DATEIEN=("Pulse-Setup-Windows.exe=$EXE" "Pulse-Setup-Windows.exe.blockmap=$EXE.blockmap")
-          bash infra/release/github-release.sh "$VERSION" "${DATEIEN[@]}"
           bash infra/release/feed-auf-github.sh "$VERSION" desktop/release/latest.yml "${DATEIEN[@]}"
+          bash infra/release/github-release.sh "$VERSION" "${DATEIEN[@]}"
+          bash infra/release/feed-auf-github.sh --pruefen desktop/release/latest.yml
 
-      # scp statt rsync: der windows-latest-Runner hat KEIN rsync vorinstalliert
-      # (flatpak.yml läuft auf Ubuntu + apt-get install rsync), aber den
-      # OpenSSH-Client (scp) inkl. Git-Bash. scp lädt nur die genannten Dateien
-      # hoch und löscht NIE etwas; aufgeräumt wird mit infra/prod/updates-prune.sh.
-      # Das Zielverzeichnis ~/pulse/updates-win/ muss auf dem Server existieren
-      # (einmalig anlegen; scp legt es nicht an).
-      #
       # Der Feed bleibt auf netcup — dort kennen ihn die installierten Apps
-      # (app-update.yml) —, zeigt aber seit dem Umschreiben oben auf GitHub.
-      # Installer, Blockmap und die -latest-Kopie liegen hier nur noch als
-      # Rückfall: nimmt man feed-auf-github.sh aus dem Workflow, stimmen die
-      # relativen Adressen im Feed wieder. latest.yml geht als LETZTES hoch:
-      # erst wenn alles andere liegt, darf der Feed auf die neue Version zeigen.
+      # (app-update.yml) —, zeigt aber auf GitHub. Er geht direkt nach dem
+      # GitHub-Schritt hoch. nginx liefert ~/pulse/updates-win unter /updates/win/
+      # (infra/prod/web-nginx.conf, docker-compose.yml); das Zielverzeichnis muss
+      # auf dem Server existieren (einmalig anlegen; scp legt es nicht an).
       - name: Update-Feed nach howispulse hochladen
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          scp -i ~/.ssh/id_ed25519 \
+            desktop/release/latest.yml \
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win/
+
+      # Rückfallkopien auf netcup: Installer, Blockmap und die -latest-Kopie.
+      # Niemand liest sie im Normalbetrieb — nimmt man feed-auf-github.sh aus dem
+      # Workflow, stimmen die relativen Adressen im Feed wieder. scp lädt nur die
+      # genannten Dateien hoch und löscht NIE etwas (aufgeräumt wird mit
+      # infra/prod/updates-prune.sh). scp statt rsync: der windows-latest-Runner
+      # hat KEIN rsync (flatpak.yml läuft auf Ubuntu und installiert es), aber den
+      # OpenSSH-Client samt Git Bash.
+      - name: Rückfallkopien nach howispulse hochladen
         if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
@@ -290,9 +312,6 @@ jobs:
           scp -i ~/.ssh/id_ed25519 \
             "$EXE" \
             ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win/Pulse-Setup-latest.exe
-          scp -i ~/.ssh/id_ed25519 \
-            desktop/release/latest.yml \
-            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win/
 
       - name: SSH-Key wieder entfernen
         if: always()
