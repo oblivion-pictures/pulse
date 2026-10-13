@@ -36,6 +36,12 @@ function alterStein(id: string): SicherungEintrag {
   return eintrag({ id, autor: '', inhalt: '', geloescht: true });
 }
 
+/** Ein Grabstein-Rahmen mit Autor (seit 2026-10-11), ohne Kennung: er
+ *  nennt nur seine lokale ID, die Gruppe verbinden erst die Rahmen. */
+function stein(id: string): SicherungEintrag {
+  return eintrag({ id, inhalt: '', geloescht: true });
+}
+
 function lies(...eintraege: SicherungEintrag[]): SicherungEintrag[] {
   const gruppen = new EintragsGruppen();
   for (const e of eintraege) gruppen.aufnehmen(e);
@@ -67,15 +73,15 @@ test('Autor-Bindung: Bobs Nachricht mit Alices Kennung bleibt eine eigene Zeile'
   assert.equal(lies(verfasser, faelschung).length, 2);
 });
 
-test('Grabstein auf D trifft die Nachricht auch, wenn die Verfasser-Kopie K zuerst kam', () => {
+test('Grabstein mit Autor auf D trifft die Nachricht auch, wenn die Verfasser-Kopie K zuerst kam', () => {
   // Drei Rahmen aus zwei Ketten — die Kette des Verfassers wird zuerst
   // gelesen, dann die des Empfängers (neueste Rahmen zuerst: Stein vor
   // Nachricht). Vorher: Stein für D neben einer sichtbaren K.
   for (const folge of [
-    [verfasser, alterStein(D), empfang],
-    [verfasser, empfang, alterStein(D)],
-    [alterStein(D), empfang, verfasser],
-    [alterStein(D), verfasser, empfang]
+    [verfasser, stein(D), empfang],
+    [verfasser, empfang, stein(D)],
+    [stein(D), empfang, verfasser],
+    [stein(D), verfasser, empfang]
   ]) {
     // Der Stein kennt K nicht; erst der Rahmen D verbindet beide. Am Ende
     // des Laufs ist die Gruppe in jeder Reihenfolge verbunden.
@@ -88,8 +94,8 @@ test('Grabstein auf D trifft die Nachricht auch, wenn die Verfasser-Kopie K zuer
   }
 });
 
-test('eine gelöschte Gruppe nennt für JEDE ihrer lokalen IDs einen Stein, mit Autor und Kennung', () => {
-  const aus = lies(verfasser, empfang, alterStein(D));
+test('eine von einem Stein mit Autor getroffene Gruppe nennt für JEDE ihrer lokalen IDs einen Stein, mit Autor und Kennung', () => {
+  const aus = lies(verfasser, empfang, stein(D));
   assert.deepEqual(aus.map((e) => e.nachricht.id).sort(), [D, K].sort());
   for (const e of aus) {
     assert.equal(e.nachricht.geloescht, true);
@@ -137,9 +143,9 @@ test('ein Stein mit fremdem Autor löscht die Nachricht derselben ID nicht', () 
 test('Fund 6: eine echte kryptoId geht vor dem Rückfall auf die lokale ID, in jeder Reihenfolge', () => {
   const altOhneKennung = eintrag({ id: D });
   for (const reihe of [
-    [altOhneKennung, empfang, alterStein(D)],
-    [empfang, altOhneKennung, alterStein(D)],
-    [alterStein(D), altOhneKennung, empfang]
+    [altOhneKennung, empfang, stein(D)],
+    [empfang, altOhneKennung, stein(D)],
+    [stein(D), altOhneKennung, empfang]
   ]) {
     const aus = lies(...reihe);
     assert.ok(aus.length > 0);
@@ -157,4 +163,34 @@ test('Fund 6: ein Stein mit Autor und abweichender Kennung gilt als echte Kennun
     aus.map((e) => e.nachricht.kryptoId),
     aus.map(() => K)
   );
+});
+
+// Gegenprüfung 2026-10-14, V1 (Eigentümer-Entscheid 2026-10-13, „nie über
+// Kennung"): ein Stein ohne Autor gehört zu keiner Gruppe. Er kommt heraus,
+// wie er gelesen wurde, und die Gruppe seiner ID zeigt den Rahmen unter einer
+// anderen lokalen ID weiter.
+test('V1: ein Stein ohne Autor trifft nur seine eigene ID — in jeder Reihenfolge', () => {
+  for (const folge of [
+    [verfasser, alterStein(K), empfang],
+    [alterStein(K), verfasser, empfang],
+    [empfang, verfasser, alterStein(K)],
+    [verfasser, empfang, alterStein(D)],
+    [alterStein(D), empfang, verfasser]
+  ]) {
+    const name = folge.map((e) => e.nachricht.id).join(',');
+    const aus = lies(...folge);
+    const steine = aus.filter((e) => e.nachricht.geloescht === true);
+    const sichtbar = aus.filter((e) => e.nachricht.geloescht !== true);
+    assert.equal(steine.length, 1, `ein Stein in ${name}`);
+    assert.equal(steine[0]!.nachricht.autor, '', `ohne Autor in ${name}`);
+    assert.equal(steine[0]!.nachricht.kryptoId, undefined, `ohne Kennung in ${name}`);
+    assert.equal(sichtbar.length, 1, `die Nachricht bleibt in ${name}`);
+    assert.notEqual(sichtbar[0]!.nachricht.id, steine[0]!.nachricht.id, `unter der anderen ID in ${name}`);
+  }
+});
+
+test('V1: trifft der Stein ohne Autor jede lokale ID der Gruppe, bleibt nichts sichtbar', () => {
+  const aus = lies(verfasser, empfang, alterStein(K), alterStein(D));
+  assert.deepEqual(aus.filter((e) => e.nachricht.geloescht !== true), []);
+  assert.deepEqual(aus.map((e) => e.nachricht.autor), ['', '']);
 });

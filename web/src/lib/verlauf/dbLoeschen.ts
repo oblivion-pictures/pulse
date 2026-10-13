@@ -13,9 +13,10 @@
  *   - `verlaufSatzLoeschen`: der Autor kommt aus dem liegenden Satz — die
  *     eigene Löschung und das Server-Ereignis. Ebenso mit Register.
  *   - `verlaufMarkiereGeloescht`: nur EIN Satz unter seinem Schlüssel, ohne
- *     Register. Für Sicherungs-Steine, die auch nach dem Leser
- *     (`sicherung/eintragsGruppen.ts`) keinen Autor tragen: sie treffen hier
- *     nur ihre lokale ID und lösen nie eine Identität auf.
+ *     Register. Für Sicherungs-Steine ohne Autor: sie treffen nur ihre
+ *     lokale ID und lösen nie eine Identität auf — der Grabstein trägt
+ *     dafür `loeschungUngebunden`, damit auch eine spätere Kopplung ihn
+ *     nicht einträgt.
  *
  * Im Node-Testläufer NICHT prüfbar (kein `indexedDB` dort).
  */
@@ -25,9 +26,8 @@ import { gehoertZuKonto } from './kontoFilter';
 import { kanonischeId } from './identitaet';
 import {
   istRegisterEintrag,
-  registerEintragFuerSatz,
   registerSchluesselFuerSatz,
-  type RegisterEintrag
+  uebernommeneLoeschungen
 } from './grabsteinRegister';
 import { gebundenLoeschenInTx, kanalBereich } from './dbRegister';
 import { trifftFrame } from '../krypto/loeschZiel';
@@ -48,7 +48,9 @@ import { trifftFrame } from '../krypto/loeschZiel';
  * Seit dem Register (2026-10-12) bleibt hier nur ein Aufrufer: der
  * Sicherungs-Stein ohne Autor (`sicherung/andockLesen.ts::steinAnwenden`).
  * Er trägt nichts ins Register ein — ohne Autor ist eine Löschung nicht
- * gebunden (`grabsteinRegister.ts`).
+ * gebunden (`grabsteinRegister.ts`) —, und der Grabstein vermerkt das
+ * (`loeschungUngebunden`): eine Kopplung trägt ihn sonst auf dem neuen
+ * Gerät über Autor und Kennung des Satzes ein (Gegenprüfung 2026-10-14, V1).
  *
  * Ergebnis: ob ein Grabstein gesetzt wurde.
  */
@@ -68,7 +70,7 @@ export function verlaufMarkiereGeloescht(
           const satz = getReq.result as Satz | undefined;
           if (!satz || satz.geloescht || !gehoertZuKonto(satz, kontoId)) return;
           if (autorId !== undefined && satz.autorId !== autorId) return;
-          store.put({ ...satz, geloescht: true });
+          store.put({ ...satz, geloescht: true, loeschungUngebunden: true });
           markiert = true;
         };
         getReq.onerror = () => reject(getReq.error);
@@ -216,6 +218,11 @@ export function verlaufSatzIdsFuerFrame(
  * Identität auf. Nach einer Kopplung tat er es doch und nahm jede andere
  * Kopie derselben Nachricht mit.
  *
+ * Ein ungebundener Grabstein (`loeschungUngebunden`, ein Sicherungs-Stein
+ * ohne Autor auf dem alten Gerät) trägt nichts ein und markiert nur den Satz
+ * unter seinem eigenen Schlüssel (`grabsteinRegister.ts::
+ * uebernommeneLoeschungen`, Gegenprüfung 2026-10-14, V1).
+ *
  * Eintragen und Markieren in EINER Transaktion, ein Durchlauf durch den
  * Speicher. Ergebnis: wie viele Sätze markiert wurden.
  */
@@ -223,11 +230,8 @@ export function verlaufRegisterAbgleichen(
   kontoId: string,
   grabsteine: readonly Satz[]
 ): Promise<number> {
-  const eintraege = grabsteine
-    .filter((satz) => satz.geloescht && gehoertZuKonto(satz, kontoId))
-    .map((satz) => registerEintragFuerSatz(satz))
-    .filter((eintrag): eintrag is RegisterEintrag => eintrag !== null);
-  if (eintraege.length === 0) return Promise.resolve(0);
+  const { eintraege, nurSelbst } = uebernommeneLoeschungen(grabsteine, kontoId);
+  if (eintraege.length === 0 && nurSelbst.size === 0) return Promise.resolve(0);
   const geloescht = new Set(eintraege.map((eintrag) => eintrag.schluessel));
   return mitVerbindung(
     (db) =>
@@ -242,14 +246,14 @@ export function verlaufRegisterAbgleichen(
           const cursor = durchlauf.result;
           if (!cursor) return;
           const satz = cursor.value as Satz;
-          if (
-            !istRegisterEintrag(satz) &&
-            !satz.geloescht &&
-            gehoertZuKonto(satz, kontoId) &&
-            geloescht.has(registerSchluesselFuerSatz(satz) ?? '')
-          ) {
-            cursor.update({ ...satz, geloescht: true });
-            markiert++;
+          if (!istRegisterEintrag(satz) && !satz.geloescht && gehoertZuKonto(satz, kontoId)) {
+            if (nurSelbst.has(satz.schluessel)) {
+              cursor.update({ ...satz, geloescht: true, loeschungUngebunden: true });
+              markiert++;
+            } else if (geloescht.has(registerSchluesselFuerSatz(satz) ?? '')) {
+              cursor.update({ ...satz, geloescht: true });
+              markiert++;
+            }
           }
           cursor.continue();
         };

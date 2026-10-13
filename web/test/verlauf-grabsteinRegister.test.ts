@@ -7,7 +7,8 @@ import {
   registerEintrag,
   registerEintragFuerSatz,
   registerSchluessel,
-  registerSchluesselFuerSatz
+  registerSchluesselFuerSatz,
+  uebernommeneLoeschungen
 } from '../src/lib/verlauf/grabsteinRegister.ts';
 import { sortierSchluessel } from '../src/lib/verlauf/satz.ts';
 
@@ -107,4 +108,43 @@ test('alsGrabstein: gelöscht, ohne Inhalt und Anhänge, Autor und Kennung bleib
     inhalt: '',
     anhaenge: []
   });
+});
+
+// Gegenprüfung 2026-10-14, V1: ein Sicherungs-Stein ohne Autor markiert auf
+// dem alten Gerät nur den Satz unter seiner lokalen ID — aber der Satz trägt
+// Autor und Kennung, und die Kopplung trug ihn auf dem neuen Gerät über
+// genau diese ins Register ein. Er löste dort doch über die Kennung auf.
+test('V1: ein ungebundener Grabstein der Kopplung trägt nichts ein und trifft nur seinen Schlüssel', () => {
+  const ungebunden = {
+    ...satz(),
+    schluessel: sortierSchluessel('100', K),
+    geloescht: true,
+    loeschungUngebunden: true as const
+  };
+  const gebunden = {
+    ...satz({ nachrichtId: D, kryptoId: '1760000000000999999' }),
+    schluessel: sortierSchluessel('100', D),
+    geloescht: true
+  };
+  const { eintraege, nurSelbst } = uebernommeneLoeschungen([ungebunden, gebunden], 'konto');
+  assert.deepEqual(
+    eintraege.map((e) => e.grabstein.kennung),
+    ['1760000000000999999'],
+    'nur der gebundene Grabstein steht im Register'
+  );
+  assert.deepEqual([...nurSelbst], [sortierSchluessel('100', K)]);
+});
+
+test('uebernommeneLoeschungen: sichtbare Sätze und fremde Konten zählen nicht', () => {
+  const sichtbar = { ...satz(), schluessel: 'a', geloescht: false };
+  const fremd = {
+    ...satz(),
+    kontoId: 'anderes',
+    schluessel: 'b',
+    geloescht: true,
+    loeschungUngebunden: true as const
+  };
+  const { eintraege, nurSelbst } = uebernommeneLoeschungen([sichtbar, fremd], 'konto');
+  assert.deepEqual(eintraege, []);
+  assert.equal(nurSelbst.size, 0);
 });

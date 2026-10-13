@@ -371,10 +371,7 @@ test('drei Kopien aus drei Ketten (Sendegerät im Altbestand, zwei Zweitgeräte)
 // Wiederherstellung wieder da.
 //
 // Der Fall hier ist der Stein für sich: seine Kette enthält den Rahmen der
-// Nachricht nicht. Steht der Rahmen dagegen mit in der Sicherung, hat die
-// Identität beide Kopien längst zu einer Gruppe gelegt, und der Stein trifft
-// die ganze Gruppe (`sicherung/eintragsGruppen.ts`, „Ältere Steine“) — die
-// Kopie des Zweitgeräts ist dann mit weg.
+// Nachricht nicht. Den Fall MIT Rahmen deckt der V1-Test darunter ab.
 test('Grabstein des Sendegeräts ohne Autor löscht nur seinen eigenen Eintrag — die Kopie des Zweitgeräts bleibt', async () => {
 	const stein: AblageNachricht = {
 		...kopie(AUTOR_ID, undefined),
@@ -390,6 +387,35 @@ test('Grabstein des Sendegeräts ohne Autor löscht nur seinen eigenen Eintrag �
 		const sichtbar = eintraege.filter((e) => e.nachricht.geloescht !== true);
 		assert.deepEqual(steine.map((e) => e.nachricht.id), [AUTOR_ID], 'der Stein steht nur für sich');
 		assert.deepEqual(sichtbar.map((e) => e.nachricht.id), [ZUSTELLUNG], 'die Kopie bleibt sichtbar');
+	}
+});
+
+// Gegenprüfung 2026-10-14, V1: derselbe Stein, aber seine Kette trägt auch
+// den Rahmen der Nachricht unter K — beim Sendegerät der Normalfall (es
+// spiegelte die Nachricht beim Senden, den Stein später). Die Identität legt
+// K und die Kopie D zu einer Gruppe; bis hierher traf der Stein die ganze
+// Gruppe und kam für D UND K mit Autor und Kennung heraus. `steinAnwenden`
+// trug daraus (Autor, K) ins Register ein — die Nachricht fehlte auf dem
+// neuen Gerät, obwohl der Stein nie einen Autor genannt hatte.
+test('V1: Stein ohne Autor + Rahmen derselben Kette + Kopie D → D bleibt, kein Stein mit Autor', async () => {
+	const stein: AblageNachricht = {
+		...kopie(AUTOR_ID, undefined),
+		autor: '',
+		inhalt: '',
+		geloescht: true,
+	};
+	const sendeKette = { praefix: 'dev-aaaa1111-', nachrichten: [kopie(AUTOR_ID, undefined), stein] };
+	const kopieKette = { praefix: 'dev-bbbb2222-', nachrichten: [kopie(ZUSTELLUNG, AUTOR_ID)] };
+	for (const ketten of [[sendeKette, kopieKette], [kopieKette, sendeKette]]) {
+		const eintraege = await zweiKetten(ketten);
+		const steine = eintraege.filter((e) => e.nachricht.geloescht === true);
+		const sichtbar = eintraege.filter((e) => e.nachricht.geloescht !== true);
+		assert.deepEqual(sichtbar.map((e) => e.nachricht.id), [ZUSTELLUNG], 'die Kopie D bleibt sichtbar');
+		assert.deepEqual(
+			steine.map((e) => [e.nachricht.id, e.nachricht.autor]),
+			[[AUTOR_ID, '']],
+			'der Stein steht nur für seine eigene ID und bleibt ohne Autor — nichts für das Register',
+		);
 	}
 });
 

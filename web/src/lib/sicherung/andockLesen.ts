@@ -114,12 +114,11 @@ async function kanalSeiteFüttern(
  * (`krypto/loeschZiel.ts::trifftFrame`), wird Grabstein — die Archiv-Kopie
  * unter K ebenso wie eine Empfangs-Kopie unter einer anderen Zustellungs-ID
  * (Befund N3). Gebunden an den Autor: die Kennung allein wählt der Absender
- * frei. Ein älterer Stein ohne Autor trifft hier nur den Satz unter seiner
+ * frei. Ein älterer Stein ohne Autor trifft nur den Satz unter seiner
  * lokalen ID und trägt nichts ins Register ein — er löst nie eine Identität
- * auf. Bis hierher hat ihn der Leser (`eintragsGruppen.ts`) aber schon auf
- * die Gruppe seiner ID ausgeweitet und, wo die Sicherung den Autor kennt,
- * mit ihm versehen; ohne Autor kommt nur an, was dort keinem Rahmen
- * zuzuordnen war.
+ * auf, auch nicht im Leser (`eintragsGruppen.ts`, seit 2026-10-14) und
+ * nicht über eine spätere Kopplung (`verlaufMarkiereGeloescht` vermerkt
+ * den Grabstein als ungebunden).
  */
 export async function steinAnwenden(
 	kanalId: string,

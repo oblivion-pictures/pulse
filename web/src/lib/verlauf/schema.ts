@@ -133,6 +133,16 @@ export type Satz = {
    * (`herkunft.ts`). Kein `DB_VERSION`-Bump (neues FELD).
    */
   ungeprueft?: true;
+  /**
+   * Nur an einem Grabstein, dessen Löschung keinen Autor nannte: ein
+   * Sicherungs-Stein ohne Autor (`dbLoeschen.ts::verlaufMarkiereGeloescht`).
+   * Er gilt nur für diesen Satz. Übernimmt eine Kopplung ihn, trägt das neue
+   * Gerät ihn deshalb nicht ins Grabstein-Register ein
+   * (`grabsteinRegister.ts::uebernommeneLoeschungen`) — sonst löste er dort
+   * doch über die Kennung auf (Gegenprüfung 2026-10-14, V1). Kein
+   * `DB_VERSION`-Bump (neues FELD).
+   */
+  loeschungUngebunden?: true;
 };
 
 /**

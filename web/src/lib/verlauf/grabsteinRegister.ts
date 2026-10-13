@@ -21,7 +21,7 @@
  * Grabstein-Zeile im Archiv (Einlieferer = Autor), ein Sicherungs-Stein, der
  * seinen Autor nennt, die eigene Löschung eines liegenden Satzes (Autor aus
  * dem Satz), ein übernommener Grabstein-Satz der Kopplung (Autor aus dem
- * Satz). Nie über eine bloße ID: die Kennung wählt der Absender frei, und
+ * Satz, außer er trägt `loeschungUngebunden`). Nie über eine bloße ID: die Kennung wählt der Absender frei, und
  * ohne den Autor im Schlüssel könnte jeder Gesprächspartner fremde
  * Nachrichten vorab „löschen".
  *
@@ -42,9 +42,11 @@
  * `kanalId`. Wer einen neuen Leseweg über `nachrichten` baut, filtert
  * ebenso — oder prüft mit `istRegisterEintrag`.
  *
- * Importfrei bis auf den `.ts`-Pfad der Identitätsregel (Nodes Testläufer).
+ * Importfrei bis auf die `.ts`-Pfade der Identitäts- und Kontoregel (Nodes
+ * Testläufer).
  */
 import { istGueltigeKennung, kanonischeId, nachrichtIdentitaet } from './identitaet.ts';
+import { gehoertZuKonto } from './kontoFilter.ts';
 
 /** Präfix der Register-Schlüssel — sortiert hinter jeder Kanal-ID. */
 const PRAEFIX = '~grabstein|';
@@ -107,6 +109,38 @@ export function registerEintragFuerSatz(satz: SatzIdentitaet): RegisterEintrag |
  *  (s. `registerEintragFuerSatz`). */
 export function registerSchluesselFuerSatz(satz: SatzIdentitaet): string | null {
   return registerEintragFuerSatz(satz)?.schluessel ?? null;
+}
+
+/** Ein Grabstein-Satz, wie ihn die Kopplung vom alten Gerät übernimmt. */
+type UebernommenerStein = SatzIdentitaet & {
+  schluessel: string;
+  geloescht: boolean;
+  loeschungUngebunden?: true;
+};
+
+/**
+ * Was die übernommenen Grabsteine einer Kopplung bewirken
+ * (`dbLoeschen.ts::verlaufRegisterAbgleichen`): für jeden gebundenen ein
+ * Register-Eintrag (Autor und Kennung aus dem Satz), für jeden ungebundenen
+ * (`loeschungUngebunden`) nur sein eigener Schlüssel — er trifft auf diesem
+ * Gerät wie auf dem alten nur den Satz unter seiner lokalen ID.
+ */
+export function uebernommeneLoeschungen(
+  grabsteine: readonly UebernommenerStein[],
+  kontoId: string
+): { eintraege: RegisterEintrag[]; nurSelbst: Set<string> } {
+  const eintraege: RegisterEintrag[] = [];
+  const nurSelbst = new Set<string>();
+  for (const satz of grabsteine) {
+    if (!satz.geloescht || !gehoertZuKonto(satz, kontoId)) continue;
+    if (satz.loeschungUngebunden) {
+      nurSelbst.add(satz.schluessel);
+      continue;
+    }
+    const eintrag = registerEintragFuerSatz(satz);
+    if (eintrag !== null) eintraege.push(eintrag);
+  }
+  return { eintraege, nurSelbst };
 }
 
 /** Ob eine Zeile des Speichers `nachrichten` ein Register-Eintrag ist. */

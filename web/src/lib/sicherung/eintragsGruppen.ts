@@ -32,17 +32,17 @@
  * seinen Ziel-IDs gehört dann auch die Kennung K (unter der die Nachricht
  * beim Verfasser und im Archiv liegt).
  *
- * Ältere Steine tragen keinen Autor (`autor: ''`) und suchen nur über ihre
- * eigene lokale ID — getroffen wird aber die GANZE Gruppe dieser ID, samt
- * der lokalen IDs, die über die Identität dazugekommen sind, und die
- * Ausgabe nennt für jede einen Stein mit dem Autor und der Kennung der
- * Gruppe. Hier stand bis 2026-10-12, sie träfen „nur ihre eigene lokale ID"
- * (so auch in der Nachricht zu a5abfb42) — das galt vor der
- * Identitätsgruppe, nicht mehr danach (Gegenprüfung 2026-10-12, Fund 7).
- * Der Autor kommt dabei aus den Nachrichten-Rahmen der eigenen Sicherung,
- * nicht aus dem Stein; ohne einen solchen Rahmen bleibt der Stein ohne
- * Autor und trifft beim Wiederherstellen nur den Satz unter seiner ID
- * (`andockLesen.ts::steinAnwenden`).
+ * **Ein Stein ohne Autor (`autor: ''`, vor 2026-10-11) gehört zu keiner
+ * Gruppe.** Er wirkt nur auf seine eigene lokale ID: die Ausgabe nennt ihn
+ * unverändert (ohne Autor, ohne Kennung), und für die Gruppe, in der diese
+ * ID liegt, gilt der beste Rahmen UNTER EINER ANDEREN lokalen ID weiter
+ * (Eigentümer-Entscheid 2026-10-13, „nie über Kennung“). Bis 2026-10-14
+ * traf er die ganze Gruppe seiner ID samt den IDs, die über die Identität
+ * dazugekommen waren, und kam für jede als Stein MIT dem Autor und der
+ * Kennung der Gruppe heraus — `andockLesen.ts::steinAnwenden` machte daraus
+ * eine gebundene Löschung. Zu diesen Steinen gehören die des N1-Rückfalls,
+ * also Löschungen, die ein Gesprächspartner mit der Kennung einer fremden
+ * Nachricht ausgelöst hatte (Gegenprüfung 2026-10-14, V1).
  *
  * Importfrei bis auf erweiterungspflichtige Relativpfade (Node-Testläufer).
  */
@@ -52,11 +52,13 @@ import { kanonischeId, nachrichtIdentitaet } from '../verlauf/identitaet.ts';
 import { vergleicheSnowflakeArtigeId } from '../utils/snowflakeZeit.ts';
 
 interface Gruppe {
-	eintrag: SicherungEintrag;
-	/** Alle lokalen IDs der zusammengelegten Rahmen. */
+	/** Die Nachrichten-Rahmen, in der Reihenfolge des Lesens. */
+	rahmen: SicherungEintrag[];
+	/** Der erste Stein MIT Autor, der die Gruppe getroffen hat. */
+	stein: SicherungEintrag | null;
+	/** Alle lokalen IDs der zusammengelegten Rahmen und Steine. */
 	lokaleIds: Set<string>;
-	/** Autor aus den Nachrichten-Rahmen — leer, solange nur ein Stein ohne
-	 *  Autor die Gruppe kennt. */
+	/** Autor aus den Rahmen bzw. dem Stein. */
 	autor: string;
 	/** Kanonische Kennung, sobald ein Rahmen sie verraten hat. */
 	kanonisch: string | null;
@@ -81,31 +83,34 @@ function kennungUebernehmen(gruppe: Gruppe, kennung: string | null, echt: boolea
 	}
 }
 
-/** Die Kennung K eines Steins, der seinen Autor nennt (seit 2026-10-11,
- *  `ablage/nutzlast.ts::grabstein`), sonst `null`: die Kennung allein wählt
- *  der Absender frei, erst zusammen mit dem Autor zählt sie. */
-function steinKennung(eintrag: SicherungEintrag): string | null {
-	const { autor, kryptoId } = eintrag.nachricht;
-	return autor !== '' && kryptoId ? kryptoId : null;
-}
-
-/** Die lokalen IDs, die ein Grabstein-Rahmen trifft: seine eigene, und —
- *  nennt er seinen Autor — auch die Kennung K als LOKALE ID: unter K liegt
- *  die Nachricht beim Verfasser und im Archiv. Ein Stein ohne Autor nennt
- *  nur sich selbst. */
+/** Die lokalen IDs, die ein Stein MIT Autor trifft: seine eigene und seine
+ *  Kennung K als LOKALE ID — unter K liegt die Nachricht beim Verfasser und
+ *  im Archiv. Die Kennung allein wählt der Absender frei, erst zusammen mit
+ *  dem Autor zählt sie (seit 2026-10-11, `ablage/nutzlast.ts::grabstein`). */
 function steinZiele(eintrag: SicherungEintrag): string[] {
-	const { id } = eintrag.nachricht;
-	const kennung = steinKennung(eintrag);
-	return kennung !== null && kennung !== id ? [id, kennung] : [id];
+	const { id, kryptoId } = eintrag.nachricht;
+	return kryptoId && kryptoId !== id ? [id, kryptoId] : [id];
 }
 
 function istStein(eintrag: SicherungEintrag): boolean {
 	return eintrag.nachricht.geloescht === true;
 }
 
-/** Mehr Anhänge = reichere Fassung (dieselbe Regel wie vorher im Leser). */
-function reicher(neu: SicherungEintrag, alt: SicherungEintrag): boolean {
-	return neu.nachricht.anhaenge.length > alt.nachricht.anhaenge.length;
+/** Der Rahmen, den die Gruppe zeigt: der erste mit den meisten Anhängen
+ *  (mehr Anhänge = reichere Fassung). `auslassen` hält die lokalen IDs, die
+ *  ein Stein ohne Autor getroffen hat. `null`, wenn kein Rahmen bleibt. */
+function besterRahmen(
+	rahmen: readonly SicherungEintrag[],
+	auslassen: ReadonlyMap<string, unknown>,
+): SicherungEintrag | null {
+	let bester: SicherungEintrag | null = null;
+	for (const eintrag of rahmen) {
+		if (auslassen.has(`${eintrag.kanalId}:${eintrag.nachricht.id}`)) continue;
+		if (bester === null || eintrag.nachricht.anhaenge.length > bester.nachricht.anhaenge.length) {
+			bester = eintrag;
+		}
+	}
+	return bester;
 }
 
 /** Neueste zuerst (Nachricht-Snowflake), bei gleicher ID nach Kanal. Mit
@@ -131,10 +136,12 @@ export class EintragsGruppen {
 	private readonly weiter = new Map<string, string>();
 	private readonly jeLokalerId = new Map<string, string>();
 	private readonly jeIdentitaet = new Map<string, string>();
+	/** Steine ohne Autor, je `kanal:id` — außerhalb jeder Gruppe (Modulkopf). */
+	private readonly ohneAutor = new Map<string, SicherungEintrag>();
 
 	/** Anzahl logischer Nachrichten — die Seitengrenze des Lesers. */
 	get groesse(): number {
-		return this.gruppen.size;
+		return this.gruppen.size + this.ohneAutor.size;
 	}
 
 	private wurzel(schluessel: string | undefined): string | undefined {
@@ -147,15 +154,13 @@ export class EintragsGruppen {
 		return this.wurzel(this.jeLokalerId.get(`${kanalId}:${id}`));
 	}
 
-	/** Legt Gruppe `b` in Gruppe `a` (beide Wurzeln). Ein Stein gewinnt, sonst
-	 *  die reichere Fassung. */
+	/** Legt Gruppe `b` in Gruppe `a` (beide Wurzeln). */
 	private vereinigen(a: string, b: string): void {
 		if (a === b) return;
 		const ga = this.gruppen.get(a)!;
 		const gb = this.gruppen.get(b)!;
-		if (!istStein(ga.eintrag) && (istStein(gb.eintrag) || reicher(gb.eintrag, ga.eintrag))) {
-			ga.eintrag = gb.eintrag;
-		}
+		ga.rahmen.push(...gb.rahmen);
+		ga.stein ??= gb.stein;
 		for (const id of gb.lokaleIds) ga.lokaleIds.add(id);
 		ga.autor ||= gb.autor;
 		kennungUebernehmen(ga, gb.kanonisch, gb.kennungEcht);
@@ -163,11 +168,12 @@ export class EintragsGruppen {
 		this.weiter.set(b, a);
 	}
 
-	private neueGruppe(eintrag: SicherungEintrag, lokaleIds: string[], autor: string): string {
+	private neueGruppe(autor: string): string {
 		const schluessel = String(this.naechsterSchluessel++);
 		this.gruppen.set(schluessel, {
-			eintrag,
-			lokaleIds: new Set(lokaleIds),
+			rahmen: [],
+			stein: null,
+			lokaleIds: new Set(),
 			autor,
 			kanonisch: null,
 			kennungEcht: false,
@@ -181,8 +187,14 @@ export class EintragsGruppen {
 	}
 
 	aufnehmen(eintrag: SicherungEintrag): void {
-		if (istStein(eintrag)) this.steinAufnehmen(eintrag);
-		else this.nachrichtAufnehmen(eintrag);
+		if (!istStein(eintrag)) this.nachrichtAufnehmen(eintrag);
+		else if (eintrag.nachricht.autor === '') this.ohneAutorMerken(eintrag);
+		else this.steinAufnehmen(eintrag);
+	}
+
+	private ohneAutorMerken(stein: SicherungEintrag): void {
+		const lokal = `${stein.kanalId}:${stein.nachricht.id}`;
+		if (!this.ohneAutor.has(lokal)) this.ohneAutor.set(lokal, stein);
 	}
 
 	private nachrichtAufnehmen(eintrag: SicherungEintrag): void {
@@ -197,16 +209,11 @@ export class EintragsGruppen {
 			if (autor !== '' && autor !== n.autor) ueberId = undefined;
 		}
 		const ueberIdentitaet = this.wurzel(this.jeIdentitaet.get(identitaet));
-		const ziel = ueberId ?? ueberIdentitaet ?? this.neueGruppe(eintrag, [n.id], n.autor);
+		const ziel = ueberId ?? ueberIdentitaet ?? this.neueGruppe(n.autor);
 		// Kennen lokale ID und Identität verschiedene Gruppen, werden sie eine.
 		if (ueberIdentitaet !== undefined) this.vereinigen(ziel, ueberIdentitaet);
 		const gruppe = this.gruppen.get(ziel)!;
-		// Die reichere Fassung ersetzt die liegende UNTER DEREN Schlüssel —
-		// sonst stünden beide da. Ein Stein bleibt Stein. (Eine frische Gruppe
-		// trägt Rahmen, ID und Autor schon.)
-		if (!istStein(gruppe.eintrag) && reicher(eintrag, gruppe.eintrag)) {
-			gruppe.eintrag = eintrag;
-		}
+		gruppe.rahmen.push(eintrag);
 		gruppe.lokaleIds.add(n.id);
 		gruppe.autor ||= n.autor;
 		const kennung = kanonischeId(n.id, n.kryptoId);
@@ -215,6 +222,8 @@ export class EintragsGruppen {
 		if (!this.jeIdentitaet.has(identitaet)) this.jeIdentitaet.set(identitaet, ziel);
 	}
 
+	/** Ein Stein MIT Autor: trifft die Gruppen seiner Ziel-IDs, soweit sie
+	 *  diesem Autor gehören, und legt sie zusammen. */
 	private steinAufnehmen(stein: SicherungEintrag): void {
 		const { kanalId, nachricht: n } = stein;
 		const ziele = steinZiele(stein);
@@ -223,21 +232,20 @@ export class EintragsGruppen {
 			const schluessel = this.gruppeUeberLokaleId(kanalId, id);
 			if (schluessel === undefined) continue;
 			const autor = this.gruppen.get(schluessel)!.autor;
-			// Ein Stein MIT Autor trifft nur Gruppen dieses Autors.
-			if (n.autor !== '' && autor !== '' && autor !== n.autor) continue;
+			if (autor !== '' && autor !== n.autor) continue;
 			getroffen.add(schluessel);
 		}
 		// Alle getroffenen Gruppen werden eine; `getroffen` hält Wurzeln, und
 		// das Vereinigen in die erste lässt die übrigen Wurzeln. Trifft der
 		// Stein keine, bekommt er eine eigene.
 		const [erste, ...rest] = [...getroffen];
-		const ziel = erste ?? this.neueGruppe(stein, ziele, n.autor);
+		const ziel = erste ?? this.neueGruppe(n.autor);
 		for (const andere of rest) this.vereinigen(ziel, andere);
 		const gruppe = this.gruppen.get(ziel)!;
-		if (!istStein(gruppe.eintrag)) gruppe.eintrag = stein;
+		gruppe.stein ??= stein;
 		gruppe.autor ||= n.autor;
-		// Die Kennung eines Steins mit Autor gilt wie die eines Rahmens.
-		const kennung = steinKennung(stein);
+		// Die Kennung eines Steins gilt wie die eines Rahmens.
+		const kennung = n.kryptoId ?? null;
 		kennungUebernehmen(gruppe, kennung, kennung !== null && kennung !== n.id);
 		for (const id of ziele) {
 			gruppe.lokaleIds.add(id);
@@ -245,22 +253,24 @@ export class EintragsGruppen {
 		}
 	}
 
-	/** Je Gruppe ein Eintrag; eine gelöschte Gruppe als ein Stein JE lokaler
-	 *  ID, mit dem Autor und der Kennung der Gruppe, soweit bekannt. Neueste
-	 *  zuerst (Nachricht-Snowflake) — dieselbe Ordnung, die die Ansicht nach
-	 *  dem Merge erwartet. */
+	/** Je Gruppe ein Eintrag; eine von einem Stein mit Autor getroffene Gruppe
+	 *  als ein Stein JE lokaler ID, mit dem Autor und der Kennung der Gruppe.
+	 *  Dazu jeder Stein ohne Autor, wie er gelesen wurde. Neueste zuerst
+	 *  (Nachricht-Snowflake) — dieselbe Ordnung, die die Ansicht nach dem
+	 *  Merge erwartet. */
 	ergebnis(): SicherungEintrag[] {
-		const aus: SicherungEintrag[] = [];
+		const aus: SicherungEintrag[] = [...this.ohneAutor.values()];
 		for (const gruppe of this.gruppen.values()) {
-			if (!istStein(gruppe.eintrag)) {
-				aus.push(gruppe.eintrag);
+			if (gruppe.stein === null) {
+				const rahmen = besterRahmen(gruppe.rahmen, this.ohneAutor);
+				if (rahmen !== null) aus.push(rahmen);
 				continue;
 			}
-			const { kryptoId: _ohne, ...stein } = gruppe.eintrag.nachricht;
+			const { kryptoId: _ohne, ...stein } = gruppe.stein.nachricht;
 			const kennung = gruppe.kanonisch !== null ? { kryptoId: gruppe.kanonisch } : {};
 			for (const id of gruppe.lokaleIds) {
 				aus.push({
-					...gruppe.eintrag,
+					...gruppe.stein,
 					nachricht: { ...stein, id, autor: gruppe.autor, ...kennung },
 				});
 			}
