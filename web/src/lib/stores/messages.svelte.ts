@@ -2,7 +2,6 @@ import type { Message, ReactionAggregate } from '$lib/api/types';
 import { dispatchingUserId } from './currentServerUser';
 import { compareSnowflakeId } from '$lib/utils/snowflake';
 import { clearBlobCache } from '$lib/attachments/blobCache';
-import { istBekannteNachricht } from '$lib/verlauf/nachrichtIdentitaet';
 import {
   einfuegen,
   entfernen,
@@ -11,6 +10,7 @@ import {
   kryptoIdsVon,
   letzteServerId,
   lueckeZusammenfuehren,
+  ohneGrabsteine,
   vorneAnfuegen
 } from '$lib/nachrichten/listenKern';
 import {
@@ -40,7 +40,7 @@ class MessageStore {
   // Geräts beim Hochscrollen). Nur über die kanonische ID erkennt der
   // Store sie als dieselbe Nachricht.
   private kryptoIds = $state<Record<string, Set<string>>>({});
-  // `krypto_id`s gelöschter Nachrichten — überleben das Kappen (`nachrichten/grabsteine.ts`).
+  // `krypto_id`s gelöschter Nachrichten, überleben Kappen und Neuladen (`grabsteine.ts`).
   private grabsteine = new Grabsteine();
   // LRU order of cached channels, evicts beyond MAX_CACHED_CHANNELS (`nachrichten/kanalCache.ts`).
   private lru = new ZuletztBenutzt();
@@ -82,17 +82,17 @@ class MessageStore {
   }
 
   setInitial(channelId: string, msgs: Message[]): void {
-    // Backend returns descending; flip for chat-bottom display.
+    // Backend returns descending; flip for chat-bottom display. Gelöschtes bleibt draußen.
+    const begraben = this.grabsteine.fuer(channelId);
     const sorted = kappen(
-      [...msgs].sort((a, b) => compareSnowflakeId(a.id, b.id)),
+      [...ohneGrabsteine(msgs, begraben)].sort((a, b) => compareSnowflakeId(a.id, b.id)),
       MessageStore.CAP
     ).liste;
     this.byChannel = { ...this.byChannel, [channelId]: sorted };
     this.loadedChannels = { ...this.loadedChannels, [channelId]: true };
     // Populate the ID set for O(1) dedup during upsert.
     this.messageIds = { ...this.messageIds, [channelId]: new Set(sorted.map((m) => m.id)) };
-    this.kryptoIds = { ...this.kryptoIds, [channelId]: kryptoIdsVon(sorted) };
-    this.grabsteine.vergessen(channelId);
+    this.kryptoIds = { ...this.kryptoIds, [channelId]: kryptoIdsVon(sorted, begraben) };
     this.touch(channelId);
   }
 

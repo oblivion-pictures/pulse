@@ -11,6 +11,10 @@ import { test, expect, type Page } from '@playwright/test';
  *    Sekunde in einer Schleife.
  * 2. Grabstein: eine gelöschte Nachricht kehrt nicht zurück, auch wenn das
  *    Kappen der Liste (5000) die Dublettenmengen neu aufgebaut hat.
+ * 3. Grabstein über das Wiederöffnen: `setInitial` (leeren, neu laden) vergisst
+ *    ihn nicht, und der Archiv-/Sicherungs-Nachzug (`prepend`) bringt die Kopie
+ *    nicht zurück. Verlässt der Kanal den Speicher (Deckel), gehen die
+ *    Grabsteine mit.
  *
  * Der Store wird über den Vite-Modulpfad geholt (dieselbe Modulinstanz wie die
  * App); die fremden Kanäle sind frei erfunden und existieren nur im Speicher.
@@ -171,4 +175,70 @@ test('eine gelöschte Nachricht kehrt nach dem Kappen der Liste nicht zurück', 
 	expect(r.vorKappen).toBe(false);
 	expect(r.laenge, 'die Liste wurde tatsächlich gekappt').toBe(5000);
 	expect(r.nachKappen, 'die Kopie der gelöschten Nachricht bleibt draußen').toBe(false);
+});
+
+test('eine gelöschte Nachricht kehrt nach dem Wiederöffnen des Kanals nicht zurück', async ({
+	page
+}) => {
+	await page.goto('/login');
+	const r = await page.evaluate(async (pfad) => {
+		const { messages } = await import(pfad);
+		const kanal = 'wieder-1';
+		const nachricht = (kanalId: string, n: number, kryptoId?: string) => ({
+			id: String(100000000000000000n + BigInt(n)),
+			channel_id: kanalId,
+			author_id: 'x',
+			content: `m${n}`,
+			nonce: null,
+			created_at: '2026-01-01T00:00:00Z',
+			...(kryptoId ? { krypto_id: kryptoId } : {})
+		});
+		const hatKopie = () =>
+			messages.for(kanal).some((m: { krypto_id?: string }) => m.krypto_id === 'K-weg');
+		const lokal = [nachricht(kanal, 10), nachricht(kanal, 11, 'K-weg'), nachricht(kanal, 12)];
+		messages.setInitial(kanal, lokal);
+		messages.remove(kanal, lokal[1].id);
+		// Der Nutzer wechselt in eine andere Unterhaltung ...
+		messages.setInitial('wieder-2', [nachricht('wieder-2', 20)]);
+		// ... und kommt zurück: `vorbereiten` leert den schon geladenen Kanal, der
+		// lokale Verlauf liefert sein Fenster (hier mit der Kopie unter anderer Id) ...
+		messages.setInitial(kanal, []);
+		messages.setInitial(kanal, [lokal[0], nachricht(kanal, 51, 'K-weg'), lokal[2]]);
+		const nachLaden = hatKopie();
+		// ... und der Archiv-Nachzug liefert eine ältere Seite, wieder mit der Kopie.
+		messages.prepend(kanal, [nachricht(kanal, 5, 'K-weg'), nachricht(kanal, 6)]);
+		return { nachLaden, nachNachzug: hatKopie(), lebende: messages.for(kanal).length };
+	}, STORE);
+	expect(r.nachLaden, 'die frisch geladene Liste enthält die Kopie nicht').toBe(false);
+	expect(r.nachNachzug, 'der Nachzug bringt sie nicht zurück').toBe(false);
+	expect(r.lebende, 'die lebenden Nachrichten sind alle da (10, 12, 6)').toBe(3);
+});
+
+test('das Räumen durch den Deckel nimmt die Grabsteine des Kanals mit', async ({ page }) => {
+	await page.goto('/login');
+	const r = await page.evaluate(async (pfad) => {
+		const { messages } = await import(pfad);
+		const nachricht = (kanalId: string, n: number, kryptoId?: string) => ({
+			id: String(100000000000000000n + BigInt(n)),
+			channel_id: kanalId,
+			author_id: 'x',
+			content: `m${n}`,
+			nonce: null,
+			created_at: '2026-01-01T00:00:00Z',
+			...(kryptoId ? { krypto_id: kryptoId } : {})
+		});
+		messages.setInitial('geraeumt', [nachricht('geraeumt', 1, 'K-weg')]);
+		messages.remove('geraeumt', nachricht('geraeumt', 1).id);
+		const davor = messages.grabsteine.je.has('geraeumt');
+		// 15 weitere geöffnete Kanäle: der älteste (`geraeumt`) fliegt aus dem Deckel.
+		for (let i = 0; i < 15; i++) messages.setInitial(`anders-${i}`, [nachricht(`anders-${i}`, 2)]);
+		return {
+			davor,
+			geraeumt: !('geraeumt' in messages.byChannel),
+			grabsteineWeg: !messages.grabsteine.je.has('geraeumt')
+		};
+	}, STORE);
+	expect(r.davor, 'der Grabstein war gesetzt').toBe(true);
+	expect(r.geraeumt, 'der Kanal wurde vom Deckel geräumt').toBe(true);
+	expect(r.grabsteineWeg, 'und seine Grabsteine gingen mit').toBe(true);
 });

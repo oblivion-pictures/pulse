@@ -10,6 +10,7 @@ import {
 	kryptoIdsVon,
 	letzteServerId,
 	lueckeZusammenfuehren,
+	ohneGrabsteine,
 	vorneAnfuegen as vorneAnfuegenKern
 } from '../src/lib/nachrichten/listenKern.ts';
 import type { Message } from '../src/lib/api/types.ts';
@@ -339,5 +340,46 @@ describe('Nachrichtenliste: Grabsteine gelöschter Nachrichten', () => {
 		const s = kryptoIdsVon([msg('1', { krypto_id: 'a' }), msg('2')], new Set(['tot']));
 		assert.deepEqual([...s].sort(), ['a', 'tot']);
 		assert.deepEqual([...kryptoIdsVon([msg('1', { krypto_id: 'a' })])], ['a']);
+	});
+});
+
+describe('Nachrichtenliste: Grabsteine beim erneuten Laden', () => {
+	it('ohneGrabsteine nimmt Nachrichten heraus, deren kanonische Id ein Grabstein ist', () => {
+		const liste = [
+			msg('10', { krypto_id: 'tot' }), // Kopie eines Empfängergeräts unter lokaler Zustellungs-Id
+			msg('20'),
+			msg('tot2'), // Kopie des Autors ohne krypto_id: die eigene Id ist die kanonische
+			msg('30', { krypto_id: 'lebt' })
+		];
+		const r = ohneGrabsteine(liste, new Set(['tot', 'tot2']));
+		assert.deepEqual(ids(r), ['20', '30']);
+		assert.equal(liste.length, 4, 'die Eingabeliste bleibt unverändert');
+	});
+
+	it('ohneGrabsteine gibt ohne Treffer dieselbe Liste zurück', () => {
+		const liste = [msg('10', { krypto_id: 'a' }), msg('20')];
+		assert.equal(ohneGrabsteine(liste, new Set()), liste);
+		assert.equal(ohneGrabsteine(liste, new Set(['fremd'])), liste);
+	});
+
+	it('Wiederöffnen: löschen, Liste neu laden, Nachzug-Seite mit der Kopie — die Kopie bleibt weg', () => {
+		// Zustand des Stores: zwei Nachrichten, die mittlere wird gelöscht.
+		const liste = [msg('10'), msg('20', { krypto_id: 'k2' }), msg('30')];
+		const i = new Set(['10', '20', '30']);
+		const krypto = new Set(['k2']);
+		const begraben = new Set<string>();
+		assert.ok(entfernen(liste, i, krypto, begraben, '20'));
+		// Wiederöffnen: `setInitial` bekommt den Verlauf, der die Nachricht noch
+		// (als Kopie unter anderer Id) enthält, und baut die Mengen neu.
+		const geladen = ohneGrabsteine([msg('10'), msg('25', { krypto_id: 'k2' }), msg('30')], begraben);
+		assert.deepEqual(ids(geladen), ['10', '30']);
+		const ids2 = new Set(geladen.map((m) => m.id));
+		const krypto2 = kryptoIdsVon(geladen, begraben);
+		// Der Archiv-Nachzug liefert danach noch einmal die Kopie, in einer Seite vor dem Fenster.
+		assert.equal(vorneAnfuegen(geladen, ids2, krypto2, [msg('5', { krypto_id: 'k2' })], 100, begraben), null);
+		// Eine lebende Nachricht aus derselben Seite kommt dagegen durch.
+		const r = vorneAnfuegen(geladen, ids2, krypto2, [msg('5', { krypto_id: 'k2' }), msg('6')], 100, begraben);
+		assert.ok(r);
+		assert.deepEqual(ids(r.neu), ['6']);
 	});
 });

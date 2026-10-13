@@ -23,7 +23,7 @@
  */
 import type { Message } from '../api/types';
 import { compareSnowflakeId } from '../utils/snowflake.ts';
-import { istBekannteNachricht } from '../verlauf/nachrichtIdentitaet.ts';
+import { istBekannteNachricht, kanonischeNachrichtId } from '../verlauf/nachrichtIdentitaet.ts';
 import { grabsteinSetzen } from './grabsteine.ts';
 
 /** Die `krypto_id`s einer Liste samt den Grabsteinen des Kanals — der
@@ -32,6 +32,16 @@ export function kryptoIdsVon(list: Message[], begraben: Iterable<string> = []): 
   const krypto = new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
   for (const id of begraben) krypto.add(id);
   return krypto;
+}
+
+/** Die Liste ohne Nachrichten, deren kanonische Id ein Grabstein ist (`begraben`,
+ *  s. `grabsteine.ts`) — eine frisch geladene Liste (`setInitial`) darf eine
+ *  gelöschte Nachricht nicht wieder einschleppen, auch nicht als Kopie unter
+ *  anderer lokaler Id. Ohne Treffer kommt dieselbe Liste zurück. */
+export function ohneGrabsteine(list: Message[], begraben: ReadonlySet<string>): Message[] {
+  if (begraben.size === 0) return list;
+  const rest = list.filter((m) => !begraben.has(kanonischeNachrichtId(m.id, m.krypto_id)));
+  return rest.length === list.length ? list : rest;
 }
 
 /** Nimmt `m` in die beiden Dublettenmengen auf. */

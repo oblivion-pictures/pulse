@@ -1,7 +1,8 @@
 /**
  * Die Grabsteine des Nachrichten-Stores (`stores/messages.svelte.ts`): die
  * kanonische `krypto_id` jeder Nachricht, die aus einem Kanal gelöscht wurde,
- * solange dieser Kanal im Speicher steht.
+ * solange dieser Kanal im Speicher steht — über Kappen UND über jedes erneute
+ * Laden (`setInitial`) hinweg.
  *
  * **Wozu.** Dieselbe verschlüsselte Nachricht trägt auf jedem Gerät eine andere
  * lokale Id und ist nur an ihrer `krypto_id` wiederzuerkennen
@@ -12,7 +13,10 @@
  * (`verlauf/zusammenfuegen.ts`) verdeckt eine solche Kopie nur, wenn Grabstein
  * und Kopie ihm gemeinsam vorgelegt werden — der Store füllt aber seitenweise
  * (`verlaufLesen` liefert ein Fenster), die beiden können in verschiedenen
- * Fenstern liegen.
+ * Fenstern liegen. Das erneute Öffnen eines schon geladenen Kanals leert die
+ * Liste und lädt sie neu (`setInitial`) und stößt unmittelbar danach den
+ * Archiv- und Sicherungs-Nachzug an, also genau den Weg, der eine gelöschte
+ * Nachricht wieder liefern kann.
  *
  * **Warum eine eigene Menge.** Die Dublettenmenge `krypto` ist ansonsten eine
  * Funktion der Liste (nur, was wirklich dort steht, `listenKern.ts::
@@ -20,12 +24,19 @@
  * steht per Definition NICHT in der Liste; ohne eigenen Platz fiel er mit dem
  * Neuaufbau heraus. Hier steht er, der Abgleich spielt ihn danach zurück.
  *
- * **Lebensdauer.** Wie die Dublettenmengen selbst: bis der Kanal im Speicher
- * neu geladen (`setInitial`), geräumt (`clearChannel`, LRU-Deckel) oder die
- * Sitzung beendet wird (`clear`). Danach ist der lokale Verlauf die Quelle: für
- * lokal geführte Kanäle (DM, private Gruppe) schreibt `verlaufNachrichtGeloescht`
- * dort einen dauerhaften Grabstein, Guild-Kanäle liefert der Server ohne
- * gelöschte Nachrichten aus.
+ * **Lebensdauer.** Länger als die Dublettenmengen: ein erneutes Laden
+ * (`setInitial`) baut `ids` und `krypto` aus der Liste neu, die Grabsteine
+ * bleiben dabei stehen — `setInitial` nimmt sie in `krypto` auf UND filtert die
+ * geladene Liste gegen sie (`listenKern.ts::ohneGrabsteine`), ebenso weist
+ * `prepend` über `krypto` eine Seite mit einer Kopie ab. Sie enden erst, wenn
+ * der Kanal den Speicher verlässt (`clearChannel`: LRU-Deckel, nach einem
+ * Verbindungsabriss eine Lücke über eine Seite hinaus, Kanal oder Community
+ * fort) oder die Sitzung endet (`clear`). Ab dann ist der lokale Verlauf die
+ * Quelle: für lokal geführte Kanäle (DM, private Gruppe) schreibt
+ * `verlaufNachrichtGeloescht` dort einen dauerhaften Grabstein, Guild-Kanäle
+ * liefert der Server ohne gelöschte Nachrichten aus. Dieser Grabstein verdeckt
+ * eine Kopie unter anderer Id aber nur, wenn beide in demselben Fenster
+ * zusammengeführt werden (`verlauf/zusammenfuegen.ts`).
  *
  * **Grenze.** Höchstens `GRABSTEINE_JE_KANAL` je Kanal, der älteste fällt zuerst.
  * Ohne Grenze wüchse die Menge in einem tagelang offenen Kanal mit jeder
