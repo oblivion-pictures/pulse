@@ -556,8 +556,11 @@ async function archivLesenSperren(
  * `kryptoId`, und ein Frischgerät stellte beide Zeilen wieder her — jeder
  * Abgleich verglich nur `kryptoId` mit `kryptoId`. Der Lauf prüft die
  * Wurzel (Sendewege setzen `krypto_id`) und den Abgleich über die
- * kanonische Id (`verlauf/nachrichtIdentitaet.ts`) zusammen; jede der
- * beiden Hälften allein macht ihn grün, keine von beiden rot.
+ * Identität (`verlauf/identitaet.ts`) zusammen; jede der beiden Hälften
+ * allein macht ihn grün, keine von beiden rot. Das Server-Archiv ist auf dem
+ * Frischgerät gesperrt (`archivLesenSperren`) — sonst stünde seine Kopie
+ * schon vor dem Öffnen der Sicherung da, und die Zählung prüfte den
+ * Archivweg mit statt des Sicherungswegs allein.
  * ———————————————————————————————————————————————————————————————— */
 
 const ts2 = Date.now() + 1;
@@ -679,6 +682,7 @@ test.describe.serial('Sicherung: zwei eigene Geräte spiegeln dieselbe gesendete
 
   test('ein Frischgerät stellt wieder her — die Nachricht steht genau einmal da', async () => {
     test.setTimeout(120_000);
+    const sperre = await archivLesenSperren(frischGeraet.context());
     await login(frischGeraet, ALICE2.username, ALICE2.password);
     await frischGeraet.goto(`/app/@me/${kanal}`);
     await sicherungEinrichten(frischGeraet, SICHERUNGS_PASSWORT, false);
@@ -696,6 +700,9 @@ test.describe.serial('Sicherung: zwei eigene Geräte spiegeln dieselbe gesendete
     // weiter (`dmKanalWechsel.svelte.ts`) — erst danach zählt die Zahl.
     await frischGeraet.waitForTimeout(3_000);
     await expect(zeilen).toHaveCount(1);
+    // Die Sperre hat gegriffen — sonst prüfte die Zählung den Archivweg mit.
+    expect(sperre.gesperrt()).toBeGreaterThan(0);
+    await sperre.aufheben();
   });
 });
 

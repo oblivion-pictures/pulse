@@ -44,6 +44,8 @@ async function vorbereiten(page: Page): Promise<void> {
     w.__lesen = await import('/src/lib/sicherung/andockLesen.ts');
     // @ts-expect-error - Vite-served path resolved at browser runtime
     w.__kopplung = await import('/src/lib/kopplung/empfangen.ts');
+    // @ts-expect-error - Vite-served path resolved at browser runtime
+    w.__verlauf = await import('/src/lib/verlauf/index.ts');
   });
 }
 
@@ -589,9 +591,17 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
       },
       { kanalId: ANDERER_KANAL, kontoId: KONTO, k: K, alice: ALICE, bild: BILD }
     );
+    // Über `verlauf/index.ts`, den Weg der Oberfläche (`ws/handlers/friends.ts`),
+    // nicht über `db.ts`: beim Zusammenführen mit `main` (2026-10-13) lag
+    // daneben eine zweite Fassung ohne diesen Schutz (`verlauf/raeumen.ts`),
+    // und eine einzige verbliebene Importzeile in `index.ts` hätte sie zum
+    // Weg der Oberfläche gemacht, ohne dass ein Aufruf von `db.ts` es merkt.
     await page.evaluate(
       ({ kanalId, kontoId }) =>
-        (window as unknown as { __db: Record<string, Function> }).__db.verlaufKanalVergessen(kanalId, kontoId),
+        (window as unknown as { __verlauf: Record<string, Function> }).__verlauf.verlaufKanalVergessen(
+          kanalId,
+          kontoId
+        ),
       { kanalId: KANAL, kontoId: KONTO }
     );
     expect(await kanal(page)).toEqual([]);

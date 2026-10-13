@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { E2E_DB } from './_db';
 
 /**
  * Fassungswechsel ohne verlorene Zustellung (Gegenprüfung 2026-10-12, R3).
@@ -158,10 +159,9 @@ function pgQuery(sql: string): string {
     // .env fehlt -> Vorgaben unten greifen.
   }
   const pgUser = dotenv.POSTGRES_USER ?? 'dcc';
-  const datenbank = process.env.PULSE_E2E_DB ?? 'dcc_test';
   return execFileSync(
     'docker',
-    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', datenbank, '-tAc', sql],
+    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', E2E_DB, '-tAc', sql],
     { encoding: 'utf8' }
   ).trim();
 }
