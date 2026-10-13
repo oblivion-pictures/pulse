@@ -52,8 +52,8 @@
 #   - das Löschen der alten Datei scheitert: ob es doch gewirkt hat (Antwort
 #     verloren, Lesen hinkt hinterher), lässt sich nicht sicher sagen. Die
 #     Zwischendatei bleibt deshalb LIEGEN: lieber eine überzählige Datei als ein
-#     leeres Release. Der nächste Lauf räumt sie weg (oder stellt den Namen aus
-#     ihr her, wenn er fehlt);
+#     leeres Release. Der nächste Lauf lädt seinen eigenen Bau hoch (unter dem
+#     Endnamen, falls der fehlt) und räumt die Zwischendatei weg;
 #   - nach dem Löschen und erschöpften Versuchen, auch dem letzten Ausweg: kann
 #     der Release gelesen werden, FEHLT der Endname (404 für Update-Clients und
 #     `latest/download`) und die neue Fassung liegt als Zwischendatei dort; kann
@@ -231,7 +231,7 @@ ersetzen() {  # ersetzen <name>
     # verloren) und hinkt das Lesen hinterher, wäre die Zwischendatei die einzige
     # Kopie. Bleibt die alte wirklich, ist eine überzählige Zwischendatei harmlos;
     # der nächste Lauf räumt sie weg.
-    die "konnte die alte ${name} nicht sicher löschen — ob sie noch da ist, ist unklar (zuletzt gelesen: $(stand)). Die Zwischendatei ${zwischen} bleibt liegen, der nächste Lauf räumt sie weg oder stellt ${name} aus ihr her"
+    die "konnte die alte ${name} nicht sicher löschen — ob sie noch da ist, ist unklar (zuletzt gelesen: $(stand)). Die Zwischendatei ${zwischen} bleibt liegen; der nächste Lauf lädt ${name} neu hoch, falls er fehlt, und räumt die Zwischendatei weg"
   fi
 
   umbenennen() {
