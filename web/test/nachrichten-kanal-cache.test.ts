@@ -42,7 +42,7 @@ describe('Kanal-Cache: wer als Nächstes geräumt wird', () => {
 		// fremder Kanal — nicht der, den der Nutzer vor sich hat.
 		const fremde = Array.from({ length: 15 }, (_, i) => `fremd-${i}`);
 		assert.deepEqual(lru('aktiv').zuRaeumen([...fremde, 'aktiv'], 15), ['fremd-0']);
-		assert.deepEqual(lru('aktiv').zuRaeumen([...fremde, 'aktiv'], 3).includes('aktiv'), false);
+		assert.equal(lru('aktiv').zuRaeumen([...fremde, 'aktiv'], 3).includes('aktiv'), false);
 	});
 
 	it('der zuletzt angehobene Kanal bleibt, wie klein der Deckel auch ist', () => {

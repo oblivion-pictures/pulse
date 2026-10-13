@@ -1,7 +1,7 @@
 /**
  * Die Grabsteine des Nachrichten-Stores (`stores/messages.svelte.ts`): die
- * kanonische `krypto_id` jeder Nachricht, die in dieser Sitzung aus einem Kanal
- * gelöscht wurde.
+ * kanonische `krypto_id` jeder Nachricht, die aus einem Kanal gelöscht wurde,
+ * solange dieser Kanal im Speicher steht.
  *
  * **Wozu.** Dieselbe verschlüsselte Nachricht trägt auf jedem Gerät eine andere
  * lokale Id und ist nur an ihrer `krypto_id` wiederzuerkennen
@@ -31,7 +31,7 @@
  * Ohne Grenze wüchse die Menge in einem tagelang offenen Kanal mit jeder
  * Löschung weiter (die Liste selbst ist auf `CAP` = 5000 gedeckelt, die
  * Grabsteine daneben nicht). 1000 deckt auch ein größeres Aufräumen von Hand
- * ab; wer in einer Sitzung mehr löscht, behält die jüngsten 1000 — die
+ * ab; wer in einem Kanal mehr löscht, behält die jüngsten 1000 — die
  * Wiederkehr einer eben gelöschten Nachricht ist wahrscheinlicher als die
  * einer, die Stunden zurückliegt.
  * Kosten: gemessen (V8, 19-stellige Ids) rund 60 Bytes je Eintrag, also etwa

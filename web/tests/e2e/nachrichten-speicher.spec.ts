@@ -23,6 +23,10 @@ const USER = {
 	password: 'sup3r-secret-pass'
 };
 
+/** Der Store der laufenden App: Vite liefert ihn unter seinem Quellpfad, es ist
+ *  dieselbe Modulinstanz. Als Variable, damit der Typprüfer den Pfad nicht auflöst. */
+const STORE = '/src/lib/stores/messages.svelte.ts';
+
 async function register(page: Page) {
 	await page.goto('/register');
 	await page.getByTestId('reg-username').fill(USER.username);
@@ -55,8 +59,8 @@ async function rest(page: Page, pfad: string, body: unknown): Promise<{ id: stri
 /** Legt `anzahl` Kanäle an, die nur `upsert` kennt (nie geöffnet, nie angehoben). */
 async function fremdeKanaeleEinliefern(page: Page, anzahl: number) {
 	await page.evaluate(async ([pfad, n]) => {
-		const { messages } = await import(pfad as string);
-		for (let i = 0; i < (n as number); i++) {
+		const { messages } = await import(pfad);
+		for (let i = 0; i < n; i++) {
 			messages.upsert({
 				id: String(100000000000000100n + BigInt(i)),
 				channel_id: `fremd-${i}`,
@@ -68,10 +72,6 @@ async function fremdeKanaeleEinliefern(page: Page, anzahl: number) {
 		}
 	}, [STORE, anzahl] as const);
 }
-
-/** Der Store der laufenden App: Vite liefert ihn unter seinem Quellpfad, es ist
- *  dieselbe Modulinstanz. Als Variable, damit der Typprüfer den Pfad nicht auflöst. */
-const STORE = '/src/lib/stores/messages.svelte.ts';
 
 const nachrichtText = (page: Page, text: string) =>
 	page.locator('[data-testid=message-content]', { hasText: text });

@@ -262,7 +262,7 @@ describe('Nachrichtenliste: einzelne Nachricht aufnehmen', () => {
 });
 
 describe('Nachrichtenliste: Grabsteine gelöschter Nachrichten', () => {
-	/** Eine Liste mit drei Nachrichten (Kappung 3), die zweite trägt `k2`. */
+	/** Drei Nachrichten mit den krypto_ids `k1` bis `k3`, samt passenden Id-Mengen. */
 	function dreiNachrichten() {
 		const liste = [msg('10', { krypto_id: 'k1' }), msg('20', { krypto_id: 'k2' }), msg('30', { krypto_id: 'k3' })];
 		return {
