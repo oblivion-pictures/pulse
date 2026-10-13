@@ -49,7 +49,7 @@ function nachricht(id: string, autor: string, kryptoId?: string): Message {
 /** Hält der Store `liegend`, ist `neu` dann eine Dublette? */
 function istDublette(liegend: Message[], neu: Message): boolean {
   const ids = new Set(liegend.map((m) => m.id));
-  return einfuegen(liegend, ids, identitaetenVon(liegend), neu, 100) === null;
+  return einfuegen(liegend, ids, identitaetenVon(liegend), neu, 100, new Set()) === null;
 }
 
 describe('Nachrichten-Store: Kopien derselben Nachricht', () => {
@@ -110,7 +110,8 @@ describe('Nachrichten-Store: Kopien derselben Nachricht', () => {
         new Set(liegend.map((m) => m.id)),
         identitaetenVon(liegend),
         [alice, bobs],
-        100
+        100,
+        new Set()
       );
       assert.ok(seite);
       assert.deepEqual(seite.neu.map((m) => m.author_id).sort(), [ALICE, BOB].sort());
