@@ -109,7 +109,7 @@ to internal working documents that are not part of this repository.
 
 ## License
 
-Copyright (C) 2026 Oblivion Pictures — Michael de Meyer
+Copyright (C) 2026 Oblivion Pictures
 
 Pulse is free software: you can redistribute it and/or modify it under the
 terms of the **GNU Affero General Public License**, version 3

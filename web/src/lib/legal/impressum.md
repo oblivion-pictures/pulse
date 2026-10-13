@@ -17,10 +17,6 @@ E-Mail: oblivion828282@gmail.com
 Als Kleinunternehmer im Sinne von § 19 UStG wird keine Umsatzsteuer
 ausgewiesen.
 
-## Redaktionell verantwortlich (§ 18 Abs. 2 MStV)
-
-Michael de Meyer (Anschrift wie oben)
-
 ## Verbraucherstreitbeilegung / Universalschlichtungsstelle
 
 Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren vor
