@@ -49,6 +49,8 @@ class ArchivZeile(Base):
     __table_args__ = (
         Index("ix_archiv_zeilen_kanal_id", "channel_id", "id"),
         Index("ix_archiv_zeilen_erstellt", "erstellt_at"),
+        # Lesen neu nach alt je Kanal nach der Zeit (Migration 0103).
+        Index("ix_archiv_zeilen_kanal_zeit", "channel_id", "erstellt_at", "id"),
     )
 
 

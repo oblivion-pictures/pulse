@@ -1,4 +1,4 @@
-"""archiv_zeilen.user_id — wer eine Archiv-Zeile eingeliefert hat
+"""archiv_zeilen.user_id — wer eine Archiv-Zeile eingeliefert hat; Lesen nach der Zeit
 
 Bis hierher wusste der Server nicht, von wem eine Zeile stammt: einliefern
 darf jedes Mitglied des Kanals, und den Autor nennt die Zeile nur in ihrer
@@ -13,8 +13,13 @@ niemand mehr. Neue Zeilen tragen die Spalte immer (``routes/archiv.py``),
 Bestandszeilen fallen spätestens mit dem 120-Tage-Sweeper weg. Wie der
 Klient sie bis dahin behandelt, steht in ``archiv/zeile.ts``.
 
-Kein Index: gelesen wird weiter je Kanal (``ix_archiv_zeilen_kanal_id``),
-die Spalte wird nur ausgeliefert, nie gefiltert.
+Kein Index für die Spalte: sie wird nur ausgeliefert, nie gefiltert.
+
+Dazu der Index ``ix_archiv_zeilen_kanal_zeit`` (channel_id, erstellt_at, id):
+``archiv_lesen`` liest seit 2026-10-14 neu nach alt nach der
+Einlieferungszeit statt nach der ID (Gegenprüfung V3 — Bestandszeilen tragen
+zufällige IDs, neue Zeilen kamen sonst hinter den ganzen Bestand). Er steht
+hier statt in einer eigenen Migration, weil 0103 noch nicht ausgerollt war.
 
 Neue Metadaten sind das kaum: wer wann an welchen Kanal sendet, sieht der
 Server ohnehin an den Postfach-Zustellungen (``absender_user_id``).
@@ -46,7 +51,14 @@ def upgrade() -> None:
         sa.Column("user_id", sa.BigInteger(), nullable=True),
         schema=SCHEMA,
     )
+    op.create_index(
+        "ix_archiv_zeilen_kanal_zeit",
+        "archiv_zeilen",
+        ["channel_id", "erstellt_at", "id"],
+        schema=SCHEMA,
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("ix_archiv_zeilen_kanal_zeit", table_name="archiv_zeilen", schema=SCHEMA)
     op.drop_column("archiv_zeilen", "user_id", schema=SCHEMA)

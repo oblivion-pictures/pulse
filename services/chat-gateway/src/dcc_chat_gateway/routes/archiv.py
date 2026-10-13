@@ -40,7 +40,7 @@ from typing import NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dcc_chat_gateway.db import SessionDep
@@ -61,7 +61,7 @@ log = logging.getLogger(__name__)
 router = APIRouter(dependencies=[CloudOnly])
 
 # Deckel je Abruf: ein Gesprächsjahr liegt bei ein paar tausend Zeilen;
-# der Klient blättert mit ``vor_id`` nach. Grob an den Postfach-Batch
+# der Klient blättert mit ``vor_id`` nach (s. ``archiv_lesen``). Grob an den Postfach-Batch
 # angelehnt, kein hartes Limit-Studio.
 MAX_ZEILEN_JE_ABRUF = 500
 MAX_ZEILEN_JE_EINLIEFERUNG = 2000
@@ -253,18 +253,36 @@ async def archiv_lesen(
     channel_id: int,
     session: SessionDep,
     current: CurrentUser,
-    vor_id: int | None = Query(default=None, description="nur Zeilen mit id < vor_id"),
+    vor_id: int | None = Query(default=None, description="nur Zeilen vor der Zeile vor_id"),
     limit: int = Query(default=MAX_ZEILEN_JE_ABRUF, le=MAX_ZEILEN_JE_ABRUF, ge=1),
 ) -> list[ArchivZeileOut]:
     zugriff = await _archiv_zugriff(session, channel_id, current.id)
+    # Neu nach alt nach der EINLIEFERUNGSZEIT, die ID nur bei Gleichstand
+    # (Gegenprüfung 2026-10-14, V3). Über die ID allein kam jede neue Zeile
+    # hinter fast den ganzen Bestand: Bestandszeilen tragen eine zufällige
+    # 63-Bit-ID des Klienten, die meist größer ist als jede heutige Snowflake.
+    # ``vor_id`` bleibt der Cursor (die älteste Zeile der letzten Seite, so
+    # blättern auch ältere Klienten); er gilt als Stelle (Zeit, ID) dieser
+    # Zeile. Gibt es sie nicht mehr (der Sweeper hat sie geräumt, und mit ihr
+    # alles Ältere), ist die Seite leer.
     stmt = (
         select(ArchivZeile)
         .where(ArchivZeile.channel_id == channel_id)
-        .order_by(ArchivZeile.id.desc())
+        .order_by(ArchivZeile.erstellt_at.desc(), ArchivZeile.id.desc())
         .limit(limit)
     )
     if vor_id is not None:
-        stmt = stmt.where(ArchivZeile.id < vor_id)
+        anker = (
+            select(ArchivZeile.erstellt_at)
+            .where(ArchivZeile.channel_id == channel_id, ArchivZeile.id == vor_id)
+            .scalar_subquery()
+        )
+        stmt = stmt.where(
+            or_(
+                ArchivZeile.erstellt_at < anker,
+                and_(ArchivZeile.erstellt_at == anker, ArchivZeile.id < vor_id),
+            )
+        )
     zeilen = (await session.execute(stmt)).scalars().all()
     # Private Gruppe: nur ab dem eigenen Beitritt — dasselbe Fenster, das
     # Megolm dem Mitglied live zeigt (s. Modulkopf). Vergleich in Python,

@@ -191,6 +191,59 @@ async def test_bestandszeile_ohne_einlieferer_kommt_mit_null(
 
 
 @pytest.mark.asyncio
+async def test_neue_zeilen_kommen_vor_dem_bestand_mit_zufalls_ids(
+    client, _auth_signer, friend_pair, session_factory
+):
+    """Gegenprüfung 2026-10-14, V3: Bestandszeilen tragen eine zufällige
+    63-Bit-ID, fast alle größer als jede heutige Snowflake. Beim Lesen „neu
+    nach alt" über die ID kam jede neue Zeile erst hinter dem Bestand. Gelesen
+    wird jetzt nach der Einlieferungszeit, und der bisherige Cursor (die ID
+    der ältesten gelieferten Zeile) blättert weiter — auch für ältere
+    Klienten, die nichts anderes kennen."""
+    from datetime import datetime, timedelta
+
+    from dcc_chat_gateway.models import ArchivZeile
+
+    t_a, uid_a = await _register(_auth_signer)
+    _, uid_b = await _register(_auth_signer)
+    dm_id = await _dm_zwischen(client, _auth_signer, friend_pair, uid_a, uid_b)
+    frueher = datetime.now(tz=UTC) - timedelta(days=10)
+    bestand = [9_100_000_000_000_000_000 - n * 7_777_777_777 for n in range(6)]
+    async with session_factory() as session:
+        for n, zid in enumerate(bestand):
+            session.add(
+                ArchivZeile(
+                    id=zid,
+                    channel_id=int(dm_id),
+                    nutzlast=b"bestand",
+                    erstellt_at=frueher + timedelta(minutes=n),
+                )
+            )
+        await session.commit()
+    for n in range(3):
+        await _zeile_einliefern(client, t_a, 1, dm_id, f"neu-{n}".encode() * 4)
+
+    erste = (
+        await client.get(f"/archiv/{dm_id}?limit=4", headers=make_auth_header(t_a))
+    ).json()
+    assert [z["user_id"] for z in erste[1:]] == [str(uid_a)] * 3, "die neuen Zeilen zuerst"
+    assert erste[0]["id"] == str(bestand[-1]), "dahinter der jüngste Bestand"
+
+    gelesen = list(erste)
+    while True:
+        seite = (
+            await client.get(
+                f"/archiv/{dm_id}?limit=4&vor_id={gelesen[0]['id']}", headers=make_auth_header(t_a)
+            )
+        ).json()
+        if not seite:
+            break
+        gelesen = seite + gelesen
+    assert len({z["id"] for z in gelesen}) == len(gelesen) == 9
+    assert [int(z["id"]) for z in gelesen[:6]] == bestand, "der Bestand in Zeitfolge"
+
+
+@pytest.mark.asyncio
 async def test_fremd_liest_und_schreibt_nicht(client, _auth_signer, friend_pair):
     t_a, uid_a = await _register(_auth_signer)
     _, uid_b = await _register(_auth_signer)
