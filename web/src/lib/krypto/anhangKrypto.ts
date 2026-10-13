@@ -114,7 +114,7 @@ export async function entschluessele(
   );
 }
 
-/** Base64 MIT Polsterung — anders als der Rust-Kern (s. CLAUDE.md), weil
+/** Base64 MIT Polsterung — anders als der Rust-Kern (s. intern/docs/wissen/e2e-krypto.md), weil
  *  dieser Wert nie einen Python-Dekodierer erreicht: er faehrt im
  *  VERSCHLUESSELTEN Nutzlast-JSON mit und wird nur vom Klienten gelesen. */
 export function schluesselAlsText(roh: Uint8Array): string {

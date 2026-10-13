@@ -3,8 +3,9 @@
 Ausgelagert aus `CLAUDE.md` am 2026-08-26: der Block war mit 32 KB rund ein
 Viertel einer Datei, die **jede** Sitzung mitlädt — auch die, in denen niemand
 die Fernsteuerung anfasst. Der Inhalt ist unverändert übernommen, nichts
-gestrichen. In `CLAUDE.md` steht jetzt die Kurzfassung mit einem Verweis
-hierher; **wer an der Fernsteuerung arbeitet, liest zuerst diese Datei.**
+gestrichen. Die Kurzfassung mit einem Verweis hierher steht jetzt in
+`intern/docs/wissen/fernsteuerung.md` (die `CLAUDE.md` hat nur noch eine
+Kartenzeile); **wer an der Fernsteuerung arbeitet, liest zuerst diese Datei.**
 
 Verwandt: `docs/standplatz-geraete.md` (Fernsteuerung ohne Aufsicht),
 `docs/plans/2026-08-12-input-wire-protokoll-v2.md` (Protokoll-Spezifikation),

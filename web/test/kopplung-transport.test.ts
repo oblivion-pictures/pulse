@@ -26,7 +26,7 @@ test('codeHash trifft den Wert, den der Server erwartet', async () => {
   //   base64url(sha256(b"pulse-kopplung-v1\x00" + code)) ohne Polsterung.
   // Der erwartete Wert ist NICHT aus dieser Datei berechnet, sondern aus
   // Pythons hashlib — ein selbst berechneter Wert pruefte die eigene
-  // Kodierung statt der der Gegenseite (s. CLAUDE.md, dieselbe Fehlerklasse
+  // Kodierung statt der der Gegenseite (s. intern/docs/wissen/e2e-krypto.md, dieselbe Fehlerklasse
   // wie beim Base64-Padding).
   const hash = await codeHash('0123456789ABCDEFGHJK');
   assert.equal(hash, 'QQo9WODu4pxCfvS44R3rhpMoRfPKtBBqx5zAdd-lBpo');
@@ -39,7 +39,7 @@ test('verschiedene Codes ergeben verschiedene Hashes', async () => {
 test('base64 hin und zurueck', () => {
   const bytes = new Uint8Array([0, 1, 250, 255, 7]);
   assert.deepEqual(base64Zu(base64Aus(bytes)), bytes);
-  // Ohne Polsterung eingelesen (so kodiert der Rust-Kern, s. CLAUDE.md).
+  // Ohne Polsterung eingelesen (so kodiert der Rust-Kern, s. intern/docs/wissen/e2e-krypto.md).
   assert.deepEqual(base64Zu(base64Aus(bytes).replace(/=+$/, '')), bytes);
 });
 

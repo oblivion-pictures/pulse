@@ -1,7 +1,7 @@
 # Self-Host-Erreichbarkeit — die Diagnose-Kette
 
-Ausgelagert aus `CLAUDE.md` am 2026-08-26, Inhalt unverändert. Dort steht die
-Kurzfassung mit Verweis hierher.
+Ausgelagert aus `CLAUDE.md` am 2026-08-26, Inhalt unverändert. Die Kurzfassung
+mit Verweis hierher steht jetzt in `intern/docs/wissen/selfhost-sperre-erreichbarkeit.md`.
 
 Plan + Begründungen: `docs/plans/2026-08-25-selfhost-erreichbarkeit-diagnose.md`.
 

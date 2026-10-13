@@ -34,7 +34,7 @@ export const E2E_DMS_ENABLED = true;
  *
  * * `E2E_DMS_ENABLED` (oben) gilt fuer DIREKTNACHRICHTEN. Ihn hier
  *   mitzubenutzen, hiesse zwei Funktionen an einen Schalter zu haengen, die
- *   getrennt reifen — CLAUDE.md fuehrt beide ausdruecklich als zwei.
+ *   getrennt reifen — intern/docs/wissen/e2e-krypto.md fuehrt beide ausdruecklich als zwei.
  * * `private_groups_enabled` ist eine SERVER-Einstellung
  *   (`services/chat-gateway/.../config.py`, Vorgabe `False`) und dem
  *   Klienten heute nicht sichtbar: weder `GET /capabilities` noch der

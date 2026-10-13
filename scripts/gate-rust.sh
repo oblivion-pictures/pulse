@@ -125,8 +125,8 @@ done
 # und sollen bei keinem Treffer in die WARNUNG laufen, nicht in einen Bau mit
 # leerem FFMPEG_DIR (der zöge die zu neue System-FFmpeg).
 ffmpeg_prefix="${ffmpeg_prefix:-/nicht-vorhanden}"
-# **Auf dem Mac liegt FFmpeg woanders**, und das ist im CLAUDE.md so
-# beschrieben: der Player baut dort über `PKG_CONFIG_PATH` auf
+# **Auf dem Mac liegt FFmpeg woanders** (Bau und Pfad: `streaming/mac-hq-sidecar/README.md`,
+# Abschnitt `PKG_CONFIG_PATH`): der Player baut dort über `PKG_CONFIG_PATH` auf
 # `~/src/ffmpeg-openssl`, nicht über den gepinnten Linux-Vorrat. Ohne diesen
 # Zweig meldete das Gate am 2026-08-23 „FFmpeg fehlt — Cargo-Tests
 # ÜBERSPRUNGEN" und liess die 385 Player-Tests aus, obwohl der Player auf

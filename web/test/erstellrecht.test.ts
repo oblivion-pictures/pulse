@@ -88,7 +88,7 @@ describe('Cloud', () => {
   it('und das Cloud-Flag zaehlt auf einem Self-Host nicht', () => {
     // Die Gegenprobe: `auth.user.is_admin` ist das Plattform-Flag der Cloud.
     // Wer es dort liest, machte jeden Cloud-Admin zum Admin auf jedem fremden
-    // Server (dieselbe Falle wie beim `admin`-Claim im Cert, CLAUDE.md).
+    // Server (dieselbe Falle wie beim `admin`-Claim im Cert, intern/docs/wissen/selfhost-identitaet.md).
     assert.equal(darfCommunityAnlegen({ ...selfhost, cloudAdmin: true }), false);
   });
 });

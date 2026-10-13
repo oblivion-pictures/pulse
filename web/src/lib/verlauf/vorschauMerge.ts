@@ -12,7 +12,7 @@ import { vergleicheSnowflakeArtigeId } from '../utils/snowflakeZeit.ts';
  * mit `directMessages.byId`) bleibt in `stores/directMessages.svelte.ts`.
  *
  * **Server gewinnt, wenn er (noch) gewinnt.** `GET /dm-channels` und der
- * `ready`-Rahmen (`dm_vorschau.py`, zwei Aufrufstellen — s. CLAUDE.md) sind
+ * `ready`-Rahmen (`dm_vorschau.py`, zwei Aufrufstellen — s. intern/docs/wissen/chat-features.md) sind
  * fuer ein rein unverschluesseltes Gespraech immer die vollstaendige
  * Wahrheit: der Server sieht jede Nachricht, sein `last_message_id` ist nie
  * aelter als das lokal abgelegte. Der lokale Wert gewinnt nur, wenn er

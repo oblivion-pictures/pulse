@@ -1,7 +1,7 @@
 # Standplatz-Geräte — Fernsteuerung ohne Aufsicht
 
-Ausgelagert aus `CLAUDE.md` am 2026-08-26, Inhalt unverändert. In `CLAUDE.md`
-steht die Kurzfassung mit Verweis hierher.
+Ausgelagert aus `CLAUDE.md` am 2026-08-26, Inhalt unverändert. Die Kurzfassung
+mit Verweis hierher steht jetzt in `intern/docs/wissen/fernsteuerung.md`.
 
 Verwandt: `docs/fernsteuerung.md`,
 `docs/2026-08-16-standplatz-geraet-einrichten.md` (Einrichtung),

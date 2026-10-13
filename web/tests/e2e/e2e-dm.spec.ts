@@ -410,7 +410,7 @@ test.describe.serial('E2E-verschluesselte Direktnachrichten (Etappe D2, Nachweis
       // Dekodiert: der eigentliche Regressionsfall — "Verschluesselung", die
       // zu blossem Base64(Klartext) entartet ist. Node toleriert fehlendes
       // Padding beim Dekodieren (der Krypto-Kern liefert ohnehin unpolstert,
-      // s. `krypto/pulse-krypto`-Modul-Docstring in `CLAUDE.md`).
+      // s. `krypto/pulse-krypto`-Modul-Docstring, `intern/docs/wissen/e2e-krypto.md`).
       const dekodiert = Buffer.from(daten, 'base64').toString('utf8');
       expect(dekodiert).not.toContain(KLARTEXT_1);
     }

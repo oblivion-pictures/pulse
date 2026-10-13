@@ -72,7 +72,7 @@ rtmpServerKey: /certs/server.key
 # entfernen — beides zusammen, sonst kehrt die Absturzschleife zurueck. Damit
 # faellt allerdings der lange Vollbild-Abstand weg, und der ist gemessen: 60 s
 # statt 2 s druecken das Stoss-Fenster von 4,06 auf 2,16 Prozent
-# (Wurzel-`CLAUDE.md`, Abschnitt HQ-Streaming).
+# (`intern/docs/wissen/hq-streaming.md`, ehemals Wurzel-`CLAUDE.md`, Abschnitt HQ-Streaming).
 hls: no
 
 # MoQ (Media over QUIC) ist bei MediaMTX 1.19.1 STANDARDMAESSIG an — diese
@@ -111,7 +111,7 @@ webrtcAdditionalHosts:
 # relies solely on UFW: port 9997 only accepts traffic from the Docker bridge
 # (`ufw allow from 10.0.0.0/8 to any port 9997`) and the default INPUT DROP
 # blocks external reach (the API stays excluded from auth via authHTTPExclude).
-# See CLAUDE.md and DEPLOY.md.
+# See intern/docs/wissen/prod-deployment.md and DEPLOY.md.
 api: yes
 apiAddress: :9997
 

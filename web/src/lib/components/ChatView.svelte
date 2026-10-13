@@ -95,7 +95,7 @@
      *  'gruppe' ist eine private Gruppe (Etappe G): eigenes Zeichen, kein
      *  Namenspraefix (der Gruppenname ist kein Kanalname und keine Person)
      *  und Zeilen- statt Sprechblasen-Darstellung — Sprechblasen sind fuer
-     *  DMs vorgesehen (CLAUDE.md, „Sprechblasen nur in DMs"), und bei mehr
+     *  DMs vorgesehen (intern/docs/wissen/mobile-geraeteklassen.md, „Sprechblasen nur in DMs"), und bei mehr
      *  als zwei Beteiligten traegt der Autorname die Aussage. */
     headerKind?: 'channel' | 'dm' | 'gruppe';
     onBack?: () => void;

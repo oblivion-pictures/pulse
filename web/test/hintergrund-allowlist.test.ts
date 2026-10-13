@@ -5,7 +5,7 @@
  *
  * Die Fehlerklasse ist belegt: `postfach_neu` fehlte bis 2026-09-03, und eine
  * verschlüsselte DM erschien bei aktivem Self-Host erst nach einem Reload —
- * kein Test im Gate sah es (CLAUDE.md, Abschnitt E2E-DMs). Seit 2026-10 kommt
+ * kein Test im Gate sah es (intern/docs/wissen/e2e-krypto.md, ehemals CLAUDE.md, Abschnitt E2E-DMs). Seit 2026-10 kommt
  * `instanz_verbunden` dazu: fehlt es, erscheint ein frisch verbundener Server
  * auf einem Gerät mit aktivem Self-Host erst nach einer Neuanmeldung.
  *

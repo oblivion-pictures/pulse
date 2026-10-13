@@ -4,7 +4,7 @@ Fehlt sie, greift der SPA-Rückfall am Ende der Vorlage und antwortet mit einer
 leeren HTML-Seite und Status 200 — für ``/.well-known/pulse-verbinden`` hieße
 das: die Cloud findet beim Verbinden keinen Nachweis, und ``pulse-connect``
 schickt den Betreiber auf die Suche nach einem Fehler, der in der Vorlage
-steckt. Dieselbe Falle hat die Cloud-Poller schon einmal erwischt (CLAUDE.md,
+steckt. Dieselbe Falle hat die Cloud-Poller schon einmal erwischt (intern/docs/wissen/selfhost-sperre-erreichbarkeit.md,
 well-known-Endpoints). Geprüft wird die Vorlage selbst; die sed-Ersetzungen
 aus 09-init-caddy.sh fassen diese Blöcke nicht an.
 """
