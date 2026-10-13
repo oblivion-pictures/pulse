@@ -24,6 +24,8 @@ import { verlaufSatzUmschreiben, verlaufSatzIdsFuerFrame } from './db';
 import { aktuellesKonto } from './konto';
 import { verlaufZustand } from './zustand.svelte';
 import { istLokalerKanal } from './kanalArt';
+import { verlaufArchivBearbeitungen } from './dbArchivBearbeitung';
+import type { ArchivBearbeitung } from './archivBearbeitung';
 import {
   reaktionAnwenden,
   reaktionenZuAggregat,
@@ -142,4 +144,22 @@ export function verlaufLokaleIdsFuerFrame(
   autorId?: string
 ): Promise<string[]> {
   return gemeldet(verlaufLokaleIdsFuerFramePflicht(kanalId, frameId, autorId), []);
+}
+
+/** Die Bearbeitungs-Zeilen des Server-Archivs (`archivBearbeitung.ts`) auf
+ *  die Sätze dieses Kontos im Kanal anwenden — sie ergänzen nur
+ *  unbearbeitete Sätze ihres Autors. Gibt zurück, was umgeschrieben wurde,
+ *  damit die Anzeige nachzieht; wirft nie (wie `verlaufErgaenzen`). */
+export function verlaufArchivBearbeitungenAnwenden(
+  kanalId: string,
+  bearbeitungen: Map<string, ArchivBearbeitung>
+): Promise<Array<{ id: string; inhalt: string; bearbeitetAm: string }>> {
+  const kontoId = aktuellesKonto();
+  if (!istLokalerKanal(kanalId) || kontoId === null) return Promise.resolve([]);
+  return gemeldet(
+    verlaufArchivBearbeitungen(kanalId, kontoId, bearbeitungen).then((saetze) =>
+      saetze.map((s) => ({ id: s.nachrichtId, inhalt: s.inhalt, bearbeitetAm: s.bearbeitetAm ?? '' }))
+    ),
+    []
+  );
 }

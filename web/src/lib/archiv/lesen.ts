@@ -20,7 +20,8 @@
  * Jede Zeile läuft durch `zeile.ts::leseZeile`: eine Zeile, deren Autor nicht
  * ihr Einlieferer ist, fällt heraus, und eine Grabstein-Zeile des Autors
  * löscht seine Nachricht — gebunden an ihn, wie ein Lösch-Frame
- * (`krypto/loeschZiel.ts`).
+ * (`krypto/loeschZiel.ts`). Eine Bearbeitungs-Zeile des Autors setzt den Text
+ * seiner noch unbearbeiteten Sätze (`verlauf/archivBearbeitung.ts`).
  */
 
 import { auth } from '$lib/stores/auth.svelte';
@@ -29,7 +30,12 @@ import { kanalSchluesselHolen } from './kanalSchluessel';
 import { entschluesseleZeile } from './krypto';
 import { leseZeile, type ArchivNachricht, type Grabstein } from './zeile';
 import { archivPaar } from './konto';
-import { verlaufErgaenzen, verlaufGebundenGeloescht } from '$lib/verlauf';
+import {
+	verlaufArchivBearbeitungenAnwenden,
+	verlaufErgaenzen,
+	verlaufGebundenGeloescht
+} from '$lib/verlauf';
+import { bearbeitungenSammeln, type ArchivBearbeitung } from '$lib/verlauf/archivBearbeitung';
 import { messages } from '$lib/stores/messages.svelte';
 
 const SEITEN_GROESSE = 500;
@@ -43,6 +49,12 @@ function vonB64(wert: string): Uint8Array {
 
 /** Lesestand je Kanal: ältester schon geholter Zeilen-Id (`null` = Anfang). */
 const lesestand = new Map<string, string>();
+
+/** Die Bearbeitungs-Zeilen je Kanal, die diese Sitzung gelesen hat. Sie
+ *  bleiben stehen, weil ihre Nachricht auf einer älteren Seite liegen kann,
+ *  die erst ein späteres Hochscrollen holt (gelesen wird neu nach alt). Nach
+ *  einem Neuladen beginnt das Lesen wieder bei den jüngsten Seiten. */
+const bearbeitungen = new Map<string, Map<string, ArchivBearbeitung>>();
 
 /**
  * Zieht die nächste(n) Archiv-Seite(n) in den lokalen Verlauf. `maxSeiten`
@@ -70,6 +82,7 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 			if (zeilen.length === 0) break;
 			const nachrichten: ArchivNachricht[] = [];
 			const grabsteine: Grabstein[] = [];
+			const neuBearbeitet: ArchivBearbeitung[] = [];
 			let verworfen = 0;
 			for (const zeile of zeilen) {
 				try {
@@ -77,12 +90,13 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 						await entschluesseleZeile(kanalSchluessel, vonB64(zeile.nutzlast_b64))
 					);
 					const eintrag = leseZeile(zeile.channel_id, klarText, {
-							einlieferer: zeile.user_id ?? null,
-							zeilenId: zeile.id,
-							konto: kontoId
-						});
+						einlieferer: zeile.user_id ?? null,
+						zeilenId: zeile.id,
+						konto: kontoId
+					});
 					if (eintrag === null) verworfen++;
 					else if (eintrag.art === 'grabstein') grabsteine.push(eintrag);
+					else if (eintrag.art === 'bearbeitung') neuBearbeitet.push(eintrag);
 					else nachrichten.push(eintrag.nachricht);
 				} catch (e) {
 					// Eine unlesbare Zeile (kaputter Wrap, fremde Fassung) blockiert
@@ -94,13 +108,14 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 				console.info('[archiv] lesen: Zeilen verworfen, Autor ist nicht der Einlieferer', verworfen);
 			}
 			if (nachrichten.length > 0) {
-				// Ergänzen, nicht überschreiben: die Zeile kennt keine Löschung,
-				// Bearbeitung oder Reaktion — der lokale Satz schon.
+				// Ergänzen, nicht überschreiben: die Nachrichten-Zeile kennt keine
+				// Löschung, Bearbeitung oder Reaktion — der lokale Satz schon.
 				gesamt += await verlaufErgaenzen(kanalId, nachrichten);
 			}
 			// Grabsteine NACH den Nachrichten der Seite: sie treffen auch, was
 			// diese Seite gerade abgelegt hat.
 			for (const stein of grabsteine) await grabsteinAnwenden(kanalId, stein);
+			await bearbeitungenAnwenden(kanalId, neuBearbeitet);
 			// Server liefert aufsteigend — die ERSTE Id ist die älteste der Seite.
 			lesestand.set(kanalId, zeilen[0].id);
 			if (zeilen.length < SEITEN_GROESSE) break;
@@ -120,5 +135,18 @@ export async function archivNachziehen(kanalId: string, maxSeiten = 4): Promise<
 async function grabsteinAnwenden(kanalId: string, stein: Grabstein): Promise<void> {
 	for (const id of await verlaufGebundenGeloescht(kanalId, stein.kennung, stein.autorId)) {
 		messages.remove(kanalId, id);
+	}
+}
+
+/** Nimmt die Bearbeitungs-Zeilen einer Seite auf und wendet alle des Kanals
+ *  an, auch die früherer Seiten: deren Nachricht kann erst jetzt angekommen
+ *  sein. Ein Satz, den eine schon traf, ist bearbeitet und bleibt, wie er
+ *  ist (`verlauf/archivBearbeitung.ts`). */
+async function bearbeitungenAnwenden(kanalId: string, neu: ArchivBearbeitung[]): Promise<void> {
+	let kanal = bearbeitungen.get(kanalId);
+	if (!kanal) bearbeitungen.set(kanalId, (kanal = new Map()));
+	bearbeitungenSammeln(kanal, neu);
+	for (const b of await verlaufArchivBearbeitungenAnwenden(kanalId, kanal)) {
+		messages.bearbeiteInhalt(kanalId, b.id, b.inhalt, b.bearbeitetAm);
 	}
 }

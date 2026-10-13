@@ -18,7 +18,8 @@
  * Löscht der Autor eine eigene verschlüsselte Nachricht, liefert er dazu
  * eine Grabstein-Zeile ein (`archiviereGrabstein`, Format in `zeile.ts`) —
  * sonst holte jedes Frischgerät die Nachricht 120 Tage lang aus dem Archiv
- * zurück.
+ * zurück. Ebenso zu einer Bearbeitung eine Bearbeitungs-Zeile
+ * (`archiviereBearbeitung`), sonst zeigte ein Frischgerät den Originaltext.
  */
 
 import { auth } from '$lib/stores/auth.svelte';
@@ -26,7 +27,7 @@ import type { Message } from '$lib/api/types';
 import { archivEinliefern, archivKanalSchluessel, archivPubkeys } from '$lib/api/archiv';
 import { erzeugeZufallsId, kanalSchluesselHolen, type ArchivPubkeyZiel } from './kanalSchluessel';
 import { verschluessleZeile } from './krypto';
-import { baueGrabsteinKlar, baueZeilenKlar } from './zeile';
+import { baueBearbeitungKlar, baueGrabsteinKlar, baueZeilenKlar } from './zeile';
 import { archivPaar } from './konto';
 
 /** Eine laufende Einlieferung je Kanal — zwei schnelle Nachrichten serialisieren. */
@@ -74,6 +75,20 @@ export function archiviereGrabstein(kanalId: string, kennung: string): void {
   anstellen(kanalId, null, (autorId) =>
     baueGrabsteinKlar(kennung, autorId, new Date().toISOString())
   );
+}
+
+/**
+ * Liefert die Bearbeitungs-Zeile für eine EIGENE bearbeitete Nachricht ein
+ * (`kennung` = ihre kanonische Kennung, `zeit` = Bearbeitungszeit). Wie beim
+ * Grabstein nur in einen Kanal mit schon vorhandenem Schlüssel. Wirft nie.
+ */
+export function archiviereBearbeitung(
+  kanalId: string,
+  kennung: string,
+  inhalt: string,
+  zeit: string
+): void {
+  anstellen(kanalId, null, (autorId) => baueBearbeitungKlar(kennung, autorId, inhalt, zeit));
 }
 
 /** Gemeinsamer Kern: serialisieren, entsperren, Schlüssel + Wraps besorgen,

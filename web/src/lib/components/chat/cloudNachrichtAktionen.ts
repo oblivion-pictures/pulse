@@ -69,6 +69,13 @@ export async function nachrichtBearbeiten(
       if (await verlaufBearbeitungAnwenden(msg.channel_id, msg.id, content, bearbeitetAm)) {
         messages.bearbeiteInhalt(msg.channel_id, msg.id, content, bearbeitetAm);
       }
+      // Die Bearbeitungs-Zeile fürs Server-Archiv, damit ein Frischgerät den
+      // neuen Text sieht (`archiv/zeile.ts`); zählt dort nur vom Autor.
+      if (msg.author_id === auth.user?.id) {
+        void import('$lib/archiv/senden')
+          .then((a) => a.archiviereBearbeitung(msg.channel_id, ziel, content, bearbeitetAm))
+          .catch((e) => console.warn('[archiv] Bearbeitungs-Zeile nicht eingeliefert', e));
+      }
     } catch (e) {
       toast.error(m.dm_page_edit_failed());
       console.error(e);

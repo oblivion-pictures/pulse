@@ -76,7 +76,8 @@ export {
   verlaufBearbeitungAnwenden,
   verlaufBearbeitungAnwendenPflicht,
   verlaufLokaleIdsFuerFrame,
-  verlaufLokaleIdsFuerFramePflicht
+  verlaufLokaleIdsFuerFramePflicht,
+  verlaufArchivBearbeitungenAnwenden
 } from './frameAnwenden';
 // Der Riegel nach einem Fassungswechsel (s. `verbindung.ts::verriegelt`).
 export { verlaufVerriegelt, verlaufRiegelPruefen, VerlaufVerriegelt } from './verbindung';

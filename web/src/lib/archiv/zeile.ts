@@ -32,6 +32,12 @@
  * ein älterer Klient legt sie dadurch nicht als leere Nachricht ab, sondern
  * verwirft sie still (`verlauf/satz.ts::zuSatz` verlangt beides).
  *
+ * **Bearbeitungs-Zeile** `{ e, a, t, z }` (seit 2026-10-14): der Autor setzt
+ * den Text seiner Nachricht mit der kanonischen Kennung `e` auf `t`, `z` ist
+ * die Bearbeitungszeit. Dieselbe Bindung wie beim Grabstein; sie ergänzt nur
+ * unbearbeitete Sätze (`verlauf/archivBearbeitung.ts`). Ohne `i`: ein älterer
+ * Klient verwirft sie still wie die Grabstein-Zeile.
+ *
  * **Jede Kennung einer Zeile wählt der Einliefernde frei** (Gegenprüfung
  * 2026-10-12, Fund 1): `i`, `g`, `r`, `a` und die Anhang-IDs. `leseZeile`
  * nimmt nur an, was die Form einer Kennung hat
@@ -74,6 +80,7 @@ import type { AnhangAngabe } from '../krypto/nachrichtNutzlast';
 // `verlauf/schema.ts`) — der Bundler akzeptiert die Endung unverändert.
 import { attachmentZuAngabe, anhangAngabeZuAttachment } from '../krypto/anhangAnzeige.ts';
 import { istGueltigeKennung } from '../verlauf/identitaet.ts';
+import type { ArchivBearbeitung } from '../verlauf/archivBearbeitung';
 
 type ArchivZeileKlar = {
 	i: string;
@@ -85,6 +92,8 @@ type ArchivZeileKlar = {
 };
 
 type GrabsteinZeileKlar = { g: string; a: string; z: string };
+
+type BearbeitungZeileKlar = { e: string; a: string; t: string; z: string };
 
 /** Eine gesendete Nachricht → Klartext-Bytes für die Archiv-Zeile. */
 export function baueZeilenKlar(nachricht: Message): Uint8Array {
@@ -140,12 +149,30 @@ export function baueGrabsteinKlar(kennung: string, autorId: string, zeit: string
  *  der kanonischen Kennung `kennung`. */
 export type Grabstein = { art: 'grabstein'; autorId: string; kennung: string };
 
+/** Die Bearbeitungs-Zeile des Autors: neuer Text `inhalt` für seine Nachricht
+ *  mit der kanonischen Kennung `kennung` (s. Modulkopf). */
+export function baueBearbeitungKlar(
+	kennung: string,
+	autorId: string,
+	inhalt: string,
+	zeit: string
+): Uint8Array {
+	const klar: BearbeitungZeileKlar = { e: kennung, a: autorId, t: inhalt, z: zeit };
+	return new TextEncoder().encode(JSON.stringify(klar));
+}
+
+/** Eine angenommene Bearbeitungs-Zeile. */
+export type Bearbeitung = { art: 'bearbeitung' } & ArchivBearbeitung;
+
 /** Eine Nachricht aus dem Archiv, bei einer Bestandszeile mit der Marke
  *  `archiv_ungeprueft` (`verlauf/satz.ts::zuSatz` übernimmt sie in den Satz). */
 export type ArchivNachricht = Message & { archiv_ungeprueft?: true };
 
 /** Was eine Archiv-Zeile ist, nachdem `leseZeile` sie angenommen hat. */
-export type ArchivEintrag = { art: 'nachricht'; nachricht: ArchivNachricht } | Grabstein;
+export type ArchivEintrag =
+	| { art: 'nachricht'; nachricht: ArchivNachricht }
+	| Grabstein
+	| Bearbeitung;
 
 /**
  * Bestandszeilen ohne Einlieferer (eingeliefert vor Migration 0103) werden
@@ -156,8 +183,8 @@ export type ArchivEintrag = { art: 'nachricht'; nachricht: ArchivNachricht } | G
  * verwerfen kostete dagegen jedem Frischgerät ohne Sicherung den ganzen
  * Archiv-Verlauf bis zur Umstellung. Eine Bestandszeile kann trotzdem nichts
  * an einem liegenden Satz ändern als seine Kennung
- * (`verlauf/satz.ts::satzErgaenzen`), und eine Grabstein-Zeile gibt es nur
- * mit Einlieferer. Der Satz aus einer Bestandszeile trägt `ungeprueft` und
+ * (`verlauf/satz.ts::satzErgaenzen`), und eine Grabstein- oder
+ * Bearbeitungs-Zeile gibt es nur mit Einlieferer. Der Satz aus einer Bestandszeile trägt `ungeprueft` und
  * wird nie eigene Wahrheit: keine Erstsicherung, keine Kopplung, jeder
  * geprüfte Satz ersetzt ihn (`verlauf/herkunft.ts`, Gegenprüfung 2026-10-12,
  * Fund 4). Produktentscheidung, offen gemeldet am 2026-10-12.
@@ -177,7 +204,8 @@ export type ZeilenHerkunft = {
 /**
  * Klartext einer Zeile plus ihre Herkunft → Eintrag, oder `null`: die Zeile
  * wird verworfen. Verworfen wird eine Zeile, deren Autor nicht ihr
- * Einlieferer ist, und jede Grabstein-Zeile ohne bekannten Einlieferer. Eine
+ * Einlieferer ist, und jede Grabstein- oder Bearbeitungs-Zeile ohne bekannten
+ * Einlieferer. Eine
  * Nachricht liegt danach unter der Zeilen-ID, wenn ein anderes Konto sie
  * eingeliefert hat, sonst unter `i` (s. Modulkopf). Wirft bei kaputtem JSON.
  */
@@ -186,11 +214,19 @@ export function leseZeile(
 	roh: string,
 	{ einlieferer, zeilenId, konto }: ZeilenHerkunft
 ): ArchivEintrag | null {
-	const inhalt = JSON.parse(roh) as Partial<ArchivZeileKlar & GrabsteinZeileKlar>;
+	const inhalt = JSON.parse(roh) as Partial<
+		ArchivZeileKlar & GrabsteinZeileKlar & BearbeitungZeileKlar
+	>;
 	const vomAutor = einlieferer !== null && inhalt.a === einlieferer;
 	if (inhalt.g !== undefined) {
 		return vomAutor && istGueltigeKennung(inhalt.g)
 			? { art: 'grabstein', autorId: einlieferer, kennung: inhalt.g }
+			: null;
+	}
+	if (inhalt.e !== undefined) {
+		const { e, t, z } = inhalt;
+		return vomAutor && istGueltigeKennung(e) && typeof t === 'string' && typeof z === 'string'
+			? { art: 'bearbeitung', autorId: einlieferer, kennung: e, inhalt: t, bearbeitetAm: z }
 			: null;
 	}
 	const angenommeneBestandszeile = einlieferer === null && BESTANDSZEILEN_ANNEHMEN;
