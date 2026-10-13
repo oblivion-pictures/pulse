@@ -52,10 +52,11 @@ export function kanonischeNachrichtId(id: string, kryptoId?: string | null): str
  * ist — die Prüfung des Nachrichten-Stores (`stores/messages.svelte.ts`), der
  * je Kanal die gehaltenen `id`s und die gehaltenen `kryptoId`s führt.
  *
- * Die kanonische Id der Ankunft wird gegen BEIDE Mengen geprüft: liegt die
- * Kopie des Autors aus einem Altbestand vor, steht ihre kanonische Id nur
- * unter den `id`s (sie hat keine `kryptoId`); liegt die Kopie eines
- * empfangenden Geräts vor, steht sie unter den `kryptoId`s.
+ * Geprüft werden die eigene `id` und die kanonische Id der Ankunft, die
+ * kanonische gegen BEIDE Mengen: hält der Store die Kopie des Autors aus
+ * einem Altbestand, steht deren Id (die kanonische) nur unter den `id`s, denn
+ * sie hat keine `kryptoId`; hält er die Kopie eines empfangenden Geräts,
+ * steht die kanonische Id unter den `kryptoId`s.
  */
 export function istBekannteNachricht(
   id: string,
@@ -63,7 +64,6 @@ export function istBekannteNachricht(
   bekannteIds: ReadonlySet<string>,
   bekannteKryptoIds: ReadonlySet<string>
 ): boolean {
-  if (bekannteIds.has(id)) return true;
   const kanonisch = kanonischeNachrichtId(id, kryptoId);
-  return bekannteKryptoIds.has(kanonisch) || bekannteIds.has(kanonisch);
+  return bekannteIds.has(id) || bekannteIds.has(kanonisch) || bekannteKryptoIds.has(kanonisch);
 }

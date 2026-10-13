@@ -4,6 +4,12 @@ import { compareSnowflakeId } from '$lib/utils/snowflake';
 import { clearBlobCache } from '$lib/attachments/blobCache';
 import { istBekannteNachricht } from '$lib/verlauf/nachrichtIdentitaet';
 
+/** Die `krypto_id`s einer Liste — der Ausgangsstand für einen Kanal, der noch
+ *  keine Menge führt. */
+function kryptoIdsVon(list: Message[]): Set<string> {
+  return new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
+}
+
 class MessageStore {
   // Newest at the end. We dedupe on `id` and merge `nonce` echoes.
   byChannel = $state<Record<string, Message[]>>({});
@@ -83,10 +89,7 @@ class MessageStore {
     this.loadedChannels = { ...this.loadedChannels, [channelId]: true };
     // Populate the ID set for O(1) dedup during upsert.
     this.messageIds = { ...this.messageIds, [channelId]: new Set(sorted.map((m) => m.id)) };
-    this.kryptoIds = {
-      ...this.kryptoIds,
-      [channelId]: new Set(sorted.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])))
-    };
+    this.kryptoIds = { ...this.kryptoIds, [channelId]: kryptoIdsVon(sorted) };
     this.touch(channelId);
   }
 
@@ -98,9 +101,7 @@ class MessageStore {
     if (!msgs.length) return false;
     const list = this.byChannel[channelId] ?? [];
     const ids = this.messageIds[channelId] ?? new Set(list.map((m) => m.id));
-    const krypto =
-      this.kryptoIds[channelId] ??
-      new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
+    const krypto = this.kryptoIds[channelId] ?? kryptoIdsVon(list);
     // id-sortiert + deduped in einem Durchgang. Die kanonische ID
     // (`verlauf/nachrichtIdentitaet.ts`) blockt die Kopie desselben Worts aus
     // der Archiv-Kette des anderen Geräts — sie trägt eine fremde lokale ID
@@ -169,10 +170,8 @@ class MessageStore {
     // verdoppeln. Vorfall 2026-10-05: ohne das erschien jede Nachricht
     // doppelt, deren Archivabholung vor der Live-Zustellung fertig war.
     // Echo-Ersatz (Nonce) läuft OBEN — ein Skip hier trifft nur Duplikate.
-    const kryptoBekannt =
-      this.kryptoIds[msg.channel_id] ??
-      new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
-    if (istBekannteNachricht(msg.id, msg.krypto_id, ids, kryptoBekannt)) return;
+    const krypto = this.kryptoIds[msg.channel_id] ?? kryptoIdsVon(list);
+    if (istBekannteNachricht(msg.id, msg.krypto_id, ids, krypto)) return;
     // Append in id-order to keep the list monotonic.
     if (list.length === 0 || compareSnowflakeId(list[list.length - 1].id, msg.id) < 0) {
       next = [...list, msg];
@@ -192,9 +191,6 @@ class MessageStore {
     this.messageIds = { ...this.messageIds, [msg.channel_id]: ids };
     // Krypto-Set mitführen — der Duplikat-Skip steht OBEN (nach Id-Prüfung
     // und Nonce-Ersatz); hier wird nur gebucht, was übernommen wurde.
-    const krypto =
-      this.kryptoIds[msg.channel_id] ??
-      new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
     if (msg.krypto_id) krypto.add(msg.krypto_id);
     if (ids.size > next.length) {
       krypto.clear();

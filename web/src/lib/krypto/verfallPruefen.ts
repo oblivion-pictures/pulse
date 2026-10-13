@@ -13,7 +13,7 @@ import { toast } from 'svelte-sonner';
 import { keysApi } from '../api/keys';
 import { serversStore } from '../api/servers.svelte';
 import { auth } from '../stores/auth.svelte';
-import { verlaufAllesLoeschen } from '../verlauf/db';
+import { verlaufAllesLoeschen } from '../verlauf/raeumen';
 import { m } from '$lib/paraglide/messages.js';
 import { geraeteKennung } from './geraeteKennung';
 import { ENTFERNT, geraetestandAbarbeiten } from './geraeteVerfall';

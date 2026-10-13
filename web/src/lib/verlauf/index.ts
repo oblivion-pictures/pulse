@@ -53,9 +53,9 @@ import {
   verlaufSatzVorhanden,
   verlaufSatzAnhangIds,
   verlaufSatzIdFuerKryptoId,
-  anhangBytesLoeschen,
-  verlaufKanalVergessen
+  anhangBytesLoeschen
 } from './db';
+import { verlaufKanalVergessen } from './raeumen';
 import { aktuellesKonto } from './konto';
 import { dauerhaftenSpeicherAnfordern } from '$lib/identity/dauerhafterSpeicher';
 import { verlaufZustand } from './zustand.svelte';

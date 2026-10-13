@@ -312,8 +312,9 @@ export async function sendeVerschluesselt(
     // Die geraeteuebergreifende Identitaet, wie sie jede andere Kopie traegt
     // (Empfaenger, eigenes Zweitgeraet, Archiv). Bis 2026-10-13 fehlte sie
     // hier, und eine Sicherung zweier eigener Geraete stellte die Nachricht
-    // doppelt wieder her (`verlauf/nachrichtIdentitaet.ts`); Klienten, die
-    // nur `kryptoId` gegen `kryptoId` vergleichen, brauchen sie weiterhin.
+    // doppelt wieder her (`verlauf/nachrichtIdentitaet.ts`). Mit dem Feld
+    // erkennt auch ein Vergleich, der nur `kryptoId` gegen `kryptoId` stellt
+    // (Fassungen vor diesem Tag), die Kopie.
     krypto_id: nachrichtId,
     // Dieselbe Uebersetzung wie beim Empfaenger (`empfangen.ts`), damit die
     // eigene Ansicht die Kachel genauso zeichnet — die Bytes dafuer liegen
