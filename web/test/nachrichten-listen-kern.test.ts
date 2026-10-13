@@ -2,16 +2,35 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import {
-	einfuegen,
+	einfuegen as einfuegenKern,
 	einsortieren,
+	entfernen,
 	ersetzeNachricht,
 	kappen,
 	kryptoIdsVon,
 	letzteServerId,
 	lueckeZusammenfuehren,
-	vorneAnfuegen
+	vorneAnfuegen as vorneAnfuegenKern
 } from '../src/lib/nachrichten/listenKern.ts';
 import type { Message } from '../src/lib/api/types.ts';
+
+// Die meisten Fälle kennen keine Grabsteine: ohne Angabe gibt es keine.
+const einfuegen = (
+	liste: Message[],
+	ids: Set<string>,
+	krypto: Set<string>,
+	nachricht: Message,
+	cap: number,
+	begraben: ReadonlySet<string> = new Set()
+) => einfuegenKern(liste, ids, krypto, nachricht, cap, begraben);
+const vorneAnfuegen = (
+	liste: Message[],
+	ids: Set<string>,
+	krypto: Set<string>,
+	nachrichten: Message[],
+	cap: number,
+	begraben: ReadonlySet<string> = new Set()
+) => vorneAnfuegenKern(liste, ids, krypto, nachrichten, cap, begraben);
 
 const msg = (id: string, over: Partial<Message> = {}): Message => ({
 	id,
@@ -239,5 +258,86 @@ describe('Nachrichtenliste: einzelne Nachricht aufnehmen', () => {
 		assert.deepEqual(ids(r.liste), ['20', '30']);
 		assert.deepEqual([...i].sort(), ['20', '30']);
 		assert.deepEqual([...k].sort(), ['k20', 'k30']);
+	});
+});
+
+describe('Nachrichtenliste: Grabsteine gelöschter Nachrichten', () => {
+	/** Eine Liste mit drei Nachrichten (Kappung 3), die zweite trägt `k2`. */
+	function dreiNachrichten() {
+		const liste = [msg('10', { krypto_id: 'k1' }), msg('20', { krypto_id: 'k2' }), msg('30', { krypto_id: 'k3' })];
+		return {
+			liste,
+			ids: new Set(['10', '20', '30']),
+			krypto: new Set(['k1', 'k2', 'k3']),
+			begraben: new Set<string>()
+		};
+	}
+
+	it('entfernen streicht die Id, lässt die krypto_id als Grabstein stehen und vermerkt sie', () => {
+		const { liste, ids: i, krypto, begraben } = dreiNachrichten();
+		const r = entfernen(liste, i, krypto, begraben, '20');
+		assert.ok(r);
+		assert.deepEqual(ids(r), ['10', '30']);
+		assert.deepEqual([...i].sort(), ['10', '30']);
+		assert.ok(krypto.has('k2'), 'der Grabstein bleibt in der Dublettenmenge');
+		assert.deepEqual([...begraben], ['k2']);
+		assert.equal(liste.length, 3, 'die Eingabeliste bleibt unverändert');
+	});
+
+	it('entfernen: eine Nachricht ohne krypto_id setzt keinen Grabstein, eine unbekannte ergibt null', () => {
+		const liste = [msg('10'), msg('20')];
+		const i = new Set(['10', '20']);
+		const begraben = new Set<string>();
+		assert.deepEqual(ids(entfernen(liste, i, new Set(), begraben, '10') ?? []), ['20']);
+		assert.equal(begraben.size, 0);
+		assert.equal(entfernen(liste, i, new Set(), begraben, '99'), null);
+		assert.deepEqual([...i].sort(), ['20'], 'die unbekannte Id lässt die Mengen unberührt');
+	});
+
+	it('der Grabstein überlebt das Kappen beim Einfügen: die Kopie unter anderer Id bleibt draußen', () => {
+		const { liste, ids: i, krypto, begraben } = dreiNachrichten();
+		let aktuell = entfernen(liste, i, krypto, begraben, '20') ?? [];
+		// Zwei neue Nachrichten: die zweite überschreitet die Kappung (3) und
+		// wirft '10' hinaus — der Abgleich baut die Mengen aus der Liste neu.
+		aktuell = einfuegen(aktuell, i, krypto, msg('40'), 3, begraben)?.liste ?? [];
+		const gekappt = einfuegen(aktuell, i, krypto, msg('50'), 3, begraben);
+		assert.ok(gekappt);
+		assert.deepEqual(ids(gekappt.liste), ['30', '40', '50']);
+		assert.deepEqual(ids(gekappt.verworfen), ['10']);
+		// Die Kopie der gelöschten Nachricht (anderes Gerät, andere lokale Id):
+		assert.equal(
+			einfuegen(gekappt.liste, i, krypto, msg('25', { krypto_id: 'k2' }), 3, begraben),
+			null,
+			'eine gelöschte Nachricht kehrt nach dem Kappen nicht zurück'
+		);
+		// Eine bloß weggekappte (nie gelöschte) darf dagegen wiederkommen.
+		assert.ok(einfuegen(gekappt.liste, i, krypto, msg('15', { krypto_id: 'k1' }), 4, begraben));
+	});
+
+	it('der Grabstein überlebt das Kappen beim Voranstellen älterer Historie', () => {
+		const liste = [msg('30', { krypto_id: 'k3' }), msg('40', { krypto_id: 'k4' })];
+		const i = new Set(['30', '40']);
+		const krypto = new Set(['k3', 'k4', 'k2']);
+		const begraben = new Set(['k2']);
+		const r = vorneAnfuegen(liste, i, krypto, [msg('10', { krypto_id: 'k1' }), msg('20')], 3, begraben);
+		assert.ok(r);
+		assert.deepEqual(ids(r.liste), ['20', '30', '40']);
+		assert.deepEqual(ids(r.verworfen), ['10']);
+		assert.ok(krypto.has('k2'), 'der Abgleich hat den Grabstein zurückgelegt');
+		assert.equal(vorneAnfuegen(r.liste, i, krypto, [msg('5', { krypto_id: 'k2' })], 3, begraben), null);
+	});
+
+	it('der Abgleich baut krypto weiter aus der Liste: der Grabstein hängt allein an der durchgereichten Menge', () => {
+		const { liste, ids: i, krypto } = dreiNachrichten();
+		// Dieselbe Folge, aber der Aufrufer reicht keine Grabsteine durch.
+		entfernen(liste, i, krypto, new Set<string>(), '20');
+		einfuegen(liste.filter((m) => m.id !== '20'), i, krypto, msg('40'), 2);
+		assert.equal(krypto.has('k2'), false);
+	});
+
+	it('kryptoIdsVon legt die Grabsteine zu den krypto_ids der Liste', () => {
+		const s = kryptoIdsVon([msg('1', { krypto_id: 'a' }), msg('2')], new Set(['tot']));
+		assert.deepEqual([...s].sort(), ['a', 'tot']);
+		assert.deepEqual([...kryptoIdsVon([msg('1', { krypto_id: 'a' })])], ['a']);
 	});
 });

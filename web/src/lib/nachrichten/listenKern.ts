@@ -7,24 +7,31 @@
  *
  * Importfrei im Sinn der `pnpm test:unit`-Falle (s. CLAUDE.md): nur der
  * Snowflake-Vergleich (`utils/snowflake.ts`, hängt selbst nur an
- * `snowflakeZeit.ts`) und die Identitätsregel (`verlauf/nachrichtIdentitaet.ts`,
- * ohne Importe), beide per Relativpfad MIT Endung, und ein reiner Typ-Import,
- * den Node beim Laden verwirft. Keine Rune — der Store ist eine `.svelte.ts`,
+ * `snowflakeZeit.ts`), die Identitätsregel (`verlauf/nachrichtIdentitaet.ts`,
+ * ohne Importe) und die Grabstein-Buchhaltung (`./grabsteine.ts`), alle per
+ * Relativpfad MIT Endung, und ein reiner Typ-Import, den Node beim Laden
+ * verwirft. Keine Rune — der Store ist eine `.svelte.ts`,
  * dieses Modul bewusst nicht.
  *
- * **Die Id-Mengen werden an Ort und Stelle fortgeschrieben.** `vorneAnfuegen`
- * und `einfuegen` ändern die ihnen übergebenen Mengen `ids` / `krypto`
- * (so, wie der Store sie schon immer führte) und geben die neue Liste zurück;
- * der Store schreibt Liste und Mengen anschließend in seine `$state`-Felder.
+ * **Die Id-Mengen werden an Ort und Stelle fortgeschrieben.** `vorneAnfuegen`,
+ * `einfuegen` und `entfernen` ändern die ihnen übergebenen Mengen `ids` /
+ * `krypto` (so, wie der Store sie schon immer führte) und geben die neue Liste
+ * zurück; der Store schreibt Liste und Mengen anschließend in seine
+ * `$state`-Felder. Die Grabsteine (`begraben`, s. `grabsteine.ts`) schreibt nur
+ * `entfernen` fort; die beiden anderen lesen sie und legen sie nach einem
+ * Kappen in `krypto` zurück.
  */
 import type { Message } from '../api/types';
 import { compareSnowflakeId } from '../utils/snowflake.ts';
 import { istBekannteNachricht } from '../verlauf/nachrichtIdentitaet.ts';
+import { grabsteinSetzen } from './grabsteine.ts';
 
-/** Die `krypto_id`s einer Liste — der Ausgangsstand für einen Kanal, der noch
- *  keine Menge führt. */
-export function kryptoIdsVon(list: Message[]): Set<string> {
-  return new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
+/** Die `krypto_id`s einer Liste samt den Grabsteinen des Kanals — der
+ *  Ausgangsstand für einen Kanal, der noch keine Menge führt. */
+export function kryptoIdsVon(list: Message[], begraben: Iterable<string> = []): Set<string> {
+  const krypto = new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
+  for (const id of begraben) krypto.add(id);
+  return krypto;
 }
 
 /** Nimmt `m` in die beiden Dublettenmengen auf. */
@@ -40,20 +47,23 @@ function merken(ids: Set<string>, krypto: Set<string>, m: Message): void {
  *  weggekappte Nachricht darf nach dem Hochscrollen wieder aufgenommen werden).
  *  Beide Mengen gehen stets zusammen, damit sie nicht auseinanderlaufen. Ändert
  *  die übergebenen Mengen an Ort und Stelle.
- *  Mit dem Abgleich fällt auch eine `krypto_id` aus `krypto`, die `remove` dort
- *  absichtlich als Grabstein einer gelöschten Nachricht stehen ließ; kommt danach
- *  eine Kopie derselben Nachricht unter anderer Id, erscheint sie wieder. Das
- *  betrifft nur Kanäle, die über die Kappungsgrenze (`cap`) wachsen, und wird bewusst hingenommen. */
+ *  **Ausgenommen sind die Grabsteine** (`begraben`, s. `grabsteine.ts`): die
+ *  `krypto_id` einer gelöschten Nachricht steht nie in der Liste und überlebt
+ *  den Neuaufbau, sonst erschiene eine später eintreffende Kopie derselben
+ *  Nachricht unter anderer Id wieder. Sie werden nach dem Neuaufbau in `krypto`
+ *  zurückgelegt. */
 function mengenAbgleichen(
   ids: Set<string>,
   krypto: Set<string>,
   liste: Message[],
-  verworfen: Message[]
+  verworfen: Message[],
+  begraben: ReadonlySet<string>
 ): void {
   if (verworfen.length === 0 && ids.size <= liste.length) return;
   ids.clear();
   krypto.clear();
   for (const m of liste) merken(ids, krypto, m);
+  for (const grabstein of begraben) krypto.add(grabstein);
 }
 
 /** Kappt eine id-sortierte Liste auf die neuesten `cap` Einträge. `verworfen`
@@ -176,13 +186,15 @@ export type Anfuegung = { liste: Message[]; neu: Message[]; verworfen: Message[]
  *  fremde lokale Id trägt und sonst doppelt angezeigt würde (Frischgerät +
  *  Sicherung, 2026-09-17). Der Rest wird id-sortiert vorangestellt und auf
  *  `cap` gekappt. Schreibt `ids` / `krypto` fort und gleicht sie mit der
- *  Liste ab, sobald gekappt wurde. `null`, wenn nichts Neues dabei war. */
+ *  Liste ab, sobald gekappt wurde (die Grabsteine `begraben` bleiben dabei
+ *  stehen). `null`, wenn nichts Neues dabei war. */
 export function vorneAnfuegen(
   list: Message[],
   ids: Set<string>,
   krypto: Set<string>,
   msgs: Message[],
-  cap: number
+  cap: number,
+  begraben: ReadonlySet<string>
 ): Anfuegung | null {
   const neu = [...msgs]
     .sort((a, b) => compareSnowflakeId(a.id, b.id))
@@ -190,7 +202,7 @@ export function vorneAnfuegen(
   if (!neu.length) return null;
   const { liste, verworfen } = kappen([...neu, ...list], cap);
   for (const m of neu) merken(ids, krypto, m);
-  mengenAbgleichen(ids, krypto, liste, verworfen);
+  mengenAbgleichen(ids, krypto, liste, verworfen, begraben);
   return { liste, neu, verworfen };
 }
 
@@ -202,13 +214,15 @@ export function vorneAnfuegen(
  *  nicht verdoppeln. Vorfall 2026-10-05: ohne das erschien jede Nachricht
  *  doppelt, deren Archivabholung vor der Live-Zustellung fertig war. Schreibt
  *  `ids` / `krypto` fort und gleicht BEIDE mit der Liste ab, sobald gekappt
- *  wurde. `null` bei einem Duplikat. */
+ *  wurde (die Grabsteine `begraben` bleiben dabei stehen). `null` bei einem
+ *  Duplikat. */
 export function einfuegen(
   list: Message[],
   ids: Set<string>,
   krypto: Set<string>,
   msg: Message,
-  cap: number
+  cap: number,
+  begraben: ReadonlySet<string>
 ): { liste: Message[]; verworfen: Message[] } | null {
   if (istBekannteNachricht(msg.id, msg.krypto_id, ids, krypto)) return null;
   const { liste, verworfen } = kappen(einsortieren(list, msg), cap);
@@ -216,6 +230,26 @@ export function einfuegen(
   // gleich wieder aus der Liste wirft (sie war die älteste); der Abgleich
   // nimmt sie dann wieder heraus.
   merken(ids, krypto, msg);
-  mengenAbgleichen(ids, krypto, liste, verworfen);
+  mengenAbgleichen(ids, krypto, liste, verworfen, begraben);
   return { liste, verworfen };
+}
+
+/** Nimmt die Nachricht mit `id` aus der Liste (hartes Löschen) und gibt die
+ *  neue Liste zurück, `null`, wenn sie nicht in der Liste steht. Streicht die
+ *  Id aus `ids`; eine vorhandene `krypto_id` bleibt als Grabstein in `krypto`
+ *  stehen UND wird in `begraben` vermerkt (Begründung und Grenze in
+ *  `grabsteine.ts`) — eine spätere Kopie derselben Nachricht unter anderer Id
+ *  gilt damit als bekannt, auch nachdem ein Kappen `krypto` neu aufgebaut hat. */
+export function entfernen(
+  list: Message[],
+  ids: Set<string>,
+  krypto: Set<string>,
+  begraben: Set<string>,
+  id: string
+): Message[] | null {
+  const weg = list.find((m) => m.id === id);
+  if (!weg) return null;
+  ids.delete(id);
+  if (weg.krypto_id) grabsteinSetzen(krypto, begraben, weg.krypto_id);
+  return list.filter((m) => m.id !== id);
 }

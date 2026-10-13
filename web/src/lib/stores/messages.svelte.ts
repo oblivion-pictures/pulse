@@ -5,6 +5,7 @@ import { clearBlobCache } from '$lib/attachments/blobCache';
 import { istBekannteNachricht } from '$lib/verlauf/nachrichtIdentitaet';
 import {
   einfuegen,
+  entfernen,
   ersetzeNachricht,
   kappen,
   kryptoIdsVon,
@@ -18,13 +19,8 @@ import {
   pinsFortschreiben,
   reaktionAnwenden
 } from '$lib/nachrichten/aenderungenKern';
-import { ZuletztBenutzt } from '$lib/nachrichten/kanalCache';
-
-/** `obj` ohne den Schlüssel `key` (Kopie). */
-function ohne<T>(obj: Record<string, T>, key: string): Record<string, T> {
-  const { [key]: _weg, ...rest } = obj;
-  return rest;
-}
+import { ZuletztBenutzt, ohne } from '$lib/nachrichten/kanalCache';
+import { Grabsteine } from '$lib/nachrichten/grabsteine';
 
 class MessageStore {
   // Newest at the end. We dedupe on `id` and merge `nonce` echoes.
@@ -44,6 +40,8 @@ class MessageStore {
   // Geräts beim Hochscrollen). Nur über die kanonische ID erkennt der
   // Store sie als dieselbe Nachricht.
   private kryptoIds = $state<Record<string, Set<string>>>({});
+  // `krypto_id`s gelöschter Nachrichten — überleben das Kappen (`nachrichten/grabsteine.ts`).
+  private grabsteine = new Grabsteine();
   // LRU order of cached channels, evicts beyond MAX_CACHED_CHANNELS (`nachrichten/kanalCache.ts`).
   private lru = new ZuletztBenutzt();
 
@@ -94,6 +92,7 @@ class MessageStore {
     // Populate the ID set for O(1) dedup during upsert.
     this.messageIds = { ...this.messageIds, [channelId]: new Set(sorted.map((m) => m.id)) };
     this.kryptoIds = { ...this.kryptoIds, [channelId]: kryptoIdsVon(sorted) };
+    this.grabsteine.vergessen(channelId);
     this.touch(channelId);
   }
 
@@ -105,8 +104,9 @@ class MessageStore {
     if (!msgs.length) return false;
     const list = this.byChannel[channelId] ?? [];
     const ids = this.messageIds[channelId] ?? new Set(list.map((m) => m.id));
-    const krypto = this.kryptoIds[channelId] ?? kryptoIdsVon(list);
-    const angefuegt = vorneAnfuegen(list, ids, krypto, msgs, MessageStore.CAP);
+    const begraben = this.grabsteine.fuer(channelId);
+    const krypto = this.kryptoIds[channelId] ?? kryptoIdsVon(list, begraben);
+    const angefuegt = vorneAnfuegen(list, ids, krypto, msgs, MessageStore.CAP, begraben);
     if (!angefuegt) return false;
     this.vergiss(angefuegt.verworfen);
     this.byChannel = { ...this.byChannel, [channelId]: angefuegt.liste };
@@ -147,8 +147,9 @@ class MessageStore {
     }
     // Echo-Ersatz (Nonce) läuft OBEN — ein Skip in `einfuegen` trifft nur
     // Duplikate (über die Id und die kanonische ID).
-    const krypto = this.kryptoIds[msg.channel_id] ?? kryptoIdsVon(list);
-    const eingefuegt = einfuegen(list, ids, krypto, msg, MessageStore.CAP);
+    const begraben = this.grabsteine.fuer(msg.channel_id);
+    const krypto = this.kryptoIds[msg.channel_id] ?? kryptoIdsVon(list, begraben);
+    const eingefuegt = einfuegen(list, ids, krypto, msg, MessageStore.CAP, begraben);
     if (!eingefuegt) return;
     this.vergiss(eingefuegt.verworfen);
     this.byChannel = { ...this.byChannel, [msg.channel_id]: eingefuegt.liste };
@@ -184,22 +185,18 @@ class MessageStore {
     const pins = this.pinsByChannel[channelId];
     if (pins?.some((p) => p.id === id)) {
       // Gelöschte Nachricht löst serverseitig ihren Pin — hier nachziehen.
-      this.pinsByChannel = {
-        ...this.pinsByChannel,
-        [channelId]: pins.filter((p) => p.id !== id)
-      };
+      this.pinsByChannel = { ...this.pinsByChannel, [channelId]: pins.filter((p) => p.id !== id) };
     }
     const list = this.byChannel[channelId];
     if (!list) return;
-    const next = list.filter((m) => m.id !== id);
-    if (next.length !== list.length) {
-      this.byChannel = { ...this.byChannel, [channelId]: next };
-      const ids = this.messageIds[channelId];
-      if (ids) {
-        ids.delete(id);
-        this.messageIds = { ...this.messageIds, [channelId]: ids };
-      }
-    }
+    const begraben = this.grabsteine.fuer(channelId);
+    const ids = this.messageIds[channelId] ?? new Set(list.map((m) => m.id));
+    const krypto = this.kryptoIds[channelId] ?? kryptoIdsVon(list, begraben);
+    const next = entfernen(list, ids, krypto, begraben, id);
+    if (!next) return;
+    this.byChannel = { ...this.byChannel, [channelId]: next };
+    this.messageIds = { ...this.messageIds, [channelId]: ids };
+    this.kryptoIds = { ...this.kryptoIds, [channelId]: krypto };
   }
 
   /** Apply a delta to a message's reactions list. `delta` is +1 for add, -1
@@ -285,9 +282,10 @@ class MessageStore {
     // Rebuild the ID set after merge.
     this.messageIds = { ...this.messageIds, [channelId]: new Set(liste.map((m) => m.id)) };
     // Wurde gekappt, gehen die `krypto_id`s der weggefallenen Nachrichten mit —
-    // sonst gälte eine davon, wieder hochgescrollt, als Dublette.
+    // sonst gälte eine davon, wieder hochgescrollt, als Dublette (Grabsteine bleiben).
     if (verworfen.length > 0) {
-      this.kryptoIds = { ...this.kryptoIds, [channelId]: kryptoIdsVon(liste) };
+      const krypto = kryptoIdsVon(liste, this.grabsteine.fuer(channelId));
+      this.kryptoIds = { ...this.kryptoIds, [channelId]: krypto };
     }
   }
 
@@ -327,6 +325,7 @@ class MessageStore {
     this.loadedChannels = ohne(this.loadedChannels, channelId);
     this.messageIds = ohne(this.messageIds, channelId);
     this.kryptoIds = ohne(this.kryptoIds, channelId);
+    this.grabsteine.vergessen(channelId);
     this.pinsByChannel = ohne(this.pinsByChannel, channelId);
     // Clear stale nonces from this channel.
     if (list) this.vergiss(list);
@@ -340,6 +339,7 @@ class MessageStore {
     this.loadedChannels = {};
     this.messageIds = {};
     this.kryptoIds = {};
+    this.grabsteine.leeren();
     this.pinsByChannel = {};
     this.confirmedNonces.clear();
     this.lru.leeren();

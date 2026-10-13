@@ -2,13 +2,15 @@ import { test, expect, type Page } from '@playwright/test';
 
 /**
  * Nachrichten-Speicher des Klienten (`stores/messages.svelte.ts` mit
- * `nachrichten/{listenKern,kanalCache}.ts`).
+ * `nachrichten/{listenKern,kanalCache,grabsteine}.ts`).
  *
- * LRU-Deckel: der gerade geöffnete Kanal darf nie geräumt werden, auch wenn
- * der Cache voll von Kanälen ist, die nur `upsert` angelegt hat
- * (Postfach-Abholung für ungeöffnete verschlüsselte Unterhaltungen,
- * `ws/handlers/chat.ts`). Vorher: leerer Kanal und über 100 Abrufe je Sekunde
- * in einer Schleife.
+ * 1. LRU-Deckel: der gerade geöffnete Kanal darf nie geräumt werden, auch wenn
+ *    der Cache voll von Kanälen ist, die nur `upsert` angelegt hat
+ *    (Postfach-Abholung für ungeöffnete verschlüsselte Unterhaltungen,
+ *    `ws/handlers/chat.ts`). Vorher: leerer Kanal und über 100 Abrufe je
+ *    Sekunde in einer Schleife.
+ * 2. Grabstein: eine gelöschte Nachricht kehrt nicht zurück, auch wenn das
+ *    Kappen der Liste (5000) die Dublettenmengen neu aufgebaut hat.
  *
  * Der Store wird über den Vite-Modulpfad geholt (dieselbe Modulinstanz wie die
  * App); die fremden Kanäle sind frei erfunden und existieren nur im Speicher.
@@ -132,4 +134,41 @@ test('ein Cache voller Hintergrund-Kanäle räumt den geöffneten Kanal nicht', 
 	// Zurück in den ersten Kanal: lädt und zeigt ganz normal.
 	await page.getByTestId(`channel-${kanalA}`).click();
 	await expect(nachrichtText(page, 'hallo A')).toBeVisible({ timeout: 10_000 });
+});
+
+test('eine gelöschte Nachricht kehrt nach dem Kappen der Liste nicht zurück', async ({ page }) => {
+	await page.goto('/login');
+	const r = await page.evaluate(async (pfad) => {
+		const { messages } = await import(pfad);
+		const kanal = 'kappen-1';
+		const nachricht = (n: number, kryptoId?: string) => ({
+			id: String(100000000000000000n + BigInt(n)),
+			channel_id: kanal,
+			author_id: 'x',
+			content: `m${n}`,
+			nonce: null,
+			created_at: '2026-01-01T00:00:00Z',
+			...(kryptoId ? { krypto_id: kryptoId } : {})
+		});
+		const hatKopie = () =>
+			messages.for(kanal).some((m: { krypto_id?: string }) => m.krypto_id === 'K-geloescht');
+		// 4999 Nachrichten (Kappung bei 5000); die letzte trägt die krypto_id.
+		const start = Array.from({ length: 4999 }, (_, i) =>
+			nachricht(i + 1, i === 4998 ? 'K-geloescht' : undefined)
+		);
+		messages.setInitial(kanal, start);
+		messages.remove(kanal, start[4998].id);
+		// Eine Kopie unter anderer Id (anderes Gerät) wird abgewiesen ...
+		messages.upsert(nachricht(6000, 'K-geloescht'));
+		const vorKappen = hatKopie();
+		// ... und auch, nachdem drei neue Nachrichten die Liste über 5000
+		// getrieben haben (das Kappen baut die Dublettenmengen neu auf).
+		for (let n = 7000; n < 7003; n++) messages.upsert(nachricht(n));
+		const laenge = messages.for(kanal).length;
+		messages.upsert(nachricht(8000, 'K-geloescht'));
+		return { vorKappen, laenge, nachKappen: hatKopie() };
+	}, STORE);
+	expect(r.vorKappen).toBe(false);
+	expect(r.laenge, 'die Liste wurde tatsächlich gekappt').toBe(5000);
+	expect(r.nachKappen, 'die Kopie der gelöschten Nachricht bleibt draußen').toBe(false);
 });

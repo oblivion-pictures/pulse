@@ -69,3 +69,10 @@ export class ZuletztBenutzt {
     return raus;
   }
 }
+
+/** `obj` ohne den Schlüssel `key` (Kopie) — der Store streicht damit einen
+ *  Kanal aus seinen Pro-Kanal-Tabellen. */
+export function ohne<T>(obj: Record<string, T>, key: string): Record<string, T> {
+  const { [key]: _weg, ...rest } = obj;
+  return rest;
+}
