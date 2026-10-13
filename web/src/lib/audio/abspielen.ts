@@ -38,27 +38,22 @@ export function istAbspielAbbruch(fehler: unknown): boolean {
   );
 }
 
-/** Entscheidung nach einem Fehler: `wiederholungen` = wie oft schon wiederholt
- *  wurde, `erlaubt` = wie oft insgesamt wiederholt werden darf. */
-export function folgeNachFehler(
-  fehler: unknown,
-  wiederholungen: number,
-  erlaubt: number
-): FolgeNachFehler {
+/** Entscheidung nach einem Fehler: `bisher` = wie oft schon wiederholt wurde,
+ *  `erlaubt` = wie oft insgesamt wiederholt werden darf. */
+export function folgeNachFehler(fehler: unknown, bisher: number, erlaubt: number): FolgeNachFehler {
   if (!istAbspielAbbruch(fehler)) return 'weiterreichen';
-  return wiederholungen < erlaubt ? 'wiederholen' : 'verwerfen';
+  return bisher < erlaubt ? 'wiederholen' : 'verwerfen';
 }
 
 /** Führt `aktion` aus; ein Abspiel-Abbruch endet still (nach höchstens
- *  `wiederholungen` weiteren Versuchen), jeder andere Fehler wird
- *  weitergereicht. */
-async function ohneAbbruch(aktion: () => Promise<void>, wiederholungen = 0): Promise<void> {
+ *  `erlaubt` Wiederholungen), jeder andere Fehler wird weitergereicht. */
+async function ohneAbbruch(aktion: () => Promise<void>, erlaubt = 0): Promise<void> {
   for (let bisher = 0; ; bisher++) {
     try {
       await aktion();
       return;
     } catch (fehler) {
-      const folge = folgeNachFehler(fehler, bisher, wiederholungen);
+      const folge = folgeNachFehler(fehler, bisher, erlaubt);
       if (folge === 'weiterreichen') throw fehler;
       if (folge === 'verwerfen') return;
     }
@@ -87,21 +82,21 @@ export function spieleAb(el: Pick<HTMLMediaElement, 'play'>): Promise<void> {
  * **Das Schlucken allein reicht nicht.** LiveKit ruft im `catch` von
  * `startAudio` für JEDEN Fehler `handleAudioPlaybackFailed()` und wirft erst
  * danach: `canPlaybackAudio` kippt auf `false`, `AudioPlaybackStatusChanged
- * (false)` feuert — und Pulse zeigt daraufhin das Overlay „Audio ist
- * stummgeschaltet" (`voice.audioBlocked`), obwohl nur ein Abspielversuch
- * überholt wurde und der Ton läuft. Zurück auf „frei" kommt LiveKit nur über
- * den nächsten ERFOLGREICHEN `startAudio` (der gleicht zuerst den AudioContext
- * ab und feuert dann `true`) — der kommt von selbst erst, wenn wieder ein
- * `AudioStreamAcquired` oder ein Klick folgt. Deshalb wiederholt der Wrapper
- * einen überholten Versuch (höchstens `STARTAUDIO_WIEDERHOLUNGEN` Mal): die
- * Wiederholung ermittelt den tatsächlichen Zustand neu. Ist der Ton wirklich
- * gesperrt, antwortet sie mit `NotAllowedError`, der unverändert beim Aufrufer
- * ankommt (und `canPlaybackAudio` bleibt `false` — das Overlay bleibt). Das
- * kurze `false` zwischen Abbruch und Wiederholung liegt im selben Task (nur
- * Promise-Fortsetzungen dazwischen, `acquireAudioContext` meldet bei laufendem
- * Kontext synchron), wird also nicht gemalt. Wird derselbe Versuch dreimal
- * hintereinander überholt, bleibt der Zustand „gesperrt" stehen, bis der Nutzer
- * „Ton aktivieren" drückt — der Abbruch selbst bleibt auch dann kein Fehler.
+ * (false)` feuert, und Pulse zeigt das Overlay „Audio ist stummgeschaltet"
+ * (`voice.audioBlocked`), obwohl nur ein Abspielversuch überholt wurde und der
+ * Ton läuft. Von selbst kippt es erst zurück, wenn ein späterer Abspielversuch
+ * gelingt (ein weiteres `startAudio`, ein neu angehängtes Element).
+ *
+ * Deshalb wiederholt der Wrapper einen überholten Versuch, höchstens
+ * `STARTAUDIO_WIEDERHOLUNGEN` Mal: die Wiederholung ermittelt den tatsächlichen
+ * Zustand neu. Ist der Ton wirklich gesperrt, antwortet sie mit
+ * `NotAllowedError`; der kommt unverändert beim Aufrufer an, und
+ * `canPlaybackAudio` bleibt `false`. Bei laufendem AudioContext liegt das
+ * kurze `false` dazwischen im selben Task (nur Promise-Fortsetzungen,
+ * `acquireAudioContext` meldet dann synchron) und wird nicht gemalt. Wird
+ * derselbe Versuch dreimal überholt, endet `startAudio` trotzdem ohne Fehler,
+ * und das Overlay bleibt, bis ein späterer Abspielversuch gelingt (etwa „Ton
+ * aktivieren").
  *
  * **Muss VOR `room.connect()` gerufen werden**: das Ereignis wird erst beim
  * Verbinden verdrahtet und liest `room.startAudio` in genau diesem Moment.
