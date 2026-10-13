@@ -39,35 +39,31 @@
  * landete sonst als Eintrag im Grabstein-Register und als Stein in der
  * Sicherung, an dem jede Wiederherstellung des Kanals scheiterte.
  *
- * **Bekannte, offene Lücke: eine Zeile unter fremder ID** (Gegenprüfung
- * 2026-10-12, Fund 3, mittel; bestand schon auf `main`). Lokal liegt eine
- * Zeile unter ihrer ID `i`, und `i` wählt der Einliefernde frei. Bob liefert
- * `{i: K_alice, a: Bob}` ein, mit `K_alice` als Kennung einer Nachricht von
- * Alice, die er empfangen hat. Die Zeile zählt, denn Bob ist ihr Autor und
- * Einlieferer. Ihre Zeilen-ID wählt er ebenso frei (der Server nimmt jede
- * freie ID über 0, `routes/archiv.py`), und damit auch, ob sie vor Alices
- * Zeile gelesen wird. Auf einem Gerät, das unter `K_alice` noch nichts hat
- * (ein Frischgerät vor Sicherung und Kopplung, oder eines, das die Nachricht
- * nie empfing), legt das Archiv Bobs Satz unter `K_alice` ab. Danach fällt
- * dort alles weg, was Alices Nachricht unter diesem Schlüssel nachliefern
- * könnte: ihre echte Archiv-Zeile, ihr Satz aus der eigenen Sicherung und
- * der aus der Kopplung, denn ein anderer Autor unter demselben Schlüssel
- * wird nicht überschrieben (`verlauf/satz.ts::satzErgaenzen`). Der
- * Sicherungs-Lesestand rückt trotzdem vor (`sicherung/andockLesen.ts`), der
- * Satz kommt aus der Sicherung also nicht wieder, und die Kopplung zählt ihn
- * als übernommen (`kopplung/empfangen.ts::stueckAblegen`). Angezeigt wird
- * Bobs Text unter Bobs Namen; gefälscht ist die Zuschreibung nicht, Alices
- * Nachricht fehlt auf diesem Gerät. Nichts verloren geht auf einem Gerät,
- * das Alices Nachricht schon hält: unter `K_alice` überschreibt eine fremde
- * Zeile nie einen liegenden Satz, und unter einer Zustellungs-ID bleibt die
- * Empfangs-Kopie ohnehin stehen.
+ * **Wo eine Zeile lokal liegt** (Gegenprüfung G2-3/R1, 2026-10-14). Die
+ * Kennung `i` wählt der Einliefernde frei. Lag jede Zeile lokal unter ihrer
+ * `i`, lieferte Bob `{i: K_alice, a: Bob}` ein und besetzte auf jedem Gerät,
+ * das Alices Nachricht noch nicht hielt, ihren Platz: ein anderer Autor unter
+ * demselben Schlüssel wird nie überschrieben (`verlauf/satz.ts::satzErgaenzen`),
+ * also fiel danach dort alles weg, was Alices Nachricht nachliefern konnte —
+ * ihre Archiv-Zeile, ihr Satz aus der eigenen Sicherung und aus der Kopplung.
+ * Deshalb liegt die Zeile eines ANDEREN Einlieferers unter ihrer Zeilen-ID,
+ * und die vergibt seit diesem Tag der Server (`routes/archiv.py`, die Id im
+ * Körper wird verworfen); `i` reist nur als `krypto_id` mit und bindet über
+ * die Identität (Autor = Einlieferer) an die Nachricht. Die Zeilen-ID kann
+ * der Einliefernde nicht wählen, und mit den Zustellungs-IDs, unter denen
+ * Empfangenes liegt, teilt sie die Quelle (Snowflakes des chat-gateway).
  *
- * Ein Ausweichplatz unter der Zeilen-ID (`b74b2f57`, wieder zurückgenommen)
- * hat das nicht behoben: eine Zeile darf als Zeilen-ID ihre eigene `i`
- * tragen und galt dann als ausgewichen, und ein verdrängter Satz fiel weg,
- * wenn Bob seinen Ausweichplatz vorab belegt hatte. Die Lösung braucht einen
- * eigenen Entwurf, etwa den Autor im lokalen Schlüssel oder einen Server,
- * der `i` an den Einlieferer bindet.
+ * Zwei Ausnahmen behalten `i`. (1) Die EIGENE Zeile: niemand sonst liefert
+ * unter meinem Namen ein, und unter `i` liegt mein Satz vom Sendegerät; unter
+ * der Zeilen-ID stünde er doppelt, und eine eigene Bearbeitung träfe nur eine
+ * der beiden Kopien (`cloudNachrichtAktionen.ts` schreibt den angezeigten
+ * Satz um). (2) Die Bestandszeile ohne Einlieferer: ihre Zeilen-ID wählte noch
+ * der Klient, sie wäre kein besserer Platz. Ein Satz daraus ist `ungeprueft`
+ * und weicht jedem geprüften unter seinem Schlüssel, auch dem eines anderen
+ * Autors (`satz.ts::satzErgaenzen`).
+ *
+ * Ältere Klienten legen weiter unter `i` ab und tragen die Lücke weiter; ihre
+ * Einlieferungen nimmt der Server unverändert an.
  *
  * Laufzeit-Importe nur mit `.ts`-Endung (Node-Testläufer-Regel, s.
  * `verlauf/schema.ts`); sonst nur Typen.
@@ -112,12 +108,13 @@ export function baueZeilenKlar(nachricht: Message): Uint8Array {
  *  Kopien aus Sicherung/Archiv (`messages.svelte.ts::prepend`, Befund
  *  2026-09-17); ohne dieses Feld erschien dieselbe Nachricht doppelt. */
 export function leseZeilenKlar(kanalId: string, roh: string): Message {
-	return zuNachricht(kanalId, JSON.parse(roh) as ArchivZeileKlar);
+	const inhalt = JSON.parse(roh) as ArchivZeileKlar;
+	return zuNachricht(kanalId, inhalt, inhalt.i);
 }
 
-function zuNachricht(kanalId: string, inhalt: ArchivZeileKlar): Message {
+function zuNachricht(kanalId: string, inhalt: ArchivZeileKlar, lokaleId: string): Message {
 	return {
-		id: inhalt.i,
+		id: lokaleId,
 		channel_id: kanalId,
 		author_id: inhalt.a,
 		content: inhalt.t,
@@ -167,16 +164,27 @@ export type ArchivEintrag = { art: 'nachricht'; nachricht: ArchivNachricht } | G
  */
 const BESTANDSZEILEN_ANNEHMEN = true;
 
+/** Was der Server zu einer Zeile sagt, plus das lesende Konto. */
+export type ZeilenHerkunft = {
+	/** Wer sie eingeliefert hat (`user_id`), `null` bei einer Bestandszeile. */
+	einlieferer: string | null;
+	/** Ihre Zeilen-ID, vom Server vergeben (s. Modulkopf). */
+	zeilenId: string;
+	/** Das angemeldete Konto, das die Zeile liest. */
+	konto: string;
+};
+
 /**
- * Klartext einer Zeile plus ihr Einlieferer (Server, `user_id`) → Eintrag,
- * oder `null`: die Zeile wird verworfen. Verworfen wird eine Zeile, deren
- * Autor nicht ihr Einlieferer ist, und jede Grabstein-Zeile ohne bekannten
- * Einlieferer. Wirft bei kaputtem JSON (wie `leseZeilenKlar`).
+ * Klartext einer Zeile plus ihre Herkunft → Eintrag, oder `null`: die Zeile
+ * wird verworfen. Verworfen wird eine Zeile, deren Autor nicht ihr
+ * Einlieferer ist, und jede Grabstein-Zeile ohne bekannten Einlieferer. Eine
+ * Nachricht liegt danach unter der Zeilen-ID, wenn ein anderes Konto sie
+ * eingeliefert hat, sonst unter `i` (s. Modulkopf). Wirft bei kaputtem JSON.
  */
 export function leseZeile(
 	kanalId: string,
 	roh: string,
-	einlieferer: string | null
+	{ einlieferer, zeilenId, konto }: ZeilenHerkunft
 ): ArchivEintrag | null {
 	const inhalt = JSON.parse(roh) as Partial<ArchivZeileKlar & GrabsteinZeileKlar>;
 	const vomAutor = einlieferer !== null && inhalt.a === einlieferer;
@@ -188,7 +196,9 @@ export function leseZeile(
 	const angenommeneBestandszeile = einlieferer === null && BESTANDSZEILEN_ANNEHMEN;
 	if (!vomAutor && !angenommeneBestandszeile) return null;
 	if (!istGueltigeKennung(inhalt.i) || !istGueltigeKennung(inhalt.a)) return null;
-	const nachricht: ArchivNachricht = zuNachricht(kanalId, ohneUngueltigeBezuege(inhalt));
+	const lokaleId = einlieferer === null || einlieferer === konto ? inhalt.i : zeilenId;
+	if (!istGueltigeKennung(lokaleId)) return null;
+	const nachricht: ArchivNachricht = zuNachricht(kanalId, ohneUngueltigeBezuege(inhalt), lokaleId);
 	// Den Autor einer Bestandszeile hat niemand geprüft — der Satz daraus
 	// wird nie eigene Wahrheit (`verlauf/herkunft.ts`, Fund 4).
 	if (angenommeneBestandszeile) nachricht.archiv_ungeprueft = true;

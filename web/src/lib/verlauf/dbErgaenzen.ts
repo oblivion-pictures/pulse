@@ -19,8 +19,8 @@ import { ablegenMitRegister } from './dbRegister';
  * Legt den Nachschub ab: ein schon liegender Satz desselben Kontos wird
  * ERGÄNZT statt überschrieben (`satz.ts::satzErgaenzen`). Ein Satz eines
  * anderen Autors unter demselben Schlüssel bleibt unangetastet, der Nachschub
- * fällt dann weg (Gegenprüfung 2026-10-12, Fund 3: eine bekannte, offene
- * Lücke, beschrieben im Kopf von `archiv/zeile.ts`). Lesen und Schreiben in
+ * fällt dann weg; besetzen kann ihn eine fremde Archiv-Zeile nicht mehr, sie
+ * liegt unter ihrer Zeilen-ID (G2-3, Kopf von `archiv/zeile.ts`). Lesen und Schreiben in
  * EINER Transaktion (Muster `db.ts::verlaufSatzUmschreiben`): zwischen dem
  * Blick auf den liegenden Satz und dem Schreiben darf kein Grabstein und keine
  * Bearbeitung dazwischenfahren, die das Schreiben dann überginge.

@@ -32,7 +32,8 @@
  * die Sicherung (`verlauf/satz.ts::Nachschub`) — und durch das
  * Grabstein-Register. Liegt unter einem Schlüssel schon ein Satz eines
  * anderen Autors, bleibt er, und der übernommene fällt weg, wird aber als
- * übernommen gezählt (Gegenprüfung 2026-10-12, Fund 3, offen: Kopf von
+ * übernommen gezählt. Eine fremde Archiv-Zeile kann diesen Fall nicht mehr
+ * herbeiführen, sie liegt unter ihrer Zeilen-ID (G2-3, Kopf von
  * `archiv/zeile.ts`).
  *
  * **Grabsteine des alten Geräts gelten hier weiter.** Nach dem letzten Stück

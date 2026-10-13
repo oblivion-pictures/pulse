@@ -23,6 +23,7 @@ function cloudRoute(): { serverId?: string } {
 // --- chat-gateway: Zeilen + Kanal-Wraps --------------------------------------
 
 interface ArchivZeileFern {
+	/** Die Zeilen-ID, vom Server vergeben (seit 2026-10-14, `archiv/zeile.ts`). */
 	id: string;
 	channel_id: string;
 	nutzlast_b64: string;

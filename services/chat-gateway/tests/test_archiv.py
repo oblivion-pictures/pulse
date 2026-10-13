@@ -74,7 +74,6 @@ async def test_einliefern_und_lesen_rundtrip(client, _auth_signer, friend_pair):
         assert r.status_code == 200
         zeilen = r.json()
         assert len(zeilen) == 1
-        assert zeilen[0]["id"] == "111"
         assert zeilen[0]["nutzlast_b64"] == nutzlast
 
     # Eigener Wrap kommt zurück; der des Partners nicht.
@@ -86,20 +85,24 @@ async def test_einliefern_und_lesen_rundtrip(client, _auth_signer, friend_pair):
 
 
 @pytest.mark.asyncio
-async def test_wiederholte_einlieferung_ist_idempotent(client, _auth_signer, friend_pair):
+async def test_die_zeilen_id_vergibt_der_server(client, _auth_signer, friend_pair):
+    """G2-3/R1: die Id im Körper wird verworfen. Ein neuerer Klient legt die
+    Zeile eines anderen Einlieferers lokal unter ihrer Zeilen-ID ab — wählte
+    der Einliefernde sie, besetzte er damit die Kennung einer fremden
+    Nachricht. Zweimal dieselbe Id ergibt deshalb zwei Zeilen mit eigenen,
+    zeitlich geordneten Snowflakes."""
     t_a, uid_a = await _register(_auth_signer)
     _, uid_b = await _register(_auth_signer)
     dm_id = await _dm_zwischen(client, _auth_signer, friend_pair, uid_a, uid_b)
 
-    rumpf = {
-        "zeilen": [{"id": 222, "channel_id": int(dm_id), "nutzlast_b64": _b64(b"n" * 60)}],
-        "wraps": [],
-    }
+    gewaehlt = 1_234_567_890_123_456_789
     for _ in range(2):
-        r = await client.post("/archiv", json=rumpf, headers=make_auth_header(t_a))
-        assert r.status_code == 204
+        await _zeile_einliefern(client, t_a, gewaehlt, dm_id, b"n" * 60)
     r = await client.get(f"/archiv/{dm_id}", headers=make_auth_header(t_a))
-    assert len(r.json()) == 1
+    ids = [int(z["id"]) for z in r.json()]
+    assert len(ids) == 2
+    assert gewaehlt not in ids
+    assert ids == sorted(ids) and ids[0] != ids[1]
 
 
 # --- Einlieferer je Zeile (Migration 0103, Gegenprüfung 2026-10-12 Fund 2) ---
@@ -115,13 +118,16 @@ async def test_zeile_traegt_den_einlieferer_aus_der_anmeldung(client, _auth_sign
     t_b, uid_b = await _register(_auth_signer)
     dm_id = await _dm_zwischen(client, _auth_signer, friend_pair, uid_a, uid_b)
 
-    for token, zeilen_id in ((t_a, 501), (t_b, 502)):
-        await _zeile_einliefern(client, token, zeilen_id, dm_id, b"e" * 60)
+    for token, inhalt in ((t_a, b"a" * 60), (t_b, b"b" * 60)):
+        await _zeile_einliefern(client, token, 501, dm_id, inhalt)
 
     # Beide Seiten lesen dieselbe Zuordnung — als Zeichenkette (Snowflake).
     for token in (t_a, t_b):
         r = await client.get(f"/archiv/{dm_id}", headers=make_auth_header(token))
-        assert {z["id"]: z["user_id"] for z in r.json()} == {"501": str(uid_a), "502": str(uid_b)}
+        assert {z["nutzlast_b64"]: z["user_id"] for z in r.json()} == {
+            _b64(b"a" * 60): str(uid_a),
+            _b64(b"b" * 60): str(uid_b),
+        }
 
 
 @pytest.mark.asyncio
@@ -151,21 +157,19 @@ async def test_einlieferer_laesst_sich_nicht_im_koerper_setzen(client, _auth_sig
 
 
 @pytest.mark.asyncio
-async def test_wiederholte_einlieferung_eines_anderen_uebernimmt_die_zeile_nicht(
-    client, _auth_signer, friend_pair
-):
-    """Dieselbe Zeilen-ID ein zweites Mal, diesmal vom Partner: ON CONFLICT
-    DO NOTHING — der erste Einlieferer bleibt stehen."""
+async def test_die_id_einer_fremden_zeile_besetzt_nichts(client, _auth_signer, friend_pair):
+    """Der Partner sendet die Zeilen-ID einer schon liegenden Zeile mit: sie
+    bleibt unberührt, seine bekommt eine eigene."""
     t_a, uid_a = await _register(_auth_signer)
     t_b, uid_b = await _register(_auth_signer)
     dm_id = await _dm_zwischen(client, _auth_signer, friend_pair, uid_a, uid_b)
 
-    for token, inhalt in ((t_a, b"a" * 60), (t_b, b"b" * 60)):
-        await _zeile_einliefern(client, token, 504, dm_id, inhalt)
-    r = await client.get(f"/archiv/{dm_id}", headers=make_auth_header(t_b))
-    [zeile] = r.json()
-    assert zeile["user_id"] == str(uid_a)
-    assert zeile["nutzlast_b64"] == _b64(b"a" * 60)
+    await _zeile_einliefern(client, t_a, 504, dm_id, b"a" * 60)
+    [erste] = (await client.get(f"/archiv/{dm_id}", headers=make_auth_header(t_a))).json()
+    await _zeile_einliefern(client, t_b, int(erste["id"]), dm_id, b"b" * 60)
+    zeilen = (await client.get(f"/archiv/{dm_id}", headers=make_auth_header(t_b))).json()
+    assert [z["user_id"] for z in zeilen] == [str(uid_a), str(uid_b)]
+    assert zeilen[0] == erste
 
 
 @pytest.mark.asyncio
@@ -320,7 +324,7 @@ async def test_gruppe_einliefern_und_lesen_rundtrip(client, _auth_signer, gruppe
     for token in (t_a, t_b):
         r = await client.get(f"/archiv/{gid}", headers=make_auth_header(token))
         assert r.status_code == 200
-        assert [z["id"] for z in r.json()] == ["600"]
+        assert [z["nutzlast_b64"] for z in r.json()] == [nutzlast]
     r = await client.get(f"/archiv/{gid}/schluessel", headers=make_auth_header(t_b))
     assert r.json()["wrap_b64"] == _b64(b"x" * 40)
 

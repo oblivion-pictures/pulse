@@ -54,6 +54,7 @@ from dcc_chat_gateway.models import (
 from dcc_chat_gateway.private_gruppen_zugriff import gruppen_teilnehmer
 from dcc_chat_gateway.routes._deps import CloudOnly, dm_member_check
 from dcc_chat_gateway.security import CurrentUser
+from dcc_chat_gateway.snowflake import next_id
 
 log = logging.getLogger(__name__)
 
@@ -69,8 +70,9 @@ MAX_ZEILEN_JE_EINLIEFERUNG = 2000
 class ArchivZeileIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # Id vom Klienten (Zufalls-Snowflake): Wiederholung nach Netzfehler ist
-    # idempotent (ON CONFLICT DO NOTHING), statt Duplikate zu stapeln.
+    # Die Id des Klienten wird angenommen und VERWORFEN — die Zeilen-ID
+    # vergibt der Server (s. ``archiv_einliefern``). Das Feld bleibt, damit
+    # ausgelieferte Klienten, die es weiter senden, kein 422 bekommen.
     id: int = Field(gt=0)
     channel_id: int = Field(gt=0)
     nutzlast_b64: str = Field(min_length=8, max_length=32768)
@@ -160,16 +162,23 @@ async def archiv_einliefern(
     kanaele = {z.channel_id for z in payload.zeilen} | {w.channel_id for w in payload.wraps}
     zugriffe = await _pruefe_zeilen_kanaele(session, kanaele, current.id)
 
+    # Die Zeilen-ID vergibt der Server, nie der Einliefernde: ein neuerer
+    # Klient legt die Zeile eines ANDEREN Einlieferers lokal unter ihr ab
+    # (``archiv/zeile.ts``, Gegenprüfung G2-3/R1). Wählte der Einliefernde sie
+    # selbst, setzte er sie gleich der Kennung einer fremden Nachricht und
+    # besetzte deren lokalen Platz auf jedem Gerät, das sie noch nicht hält.
+    # Preis: eine wiederholte Einlieferung ist nicht mehr idempotent. Der
+    # Klient wiederholt keine (``archiv/senden.ts`` ist fire-and-forget), und
+    # eine doppelte Zeile desselben Autors legt die Identität beim Lesen
+    # zusammen (``verlauf/identitaet.ts``).
     for zeile in payload.zeilen:
-        await session.execute(
-            pg_insert(ArchivZeile)
-            .values(
-                id=zeile.id,
+        session.add(
+            ArchivZeile(
+                id=next_id(),
                 channel_id=zeile.channel_id,
                 nutzlast=_b64(zeile.nutzlast_b64),
                 user_id=current.id,
             )
-            .on_conflict_do_nothing(index_elements=[ArchivZeile.id])
         )
     for wrap in payload.wraps:
         zugriff = zugriffe[wrap.channel_id]

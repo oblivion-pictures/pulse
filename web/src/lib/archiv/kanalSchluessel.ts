@@ -45,8 +45,10 @@ function vonB64(wert: string): Uint8Array {
 	return bytes;
 }
 
-/** Zufällige Zeilen-Id (63 Bit, dezimal) — Wiederholungen sind beim Server
- *  idempotent (ON CONFLICT DO NOTHING). */
+/** Zufällige Zeilen-Id (63 Bit, dezimal) für das Pflichtfeld `id` der
+ *  Einlieferung. Der Server verwirft sie seit 2026-10-14 und vergibt die
+ *  Zeilen-ID selbst (G2-3, Kopf von `zeile.ts`); gesendet wird sie weiter,
+ *  damit ein Server von davor die Einlieferung nicht mit 422 abweist. */
 export function erzeugeZufallsId(): string {
 	const bytes = new Uint8Array(8);
 	globalThis.crypto.getRandomValues(bytes);

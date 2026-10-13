@@ -244,13 +244,14 @@ export type Nachschub = 'sicherung' | 'kopplung' | 'archiv';
  *
  *   - Ein Grabstein bleibt einer — der Nachschub kann ihn nicht aufheben.
  *   - Ein ungeprüfter Satz (`herkunft.ts`) wird durch jeden geprüften
- *     desselben Autors ersetzt, auch durch eine geprüfte Archiv-Zeile.
- *   - Ein anderer Autor unter demselben Schlüssel ist nicht dieselbe
+ *     ersetzt, auch durch eine geprüfte Archiv-Zeile und auch durch den
+ *     eines anderen Autors.
+ *   - Sonst ist ein anderer Autor unter demselben Schlüssel nicht dieselbe
  *     Nachricht; der liegende Satz bleibt unangetastet, und der Nachschub
  *     fällt weg. Eine fremde Archiv-Zeile kann so nie einen liegenden Satz
- *     überschreiben — umgekehrt verdrängt aber auch die eigene Wahrheit
- *     keinen fremden Satz unter ihrem Schlüssel (Gegenprüfung 2026-10-12,
- *     Fund 3, offen: Kopf von `archiv/zeile.ts`).
+ *     überschreiben, und einen fremden Platz besetzen kann sie auch nicht:
+ *     sie liegt unter ihrer Zeilen-ID, die der Server vergibt (G2-3, Kopf
+ *     von `archiv/zeile.ts`).
  *   - Inhalt, Bearbeitung, Reaktionen, Zustellstand: der liegende gewinnt —
  *     er ist auf diesem Gerät gepflegt worden, der Nachschub ist eine Kopie
  *     von früher.
@@ -281,12 +282,16 @@ export function satzErgaenzen<S extends Satz>(
   neu: Satz,
   herkunft: Nachschub
 ): S | null {
-  if (vorhanden.geloescht || vorhanden.autorId !== neu.autorId) return null;
-  // Ein ungeprüfter Satz (Archiv-Bestandszeile) weicht jedem geprüften
-  // desselben Autors ganz, nie umgekehrt (`herkunft.ts`, Fund 4).
+  if (vorhanden.geloescht) return null;
+  const selberAutor = vorhanden.autorId === neu.autorId;
+  // Ein ungeprüfter Satz (Archiv-Bestandszeile) weicht jedem geprüften ganz,
+  // nie umgekehrt (`herkunft.ts`, Fund 4) — auch dem eines anderen Autors:
+  // Schlüssel und Autor einer Bestandszeile wählte der Einliefernde frei, sie
+  // darf keinen Platz besetzen (G2-3, Kopf von `archiv/zeile.ts`).
   if (vorhanden.ungeprueft && !neu.ungeprueft && !neu.geloescht) {
-    return { ...neu, kryptoId: neu.kryptoId ?? vorhanden.kryptoId } as S;
+    return { ...neu, kryptoId: neu.kryptoId ?? (selberAutor ? vorhanden.kryptoId : null) } as S;
   }
+  if (!selberAutor) return null;
   const kryptoId = vorhanden.kryptoId ?? neu.kryptoId;
   if (herkunft === 'archiv') {
     return kryptoId === vorhanden.kryptoId ? null : { ...vorhanden, kryptoId };

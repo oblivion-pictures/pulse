@@ -618,12 +618,15 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
       });
   }
 
-  // Fund 3 der zweiten Gegenprüfung, offen (Kopf von `archiv/zeile.ts`): eine
-  // Archiv-Zeile liegt unter ihrer eigenen ID `i`, und die wählt der
-  // Einliefernde frei. Was gilt: ein Satz eines anderen Autors unter
-  // derselben ID überschreibt nie einen liegenden Satz, über keinen Weg.
+  // Fund 3 der zweiten Gegenprüfung (= G2-3): eine Archiv-Zeile lag unter
+  // ihrer eigenen ID `i`, und die wählt der Einliefernde frei. Seit
+  // 2026-10-14 liegt die Zeile eines anderen Einlieferers unter ihrer
+  // Zeilen-ID, die der Server vergibt (Kopf von `archiv/zeile.ts`, Unit-Test
+  // `archiv-zeile.test.ts`). Die Regel hier unten bleibt: ein Satz eines
+  // anderen Autors unter derselben ID überschreibt nie einen liegenden Satz,
+  // über keinen Weg.
 
-  test('Fund 3 (offen): ein Satz unter fremder ID überschreibt keinen liegenden Satz', async ({ page }) => {
+  test('Fund 3: ein Satz unter fremder ID überschreibt keinen liegenden Satz', async ({ page }) => {
     const bobUnterK = { id: K, autor: BOB, kryptoId: K, inhalt: 'bob' };
     await ablegen(page, 'put', [{ id: K, autor: ALICE, kryptoId: K, inhalt: 'echt' }]);
     await ablegen(page, 'archiv', [bobUnterK]);
@@ -633,7 +636,7 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     expect(await belegung(page)).toEqual([`${K} alice ${K} echt`]);
   });
 
-  test('Fund 3 (offen): im selben Nachschub gewinnt der erste Satz unter einem Schlüssel', async ({ page }) => {
+  test('Fund 3: im selben Nachschub gewinnt der erste Satz unter einem Schlüssel', async ({ page }) => {
     await ablegen(page, 'archiv', [
       { id: K, autor: ALICE, kryptoId: K, inhalt: 'echt' },
       { id: K, autor: BOB, kryptoId: K, inhalt: 'bob' }
@@ -641,9 +644,9 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     expect(await belegung(page)).toEqual([`${K} alice ${K} echt`]);
   });
 
-  test('Fund 3 (offen): liegt Bobs Satz zuerst, holt die eigene Sicherung den Schlüssel nicht zurück', async ({ page }) => {
-    // Die bekannte Lücke, festgehalten, damit ihre Behebung hier auffällt:
-    // wer Fund 3 löst, dreht diese Erwartung um.
+  test('Fund 3: liegt ein geprüfter Satz Bobs unter K, holt die eigene Sicherung den Schlüssel nicht zurück', async ({ page }) => {
+    // Über das Archiv entsteht diese Lage nicht mehr (Bobs Zeile liegt unter
+    // ihrer Zeilen-ID); die Datenbank-Regel bleibt, wer zuerst liegt, gewinnt.
     await ablegen(page, 'archiv', [{ id: K, autor: BOB, kryptoId: K, inhalt: 'bob' }]);
     await ablegen(page, 'sicherung', [{ id: K, autor: ALICE, inhalt: 'aus der Sicherung' }]);
     expect(await belegung(page)).toEqual([`${K} bob ${K} bob`]);
