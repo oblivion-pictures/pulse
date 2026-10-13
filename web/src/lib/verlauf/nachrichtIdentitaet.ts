@@ -3,8 +3,8 @@
  * für alle Stellen, die Kopien zusammenführen: den Anzeige-Merge
  * (`zusammenfuegen.ts`), den Wiederherstellungs-Leser
  * (`sicherung/wiederherstellen.ts`), den Nachrichten-Store
- * (`stores/messages.svelte.ts`) und die Verlaufs-Suche nach einer
- * kanonischen Id (`db.ts::verlaufSatzIdFuerKryptoId`).
+ * (`stores/messages.svelte.ts` über `nachrichten/listenKern.ts`) und die
+ * Verlaufs-Suche nach einer kanonischen Id (`db.ts::verlaufSatzIdFuerKryptoId`).
  *
  * **Die Identität einer verschlüsselten Nachricht ist die Id, die ihr AUTOR
  * gewählt hat** (`krypto/lokaleNachrichtId.ts`, reist im Umschlag mit). Jedes
@@ -49,8 +49,9 @@ export function kanonischeNachrichtId(id: string, kryptoId?: string | null): str
 
 /**
  * Ob eine ankommende Kopie (`id`, `kryptoId`) eine schon gehaltene Nachricht
- * ist — die Prüfung des Nachrichten-Stores (`stores/messages.svelte.ts`), der
- * je Kanal die gehaltenen `id`s und die gehaltenen `kryptoId`s führt.
+ * ist — die Prüfung des Nachrichten-Stores (`stores/messages.svelte.ts`, die
+ * Rechnung steht in `nachrichten/listenKern.ts`), der je Kanal die
+ * gehaltenen `id`s und die gehaltenen `kryptoId`s führt.
  *
  * Geprüft werden die eigene `id` und die kanonische Id der Ankunft, die
  * kanonische gegen BEIDE Mengen: hält der Store die Kopie des Autors aus

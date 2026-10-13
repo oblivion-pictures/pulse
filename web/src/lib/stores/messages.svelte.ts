@@ -3,11 +3,27 @@ import { dispatchingUserId } from './currentServerUser';
 import { compareSnowflakeId } from '$lib/utils/snowflake';
 import { clearBlobCache } from '$lib/attachments/blobCache';
 import { istBekannteNachricht } from '$lib/verlauf/nachrichtIdentitaet';
+import {
+  einfuegen,
+  ersetzeNachricht,
+  kappen,
+  kryptoIdsVon,
+  letzteServerId,
+  lueckeZusammenfuehren,
+  vorneAnfuegen
+} from '$lib/nachrichten/listenKern';
+import {
+  abgleichen,
+  pinSpiegel,
+  pinsFortschreiben,
+  reaktionAnwenden
+} from '$lib/nachrichten/aenderungenKern';
+import { ZuletztBenutzt } from '$lib/nachrichten/kanalCache';
 
-/** Die `krypto_id`s einer Liste — der Ausgangsstand für einen Kanal, der noch
- *  keine Menge führt. */
-function kryptoIdsVon(list: Message[]): Set<string> {
-  return new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
+/** `obj` ohne den Schlüssel `key` (Kopie). */
+function ohne<T>(obj: Record<string, T>, key: string): Record<string, T> {
+  const { [key]: _weg, ...rest } = obj;
+  return rest;
 }
 
 class MessageStore {
@@ -28,12 +44,9 @@ class MessageStore {
   // Geräts beim Hochscrollen). Nur über die kanonische ID erkennt der
   // Store sie als dieselbe Nachricht.
   private kryptoIds = $state<Record<string, Set<string>>>({});
-  // LRU order of cached channels (least-recently-used first). Plain bookkeeping
-  // — not rendered, so no $state. Keeps the in-memory cache from growing for
-  // every channel ever visited in a session: beyond MAX_CACHED_CHANNELS the
-  // least-recently-active channel is evicted (re-fetched cleanly on return via
-  // the existing !loadedChannels path).
-  private accessOrder: string[] = [];
+  // LRU order of cached channels — beyond MAX_CACHED_CHANNELS the
+  // least-recently-active channel is evicted (`nachrichten/kanalCache.ts`).
+  private lru = new ZuletztBenutzt();
 
   for(channelId: string): Message[] {
     return this.byChannel[channelId] ?? [];
@@ -46,45 +59,37 @@ class MessageStore {
   /** Max number of channels kept in the message cache at once. */
   private static readonly MAX_CACHED_CHANNELS = 15;
 
-  /** Move a channel to the most-recently-used end of the LRU order. */
-  private bumpAccess(channelId: string): void {
-    const i = this.accessOrder.indexOf(channelId);
-    if (i !== -1) this.accessOrder.splice(i, 1);
-    this.accessOrder.push(channelId);
-  }
-
-  /** Evict least-recently-used channels until the cache is within the cap.
-   *  The just-bumped (active) channel sits at the tail and is never reached. */
+  /** Evict least-recently-used channels until the cache is within the cap. */
   private enforceChannelCap(): void {
-    for (const cid of [...this.accessOrder]) {
-      if (Object.keys(this.byChannel).length <= MessageStore.MAX_CACHED_CHANNELS) break;
-      if (cid in this.byChannel) this.clearChannel(cid);
-    }
+    const max = MessageStore.MAX_CACHED_CHANNELS;
+    for (const cid of this.lru.zuRaeumen(Object.keys(this.byChannel), max)) this.clearChannel(cid);
   }
 
   /** Mark a channel as the most-recently-active (called when the user opens
    *  it, even if no new messages loaded) and enforce the cache cap. */
   touch(channelId: string): void {
     if (!channelId) return;
-    this.bumpAccess(channelId);
+    this.lru.anheben(channelId);
     this.enforceChannelCap();
   }
 
-  /** Trim a sorted channel list to the CAP (keeping the newest), dropping the
-   *  pruned messages' confirmed nonces so the dedup set can't grow without
-   *  bound over a long-lived session. Returns the (possibly unchanged) list. */
-  private pruneToCap(list: Message[]): Message[] {
-    if (list.length <= MessageStore.CAP) return list;
-    for (const m of list.slice(0, list.length - MessageStore.CAP)) {
-      if (m.nonce) this.confirmedNonces.delete(m.nonce);
-    }
-    return list.slice(-MessageStore.CAP);
+  /** Vergisst die bestätigten Nonces gekappter Nachrichten, damit die Dedup-
+   *  Menge über eine lange Sitzung nicht unbegrenzt wächst. */
+  private vergiss(verworfen: Message[]): void {
+    for (const m of verworfen) if (m.nonce) this.confirmedNonces.delete(m.nonce);
+  }
+
+  /** Merkt die Nonce einer vom Server bestätigten (nicht `tmp-`) Nachricht. */
+  private bestaetige(m: Message): void {
+    if (m.nonce && !m.id.startsWith('tmp-')) this.confirmedNonces.add(m.nonce);
   }
 
   setInitial(channelId: string, msgs: Message[]): void {
     // Backend returns descending; flip for chat-bottom display.
-    let sorted = [...msgs].sort((a, b) => compareSnowflakeId(a.id, b.id));
-    if (sorted.length > MessageStore.CAP) sorted = sorted.slice(-MessageStore.CAP);
+    const sorted = kappen(
+      [...msgs].sort((a, b) => compareSnowflakeId(a.id, b.id)),
+      MessageStore.CAP
+    ).liste;
     this.byChannel = { ...this.byChannel, [channelId]: sorted };
     this.loadedChannels = { ...this.loadedChannels, [channelId]: true };
     // Populate the ID set for O(1) dedup during upsert.
@@ -102,31 +107,13 @@ class MessageStore {
     const list = this.byChannel[channelId] ?? [];
     const ids = this.messageIds[channelId] ?? new Set(list.map((m) => m.id));
     const krypto = this.kryptoIds[channelId] ?? kryptoIdsVon(list);
-    // id-sortiert + deduped in einem Durchgang. Die kanonische ID
-    // (`verlauf/nachrichtIdentitaet.ts`) blockt die Kopie desselben Worts aus
-    // der Archiv-Kette des anderen Geräts — sie trägt eine fremde lokale ID
-    // und würde sonst doppelt angezeigt (Frischgerät + Sicherung, 2026-09-17).
-    const fresh = [...msgs]
-      .sort((a, b) => compareSnowflakeId(a.id, b.id))
-      .filter((m) => !istBekannteNachricht(m.id, m.krypto_id, ids, krypto));
-    if (!fresh.length) return false;
-    const trimmed = this.pruneToCap([...fresh, ...list]);
-    this.byChannel = { ...this.byChannel, [channelId]: trimmed };
-    for (const m of fresh) {
-      ids.add(m.id);
-      if (m.krypto_id) krypto.add(m.krypto_id);
-    }
-    if (ids.size > trimmed.length) {
-      ids.clear();
-      for (const m of trimmed) ids.add(m.id);
-      krypto.clear();
-      for (const m of trimmed) if (m.krypto_id) krypto.add(m.krypto_id);
-    }
+    const angefuegt = vorneAnfuegen(list, ids, krypto, msgs, MessageStore.CAP);
+    if (!angefuegt) return false;
+    this.vergiss(angefuegt.verworfen);
+    this.byChannel = { ...this.byChannel, [channelId]: angefuegt.liste };
     this.messageIds = { ...this.messageIds, [channelId]: ids };
     this.kryptoIds = { ...this.kryptoIds, [channelId]: krypto };
-    for (const m of fresh) {
-      if (!m.id.startsWith('tmp-') && m.nonce) this.confirmedNonces.add(m.nonce);
-    }
+    for (const m of angefuegt.neu) this.bestaetige(m);
     return true;
   }
 
@@ -134,11 +121,10 @@ class MessageStore {
     const list = this.byChannel[msg.channel_id] ?? [];
     const ids = this.messageIds[msg.channel_id] ?? new Set();
     // If the message has a nonce, try to replace a pending optimistic copy.
-    let next = list;
     if (msg.nonce) {
       const idxNonce = list.findIndex((m) => m.nonce === msg.nonce && m.id !== msg.id);
       if (idxNonce >= 0) {
-        next = list.slice();
+        const next = list.slice();
         next[idxNonce] = msg;
         this.byChannel = { ...this.byChannel, [msg.channel_id]: next };
         // Update the ID set.
@@ -156,53 +142,20 @@ class MessageStore {
           if (kryptoNeu) krypto.add(kryptoNeu);
           this.kryptoIds = { ...this.kryptoIds, [msg.channel_id]: krypto };
         }
-        // Track this nonce as confirmed if not tmp.
-        if (!msg.id.startsWith('tmp-') && msg.nonce) {
-          this.confirmedNonces.add(msg.nonce);
-        }
+        this.bestaetige(msg);
         return;
       }
     }
-    // Dedupe über die id und die kanonische ID — derselbe Schutz wie in
-    // `prepend`, auch in der Gegenrichtung: kam die Kopie aus Sicherung/
-    // Archiv ZUERST (kanonische Id als `id`), darf die live zugestellte
-    // (zustellungs-eigene Id, kanonische in `krypto_id`) sie nicht
-    // verdoppeln. Vorfall 2026-10-05: ohne das erschien jede Nachricht
-    // doppelt, deren Archivabholung vor der Live-Zustellung fertig war.
-    // Echo-Ersatz (Nonce) läuft OBEN — ein Skip hier trifft nur Duplikate.
+    // Echo-Ersatz (Nonce) läuft OBEN — ein Skip in `einfuegen` trifft nur
+    // Duplikate (über die Id und die kanonische ID).
     const krypto = this.kryptoIds[msg.channel_id] ?? kryptoIdsVon(list);
-    if (istBekannteNachricht(msg.id, msg.krypto_id, ids, krypto)) return;
-    // Append in id-order to keep the list monotonic.
-    if (list.length === 0 || compareSnowflakeId(list[list.length - 1].id, msg.id) < 0) {
-      next = [...list, msg];
-    } else {
-      next = [...list, msg].sort((a, b) => compareSnowflakeId(a.id, b.id));
-    }
-    next = this.pruneToCap(next);
-    this.byChannel = { ...this.byChannel, [msg.channel_id]: next };
-    // Update the ID set with the new message and remove any pruned messages.
-    ids.add(msg.id);
-    if (ids.size > next.length) {
-      // Messages were pruned (ids already has the new id, but next was sliced
-      // back to CAP), rebuild the set to evict the stale ids.
-      ids.clear();
-      next.forEach((m) => ids.add(m.id));
-    }
+    const eingefuegt = einfuegen(list, ids, krypto, msg, MessageStore.CAP);
+    if (!eingefuegt) return;
+    this.vergiss(eingefuegt.verworfen);
+    this.byChannel = { ...this.byChannel, [msg.channel_id]: eingefuegt.liste };
     this.messageIds = { ...this.messageIds, [msg.channel_id]: ids };
-    // Krypto-Set mitführen — der Duplikat-Skip steht OBEN (nach Id-Prüfung
-    // und Nonce-Ersatz); hier wird nur gebucht, was übernommen wurde.
-    if (msg.krypto_id) krypto.add(msg.krypto_id);
-    if (ids.size > next.length) {
-      krypto.clear();
-      next.forEach((m) => {
-        if (m.krypto_id) krypto.add(m.krypto_id);
-      });
-    }
     this.kryptoIds = { ...this.kryptoIds, [msg.channel_id]: krypto };
-    // Track this nonce as confirmed if not tmp.
-    if (!msg.id.startsWith('tmp-') && msg.nonce) {
-      this.confirmedNonces.add(msg.nonce);
-    }
+    this.bestaetige(msg);
   }
 
   /** Add an optimistic outgoing message — replaced by upsert on echo. */
@@ -214,14 +167,18 @@ class MessageStore {
    *  list is authoritative once present; if missing on the update payload
    *  we preserve the cached one so the UI doesn't blink. */
   update(msg: Message): void {
-    const list = this.byChannel[msg.channel_id];
-    if (!list) return;
-    const idx = list.findIndex((m) => m.id === msg.id);
-    if (idx < 0) return;
-    const merged: Message = { ...msg, reactions: msg.reactions ?? list[idx].reactions };
-    const next = list.slice();
-    next[idx] = merged;
-    this.byChannel = { ...this.byChannel, [msg.channel_id]: next };
+    this.ersetze(msg.channel_id, msg.id, (alt) => ({
+      ...msg,
+      reactions: msg.reactions ?? alt.reactions
+    }));
+  }
+
+  /** Ersetzt eine geladene Nachricht durch das, was `aendern` aus ihr macht —
+   *  nicht geladen oder `null` zurück = nichts zu tun. */
+  private ersetze(channelId: string, id: string, aendern: (alt: Message) => Message | null): void {
+    const list = this.byChannel[channelId];
+    const next = list && ersetzeNachricht(list, id, aendern);
+    if (next) this.byChannel = { ...this.byChannel, [channelId]: next };
   }
 
   /** Hard-remove a deleted message from the local list. */
@@ -254,35 +211,17 @@ class MessageStore {
     evt: { message_id: string; channel_id: string; user_id: string; emoji: string },
     delta: 1 | -1
   ): void {
-    const list = this.byChannel[evt.channel_id];
-    if (!list) return;
-    const idx = list.findIndex((m) => m.id === evt.message_id);
-    if (idx < 0) return;
-    const msg = list[idx];
-    const reactions: ReactionAggregate[] = msg.reactions ? msg.reactions.map((r) => ({ ...r })) : [];
-    // dispatchingUserId (not currentServerUserId): reaction_add/remove for a
-    // DM arrive over the Cloud-background connection while a self-host may be
-    // the active server — currentServerUserId() would return the self-host
-    // pairwise id and never match the event's Cloud user_id, so the actor's
-    // own reaction never flipped to "me". applyReaction runs synchronously in
-    // the WS handler, so the dispatching connection is still in flight here.
-    const isMe = evt.user_id === dispatchingUserId();
-    const rIdx = reactions.findIndex((r) => r.emoji === evt.emoji);
-    if (delta === 1) {
-      if (rIdx < 0) reactions.push({ emoji: evt.emoji, count: 1, me: isMe });
-      else {
-        reactions[rIdx].count += 1;
-        if (isMe) reactions[rIdx].me = true;
-      }
-    } else {
-      if (rIdx < 0) return;
-      reactions[rIdx].count -= 1;
-      if (isMe) reactions[rIdx].me = false;
-      if (reactions[rIdx].count <= 0) reactions.splice(rIdx, 1);
-    }
-    const next = list.slice();
-    next[idx] = { ...msg, reactions };
-    this.byChannel = { ...this.byChannel, [evt.channel_id]: next };
+    this.ersetze(evt.channel_id, evt.message_id, (msg) => {
+      // dispatchingUserId (not currentServerUserId): reaction_add/remove for a
+      // DM arrive over the Cloud-background connection while a self-host may be
+      // the active server — currentServerUserId() would return the self-host
+      // pairwise id and never match the event's Cloud user_id, so the actor's
+      // own reaction never flipped to "me". applyReaction runs synchronously in
+      // the WS handler, so the dispatching connection is still in flight here.
+      const isMe = evt.user_id === dispatchingUserId();
+      const reactions = reaktionAnwenden(msg.reactions, evt.emoji, delta, isMe);
+      return reactions && { ...msg, reactions };
+    });
   }
 
   /** Setzt die Reaktions-Liste einer Nachricht hart — fuer Reaktions-
@@ -290,25 +229,13 @@ class MessageStore {
    *  `reaction_add`-Ereignis mit Delta, der Verlauf liefert den fertigen
    *  Stand (`verlaufReaktionAnwenden`). Nicht geladen = nichts zu tun. */
   setReactions(channelId: string, id: string, reactions: ReactionAggregate[]): void {
-    const list = this.byChannel[channelId];
-    if (!list) return;
-    const idx = list.findIndex((m) => m.id === id);
-    if (idx < 0) return;
-    const next = list.slice();
-    next[idx] = { ...list[idx], reactions };
-    this.byChannel = { ...this.byChannel, [channelId]: next };
+    this.ersetze(channelId, id, (alt) => ({ ...alt, reactions }));
   }
 
   /** E2EE-Bearbeitungs-Umschlag angewendet (P1.5 Teil 2): Text + edited_at
    *  auf der geladenen Nachricht ersetzen (harter Ersatz statt Delta). */
   bearbeiteInhalt(channelId: string, id: string, inhalt: string, bearbeitetAm: string): void {
-    const list = this.byChannel[channelId];
-    if (!list) return;
-    const idx = list.findIndex((m) => m.id === id);
-    if (idx < 0) return;
-    const next = list.slice();
-    next[idx] = { ...next[idx], content: inhalt, edited_at: bearbeitetAm };
-    this.byChannel = { ...this.byChannel, [channelId]: next };
+    this.ersetze(channelId, id, (alt) => ({ ...alt, content: inhalt, edited_at: bearbeitetAm }));
   }
 
   /** Pin-Liste setzen (REST-Antwort beim Kanalöffnen). */
@@ -324,96 +251,41 @@ class MessageStore {
   applyPin(evt: { channel_id: string; message_id: string; pinned: boolean }): void {
     // Gespiegelte Nachricht VORHER holen — sie liefert ggf. den vollständigen
     // Pin-Listen-Eintrag (der WS-Event-Payload fehlen Inhalt/Autor).
-    const msgs = this.byChannel[evt.channel_id];
-    const i = msgs ? msgs.findIndex((m) => m.id === evt.message_id) : -1;
-    const list = this.pinsByChannel[evt.channel_id];
-    if (list) {
-      const idx = list.findIndex((p) => p.id === evt.message_id);
-      if (evt.pinned) {
-        if (idx < 0) {
-          // Sortierung (nach pinned_at) repariert der nächste Listen-Fetch;
-          // bis dahin hängt der neue Pin hinten an. Ist die Nachricht geladen,
-          // kommt eine vollständige Kopie rein, sonst der schmale Platzhalter.
-          const entry: Message = i >= 0
-            ? { ...msgs![i], pinned_at: new Date().toISOString() }
-            : ({ id: evt.message_id, channel_id: evt.channel_id, pinned_at: new Date().toISOString() } as Message);
-          this.pinsByChannel = { ...this.pinsByChannel, [evt.channel_id]: [...list, entry] };
-        }
-      } else if (idx >= 0) {
-        this.pinsByChannel = {
-          ...this.pinsByChannel,
-          [evt.channel_id]: list.filter((p) => p.id !== evt.message_id)
-        };
-      }
+    const geladen = this.byChannel[evt.channel_id]?.find((m) => m.id === evt.message_id);
+    const pins = this.pinsByChannel[evt.channel_id];
+    if (pins) {
+      const next = pinsFortschreiben(pins, evt, geladen);
+      if (next !== pins) this.pinsByChannel = { ...this.pinsByChannel, [evt.channel_id]: next };
     }
-    if (!msgs || i < 0) return;
-    const next = msgs.slice();
-    next[i] = { ...msgs[i], pinned_at: evt.pinned ? (msgs[i].pinned_at ?? new Date().toISOString()) : null };
-    this.byChannel = { ...this.byChannel, [evt.channel_id]: next };
+    this.ersetze(evt.channel_id, evt.message_id, (msg) => pinSpiegel(msg, evt.pinned));
   }
 
   /** Newest persisted (non-optimistic) message id in the channel, or null
    *  if empty / only optimistic placeholders. Used by the WS-reconnect
-   *  gap-fill to request `?after=<lastId>`.
-   *
-   *  **Ids ohne Server-Gegenstück zählen nicht als Cursor.** Verschluesselte
-   *  Nachrichten muenzen ihre Id lokal (20 Stellen, `krypto/senden.ts::
-   *  lokaleNachrichtId`) und existieren serverseitig nicht — als `after`
-   *  überläuft so eine Id den BIGINT der Server-Abfrage mit 500 (aufgefallen
-   *  2026-08-31 über die Sicherungs-Wiederherstellung, die genau solche
-   *  Nachrichten in den Verlauf lädt). Der Cursor ist deshalb die neueste
-   *  Id, die als BIGINT passt. */
+   *  gap-fill to request `?after=<lastId>`. Welche Ids als Cursor taugen und
+   *  warum, steht bei `letzteServerId`. */
   lastPersistedId(channelId: string): string | null {
     const list = this.byChannel[channelId];
-    if (!list) return null;
-    for (let i = list.length - 1; i >= 0; i--) {
-      const id = list[i].id;
-      if (id.startsWith('tmp-')) continue;
-      if (id.length > 19 || (id.length === 19 && id > '9223372036854775807')) continue;
-      return id;
-    }
-    return null;
+    return list ? letzteServerId(list) : null;
   }
 
   /** Merge a gap-fill page (messages strictly newer than `lastPersistedId`)
    *  into the channel non-destructively. Dedupes by id. A message that the
-   *  WS already pushed during the round-trip is skipped by id.
-   *
-   *  Nonce handling: if an incoming row carries the nonce of an optimistic
-   *  `tmp-` copy we still hold, it IS that message's persisted version —
-   *  the WS echo was lost (e.g. to a reconnect that happened in the send
-   *  window). We replace the `tmp-` copy in place rather than dropping the
-   *  real row, which would otherwise strand the message on a `tmp-` id
-   *  forever (un-editable, un-reactable until a full channel reload). */
+   *  WS already pushed during the round-trip is skipped by id. Eine Zeile mit
+   *  der Nonce einer noch gehaltenen `tmp-`-Kopie ersetzt diese an Ort und
+   *  Stelle (Begründung bei `lueckeZusammenfuehren`). */
   mergeGap(channelId: string, msgs: Message[]): void {
     if (!msgs.length) return;
     const list = this.byChannel[channelId] ?? [];
     const haveIds = this.messageIds[channelId] ?? new Set(list.map((m) => m.id));
-    // nonce → index of an optimistic copy still awaiting its echo.
-    const tmpByNonce = new Map<string, number>();
-    list.forEach((m, i) => {
-      if (m.nonce && m.id.startsWith('tmp-')) tmpByNonce.set(m.nonce, i);
-    });
-    let next = list.slice();
-    const append: Message[] = [];
-    let mutated = false;
-    for (const m of msgs) {
-      if (haveIds.has(m.id)) continue;
-      const tmpIdx = m.nonce ? tmpByNonce.get(m.nonce) : undefined;
-      if (tmpIdx !== undefined) {
-        next[tmpIdx] = m;
-        mutated = true;
-        if (m.nonce && !m.id.startsWith('tmp-')) this.confirmedNonces.add(m.nonce);
-      } else {
-        append.push(m);
-      }
-    }
-    if (!mutated && !append.length) return;
-    next = [...next, ...append].sort((a, b) => compareSnowflakeId(a.id, b.id));
-    next = this.pruneToCap(next);
-    this.byChannel = { ...this.byChannel, [channelId]: next };
+    const merged = lueckeZusammenfuehren(list, haveIds, msgs, MessageStore.CAP);
+    if (!merged) return;
+    for (const nonce of merged.bestaetigteNonces) this.confirmedNonces.add(nonce);
+    this.vergiss(merged.verworfen);
+    this.byChannel = { ...this.byChannel, [channelId]: merged.liste };
     // Rebuild the ID set after merge.
-    this.messageIds = { ...this.messageIds, [channelId]: new Set(next.map((m) => m.id)) };
+    const ids = new Set(merged.liste.map((m) => m.id));
+    this.messageIds = { ...this.messageIds, [channelId]: ids };
   }
 
   /** Re-sync already-present messages from a freshly re-fetched page —
@@ -431,39 +303,8 @@ class MessageStore {
   reconcile(channelId: string, msgs: Message[]): void {
     const list = this.byChannel[channelId];
     if (!list) return;
-    const byId = new Map(msgs.map((m) => [m.id, m]));
-    let changed = false;
-    const next = list.map((cur) => {
-      const fresh = byId.get(cur.id);
-      if (!fresh) return cur;
-      const merged: Message = {
-        ...cur,
-        content: fresh.content,
-        edited_at: fresh.edited_at,
-        reactions: fresh.reactions ?? cur.reactions
-      };
-      if (
-        merged.content === cur.content &&
-        merged.edited_at === cur.edited_at &&
-        this.reactionsEqual(merged.reactions ?? [], cur.reactions ?? [])
-      ) {
-        return cur;
-      }
-      changed = true;
-      return merged;
-    });
-    if (changed) this.byChannel = { ...this.byChannel, [channelId]: next };
-  }
-
-  /** Compare two reaction arrays structurally without serialization. */
-  private reactionsEqual(a: ReactionAggregate[], b: ReactionAggregate[]): boolean {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      const ra = a[i];
-      const rb = b[i];
-      if (ra.emoji !== rb.emoji || ra.count !== rb.count || ra.me !== rb.me) return false;
-    }
-    return true;
+    const next = abgleichen(list, msgs);
+    if (next !== list) this.byChannel = { ...this.byChannel, [channelId]: next };
   }
 
   /** Mark a channel as not loaded so the next visit re-fetches messages. */
@@ -477,24 +318,15 @@ class MessageStore {
   }
 
   clearChannel(channelId: string): void {
-    const i = this.accessOrder.indexOf(channelId);
-    if (i !== -1) this.accessOrder.splice(i, 1);
-    const { [channelId]: list, ...rest } = this.byChannel;
-    this.byChannel = rest;
-    const { [channelId]: _loaded, ...restLoaded } = this.loadedChannels;
-    this.loadedChannels = restLoaded;
-    const { [channelId]: _ids, ...restIds } = this.messageIds;
-    this.messageIds = restIds;
-    const { [channelId]: _krypto, ...restKrypto } = this.kryptoIds;
-    this.kryptoIds = restKrypto;
-    const { [channelId]: _pins, ...restPins } = this.pinsByChannel;
-    this.pinsByChannel = restPins;
+    this.lru.entfernen(channelId);
+    const list = this.byChannel[channelId];
+    this.byChannel = ohne(this.byChannel, channelId);
+    this.loadedChannels = ohne(this.loadedChannels, channelId);
+    this.messageIds = ohne(this.messageIds, channelId);
+    this.kryptoIds = ohne(this.kryptoIds, channelId);
+    this.pinsByChannel = ohne(this.pinsByChannel, channelId);
     // Clear stale nonces from this channel.
-    if (list) {
-      for (const m of list) {
-        if (m.nonce) this.confirmedNonces.delete(m.nonce);
-      }
-    }
+    if (list) this.vergiss(list);
   }
 
   /** Full wipe — sign-out and server-switch only (`clearChannel` handles the
@@ -507,7 +339,7 @@ class MessageStore {
     this.kryptoIds = {};
     this.pinsByChannel = {};
     this.confirmedNonces.clear();
-    this.accessOrder = [];
+    this.lru.leeren();
     clearBlobCache();
   }
 }

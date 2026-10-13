@@ -25,7 +25,8 @@ class GuildSoundStore {
    * static default. */
   byGuild = $state<Record<string, Record<string, string>>>({});
   /** Wann die URL-Liste je Guild zuletzt (frisch) geholt wurde. Kein
-   *  $state — rein technisches Buchhalten wie messages.accessOrder. */
+   *  $state — rein technisches Buchhalten wie die LRU-Reihenfolge des
+   *  Nachrichten-Stores (`nachrichten/kanalCache.ts`). */
   private fetchedAt = new Map<string, number>();
   /** Laufende Refreshes je Guild — verhindert Stampede bei mehreren
    *  Plays im veralteten Fenster. */
