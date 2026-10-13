@@ -249,9 +249,13 @@ function pgQuery(sql: string): string {
     // .env fehlt -> Vorgaben unten greifen.
   }
   const pgUser = dotenv.POSTGRES_USER ?? 'dcc';
+  // Dieselbe Datenbank wie der Lauf (`PULSE_E2E_DB`, s. `_globalSetup.ts`) —
+  // mit eigener DB fände die Kopplungs-Abfrage sonst nichts (Muster:
+  // `sicherung-geraetewechsel.spec.ts`).
+  const testDb = process.env.PULSE_E2E_DB ?? 'dcc_test';
   return execFileSync(
     'docker',
-    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', 'dcc_test', '-tAc', sql],
+    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', testDb, '-tAc', sql],
     { encoding: 'utf8' }
   ).trim();
 }

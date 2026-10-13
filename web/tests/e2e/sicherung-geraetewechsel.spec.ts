@@ -482,6 +482,159 @@ test.describe.serial('Sicherung: Gerätewechsel über das Archiv (2026-09-10)', 
 });
 
 /* ————————————————————————————————————————————————————————————————
+ * Zwei EIGENE Geräte spiegeln in dieselbe Sicherung (2026-10-13).
+ *
+ * Alice sendet von ihrem Sendegerät; ihr Zweitgerät bekommt die
+ * Selbstzustellung. Beide spiegeln: das Sendegerät seine Kopie unter der
+ * Autor-Id, das Zweitgerät unter seiner Zustellungs-Id mit der Autor-Id als
+ * `kryptoId`. Bis zu diesem Tag trug die Kopie des Sendegeräts KEINE
+ * `kryptoId`, und ein Frischgerät stellte beide Zeilen wieder her — jeder
+ * Abgleich verglich nur `kryptoId` mit `kryptoId`. Der Lauf prüft die
+ * Wurzel (Sendewege setzen `krypto_id`) und den Abgleich über die
+ * kanonische Id (`verlauf/nachrichtIdentitaet.ts`) zusammen; jede der
+ * beiden Hälften allein macht ihn grün, keine von beiden rot.
+ * ———————————————————————————————————————————————————————————————— */
+
+const ts2 = Date.now() + 1;
+const ALICE2 = {
+  username: `alice_eigen2_${ts2}`,
+  email: `alice_eigen2_${ts2}@dcc-test.example.com`,
+  password: 'sup3r-secret-pass'
+};
+const BOB2 = {
+  username: `bob_eigen2_${ts2}`,
+  email: `bob_eigen2_${ts2}@dcc-test.example.com`,
+  password: 'sup3r-secret-pass'
+};
+const SELBST_GESENDET = 'selbst gesendet, von zwei geraeten gespiegelt';
+
+/** Wartet, bis `userId` mindestens `anzahl` Geräte mit Schlüsselbündel hat —
+ *  erst dann geht eine Sendung auch an das Zweitgerät. */
+async function warteAufGeraete(page: Page, userId: string, anzahl: number): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const antwort = await page.evaluate(async (uid) => {
+          const token = localStorage.getItem('dcc.tokens.access');
+          const r = await fetch('/api/chat/keys/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ user_ids: [uid] })
+          });
+          return { status: r.status, body: await r.text() };
+        }, userId);
+        if (antwort.status !== 200) return 0;
+        const geraete = (JSON.parse(antwort.body) as Record<string, { curve25519?: string }[]>)[userId];
+        return (geraete ?? []).filter((g) => g.curve25519).length;
+      },
+      { timeout: 20_000 }
+    )
+    .toBeGreaterThanOrEqual(anzahl);
+}
+
+test.describe.serial('Sicherung: zwei eigene Geräte spiegeln dieselbe gesendete Nachricht (2026-10-13)', () => {
+  let speicher2: Awaited<ReturnType<typeof starteSpeicher>>;
+  const kontexte: BrowserContext[] = [];
+  let sendeGeraet: Page;
+  let zweitGeraet: Page;
+  let frischGeraet: Page;
+  let bob2: Page;
+  let kanal = '';
+  let aliceId = '';
+
+  test.beforeAll(async ({ browser }) => {
+    speicher2 = await starteSpeicher();
+    const seite = async () => {
+      const ctx = await browser.newContext();
+      await ctx.route('**/changelog.json', (route) => route.fulfill({ json: { entries: [] } }));
+      await schalterEinschalten(ctx);
+      await alsElektronGeraetAusgeben(ctx);
+      await ordnerStubs(ctx, speicher2.url);
+      await ordnerAdapterAbrufPatch(ctx);
+      kontexte.push(ctx);
+      return ctx.newPage();
+    };
+    sendeGeraet = await seite();
+    zweitGeraet = await seite();
+    frischGeraet = await seite();
+    bob2 = await seite();
+  });
+
+  test.afterAll(async () => {
+    for (const ctx of kontexte) await ctx.close();
+    await speicher2.stop();
+  });
+
+  test('Alice und Bob registrieren sich, Alice meldet ein Zweitgerät an', async () => {
+    await register(sendeGeraet, ALICE2);
+    await register(bob2, BOB2);
+    aliceId = await currentUserId(sendeGeraet);
+    const bobId = await currentUserId(bob2);
+    await becomeFriends(sendeGeraet, aliceId, bob2, bobId);
+    await warteAufSchluesselbuendel(bob2, bobId);
+    // Den Kanal VOR dem Zweitgerät anlegen — dann kennt es ihn aus dem
+    // `ready`-Rahmen, und die Selbstzustellung findet einen lokalen Kanal.
+    kanal = await createDmChannel(sendeGeraet, bobId);
+    await login(zweitGeraet, ALICE2.username, ALICE2.password);
+    await warteAufGeraete(sendeGeraet, aliceId, 2);
+  });
+
+  test('beide Alice-Geräte verbinden dieselbe Sicherung', async () => {
+    await sicherungEinrichten(sendeGeraet, SICHERUNGS_PASSWORT, true);
+    await expect
+      .poll(async () => speicher2.namen().some((n) => n === 'key.puls'), { timeout: 10_000 })
+      .toBe(true);
+    await sicherungEinrichten(zweitGeraet, SICHERUNGS_PASSWORT, false);
+  });
+
+  test('Alice sendet, ihr Zweitgerät bekommt die Selbstzustellung, beide Geräte spiegeln', async () => {
+    test.setTimeout(180_000); // jede Geräte-Kette spült im 60-s-Takt
+    await zweitGeraet.goto(`/app/@me/${kanal}`);
+    await bob2.goto(`/app/@me/${kanal}`);
+    await sendeGeraet.goto(`/app/@me/${kanal}`);
+    await sendeGeraet.getByTestId('message-input').click();
+    await sendeGeraet.getByTestId('message-input').fill(SELBST_GESENDET);
+    await sendeGeraet.getByTestId('message-input').press('Enter');
+
+    for (const page of [zweitGeraet, bob2]) {
+      await expect(
+        page.locator('[data-testid="message-content"]', { hasText: SELBST_GESENDET })
+      ).toBeVisible({ timeout: 15_000 });
+    }
+    // Zwei Geräte-Ketten im Kanal-Ordner: Sendegerät und Zweitgerät.
+    const ketten = () =>
+      new Set(
+        speicher2
+          .namen()
+          .filter((n) => n.startsWith(`${kanal}/dev-`) && n.endsWith('.puls') && n.includes('seg-'))
+          .map((n) => n.slice(0, n.indexOf('seg-')))
+      ).size;
+    await expect.poll(ketten, { timeout: 150_000 }).toBeGreaterThanOrEqual(2);
+  });
+
+  test('ein Frischgerät stellt wieder her — die Nachricht steht genau einmal da', async () => {
+    test.setTimeout(120_000);
+    await login(frischGeraet, ALICE2.username, ALICE2.password);
+    await frischGeraet.goto(`/app/@me/${kanal}`);
+    await sicherungEinrichten(frischGeraet, SICHERUNGS_PASSWORT, false);
+    await expect(
+      frischGeraet.getByText(/Nachricht(?:en)? aus der Sicherung wiederhergestellt/)
+    ).toBeVisible({ timeout: 30_000 });
+
+    await frischGeraet.goto('/app/@me');
+    await frischGeraet.goto(`/app/@me/${kanal}`);
+    const zeilen = frischGeraet.locator('[data-testid="message-content"]', {
+      hasText: SELBST_GESENDET
+    });
+    await expect(zeilen.first()).toBeVisible({ timeout: 15_000 });
+    // Archiv- und Sicherungs-Nachzug laufen nach dem Öffnen im Hintergrund
+    // weiter (`dmKanalWechsel.svelte.ts`) — erst danach zählt die Zahl.
+    await frischGeraet.waitForTimeout(3_000);
+    await expect(zeilen).toHaveCount(1);
+  });
+});
+
+/* ————————————————————————————————————————————————————————————————
  * Kopien der beiden Vite-Abfang-Helfer aus e2e-dm.spec.ts (dort nicht
  * exportiert, hier bewusst dupliziert statt importiert — die Spec soll
  * auch standalone lesbar bleiben).
