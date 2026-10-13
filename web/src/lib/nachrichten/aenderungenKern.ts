@@ -49,7 +49,9 @@ export function reaktionenGleich(a: ReactionAggregate[], b: ReactionAggregate[])
   return true;
 }
 
-const jetztIso = (): string => new Date().toISOString();
+function jetztIso(): string {
+  return new Date().toISOString();
+}
 
 /** Schreibt die Pin-Liste eines Kanals nach einem `pin_update` fort. `geladen`
  *  ist die Nachricht selbst, falls sie im Historie-Fenster liegt — sie liefert

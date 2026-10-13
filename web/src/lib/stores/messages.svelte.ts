@@ -72,8 +72,8 @@ class MessageStore {
     this.enforceChannelCap();
   }
 
-  /** Vergisst die bestätigten Nonces gekappter Nachrichten, damit die Dedup-
-   *  Menge über eine lange Sitzung nicht unbegrenzt wächst. */
+  /** Vergisst die bestätigten Nonces nicht mehr gehaltener Nachrichten (gekappt
+   *  oder Kanal geräumt), damit die Dedup-Menge nicht unbegrenzt wächst. */
   private vergiss(verworfen: Message[]): void {
     for (const m of verworfen) if (m.nonce) this.confirmedNonces.delete(m.nonce);
   }

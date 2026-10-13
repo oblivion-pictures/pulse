@@ -6,10 +6,11 @@
  * Liste wird.
  *
  * Importfrei im Sinn der `pnpm test:unit`-Falle (s. CLAUDE.md): nur der
- * Snowflake-Vergleich und die Identitätsregel (beide selbst importfrei, per
- * Relativpfad MIT Endung) und ein reiner Typ-Import, den Node beim Laden
- * verwirft. Keine Rune — der Store ist eine `.svelte.ts`, dieses Modul
- * bewusst nicht.
+ * Snowflake-Vergleich (`utils/snowflake.ts`, hängt selbst nur an
+ * `snowflakeZeit.ts`) und die Identitätsregel (`verlauf/nachrichtIdentitaet.ts`,
+ * ohne Importe), beide per Relativpfad MIT Endung, und ein reiner Typ-Import,
+ * den Node beim Laden verwirft. Keine Rune — der Store ist eine `.svelte.ts`,
+ * dieses Modul bewusst nicht.
  *
  * **Die Id-Mengen werden an Ort und Stelle fortgeschrieben.** `vorneAnfuegen`
  * und `einfuegen` ändern die ihnen übergebenen Mengen `ids` / `krypto`
@@ -26,18 +27,29 @@ export function kryptoIdsVon(list: Message[]): Set<string> {
   return new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
 }
 
-/** Gleicht beide Mengen mit der Liste ab, nachdem diese gekappt wurde: danach
- *  stehen in `ids` und `krypto` nur noch Nachrichten, die wirklich in der Liste
- *  sind — nur das macht die Dublettenprüfung ehrlich (eine weggekappte
- *  Nachricht darf nach dem Hochscrollen wieder aufgenommen werden). Ändert die
- *  übergebenen Mengen an Ort und Stelle. */
-export function mengenNeuAufbauen(ids: Set<string>, krypto: Set<string>, liste: Message[]): void {
+/** Nimmt `m` in die beiden Dublettenmengen auf. */
+function merken(ids: Set<string>, krypto: Set<string>, m: Message): void {
+  ids.add(m.id);
+  if (m.krypto_id) krypto.add(m.krypto_id);
+}
+
+/** Gleicht beide Dublettenmengen mit der Liste ab, wenn diese gekappt wurde
+ *  (`verworfen` ist nicht leer) oder `ids` mehr Einträge führt, als die Liste
+ *  hält: danach stehen in `ids` und `krypto` nur noch Nachrichten, die wirklich
+ *  in der Liste sind — nur das macht die Dublettenprüfung ehrlich (eine
+ *  weggekappte Nachricht darf nach dem Hochscrollen wieder aufgenommen werden).
+ *  Beide Mengen gehen stets zusammen, damit sie nicht auseinanderlaufen. Ändert
+ *  die übergebenen Mengen an Ort und Stelle. */
+function mengenAbgleichen(
+  ids: Set<string>,
+  krypto: Set<string>,
+  liste: Message[],
+  verworfen: Message[]
+): void {
+  if (verworfen.length === 0 && ids.size <= liste.length) return;
   ids.clear();
   krypto.clear();
-  for (const m of liste) {
-    ids.add(m.id);
-    if (m.krypto_id) krypto.add(m.krypto_id);
-  }
+  for (const m of liste) merken(ids, krypto, m);
 }
 
 /** Kappt eine id-sortierte Liste auf die neuesten `cap` Einträge. `verworfen`
@@ -80,14 +92,14 @@ export function ersetzeNachricht(
 
 /** Die neueste Id, die als Cursor für `?after=<id>` taugt, sonst `null`.
  *
- *  **Ids ohne Server-Gegenstück zählen nicht, soweit sie nicht in den BIGINT
- *  passen.** Verschluesselte Nachrichten muenzen ihre Id lokal
- *  (`krypto/lokaleNachrichtId.ts`: seit 2026-09-02 19 Ziffern, davor 20) und
- *  existieren serverseitig nicht — als `after` überläuft eine 20-stellige Id
- *  den BIGINT der Server-Abfrage mit 500 (aufgefallen 2026-08-31 über die
- *  Sicherungs-Wiederherstellung, die genau solche Nachrichten in den Verlauf
- *  lädt). Der Cursor ist deshalb die neueste Id, die als BIGINT passt;
- *  vorläufige `tmp-`-Kopien zählen ohnehin nicht. */
+ *  **Ids, die nicht in den BIGINT passen, zählen nicht.** Verschluesselte
+ *  Nachrichten muenzen ihre Id lokal (`krypto/lokaleNachrichtId.ts`: seit
+ *  2026-09-02 19 Ziffern, davor 20) und existieren serverseitig nicht — als
+ *  `after` überläuft eine 20-stellige Id den BIGINT der Server-Abfrage mit 500
+ *  (aufgefallen 2026-08-31 über die Sicherungs-Wiederherstellung, die genau
+ *  solche Nachrichten in den Verlauf lädt). Der Cursor ist deshalb die
+ *  neueste Id, die als BIGINT passt; vorläufige `tmp-`-Kopien zählen ohnehin
+ *  nicht. */
 export function letzteServerId(list: Message[]): string | null {
   for (let i = list.length - 1; i >= 0; i--) {
     const id = list[i].id;
@@ -159,8 +171,8 @@ export type Anfuegung = { liste: Message[]; neu: Message[]; verworfen: Message[]
  *  Kopie desselben Worts aus der Archiv-Kette des anderen Geräts, die eine
  *  fremde lokale Id trägt und sonst doppelt angezeigt würde (Frischgerät +
  *  Sicherung, 2026-09-17). Der Rest wird id-sortiert vorangestellt und auf
- *  `cap` gekappt. Schreibt `ids` / `krypto` fort und baut sie aus der Liste
- *  neu auf, sobald gekappt wurde. `null`, wenn nichts Neues dabei war. */
+ *  `cap` gekappt. Schreibt `ids` / `krypto` fort und gleicht sie mit der
+ *  Liste ab, sobald gekappt wurde. `null`, wenn nichts Neues dabei war. */
 export function vorneAnfuegen(
   list: Message[],
   ids: Set<string>,
@@ -173,11 +185,8 @@ export function vorneAnfuegen(
     .filter((m) => !istBekannteNachricht(m.id, m.krypto_id, ids, krypto));
   if (!neu.length) return null;
   const { liste, verworfen } = kappen([...neu, ...list], cap);
-  for (const m of neu) {
-    ids.add(m.id);
-    if (m.krypto_id) krypto.add(m.krypto_id);
-  }
-  if (verworfen.length > 0 || ids.size > liste.length) mengenNeuAufbauen(ids, krypto, liste);
+  for (const m of neu) merken(ids, krypto, m);
+  mengenAbgleichen(ids, krypto, liste, verworfen);
   return { liste, neu, verworfen };
 }
 
@@ -188,13 +197,8 @@ export function vorneAnfuegen(
  *  live zugestellte (zustellungs-eigene Id, kanonische in `krypto_id`) sie
  *  nicht verdoppeln. Vorfall 2026-10-05: ohne das erschien jede Nachricht
  *  doppelt, deren Archivabholung vor der Live-Zustellung fertig war. Schreibt
- *  `ids` / `krypto` fort und baut BEIDE aus der Liste neu auf, sobald gekappt
- *  wurde. `null` bei einem Duplikat.
- *
- *  Bis zum 2026-10-13 baute der Store nach dem Kappen nur `ids` neu auf: die
- *  Prüfung für `krypto` stand dahinter und traf deshalb nie zu. Die
- *  `krypto_id`s längst gekappter Nachrichten blieben in der Menge, und eine
- *  davon, wieder hochgescrollt, galt als Dublette und fehlte in der Anzeige. */
+ *  `ids` / `krypto` fort und gleicht BEIDE mit der Liste ab, sobald gekappt
+ *  wurde. `null` bei einem Duplikat. */
 export function einfuegen(
   list: Message[],
   ids: Set<string>,
@@ -204,11 +208,10 @@ export function einfuegen(
 ): { liste: Message[]; verworfen: Message[] } | null {
   if (istBekannteNachricht(msg.id, msg.krypto_id, ids, krypto)) return null;
   const { liste, verworfen } = kappen(einsortieren(list, msg), cap);
-  ids.add(msg.id);
-  if (msg.krypto_id) krypto.add(msg.krypto_id);
-  // Gekappt (die Mengen enthalten die neue Nachricht schon, die Liste ist aber
-  // auf `cap` zurückgeschnitten, vielleicht ohne sie): neu aufbauen, damit die
-  // veralteten Einträge gehen.
-  if (verworfen.length > 0 || ids.size > liste.length) mengenNeuAufbauen(ids, krypto, liste);
+  // Die Mengen bekommen die neue Nachricht auch dann, wenn das Kappen sie
+  // gleich wieder aus der Liste wirft (sie war die älteste); der Abgleich
+  // nimmt sie dann wieder heraus.
+  merken(ids, krypto, msg);
+  mengenAbgleichen(ids, krypto, liste, verworfen);
   return { liste, verworfen };
 }

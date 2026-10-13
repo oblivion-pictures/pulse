@@ -61,12 +61,18 @@ import { errText } from '$lib/utils/errText';
   let streamMbps = $state(untrack(() => kbpsToMbpsStr(community.stream_bitrate_max_kbps)));
   let fps = $state(untrack(() => community.stream_fps_max?.toString() ?? ''));
   let resolution = $state(untrack(() => community.stream_resolution_max ?? ''));
-  // Storage: total quota in GB (empty = unlimited), per-file size in MB, count.
+  // Dateien (`AdminCommunityStorageLimits`): Speicher gesamt in GB (leer =
+  // unbegrenzt), Größe je Datei in MB, Anzahl. Ablage: Freigabe (Schalter, kein
+  // Erben) + eigener Speicher-Topf.
   let storageQuotaGB = $state(
     untrack(() => bytesToUnitStr(community.attachment_storage_quota_bytes, GB))
   );
   let attachSizeMB = $state(untrack(() => bytesToUnitStr(community.attachment_max_size_bytes, MB)));
   let attachCount = $state(untrack(() => community.attachment_max_count_per_message?.toString() ?? ''));
+  let dropboxAllowed = $state(untrack(() => community.dropbox_allowed));
+  let dropboxQuotaGB = $state(
+    untrack(() => bytesToUnitStr(community.dropbox_quota_bytes, GB))
+  );
   // Scale caps ('' = unlimited).
   let maxMembers = $state(untrack(() => community.max_members?.toString() ?? ''));
   let maxChannels = $state(untrack(() => community.max_channels?.toString() ?? ''));
@@ -75,11 +81,6 @@ import { errText } from '$lib/utils/errText';
     untrack(() => community.max_devices_per_owner?.toString() ?? '')
   );
   let maxStreams = $state(untrack(() => community.max_concurrent_streams?.toString() ?? ''));
-  // Ablage: Freigabe (Schalter, kein Erben) + eigener Speicher-Topf.
-  let dropboxAllowed = $state(untrack(() => community.dropbox_allowed));
-  let dropboxQuotaGB = $state(
-    untrack(() => bytesToUnitStr(community.dropbox_quota_bytes, GB))
-  );
   let busy = $state(false);
 
   const RES_OPTIONS = ['Native', '4K', '1440p', '1080p', '720p', '480p'];
