@@ -18,6 +18,13 @@
  * https://howispulse.com/updates/mac/latest-mac.yml (macOS, seit Stufe B
  * 2026-10-05 — verlangt eine gültige Developer-ID-Signatur, deshalb vorher
  * dort inaktiv). Linux = Flatpak (kein electron-updater).
+ * Die Feed-DATEI bleibt dort, denn nur dort kennt die installierte App sie
+ * (`app-update.yml`). Die Adressen darin zeigen aber auf die GitHub-Releases
+ * (`…/releases/download/desktop-v<version>/<fester Name>`), wohin der Bau-
+ * Workflow sie mit `infra/release/feed-auf-github.sh` umschreibt. Die Adresse
+ * trägt bewusst die Version, nicht `latest`: electron-updater holt die
+ * Blockmap der Vorgängerfassung, indem er die neue Version im Pfad durch die
+ * alte ersetzt — ohne Version im Pfad gäbe es kein Delta.
  *
  * LOKALER TEST (ohne Image-Push): `PULSE_DEV_UPDATE=1` hebt die
  * `app.isPackaged`-Sperre auf und setzt `forceDevUpdateConfig`, sodass der ganze

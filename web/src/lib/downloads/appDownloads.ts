@@ -11,9 +11,12 @@
  *    `flatpak install --from <flatpakref>` (oder die .flatpakref-Datei in GNOME
  *    Software öffnen). Das Flatpak bleibt bewusst dort.
  *  - NICHT hierher gehört der Auto-Update-Feed der Windows-/macOS-Apps
- *    (`/updates/win/`, `/updates/win-server/`, `/updates/mac/` …): der liegt
- *    weiter auf dem eigenen Server und wird von electron-updater gelesen,
- *    nicht von Menschen (Schritt 3 des Umzugs, noch offen).
+ *    (`/updates/win/`, `/updates/win-server/`, `/updates/mac/` …): die
+ *    Feed-Dateien liegen weiter auf dem eigenen Server und werden von
+ *    electron-updater gelesen, nicht von Menschen. Ihre Adressen zeigen seit
+ *    Schritt 3 auf dieselben Releases, aber auf die versionierte Adresse
+ *    (`releases/download/desktop-v<version>/…`), nicht auf `latest`
+ *    (`infra/release/feed-auf-github.sh`).
  *
  * Die alten Bequem-Adressen `howispulse.com/updates/win/Pulse-Setup-latest.exe`
  * u. ä. leitet nginx auf dieselben GitHub-Adressen weiter

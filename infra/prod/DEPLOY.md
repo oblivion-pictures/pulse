@@ -348,8 +348,9 @@ hat die `/registry/token`-Route, compose kennt den `registry`-Service).
    einen NSIS-Installer (~144 MB) in `~/pulse/updates-win` ab, und **nichts holte
    ihn je wieder weg**. Am 2026-08-07 lagen dort 40 Stück mit zusammen 5,9 GB —
    jede je veröffentlichte Version ab 0.1.0, bei aktuellem Tempo rund 2,5 GB im
-   Monat. `updates-prune.sh` behält die jüngsten fünf, die in `latest.yml`
-   genannte und `Pulse-Setup-latest.exe`:
+   Monat. `updates-prune.sh` behält die jüngsten fünf, den Installer der in
+   `latest.yml` genannten Version (`path:` — oder, seit der Feed auf GitHub
+   zeigt, `version:`) und `Pulse-Setup-latest.exe`:
    ```sh
    40 4 * * 0  ~/pulse/infra/prod/updates-prune.sh --apply >> ~/pulse/infra/prod/updates-prune.log 2>&1
    ```
@@ -358,9 +359,9 @@ hat die `/registry/token`-Route, compose kennt den `registry`-Service).
    nachweislich weiter über HTTPS abrufbar.
 
    **Die `.blockmap`-Dateien bleiben ALLE liegen** (je ~155 KB, zusammen wenige
-   MB): aus ihnen rechnet electron-updater die differenzielle Aktualisierung.
-   Sie zu löschen spart nichts und kann Bestandsclients zum vollen Download
-   zwingen.
+   MB): aus ihnen rechnet electron-updater die differenzielle Aktualisierung —
+   seit der Feed auf GitHub zeigt, liest er sie von dort, und diese hier sind
+   der Rückfall. Sie zu löschen spart nichts.
 
    **Alte Installer sind kein Sicherheitsnetz für die Auto-Update-Kette** — der
    Updater läuft mit `allowDowngrade=false` (s. `CLAUDE.md`), eine kaputte

@@ -151,34 +151,17 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      # scp lädt nur die genannten Dateien hoch und löscht NIE etwas — alte
-      # Setup-.exe + .blockmap bleiben liegen (Delta-Downloads). Das
-      # Zielverzeichnis ~/pulse/updates-win-server/ muss auf dem Server existieren
-      # (einmalig anlegen; scp legt es nicht an) und ist read-only in den
-      # web-Container gemountet (docker-compose.yml → /srv/updates-win-server).
-      - name: Update-Feed nach howispulse hochladen
-        if: github.ref == 'refs/heads/main'
-        shell: bash
-        run: |
-          EXE=$(ls desktop/release-server/Pulse-Server-Setup-*.exe)
-          scp -i ~/.ssh/id_ed25519 \
-            desktop/release-server/latest.yml \
-            "$EXE" \
-            "$EXE.blockmap" \
-            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win-server/
-          # Zusätzlich unter festem Dateinamen ablegen → stabiler Direktdownload
-          # zum Weitergeben: https://howispulse.com/updates/win-server/Pulse-Server-Setup-latest.exe
-          # Wird bei jedem Build überschrieben. electron-updater nutzt ihn NICHT
-          # (liest nur latest.yml) → harmlos neben den versionierten Dateien.
-          scp -i ~/.ssh/id_ed25519 \
-            "$EXE" \
-            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win-server/Pulse-Server-Setup-latest.exe
-
-      # Zusätzlich als GitHub-Release (Schritt 1 des Download-Umzugs auf GitHub,
-      # 2026-10-12): ein Release je Version, feste Dateinamen — Mechanik im Kopf
-      # von infra/release/github-release.sh. netcup bleibt vorerst die Quelle für
-      # Auto-Update und Links; dieser Schritt läuft danach, ein Fehler hier färbt
-      # den Lauf rot, ohne den Feed zu berühren.
+      # Die Dateien liegen als GitHub-Release (Schritte 1 und 3 des Download-
+      # Umzugs auf GitHub): ein Release je Version, feste Dateinamen — Mechanik im
+      # Kopf von infra/release/github-release.sh. Danach schreibt
+      # infra/release/feed-auf-github.sh latest.yml so um, dass seine Adressen auf
+      # dieses Release zeigen (Mechanik und Prüfungen im Kopf des Skripts).
+      #
+      # Beides in EINEM Schritt und aus EINER Liste: der Feed zeigt damit auf
+      # genau die Dateien, die hochgeladen wurden. Der Schritt steht VOR dem
+      # Feed-Upload — andersherum zeigte der Feed kurz auf Dateien, die es noch
+      # nicht gibt (404 bei jedem Client, der in der Lücke prüft). Scheitert er,
+      # bleibt der Feed auf netcup bei der alten Version.
       - name: Auf GitHub Releases veröffentlichen
         if: github.ref == 'refs/heads/main'
         shell: bash
@@ -186,9 +169,43 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           EXE=$(ls desktop/release-server/Pulse-Server-Setup-*.exe)
-          bash infra/release/github-release.sh "$(node -p "require('./desktop/package.json').version")" \
-            "Pulse-Server-Setup-Windows.exe=$EXE" \
-            "Pulse-Server-Setup-Windows.exe.blockmap=$EXE.blockmap"
+          VERSION=$(node -p "require('./desktop/package.json').version")
+          DATEIEN=("Pulse-Server-Setup-Windows.exe=$EXE" "Pulse-Server-Setup-Windows.exe.blockmap=$EXE.blockmap")
+          bash infra/release/github-release.sh "$VERSION" "${DATEIEN[@]}"
+          bash infra/release/feed-auf-github.sh "$VERSION" desktop/release-server/latest.yml "${DATEIEN[@]}"
+
+      # scp lädt nur die genannten Dateien hoch und löscht NIE etwas. Das
+      # Zielverzeichnis ~/pulse/updates-win-server/ muss auf dem Server existieren
+      # (einmalig anlegen; scp legt es nicht an) und ist read-only in den
+      # web-Container gemountet (docker-compose.yml → /srv/updates-win-server).
+      #
+      # Der Feed bleibt auf netcup — dort kennen ihn die installierten Apps
+      # (app-update.yml) —, zeigt aber seit dem Umschreiben oben auf GitHub.
+      # Installer, Blockmap und die -latest-Kopie liegen hier nur noch als
+      # Rückfall: nimmt man feed-auf-github.sh aus dem Workflow, stimmen die
+      # relativen Adressen im Feed wieder. latest.yml geht als LETZTES hoch:
+      # erst wenn alles andere liegt, darf der Feed auf die neue Version zeigen.
+      - name: Update-Feed nach howispulse hochladen
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          EXE=$(ls desktop/release-server/Pulse-Server-Setup-*.exe)
+          scp -i ~/.ssh/id_ed25519 \
+            "$EXE" \
+            "$EXE.blockmap" \
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win-server/
+          # Zusätzlich unter festem Dateinamen ablegen → stabiler Direktdownload
+          # zum Weitergeben: https://howispulse.com/updates/win-server/Pulse-Server-Setup-latest.exe
+          # (nginx leitet die Adresse seit 2026-10-13 nach GitHub um; die Datei hier
+          # ist der Rückfall, falls die Umleitung wieder raus muss).
+          # Wird bei jedem Build überschrieben. electron-updater nutzt ihn NICHT
+          # (liest nur latest.yml) → harmlos neben den versionierten Dateien.
+          scp -i ~/.ssh/id_ed25519 \
+            "$EXE" \
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win-server/Pulse-Server-Setup-latest.exe
+          scp -i ~/.ssh/id_ed25519 \
+            desktop/release-server/latest.yml \
+            ${{ secrets.VPS_SSH_ZIEL }}:pulse/updates-win-server/
 
       - name: SSH-Key wieder entfernen
         if: always()

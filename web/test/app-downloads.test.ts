@@ -119,9 +119,9 @@ test('nginx leitet GENAU die fünf alten Bequem-Adressen nach GitHub um', () => 
 });
 
 test('die Auto-Update-Feeds und der Rest von /downloads/ bleiben unberührt', () => {
-  // Schritt 3 (Auto-Update über GitHub) ist nicht Teil dieses Umzugs:
-  // electron-updater liest latest.yml und die versionierten Installer weiter
-  // von hier. Eine Umleitung auf Präfix-Ebene risse sie mit.
+  // Die Feed-Dateien (latest.yml …) liegen weiter hier; nur ihre Adressen zeigen
+  // auf GitHub (Schritt 3, `infra/release/feed-auf-github.sh`). Eine Umleitung
+  // auf Präfix-Ebene risse die Feeds und den Rückfall daneben mit.
   const nginx = lese('../../infra/prod/web-nginx.conf');
   const bloecke: Array<[string, string]> = [
     ['/updates/win/', '/srv/updates-win/'],

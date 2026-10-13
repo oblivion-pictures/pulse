@@ -8,17 +8,22 @@
 # Stueck mit zusammen 5,9 GB — jede je veroeffentlichte Version von 0.1.0 an.
 # Das waechst bei aktuellem Tempo um rund 2,5 GB im Monat und hoert nie auf.
 #
-# **Was wirklich gebraucht wird.** `latest.yml` verweist auf GENAU EINE Datei;
-# electron-updater holt sich nur die. Dazu `Pulse-Setup-latest.exe`, den alten
+# **Was wirklich gebraucht wird.** `latest.yml` nannte frueher GENAU EINE Datei
+# (`path:`), und electron-updater holte sich nur die. Seit der Feed auf GitHub
+# zeigt (`infra/release/feed-auf-github.sh`) steht dort eine Adresse; der
+# Installer dieser Version (`Pulse-Setup-<version>.exe`, Version aus `version:`)
+# bleibt trotzdem liegen, denn nimmt man das Umschreiben aus dem Workflow, zeigt
+# der Feed wieder auf ihn. Dazu `Pulse-Setup-latest.exe`, den alten
 # Direktdownload: nginx leitet diese Adresse seit 2026-10-13 nach GitHub
 # Releases um, der Win-Build laedt die Datei aber weiter hoch — sie bleibt als
 # Rueckfall liegen. Alles andere ist Archiv.
 #
 # **Die Blockmaps bleiben ALLE liegen, und zwar mit Absicht.** Sie sind je rund
 # 155 KB, zusammen also wenige Megabyte, und sie sind es, aus denen
-# electron-updater eine differenzielle Aktualisierung rechnet. Sie zu loeschen
-# spart nichts Nennenswertes und kann Bestandsclients zum vollen Download
-# zwingen. Weg kommen nur die `.exe`.
+# electron-updater eine differenzielle Aktualisierung rechnet — seit der Feed
+# auf GitHub zeigt, liest er sie von dort, und diese hier sind der Rueckfall.
+# Sie zu loeschen spart nichts Nennenswertes und kann (im Rueckfall)
+# Bestandsclients zum vollen Download zwingen. Weg kommen nur die `.exe`.
 #
 # **Alte Installer sind KEIN Sicherheitsnetz fuer die Auto-Update-Kette.** Der
 # Updater laeuft mit `allowDowngrade=false` (s. CLAUDE.md): eine kaputte
@@ -65,6 +70,16 @@ cd "$VERZ"
 
 AUSGELIEFERT="$(sed -n 's/^path:[[:space:]]*//p' latest.yml | tr -d '\r' | head -1)"
 [ -n "$AUSGELIEFERT" ] || { echo "latest.yml nennt kein 'path:' — Abbruch." >&2; exit 1; }
+# Zeigt der Feed auf GitHub, ist `path:` eine Adresse und kein Dateiname — dann
+# gilt der Installer der Feed-Version (Namensschema: `artifactName` in
+# desktop/electron-builder.yml).
+case "$AUSGELIEFERT" in
+  http://*|https://*)
+    FEEDVERSION="$(sed -n 's/^version:[[:space:]]*//p' latest.yml | tr -d '\r' | head -1)"
+    [ -n "$FEEDVERSION" ] || { echo "latest.yml nennt keine 'version:' — Abbruch." >&2; exit 1; }
+    AUSGELIEFERT="Pulse-Setup-${FEEDVERSION}.exe"
+    ;;
+esac
 
 # Die jüngsten N nach Versionsnummer, plus die ausgelieferte, plus der feste
 # Direktdownload-Name.
@@ -92,7 +107,7 @@ for f in Pulse-Setup-*.exe; do
 done
 
 echo "Verzeichnis        : $VERZ"
-echo "Ausgeliefert       : $AUSGELIEFERT (laut latest.yml)"
+echo "Ausgeliefert       : $AUSGELIEFERT (laut latest.yml, bei GitHub-Adressen aus version:)"
 echo "Aufgehoben         : die juengsten $BEHALTE + ausgelieferte + Pulse-Setup-latest.exe"
 echo "Blockmaps          : bleiben unangetastet ($(ls -1 ./*.blockmap 2>/dev/null | wc -l) Stueck)"
 echo "Installer gesamt   : $(ls -1 Pulse-Setup-*.exe 2>/dev/null | wc -l)"

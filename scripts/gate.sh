@@ -326,6 +326,8 @@ if [ "${infra_grund#ja}" != "$infra_grund" ]; then
   echo "  Release-Fälle (infra/release)…"
   bash infra/release/tests/github-release-faelle.sh \
     || { echo "✗ github-release-Fälle ROT — abgebrochen." >&2; exit 1; }
+  bash infra/release/tests/feed-auf-github-faelle.sh \
+    || { echo "✗ feed-auf-github-Fälle ROT — abgebrochen." >&2; exit 1; }
   # shellcheck disable=SC2086
   stempeln infra $BEREICH_infra
 fi

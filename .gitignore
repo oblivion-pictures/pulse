@@ -169,3 +169,5 @@ web/data/
 
 # Arbeitsordner von infra/release/github-release.sh (räumt sich selbst weg)
 /.github-release.*/
+# Arbeitsordner von infra/release/feed-auf-github.sh (räumt sich selbst weg)
+/.feed-auf-github.*/
