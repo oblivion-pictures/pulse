@@ -55,6 +55,15 @@ describe('folgeNachFehler', () => {
     assert.equal(folgeNachFehler(abbruch(), 0, 0), 'verwerfen');
   });
 
+  test('Abbruch auf einem abgebauten Raum → verwerfen, auch mit Versuchen übrig', () => {
+    assert.equal(folgeNachFehler(abbruch(), 0, 2, false), 'verwerfen');
+    assert.equal(folgeNachFehler(abbruch(), 0, 2, true), 'wiederholen');
+  });
+
+  test('ein echter Fehler wird auch auf einem abgebauten Raum gezeigt', () => {
+    assert.equal(folgeNachFehler(gesperrt(), 0, 2, false), 'weiterreichen');
+  });
+
   test('alles andere → weiterreichen, auch wenn Versuche übrig sind', () => {
     assert.equal(folgeNachFehler(gesperrt(), 0, 2), 'weiterreichen');
     assert.equal(folgeNachFehler(new Error('boom'), 0, 2), 'weiterreichen');
@@ -118,10 +127,13 @@ describe('startAudioAbbruchfest', () => {
 describe('startAudioAbbruchfest: ein überholter Versuch hinterlässt keinen gesperrten Ton', () => {
   /** Nimmt LiveKits `startAudio()` nach: der Fehler setzt den Zustand schon,
    *  BEVOR er geworfen wird (`handleAudioPlaybackFailed`), ein Erfolg setzt ihn
-   *  zurück. `drehbuch` = Ausgang je Versuch (der letzte gilt weiter). */
-  function livekitRaum(drehbuch: Array<'ok' | 'abbruch' | 'gesperrt'>) {
+   *  zurück. `drehbuch` = Ausgang je Versuch (der letzte gilt weiter); `abbau` =
+   *  der Raum wird mitten im Versuch abgebaut (Zustand `disconnected`), der
+   *  Versuch endet mit dem Abbruch. */
+  function livekitRaum(drehbuch: Array<'ok' | 'abbruch' | 'abbau' | 'gesperrt'>) {
     const sperre = gesperrt();
     const raum = {
+      state: 'connected',
       canPlaybackAudio: true,
       sperre,
       versuche: 0,
@@ -141,7 +153,8 @@ describe('startAudioAbbruchfest: ein überholter Versuch hinterlässt keinen ges
           raum.canPlaybackAudio = false;
           raum.ereignisse.push(false);
         }
-        throw schritt === 'abbruch' ? abbruch() : sperre;
+        if (schritt === 'abbau') raum.state = 'disconnected';
+        throw schritt === 'gesperrt' ? sperre : abbruch();
       },
     };
     return raum;
@@ -185,6 +198,29 @@ describe('startAudioAbbruchfest: ein überholter Versuch hinterlässt keinen ges
     startAudioAbbruchfest(raum);
     await raum.startAudio();
     assert.equal(raum.versuche, 3);
+  });
+
+  test('Raum mitten im Versuch abgebaut: keine Wiederholung, kein Fehler', async () => {
+    const raum = livekitRaum(['abbau', 'ok']);
+    startAudioAbbruchfest(raum);
+    await raum.startAudio();
+    assert.equal(raum.versuche, 1);
+  });
+
+  test('Raum schon abgebaut: auch ein weiterer Abbruch wird nicht wiederholt', async () => {
+    const raum = livekitRaum(['abbruch', 'ok']);
+    raum.state = 'disconnected';
+    startAudioAbbruchfest(raum);
+    await raum.startAudio();
+    assert.equal(raum.versuche, 1);
+  });
+
+  test('Verbindungszustand reconnecting zählt als lebend', async () => {
+    const raum = livekitRaum(['abbruch', 'ok']);
+    raum.state = 'reconnecting';
+    startAudioAbbruchfest(raum);
+    await raum.startAudio();
+    assert.equal(raum.versuche, 2);
   });
 
   test('das Original läuft am Raum (this), auch bei der Wiederholung', async () => {

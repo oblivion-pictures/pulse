@@ -39,21 +39,32 @@ export function istAbspielAbbruch(fehler: unknown): boolean {
 }
 
 /** Entscheidung nach einem Fehler: `bisher` = wie oft schon wiederholt wurde,
- *  `erlaubt` = wie oft insgesamt wiederholt werden darf. */
-export function folgeNachFehler(fehler: unknown, bisher: number, erlaubt: number): FolgeNachFehler {
+ *  `erlaubt` = wie oft insgesamt wiederholt werden darf, `lebt` = gibt es noch
+ *  etwas, das eine Wiederholung betreffen dürfte (ein abgebauter Raum nicht). */
+export function folgeNachFehler(
+  fehler: unknown,
+  bisher: number,
+  erlaubt: number,
+  lebt = true
+): FolgeNachFehler {
   if (!istAbspielAbbruch(fehler)) return 'weiterreichen';
-  return bisher < erlaubt ? 'wiederholen' : 'verwerfen';
+  return lebt && bisher < erlaubt ? 'wiederholen' : 'verwerfen';
 }
 
 /** Führt `aktion` aus; ein Abspiel-Abbruch endet still (nach höchstens
- *  `erlaubt` Wiederholungen), jeder andere Fehler wird weitergereicht. */
-async function ohneAbbruch(aktion: () => Promise<void>, erlaubt = 0): Promise<void> {
+ *  `erlaubt` Wiederholungen, und nur solange `lebt()` gilt), jeder andere
+ *  Fehler wird weitergereicht. */
+async function ohneAbbruch(
+  aktion: () => Promise<void>,
+  erlaubt = 0,
+  lebt: () => boolean = () => true
+): Promise<void> {
   for (let bisher = 0; ; bisher++) {
     try {
       await aktion();
       return;
     } catch (fehler) {
-      const folge = folgeNachFehler(fehler, bisher, erlaubt);
+      const folge = folgeNachFehler(fehler, bisher, erlaubt, lebt());
       if (folge === 'weiterreichen') throw fehler;
       if (folge === 'verwerfen') return;
     }
@@ -88,8 +99,12 @@ export function spieleAb(el: Pick<HTMLMediaElement, 'play'>): Promise<void> {
  * gelingt (ein weiteres `startAudio`, ein neu angehängtes Element).
  *
  * Deshalb wiederholt der Wrapper einen überholten Versuch, höchstens
- * `STARTAUDIO_WIEDERHOLUNGEN` Mal: die Wiederholung ermittelt den tatsächlichen
- * Zustand neu. Ist der Ton wirklich gesperrt, antwortet sie mit
+ * `STARTAUDIO_WIEDERHOLUNGEN` Mal. **Die Wiederholung ist ein vollständiger
+ * `startAudio()`, kein bloßes Nachmessen:** sie schaltet jedes angehängte
+ * Element wieder laut (`muted = false`) und spielt es erneut ab, bei Bedarf
+ * legt sie einen AudioContext an, und LiveKit loggt je Versuch `could not
+ * playback audio` als Warnung (bis zu dreimal). Dafür stellt sie den
+ * tatsächlichen Zustand her: ist der Ton wirklich gesperrt, antwortet sie mit
  * `NotAllowedError`; der kommt unverändert beim Aufrufer an, und
  * `canPlaybackAudio` bleibt `false`. Bei laufendem AudioContext liegt das
  * kurze `false` dazwischen im selben Task (nur Promise-Fortsetzungen,
@@ -98,11 +113,26 @@ export function spieleAb(el: Pick<HTMLMediaElement, 'play'>): Promise<void> {
  * und das Overlay bleibt, bis ein späterer Abspielversuch gelingt (etwa „Ton
  * aktivieren").
  *
+ * **Nur auf einem lebenden Raum.** Ein möglicher Überholer ist der Abbau des
+ * Raums selbst (Auflegen, Kanalwechsel): er hängt die Elemente ab, schließt den
+ * AudioContext und setzt den Zustand auf `disconnected`. Eine Wiederholung
+ * danach legte einen neuen Kontext an, den niemand mehr schließt. Darum wird
+ * nur wiederholt, solange `raum.state !== 'disconnected'`.
+ *
  * **Muss VOR `room.connect()` gerufen werden**: das Ereignis wird erst beim
  * Verbinden verdrahtet und liest `room.startAudio` in genau diesem Moment.
  * Alles andere als ein Abbruch kommt unverändert beim Aufrufer an.
  */
-export function startAudioAbbruchfest(raum: { startAudio: () => Promise<void> }): void {
+export function startAudioAbbruchfest(raum: {
+  startAudio: () => Promise<void>;
+  /** `ConnectionState` des LiveKit-Raums; fehlt er, gilt der Raum als lebend. */
+  state?: string;
+}): void {
   const original = raum.startAudio;
-  raum.startAudio = () => ohneAbbruch(() => original.call(raum), STARTAUDIO_WIEDERHOLUNGEN);
+  raum.startAudio = () =>
+    ohneAbbruch(
+      () => original.call(raum),
+      STARTAUDIO_WIEDERHOLUNGEN,
+      () => raum.state !== 'disconnected'
+    );
 }

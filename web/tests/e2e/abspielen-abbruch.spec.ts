@@ -30,6 +30,8 @@ declare global {
       Room: new () => {
         startAudio: () => Promise<void>;
         canPlaybackAudio: boolean;
+        state: string;
+        handleDisconnect: (stopTracks?: boolean) => void;
         on: (e: string, fn: (v: boolean) => void) => void;
         remoteParticipants: Map<string, unknown>;
         localParticipant: { emit: (e: string) => void };
@@ -60,6 +62,7 @@ test.describe('play() und sein Abbruch', () => {
       // @ts-expect-error - Vite-served path resolved at browser runtime
       const { startAudioAbbruchfest } = await import('/src/lib/audio/abspielen.ts');
       const raum = new window.LivekitClient.Room();
+      raum.state = 'connected'; // ohne `connect()` stünde er auf `disconnected`
       if (schuetzen) startAudioAbbruchfest(raum);
       const ctx = new AudioContext();
       const el = document.createElement('audio');
@@ -158,6 +161,7 @@ test.describe('startAudio(): Abbruch ist kein gesperrter Ton', () => {
         // @ts-expect-error - Vite-served path resolved at browser runtime
         const { startAudioAbbruchfest } = await import('/src/lib/audio/abspielen.ts');
         const raum = new window.LivekitClient.Room();
+        raum.state = 'connected'; // ohne `connect()` stünde er auf `disconnected`
         const ereignisse: boolean[] = [];
         raum.on('audioPlaybackChanged', (ok) => ereignisse.push(ok));
         if (schuetzen) startAudioAbbruchfest(raum);
@@ -236,5 +240,70 @@ test.describe('startAudio(): Abbruch ist kein gesperrter Ton', () => {
     expect(b.ergebnis).toBe('ok');
     expect(b.versuche).toBe(3);
   });
-});
 
+  /**
+   * Raum wird abgebaut, während `startAudio()` noch auf ein `play()` wartet.
+   * LiveKits Abbau (`handleDisconnect`) schließt den AudioContext und setzt den
+   * Zustand auf `disconnected`; das `play()` endet danach mit AbortError. Eine
+   * Wiederholung legte jetzt einen NEUEN AudioContext an (`acquireAudioContext`),
+   * den niemand mehr schließt.
+   */
+  async function fahreMitAbbau(page: Page, schuetzen: boolean) {
+    return page.evaluate(async (schuetzen) => {
+      // @ts-expect-error - Vite-served path resolved at browser runtime
+      const { startAudioAbbruchfest } = await import('/src/lib/audio/abspielen.ts');
+      const kontexte: AudioContext[] = [];
+      const Echt = window.AudioContext;
+      window.AudioContext = class extends Echt {
+        constructor(...args: ConstructorParameters<typeof AudioContext>) {
+          super(...args);
+          kontexte.push(this);
+        }
+      };
+      const raum = new window.LivekitClient.Room();
+      raum.state = 'connected';
+      if (schuetzen) startAudioAbbruchfest(raum);
+      let versuche = 0;
+      let ueberholen: () => void = () => {};
+      const element = {
+        muted: true,
+        play: () => {
+          if (versuche++ > 0) return Promise.resolve();
+          return new Promise<void>((_, nein) => {
+            ueberholen = () =>
+              nein(new DOMException('The play() request was interrupted by a call to pause().', 'AbortError'));
+          });
+        }
+      };
+      raum.remoteParticipants.set('gegenstelle', {
+        trackPublications: new Map(), // liest `handleDisconnect`
+        audioTrackPublications: new Map([['ton', { track: { attachedElements: [element] } }]]),
+        videoTrackPublications: new Map()
+      });
+      const lauf = raum.startAudio();
+      raum.handleDisconnect(true); // Abbau: schließt den Kontext, Zustand `disconnected`
+      ueberholen(); // … und erst dann endet das wartende play()
+      let ergebnis = 'ok';
+      try {
+        await lauf;
+      } catch (e) {
+        ergebnis = (e as { name?: string }).name ?? String(e);
+      }
+      await new Promise((r) => setTimeout(r, 200));
+      return {
+        ergebnis,
+        versuche,
+        zustand: raum.state,
+        kontexte: kontexte.map((k) => k.state)
+      };
+    }, schuetzen);
+  }
+
+  test('Raum mitten im Versuch abgebaut: keine Wiederholung, kein neuer AudioContext', async ({ page }) => {
+    const b = await fahreMitAbbau(page, true);
+    expect(b.zustand).toBe('disconnected');
+    expect(b.ergebnis).toBe('ok');
+    expect(b.versuche).toBe(1);
+    expect(b.kontexte, 'genau der eine Kontext von vor dem Abbau, und der ist zu').toEqual(['closed']);
+  });
+});
