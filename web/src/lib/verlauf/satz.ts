@@ -38,11 +38,6 @@ type Satz = {
 const ID_BREITE = 20;
 const TRENNER = ':';
 
-/** Obere Grenze fuer den Primaerschluessel-Bereich eines Kanals ohne `vor` —
- *  `ID_BREITE` Neunen sind lexikografisch groesser als jede echte gepolsterte
- *  ID (deren Ziffern hoechstens 9 sind), dient nur als Bereichsende. */
-export const OBERE_ID = '9'.repeat(ID_BREITE);
-
 export function sortierSchluessel(kanalId: string, nachrichtId: string): string {
   return `${kanalId}${TRENNER}${nachrichtId.padStart(ID_BREITE, '0')}`;
 }

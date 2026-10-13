@@ -44,7 +44,7 @@ import { aktuellesKonto } from '../verlauf/konto.ts';
 import { sortierSchluessel, zuSatz } from '../verlauf/satz.ts';
 import { verschlüsseleEintrag } from './krypto.ts';
 import { KANAL_ORDNER_MUSTER, leseSicherungKanalSeite } from './wiederherstellen.ts';
-import { satzZuAblageNachricht, type SicherungEintrag } from './nutzlast.ts';
+import type { SicherungEintrag } from './nutzlast.ts';
 import {
 	SicherungsSpiegel,
 	aufbauAdapter,
@@ -315,9 +315,9 @@ function eintraegeZuSaetze(eintraege: SicherungEintrag[], kontoId: string) {
 				edited_at: eintrag.nachricht.bearbeitet,
 				reply_to_id: eintrag.nachricht.antwortAuf,
 					// Die geraeteuebergreifende Autor-ID — ohne sie erkennt der
-					// Anzeige-Merge die Kopie des anderen Geräts nicht. Fehlt
-					// sie, vergleicht der Merge die eigene Id (Autor-Kopie aus
-					// dem Altbestand, `verlauf/nachrichtIdentitaet.ts`).
+					// Anzeige-Merge die Kopie des anderen Geräts nicht (s.
+					// zusammenfuegen.ts); Frames vor der Nutzlast-Erweiterung
+					// tragen sie nicht und bleiben deswegen Duplikat-Risiko.
 					...(eintrag.nachricht.kryptoId
 						? { krypto_id: eintrag.nachricht.kryptoId }
 						: {}),
@@ -547,9 +547,8 @@ export async function sicherungGespraechEntfernen(
  * Leser dedupliziert je Kanal+Nachricht-Id), im Container aber eine neue
  * Rahmen-Partie — also bewusst ein Knopf, kein Autolauf.
  *
- * Die Anhang-Metadaten stehen in der Nachricht, die Bytes legt
- * `sicherungAnhaenge` als eigene Dateien ab (nur die eigenen, soweit das
- * Gerät sie noch hält). Gelöschte Zeilen bleiben außen vor.
+ * Anhänge wandern in dieser Fassung NICHT mit (nur Metadaten wären da,
+ * die Bytes liegen separat) und gelöschte Zeilen bleiben außen vor.
  */
 const MERKER_ERSTSICHERUNG = 'pulse.sicherung-erstsicherung-ok';
 
@@ -578,7 +577,28 @@ export async function sicherungErstsicherung(): Promise<number> {
 	for (const satz of saetze) {
 		if (satz.geloescht) continue;
 		const liste = nachKanal.get(satz.kanalId) ?? [];
-		liste.push(satzZuAblageNachricht(satz));
+		liste.push({
+			fassung: NUTZLAST_FASSUNG,
+			id: satz.nachrichtId,
+			autor: satz.autorId,
+			inhalt: satz.inhalt,
+			zeit: satz.erstelltAm,
+			bearbeitet: satz.bearbeitetAm,
+			antwortAuf: satz.antwortAufId ?? null,
+			// Anhang-Metadaten aus dem lokalen Satz — die BYTES holt
+			// `sicherungAnhaenge` aus dem gerätelokalen Bytes-Speicher und
+			// legt sie als eigene Dateien ins Archiv. Was das Gerät nicht
+			// mehr hält, bleibt außen vor (ehrliche Grenze).
+			anhaenge: Array.isArray(satz.anhaenge)
+				? (satz.anhaenge as Array<Record<string, unknown>>).map((a) => ({
+						...a,
+						id: String(a.id),
+						name: (a.filename as string | null) ?? null,
+						mime: (a.mime as string | null) ?? null,
+						groesse: Number(a.size ?? 0),
+					}))
+				: [],
+		});
 		nachKanal.set(satz.kanalId, liste);
 	}
 	let gesamt = 0;
