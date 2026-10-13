@@ -81,6 +81,10 @@ end
 # --- Container --------------------------------------------------------------
 
 _info "Container starten (Postgres + Redis + Garage + LiveKit)"
+# Bewusst OHNE --no-recreate: dev-up soll Änderungen an docker-compose.yml
+# anwenden. Deshalb nur aus dem Haupt-Checkout starten — aus einem Worktree
+# hingen die gemeinsamen Container danach an dessen Pfaden (Begründung:
+# web/tests/e2e/_globalSetup.ts, ensureInfra).
 docker compose --profile voice up -d >/dev/null 2>&1; or _die "docker compose root failed"
 
 # Garage-Bootstrap (Bucket + Key, idempotent) — das dxflrs-Image hat keine

@@ -300,18 +300,22 @@ function startService(name: string, env: NodeJS.ProcessEnv, port: number, cwd: s
  * Vier dauerhaft rote Tests sind vier Tests, die keine Regression mehr melden
  * koennen — deshalb wird die Voraussetzung jetzt hergestellt statt angenommen.
  *
- * `--no-recreate` ist Pflicht (2026-10-13): ein blosses `up -d` laesst
- * laufende Container NUR dann in Ruhe, wenn es aus demselben Ordner kommt, aus
- * dem sie gestartet wurden. Aus einem Worktree zeigen die eingehaengten
- * Konfigurationsdateien (`infra/postgres/init.sql`, `infra/garage/garage.toml`)
- * auf andere Pfade, Compose haelt das fuer eine geaenderte Einstellung und legt
- * Postgres und Garage NEU an — mitten in den Laeufen anderer Worktrees
- * („terminating connection due to administrator command“), und danach haengen
- * die gemeinsamen Container an einem Worktree, nach dessen Loeschen Garage
- * beim naechsten Neustart seine Konfiguration nicht mehr findet. Mit dem
- * Schalter startet der Aufruf nur, was fehlt. Bucket + Key anlegen uebernimmt
- * `scripts/dev-garage-init.sh` (das Garage-Image hat keinen Init-Container —
- * dasselbe Bild wie im Dev-Stack, Bughunt 4.1).
+ * `--no-recreate` ist Pflicht (2026-10-13): ein blosses `up -d` laesst die
+ * Dienste mit eingehaengten Konfigurationsdateien (`infra/postgres/init.sql`,
+ * `infra/garage/garage.toml`; Redis hat keine) nur dann in Ruhe, wenn es aus
+ * demselben Ordner kommt, aus dem sie gestartet wurden. Aus einem Worktree
+ * zeigen die Dateien auf andere Pfade, Compose haelt das fuer eine geaenderte
+ * Einstellung und legt Postgres und Garage NEU an — mitten in den Laeufen
+ * anderer Worktrees („terminating connection due to administrator command“),
+ * und danach haengen die gemeinsamen Container an einem Worktree, nach dessen
+ * Loeschen Garage beim naechsten Neustart seine Konfiguration nicht mehr
+ * findet. Mit dem Schalter startet der Aufruf nur, was fehlt oder steht.
+ * Preis: eine gewollte Aenderung an `docker-compose.yml` kommt ueber die Suite
+ * nicht mehr an, und ein schon an einem geloeschten Worktree haengender
+ * Container heilt sich nicht. Beides behebt einmal
+ * `docker compose up -d postgres redis garage` im Haupt-Checkout.
+ * Bucket + Key legt `scripts/dev-garage-init.sh` an; das ruft `dev-up.fish`,
+ * nicht dieses Setup (das Garage-Image hat keinen Init-Container, Bughunt 4.1).
  */
 function ensureInfra() {
   const cwd = resolve(__dirname, '../../..');

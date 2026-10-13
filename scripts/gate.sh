@@ -228,7 +228,9 @@ if [ "${backend_grund#ja}" != "$backend_grund" ]; then
   # Test-Infra sicherstellen: Redis (:6380) muss laufen; best-effort hochfahren.
   if ! (exec 3<>/dev/tcp/127.0.0.1/6380) 2>/dev/null; then
     echo "  Test-Infra (Redis/Postgres) nicht erreichbar — fahre sie hoch…"
-    docker compose up -d redis postgres >/dev/null 2>&1 || true
+    # --no-recreate: aus einem Worktree legte ein blosses `up -d` Postgres wegen
+    # anderer Bind-Mount-Pfade neu an (Begründung: web/tests/e2e/_globalSetup.ts).
+    docker compose up -d --no-recreate redis postgres >/dev/null 2>&1 || true
     for _ in $(seq 1 30); do (exec 3<>/dev/tcp/127.0.0.1/6380) 2>/dev/null && break; sleep 1; done
   fi
   if ! (exec 3<>/dev/tcp/127.0.0.1/6380) 2>/dev/null; then
