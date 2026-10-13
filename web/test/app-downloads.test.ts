@@ -4,11 +4,11 @@
  * Seit dem Umzug auf GitHub Releases (Schritt 2, 2026-10-13) liegen Windows,
  * macOS, Android und die Server-App unter `releases/latest/download/<Name>`;
  * NUR das Flatpak bleibt auf dem eigenen Server. Dieselben Adressen stehen an
- * vier weiteren Stellen, die keinen Import teilen — die Landingpage
- * (`landing.js` + `landing.html`), das Manifest des Update-Hinweises
- * (`native.json`) und die nginx-Weiterleitungen der alten Bequem-Adressen.
- * Ein Wert, der an einer Stelle abweicht, fällt sonst niemandem auf: ein
- * Download-Knopf, der ins Leere läuft, ist kein Fehler, den ein Build meldet.
+ * drei weiteren Stellen, die keinen Import teilen — `landing.js`, die
+ * Plattform-Kacheln in `landing.html` und die nginx-Weiterleitungen der alten
+ * Bequem-Adressen. Ein Wert, der an einer Stelle abweicht, fällt sonst
+ * niemandem auf: ein Download-Knopf, der ins Leere läuft, ist kein Fehler, den
+ * ein Build meldet. `landing.js` prüft `landing.test.ts`, der Rest steht hier.
  *
  * `appDownloads.ts` ist importfrei, deshalb direkt erreichbar (die zwei Fallen
  * stehen in CLAUDE.md unter „pnpm test:unit"). Der Rest wird als Text gelesen.
@@ -20,15 +20,17 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import * as q from '../src/lib/downloads/appDownloads.ts';
-import * as landing from '../static/landing.js';
 
-const lese = (rel: string) =>
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), rel), 'utf8');
+function lese(rel: string): string {
+  return readFileSync(join(dirname(fileURLToPath(import.meta.url)), rel), 'utf8');
+}
 
 const GITHUB = 'https://github.com/oblivion-pictures/pulse/releases/latest/download';
 
-/** Ein Export nach Namen — die Module sind für einen Namen aus einer Liste zu eng getypt. */
-const wert = (modul: object, name: string) => (modul as Record<string, unknown>)[name];
+/** Ein Export nach Namen — das Modul ist für einen Namen aus einer Liste zu eng getypt. */
+function wert(modul: object, name: string): unknown {
+  return (modul as Record<string, unknown>)[name];
+}
 
 /** Konstante -> (fester Dateiname im Release, alte Bequem-Adresse auf dem eigenen Server). */
 const APPS = {
@@ -70,21 +72,12 @@ test('das Flatpak bleibt auf dem eigenen Server — Client und Server-App', () =
 test('keine App-Adresse zeigt mehr auf die alten Pfade des eigenen Servers', () => {
   // Gegenprobe zur Umleitung: wer die Konstante auf die Bequem-Adresse
   // zurückstellt, hängt den Download wieder an die Auto-Update-Ordner.
-  for (const [konstante, wert] of Object.entries(q)) {
-    if (typeof wert !== 'string' || !wert.startsWith('https://')) continue;
-    assert.ok(!/howispulse\.com\/(updates|downloads)\//.test(wert), `${konstante}: ${wert}`);
-  }
-});
-
-test('landing.js trägt dieselben Adressen wie appDownloads.ts', () => {
-  for (const konstante of [
-    ...Object.keys(APPS),
-    'LINUX_FLATPAKREF_URL',
-    'LINUX_SERVER_FLATPAKREF_URL',
-    'LINUX_INSTALL_COMMAND',
-    'LINUX_SERVER_INSTALL_COMMAND'
-  ]) {
-    assert.equal(wert(landing, konstante), wert(q, konstante), konstante);
+  for (const [konstante, adresse] of Object.entries(q)) {
+    if (typeof adresse !== 'string' || !adresse.startsWith('https://')) continue;
+    assert.ok(
+      !/howispulse\.com\/(updates|downloads)\//.test(adresse),
+      `${konstante}: ${adresse}`
+    );
   }
 });
 
@@ -94,14 +87,9 @@ test('die Plattform-Kacheln in landing.html tragen dieselben Adressen', () => {
     ...html.matchAll(/<a\s+class="lp-plattform"\s+href="(https:\/\/[^"]+)"/g)
   ].map((t) => t[1]);
   assert.deepEqual(
-    [...kacheln].sort(),
+    kacheln.sort(),
     [q.WINDOWS_INSTALLER_URL, q.MAC_DMG_URL, q.LINUX_FLATPAKREF_URL, q.ANDROID_APK_URL].sort()
   );
-});
-
-test('native.json schickt macOS-Nutzer zum selben DMG', () => {
-  const manifest = JSON.parse(lese('../static/native.json'));
-  assert.equal(manifest.darwin.downloadUrl, q.MAC_DMG_URL);
 });
 
 test('die Dateinamen sind genau die, die das Release-Skript als vollständig verlangt', () => {

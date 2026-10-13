@@ -26,7 +26,8 @@ import {
   LINUX_INSTALL_COMMAND,
   WINDOWS_SERVER_INSTALLER_URL,
   MAC_SERVER_DMG_URL,
-  LINUX_SERVER_FLATPAKREF_URL
+  LINUX_SERVER_FLATPAKREF_URL,
+  LINUX_SERVER_INSTALL_COMMAND
 } from '../static/landing.js';
 import * as quelle from '../src/lib/downloads/appDownloads.ts';
 
@@ -104,6 +105,7 @@ test('die kopierten URL-Konstanten stimmen mit appDownloads.ts ueberein', () => 
   assert.equal(WINDOWS_SERVER_INSTALLER_URL, quelle.WINDOWS_SERVER_INSTALLER_URL);
   assert.equal(MAC_SERVER_DMG_URL, quelle.MAC_SERVER_DMG_URL);
   assert.equal(LINUX_SERVER_FLATPAKREF_URL, quelle.LINUX_SERVER_FLATPAKREF_URL);
+  assert.equal(LINUX_SERVER_INSTALL_COMMAND, quelle.LINUX_SERVER_INSTALL_COMMAND);
 });
 
 test('spracheErmitteln: gespeicherte Wahl gewinnt', () => {

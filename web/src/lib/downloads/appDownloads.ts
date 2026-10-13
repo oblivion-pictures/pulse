@@ -26,9 +26,10 @@
  * `web/static/landing.js` (Landingpage auf `/`). Die Datei laeuft ohne
  * Bundler und kann hier nicht importieren, also **synchron halten**: wer eine
  * URL hier aendert, aendert sie dort mit (`web/test/landing.test.ts` vergleicht
- * beide). Dieselben Adressen stehen außerdem fest in `web/static/landing.html`
- * (Plattform-Kacheln) und `web/static/native.json` (macOS-Link des Update-
- * Hinweises).
+ * beide). Dieselben Adressen stehen außerdem fest in den Plattform-Kacheln
+ * von `web/static/landing.html` (`web/test/app-downloads.test.ts` vergleicht
+ * auch die). `web/static/native.json` trägt keine eigene: der Update-Hinweis
+ * fällt auf `MAC_DMG_URL` zurück (`nativeUpdate.ts`).
  */
 
 const BASE = 'https://howispulse.com';
