@@ -256,8 +256,8 @@ jobs:
       #      Zwischennamen hochladen, alte löschen, umbenennen. Dazwischen fehlt
       #      der Name im Normalfall für die Dauer EINES API-Aufrufs (404 für
       #      Update-Clients und latest/download; bei Aussetzern mit Wiederholungen
-      #      länger; Verfahren und Abbruchfolgen im Kopf von github-release.sh). Der Feed nennt bis zu
-      #      seinem Upload noch das sha512 der alten Fassung.
+      #      länger; Verfahren und Abbruchfolgen im Kopf von github-release.sh).
+      #      Der Feed nennt bis zu seinem Upload noch das sha512 der alten Fassung.
       #   3. Die Adressen anonym abfragen (--pruefen). Danach kommt SOFORT der
       #      Feed-Upload, noch vor den Rückfallkopien auf netcup.
       # Scheitert 1 oder 3, bleibt der Feed auf netcup bei der alten Fassung. Bei

@@ -62,7 +62,24 @@ if [ "$1" = api ]; then
       if [ -n "${LESEN_SCHEITERT_VOR_DELETE:-}" ] && [ ! -e "$z/geloescht" ]; then
         echo "attrappe: HTTP 502" >&2; exit 1
       fi
-      for f in $(ls "$r/$tag" | grep -v '^_' || true); do echo "$(id_fuer "$tag" "$f") $f"; done
+      # Lesen scheitert (die ersten N Male), sobald ein Umbenennen gewirkt hat, dessen
+      # Antwort verloren ging.
+      if [ -n "${LESEN_SCHEITERT_NACH_PATCH:-}" ] && [ -e "$z/antwort-verloren-erledigt" ]; then
+        gez="$(cat "$z/lesen-gescheitert" 2>/dev/null || echo 0)"
+        if [ "$gez" -lt "$LESEN_SCHEITERT_NACH_PATCH" ]; then
+          echo $((gez + 1)) > "$z/lesen-gescheitert"; echo "attrappe: HTTP 502" >&2; exit 1
+        fi
+      fi
+      # Verzug nach einem Löschen mit verlorener Antwort: das Lesen zeigt den Stand von davor.
+      if [ -n "${DELETE_VERLOREN_MIT_VERZUG:-}" ] && [ -e "$z/schnappschuss" ]; then
+        cat "$z/schnappschuss"; exit 0
+      fi
+      # Verzug nach dem Hochladen: der ERSTE Lesevorgang kennt die Zwischendatei noch nicht.
+      muster='^_'
+      if [ -n "${LESEN_OHNE_ZWISCHEN:-}" ] && [ ! -e "$z/ohne-zwischen-erledigt" ]; then
+        touch "$z/ohne-zwischen-erledigt"; muster='^_|\.neu-'
+      fi
+      for f in $(ls "$r/$tag" | grep -Ev "$muster" || true); do echo "$(id_fuer "$tag" "$f") $f"; done
       exit 0 ;;
     "PATCH repos/o/r/releases/assets/"*)
       id="${pfad##*/}"; neu=""
@@ -147,8 +164,14 @@ case "$sub" in
     n="${dateien[0]}"
     [ -d "$r/$tag" ] && [ -e "$r/$tag/$n" ] || { echo "asset $n not found" >&2; exit 1; }
     if [ "${DELETE_SCHEITERT_FUER:-}" = "$n" ]; then echo "attrappe: Löschen scheitert" >&2; exit 1; fi
+    if [ -n "${DELETE_VERLOREN_MIT_VERZUG:-}" ] && [ ! -e "$z/schnappschuss" ] && [[ "$n" != *.neu-* ]]; then
+      # Den Stand VOR dem Löschen merken: spätere Lesevorgänge zeigen ihn noch.
+      for f in $(ls "$r/$tag" | grep -v '^_' || true); do echo "$(id_fuer "$tag" "$f") $f"; done > "$z/schnappschuss"
+      verzug_jetzt=1
+    fi
     rm -f "$r/$tag/$n"; touch "$z/geloescht"; echo "DELETE $tag $n" >> "$z/protokoll"
     awk -F'\t' -v t="$tag" -v n="$n" '!($2==t && $3==n)' "$z/idmap" > "$z/idmap.neu" && mv "$z/idmap.neu" "$z/idmap"
+    if [ -n "${verzug_jetzt:-}" ]; then echo "attrappe: Verbindung abgerissen" >&2; exit 1; fi
     if [ -n "${DELETE_ANTWORT_VERLOREN:-}" ] && [ ! -e "$z/delete-verloren-erledigt" ]; then
       # Gelöscht, aber die Antwort kommt nicht an.
       touch "$z/delete-verloren-erledigt"; echo "attrappe: Verbindung abgerissen" >&2; exit 1
@@ -306,16 +329,20 @@ if lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" "Pulse-Setup-Wi
   ok "vorhandene Datei: Zwischenname hoch, alte löschen, umbenennen — in genau dieser Reihenfolge, keine Zwischendatei bleibt"
 else nein "lückenlos ersetzen: $(cat "$z/ausgabe"; cat "$z/protokoll")"; fi
 
-# 14. Abbruch ZWISCHEN Upload und Umbenennen (die alte lässt sich nicht löschen):
-#     die alte Datei bleibt stehen und wird weiter ausgeliefert, die Zwischendatei
-#     ist weggeräumt.
+# 14. Das Löschen der alten Datei scheitert (immer): ob es gewirkt hat, ist nicht
+#     sicher zu sagen, also bleibt die Zwischendatei LIEGEN (lieber eine überzählige
+#     Datei als ein leeres Release). Die alte Datei bleibt, die Meldung sagt, was Sache
+#     ist, und der nächste Lauf räumt auf.
 z="$(neu 14)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
 printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
 if ! DELETE_SCHEITERT_FUER=Pulse-Setup-Windows.exe lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
    && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = ALT ] \
-   && ! ls "$z/releases/$t" | grep -q '\.neu-' && grep -q "die alte Datei\|sie bleibt" "$z/ausgabe"; then
-  ok "Abbruch vor dem Löschen: alte Datei bleibt, Zwischendatei weg"
-else nein "Abbruch nach Upload: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+   && [ "$(cat "$z/releases/$t"/Pulse-Setup-Windows.exe.neu-*)" = EXE ] \
+   && grep -q "nicht sicher löschen" "$z/ausgabe" && grep -q "bleibt liegen" "$z/ausgabe" \
+   && lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-'; then
+  ok "Löschen scheitert: alte Datei und Zwischendatei bleiben, Meldung stimmt, der nächste Lauf räumt auf"
+else nein "Löschen scheitert: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
 
 # 15. Der Zwischen-Upload selbst scheitert: nichts wurde angefasst.
 z="$(neu 15)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
@@ -426,5 +453,58 @@ if DELETE_ANTWORT_VERLOREN=1 lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/
    && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-'; then
   ok "Antwort auf das Löschen verloren: Zustand gelesen, Name fehlt, es geht weiter"
 else nein "verlorene Lösch-Antwort: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+
+# 25. DOPPELFEHLER beim Löschen: es wirkt (die alte Datei ist weg), die Antwort geht
+#     verloren, und die folgenden Lesevorgänge zeigen noch den Stand davor. Das Skript
+#     hält die alte Datei für vorhanden. Es darf die Zwischendatei NICHT wegräumen —
+#     sie ist jetzt die einzige Kopie. Der nächste Lauf stellt den Namen aus dem
+#     Nichts her (Fall 16 für den Folgelauf).
+z="$(neu 25)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if ! DELETE_VERLOREN_MIT_VERZUG=1 lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ ! -e "$z/releases/$t/Pulse-Setup-Windows.exe" ] \
+   && [ "$(cat "$z/releases/$t"/Pulse-Setup-Windows.exe.neu-*)" = EXE ] \
+   && grep -q "nicht sicher löschen" "$z/ausgabe" \
+   && lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-'; then
+  ok "Doppelfehler beim Löschen: die einzige Kopie bleibt liegen, der nächste Lauf heilt"
+else nein "Doppelfehler Löschen: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+
+# 26. Das Umbenennen hat gewirkt, die Antwort ging verloren, und danach scheitert JEDES
+#     Lesen. Der Endname ist richtig da; das Skript kann es nicht wissen und darf
+#     deshalb nicht behaupten, er FEHLE: die Meldung sagt "Zustand UNBEKANNT". Der
+#     nächste Lauf ersetzt die Datei sauber.
+z="$(neu 26)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if ! PATCH_ANTWORT_VERLOREN=1 LESEN_SCHEITERT_NACH_PATCH=99 lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] \
+   && grep -q "Zustand UNBEKANNT" "$z/ausgabe" && ! grep -q "FEHLT" "$z/ausgabe" \
+   && lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-'; then
+  ok "Umbenennen gewirkt, Lesen fällt aus: Meldung sagt \"Zustand UNBEKANNT\", nicht \"FEHLT\""
+else nein "Zustand unbekannt: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+
+# 27. Direkt nach dem Hochladen kennt der erste Lesevorgang die Zwischendatei noch
+#     nicht (Verzug): erneut lesen statt den Lauf rot zu färben.
+z="$(neu 27)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if LESEN_OHNE_ZWISCHEN=1 lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-' \
+   && [ "$(grep -c '^DELETE' "$z/protokoll")" = 1 ]; then
+  ok "Zwischendatei beim ersten Lesen noch nicht sichtbar: wird erneut gelesen, der Lauf geht durch"
+else nein "Verzug beim Lesen: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+
+# 28. Dasselbe, aber das Lesen fällt nur während der vier Umbenennungsversuche aus und
+#     geht beim letzten Ausweg wieder: der Endname trägt die ID der Zwischendatei, das
+#     Skript bestätigt das Umbenennen nachträglich — kein zweiter Upload, kein Löschen.
+z="$(neu 28)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if PATCH_ANTWORT_VERLOREN=1 LESEN_SCHEITERT_NACH_PATCH=4 lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-' \
+   && grep -q "nachträglich bestätigt" "$z/ausgabe" \
+   && ! grep -q '^UPLOAD desktop-v0.1.101 Pulse-Setup-Windows.exe$' "$z/protokoll" \
+   && [ "$(grep -c '^DELETE' "$z/protokoll")" = 1 ]; then
+  ok "Umbenennen gewirkt, Lesen kommt erst beim letzten Ausweg zurück: nachträglich bestätigt, nichts doppelt"
+else nein "nachträglich bestätigt: $(cat "$z/ausgabe"; cat "$z/protokoll")"; fi
 
 [ "$fehler" = 0 ] && echo "✓ github-release: alle Fälle wie erwartet" || exit 1

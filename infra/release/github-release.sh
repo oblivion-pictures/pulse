@@ -30,10 +30,14 @@
 # Umbenennen), bei Aussetzern mit Wiederholungen länger, statt der Dauer des
 # Uploads — aber nicht null.
 #
-# Jeder API-Aufruf wird wiederholt (drei- bis viermal, Pause GITHUB_RELEASE_PAUSE),
-# und vor jedem Folgeschritt wird der Ist-Zustand des Releases neu gelesen, statt
-# dem Exit-Code zu glauben: ein Aufruf kann serverseitig gelungen sein und die
-# Antwort verloren gehen. Löschen gilt als gelungen, wenn der Name danach fehlt;
+# Jeder Aufruf zwischen dem Zwischen-Upload und der Fertigstellung (Auflistung lesen,
+# alte löschen, umbenennen, Zustand lesen) wird wiederholt (drei- bis viermal, Pause
+# GITHUB_RELEASE_PAUSE), und vor jedem Folgeschritt wird der Ist-Zustand des
+# Releases neu gelesen, statt dem Exit-Code zu glauben: ein Aufruf kann
+# serverseitig gelungen sein und die Antwort verloren gehen. NICHT wiederholt
+# werden der Zwischen-Upload selbst (gh wiederholt Netzfehler und 5xx intern), der
+# Upload einer neuen Datei, die Dateiliste (`gh release view`), die APK-Übernahme
+# und `gh release edit --latest`; keiner davon liegt in der Lücke. Löschen gilt als gelungen, wenn der Name danach fehlt;
 # Umbenennen, wenn der Endname die ID der Zwischendatei trägt. Gelöscht wird unter
 # dem Endnamen nur ein Asset mit ANDERER ID (z. B. die Übernahme einer alten APK
 # durch einen anderen Lauf; die frisch gebaute gewinnt). Erschöpfen sich die
@@ -42,16 +46,23 @@
 # Lauf).
 #
 # Was bei einem Abbruch im Release liegt:
-#   - vor dem Löschen (Upload, ID lesen, Löschen scheitert): die ALTE Datei bleibt,
-#     die Zwischendatei wird weggeräumt, soweit erreichbar; sonst räumt sie der
-#     nächste Lauf;
-#   - nach dem Löschen und erschöpften Versuchen, auch dem letzten Ausweg: der
-#     Endname FEHLT (404 für Update-Clients und `latest/download`), die neue
-#     Fassung liegt als Zwischendatei im Release (oder, wenn auch Lesen und
-#     Hochladen ausfallen, gar nichts). Die Meldung nennt den zuletzt gelesenen
-#     Stand. Der Workflow ist rot; der nächste Lauf sieht den Namen fehlen, lädt
-#     ihn hoch und räumt die Zwischendatei weg. Bei der Windows-Server-App kommt
-#     der nächste Lauf mit dem nächsten Backend-Push, beim Client nur von Hand.
+#   - vor jedem Löschversuch (Upload scheitert, ID nicht lesbar): die ALTE Datei
+#     ist sicher noch da und bleibt; die Zwischendatei wird weggeräumt, soweit
+#     erreichbar, sonst räumt sie der nächste Lauf;
+#   - das Löschen der alten Datei scheitert: ob es doch gewirkt hat (Antwort
+#     verloren, Lesen hinkt hinterher), lässt sich nicht sicher sagen. Die
+#     Zwischendatei bleibt deshalb LIEGEN: lieber eine überzählige Datei als ein
+#     leeres Release. Der nächste Lauf räumt sie weg (oder stellt den Namen aus
+#     ihr her, wenn er fehlt);
+#   - nach dem Löschen und erschöpften Versuchen, auch dem letzten Ausweg: kann
+#     der Release gelesen werden, FEHLT der Endname (404 für Update-Clients und
+#     `latest/download`) und die neue Fassung liegt als Zwischendatei dort; kann
+#     er nicht gelesen werden, sagt die Meldung "Zustand UNBEKANNT" (der Endname
+#     kann fehlen oder, wenn das Umbenennen gewirkt hat, schon richtig da sein).
+#     Die Meldung nennt den zuletzt gelesenen Stand. Der Workflow ist rot; der
+#     nächste Lauf stellt den Namen her und räumt die Zwischendatei weg. Bei der
+#     Windows-Server-App kommt der nächste Lauf mit dem nächsten Backend-Push,
+#     beim Client nur von Hand.
 # Rechte: Löschen und Umbenennen eines Assets verlangen wie das Hochladen
 # „Contents: write“ (REST-Doku „Update a release asset“ / „Delete a release
 # asset“), also reicht das GITHUB_TOKEN mit `contents: write`, das die Workflows
@@ -179,8 +190,9 @@ stand() {  # zuletzt gelesener Stand des Release, für Fehlermeldungen
   if [ -s "$arbeit/liste" ]; then awk '{ printf "%s ", $2 }' "$arbeit/liste"; else printf '(nicht lesbar)'; fi
 }
 
-# Ersetzt ein vorhandenes Asset mit einer Lücke von höchstens einem API-Aufruf
-# (Begründung und Abbruchverhalten im Kopf).
+# Ersetzt ein vorhandenes Asset. Die Lücke, in der der Name fehlt, ist im Normalfall
+# ein API-Aufruf lang, beim letzten Ausweg so lang wie ein Upload (Begründung und
+# Abbruchverhalten im Kopf).
 ersetzen() {  # ersetzen <name>
   local name="$1" zwischen="$1.neu-${GITHUB_RUN_ID:-lokal}-$$" liste id_neu
   mkdir -p "$arbeit/neu"
@@ -193,10 +205,18 @@ ersetzen() {  # ersetzen <name>
   # Die ID der Zwischendatei jetzt lesen, nicht erst in der Lücke: sie ändert sich
   # durch Löschen und Umbenennen nicht, und scheitert das Lesen, ist noch nichts
   # verloren.
-  if ! liste="$(wiederholt 3 assets_gelistet)" || [ -z "$(id_in "$liste" "$zwischen")" ]; then
+  # Direkt nach dem Hochladen kann ein Lesevorgang die Zwischendatei noch nicht
+  # kennen (Verzug): "gelesen UND gelistet" gehört deshalb in die Wiederholung.
+  zwischen_sichtbar() {
+    local l
+    l="$(assets_gelistet)" || return 1
+    [ -n "$(id_in "$l" "$zwischen")" ]
+  }
+  if ! wiederholt 3 zwischen_sichtbar; then
     zwischen_weg "$zwischen"
-    die "konnte den Stand des Release nicht lesen — die alte ${name} bleibt, die Zwischendatei ist weggeräumt, soweit erreichbar"
+    die "konnte den Stand des Release nicht lesen (oder die Zwischendatei erscheint nicht) — die alte ${name} bleibt, die Zwischendatei ist weggeräumt, soweit erreichbar"
   fi
+  liste="$(cat "$arbeit/liste")"
   id_neu="$(id_in "$liste" "$zwischen")"
 
   alt_loeschen() {
@@ -207,8 +227,11 @@ ersetzen() {  # ersetzen <name>
     [ -z "$(id_in "$l" "$name")" ]
   }
   if [ -n "$(id_in "$liste" "$name")" ] && ! wiederholt 3 alt_loeschen; then
-    zwischen_weg "$zwischen"
-    die "konnte die alte ${name} nicht löschen — sie bleibt, die Zwischendatei ist weggeräumt, soweit erreichbar"
+    # KEIN zwischen_weg: hat das Löschen trotz Fehlermeldung gewirkt (Antwort
+    # verloren) und hinkt das Lesen hinterher, wäre die Zwischendatei die einzige
+    # Kopie. Bleibt die alte wirklich, ist eine überzählige Zwischendatei harmlos;
+    # der nächste Lauf räumt sie weg.
+    die "konnte die alte ${name} nicht sicher löschen — ob sie noch da ist, ist unklar (zuletzt gelesen: $(stand)). Die Zwischendatei ${zwischen} bleibt liegen, der nächste Lauf räumt sie weg oder stellt ${name} aus ihr her"
   fi
 
   umbenennen() {
@@ -230,15 +253,25 @@ ersetzen() {  # ersetzen <name>
   fi
 
   # Letzter Ausweg: unter dem Endnamen neu hochladen. Dauert so lange wie der
-  # Upload, stellt den Namen aber noch in diesem Lauf her.
-  liste="$(assets_gelistet || true)"
+  # Upload, stellt den Namen aber noch in diesem Lauf her. Vorher einmal lesen:
+  # trägt der Endname die ID der Zwischendatei, hat das Umbenennen gewirkt (Antwort
+  # verloren, frühere Lesevorgänge gescheitert) und alles ist in Ordnung.
+  gelesen=nein
+  if liste="$(assets_gelistet)"; then gelesen=ja; else liste=""; fi
+  if [ "$gelesen" = ja ] && [ "$(id_in "$liste" "$name")" = "$id_neu" ]; then
+    echo "github-release: ${name} ersetzt (über ${zwischen}, Umbenennen nachträglich bestätigt)"
+    return 0
+  fi
   if [ -z "$(id_in "$liste" "$name")" ] \
      && gh release upload "$tag" --repo "$repo" "$arbeit/hoch/$name"; then
     zwischen_weg "$zwischen"
     echo "github-release: ${name} nach erschöpften Umbenennungen direkt unter dem Endnamen hochgeladen"
     return 0
   fi
-  die "konnte ${zwischen} nicht in ${name} umbenennen und ${name} auch nicht neu hochladen — ${name} FEHLT jetzt im Release (404 für Update-Clients und latest/download), die neue Fassung liegt, soweit lesbar, als ${zwischen}. Zuletzt gelesener Stand: $(stand). Der nächste Lauf lädt ${name} hoch und räumt die Zwischendatei weg."
+  if [ "$gelesen" = ja ]; then
+    die "konnte ${zwischen} nicht in ${name} umbenennen und ${name} auch nicht neu hochladen — ${name} FEHLT jetzt im Release oder gehört zu einer anderen Fassung (404 für Update-Clients und latest/download), die neue Fassung liegt als ${zwischen}. Zuletzt gelesener Stand: $(stand). Der nächste Lauf stellt ${name} her und räumt die Zwischendatei weg."
+  fi
+  die "konnte ${zwischen} nicht in ${name} umbenennen, ${name} nicht neu hochladen und den Stand des Release nicht lesen — Zustand UNBEKANNT: ${name} kann fehlen (404 für Update-Clients und latest/download) oder, wenn das Umbenennen gewirkt hat, schon richtig da sein. Zuletzt gelesener Stand: $(stand). Die Zwischendatei ${zwischen} bleibt liegen; der nächste Lauf stellt ${name} her und räumt auf."
 }
 
 vorhanden="$(dateien_von "$tag")"
