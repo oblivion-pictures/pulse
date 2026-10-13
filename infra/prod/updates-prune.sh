@@ -8,12 +8,13 @@
 # Stueck mit zusammen 5,9 GB — jede je veroeffentlichte Version von 0.1.0 an.
 # Das waechst bei aktuellem Tempo um rund 2,5 GB im Monat und hoert nie auf.
 #
-# **Was wirklich gebraucht wird.** `latest.yml` nannte frueher GENAU EINE Datei
-# (`path:`), und electron-updater holte sich nur die. Seit der Feed auf GitHub
-# zeigt (`infra/release/feed-auf-github.sh`) steht dort eine Adresse; der
-# Installer dieser Version (`Pulse-Setup-<version>.exe`, Version aus `version:`)
-# bleibt trotzdem liegen, denn nimmt man das Umschreiben aus dem Workflow, zeigt
-# der Feed wieder auf ihn. Dazu `Pulse-Setup-latest.exe`, den alten
+# **Was wirklich gebraucht wird.** `latest.yml` verweist auf GENAU EINE Datei
+# (`path:`); electron-updater holt sich nur die. Meist ist das ein Dateiname
+# hier im Ordner. Zeigt der Feed auf GitHub (`infra/release/feed-auf-github.sh`),
+# steht dort stattdessen eine Adresse, und der Installer dieser Version
+# (`Pulse-Setup-<version>.exe`, Version aus `version:`) gilt als ausgeliefert:
+# er bleibt liegen, weil der Feed wieder auf ihn zeigt, sobald man das
+# Umschreiben aus dem Workflow nimmt. Dazu `Pulse-Setup-latest.exe`, den alten
 # Direktdownload: nginx leitet diese Adresse seit 2026-10-13 nach GitHub
 # Releases um, der Win-Build laedt die Datei aber weiter hoch — sie bleibt als
 # Rueckfall liegen. Alles andere ist Archiv.

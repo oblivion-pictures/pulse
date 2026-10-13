@@ -268,9 +268,9 @@ jobs:
           bash infra/release/github-release.sh "$VERSION" "${DATEIEN[@]}"
           bash infra/release/feed-auf-github.sh "$VERSION" desktop/release/latest-mac.yml "${DATEIEN[@]}"
 
-      # Mac-Auto-Update-Feed (Stufe B): latest-mac.yml nach ~/pulse/updates-mac/
-      # (nginx: /updates/mac/). electron-updater lädt das .zip (NICHT die DMG —
-      # die bleibt der Direktdownload unter /downloads/).
+      # Mac-Auto-Update-Feed (Stufe B): latest-mac.yml, .zip und .blockmap nach
+      # ~/pulse/updates-mac/ (nginx: /updates/mac/). electron-updater lädt das
+      # .zip (NICHT die DMG — die bleibt der Direktdownload unter /downloads/).
       #
       # Der Feed bleibt auf netcup — dort kennen ihn die installierten Apps
       # (app-update.yml) —, zeigt aber seit dem Umschreiben oben auf GitHub.

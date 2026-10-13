@@ -41,8 +41,12 @@
 #     jemand hat eine andere Quelle eingetragen — beides soll auffallen).
 # Zeilenenden werden dabei auf LF gebracht; sonst bleibt jede Zeile, wie sie war.
 #
-# Läuft auf Ubuntu, macOS (bash 3.2) und in der Git Bash unter Windows. Braucht
-# openssl (liegt auf allen dreien) und awk; kein yq.
+# Geschrieben für die drei Runner-Arten (Ubuntu, macOS mit bash 3.2, Git Bash
+# unter Windows): keine bash-4-Funktionen (`mapfile`, `declare -A`), awk nur im
+# POSIX-Umfang (keine Zeichenklassen, keine gawk-Erweiterungen). Braucht openssl
+# und awk; kein yq. Die Fälle in tests/feed-auf-github-faelle.sh laufen mit dem
+# awk der Maschine, auf der man sie startet — ob mawk (Ubuntu) und BSD-awk
+# (macOS) das Skript verdauen, zeigt erst ein Bau auf dem jeweiligen Runner.
 set -euo pipefail
 
 die() { echo "feed-auf-github: $*" >&2; exit 1; }
@@ -74,11 +78,11 @@ done
 
 sha512_b64() { openssl dgst -sha512 -binary "$1" | openssl base64 -A; }
 
-# Feed zerlegen. Ausgabe je Zeile, Felder durch das Zeichen 0x1F getrennt (kein
-# Leerraum, damit leere Felder nicht zusammenfallen):
-#   VERSION  <v>          PATH  <p>          SHA512  <s>
-#   DATEI    <url> <sha512> <size>           FEHLER  <text>
-read -r -d '' AWK_LESEN <<'AWK' || true
+# Beide awk-Programme brauchen denselben Zugriff auf den Wert einer Zeile
+# (`key: wert` oder `- key: wert`, ohne Rand und ohne umgebende Anführungszeichen
+# — YAML erlaubt beide Schreibweisen). Er steht deshalb nur einmal hier und wird
+# jedem Programm vorangestellt.
+read -r -d '' AWK_WERT <<'AWK' || true
 function wert(z, k,   v) {
   v = z
   sub("^[ \t]*(-[ \t]+)?" k ":[ \t]*", "", v)
@@ -86,6 +90,13 @@ function wert(z, k,   v) {
   if (v ~ /^".*"$/ || v ~ /^'.*'$/) v = substr(v, 2, length(v) - 2)
   return v
 }
+AWK
+
+# Feed zerlegen. Ausgabe je Zeile, Felder durch das Zeichen 0x1F getrennt (kein
+# Leerraum, damit leere Felder nicht zusammenfallen):
+#   VERSION  <v>          PATH  <p>          SHA512  <s>
+#   DATEI    <url> <sha512> <size>           FEHLER  <text>
+read -r -d '' AWK_LESEN <<'AWK' || true
 function offen_ausgeben() {
   if (offen) print "DATEI" S url S sha S size
   offen = 0
@@ -116,13 +127,6 @@ AWK
 # `path:`. Die Ersetzungen kommen als Datei "alt<TAB>neu" (Namen enthalten
 # Leerzeichen, aber nie Tabulatoren).
 read -r -d '' AWK_SCHREIBEN <<'AWK' || true
-function wert(z, k,   v) {
-  v = z
-  sub("^[ \t]*(-[ \t]+)?" k ":[ \t]*", "", v)
-  sub(/[ \t]+$/, "", v)
-  if (v ~ /^".*"$/ || v ~ /^'.*'$/) v = substr(v, 2, length(v) - 2)
-  return v
-}
 BEGIN {
   while ((getline l < ersetzungen) > 0) { split(l, p, "\t"); neu[p[1]] = p[2] }
 }
@@ -157,7 +161,7 @@ while IFS=$'\037' read -r art a b c; do
     DATEI)   URLS+=("$a"); SHAS+=("$b"); GROESSEN+=("$c") ;;
     FEHLER)  die "$feed: $a" ;;
   esac
-done < <(awk "$AWK_LESEN" "$feed")
+done < <(awk "$AWK_WERT"$'\n'"$AWK_LESEN" "$feed")
 
 [ "$feedversion" = "$version" ] || die "$feed nennt Version '${feedversion}', übergeben wurde '${version}'"
 [ "${#URLS[@]}" -gt 0 ] || die "$feed enthält keine Einträge unter files:"
@@ -207,6 +211,6 @@ if [ -n "$feedpath" ]; then
 fi
 
 # Erst jetzt wird geschrieben.
-awk -v ersetzungen="$arbeit/ersetzungen" "$AWK_SCHREIBEN" "$feed" > "$arbeit/neu"
+awk -v ersetzungen="$arbeit/ersetzungen" "$AWK_WERT"$'\n'"$AWK_SCHREIBEN" "$feed" > "$arbeit/neu"
 cat "$arbeit/neu" > "$feed"
 echo "feed-auf-github: ${feed} zeigt jetzt auf ${basis}/ (Einträge: ${#URLS[@]} — $(cut -f2 "$arbeit/ersetzungen" | sed "s#^${basis}/##" | tr '\n' ' '))"
