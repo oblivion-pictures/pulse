@@ -2,7 +2,11 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import { medienNachziehen, zeileAusServerAnhang, type ServerAnhang } from '../src/lib/verlauf/medienNachzug.ts';
-import { medienNeuesteZuerst, medienZeilenAusSatz } from '../src/lib/verlauf/schema.ts';
+import {
+  medienNeuesteZuerst,
+  medienZeileDarfSchreiben,
+  medienZeilenAusSatz
+} from '../src/lib/verlauf/schema.ts';
 
 const KONTO = 'konto-1';
 
@@ -226,5 +230,21 @@ describe('medienNeuesteZuerst', () => {
       aus.map((z) => z.id),
       [serverNeuer, serverAelter, lokalAelter]
     );
+  });
+});
+
+// Gegenprüfung 2026-10-14, V4: der Medien-Index ist nur nach der Anhang-ID
+// geschlüsselt, und jeder Schreibweg legte seine Zeile blind ab. Wer die ID
+// meines Bildes kannte, überschrieb meine Zeile mit seinem Autor, Namen und
+// Schlüssel.
+describe('V4: medienZeileDarfSchreiben', () => {
+  const meine = { autorId: '100', kontoId: KONTO };
+  it('ein freier Platz und die eigene Zeile dürfen beschrieben werden', () => {
+    assert.equal(medienZeileDarfSchreiben(undefined, meine), true);
+    assert.equal(medienZeileDarfSchreiben(meine, { ...meine }), true);
+  });
+  it('eine Zeile eines anderen Autors oder Kontos bleibt liegen', () => {
+    assert.equal(medienZeileDarfSchreiben(meine, { autorId: '300', kontoId: KONTO }), false);
+    assert.equal(medienZeileDarfSchreiben(meine, { autorId: '100', kontoId: 'konto-2' }), false);
   });
 });

@@ -249,6 +249,25 @@ export function medienZeilenAusSatz(satz: Satz): MedienZeile[] {
 }
 
 /**
+ * Ob eine Index-Zeile aus einem Satz die unter ihrer ID liegende ersetzen
+ * darf (`dbRegister.ts::ablegenMitRegister`, Gegenprüfung 2026-10-14, V4):
+ * nur auf einen freien Platz oder über eine Zeile desselben Autors und
+ * Kontos. Der Speicher ist allein nach der Anhang-ID geschlüsselt, und die
+ * ID einer Anhang-Angabe wählt ihr Absender frei — wer die ID meines Bildes
+ * kannte, schrieb sie in eine eigene Nachricht, und meine Zeile trug danach
+ * seinen Autor, Namen und Schlüssel. Richtig wäre der Schlüssel
+ * `konto|autor|id`, aber der braucht einen `DB_VERSION`-Sprung. Preis: kommt
+ * die fremde Zeile zuerst, bleibt die echte draußen — eine falsche Zeile im
+ * Medienblatt statt einer überschriebenen. Reine Rechnung (Node-testbar).
+ */
+export function medienZeileDarfSchreiben(
+  liegend: Pick<MedienZeile, 'autorId' | 'kontoId'> | undefined,
+  neu: Pick<MedienZeile, 'autorId' | 'kontoId'>
+): boolean {
+  return liegend === undefined || (liegend.autorId === neu.autorId && liegend.kontoId === neu.kontoId);
+}
+
+/**
  * Die Index-Zeilen für das Medien-Archiv-Blatt (`dbAnhaenge.ts::medienLesen`):
  * neueste zuerst, und nur Zeilen, deren ID eine Kennung ist (Gegenprüfung
  * 2026-10-12, R6). Bis dahin sortierte `medienLesen` mit `BigInt(id)`: eine

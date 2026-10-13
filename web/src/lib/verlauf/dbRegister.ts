@@ -14,7 +14,7 @@
  * stehen importfrei in `grabsteinRegister.ts`, der Ablauf ist per E2E belegt
  * (`tests/e2e/verlauf-register.spec.ts`).
  */
-import { medienZeilenAusSatz, type Satz } from './schema';
+import { medienZeileDarfSchreiben, medienZeilenAusSatz, type Satz } from './schema';
 import { sortierSchluessel } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
 import {
@@ -37,7 +37,7 @@ export function kanalBereich(kanalId: string): IDBKeyRange {
 
 /**
  * Legt `satz` ab (put = Upsert über den Primärschlüssel) samt seiner
- * Medien-Zeilen — oder, steht seine Identität im Register, als Grabstein
+ * Medien-Zeilen, soweit ihr Platz frei oder ihr eigener ist — oder, steht seine Identität im Register, als Grabstein
  * (`alsGrabstein`, ohne Medien-Zeilen). `fertig` bekommt die abgelegte
  * Fassung. Ein Satz ohne Autor hat keine gebundene Identität und wird
  * abgelegt, wie er ist.
@@ -50,7 +50,14 @@ export function ablegenMitRegister(
 ): void {
   const schreiben = (fassung: Satz): void => {
     nachrichten.put(fassung);
-    for (const zeile of medienZeilenAusSatz(fassung)) medien.put(zeile);
+    // Eine Index-Zeile nur auf einen freien Platz oder über eine eigene
+    // (`schema.ts::medienZeileDarfSchreiben`), geprüft in DIESER Transaktion.
+    for (const zeile of medienZeilenAusSatz(fassung)) {
+      const liegend = medien.get(zeile.id);
+      liegend.onsuccess = () => {
+        if (medienZeileDarfSchreiben(liegend.result, zeile)) medien.put(zeile);
+      };
+    }
     fertig?.(fassung);
   };
   const schluessel = satz.geloescht ? null : registerSchluesselFuerSatz(satz);
