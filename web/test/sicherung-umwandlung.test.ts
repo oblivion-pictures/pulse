@@ -100,7 +100,9 @@ test('ausSatz verträgt Altbestand: fehlende Anhang-Felder werden aufgefüllt, F
 // Übernommen aus `sicherung-satz-nutzlast.test.ts` (main, 8b4a996d): dort
 // liefen dieselben drei Fälle gegen eine zweite Umwandlung Satz → Bestand,
 // die neben `ausSatz` entstanden war. Es gibt nur noch `ausSatz`; die Fälle
-// gelten für sie unverändert, dazu fallen die flüchtigen Adressen weg.
+// gelten für sie unverändert. Im dritten kommt hinzu, dass die flüchtigen
+// Adressen der Anhänge (`url`, `thumb_url`) herausfallen — die alte
+// Umwandlung übernahm sie.
 
 function archivSatz(teil: Partial<Satz> = {}): Satz {
 	return {

@@ -363,12 +363,18 @@ test('drei Kopien aus drei Ketten (Sendegerät im Altbestand, zwei Zweitgeräte)
 // ihnen gehören die des N1-Rückfalls (`krypto/empfangen.ts`). Der löschte
 // auf Lösch-Frames hin, die die Autor-Bindung abgewiesen hatte — ein
 // Gesprächspartner, der die Kennung einer meiner Nachrichten in einen
-// Lösch-Frame schrieb, hinterliess so in meiner Sicherung einen autorlosen
+// Lösch-Frame schrieb, hinterließ so in meiner Sicherung einen autorlosen
 // Stein unter genau dieser Kennung. Löste der Leser ihn über die Kennung
 // auf, nähme jede Wiederherstellung auch die übrigen Kopien der Nachricht
 // mit. Was der Entscheid kostet: hat das Zweitgerät die Löschung damals
 // nicht selbst als Stein gespiegelt, steht seine Kopie nach der
 // Wiederherstellung wieder da.
+//
+// Der Fall hier ist der Stein für sich: seine Kette enthält den Rahmen der
+// Nachricht nicht. Steht der Rahmen dagegen mit in der Sicherung, hat die
+// Identität beide Kopien längst zu einer Gruppe gelegt, und der Stein trifft
+// die ganze Gruppe (`sicherung/eintragsGruppen.ts`, „Ältere Steine“) — die
+// Kopie des Zweitgeräts ist dann mit weg.
 test('Grabstein des Sendegeräts ohne Autor löscht nur seinen eigenen Eintrag — die Kopie des Zweitgeräts bleibt', async () => {
 	const stein: AblageNachricht = {
 		...kopie(AUTOR_ID, undefined),
@@ -388,8 +394,8 @@ test('Grabstein des Sendegeräts ohne Autor löscht nur seinen eigenen Eintrag �
 });
 
 test('Leser-Fall: Bobs Nachricht unter Alices Kennung ersetzt Alices nicht, sein Stein löscht sie nicht', async () => {
-	// Alices Sendegerät spiegelt ihre Nachricht K, ihr Zweitgerät die
-	// Nachricht, die Bob mit derselben Kennung K geschickt hat — samt Anhang,
+	// Alices Sendegerät spiegelt ihre Nachricht unter A, ihr Zweitgerät die
+	// Nachricht, die Bob mit derselben Kennung A geschickt hat — samt Anhang,
 	// also der „reicheren" Fassung. Ohne Autor-Bindung legte der Leser beide
 	// zusammen, Bobs Fassung gewann, und löschte Bob seine, war Alices weg.
 	const ALICE = '100';
@@ -415,7 +421,7 @@ test('Leser-Fall: Bobs Nachricht unter Alices Kennung ersetzt Alices nicht, sein
 			assert.equal(alice[0]!.nachricht.inhalt, 'von alice');
 			assert.deepEqual(alice[0]!.nachricht.anhaenge, []);
 			// Bobs Zeile bleibt eine eigene — gelöscht als Stein je lokaler ID
-			// seiner Gruppe (D und die Kennung K, beide mit Bob als Autor).
+			// seiner Gruppe (Z und die Kennung A, beide mit Bob als Autor).
 			const bob = eintraege.filter((e) => e.nachricht.autor === BOB);
 			assert.ok(bob.length >= 1);
 			assert.ok(bob.every((e) => (e.nachricht.geloescht === true) === geloescht));

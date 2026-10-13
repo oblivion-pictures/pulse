@@ -297,6 +297,7 @@ for (const [form, alice] of alicesFormen) {
   test(`F1 Sendegerät (${form}): Bob schickt K und löscht sie selbst — Alices Nachricht bleibt`, () => {
     const bobsStein = posten(D_BOB, '', { kryptoId: K, autorId: BOB, geloescht: true });
     for (const folge of [[alice, bobsStein], [bobsStein, alice]]) {
+      // Beide Reihenfolgen, je lokal und verteilt auf beide Quellen.
       assert.deepEqual(sichtbar(zusammenfuegen(folge, [])), ['von alice']);
       assert.deepEqual(sichtbar(zusammenfuegen(folge.slice(0, 1), folge.slice(1))), ['von alice']);
     }

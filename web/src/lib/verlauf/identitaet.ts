@@ -16,8 +16,9 @@
  * `kryptoId` mit `kryptoId`; die Verfasser-Kopie (`id` = K, ohne `kryptoId`)
  * und die Empfangs-Kopie (`id` = D, `kryptoId` = K) galten damit als zwei
  * Nachrichten, und nach Gerätewechsel plus Wiederherstellung stand dieselbe
- * Nachricht doppelt da. Die kanonische Kennung ist deshalb `kryptoId ?? id`:
- * einer Zeile ohne das Feld fehlt nur, was ihre eigene ID schon ist.
+ * Nachricht doppelt da. Die kanonische Kennung ist deshalb `kryptoId || id`
+ * (`kanonischeId`): einer Zeile ohne das Feld fehlt nur, was ihre eigene ID
+ * schon ist.
  *
  * **Autor-Bindung ist Pflicht, kein Zierrat.** Die Kennung wählt der
  * Absender frei — er schreibt sie selbst in seine Nutzlast. Ohne den Autor im
@@ -26,8 +27,8 @@
  * ihr zusammenlegen lassen. Eine Zwischenfassung ohne Autor (c5a25317, am
  * 2026-10-13 kurz auf `main`) tat genau das: eine Nachricht des Partners mit
  * der Kennung einer eigenen verdrängte diese in der Anzeige, und löschte er
- * seine, war auch die eigene weg. Beim Postfach-Empfang stammt der Autor aus der
- * authentisierten Zustellung (`zustellungOeffnen.ts`). Im Server-Archiv
+ * seine, war auch die eigene weg. Beim Postfach-Empfang stammt der Autor aus
+ * der authentisierten Zustellung (`zustellungOeffnen.ts`). Im Server-Archiv
  * schreibt ihn der Einliefernde selbst in die Nutzlast, und einliefern darf
  * jedes Kanalmitglied; seit 2026-10-12 nennt der Server deshalb zu jeder
  * Zeile den Einlieferer, und eine Zeile, deren Autor nicht dazu passt, fällt

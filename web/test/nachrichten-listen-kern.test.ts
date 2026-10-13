@@ -171,7 +171,9 @@ describe('Nachrichtenliste: Historie vorn anfügen', () => {
 		assert.equal(r, null);
 	});
 
-	it('zwei Kopien derselben Nachricht in EINER Seite: nur die erste kommt durch', () => {
+	it('zwei Kopien derselben Nachricht in EINER Seite: nur die in der Id-Ordnung erste kommt durch', () => {
+		// Die Seite wird id-sortiert (12 vor 15): die Kopie mit der Kennung als
+		// `id` (15) fällt gegen die mit der Kennung in `krypto_id` (12) weg.
 		const l = [msg('30')];
 		const r = vorneAnfuegen(
 			l,
@@ -239,7 +241,7 @@ describe('Nachrichtenliste: einzelne Nachricht aufnehmen', () => {
 		assert.deepEqual([...i].sort(), ['20', '30']);
 	});
 
-	it('baut beim Kappen auch die krypto-Menge aus der Liste neu auf', () => {
+	it('baut beim Kappen auch die Identitäten-Menge aus der Liste neu auf', () => {
 		const i = new Set(['10', '20']);
 		const k = new Set([ident('k10'), ident('k20')]);
 		const r = einfuegen(

@@ -36,11 +36,11 @@ class MessageStore {
   private confirmedNonces = new Set<string>();
   // Track message IDs in the current channel for O(1) dedup during upsert.
   private messageIds = $state<Record<string, Set<string>>>({});
-  // Identitäten je Kanal (Autor + Kennung, `nachrichten/listenKern.ts`) —
-  // dasselbe Spiel geräteübergreifend: dieselbe logische Nachricht trägt je
-  // Gerät eine andere lokale ID (Empfangs-ID hier, Archiv- oder
-  // Verfasser-Kopie beim Hochscrollen). Nur über die Identität erkennt der
-  // Store sie als dieselbe Nachricht.
+  // Identitäten je Kanal (Autor + Kennung, Regel in `verlauf/identitaet.ts`,
+  // Rechnung in `nachrichten/listenKern.ts`) — die zweite Dublettenmenge
+  // neben `messageIds`: dieselbe logische Nachricht trägt je Gerät eine
+  // andere lokale ID (Empfangs-ID hier, Archiv- oder Verfasser-Kopie beim
+  // Hochscrollen), nur die Identität erkennt sie als dieselbe.
   private identitaeten = $state<Record<string, Set<string>>>({});
   // Identitäten gelöschter Nachrichten, überleben Kappen und Neuladen (`grabsteine.ts`).
   private grabsteine = new Grabsteine();
@@ -107,13 +107,13 @@ class MessageStore {
     const list = this.byChannel[channelId] ?? [];
     const ids = this.messageIds[channelId] ?? new Set(list.map((m) => m.id));
     const begraben = this.grabsteine.fuer(channelId);
-    const bekannt = this.identitaeten[channelId] ?? identitaetenVon(list, begraben);
-    const angefuegt = vorneAnfuegen(list, ids, bekannt, msgs, MessageStore.CAP, begraben);
+    const identitaeten = this.identitaeten[channelId] ?? identitaetenVon(list, begraben);
+    const angefuegt = vorneAnfuegen(list, ids, identitaeten, msgs, MessageStore.CAP, begraben);
     if (!angefuegt) return false;
     this.vergiss(angefuegt.verworfen);
     this.byChannel = { ...this.byChannel, [channelId]: angefuegt.liste };
     this.messageIds = { ...this.messageIds, [channelId]: ids };
-    this.identitaeten = { ...this.identitaeten, [channelId]: bekannt };
+    this.identitaeten = { ...this.identitaeten, [channelId]: identitaeten };
     for (const m of angefuegt.neu) this.bestaetige(m);
     return true;
   }
@@ -121,6 +121,8 @@ class MessageStore {
   upsert(msg: Message): void {
     const list = this.byChannel[msg.channel_id] ?? [];
     const ids = this.messageIds[msg.channel_id] ?? new Set();
+    const begraben = this.grabsteine.fuer(msg.channel_id);
+    const identitaeten = this.identitaeten[msg.channel_id] ?? identitaetenVon(list, begraben);
     // If the message has a nonce, try to replace a pending optimistic copy.
     if (msg.nonce) {
       const idxNonce = list.findIndex((m) => m.nonce === msg.nonce && m.id !== msg.id);
@@ -130,26 +132,22 @@ class MessageStore {
         this.byChannel = { ...this.byChannel, [msg.channel_id]: next };
         // Beide Mengen ummelden: die vorläufige Kopie eines verschlüsselten
         // Sendens (`vorlaeufigVerschluesselt.ts`) hat eine `tmp-`-Id und keine
-        // `krypto_id`, die echte Nachricht beides (`senden.ts`).
-        const begraben = this.grabsteine.fuer(msg.channel_id);
-        const bekannt = this.identitaeten[msg.channel_id] ?? identitaetenVon(list, begraben);
-        echoErsetzen(ids, bekannt, list[idxNonce], msg);
+        // `krypto_id`, die echte (`senden.ts`) eine eigene Id samt `krypto_id`.
+        echoErsetzen(ids, identitaeten, list[idxNonce], msg);
         this.messageIds = { ...this.messageIds, [msg.channel_id]: ids };
-        this.identitaeten = { ...this.identitaeten, [msg.channel_id]: bekannt };
+        this.identitaeten = { ...this.identitaeten, [msg.channel_id]: identitaeten };
         this.bestaetige(msg);
         return;
       }
     }
     // Echo-Ersatz (Nonce) läuft OBEN — ein Skip in `einfuegen` trifft nur
     // Duplikate (über die Id und die Identität).
-    const begraben = this.grabsteine.fuer(msg.channel_id);
-    const bekannt = this.identitaeten[msg.channel_id] ?? identitaetenVon(list, begraben);
-    const eingefuegt = einfuegen(list, ids, bekannt, msg, MessageStore.CAP, begraben);
+    const eingefuegt = einfuegen(list, ids, identitaeten, msg, MessageStore.CAP, begraben);
     if (!eingefuegt) return;
     this.vergiss(eingefuegt.verworfen);
     this.byChannel = { ...this.byChannel, [msg.channel_id]: eingefuegt.liste };
     this.messageIds = { ...this.messageIds, [msg.channel_id]: ids };
-    this.identitaeten = { ...this.identitaeten, [msg.channel_id]: bekannt };
+    this.identitaeten = { ...this.identitaeten, [msg.channel_id]: identitaeten };
     this.bestaetige(msg);
   }
 
@@ -186,12 +184,12 @@ class MessageStore {
     if (!list) return;
     const begraben = this.grabsteine.fuer(channelId);
     const ids = this.messageIds[channelId] ?? new Set(list.map((m) => m.id));
-    const bekannt = this.identitaeten[channelId] ?? identitaetenVon(list, begraben);
-    const next = entfernen(list, ids, bekannt, begraben, id);
+    const identitaeten = this.identitaeten[channelId] ?? identitaetenVon(list, begraben);
+    const next = entfernen(list, ids, identitaeten, begraben, id);
     if (!next) return;
     this.byChannel = { ...this.byChannel, [channelId]: next };
     this.messageIds = { ...this.messageIds, [channelId]: ids };
-    this.identitaeten = { ...this.identitaeten, [channelId]: bekannt };
+    this.identitaeten = { ...this.identitaeten, [channelId]: identitaeten };
   }
 
   /** Apply a delta to a message's reactions list. `delta` is +1 for add, -1
@@ -278,10 +276,10 @@ class MessageStore {
     // weggefallenen Nachrichten mit — sonst gälte eine davon, wieder
     // hochgescrollt, als Dublette (Grabsteine bleiben).
     const begraben = this.grabsteine.fuer(channelId);
-    const bekannt = this.identitaeten[channelId] ?? identitaetenVon(list, begraben);
-    mengenNachLuecke(haveIds, bekannt, liste, verworfen, begraben);
+    const identitaeten = this.identitaeten[channelId] ?? identitaetenVon(list, begraben);
+    mengenNachLuecke(haveIds, identitaeten, liste, verworfen, begraben);
     this.messageIds = { ...this.messageIds, [channelId]: haveIds };
-    this.identitaeten = { ...this.identitaeten, [channelId]: bekannt };
+    this.identitaeten = { ...this.identitaeten, [channelId]: identitaeten };
   }
 
   /** Re-sync already-present messages from a freshly re-fetched page —

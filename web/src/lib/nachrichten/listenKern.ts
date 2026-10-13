@@ -16,15 +16,16 @@
  * **Die Dublettenmengen werden an Ort und Stelle fortgeschrieben.**
  * `vorneAnfuegen`, `einfuegen`, `entfernen`, `echoErsetzen` und
  * `mengenNachLuecke` ändern die ihnen übergebenen Mengen `ids` /
- * `identitaeten` und geben (wo es eine gibt) die neue Liste zurück; der Store
- * schreibt Liste und Mengen anschließend in seine `$state`-Felder. Die
+ * `identitaeten`; die neue Liste geben davon nur `vorneAnfuegen`, `einfuegen`
+ * und `entfernen` zurück. Der Store schreibt Liste und Mengen anschließend in
+ * seine `$state`-Felder. Die
  * Grabsteine (`begraben`, s. `grabsteine.ts`) schreibt nur `entfernen` fort;
  * die anderen lesen sie und legen sie nach einem Neuaufbau in `identitaeten`
  * zurück.
  *
  * **`identitaeten` führt Autor UND Kennung** (`verlauf/identitaet.ts`, dort
  * auch, warum der Autor dazugehört), die Grabsteine ebenso. Bis 2026-10-13
- * stand hier eine Menge der blossen `krypto_id`s: eine Nachricht, die ein
+ * stand hier eine Menge der bloßen `krypto_id`s: eine Nachricht, die ein
  * Gesprächspartner unter der Kennung einer fremden schickte, galt damit als
  * deren Dublette und fehlte in der Anzeige, und löschte er seine, begrub der
  * Grabstein die fremde mit.
@@ -252,8 +253,9 @@ export type Anfuegung = { liste: Message[]; neu: Message[]; verworfen: Message[]
  *  Archiv-Kette des anderen Geräts, die eine fremde lokale Id trägt und sonst
  *  doppelt angezeigt würde (Frischgerät + Sicherung, 2026-09-17). Das gilt
  *  auch INNERHALB der Seite: liefert sie beide Kopien (Archiv und Sicherung
- *  in einem Rutsch), kommt nur die erste durch. Der Rest wird id-sortiert
- *  vorangestellt und auf `cap` gekappt. Schreibt `ids` / `identitaeten` fort
+ *  in einem Rutsch), kommt nur die durch, die nach der Id-Sortierung der
+ *  Seite zuerst steht. Der Rest wird id-sortiert vorangestellt und auf `cap`
+ *  gekappt. Schreibt `ids` / `identitaeten` fort
  *  und gleicht sie mit der Liste ab, sobald gekappt wurde (die Grabsteine
  *  `begraben` bleiben dabei stehen). `null`, wenn nichts Neues dabei war. */
 export function vorneAnfuegen(

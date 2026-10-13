@@ -80,12 +80,18 @@ describe('Nachrichten-Store: Kopien derselben Nachricht', () => {
   it('gleiche id bleibt bekannt, eine fremde Nachricht nicht', () => {
     assert.equal(istDublette([nachricht('5', ALICE)], nachricht('5', ALICE)), true);
     assert.equal(
-      istDublette([nachricht('5', ALICE), nachricht(ZUSTELLUNG_ZWEITGERAET, ALICE, AUTOR_ID)], nachricht('6', ALICE)),
+      istDublette(
+        [nachricht('5', ALICE), nachricht(ZUSTELLUNG_ZWEITGERAET, ALICE, AUTOR_ID)],
+        nachricht('6', ALICE)
+      ),
       false,
       'Klartext ohne krypto_id mit anderer id ist eine andere Nachricht'
     );
     assert.equal(
-      istDublette([nachricht(AUTOR_ID, ALICE)], nachricht(ZUSTELLUNG_EMPFAENGER, ALICE, '1791841626624331126')),
+      istDublette(
+        [nachricht(AUTOR_ID, ALICE)],
+        nachricht(ZUSTELLUNG_EMPFAENGER, ALICE, '1791841626624331126')
+      ),
       false,
       'andere Autor-Id, andere Nachricht'
     );
