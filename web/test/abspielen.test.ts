@@ -8,6 +8,12 @@
  *    `AudioStreamAcquired`) ohne Fänger läuft und an `track.attach()`-Elemente
  *    stößt (`startAudioAbbruchfest`). Der Browser-Nachweis dazu steht in
  *    `tests/e2e/abspielen-abbruch.spec.ts`.
+ *
+ * Dazu die Folge für den Ton-gesperrt-Zustand: LiveKit setzt
+ * `canPlaybackAudio=false` (und feuert `AudioPlaybackStatusChanged`) schon
+ * BEVOR `startAudio()` wirft — ein überholter Versuch ließe das Overlay „Audio
+ * ist stummgeschaltet" also stehen. Der Wrapper wiederholt ihn deshalb; ein
+ * echter Fehler (Autoplay gesperrt) kommt unverändert an und bleibt gesperrt.
  */
 
 import { test, describe } from 'node:test';
@@ -16,7 +22,12 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { istAbspielAbbruch, spieleAb, startAudioAbbruchfest } from '../src/lib/audio/abspielen.ts';
+import {
+  folgeNachFehler,
+  istAbspielAbbruch,
+  spieleAb,
+  startAudioAbbruchfest,
+} from '../src/lib/audio/abspielen.ts';
 
 const abbruch = () =>
   new DOMException('The play() request was interrupted by a call to pause().', 'AbortError');
@@ -30,6 +41,24 @@ describe('istAbspielAbbruch', () => {
     assert.equal(istAbspielAbbruch(null), false);
     assert.equal(istAbspielAbbruch(undefined), false);
     assert.equal(istAbspielAbbruch('AbortError'), false);
+  });
+});
+
+describe('folgeNachFehler', () => {
+  test('Abbruch mit Versuchen übrig → wiederholen', () => {
+    assert.equal(folgeNachFehler(abbruch(), 0, 2), 'wiederholen');
+    assert.equal(folgeNachFehler(abbruch(), 1, 2), 'wiederholen');
+  });
+
+  test('Abbruch ohne Versuche übrig → verwerfen (kein Fehler)', () => {
+    assert.equal(folgeNachFehler(abbruch(), 2, 2), 'verwerfen');
+    assert.equal(folgeNachFehler(abbruch(), 0, 0), 'verwerfen');
+  });
+
+  test('alles andere → weiterreichen, auch wenn Versuche übrig sind', () => {
+    assert.equal(folgeNachFehler(gesperrt(), 0, 2), 'weiterreichen');
+    assert.equal(folgeNachFehler(new Error('boom'), 0, 2), 'weiterreichen');
+    assert.equal(folgeNachFehler(undefined, 0, 2), 'weiterreichen');
   });
 });
 
@@ -83,6 +112,86 @@ describe('startAudioAbbruchfest', () => {
     startAudioAbbruchfest(raum);
     await raum.startAudio();
     assert.equal(aufrufe, 1);
+  });
+});
+
+describe('startAudioAbbruchfest: ein überholter Versuch hinterlässt keinen gesperrten Ton', () => {
+  /** Nimmt LiveKits `startAudio()` nach: der Fehler setzt den Zustand schon,
+   *  BEVOR er geworfen wird (`handleAudioPlaybackFailed`), ein Erfolg setzt ihn
+   *  zurück. `drehbuch` = Ausgang je Versuch (der letzte gilt weiter). */
+  function livekitRaum(drehbuch: Array<'ok' | 'abbruch' | 'gesperrt'>) {
+    const sperre = gesperrt();
+    const raum = {
+      canPlaybackAudio: true,
+      sperre,
+      versuche: 0,
+      dieses: undefined as unknown,
+      ereignisse: [] as boolean[],
+      startAudio: async function (this: unknown) {
+        raum.dieses = this;
+        const schritt = drehbuch[Math.min(raum.versuche++, drehbuch.length - 1)];
+        if (schritt === 'ok') {
+          if (!raum.canPlaybackAudio) {
+            raum.canPlaybackAudio = true;
+            raum.ereignisse.push(true);
+          }
+          return;
+        }
+        if (raum.canPlaybackAudio) {
+          raum.canPlaybackAudio = false;
+          raum.ereignisse.push(false);
+        }
+        throw schritt === 'abbruch' ? abbruch() : sperre;
+      },
+    };
+    return raum;
+  }
+  /** Das Overlay hängt an genau dieser Rechnung (`livekit.svelte.ts`). */
+  const overlay = (raum: { canPlaybackAudio: boolean }) => !raum.canPlaybackAudio;
+
+  test('einmal überholt, dann Erfolg: kein Overlay, zwei Versuche', async () => {
+    const raum = livekitRaum(['abbruch', 'ok']);
+    startAudioAbbruchfest(raum);
+    await raum.startAudio();
+    assert.equal(overlay(raum), false);
+    assert.equal(raum.versuche, 2);
+    assert.equal(raum.ereignisse.at(-1), true);
+  });
+
+  test('Gegenprobe: ohne Wrapper bliebe das Overlay stehen', async () => {
+    const raum = livekitRaum(['abbruch', 'ok']);
+    await assert.rejects(raum.startAudio());
+    assert.equal(overlay(raum), true);
+  });
+
+  test('echte Sperre: genau ein Versuch, Fehler kommt an, Overlay bleibt', async () => {
+    const raum = livekitRaum(['gesperrt']);
+    startAudioAbbruchfest(raum);
+    await assert.rejects(raum.startAudio(), (e: unknown) => e === raum.sperre);
+    assert.equal(raum.versuche, 1);
+    assert.equal(overlay(raum), true);
+  });
+
+  test('überholt, dann gesperrt: die Sperre gewinnt', async () => {
+    const raum = livekitRaum(['abbruch', 'gesperrt']);
+    startAudioAbbruchfest(raum);
+    await assert.rejects(raum.startAudio(), (e: unknown) => e === raum.sperre);
+    assert.equal(raum.versuche, 2);
+    assert.equal(overlay(raum), true);
+  });
+
+  test('immer überholt: nach drei Versuchen endet es still, ohne Fehler', async () => {
+    const raum = livekitRaum(['abbruch']);
+    startAudioAbbruchfest(raum);
+    await raum.startAudio();
+    assert.equal(raum.versuche, 3);
+  });
+
+  test('das Original läuft am Raum (this), auch bei der Wiederholung', async () => {
+    const raum = livekitRaum(['abbruch', 'ok']);
+    startAudioAbbruchfest(raum);
+    await raum.startAudio();
+    assert.equal(raum.dieses, raum);
   });
 });
 

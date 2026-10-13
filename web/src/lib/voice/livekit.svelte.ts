@@ -489,7 +489,10 @@ class VoiceRoom {
     try {
       await room.startAudio();
     } catch {
-      // startAudio rejects if already started — harmless.
+      // Eine Autoplay-Sperre (NotAllowedError) wirft hier; ein überholter
+      // Versuch (AbortError) kommt gar nicht erst an, `startAudioAbbruchfest`
+      // wiederholt ihn. Den Zustand liest die Zeile unten aus
+      // `room.canPlaybackAudio`.
     }
 
     // Re-check generation: a channel switch may have started while startAudio
@@ -853,7 +856,8 @@ class VoiceRoom {
     try {
       await room.startAudio();
     } catch {
-      // startAudio can throw if already started — harmless.
+      // Ein Fehler heißt: weiterhin gesperrt. Der Zustand steht gleich unten
+      // in `room.canPlaybackAudio`.
     }
     this.#audioEls.replayAll();
     this.audioBlocked = !room.canPlaybackAudio;

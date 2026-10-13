@@ -29,6 +29,8 @@ declare global {
     LivekitClient: {
       Room: new () => {
         startAudio: () => Promise<void>;
+        canPlaybackAudio: boolean;
+        on: (e: string, fn: (v: boolean) => void) => void;
         remoteParticipants: Map<string, unknown>;
         localParticipant: { emit: (e: string) => void };
         setupLocalParticipantEvents: () => void;
@@ -53,8 +55,8 @@ test.describe('play() und sein Abbruch', () => {
   });
 
   /** Beitritt nachstellen: Ereignis feuern, im selben Zug pausiert LiveKit. */
-  async function beitrittNachstellen(page: Page, schuetzen: boolean): Promise<void> {
-    await page.evaluate(async (schuetzen) => {
+  async function beitrittNachstellen(page: Page, schuetzen: boolean): Promise<boolean> {
+    return page.evaluate(async (schuetzen) => {
       // @ts-expect-error - Vite-served path resolved at browser runtime
       const { startAudioAbbruchfest } = await import('/src/lib/audio/abspielen.ts');
       const raum = new window.LivekitClient.Room();
@@ -73,6 +75,7 @@ test.describe('play() und sein Abbruch', () => {
       raum.localParticipant.emit('audioStreamAcquired');
       el.pause(); // `detach()` → `recycleElement()` in LiveKit
       await new Promise((r) => setTimeout(r, 400));
+      return raum.canPlaybackAudio;
     }, schuetzen);
   }
 
@@ -85,10 +88,11 @@ test.describe('play() und sein Abbruch', () => {
     ).toBe(true);
   });
 
-  test('mit startAudioAbbruchfest() bleibt die Konsole sauber', async ({ page }) => {
+  test('mit startAudioAbbruchfest() bleibt die Konsole sauber und der Ton frei', async ({ page }) => {
     const fehler = unbehandelteFehler(page);
-    await beitrittNachstellen(page, true);
+    const kannAbspielen = await beitrittNachstellen(page, true);
     expect(fehler).toEqual([]);
+    expect(kannAbspielen, 'der überholte Versuch darf den Ton nicht als gesperrt zurücklassen').toBe(true);
   });
 
   test('spieleAb(): ein überholtes play() ist kein Fehler, ein nacktes schon', async ({ page }) => {
@@ -114,3 +118,123 @@ test.describe('play() und sein Abbruch', () => {
     expect(abbruch(), 'Kontrolle: das nackte play() erzeugt den Fehler hier wirklich').toHaveLength(1);
   });
 });
+
+/**
+ * Ein überholtes `startAudio()` darf den Ton nicht als gesperrt zurücklassen.
+ *
+ * LiveKit ruft im `catch` von `startAudio()` für JEDEN Fehler
+ * `handleAudioPlaybackFailed()` — auch für `AbortError`: `canPlaybackAudio`
+ * kippt auf `false`, `AudioPlaybackStatusChanged(false)` feuert, und Pulse
+ * (`livekit.svelte.ts`) setzt daraufhin `voice.audioBlocked` → Overlay „Audio
+ * ist stummgeschaltet“, obwohl der Ton läuft. Erst DANACH wirft LiveKit, und
+ * erst dort greift `startAudioAbbruchfest`. Die echte Bibliothek läuft gegen ein
+ * Element, dessen `play()` nach Drehbuch antwortet (`abbruch` = überholt,
+ * `gesperrt` = Autoplay-Sperre, `ok`).
+ */
+test.describe('startAudio(): Abbruch ist kein gesperrter Ton', () => {
+  type Schritt = 'ok' | 'abbruch' | 'gesperrt';
+  interface Befund {
+    /** `ok` oder der Name des Fehlers, mit dem `startAudio()` geendet hat. */
+    ergebnis: string;
+    /** Was `room.canPlaybackAudio` danach sagt — daran hängt `voice.audioBlocked`. */
+    kannAbspielen: boolean;
+    /** Alle `AudioPlaybackStatusChanged`-Werte, in der Reihenfolge. */
+    ereignisse: boolean[];
+    /** `canPlaybackAudio` zu Beginn jedes Bildes, solange der Lauf dauerte. */
+    bildproben: boolean[];
+    /** Wie oft `play()` aufgerufen wurde (= Versuche von `startAudio()`). */
+    versuche: number;
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/login');
+    await page.addScriptTag({ path: LIVEKIT_UMD });
+  });
+
+  /** `startAudio()` einmal fahren, wie Pulse es beim Beitritt tut. */
+  function fahre(page: Page, drehbuch: Schritt[], schuetzen = true): Promise<Befund> {
+    return page.evaluate(
+      async ({ drehbuch, schuetzen }) => {
+        // @ts-expect-error - Vite-served path resolved at browser runtime
+        const { startAudioAbbruchfest } = await import('/src/lib/audio/abspielen.ts');
+        const raum = new window.LivekitClient.Room();
+        const ereignisse: boolean[] = [];
+        raum.on('audioPlaybackChanged', (ok) => ereignisse.push(ok));
+        if (schuetzen) startAudioAbbruchfest(raum);
+        let versuche = 0;
+        const element = {
+          muted: true,
+          play: () => {
+            const schritt = drehbuch[Math.min(versuche++, drehbuch.length - 1)];
+            if (schritt === 'ok') return Promise.resolve();
+            return Promise.reject(
+              schritt === 'abbruch'
+                ? new DOMException('The play() request was interrupted by a call to pause().', 'AbortError')
+                : new DOMException('play() failed: not allowed', 'NotAllowedError')
+            );
+          }
+        };
+        raum.remoteParticipants.set('gegenstelle', {
+          audioTrackPublications: new Map([['ton', { track: { attachedElements: [element] } }]]),
+          videoTrackPublications: new Map()
+        });
+        const bildproben: boolean[] = [];
+        let laeuft = true;
+        const probe = () => {
+          bildproben.push(raum.canPlaybackAudio);
+          if (laeuft) requestAnimationFrame(probe);
+        };
+        requestAnimationFrame(probe);
+        let ergebnis = 'ok';
+        try {
+          await raum.startAudio();
+        } catch (e) {
+          ergebnis = (e as { name?: string }).name ?? String(e);
+        }
+        await new Promise((r) => setTimeout(r, 150));
+        laeuft = false;
+        return { ergebnis, kannAbspielen: raum.canPlaybackAudio, ereignisse, bildproben, versuche };
+      },
+      { drehbuch, schuetzen }
+    );
+  }
+
+  test('Kontrolle: ohne Schutz lässt der Abbruch den Ton als gesperrt zurück', async ({ page }) => {
+    const b = await fahre(page, ['abbruch'], false);
+    expect(b.ergebnis).toBe('AbortError');
+    expect(b.kannAbspielen, 'Kontrolle: LiveKit kippt hier tatsächlich auf „gesperrt“').toBe(false);
+    expect(b.ereignisse).toEqual([false]);
+  });
+
+  test('ein überholtes play() wird wiederholt, der Ton gilt danach als frei', async ({ page }) => {
+    const b = await fahre(page, ['abbruch', 'ok']);
+    expect(b.ergebnis).toBe('ok');
+    expect(b.kannAbspielen, 'daran hängt das Overlay „Audio ist stummgeschaltet“').toBe(true);
+    expect(b.ereignisse.at(-1)).toBe(true);
+    expect(b.bildproben.every(Boolean), 'kein Bild sah „gesperrt“ — das Overlay blitzt nicht auf').toBe(true);
+    expect(b.versuche).toBe(2);
+  });
+
+  test('ein echter Autoplay-Sperrfehler bleibt gesperrt und wird nicht wiederholt', async ({ page }) => {
+    const b = await fahre(page, ['gesperrt']);
+    expect(b.ergebnis).toBe('NotAllowedError');
+    expect(b.versuche).toBe(1);
+    expect(b.kannAbspielen).toBe(false);
+    expect(b.ereignisse).toEqual([false]);
+  });
+
+  test('Abbruch, dann echte Sperre: die Sperre gewinnt', async ({ page }) => {
+    const b = await fahre(page, ['abbruch', 'gesperrt']);
+    expect(b.ergebnis).toBe('NotAllowedError');
+    expect(b.versuche).toBe(2);
+    expect(b.kannAbspielen).toBe(false);
+    expect(b.ereignisse.at(-1)).toBe(false);
+  });
+
+  test('immer überholt: endet nach wenigen Versuchen und wirft nicht', async ({ page }) => {
+    const b = await fahre(page, ['abbruch']);
+    expect(b.ergebnis).toBe('ok');
+    expect(b.versuche).toBe(3);
+  });
+});
+
