@@ -11,8 +11,8 @@
  */
 import { STORE_NACHRICHTEN, STORE_MEDIEN, type Satz } from './schema';
 import { mitVerbindung } from './verbindung';
-import { nachSchluesselVerdichten, satzErgaenzen, type Nachschub } from './satz';
-import { gehoertZuKonto } from './kontoFilter';
+import { nachSchluesselVerdichten, type Nachschub } from './satz';
+import { nachschubFassung } from './schreibRegel';
 import { ablegenMitRegister } from './dbRegister';
 
 /**
@@ -33,8 +33,8 @@ import { ablegenMitRegister } from './dbRegister';
  * Was denselben Schlüssel teilt, legt `nachSchluesselVerdichten` vorher
  * zusammen.
  *
- * Ein Satz eines FREMDEN Kontos unter demselben Schlüssel zählt wie „liegt
- * nichts" und wird überschrieben, wie in `verlaufPutSaetze`. `herkunft` sagt,
+ * Ein Satz eines anderen Kontos desselben Browserprofils unter demselben
+ * Schlüssel bleibt ebenfalls stehen (`schreibRegel.ts`). `herkunft` sagt,
  * wie viel der Nachschub ergänzen darf (`satz.ts::Nachschub`). Was
  * geschrieben wird, läuft durch das Grabstein-Register
  * (`dbRegister.ts::ablegenMitRegister`): eine gelöschte Nachricht kommt über
@@ -61,10 +61,7 @@ export function verlaufSaetzeErgaenzen(
           const getReq = store.get(neu.schluessel);
           getReq.onsuccess = () => {
             const vorhanden = getReq.result as Satz | undefined;
-            const satz =
-              vorhanden !== undefined && gehoertZuKonto(vorhanden, kontoId)
-                ? satzErgaenzen(vorhanden, neu, herkunft)
-                : neu;
+            const satz = nachschubFassung(vorhanden, neu, kontoId, herkunft);
             if (satz === null) {
               naechster(i + 1);
               return;

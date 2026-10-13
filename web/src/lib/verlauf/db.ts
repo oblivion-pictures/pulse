@@ -14,6 +14,7 @@ import { STORE_NACHRICHTEN, STORE_ANHAENGE, STORE_MEDIEN, type Satz } from './sc
 import { mitVerbindung } from './verbindung';
 import { sortierSchluessel, satzAnhangIds } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
+import { serverWegDarfSchreiben } from './schreibRegel';
 import { ablegenMitRegister, kanalBereich, OBERE_ID } from './dbRegister';
 import { anhaengeVerwaistLoeschen } from './dbAnhaenge';
 
@@ -54,7 +55,8 @@ export {
  *  Server kennt keine verschlüsselte Nachricht (`Message.verschluesselt`
  *  setzt er nie), eine Server-Fassung unter demselben Schlüssel kann also
  *  nur eine Verwechslung oder eine Fälschung sein — blind darübergelegt,
- *  hob sie einen Grabstein auf und nahm Kennung und Reaktionen mit.
+ *  hob sie einen Grabstein auf und nahm Kennung und Reaktionen mit. Ebenso
+ *  bleibt der Satz eines anderen Kontos desselben Profils (`schreibRegel.ts`).
  *
  *  Zweit-Schreibweg `medien` (Stufe B1): die Anhänge eines Satzes wandern
  *  als Index-Zeilen (`schema.ts::MedienZeile`) mit in dieselbe Transaktion.
@@ -91,10 +93,7 @@ export function verlaufPutSaetze(
           }
           const anfrage = store.get(satz.schluessel);
           anfrage.onsuccess = () => {
-            const vorhanden = anfrage.result as Satz | undefined;
-            const liegtVerschluesselt =
-              vorhanden?.verschluesselt && gehoertZuKonto(vorhanden, satz.kontoId);
-            if (!liegtVerschluesselt) ablegen(satz);
+            if (serverWegDarfSchreiben(anfrage.result as Satz | undefined, satz)) ablegen(satz);
           };
         }
         tx.oncomplete = () => resolve(alsGrabstein);
