@@ -151,7 +151,7 @@ export type ArchivNachricht = Message & { archiv_ungeprueft?: true };
 export type ArchivEintrag = { art: 'nachricht'; nachricht: ArchivNachricht } | Grabstein;
 
 /**
- * Bestandszeilen ohne Einlieferer (eingeliefert vor Migration 0102) werden
+ * Bestandszeilen ohne Einlieferer (eingeliefert vor Migration 0103) werden
  * ÜBERGANGSWEISE noch angenommen — wie bisher, ohne Prüfung des Autors.
  * Begründung: neue Zeilen tragen den Einlieferer immer, eine Fälschung ist
  * damit nur noch in Zeilen möglich, die schon vor der Umstellung lagen, und

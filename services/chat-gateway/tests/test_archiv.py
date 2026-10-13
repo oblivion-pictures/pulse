@@ -102,7 +102,7 @@ async def test_wiederholte_einlieferung_ist_idempotent(client, _auth_signer, fri
     assert len(r.json()) == 1
 
 
-# --- Einlieferer je Zeile (Migration 0102, Gegenprüfung 2026-10-12 Fund 2) ---
+# --- Einlieferer je Zeile (Migration 0103, Gegenprüfung 2026-10-12 Fund 2) ---
 # Einliefern darf jedes Mitglied, und den Autor nennt eine Zeile sonst nur in
 # ihrer Nutzlast. Der Server hält deshalb fest, wer eingeliefert hat — aus der
 # Anmeldung, nie aus dem Körper —, und der Klient verwirft eine Zeile, deren
@@ -178,7 +178,7 @@ async def test_bestandszeile_ohne_einlieferer_kommt_mit_null(
     _, uid_b = await _register(_auth_signer)
     dm_id = await _dm_zwischen(client, _auth_signer, friend_pair, uid_a, uid_b)
     async with session_factory() as session:
-        session.add(ArchivZeile(id=505, channel_id=int(dm_id), nutzlast=b"vor-0102"))
+        session.add(ArchivZeile(id=505, channel_id=int(dm_id), nutzlast=b"vor-0103"))
         await session.commit()
 
     r = await client.get(f"/archiv/{dm_id}", headers=make_auth_header(t_a))

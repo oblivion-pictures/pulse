@@ -19,9 +19,9 @@ die Spalte wird nur ausgeliefert, nie gefiltert.
 Neue Metadaten sind das kaum: wer wann an welchen Kanal sendet, sieht der
 Server ohnehin an den Postfach-Zustellungen (``absender_user_id``).
 
-Revision ID: 0102_archiv_einlieferer
-Revises: 0101_zustellstand
-Create Date: 2026-10-12 10:00:00.000000+00:00
+Revision ID: 0103_archiv_einlieferer
+Revises: 0102_attachment_thumb_size
+Create Date: 2026-10-13 10:00:00.000000+00:00
 
 """
 from __future__ import annotations
@@ -34,8 +34,8 @@ from alembic import op
 # Siehe 0088: die Tabellen dieses Dienstes leben im Schema ``chat``.
 SCHEMA = "chat"
 
-revision: str = "0102_archiv_einlieferer"
-down_revision: str | Sequence[str] | None = "0101_zustellstand"
+revision: str = "0103_archiv_einlieferer"
+down_revision: str | Sequence[str] | None = "0102_attachment_thumb_size"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

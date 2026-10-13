@@ -105,7 +105,7 @@ describe('archiv/zeile', () => {
 	// ── Einlieferer (Gegenprüfung 2026-10-12, Fund 2) ──────────────────────
 	// Den Autor `a` schreibt der Einliefernde selbst in die Nutzlast, und
 	// einliefern darf jedes Kanalmitglied. Der Server nennt deshalb seit
-	// Migration 0102 den Einlieferer jeder Zeile.
+	// Migration 0103 den Einlieferer jeder Zeile.
 
 	const klar = (n: Message) => new TextDecoder().decode(baueZeilenKlar(n));
 

@@ -2,7 +2,7 @@
  * Sätze aus dem Archiv, deren Autor niemand geprüft hat — und wohin sie
  * nicht wandern dürfen (Gegenprüfung 2026-10-12, Fund 4).
  *
- * Bestandszeilen von vor Migration 0102 kennen ihren Einlieferer nicht, und
+ * Bestandszeilen von vor Migration 0103 kennen ihren Einlieferer nicht, und
  * `archiv/zeile.ts::leseZeile` nimmt sie übergangsweise trotzdem an
  * (`BESTANDSZEILEN_ANNEHMEN`). Ihren Autor `a` schrieb der Einliefernde
  * selbst hinein: Bob konnte eine Zeile `{i: K, a: Alice, anh: […]}` als Alices

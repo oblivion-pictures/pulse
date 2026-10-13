@@ -18,7 +18,7 @@ je Mitgliederwechsel — Upgrade-Pfad wäre eine Schlüssel-Epoche je Sitzung
 wie bei Megolm).
 
 **Wer eine Zeile eingeliefert hat, hält die Zeile selbst** (``user_id``,
-seit Migration 0102, aus der Anmeldung). Einliefern darf jedes Mitglied,
+seit Migration 0103, aus der Anmeldung). Einliefern darf jedes Mitglied,
 und den Autor nennt eine Zeile sonst nur in ihrer verschlüsselten Nutzlast
 — ein Mitglied konnte also eine Zeile im Namen eines anderen einliefern.
 Der Server prüft das nicht (er sieht die Nutzlast nie), er liefert den
@@ -96,7 +96,7 @@ class ArchivZeileOut(BaseModel):
     channel_id: str
     nutzlast_b64: str
     erstellt_at: str
-    # Wer die Zeile eingeliefert hat; ``None`` bei Bestandszeilen vor 0102.
+    # Wer die Zeile eingeliefert hat; ``None`` bei Bestandszeilen vor 0103.
     user_id: str | None
 
 

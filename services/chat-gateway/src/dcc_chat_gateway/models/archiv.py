@@ -38,9 +38,9 @@ class ArchivZeile(Base):
     # AES-256-GCM unter dem Kanal-Schlüssel: 12-Byte-Nonce vorangestellt.
     nutzlast: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     # Wer die Zeile eingeliefert hat — aus der Anmeldung, nie aus dem Körper
-    # der Anfrage (Migration 0102). Der Klient verwirft jede Zeile, deren
+    # der Anfrage (Migration 0103). Der Klient verwirft jede Zeile, deren
     # Autor in der Nutzlast nicht dazu passt. NULL nur bei Bestandszeilen
-    # von vor 0102, deren Einlieferer niemand mehr kennt.
+    # von vor 0103, deren Einlieferer niemand mehr kennt.
     user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     erstellt_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
