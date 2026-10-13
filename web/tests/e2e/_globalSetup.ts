@@ -300,20 +300,29 @@ function startService(name: string, env: NodeJS.ProcessEnv, port: number, cwd: s
  * Vier dauerhaft rote Tests sind vier Tests, die keine Regression mehr melden
  * koennen — deshalb wird die Voraussetzung jetzt hergestellt statt angenommen.
  *
- * `up -d` ist idempotent und laesst laufende Container in Ruhe. Bucket +
- * Key anlegen uebernimmt `scripts/dev-garage-init.sh` (das Garage-Image hat
- * keinen Init-Container — dasselbe Bild wie im Dev-Stack, Bughunt 4.1).
+ * `--no-recreate` ist Pflicht (2026-10-13): ein blosses `up -d` laesst
+ * laufende Container NUR dann in Ruhe, wenn es aus demselben Ordner kommt, aus
+ * dem sie gestartet wurden. Aus einem Worktree zeigen die eingehaengten
+ * Konfigurationsdateien (`infra/postgres/init.sql`, `infra/garage/garage.toml`)
+ * auf andere Pfade, Compose haelt das fuer eine geaenderte Einstellung und legt
+ * Postgres und Garage NEU an — mitten in den Laeufen anderer Worktrees
+ * („terminating connection due to administrator command“), und danach haengen
+ * die gemeinsamen Container an einem Worktree, nach dessen Loeschen Garage
+ * beim naechsten Neustart seine Konfiguration nicht mehr findet. Mit dem
+ * Schalter startet der Aufruf nur, was fehlt. Bucket + Key anlegen uebernimmt
+ * `scripts/dev-garage-init.sh` (das Garage-Image hat keinen Init-Container —
+ * dasselbe Bild wie im Dev-Stack, Bughunt 4.1).
  */
 function ensureInfra() {
   const cwd = resolve(__dirname, '../../..');
   try {
-    execSync(`${COMPOSE} up -d postgres redis garage`, { cwd, stdio: 'ignore' });
+    execSync(`${COMPOSE} up -d --no-recreate postgres redis garage`, { cwd, stdio: 'ignore' });
   } catch (e) {
     // Laut, nicht still: ohne Infrastruktur scheitert die Suite ohnehin, aber
     // sie soll es HIER sagen und nicht als Testfehlschlag zwanzig Zeilen
     // spaeter.
     throw new Error(
-      `Die Test-Infrastruktur liess sich nicht starten (${COMPOSE} up -d postgres redis garage). ` +
+      `Die Test-Infrastruktur liess sich nicht starten (${COMPOSE} up -d --no-recreate postgres redis garage). ` +
         `Laeuft der Container-Dienst? Ursprungsfehler: ${e}`
     );
   }
