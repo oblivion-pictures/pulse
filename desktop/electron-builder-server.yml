@@ -78,8 +78,8 @@ mac:
   publish:
     provider: generic
     url: https://howispulse.com/updates/mac-server/
-    # Nur Einzelbereiche, Begründung: Win-Block am Dateiende
-    # (GitHub-Assets lehnen Mehrfach-Bereiche mit 501 ab).
+    # Nur Einzelbereiche (GitHub-Assets lehnen Mehrfach-Bereiche mit 501 ab),
+    # Begründung beim `publish:` auf Wurzelebene am Dateiende.
     useMultipleRangeRequest: false
   extraResources:
     - from: resources-podman-mac

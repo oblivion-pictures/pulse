@@ -9,12 +9,13 @@
  * er aus der eingebauten `app-update.yml` — die electron-builder aus dem
  * `publish:`-Block dieser Dateien schreibt (app-builder-lib,
  * `getAppUpdatePublishConfiguration`: `{...publishConfigs[0]}`). Fehlt die
- * Zeile in EINEM Block, fällt nur eine Plattform still auf den vollen Download
- * zurück; nichts schlägt fehl, jedes Update wird bloß so groß wie die ganze
- * Datei statt nur der geänderten Blöcke.
+ * Zeile in EINEM Block, fällt nur diese Plattform auf den vollen Download
+ * zurück: das Update gelingt weiter, wird aber so groß wie die ganze Datei statt
+ * nur der geänderten Blöcke. Verraten wird es allein durch eine Logzeile des
+ * Updaters (`Cannot download differentially`).
  *
  * Die yml-Dateien werden zeilenweise gelesen: `desktop` hat keine YAML-
- * Abhängigkeit, und eine neue wäre für diese zwei Dateien zu viel.
+ * Abhängigkeit, und eine neue wäre für diese Dateien zu viel.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -46,10 +47,10 @@ function blockUnter(zeilen: string[], von: number): string[] {
   const kopfEinzug = einzug(zeilen[von]);
   const block: string[] = [];
   for (let i = von + 1; i < zeilen.length; i++) {
-    const roh = zeilen[i];
-    if (ohneKommentar(roh).trim() === '') continue;
-    if (einzug(roh) <= kopfEinzug) break;
-    block.push(ohneKommentar(roh));
+    const zeile = ohneKommentar(zeilen[i]);
+    if (zeile.trim() === '') continue;
+    if (einzug(zeile) <= kopfEinzug) break;
+    block.push(zeile);
   }
   return block;
 }

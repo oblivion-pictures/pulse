@@ -220,8 +220,8 @@ mac:
   publish:
     provider: generic
     url: https://howispulse.com/updates/mac/
-    # Nur Einzelbereiche, Begründung: Win-Block weiter oben (`publish:` auf Wurzelebene)
-    # (GitHub-Assets lehnen Mehrfach-Bereiche mit 501 ab). Gilt auch für das
+    # Nur Einzelbereiche (GitHub-Assets lehnen Mehrfach-Bereiche mit 501 ab),
+    # Begründung beim `publish:` auf Wurzelebene weiter oben. Gilt auch für das
     # Delta des Mac-Zips.
     useMultipleRangeRequest: false
   # HQ-Streaming-Sidecar UND nativer Player: the SELF-CONTAINED bundle dir
