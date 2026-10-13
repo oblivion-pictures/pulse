@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { E2E_DB } from './_db';
 
 /**
  * Der Nachweis fuer Aufgabe 6 aus
@@ -201,7 +202,7 @@ async function warteAufSchluesselbuendel(page: Page, userId: string): Promise<vo
 }
 
 /** Wie `e2e-dm.spec.ts::pgQuery` — `docker exec` gegen denselben Container,
- *  den `_globalSetup.ts::truncateDb` verwendet, dieselbe `dcc_test`-DB. */
+ *  den `_globalSetup.ts::truncateDb` verwendet, dieselbe DB (`E2E_DB`). */
 function pgQuery(sql: string): string {
   const dotenv: Record<string, string> = {};
   try {
@@ -215,7 +216,7 @@ function pgQuery(sql: string): string {
   const pgUser = dotenv.POSTGRES_USER ?? 'dcc';
   return execFileSync(
     'docker',
-    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', 'dcc_test', '-tAc', sql],
+    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', E2E_DB, '-tAc', sql],
     { encoding: 'utf8' }
   ).trim();
 }

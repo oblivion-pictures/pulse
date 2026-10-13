@@ -8,12 +8,13 @@
  * für den echten Reset säht der Test deshalb selbst einen Token-Hash in
  * `auth.password_reset_tokens` und kennt den Klartext per Konstruktion.
  * Die DB-Gegenprobe läuft per `docker exec` gegen den Test-Stack
- * (`dcc_night_postgres` / `dcc_test`, dieselbe DB wie in _globalSetup).
+ * (`dcc_night_postgres` / `E2E_DB`, dieselbe DB wie in _globalSetup).
  */
 
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { E2E_DB } from './_db';
 
 const ts = Date.now();
 const USER = {
@@ -26,7 +27,7 @@ const NEW_PASSWORD = 'wiederhergestellt-77';
 function dbQuery(sql: string): string {
   return execFileSync(
     'docker',
-    ['exec', 'dcc_night_postgres', 'psql', '-U', 'dcc', '-d', 'dcc_test', '-tAc', sql],
+    ['exec', 'dcc_night_postgres', 'psql', '-U', 'dcc', '-d', E2E_DB, '-tAc', sql],
     { encoding: 'utf8' }
   ).trim();
 }

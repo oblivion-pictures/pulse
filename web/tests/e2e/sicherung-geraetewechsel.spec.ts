@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { E2E_DB } from './_db';
 
 /**
  * Der Nachweis für den Geräte-Wechsel über die Sicherung (2026-09-10):
@@ -313,10 +314,9 @@ function pgQuery(sql: string): string {
   // ANDEREN Laufs — „Postfach leer" und „Server hat nie Klartext gesehen"
   // wären dann Aussagen über die falsche Datenbank (die zweite sogar
   // trivial wahr).
-  const testDb = process.env.PULSE_E2E_DB ?? 'dcc_test';
   return execFileSync(
     'docker',
-    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', testDb, '-tAc', sql],
+    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', E2E_DB, '-tAc', sql],
     { encoding: 'utf8' }
   ).trim();
 }

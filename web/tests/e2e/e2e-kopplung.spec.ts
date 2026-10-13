@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { E2E_DB } from './_db';
 
 /**
  * Der Kopplungs-Nachweis fuer Etappe E11 (`docs/ablage-umsetzung-stand.md`
@@ -252,10 +253,9 @@ function pgQuery(sql: string): string {
   // Dieselbe Datenbank wie der Lauf (`PULSE_E2E_DB`, s. `_globalSetup.ts`) —
   // mit eigener DB fände die Kopplungs-Abfrage sonst nichts (Muster:
   // `sicherung-geraetewechsel.spec.ts`).
-  const testDb = process.env.PULSE_E2E_DB ?? 'dcc_test';
   return execFileSync(
     'docker',
-    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', testDb, '-tAc', sql],
+    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', E2E_DB, '-tAc', sql],
     { encoding: 'utf8' }
   ).trim();
 }

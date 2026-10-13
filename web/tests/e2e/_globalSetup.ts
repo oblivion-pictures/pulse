@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { E2E_AUTH_PORT, E2E_CHAT_PORT, E2E_WEB_PORT, E2E_BASE_URL } from './_ports';
+import { E2E_DB, E2E_REDIS_DB } from './_db';
 
 /**
  * Detect the container runtime once at setup time. The repo's
@@ -182,7 +183,7 @@ function clearSharedAuthRedisCache(redisUrl: string): void {
   );
 }
 
-function ensureTestDb(postgresUser: string, dbName = 'dcc_test') {
+function ensureTestDb(postgresUser: string, dbName: string) {
   const cwd = resolve(__dirname, '../../..');
   // CREATE DATABASE has no IF NOT EXISTS — check first, then create.
   const check = execSync(
@@ -225,7 +226,7 @@ function killPort(port: number, knownTestPids: Set<number>) {
 
 /**
  * Hard-fail if a port is still occupied after the kill pass. The e2e suite
- * starts its own auth/chat-gateway (see `_ports.ts`) wired to the dcc_test DB.
+ * starts its own auth/chat-gateway (see `_ports.ts`) wired to the test DB (`_db.ts`).
  * killPort only reaps this suite's own leftovers, and startService runs with
  * stdio:'ignore' which *swallows* the EADDRINUSE — so anything else bound here
  * would silently shadow the test services and the whole suite would run
@@ -246,10 +247,11 @@ function assertPortFree(port: number): void {
   if (held) {
     throw new Error(
       `Port ${port} is already in use (PID ${held.split(/\s+/).join(', ')}).\n` +
-        `The e2e suite starts its own auth/chat-gateway here, against the dcc_test\n` +
-        `database, and this PID is not one of ours (see the pid file). Whatever it\n` +
-        `is, it would shadow the test services and the suite would run against\n` +
-        `that process's database instead.\n` +
+        `The e2e suite starts its own auth/chat-gateway here, against the test\n` +
+        `database (PULSE_E2E_DB, default dcc_test), and this PID is not one of\n` +
+        `ours (see the pid file). Whatever it is, it would shadow the test\n` +
+        `services and the suite would run against that process's database\n` +
+        `instead.\n` +
         `Kill it, or move the suite: PULSE_E2E_AUTH_PORT / PULSE_E2E_CHAT_PORT /\n` +
         `PULSE_E2E_VOICE_PORT / PULSE_E2E_WEB_PORT (see web/tests/e2e/_ports.ts).`
     );
@@ -333,11 +335,12 @@ export default async function globalSetup() {
 
   // Ensure the dedicated test database exists (never touches dcc).
   // Eigene Datenbank/Redis-DB fuer diesen Lauf, Vorgabe unverändert dcc_test
-  // und /1. Wer parallel fährt (mehrere Bughunt-Agenten teilen sich Postgres
-  // und Redis), setzt PULSE_E2E_DB/PULSE_E2E_REDIS_DB — sonst löscht das
-  // TRUNCATE eines Laufs die Nutzer mitten im Lauf des anderen.
-  const testDb = process.env.PULSE_E2E_DB ?? 'dcc_test';
-  const redisDb = process.env.PULSE_E2E_REDIS_DB ?? '1';
+  // und /1 — die Werte stehen in `_db.ts`, das auch die Specs lesen. Wer
+  // parallel fährt (mehrere Bughunt-Agenten teilen sich Postgres und Redis),
+  // setzt PULSE_E2E_DB/PULSE_E2E_REDIS_DB — sonst löscht das TRUNCATE eines
+  // Laufs die Nutzer mitten im Lauf des anderen.
+  const testDb = E2E_DB;
+  const redisDb = E2E_REDIS_DB;
   ensureTestDb(pgUser, testDb);
 
   const baseEnv: NodeJS.ProcessEnv = {

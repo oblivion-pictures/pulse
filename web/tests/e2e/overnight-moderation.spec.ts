@@ -15,6 +15,7 @@
 
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { execSync } from 'node:child_process';
+import { E2E_DB } from './_db';
 
 function detectExec(): string {
   if (process.env.DOCKER_CMD) return process.env.DOCKER_CMD;
@@ -45,9 +46,8 @@ const BAN_MEMBERS = 1 << 9;
 const MANAGE_MESSAGES = 1 << 23;
 
 function pgQuery(sql: string): string {
-  const db = process.env.PULSE_E2E_DB ?? 'dcc_test';
   return execSync(
-    `${CONTAINER_EXEC} exec dcc_night_postgres psql -U dcc -d ${db} -tAc "${sql}"`,
+    `${CONTAINER_EXEC} exec dcc_night_postgres psql -U dcc -d ${E2E_DB} -tAc "${sql}"`,
     { encoding: 'utf8' }
   ).trim();
 }

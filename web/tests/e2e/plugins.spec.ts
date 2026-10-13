@@ -16,6 +16,7 @@
 
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { execSync } from 'node:child_process';
+import { E2E_DB } from './_db';
 
 function detectExec(): string {
   if (process.env.DOCKER_CMD) return process.env.DOCKER_CMD;
@@ -73,7 +74,7 @@ async function login(page: Page, identifier: string, password: string) {
 
 function promoteToAdmin(username: string) {
   execSync(
-    `${CONTAINER_EXEC} exec -i dcc_night_postgres psql -U dcc -d dcc_test -c "UPDATE auth.users SET is_admin=true WHERE username='${username}'"`,
+    `${CONTAINER_EXEC} exec -i dcc_night_postgres psql -U dcc -d ${E2E_DB} -c "UPDATE auth.users SET is_admin=true WHERE username='${username}'"`,
     { stdio: 'ignore' }
   );
 }

@@ -15,6 +15,7 @@ import {
   alsElektronGeraetAusgeben,
   warteAufSchluesselbuendel
 } from './_hetzner-helfer';
+import { E2E_DB } from './_db';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../../..');
@@ -112,7 +113,7 @@ function pgQuery(sql: string): string {
   const pgUser = dotenv.POSTGRES_USER ?? 'dcc';
   return execFileSync(
     'docker',
-    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', 'dcc_test', '-tAc', sql],
+    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', E2E_DB, '-tAc', sql],
     { encoding: 'utf8' }
   ).trim();
 }
@@ -317,7 +318,7 @@ test.describe.serial('Overnight T7 — verschlüsselte DM (E2EE)', () => {
     ).toBeVisible({ timeout: 15_000 });
 
     // Und die Gegenprobe: keine Klartext-Zeile auf dem Server (Muster aus
-    // e2e-dm.spec.ts — dieselbe dcc_test-DB wie der Rest der Suite).
+    // e2e-dm.spec.ts — dieselbe DB (`E2E_DB`) wie der Rest der Suite).
     const zeilen = Number(
       pgQuery(`SELECT count(*) FROM chat.messages WHERE channel_id = ${dmEveFrank};`)
     );

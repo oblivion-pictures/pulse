@@ -1,5 +1,6 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { execSync } from 'node:child_process';
+import { E2E_DB } from './_db';
 
 /**
  * Overnight Bughunt T19 — Entdecken + Plugins.
@@ -134,9 +135,8 @@ test.describe.serial('Overnight T19 — Entdecken und Plugins', () => {
     // Dieselbe Datenbank wie der Lauf — mit isolierter DB (PULSE_E2E_DB,
     // s. _globalSetup.ts) landet das UPDATE sonst in der falschen, und der
     // Owner blieb unverwandelt.
-    const testDb = process.env.PULSE_E2E_DB ?? 'dcc_test';
     execSync(
-      `${CONTAINER_EXEC} exec -i dcc_night_postgres psql -U dcc -d ${testDb} -c "UPDATE auth.users SET is_admin=true WHERE username='${OWNER.username}'"`,
+      `${CONTAINER_EXEC} exec -i dcc_night_postgres psql -U dcc -d ${E2E_DB} -c "UPDATE auth.users SET is_admin=true WHERE username='${OWNER.username}'"`,
       { stdio: 'ignore' }
     );
     // Neu anmelden, damit der Claim im frischen JWT landet.

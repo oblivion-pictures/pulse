@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { E2E_DB } from './_db';
 
 /**
  * Der Nachweis, dass Etappe D2 wirklich funktioniert (Plan Task 4,
@@ -25,8 +26,8 @@ import { fileURLToPath } from 'node:url';
  * (kein Bundling), deshalb reicht ein Text-Ersetzen an der HTTP-Antwort.
  *
  * **Die DB-Pruefung geht direkt gegen Postgres** (`docker exec` auf den von
- * `_globalSetup.ts` verwendeten Container `dcc_night_postgres`, DB
- * `dcc_test`) — dieselbe Instanz, gegen die die ganze Suite laeuft. Kein
+ * `_globalSetup.ts` verwendeten Container `dcc_night_postgres`, DB `E2E_DB`
+ * aus `_db.ts`) — dieselbe Instanz, gegen die die ganze Suite laeuft. Kein
  * neues Werkzeug, keine neue Abhaengigkeit: `_globalSetup.ts::truncateDb`
  * spricht denselben Container genauso an.
  */
@@ -226,7 +227,7 @@ async function warteAufSchluesselbuendel(page: Page, userId: string): Promise<vo
 }
 
 /** `docker exec` gegen denselben Container, den `_globalSetup.ts::truncateDb`
- *  verwendet — dieselbe `dcc_test`-DB, gegen die die ganze Suite laeuft.
+ *  verwendet — dieselbe DB (`E2E_DB`), gegen die die ganze Suite laeuft.
  *  `PATH` muss den Sudo-Wrapper aus der Betriebsanleitung enthalten (s.
  *  Aufrufbeispiel in der Aufgabenstellung), sonst scheitert schon
  *  `_globalSetup.ts` selbst — dieselbe Voraussetzung, kein Sonderfall hier. */
@@ -246,10 +247,9 @@ function pgQuery(sql: string): string {
   // ANDEREN Laufs — „Postfach leer" und „Server hat nie Klartext gesehen"
   // wären dann Aussagen über die falsche Datenbank (die zweite sogar
   // trivial wahr).
-  const testDb = process.env.PULSE_E2E_DB ?? 'dcc_test';
   return execFileSync(
     'docker',
-    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', testDb, '-tAc', sql],
+    ['exec', 'dcc_night_postgres', 'psql', '-U', pgUser, '-d', E2E_DB, '-tAc', sql],
     { encoding: 'utf8' }
   ).trim();
 }
