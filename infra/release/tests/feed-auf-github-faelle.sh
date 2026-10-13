@@ -14,10 +14,13 @@
 # nicht mit dem Werkzeug des Skripts): ein Test, der seine Eingabe mit demselben
 # Verfahren erzeugt, prüft nur, dass das Verfahren zu sich selbst passt.
 #
-# `--pruefen` (Fälle 20 bis 26) fragt die Adressen anonym per curl ab; hier
-# antwortet eine curl-Attrappe, damit der Test weder Netz noch ein echtes
-# Release braucht. Was die Attrappe NICHT zeigt: dass GitHub einen Entwurf
-# anonym wirklich mit 404 beantwortet (steht so in der GitHub-Doku).
+# `--pruefen` fragt die Adressen anonym per curl ab. Die Fälle 20 bis 26 nehmen eine
+# curl-Attrappe (Aufrufe zählen, Argumente prüfen, Aussetzer); die Fälle 27 bis 32
+# nehmen den ECHTEN curl gegen einen lokalen HTTPS-Server mit Weiterleitung, denn
+# nur er zeigt, ob die Köpfe so gelesen werden, wie curl sie schreibt (Python 3 und
+# openssl gebraucht; fehlen sie, sind die Fälle ROT, nicht übersprungen). Was auch
+# das nicht zeigt: dass GitHub einen Entwurf anonym wirklich mit 404 beantwortet
+# (steht so in der GitHub-Doku).
 #
 # Aufruf:  bash infra/release/tests/feed-auf-github-faelle.sh
 set -euo pipefail
@@ -39,8 +42,12 @@ SHA_ABC='3a81oZNherrMQXNJriBBMRLm+k6JqX6iCp7u5ktV05ohkpkqJ0/BqDa6PCOj/uu9RU1EI2Q
 
 B='https://github.com/o/r/releases/download/desktop-v0.1.101'
 
-# curl-Attrappe. Antworten stehen in $CURL_ZUSTAND/antworten, eine je Zeile:
-#   <URL><TAB><Größe>            antwortet mit dieser Content-Length
+# curl-Attrappe — NUR für das, was ein echter curl nicht hergibt: Aufrufe zählen,
+# Argumente prüfen, einen Aussetzer vorspielen. Dass die Köpfe richtig GELESEN werden,
+# zeigen die Fälle mit dem echten curl weiter unten (Fälle 27 bis 32); eine Attrappe,
+# die Zahlen liefert, wo curl nichts liefert, hat schon einmal einen Fehler verdeckt.
+# Antworten stehen in $CURL_ZUSTAND/antworten, eine je Zeile:
+#   <URL><TAB><Größe>            antwortet mit zwei Köpfen (302, dann 200 mit dieser Länge)
 #   <URL><TAB>404                curl-Exit 22 (wie `-f` bei einem 404)
 #   <URL><TAB>FLACKERT:<Größe>   erster Aufruf Exit 22, danach die Größe
 mkdir -p "$arbeit/bin"
@@ -54,9 +61,9 @@ case "$antwort" in
   404) exit 22 ;;
   FLACKERT:*)
     if [ ! -e "$z/flackert-erledigt" ]; then touch "$z/flackert-erledigt"; exit 22; fi
-    printf '%s' "${antwort#FLACKERT:}" ;;
-  *) printf '%s' "$antwort" ;;
+    antwort="${antwort#FLACKERT:}" ;;
 esac
+printf 'HTTP/2 302 \r\ncontent-length: 0\r\nlocation: https://cdn.example/x\r\n\r\nHTTP/2 200 \r\ncontent-length: %s\r\n\r\n' "$antwort"
 STUB
 chmod +x "$arbeit/bin/curl"
 
@@ -415,5 +422,75 @@ d="$(neu 26)"
 if ! pruefen "$d" && ! pruefen "$d" gibts-nicht.yml; then
   ok "--pruefen: fehlender Feed wird abgewiesen"
 else nein "--pruefen ohne Feed: $(cat "$d/ausgabe")"; fi
+
+# ── --pruefen mit dem ECHTEN curl ───────────────────────────────────────────
+# Ein lokaler HTTPS-Server (Python, selbstsigniertes Zertifikat, nur 127.0.0.1) spielt
+# die Formen nach, auf die es ankommt: eine 302 mit eigener Content-Length 0 vor der
+# eigentlichen Antwort, Kopfnamen groß/klein, eine Antwort ohne Content-Length, ein
+# 404. Der curl bekommt das Zertifikat über eine eigene .curlrc (`insecure`) erlassen;
+# alles andere ist der Aufruf aus dem Skript, unverändert.
+echt_fertig=0
+if command -v python3 >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+  cat > "$arbeit/server.py" <<'PY'
+import http.server, ssl, sys
+cert, key, portdatei = sys.argv[1:4]
+class H(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    def log_message(self, *a): pass
+    def antworten(self, nur_kopf):
+        teile = self.path.strip("/").split("/")
+        art, n = teile[0], teile[-1]
+        if art == "umleitung":      # 302 mit eigener Content-Length, dann /direkt/<n>
+            self.send_response(302); self.send_header("Location", "/direkt/" + n)
+            self.send_header("Content-Length", "0"); self.end_headers(); return
+        if art in ("direkt", "klein"):   # klein: Kopfname kleingeschrieben wie bei HTTP/2
+            self.send_response(200)
+            self.send_header("Content-Length" if art == "direkt" else "content-length", n)
+            self.end_headers()
+            if not nur_kopf: self.wfile.write(b"x" * int(n))
+            return
+        if art == "ohne-laenge":
+            self.send_response(200); self.send_header("Connection", "close"); self.end_headers(); return
+        self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers()
+    def do_HEAD(self): self.antworten(True)
+    def do_GET(self): self.antworten(False)
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.load_cert_chain(cert, key)
+srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+open(portdatei, "w").write(str(srv.server_address[1]))
+srv.serve_forever()
+PY
+  openssl req -x509 -newkey rsa:2048 -nodes -keyout "$arbeit/key.pem" -out "$arbeit/cert.pem" \
+    -subj "/CN=127.0.0.1" -days 1 >/dev/null 2>&1 || true
+  python3 "$arbeit/server.py" "$arbeit/cert.pem" "$arbeit/key.pem" "$arbeit/port" >/dev/null 2>&1 &
+  serverpid=$!
+  trap 'kill "$serverpid" 2>/dev/null || true; rm -rf "$arbeit"' EXIT
+  for _ in $(seq 1 50); do [ -s "$arbeit/port" ] && break; sleep 0.1; done
+  [ -s "$arbeit/port" ] && echt_fertig=1
+  mkdir -p "$arbeit/curlhome"; echo insecure > "$arbeit/curlhome/.curlrc"
+fi
+port="$(cat "$arbeit/port" 2>/dev/null || true)"
+
+# pruefen_echt <Verzeichnis> <Pfad auf dem Server> <size laut Feed> — Exit-Code von --pruefen
+pruefen_echt() {
+  local d="$1"
+  printf 'version: 0.1.101\nfiles:\n  - url: https://127.0.0.1:%s%s\n    sha512: x\n    size: %s\n' "$port" "$2" "$3" > "$d/latest.yml"
+  ( cd "$d" && env CURL_HOME="$arbeit/curlhome" FEED_PRUEFEN_PAUSE=0 bash "$skript" --pruefen latest.yml ) > "$d/ausgabe" 2>&1
+}
+echt() {  # echt <Name> <Beschreibung> <erwarteter Exit: 0|1> <Pfad> <size> [<Text in der Ausgabe>]
+  local d; d="$(neu "$1")"
+  if [ "$echt_fertig" != 1 ]; then nein "$2: Python 3, openssl, curl oder der lokale Server fehlen — der Fall hätte den ECHTEN curl gebraucht"; return; fi
+  local ist=0; pruefen_echt "$d" "$4" "$5" || ist=1
+  if [ "$ist" = "$3" ] && { [ -z "${6:-}" ] || grep -q -- "$6" "$d/ausgabe"; } && ! grep -q "unknown --write-out" "$d/ausgabe"; then
+    ok "$2"
+  else nein "$2: $(cat "$d/ausgabe")"; fi
+}
+
+echt 27 "echter curl: 302 (Content-Length 0) → 200, Größe stimmt (die LETZTE Antwort zählt)" 0 /umleitung/12345 12345
+echt 28 "echter curl: falsche Größe → Abbruch (Gegenprobe)" 1 /umleitung/12345 12346 "Content-Length 12345 weicht von size: 12346 ab"
+echt 29 "echter curl: Kopfname klein (wie HTTP/2) wird gelesen" 0 /klein/777 777
+echt 30 "echter curl: Antwort ohne Content-Length → Abbruch" 1 /ohne-laenge/5 5 "keine Content-Length"
+echt 31 "echter curl: 404 → Abbruch mit curl-Exit 22" 1 /gibts-nicht/1 1 "curl-Exit 22"
+echt 32 "echter curl: ohne Weiterleitung, Größe stimmt" 0 /direkt/4096 4096
 
 [ "$fehler" = 0 ] && echo "✓ feed-auf-github: alle Fälle wie erwartet" || exit 1

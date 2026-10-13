@@ -19,16 +19,43 @@
 # Server) — und zwar die, auf die der Update-Feed der installierten Apps zeigt.
 # `gh release upload --clobber` löscht das alte Asset zuerst und lädt dann hoch
 # (gh, pkg/cmd/release/shared/upload.go: uploadWithDelete); bei 337 MB bekäme
-# jeder Client, der in dieser Zeit prüft, ein 404. Deshalb: die neue Fassung
-# unter einem Zwischennamen hochladen (`<Name>.neu-<Lauf>-<PID>`, die alte wird
-# währenddessen weiter ausgeliefert), dann die alte löschen und die neue per
-# Asset-API umbenennen. Die Lücke schrumpft von der Dauer des Uploads auf zwei
-# API-Aufrufe. Bricht ein Lauf vorher ab, bleibt die alte Datei stehen; bricht
-# er dazwischen ab, liegt die neue als Zwischendatei im Release, und der
-# nächste Lauf lädt hoch und räumt sie weg. Rechte: Löschen und Umbenennen eines
-# Assets verlangen wie das Hochladen „Contents: write“ (REST-Doku „Update a
-# release asset“ / „Delete a release asset“), also reicht das GITHUB_TOKEN mit
-# `contents: write`, das die Workflows ohnehin haben.
+# jeder Client, der in dieser Zeit prüft, ein 404. Deshalb:
+#   1. die neue Fassung unter einem Zwischennamen hochladen
+#      (`<Name>.neu-<Lauf>-<PID>`; die alte wird währenddessen weiter ausgeliefert),
+#   2. die Asset-ID der Zwischendatei lesen (bleibt beim Umbenennen gleich),
+#   3. die alte löschen,
+#   4. die Zwischendatei per Asset-API in den Endnamen umbenennen.
+# Die Lücke, in der der Name fehlt (404, auch für `releases/latest/download/…`),
+# ist damit der Abstand zwischen 3 und 4: im Normalfall EIN API-Aufruf (das
+# Umbenennen), bei Aussetzern mit Wiederholungen länger, statt der Dauer des
+# Uploads — aber nicht null.
+#
+# Jeder API-Aufruf wird wiederholt (drei- bis viermal, Pause GITHUB_RELEASE_PAUSE),
+# und vor jedem Folgeschritt wird der Ist-Zustand des Releases neu gelesen, statt
+# dem Exit-Code zu glauben: ein Aufruf kann serverseitig gelungen sein und die
+# Antwort verloren gehen. Löschen gilt als gelungen, wenn der Name danach fehlt;
+# Umbenennen, wenn der Endname die ID der Zwischendatei trägt. Gelöscht wird unter
+# dem Endnamen nur ein Asset mit ANDERER ID (z. B. die Übernahme einer alten APK
+# durch einen anderen Lauf; die frisch gebaute gewinnt). Erschöpfen sich die
+# Versuche beim Umbenennen, lädt das Skript als letzten Ausweg die Datei direkt
+# unter dem Endnamen hoch (dauert so lange wie der Upload, heilt aber in diesem
+# Lauf).
+#
+# Was bei einem Abbruch im Release liegt:
+#   - vor dem Löschen (Upload, ID lesen, Löschen scheitert): die ALTE Datei bleibt,
+#     die Zwischendatei wird weggeräumt, soweit erreichbar; sonst räumt sie der
+#     nächste Lauf;
+#   - nach dem Löschen und erschöpften Versuchen, auch dem letzten Ausweg: der
+#     Endname FEHLT (404 für Update-Clients und `latest/download`), die neue
+#     Fassung liegt als Zwischendatei im Release (oder, wenn auch Lesen und
+#     Hochladen ausfallen, gar nichts). Die Meldung nennt den zuletzt gelesenen
+#     Stand. Der Workflow ist rot; der nächste Lauf sieht den Namen fehlen, lädt
+#     ihn hoch und räumt die Zwischendatei weg. Bei der Windows-Server-App kommt
+#     der nächste Lauf mit dem nächsten Backend-Push, beim Client nur von Hand.
+# Rechte: Löschen und Umbenennen eines Assets verlangen wie das Hochladen
+# „Contents: write“ (REST-Doku „Update a release asset“ / „Delete a release
+# asset“), also reicht das GITHUB_TOKEN mit `contents: write`, das die Workflows
+# ohnehin haben.
 #
 # Android baut nur, wenn sich mobile/ ändert — ein NEUES Release übernimmt die
 # APK deshalb aus dem jüngsten Vorgänger, sonst fehlte sie nach jedem
@@ -120,48 +147,98 @@ dateien_von() {  # dateien_von <tag>
 
 PAUSE="${GITHUB_RELEASE_PAUSE:-2}"   # Sekunden zwischen Wiederholungen (Tests: 0)
 
-# Numerische REST-ID eines Assets im Release (leer, wenn es keins dieses Namens
-# gibt). `gh release view --json assets` liefert nur die GraphQL-ID, die der
-# REST-Umbenennung nicht genügt. Namen sind oben auf [A-Za-z0-9._-] geprüft und
-# dürfen deshalb in den jq-Ausdruck. Kein führender Schrägstrich im Pfad: die
-# Git Bash unter Windows würde ihn in einen Dateipfad umdeuten.
-asset_id() {  # asset_id <name>
-  gh api "repos/${repo}/releases/tags/${tag}" \
-    --jq ".assets[] | select(.name==\"$1\") | .id" | tr -d '\r'
+# Alle Assets des Release als Zeilen "<numerische REST-ID> <Name>"; Exit-Code != 0,
+# wenn gh scheitert (ein leeres Release ist KEIN Fehler). `gh release view --json
+# assets` liefert nur die GraphQL-ID, die der REST-Umbenennung nicht genügt.
+# Kein führender Schrägstrich im Pfad: die Git Bash unter Windows würde ihn in
+# einen Dateipfad umdeuten. Der zuletzt gelesene Stand bleibt in $arbeit/liste,
+# damit eine Fehlermeldung ihn nennen kann.
+assets_gelistet() {
+  local o
+  o="$(gh api "repos/${repo}/releases/tags/${tag}" --jq '.assets[] | "\(.id) \(.name)"' | tr -d '\r')" || return 1
+  printf '%s\n' "$o" | tee "$arbeit/liste"
+}
+id_in() {  # id_in <Auflistung> <Name> — ID des Assets, leer wenn es keins dieses Namens gibt
+  awk -v n="$2" '$2 == n { print $1; exit }' <<<"$1"
 }
 asset_weg() {  # asset_weg <name> — löscht ein Asset; Exit-Code von gh
   gh release delete-asset "$tag" "$1" --repo "$repo" --yes
 }
+wiederholt() {  # wiederholt <Versuche> <Befehl…> — 0, sobald ein Versuch gelingt
+  local max="$1" i=1
+  shift
+  until "$@"; do
+    [ "$i" -lt "$max" ] || return 1
+    i=$((i + 1)); sleep "$PAUSE"
+  done
+}
+zwischen_weg() {  # Zwischendatei wegräumen, soweit erreichbar (sonst räumt sie der nächste Lauf)
+  wiederholt 3 asset_weg "$1" > /dev/null 2>&1 || true
+}
+stand() {  # zuletzt gelesener Stand des Release, für Fehlermeldungen
+  if [ -s "$arbeit/liste" ]; then awk '{ printf "%s ", $2 }' "$arbeit/liste"; else printf '(nicht lesbar)'; fi
+}
 
-# Ersetzt ein vorhandenes Asset ohne langes 404-Fenster (Begründung im Kopf).
+# Ersetzt ein vorhandenes Asset mit einer Lücke von höchstens einem API-Aufruf
+# (Begründung und Abbruchverhalten im Kopf).
 ersetzen() {  # ersetzen <name>
-  local name="$1" zwischen="$1.neu-${GITHUB_RUN_ID:-lokal}-$$" id versuch=1
+  local name="$1" zwischen="$1.neu-${GITHUB_RUN_ID:-lokal}-$$" liste id_neu
   mkdir -p "$arbeit/neu"
   cp "$arbeit/hoch/$name" "$arbeit/neu/$zwischen"
-  gh release upload "$tag" --repo "$repo" "$arbeit/neu/$zwischen" \
-    || die "konnte ${name} nicht unter dem Zwischennamen hochladen — die alte Datei bleibt"
-  # Ab hier liegt die neue Fassung im Release, die alte wird noch ausgeliefert.
-  if ! asset_weg "$name"; then
-    if dateien_von "$tag" | grep -qxF "$name"; then
-      asset_weg "$zwischen" || true
-      die "konnte die alte ${name} nicht entfernen — sie bleibt, die Zwischendatei ist weggeräumt"
-    fi
-    # Sie ist schon weg (ein anderer Lauf war schneller): weiter mit dem Umbenennen.
+  if ! gh release upload "$tag" --repo "$repo" "$arbeit/neu/$zwischen"; then
+    zwischen_weg "$zwischen"
+    die "konnte ${name} nicht unter dem Zwischennamen hochladen — die alte Datei bleibt"
   fi
-  while :; do
-    id="$(asset_id "$zwischen")"
-    if [ -n "$id" ] && gh api --method PATCH "repos/${repo}/releases/assets/${id}" \
-         -f "name=${name}" > /dev/null; then
-      echo "github-release: ${name} ersetzt (über ${zwischen})"
-      return 0
-    fi
-    [ "$versuch" -lt 3 ] || die "konnte ${zwischen} nicht in ${name} umbenennen — die alte Datei ist weg, die neue liegt als ${zwischen} im Release; der nächste Lauf lädt sie neu hoch und räumt auf"
-    # Hat inzwischen ein anderer Lauf eine Datei dieses Namens angelegt (z. B.
-    # die Übernahme einer alten APK, s. unten), gilt DIE als alt: die frisch
-    # gebaute gewinnt immer.
-    if dateien_von "$tag" | grep -qxF "$name"; then asset_weg "$name" || true; fi
-    versuch=$((versuch + 1)); sleep "$PAUSE"
-  done
+  # Ab hier liegt die neue Fassung im Release, die alte wird noch ausgeliefert.
+  # Die ID der Zwischendatei jetzt lesen, nicht erst in der Lücke: sie ändert sich
+  # durch Löschen und Umbenennen nicht, und scheitert das Lesen, ist noch nichts
+  # verloren.
+  if ! liste="$(wiederholt 3 assets_gelistet)" || [ -z "$(id_in "$liste" "$zwischen")" ]; then
+    zwischen_weg "$zwischen"
+    die "konnte den Stand des Release nicht lesen — die alte ${name} bleibt, die Zwischendatei ist weggeräumt, soweit erreichbar"
+  fi
+  id_neu="$(id_in "$liste" "$zwischen")"
+
+  alt_loeschen() {
+    asset_weg "$name" && return 0
+    # Gescheitert oder Antwort verloren? Der Ist-Zustand entscheidet: fehlt der Name, ist er weg.
+    local l
+    l="$(assets_gelistet)" || return 1
+    [ -z "$(id_in "$l" "$name")" ]
+  }
+  if [ -n "$(id_in "$liste" "$name")" ] && ! wiederholt 3 alt_loeschen; then
+    zwischen_weg "$zwischen"
+    die "konnte die alte ${name} nicht löschen — sie bleibt, die Zwischendatei ist weggeräumt, soweit erreichbar"
+  fi
+
+  umbenennen() {
+    gh api --method PATCH "repos/${repo}/releases/assets/${id_neu}" -f "name=${name}" > /dev/null && return 0
+    # Gescheitert oder Antwort verloren? Tragen wir den Endnamen schon, war es gelungen.
+    local l id_n
+    l="$(assets_gelistet)" || return 1
+    id_n="$(id_in "$l" "$name")"
+    [ "$id_n" = "$id_neu" ] && return 0
+    # Eine Datei gleichen Namens mit ANDERER ID hat ein anderer Lauf angelegt (z. B.
+    # die Übernahme einer alten APK, s. unten): die gilt als alt, die frisch
+    # gebaute gewinnt. Die eigene (gleiche ID) wird nie gelöscht.
+    if [ -n "$id_n" ]; then asset_weg "$name" > /dev/null 2>&1 || true; fi
+    return 1
+  }
+  if wiederholt 4 umbenennen; then
+    echo "github-release: ${name} ersetzt (über ${zwischen})"
+    return 0
+  fi
+
+  # Letzter Ausweg: unter dem Endnamen neu hochladen. Dauert so lange wie der
+  # Upload, stellt den Namen aber noch in diesem Lauf her.
+  liste="$(assets_gelistet || true)"
+  if [ -z "$(id_in "$liste" "$name")" ] \
+     && gh release upload "$tag" --repo "$repo" "$arbeit/hoch/$name"; then
+    zwischen_weg "$zwischen"
+    echo "github-release: ${name} nach erschöpften Umbenennungen direkt unter dem Endnamen hochgeladen"
+    return 0
+  fi
+  die "konnte ${zwischen} nicht in ${name} umbenennen und ${name} auch nicht neu hochladen — ${name} FEHLT jetzt im Release (404 für Update-Clients und latest/download), die neue Fassung liegt, soweit lesbar, als ${zwischen}. Zuletzt gelesener Stand: $(stand). Der nächste Lauf lädt ${name} hoch und räumt die Zwischendatei weg."
 }
 
 vorhanden="$(dateien_von "$tag")"

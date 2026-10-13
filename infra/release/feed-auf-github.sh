@@ -49,7 +49,8 @@
 # Zeilenenden werden dabei auf LF gebracht; sonst bleibt jede Zeile, wie sie war.
 #
 # --pruefen fragt jede `url:` des (schon umgeschriebenen) Feeds ANONYM ab
-# (`curl -fsIL`, ohne Token) und vergleicht die Content-Length mit `size:`.
+# (`curl -fsIL`, ohne Token) und vergleicht die Content-Length der LETZTEN Antwort
+# (aus den Köpfen gelesen, nicht per `-w`; Begründung an der Funktion) mit `size:`.
 # github-release.sh sieht nur den Exit-Code von `gh`, mit Token: ein Entwurf
 # gleichen Tags, ein privat gestelltes Repo oder ein falscher Eigentümer in
 # GITHUB_REPOSITORY blieben unbemerkt und gäben bei allen Clients ein 404. Drei
@@ -141,6 +142,18 @@ infiles && z ~ /^[ \t]*-[ \t]+url:/ {
 AWK
 
 # ── --pruefen <Feed> ─────────────────────────────────────────────────────────
+# Content-Length der letzten Antwort aus den Köpfen auf dem Standard-Eingang. Bewusst
+# KEIN `curl -w '%{…}'`: die passende Variable (`%header{content-length}`, curl >= 7.84)
+# gibt es auf älteren curl-Fassungen nicht, und `%{content_length_download}` gibt es gar
+# nicht (curl meldet "unknown --write-out variable", druckt nichts und endet mit Exit 0).
+# Jede Statuszeile (`HTTP/…`) beginnt eine neue Antwort; Kopfnamen sind je nach
+# HTTP-Version groß oder klein geschrieben (HTTP/2: klein), Zeilenenden CRLF.
+laenge_der_letzten_antwort() {
+  awk '{ z = $0; sub(/\r$/, "", z); l = tolower(z) }
+       l ~ /^http\// { len = ""; next }
+       l ~ /^content-length:/ { v = substr(z, 16); gsub(/[ \t]/, "", v); len = v }
+       END { print len }'
+}
 if [ "${1:-}" = "--pruefen" ]; then
   feed="${2:-}"
   [ -n "$feed" ] && [ -f "$feed" ] || die "Feed-Datei fehlt: '${feed}'"
@@ -158,12 +171,17 @@ if [ "${1:-}" = "--pruefen" ]; then
         [ -n "$c" ] || die "Eintrag '$a': der Feed nennt keine Größe"
         versuch=1
         while :; do
-          # Content-Length der LETZTEN Antwort nach den Weiterleitungen; ohne
-          # Token, mit leerem Standard-Eingang.
-          if laenge="$(curl -fsIL --max-time 60 -o /dev/null -w '%{content_length_download}' "$a" < /dev/null)"; then
-            laenge="${laenge%%.*}"
+          # Köpfe ALLER Stufen nach den Weiterleitungen, ohne Token, mit leerem
+          # Standard-Eingang. Ausgewertet wird die Content-Length der LETZTEN
+          # Antwort (die 302 davor trägt ihre eigene, meist 0).
+          if koepfe="$(curl -fsIL --max-time 60 "$a" < /dev/null)"; then
+            laenge="$(printf '%s\n' "$koepfe" | laenge_der_letzten_antwort)"
             [ "$laenge" = "$c" ] && break
-            grund="Content-Length ${laenge:-?} weicht von size: ${c} ab"
+            if [ -z "$laenge" ]; then
+              grund="die letzte Antwort hat keine Content-Length"
+            else
+              grund="Content-Length ${laenge} weicht von size: ${c} ab"
+            fi
           else
             grund="nicht anonym abrufbar (curl-Exit $?) — Entwurf, privates Repo oder falscher Eigentümer?"
           fi

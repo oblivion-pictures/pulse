@@ -21,9 +21,21 @@ cat > "$arbeit/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 z="$GH_ZUSTAND"; r="$z/releases"; mkdir -p "$r"; touch "$z/reihenfolge"
+# Asset-IDs wie bei GitHub: eine Nummer je Asset, die beim Umbenennen bleibt und
+# beim Löschen verfällt. Die Zuordnung steht in $z/idmap ("ID<TAB>Tag<TAB>Name").
+touch "$z/idmap"
+id_fuer() {  # id_fuer <tag> <name> — vergibt bei Bedarf
+  local i
+  i="$(awk -F'\t' -v t="$1" -v n="$2" '$2==t && $3==n { print $1 }' "$z/idmap")"
+  if [ -z "$i" ]; then
+    i=$(( $(cat "$z/nextid" 2>/dev/null || echo 1000) + 1 )); echo "$i" > "$z/nextid"
+    printf '%s\t%s\t%s\n' "$i" "$1" "$2" >> "$z/idmap"
+  fi
+  echo "$i"
+}
 if [ "$1" = api ]; then
-  # Nur die zwei Formen, die das Skript braucht: ID eines Assets lesen und
-  # per PATCH umbenennen. IDs der Attrappe sind "ID-<Name>".
+  # Nur die zwei Formen, die das Skript braucht: alle Assets mit ID lesen und per
+  # PATCH umbenennen.
   shift; methode=GET; pfad=""; jq=""; felder=()
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -35,18 +47,29 @@ if [ "$1" = api ]; then
     esac
     shift
   done
+  # Aussetzer: die ersten N API-Aufrufe NACH dem ersten Löschen scheitern ohne Wirkung.
+  if [ -n "${NACH_DELETE_AUSSETZER:-}" ] && [ -e "$z/geloescht" ]; then
+    gezaehlt="$(cat "$z/aussetzer" 2>/dev/null || echo 0)"
+    if [ "$gezaehlt" -lt "$NACH_DELETE_AUSSETZER" ]; then
+      echo $((gezaehlt + 1)) > "$z/aussetzer"; echo "attrappe: HTTP 502" >&2; exit 1
+    fi
+  fi
   case "$methode $pfad" in
     "GET repos/o/r/releases/tags/"*)
       tag="${pfad##*/}"; [ -d "$r/$tag" ] || exit 1
-      n="$(sed -n 's/.*select(\.name==\"\([^"]*\)\").*/\1/p' <<<"$jq")"
-      [ -n "$n" ] || { echo "attrappe: --jq nicht verstanden: $jq" >&2; exit 9; }
-      [ -e "$r/$tag/$n" ] && echo "ID-$n"
+      [[ "$jq" == *'\(.id) \(.name)'* ]] || { echo "attrappe: --jq nicht verstanden: $jq" >&2; exit 9; }
+      # Lesen scheitert, solange noch nichts gelöscht wurde (Zustand vor dem Löschen).
+      if [ -n "${LESEN_SCHEITERT_VOR_DELETE:-}" ] && [ ! -e "$z/geloescht" ]; then
+        echo "attrappe: HTTP 502" >&2; exit 1
+      fi
+      for f in $(ls "$r/$tag" | grep -v '^_' || true); do echo "$(id_fuer "$tag" "$f") $f"; done
       exit 0 ;;
-    "PATCH repos/o/r/releases/assets/ID-"*)
-      alt="${pfad##*/ID-}"; neu=""
+    "PATCH repos/o/r/releases/assets/"*)
+      id="${pfad##*/}"; neu=""
       for f in "${felder[@]}"; do case "$f" in name=*) neu="${f#name=}" ;; esac; done
-      d=""; for x in "$r"/*/; do [ -e "$x$alt" ] && d="$x"; done
-      [ -n "$d" ] && [ -n "$neu" ] || exit 1
+      zeile="$(awk -F'\t' -v i="$id" '$1==i { print $2 "\t" $3 }' "$z/idmap")"
+      [ -n "$zeile" ] && [ -n "$neu" ] || { echo "attrappe: 404 Asset $id" >&2; exit 1; }
+      tag="${zeile%%$'\t'*}"; alt="${zeile#*$'\t'}"; d="$r/$tag/"
       if [ "${UMBENENNEN_SCHEITERT:-}" = immer ]; then echo "attrappe: Umbenennen scheitert" >&2; exit 1; fi
       if [ -n "${EINDRINGLING:-}" ] && [ ! -e "$z/eindringling-erledigt" ]; then
         # Ein anderer Lauf legt genau jetzt eine Datei unter dem Zielnamen an.
@@ -54,7 +77,13 @@ if [ "$1" = api ]; then
         echo "attrappe: 422 already_exists" >&2; exit 1
       fi
       [ -e "$d$neu" ] && { echo "attrappe: 422 already_exists" >&2; exit 1; }
-      mv "$d$alt" "$d$neu"; echo "RENAME $(basename "$d") $alt $neu" >> "$z/protokoll"
+      mv "$d$alt" "$d$neu"
+      awk -F'\t' -v OFS='\t' -v i="$id" -v n="$neu" '$1==i { $3=n } { print }' "$z/idmap" > "$z/idmap.neu" && mv "$z/idmap.neu" "$z/idmap"
+      echo "RENAME $tag $alt $neu" >> "$z/protokoll"
+      if [ -n "${PATCH_ANTWORT_VERLOREN:-}" ] && [ ! -e "$z/antwort-verloren-erledigt" ]; then
+        # Das Umbenennen ist serverseitig gelungen, die Antwort kommt nicht an.
+        touch "$z/antwort-verloren-erledigt"; echo "attrappe: Verbindung abgerissen" >&2; exit 1
+      fi
       exit 0 ;;
   esac
   echo "attrappe: unerwartetes api: $methode $pfad" >&2; exit 9
@@ -99,6 +128,9 @@ case "$sub" in
       if [ -n "${UPLOAD_SCHEITERT_MUSTER:-}" ] && [[ "$n" == *"$UPLOAD_SCHEITERT_MUSTER"* ]]; then
         echo "attrappe: Upload scheitert" >&2; exit 1
       fi
+      if [ -n "${UPLOAD_SCHEITERT_ENDNAME:-}" ] && [ "$n" = "$UPLOAD_SCHEITERT_ENDNAME" ]; then
+        echo "attrappe: Upload unter dem Endnamen scheitert" >&2; exit 1
+      fi
       # Wettlauf nachstellen: ein anderer Lauf legt dieselbe Datei genau jetzt ab.
       if [ -n "${RENNEN:-}" ] && [ "$n" = "$RENNEN" ] && [ -z "$clobber" ]; then
         printf 'FRISCH' > "$r/$tag/$n"
@@ -115,7 +147,13 @@ case "$sub" in
     n="${dateien[0]}"
     [ -d "$r/$tag" ] && [ -e "$r/$tag/$n" ] || { echo "asset $n not found" >&2; exit 1; }
     if [ "${DELETE_SCHEITERT_FUER:-}" = "$n" ]; then echo "attrappe: Löschen scheitert" >&2; exit 1; fi
-    rm -f "$r/$tag/$n"; echo "DELETE $tag $n" >> "$z/protokoll"; exit 0 ;;
+    rm -f "$r/$tag/$n"; touch "$z/geloescht"; echo "DELETE $tag $n" >> "$z/protokoll"
+    awk -F'\t' -v t="$tag" -v n="$n" '!($2==t && $3==n)' "$z/idmap" > "$z/idmap.neu" && mv "$z/idmap.neu" "$z/idmap"
+    if [ -n "${DELETE_ANTWORT_VERLOREN:-}" ] && [ ! -e "$z/delete-verloren-erledigt" ]; then
+      # Gelöscht, aber die Antwort kommt nicht an.
+      touch "$z/delete-verloren-erledigt"; echo "attrappe: Verbindung abgerissen" >&2; exit 1
+    fi
+    exit 0 ;;
   list)
     # Neueste Anlage zuerst, ALLE Tags (auch fremde) — gefiltert wird im Skript.
     sed '1!G;h;$!d' "$z/reihenfolge"; exit 0 ;;
@@ -287,17 +325,20 @@ if ! UPLOAD_SCHEITERT_MUSTER=.neu- lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$a
   ok "Zwischen-Upload scheitert: alte Datei unangetastet, nichts gelöscht"
 else nein "Zwischen-Upload: $(cat "$z/ausgabe")"; fi
 
-# 16. Abbruch NACH dem Löschen, beim Umbenennen: die neue Datei liegt als
-#     Zwischendatei im Release (der Lauf sagt es), und der nächste Lauf stellt
-#     alles her und räumt die Zwischendatei weg.
+# 16. Abbruch NACH dem Löschen, wenn gar nichts mehr geht (Umbenennen scheitert
+#     immer, auch der letzte Ausweg „direkt unter dem Endnamen hochladen"): der
+#     Endname FEHLT, die neue Datei liegt als Zwischendatei im Release, die
+#     Meldung sagt genau das, und der nächste Lauf stellt alles her und räumt auf.
 z="$(neu 16)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
 printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
-if ! UMBENENNEN_SCHEITERT=immer lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+if ! UMBENENNEN_SCHEITERT=immer UPLOAD_SCHEITERT_ENDNAME=Pulse-Setup-Windows.exe \
+        lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
    && [ ! -e "$z/releases/$t/Pulse-Setup-Windows.exe" ] \
-   && [ "$(cat "$z/releases/$t"/Pulse-Setup-Windows.exe.neu-*)" = EXE ] && grep -q "liegt als" "$z/ausgabe" \
+   && [ "$(cat "$z/releases/$t"/Pulse-Setup-Windows.exe.neu-*)" = EXE ] \
+   && grep -q "Pulse-Setup-Windows.exe FEHLT" "$z/ausgabe" && grep -q "Zuletzt gelesener Stand: .*Pulse-Setup-Windows.exe.neu-" "$z/ausgabe" \
    && lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
    && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-'; then
-  ok "Abbruch beim Umbenennen: neue Datei als Zwischendatei, der nächste Lauf heilt und räumt auf"
+  ok "Abbruch beim Umbenennen: Endname fehlt (Meldung sagt es), der nächste Lauf heilt und räumt auf"
 else nein "Abbruch beim Umbenennen: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
 
 # 17. Paralleler Lauf (der Fall im Betrieb): beim Umbenennen legt ein anderer
@@ -330,5 +371,60 @@ if lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
    && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ]; then
   ok "alte Zwischendatei wird weggeräumt, andere Dateien bleiben"
 else nein "Aufräumen: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+
+# 20. Aussetzer der API NACH dem Löschen (zwei Aufrufe in Folge scheitern ohne
+#     Wirkung: das Umbenennen, dann das Lesen des Zustands): wird wiederholt, die
+#     alte Datei wird nur EINMAL gelöscht, am Ende liegt die neue unter dem Namen.
+z="$(neu 20)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if NACH_DELETE_AUSSETZER=2 lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-' \
+   && [ "$(grep -c '^DELETE' "$z/protokoll")" = 1 ] && [ "$(grep -c '^RENAME' "$z/protokoll")" = 1 ]; then
+  ok "Aussetzer nach dem Löschen: wiederholt, Datei am Ende da, nichts doppelt gelöscht"
+else nein "Aussetzer: $(cat "$z/ausgabe"; cat "$z/protokoll")"; fi
+
+# 21. Die API fällt nach dem Löschen ganz aus (nur die Hochladen-Schnittstelle
+#     geht): der letzte Ausweg lädt direkt unter dem Endnamen hoch — der Name ist
+#     noch in diesem Lauf wieder da, die Zwischendatei ist weg.
+z="$(neu 21)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if NACH_DELETE_AUSSETZER=99 lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-' \
+   && grep -q "direkt unter dem Endnamen hochgeladen" "$z/ausgabe"; then
+  ok "API fällt nach dem Löschen aus: letzter Ausweg stellt den Namen im selben Lauf her"
+else nein "letzter Ausweg: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+
+# 22. Lesen scheitert, BEVOR gelöscht wurde: nichts ist verloren, also sauber
+#     abbrechen — die alte Datei bleibt, die Zwischendatei ist weg, nichts gelöscht.
+z="$(neu 22)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if ! LESEN_SCHEITERT_VOR_DELETE=1 lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = ALT ] && ! ls "$z/releases/$t" | grep -q '\.neu-' \
+   && ! grep -q '^DELETE desktop-v0.1.101 Pulse-Setup-Windows.exe$' "$z/protokoll" \
+   && grep -q "Stand des Release nicht lesen" "$z/ausgabe"; then
+  ok "Lesen scheitert vor dem Löschen: alte Datei bleibt, Zwischendatei weg, nichts gelöscht"
+else nein "Lesen vor dem Löschen: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
+
+# 23. Das Umbenennen ist gelungen, die ANTWORT geht verloren: das Skript liest den
+#     Zustand, sieht den Endnamen mit der ID seiner Zwischendatei und gilt es als
+#     Erfolg. Es löscht seine eigene neue Datei NICHT (nur ein Name mit anderer ID
+#     gilt als alt).
+z="$(neu 23)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if PATCH_ANTWORT_VERLOREN=1 lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-' \
+   && [ "$(grep -c '^DELETE' "$z/protokoll")" = 1 ] && [ "$(grep -c '^RENAME' "$z/protokoll")" = 1 ]; then
+  ok "Antwort auf das Umbenennen verloren: als Erfolg erkannt, eigene Datei bleibt"
+else nein "verlorene Antwort: $(cat "$z/ausgabe"; cat "$z/protokoll"; ls "$z/releases/$t")"; fi
+
+# 24. Das Löschen der alten Datei ist gelungen, die ANTWORT geht verloren: ein
+#     zweiter Löschversuch fände nichts mehr („asset not found"). Das Skript liest
+#     deshalb den Zustand, sieht den Namen fehlen und macht weiter.
+z="$(neu 24)"; t=desktop-v0.1.101; mkdir -p "$z/releases/$t"; echo "$t" >> "$z/reihenfolge"
+printf 'ALT' > "$z/releases/$t/Pulse-Setup-Windows.exe"
+if DELETE_ANTWORT_VERLOREN=1 lauf "$z" 0.1.101 "Pulse-Setup-Windows.exe=$arbeit/setup.exe" \
+   && [ "$(cat "$z/releases/$t/Pulse-Setup-Windows.exe")" = EXE ] && ! ls "$z/releases/$t" | grep -q '\.neu-'; then
+  ok "Antwort auf das Löschen verloren: Zustand gelesen, Name fehlt, es geht weiter"
+else nein "verlorene Lösch-Antwort: $(cat "$z/ausgabe"; ls "$z/releases/$t")"; fi
 
 [ "$fehler" = 0 ] && echo "✓ github-release: alle Fälle wie erwartet" || exit 1

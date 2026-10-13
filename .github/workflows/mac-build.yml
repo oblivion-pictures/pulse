@@ -247,21 +247,22 @@ jobs:
       #      Ersetzen von Dateien im Release eintreten.
       #   2. Release befüllen. Bei einer NEUEN Version sind das Dateien, die noch
       #      kein Client kennt. Bei einem Neubau derselben Version (Rerun) ersetzt
-      #      es die Dateien, auf die der LIVE-Feed zeigt: ohne 404-Fenster
-      #      (Zwischenname, dann umbenennen), aber der Feed nennt bis zu seinem
-      #      Upload noch das sha512 der alten Fassung.
+      #      es die Dateien, auf die der LIVE-Feed zeigt: neue Fassung unter
+      #      Zwischennamen hochladen, alte löschen, umbenennen. Dazwischen fehlt
+      #      der Name im Normalfall für die Dauer EINES API-Aufrufs (404 für
+      #      Update-Clients und latest/download; bei Aussetzern mit Wiederholungen
+      #      länger; Verfahren und Abbruchfolgen im Kopf von github-release.sh). Der Feed nennt bis zu
+      #      seinem Upload noch das sha512 der alten Fassung.
       #   3. Die Adressen anonym abfragen (--pruefen). Danach kommt SOFORT der
       #      Feed-Upload, noch vor den Rückfallkopien auf netcup.
       # Scheitert 1 oder 3, bleibt der Feed auf netcup bei der alten Fassung. Bei
       # einer neuen Version bleibt das ohne Folgen; bei einem Neubau derselben
       # Version bleibt er bis zum nächsten grünen Lauf auf dem alten sha512, und
-      # Updates scheitern an der Prüfsumme (sicher, aber vergeblich).
-      #
-      # Die festen Namen tragen keine Architektur. MacUpdater wählt aber am Namen
-      # (MacUpdater.js:70-76: Einträge mit "arm64" in Adresse oder Name). Heute gibt
-      # es nur einen arm64-Bau, und er findet das .zip trotzdem; käme je ein x64-
-      # oder Universal-Bau dazu, brauchten die festen Namen die Architektur
-      # (z. B. Pulse-macOS-arm64.zip) — samt Anpassung in appDownloads.ts.
+      # Updates scheitern an der Prüfsumme (sicher, aber vergeblich). Bricht 2 NACH
+      # dem Löschen der alten Datei ab (alle Wiederholungen erschöpft), FEHLT die
+      # Datei unter ihrem Namen — das ist schlimmer als ein Prüfsummenfehler: 404
+      # für Update-Clients und latest/download, bis der nächste Lauf sie wieder
+      # hochlädt (Zwischendatei, Meldung und Heilung: Kopf von github-release.sh).
       - name: Auf GitHub Releases veröffentlichen
         if: github.ref == 'refs/heads/main'
         env:
