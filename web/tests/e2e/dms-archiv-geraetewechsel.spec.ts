@@ -157,6 +157,25 @@ test.describe.serial('Archiv-Gerätewechsel: Verlauf auf jedem Gerät (§5)', ()
     await expect(weg(alice)).toHaveCount(0, { timeout: 10_000 });
     await expect.poll(() => archivZeilen(alice, dmId), { timeout: 10_000 }).toBe(4);
 
+    // Alice bearbeitet eine eigene Nachricht (main-Prüfbericht, Fund 5): ihr
+    // Klient liefert dazu eine Bearbeitungs-Zeile ein. Ohne sie zeigte das
+    // Frischgerät den Originaltext, denn die Archiv-Zeile ist die Fassung
+    // beim Senden.
+    await sendDm(alice, 'archiv alt');
+    const alt = alice.locator('[data-testid="message-item"]', { hasText: 'archiv alt' });
+    await expect(alt).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => archivZeilen(alice, dmId), { timeout: 10_000 }).toBe(5);
+    await alt.hover();
+    await alt.getByTestId('message-action-edit').click();
+    const edit = alice.getByTestId('message-edit-input');
+    await expect(edit).toBeVisible();
+    await edit.fill('archiv neu');
+    await edit.press('Enter');
+    await expect(
+      alice.locator('[data-testid="message-content"]', { hasText: 'archiv neu' })
+    ).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => archivZeilen(alice, dmId), { timeout: 10_000 }).toBe(6);
+
     // Abmelden (vollständiger Identitäts-Wisch) + Browser zu.
     await bob1.getByTestId('user-footer-trigger').click();
     await bob1.getByTestId('sign-out').click();
@@ -178,11 +197,20 @@ test.describe.serial('Archiv-Gerätewechsel: Verlauf auf jedem Gerät (§5)', ()
       bob2.locator('[data-testid="message-content"]', { hasText: 'archiv rueck' })
     ).toBeVisible({ timeout: 20_000 });
 
-    // Die gelöschte Nachricht kommt aus dem Archiv NICHT zurück. Feste
-    // Wartezeit: `toHaveCount(0)` wäre schon vor dem Nachzug erfüllt.
+    // Die bearbeitete Nachricht steht mit dem neuen Text da.
+    await expect(
+      bob2.locator('[data-testid="message-content"]', { hasText: 'archiv neu' })
+    ).toBeVisible({ timeout: 20_000 });
+
+    // Die gelöschte Nachricht kommt aus dem Archiv NICHT zurück, der
+    // Originaltext der bearbeiteten auch nicht. Feste Wartezeit:
+    // `toHaveCount(0)` wäre schon vor dem Nachzug erfüllt.
     await bob2.waitForTimeout(3_000);
     await expect(
       bob2.locator('[data-testid="message-content"]', { hasText: 'archiv weg' })
+    ).toHaveCount(0);
+    await expect(
+      bob2.locator('[data-testid="message-content"]', { hasText: 'archiv alt' })
     ).toHaveCount(0);
 
     // Und der Zweitgerät-Verlauf bleibt auch nach einem Kanalwechsel erhalten.
