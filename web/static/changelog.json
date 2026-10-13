@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-13.5",
+      "date": "2026-10-13",
+      "style": "Sachlich",
+      "title": "Downloads",
+      "items": [
+        "Die Installationsdateien für Windows, macOS und Android kommen jetzt von GitHub. Das Flatpak für Linux laden wir weiter von unserem eigenen Server. Die Datenschutzerklärung ist entsprechend ergänzt."
+      ]
+    },
+    {
       "id": "2026-10-13.4",
       "date": "2026-10-13",
       "style": "Sachlich",
