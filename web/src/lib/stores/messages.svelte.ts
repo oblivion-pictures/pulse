@@ -58,7 +58,7 @@ class MessageStore {
   /** Max number of channels kept in the message cache at once. */
   private static readonly MAX_CACHED_CHANNELS = 15;
 
-  /** Evict least-recently-used channels until the cache is within the cap. */
+  /** Evict until within the cap: never-opened first, then LRU, never the last-touched. */
   private enforceChannelCap(): void {
     const max = MessageStore.MAX_CACHED_CHANNELS;
     for (const cid of this.lru.zuRaeumen(Object.keys(this.byChannel), max)) this.clearChannel(cid);
