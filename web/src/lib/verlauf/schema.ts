@@ -63,12 +63,13 @@ export type Satz = {
    *  Zugriff einfach als `undefined`/fehlend — `satzZuNachricht` behandelt
    *  das wie `null`. */
   antwortAufId: string | null;
-  /** Nur bei einer EMPFANGENEN verschluesselten Nachricht gesetzt: die vom
-   *  Autor gewaehlte, geraeteuebergreifende ID (`Message.krypto_id`,
-   *  `krypto/nachrichtNutzlast.ts`). Muss ueber einen Neustart hinweg
-   *  erhalten bleiben, sonst loest eine nach dem Neuladen eintreffende
-   *  Antwort auf eine aeltere, schon lokal abgelegte Nachricht nicht mehr
-   *  auf. */
+  /** Die vom Autor gewaehlte, geraeteuebergreifende ID (`Message.krypto_id`,
+   *  `krypto/nachrichtNutzlast.ts`) — bei empfangenen verschluesselten
+   *  Saetzen, seit 2026-10-13 auch bei eigenen gesendeten (gleich
+   *  `nachrichtId`); eigene Saetze von davor tragen `null`
+   *  (`nachrichtIdentitaet.ts`). Muss ueber einen Neustart hinweg erhalten
+   *  bleiben, sonst loest eine nach dem Neuladen eintreffende Antwort auf
+   *  eine aeltere, schon lokal abgelegte Nachricht nicht mehr auf. */
   kryptoId: string | null;
   /**
    * Reaktionen auf eine VERSCHLUESSELTE Nachricht (Uebergabe P1.5): je Zeile

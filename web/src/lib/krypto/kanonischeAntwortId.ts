@@ -12,11 +12,12 @@
  * — sie kennt nur ihre EIGENE lokale ID fuer diese Nachricht.
  *
  * `krypto_id` (falls am Zielobjekt gesetzt) ist die vom URSPRUENGLICHEN Autor
- * gewaehlte, geraeteuebergreifende ID einer EMPFANGENEN Nachricht. Fehlt sie
- * (eigene gesendete Nachricht — dort ist die lokale ID schon die kanonische
- * — oder ein unbekanntes/nicht gefundenes Ziel, z. B. eine Klartext-
- * Nachricht mit echter Server-ID), gilt die uebergebene lokale ID
- * unveraendert als kanonische Form.
+ * gewaehlte, geraeteuebergreifende ID (bei einer eigenen gesendeten
+ * Nachricht gleich ihrer lokalen ID). Fehlt sie (eigene Nachricht aus der
+ * Zeit vor dem 2026-10-13 — dort ist die lokale ID schon die kanonische —
+ * oder ein unbekanntes/nicht gefundenes Ziel, z. B. eine Klartext-Nachricht
+ * mit echter Server-ID), gilt die uebergebene lokale ID unveraendert als
+ * kanonische Form.
  *
  * Importfrei, damit Nodes eingebauter Testlaeufer die Datei ohne Bundler
  * prueft (s. CLAUDE.md „Die Falle").

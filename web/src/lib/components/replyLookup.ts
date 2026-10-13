@@ -7,7 +7,8 @@
  * `id` liegt (Postfach-Zustellungs-Kennung, s. `krypto/empfangen.ts`) —
  * ihre kanonische Form steht dann zusaetzlich in `krypto_id`
  * (`api/types.ts`). Fuer eine Klartext-Nachricht oder eine eigene gesendete
- * verschluesselte Nachricht ist `id` schon die kanonische Form, der erste
+ * verschluesselte Nachricht ist `id` schon die kanonische Form (bei der
+ * eigenen steht sie seit 2026-10-13 auch in `krypto_id`), der erste
  * Vergleich reicht dort.
  *
  * Ausgelagert aus `MessageList.svelte` (Groessen-Policy, `CLAUDE.md` §

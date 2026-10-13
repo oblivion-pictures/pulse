@@ -193,16 +193,17 @@ export type Message = {
    */
   verschluesselt?: boolean;
   /**
-   * Nur bei einer EMPFANGENEN verschluesselten Nachricht gesetzt: die vom
-   * URSPRUENGLICHEN Absender gewaehlte, geraeteuebergreifende ID (steckt in
-   * der Nutzlast, s. `krypto/nachrichtNutzlast.ts`) — anders als `id` oben
-   * (auf diesem Geraet die Postfach-Zustellungs-Kennung, je Empfaenger
-   * verschieden). Wird gebraucht, um eine EINGEHENDE Antwort auf DIESE
-   * Nachricht wiederzufinden (`kanonischeAntwortId.ts`,
-   * `MessageList.svelte::replyMetaFor`) — ohne dieses Feld faende die
-   * Zitat-Anzeige den Bezug auf diesem Geraet nicht, weil `reply_to_id`
-   * einer eingehenden Antwort ebenfalls die kanonische, nicht die lokale ID
-   * traegt.
+   * Bei jeder verschluesselten Nachricht gesetzt: die vom URSPRUENGLICHEN
+   * Absender gewaehlte, geraeteuebergreifende ID (steckt in der Nutzlast, s.
+   * `krypto/nachrichtNutzlast.ts`). Bei einer EMPFANGENEN Nachricht anders
+   * als `id` oben (auf diesem Geraet die Postfach-Zustellungs-Kennung, je
+   * Empfaenger verschieden), bei der eigenen gesendeten gleich `id` (seit
+   * 2026-10-13, `krypto/senden.ts`; davor fehlte sie dort, und Altbestand
+   * traegt sie weiter nicht — wer Kopien vergleicht, nimmt deshalb
+   * `verlauf/nachrichtIdentitaet.ts`). Wird gebraucht, um eine EINGEHENDE
+   * Antwort auf DIESE Nachricht wiederzufinden (`kanonischeAntwortId.ts`,
+   * `MessageList.svelte::replyMetaFor`) und um die Kopien anderer Geraete
+   * als dieselbe Nachricht zu erkennen (Sicherung, Archiv, Ablage-Log).
    */
   krypto_id?: string;
   /**

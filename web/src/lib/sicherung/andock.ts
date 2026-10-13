@@ -315,9 +315,9 @@ function eintraegeZuSaetze(eintraege: SicherungEintrag[], kontoId: string) {
 				edited_at: eintrag.nachricht.bearbeitet,
 				reply_to_id: eintrag.nachricht.antwortAuf,
 					// Die geraeteuebergreifende Autor-ID — ohne sie erkennt der
-					// Anzeige-Merge die Kopie des anderen Geräts nicht (s.
-					// zusammenfuegen.ts); Frames vor der Nutzlast-Erweiterung
-					// tragen sie nicht und bleiben deswegen Duplikat-Risiko.
+					// Anzeige-Merge die Kopie des anderen Geräts nicht. Fehlt
+					// sie, vergleicht der Merge die eigene Id (Autor-Kopie aus
+					// dem Altbestand, `verlauf/nachrichtIdentitaet.ts`).
 					...(eintrag.nachricht.kryptoId
 						? { krypto_id: eintrag.nachricht.kryptoId }
 						: {}),

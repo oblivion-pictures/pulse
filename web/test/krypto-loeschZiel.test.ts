@@ -24,6 +24,11 @@ test('eigener Satz des Absenders traegt die Frame-ID direkt', () => {
   assert.deepEqual(lokaleIdsFuerLoeschung('absender-1', lokal, PARTNER), ['absender-1']);
 });
 
+test('eigener Satz seit 2026-10-13 (krypto_id = id) wird genau einmal getroffen', () => {
+  const lokal = [{ id: 'absender-1', krypto_id: 'absender-1', author_id: PARTNER }];
+  assert.deepEqual(lokaleIdsFuerLoeschung('absender-1', lokal, PARTNER), ['absender-1']);
+});
+
 test('beide Formen zugleich liefern jede lokale ID genau einmal', () => {
   const lokal = [
     { id: 'absender-1', author_id: PARTNER },

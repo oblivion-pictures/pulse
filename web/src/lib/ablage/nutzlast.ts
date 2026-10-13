@@ -44,7 +44,9 @@ export interface AblageNachricht {
 	 *  (Autor-Id bzw. Zustellungs-Id) — ohne dieses Merkmal erkennt der
 	 *  Wiederherstellungs-Leser die Kopie des anderen Geräts nicht und die
 	 *  Nachricht erscheint doppelt. Tolerant gelesen wie `geloescht`; Bestände
-	 *  vor der Erweiterung tragen das Feld nicht (Fassung bleibt 1). */
+	 *  vor der Erweiterung tragen das Feld nicht (Fassung bleibt 1), die
+	 *  Kopie des Autors trägt es erst seit 2026-10-13 — Leser vergleichen
+	 *  deshalb über `verlauf/nachrichtIdentitaet.ts`. */
 	kryptoId?: string;
 }
 

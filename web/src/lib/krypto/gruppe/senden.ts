@@ -209,6 +209,8 @@ export async function sendeInGruppe(
       created_at: new Date().toISOString(),
       mentions: parseMentionMarkers(klartext),
       verschluesselt: true,
+      // Dieselbe Identitaet wie jede andere Kopie, s. `../senden.ts`.
+      krypto_id: nachrichtId,
       ...(anhaenge.length > 0 ? { attachments: anhaenge.map(anhangAngabeZuAttachment) } : {})
     };
 

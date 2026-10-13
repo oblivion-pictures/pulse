@@ -31,7 +31,8 @@ test('lesestandAnker nimmmt die kanonische Absender-ID, sonst die eigene', () =>
   // Absender-ID (exakte Werte aus dem Befund).
   const empfangen = { id: '91878994424635393', krypto_id: '1789131259499624939' };
   assert.equal(lesestandAnker(empfangen), '1789131259499624939');
-  // Eigene Nachricht (Sendegerät) und Klartext-Weg: keine krypto_id.
+  // Eigene Nachricht aus dem Altbestand (vor 2026-10-13) und Klartext-Weg:
+  // keine krypto_id.
   assert.equal(lesestandAnker({ id: '1789131259499624939' }), '1789131259499624939');
 });
 

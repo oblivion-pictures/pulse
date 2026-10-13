@@ -47,6 +47,7 @@ import { leseRahmenFolge, TYP_SICHERUNG_AES } from '../ablage/format.ts';
 import { leseSegmentKopf, SEGMENT_KOPF_LAENGE } from '../ablage/segment.ts';
 import { entschlüsseleEintrag } from './krypto.ts';
 import { leseSicherungEintrag, type SicherungEintrag } from './nutzlast.ts';
+import { kanonischeNachrichtId } from '../verlauf/nachrichtIdentitaet.ts';
 
 /** Eine Position im Rahmen-Log einer Geräte-Kette. */
 interface SicherungPosition {
@@ -130,13 +131,17 @@ export async function leseSicherungKanalSeite(
 		(a, b) => Math.max(...b[1].map(segIndexVon)) - Math.max(...a[1].map(segIndexVon)),
 	);
 
+	// Eine logische Nachricht = EIN Eintrag, gleich aus wie vielen Ketten sie
+	// kommt: dieselbe Nachricht trägt je Gerät eine andere Id (Autor-Id bzw.
+	// Zustellungs-Id). `gruppeJeAlias` führt zu jeder gelesenen Id (`id:`)
+	// und jeder kanonischen Id (`kanon:`, `verlauf/nachrichtIdentitaet.ts`)
+	// den Schlüssel des Eintrags, der für die Nachricht liegt. Über die
+	// kanonische Id findet auch die Kopie des Autors aus einem Altbestand
+	// (ohne `kryptoId`) die Kopie der anderen Kette. Nur Empfangs-Frames vor
+	// der Nutzlast-Erweiterung (2026-09-11) bleiben Id-Duplikate: ihnen fehlt
+	// die Autor-Id, und ihre eigene Id ist eine Zustellungs-Id.
 	const nachSchluessel = new Map<string, SicherungEintrag>();
-	// Krypto-Id → Schlüssel der liegenden Fassung: dieselbe logische
-	// Nachricht trägt je Gerät eine andere Id (Autor-Id bzw. Zustellungs-Id)
-	// — nur die kanonische Autor-ID erkennt die Kopie der anderen Kette.
-	// Frames vor der Nutzlast-Erweiterung führen sie nicht und bleiben
-	// deshalb (wie vorher) Id-Duplikate.
-	const kryptoJeSchluessel = new Map<string, string>();
+	const gruppeJeAlias = new Map<string, string>();
 	const neuerStand: SicherungLeseStaende = { ...lesestand };
 
 	for (const [praefix, dateien] of ketten) {
@@ -194,15 +199,11 @@ export async function leseSicherungKanalSeite(
 				try {
 					const klar = await entschlüsseleEintrag(dek, rahmenEinzeln.nutzlast);
 					const eintrag = leseSicherungEintrag(klar);
-					const schluessel = `${eintrag.kanalId}:${eintrag.nachricht.id}`;
-					const kryptoId = eintrag.nachricht.kryptoId;
-					const stellvertreter =
-						kryptoId !== undefined ? kryptoJeSchluessel.get(kryptoId) : undefined;
-					const vorhanden =
-						nachSchluessel.get(schluessel) ??
-						(stellvertreter !== undefined && stellvertreter !== schluessel
-							? nachSchluessel.get(stellvertreter)
-							: undefined);
+					const { id, kryptoId } = eintrag.nachricht;
+					const idAlias = `id:${eintrag.kanalId}:${id}`;
+					const kanonAlias = `kanon:${eintrag.kanalId}:${kanonischeNachrichtId(id, kryptoId)}`;
+					const gruppe = gruppeJeAlias.get(idAlias) ?? gruppeJeAlias.get(kanonAlias) ?? idAlias;
+					const vorhanden = nachSchluessel.get(gruppe);
 					// Dieselbe Nachricht kann aus zwei Ketten stammen (zwei
 					// Geräte spiegeln beide) — sonst gewinnt die reichere
 					// Fassung (mehr Anhänge). ÜBER den Grabstein entscheidet
@@ -218,9 +219,13 @@ export async function leseSicherungKanalSeite(
 							!steinAlt &&
 							eintrag.nachricht.anhaenge.length > vorhanden.nachricht.anhaenge.length)
 					) {
-						nachSchluessel.set(schluessel, eintrag);
-						if (kryptoId !== undefined) kryptoJeSchluessel.set(kryptoId, schluessel);
+						nachSchluessel.set(gruppe, eintrag);
 					}
+					// Beide Wege zur Nachricht merken, auch wenn diese Fassung
+					// verworfen wurde — eine spätere Kopie kann über jeden von
+					// ihnen kommen.
+					if (!gruppeJeAlias.has(idAlias)) gruppeJeAlias.set(idAlias, gruppe);
+					if (!gruppeJeAlias.has(kanonAlias)) gruppeJeAlias.set(kanonAlias, gruppe);
 				} catch {
 					/* Unlesbare Nutzlast — überspringen, der Cursor ist drüber */
 				}

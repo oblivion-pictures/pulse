@@ -204,7 +204,9 @@ export async function sendeInKanal(
       nonce: null,
       reply_to_id: replyToId,
       created_at: new Date().toISOString(),
-      verschluesselt: true
+      verschluesselt: true,
+      // Dieselbe Identitaet wie jede andere Kopie, s. `../senden.ts`.
+      krypto_id: nachrichtId
     };
 
     const nachSendung = standNachSendung(stand, []);

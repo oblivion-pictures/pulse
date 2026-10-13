@@ -12,9 +12,14 @@ test('Ziel mit krypto_id (empfangene Nachricht) wird auf die kanonische ID ueber
   assert.equal(kanonischeAntwortId('lokal-zustellung-9', nachrichten), 'autor-42');
 });
 
-test('Ziel ohne krypto_id (eigene gesendete Nachricht) bleibt bei der lokalen ID', () => {
+test('Ziel ohne krypto_id (eigene Nachricht aus dem Altbestand) bleibt bei der lokalen ID', () => {
   const nachrichten = [{ id: 'eigene-id-7' }];
   assert.equal(kanonischeAntwortId('eigene-id-7', nachrichten), 'eigene-id-7');
+});
+
+test('eigene Nachricht seit 2026-10-13 (krypto_id = id) bleibt bei derselben ID', () => {
+  const nachrichten = [{ id: 'eigene-id-8', krypto_id: 'eigene-id-8' }];
+  assert.equal(kanonischeAntwortId('eigene-id-8', nachrichten), 'eigene-id-8');
 });
 
 test('unbekanntes Ziel (z. B. Klartext-Nachricht) faellt auf die uebergebene ID zurueck', () => {

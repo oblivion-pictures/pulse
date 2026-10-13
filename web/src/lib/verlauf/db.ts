@@ -23,6 +23,7 @@ import {
 import { mitVerbindung } from './verbindung';
 import { sortierSchluessel } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
+import { kanonischeNachrichtId } from './nachrichtIdentitaet';
 
 /** Legt mehrere Sätze in einer einzigen Transaktion ab (put = Upsert über den
  *  Primärschlüssel — ein Grabstein überschreibt seine frühere Fassung).
@@ -382,11 +383,11 @@ export function verlaufSatzAnhangIds(
   );
 }
 
-/** Die lokale Nachrichten-ID des Satzes, der `kryptoId` als Absender-ID
- *  fuehrt — fuer den Loesch-Frame (`krypto/loeschZiel.ts`, s. dortigen
- *  Modulkopf): ein empfangener Satz liegt unter der Zustellungs-ID, der
- *  Frame nennt die Absender-ID. Bereichs-Cursor ueber den Kanal wie in
- *  `verlaufLesenSaetze`; `null`, wenn kein Satz dieses Kontos sie traegt. */
+/** Die lokale Nachrichten-ID des Satzes mit der kanonischen ID `kryptoId`
+ *  (`nachrichtIdentitaet.ts`, trifft auch den Autor-Satz ohne `kryptoId`) —
+ *  fuer den Loesch-Frame (`krypto/loeschZiel.ts`): ein empfangener Satz liegt
+ *  unter der Zustellungs-ID, der Frame nennt die Absender-ID. Bereichs-Cursor
+ *  wie in `verlaufLesenSaetze`; `null`, wenn kein Satz dieses Kontos passt. */
 export function verlaufSatzIdFuerKryptoId(
   kanalId: string,
   kryptoId: string,
@@ -410,7 +411,7 @@ export function verlaufSatzIdFuerKryptoId(
           }
           const satz = cursor.value as Satz;
           if (
-            satz.kryptoId === kryptoId &&
+            kanonischeNachrichtId(satz.nachrichtId, satz.kryptoId) === kryptoId &&
             (autorId === undefined || satz.autorId === autorId) &&
             gehoertZuKonto(satz, kontoId)
           ) {

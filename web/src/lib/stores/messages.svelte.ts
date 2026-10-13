@@ -2,6 +2,7 @@ import type { Message, ReactionAggregate } from '$lib/api/types';
 import { dispatchingUserId } from './currentServerUser';
 import { compareSnowflakeId } from '$lib/utils/snowflake';
 import { clearBlobCache } from '$lib/attachments/blobCache';
+import { istBekannteNachricht } from '$lib/verlauf/nachrichtIdentitaet';
 
 class MessageStore {
   // Newest at the end. We dedupe on `id` and merge `nonce` echoes.
@@ -100,13 +101,13 @@ class MessageStore {
     const krypto =
       this.kryptoIds[channelId] ??
       new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
-    // id-sortiert + deduped in einem Durchgang. Die kanonische `krypto_id`
-    // blockt die Kopie desselben Worts aus der Archiv-Kette des anderen
-    // Geräts — sie trägt eine fremde lokale ID und würde sonst doppelt
-    // angezeigt (Frischgerät + Sicherung, 2026-09-17).
+    // id-sortiert + deduped in einem Durchgang. Die kanonische ID
+    // (`verlauf/nachrichtIdentitaet.ts`) blockt die Kopie desselben Worts aus
+    // der Archiv-Kette des anderen Geräts — sie trägt eine fremde lokale ID
+    // und würde sonst doppelt angezeigt (Frischgerät + Sicherung, 2026-09-17).
     const fresh = [...msgs]
       .sort((a, b) => compareSnowflakeId(a.id, b.id))
-      .filter((m) => !ids.has(m.id) && !(m.krypto_id && krypto.has(m.krypto_id)));
+      .filter((m) => !istBekannteNachricht(m.id, m.krypto_id, ids, krypto));
     if (!fresh.length) return false;
     const trimmed = this.pruneToCap([...fresh, ...list]);
     this.byChannel = { ...this.byChannel, [channelId]: trimmed };
@@ -143,13 +144,14 @@ class MessageStore {
         ids.delete(list[idxNonce].id);
         ids.add(msg.id);
         this.messageIds = { ...this.messageIds, [msg.channel_id]: ids };
-        // Krypto-Set mitführen: der Echo-Träger trägt dieselbe kanonische
-        // ID wie der Optimist (falls überhaupt) — nur bei Abweichung ummelden.
+        // Krypto-Set mitführen — nur bei Abweichung ummelden. Die vorläufige
+        // Kopie eines verschlüsselten Sendens (`vorlaeufigVerschluesselt.ts`)
+        // hat keine `krypto_id`, die echte Nachricht schon (`senden.ts`).
         const kryptoAlt = list[idxNonce].krypto_id;
         const kryptoNeu = msg.krypto_id;
-        if (kryptoAlt && kryptoAlt !== kryptoNeu) {
+        if (kryptoAlt !== kryptoNeu) {
           const krypto = this.kryptoIds[msg.channel_id] ?? new Set();
-          krypto.delete(kryptoAlt);
+          if (kryptoAlt) krypto.delete(kryptoAlt);
           if (kryptoNeu) krypto.add(kryptoNeu);
           this.kryptoIds = { ...this.kryptoIds, [msg.channel_id]: krypto };
         }
@@ -160,20 +162,17 @@ class MessageStore {
         return;
       }
     }
-    // Dedupe by id using O(1) set lookup.
-    if (ids.has(msg.id)) return;
-    // …und danach die kanonische Krypto-Id — derselbe Schutz wie in
-    // `prepend`, nur in der Gegenrichtung: kam die Kopie aus Sicherung/
+    // Dedupe über die id und die kanonische ID — derselbe Schutz wie in
+    // `prepend`, auch in der Gegenrichtung: kam die Kopie aus Sicherung/
     // Archiv ZUERST (kanonische Id als `id`), darf die live zugestellte
     // (zustellungs-eigene Id, kanonische in `krypto_id`) sie nicht
-    // verdoppeln. Vorfall 2026-10-05: ohne diesen Zweig erschien jede
-    // Nachricht doppelt, deren Archivabholung vor der Live-Zustellung
-    // fertig war. Echo-Ersatz (Nonce) und gleiche Id laufen OBEN, lange
-    // vor diesem Anhang — ein Skip hier trifft nur echte Duplikate.
+    // verdoppeln. Vorfall 2026-10-05: ohne das erschien jede Nachricht
+    // doppelt, deren Archivabholung vor der Live-Zustellung fertig war.
+    // Echo-Ersatz (Nonce) läuft OBEN — ein Skip hier trifft nur Duplikate.
     const kryptoBekannt =
       this.kryptoIds[msg.channel_id] ??
       new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
-    if (msg.krypto_id && kryptoBekannt.has(msg.krypto_id)) return;
+    if (istBekannteNachricht(msg.id, msg.krypto_id, ids, kryptoBekannt)) return;
     // Append in id-order to keep the list monotonic.
     if (list.length === 0 || compareSnowflakeId(list[list.length - 1].id, msg.id) < 0) {
       next = [...list, msg];
@@ -509,6 +508,7 @@ class MessageStore {
     this.byChannel = {};
     this.loadedChannels = {};
     this.messageIds = {};
+    this.kryptoIds = {};
     this.pinsByChannel = {};
     this.confirmedNonces.clear();
     this.accessOrder = [];
