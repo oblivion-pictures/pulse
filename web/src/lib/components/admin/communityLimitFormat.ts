@@ -7,6 +7,9 @@
  * unter der Größen-Grenze bleibt.
  */
 
+export const MB = 1024 * 1024;
+export const GB = 1024 * MB;
+
 /** '' / null → null, sonst die endliche Zahl (oder null bei Müll). */
 export function numOrNull(s: unknown): number | null {
   if (s === '' || s == null) return null;
