@@ -135,6 +135,7 @@ export class RemoteAudioElements {
     if (!mst) return;
     const stream = new MediaStream([mst]);
 
+    // Eigenes Element, kein `track.attach()`: `startAudio()` entstummte es sonst (`audio/stummerAnker.ts`).
     const anchor = document.createElement('audio');
     anchor.autoplay = true;
     anchor.srcObject = stream;

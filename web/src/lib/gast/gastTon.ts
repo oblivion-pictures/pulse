@@ -9,10 +9,18 @@
  * Volume 1) ließ den Gast die Besprechung wie halblaut erleben. Mobil bleibt es
  * beim Element: `volume` geht dort nicht über 1 hinaus, dafür spielt es weiter,
  * wenn der Bildschirm sperrt.
+ *
+ * **Der Desktop-Anker ist ein eigenes Element, kein `track.attach()`** (s.
+ * `audio/stummerAnker.ts`): LiveKits `startAudio()` schaltet jedes angehängte
+ * Element wieder laut — und das läuft, sobald das eigene Mikrofon des Gastes
+ * steht, also nach den Tönen aller, die schon da waren. Dann spielten Element
+ * und 4×-Zug denselben Ton. Mobil ist das Element der hörbare Weg und gehört
+ * deshalb LiveKit.
  */
 
 import { Track, type RemoteAudioTrack, type RemoteTrack } from 'livekit-client';
 import { isMobile } from '$lib/platform/runtime';
+import { ankerBefestigen, ankerLoesen } from '$lib/audio/stummerAnker';
 
 /** Eingehender Ton wird auf dem Desktop mit diesem Faktor verstärkt — dieselbe
  *  Hauslautstärke wie in der Mitglieder-Oberfläche
@@ -31,10 +39,14 @@ export class GastTon {
    *  (Rückfall auf die Identität gegen Rückfall auf den leeren Text) — ein
    *  Eintrag, den niemand mehr findet. */
   #audioEls = new Set<HTMLAudioElement>();
-  /** Web-Audio-Zug je Ton-Track (Desktop): Quelle → Gain → Ausgabe. Schlüssel
-   *  ist die Track-SID; mobil gibt es den Zug nicht, dort ist das
-   *  ``<audio>``-Element selbst der hörbare Weg. */
-  #tonZuege = new Map<string, { quelle: MediaStreamAudioSourceNode; zug: GainNode }>();
+  /** Web-Audio-Zug je Ton-Track (Desktop): Quelle → Gain → Ausgabe, dazu der
+   *  stumme Anker, der den Decoder am Laufen hält. Schlüssel ist die
+   *  Track-SID; mobil gibt es den Zug nicht, dort ist das ``<audio>``-Element
+   *  selbst der hörbare Weg. */
+  #tonZuege = new Map<
+    string,
+    { quelle: MediaStreamAudioSourceNode; zug: GainNode; anker: HTMLAudioElement }
+  >();
   /** Der AudioContext der Ton-Züge — einer für alle, beim Abbau geschlossen. */
   #tonCtx: AudioContext | null = null;
   /** Mobil? Als Funktion, weil sich die Frage erst beim Anhängen stellt (und
@@ -47,23 +59,33 @@ export class GastTon {
 
   /** Einen eingehenden Ton-Track hörbar machen. */
   anhaengen(track: RemoteAudioTrack): void {
-    const el = track.attach() as HTMLAudioElement;
-    el.autoplay = true;
-    el.style.display = 'none';
-    document.body.appendChild(el);
-    this.#audioEls.add(el);
-    if (this.#mobil()) return;
-    el.muted = true;
+    if (this.#mobil()) {
+      // Das Element IST der hörbare Weg — LiveKit führt es, ``startAudio()``
+      // spielt es (und soll es auch).
+      const el = track.attach() as HTMLAudioElement;
+      el.autoplay = true;
+      el.style.display = 'none';
+      document.body.appendChild(el);
+      this.#audioEls.add(el);
+      return;
+    }
     const mst = track.mediaStreamTrack;
     if (!mst) return;
+    const strom = new MediaStream([mst]);
+    // Eigener stummer Anker, den LiveKit nicht kennt (s. Kopf der Datei).
+    const anker = document.createElement('audio');
+    anker.style.display = 'none';
+    document.body.appendChild(anker);
+    ankerBefestigen(anker, strom);
+    this.#audioEls.add(anker);
     const ctx = this.#tonKontext();
-    const quelle = ctx.createMediaStreamSource(new MediaStream([mst]));
+    const quelle = ctx.createMediaStreamSource(strom);
     const zug = ctx.createGain();
     zug.gain.value = TON_MAKEUP;
     quelle.connect(zug);
     zug.connect(ctx.destination);
     const sid = track.sid;
-    if (sid) this.#tonZuege.set(sid, { quelle, zug });
+    if (sid) this.#tonZuege.set(sid, { quelle, zug, anker });
   }
 
   /** Ein Track endet (Abbestellen): seine Elemente vom Track lösen und
@@ -115,6 +137,9 @@ export class GastTon {
     } catch {
       /* sitzt schon lösen */
     }
+    ankerLoesen(zug.anker);
+    zug.anker.remove();
+    this.#audioEls.delete(zug.anker);
     this.#tonZuege.delete(sid);
   }
 }

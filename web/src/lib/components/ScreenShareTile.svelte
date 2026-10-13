@@ -12,6 +12,8 @@
   import { ReceiveStatsReader, type ReceiveStats } from '$lib/voice/screenShareStats';
   import { voice } from '$lib/voice/livekit.svelte';
   import { VolumeBoost } from '$lib/stream/volumeBoost';
+  import { applySinkId } from '$lib/audio/applySinkId';
+  import { ankerBefestigen, ankerLoesen } from '$lib/audio/stummerAnker';
   import StreamChatOverlay from '$lib/stream/components/StreamChatOverlay.svelte';
   import StreamChatInlineInput from '$lib/stream/components/StreamChatInlineInput.svelte';
   import StreamReactions from '$lib/stream/components/StreamReactions.svelte';
@@ -189,6 +191,10 @@
     };
   });
 
+  // Das stumme Anker-Element, solange der Web-Audio-Zug den Ton trägt (sonst
+  // null). Kein Rune-Zustand: nur der Ausgabegerät-Effekt unten liest es.
+  let ankerEl: HTMLAudioElement | null = null;
+
   $effect(() => {
     const at = audioTrack;
     const el = audioEl;
@@ -200,7 +206,6 @@
       return;
     }
     if (!el) return;
-    at.attach(el);
     if (!boost) {
       boost = new VolumeBoost();
       boost.onStateChange = (s) => { localBlocked = s; };
@@ -209,26 +214,46 @@
       // Effekt neu fahren, dem folgt der Effekt darunter.
       boost.setOutputDevice(untrack(() => settings.audio.outputDeviceId));
     }
-    // Audio doppelt-spielt sonst (einmal via Element, einmal via AudioContext).
-    // Klappt das Boost-Attach nicht, unmuten — Slider operiert dann auf
-    // el.volume (≤100%).
     const mst = at.mediaStreamTrack;
-    const boosted = mst ? boost.attach(new MediaStream([mst])) : false;
-    el.muted = boosted;
+    const strom = mst ? new MediaStream([mst]) : null;
+    const boosted = strom ? boost.attach(strom) : false;
+    if (strom && boosted) {
+      // Der Web-Audio-Zug trägt den Ton, das Element ist nur stummer Anker (sonst
+      // spielt der Ton doppelt). Nicht per `attach()`: LiveKits `startAudio()`
+      // schaltet jedes angehängte Element wieder laut (`audio/stummerAnker.ts`).
+      ankerBefestigen(el, strom);
+      void applySinkId(el, untrack(() => settings.audio.outputDeviceId));
+      ankerEl = el;
+    } else {
+      // Rückfall ohne Zug: das Element ist selbst der hörbare Weg (Slider
+      // operiert dann auf el.volume, ≤100%) — LiveKit führt es, auch sein Gerät.
+      at.attach(el);
+      el.muted = false;
+      el.play().catch(() => { /* autoplay best effort */ });
+    }
     applyVolume();
     localBlocked = boosted && boost.suspended;
-    el.play().catch(() => { /* autoplay best effort */ });
-    return () => { at.detach(el); };
+    return () => {
+      if (boosted) {
+        ankerEl = null;
+        ankerLoesen(el);
+      } else {
+        at.detach(el);
+      }
+    };
   });
 
   // Hörbarer Ton der Freigabe auf das gewählte Ausgabegerät — wie die
   // Sprachstimmen und der HQ-Stream. Lief bis dahin immer auf dem
-  // Systemstandard. Das Element darüber stellt LiveKit selbst um.
+  // Systemstandard. Das Anker-Element folgt mit (es meldet Chromiums Echo-
+  // Unterdrückung ein Gerät, s. `anchor` in `voice/audioElements.ts`): LiveKit
+  // kennt es nicht mehr und stellt es nicht um. Im Rückfall tut LiveKit es.
   $effect(() => {
     // Vor dem `?.` lesen: bei `boost === null` wertete `?.` das Argument gar
     // nicht aus, und der Effekt abonnierte die Einstellung nie.
     const id = settings.audio.outputDeviceId;
     boost?.setOutputDevice(id);
+    if (ankerEl) void applySinkId(ankerEl, id);
   });
 
   function handleVolume(e: Event | number) {
