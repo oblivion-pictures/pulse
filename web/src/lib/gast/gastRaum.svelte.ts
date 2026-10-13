@@ -162,6 +162,9 @@ class GastRaum {
       this.#verdrahten(room);
       await room.connect(tok.ws_url, tok.token);
       await room.localParticipant.setMicrophoneEnabled(true, this.#aufnahmeVorgaben());
+      // Die Töne der schon Anwesenden kamen vor dem Mikrofon an; Safari startet
+      // den Kontext dafür erst jetzt (laufende Aufnahme), s. `GastTon.fortsetzen`.
+      this.#ton.fortsetzen();
       await this.#rauschfilterInstallieren(room);
       this.phase = 'drin';
       this.#auffrischen();
@@ -287,6 +290,7 @@ class GastRaum {
       .on(RoomEvent.ParticipantConnected, () => aktiv() && this.#auffrischen())
       .on(RoomEvent.ParticipantDisconnected, () => aktiv() && this.#auffrischen())
       .on(RoomEvent.ActiveSpeakersChanged, () => aktiv() && this.#auffrischen())
+      .on(RoomEvent.AudioPlaybackStatusChanged, () => aktiv() && this.#ton.fortsetzen())
       .on(RoomEvent.TrackMuted, () => aktiv() && this.#auffrischen())
       .on(RoomEvent.TrackUnmuted, () => aktiv() && this.#auffrischen())
       .on(RoomEvent.ConnectionStateChanged, (s: ConnectionState) => {

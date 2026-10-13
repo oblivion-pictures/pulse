@@ -38,8 +38,10 @@ export function ankerBefestigen(el: AnkerElement, stream: MediaStream): void {
   el.muted = true;
   el.autoplay = true;
   el.srcObject = stream;
-  // Stumm abspielen scheitert an keiner Autoplay-Sperre; ein überholtes oder
-  // abgelehntes play() ist für den Anker folgenlos (der Zug trägt den Ton).
+  // Ein überholtes play() ist folgenlos, der nächste Aufruf spielt (`GastTon.fortsetzen`,
+  // `enableAudio` der Kachel). Eine echte Ablehnung ließe den Zug in Chromium stumm
+  // (ohne spielendes Element liefert die Quelle nichts); bei einem stummen Element
+  // kommt sie aber nicht vor, stumm abspielen scheitert an keiner Autoplay-Sperre.
   void el.play().catch(() => undefined);
 }
 

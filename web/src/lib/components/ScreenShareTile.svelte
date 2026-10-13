@@ -208,7 +208,12 @@
     if (!el) return;
     if (!boost) {
       boost = new VolumeBoost();
-      boost.onStateChange = (s) => { localBlocked = s; };
+      boost.onStateChange = (s) => {
+        localBlocked = s;
+        // Angehalten (Android-WebView, iOS nach dem Zurückkehren): die nächste Geste
+        // auf der Seite setzt fort, nicht erst ein Tipp auf den Knopf dieser Kachel.
+        if (s) boost?.resumeOnGesture();
+      };
       // Vor dem attach, damit der Kontext gleich auf dem richtigen Gerät
       // entsteht. `untrack`: ein Gerätewechsel soll nicht diesen ganzen
       // Effekt neu fahren, dem folgt der Effekt darunter.
@@ -232,7 +237,11 @@
       el.play().catch(() => { /* autoplay best effort */ });
     }
     applyVolume();
-    localBlocked = boosted && boost.suspended;
+    // Nicht `localBlocked` zurücklesen: das macht den Zustand zur Abhängigkeit dieses
+    // Effekts, und jede Sperre/Entsperrung baute Anker und Zug neu auf.
+    const gesperrt = boosted && boost.suspended;
+    localBlocked = gesperrt;
+    if (gesperrt) boost.resumeOnGesture();
     return () => {
       if (boosted) {
         ankerEl = null;

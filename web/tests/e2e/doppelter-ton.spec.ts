@@ -267,6 +267,191 @@ test.describe('startAudio() und die stummen Anker', () => {
     });
   });
 
+  /**
+   * Der Ton muss von selbst zurückkommen, wenn der Browser den Kontext anhält.
+   * Vorher machte ihn nebenbei `startAudio()` hörbar (über den Anker, der LiveKit
+   * gehörte — der Fehler selbst); der Gast hat keinen „Ton aktivieren“-Knopf.
+   * WebKit gibt es auf dieser Maschine nicht, also wird dessen Verhalten in
+   * Chromium nachgestellt: der Kontext startet angehalten, `resume()` lehnt ab,
+   * bis die Geste „da“ ist (`gesperrteKontexte`).
+   */
+  test.describe('angehaltener AudioContext', () => {
+    test('Gast: fortsetzen() setzt einen angehaltenen Kontext fort', async ({ page }) => {
+      const b = await page.evaluate(
+        async ([hilfe]) => {
+          const h = await import(/* @vite-ignore */ hilfe);
+          // @ts-expect-error - Vite-served path resolved at browser runtime
+          const { GastTon } = await import('/src/lib/gast/gastTon.ts');
+          const ton = h.tonSpur('TR_fort');
+          const k = h.gesperrteKontexte({ gesperrt: false });
+          const gast = new GastTon(() => false);
+          gast.anhaengen(ton);
+          const ctx = k.kontexte[0];
+          await ctx.suspend(); // künstlich angehalten, wie vom Browser
+          const angehalten = ctx.state;
+          gast.fortsetzen();
+          await new Promise((r) => setTimeout(r, 200));
+          return { angehalten, danach: ctx.state, anzahl: k.kontexte.length };
+        },
+        [HILFE]
+      );
+      expect(b.anzahl).toBe(1);
+      expect(b.angehalten).toBe('suspended');
+      expect(b.danach, 'fortsetzen() hat den Kontext nicht wieder laufen lassen').toBe('running');
+    });
+
+    test('Gast: startet der Kontext angehalten, setzt die nächste Geste ihn fort', async ({ page }) => {
+      const b = await page.evaluate(
+        async ([hilfe]) => {
+          const h = await import(/* @vite-ignore */ hilfe);
+          // @ts-expect-error - Vite-served path resolved at browser runtime
+          const { GastTon } = await import('/src/lib/gast/gastTon.ts');
+          const ton = h.tonSpur('TR_geste');
+          const k = h.gesperrteKontexte();
+          const gast = new GastTon(() => false);
+          gast.anhaengen(ton); // der erste Ton legt den Kontext an, ohne Geste
+          const ctx = k.kontexte[0];
+          await new Promise((r) => setTimeout(r, 200));
+          const ohneGeste = { state: ctx.state, versuche: k.versuche() };
+          gast.fortsetzen(); // z. B. nach dem Mikrofon: noch keine Erlaubnis
+          await new Promise((r) => setTimeout(r, 100));
+          const nochGesperrt = ctx.state;
+          k.freigeben();
+          document.dispatchEvent(new Event('pointerdown'));
+          await new Promise((r) => setTimeout(r, 200));
+          const nachGeste = ctx.state;
+          const versuche = k.versuche();
+          document.dispatchEvent(new Event('keydown'));
+          await new Promise((r) => setTimeout(r, 100));
+          return { ohneGeste, nochGesperrt, nachGeste, keinNeuerVersuch: k.versuche() === versuche };
+        },
+        [HILFE]
+      );
+      expect(b.ohneGeste.state).toBe('suspended');
+      expect(b.ohneGeste.versuche, 'schon der erste Ton versucht es').toBeGreaterThan(0);
+      expect(b.nochGesperrt).toBe('suspended');
+      expect(b.nachGeste, 'die Geste hat den Kontext nicht fortgesetzt — der Gast bliebe stumm').toBe('running');
+      expect(b.keinNeuerVersuch, 'danach hört niemand mehr auf Gesten').toBe(true);
+    });
+
+    test('Gast: nach dem Verlassen fasst eine Geste den geschlossenen Kontext nicht mehr an', async ({
+      page
+    }) => {
+      const b = await page.evaluate(
+        async ([hilfe]) => {
+          const h = await import(/* @vite-ignore */ hilfe);
+          // @ts-expect-error - Vite-served path resolved at browser runtime
+          const { GastTon } = await import('/src/lib/gast/gastTon.ts');
+          const ton = h.tonSpur('TR_aus');
+          const k = h.gesperrteKontexte();
+          const gast = new GastTon(() => false);
+          gast.anhaengen(ton);
+          await new Promise((r) => setTimeout(r, 100));
+          gast.alleLoesen();
+          await new Promise((r) => setTimeout(r, 200));
+          const versuche = k.versuche();
+          k.freigeben();
+          document.dispatchEvent(new Event('pointerdown'));
+          await new Promise((r) => setTimeout(r, 100));
+          return { zustand: k.kontexte[0].state, neueVersuche: k.versuche() - versuche };
+        },
+        [HILFE]
+      );
+      expect(b.zustand).toBe('closed');
+      expect(b.neueVersuche).toBe(0);
+    });
+
+    test('Gast: ein angehaltener Anker wird von fortsetzen() wieder gespielt', async ({ page }) => {
+      const b = await page.evaluate(
+        async ([hilfe]) => {
+          const h = await import(/* @vite-ignore */ hilfe);
+          // @ts-expect-error - Vite-served path resolved at browser runtime
+          const { GastTon } = await import('/src/lib/gast/gastTon.ts');
+          const ton = h.tonSpur('TR_anker');
+          const gast = new GastTon(() => false);
+          const vorher = document.querySelectorAll('audio').length;
+          gast.anhaengen(ton);
+          const anker = [...document.querySelectorAll('audio')][vorher] as HTMLAudioElement;
+          anker.pause();
+          const angehalten = anker.paused;
+          gast.fortsetzen();
+          await new Promise((r) => setTimeout(r, 200));
+          const r = { angehalten, danach: anker.paused, stumm: anker.muted };
+          gast.alleLoesen();
+          return r;
+        },
+        [HILFE]
+      );
+      expect(b.angehalten).toBe(true);
+      expect(b.danach).toBe(false);
+      expect(b.stumm).toBe(true);
+    });
+
+    test('Kachel: ein angehaltener Zug meldet die Sperre und folgt der nächsten Geste', async ({
+      page
+    }) => {
+      const b = await page.evaluate(
+        async ([hilfe]) => {
+          const h = await import(/* @vite-ignore */ hilfe);
+          const ton = h.tonSpur('TR_kachelgeste');
+          const bild = h.bildSpur('TR_bildgeste');
+          const k = h.gesperrteKontexte();
+          const aushaengen = h.kachelEinhaengen(ton, bild);
+          await new Promise((r) => setTimeout(r, 500));
+          k.zurueck();
+          const knopf = () => document.querySelector('[data-testid="screen-share-unblock-audio"]');
+          const el = document.querySelector('audio') as HTMLAudioElement;
+          const gesperrt = { state: k.kontexte[0].state, knopf: !!knopf(), versuche: k.versuche() };
+          k.freigeben();
+          document.dispatchEvent(new Event('pointerdown')); // irgendwo auf der Seite
+          await new Promise((r) => setTimeout(r, 300));
+          const frei = { state: k.kontexte[0].state, knopf: !!knopf(), ankerStumm: el.muted };
+          aushaengen();
+          return { gesperrt, frei, anzahl: k.kontexte.length };
+        },
+        [HILFE]
+      );
+      expect(b.anzahl, 'genau ein Zug-Kontext').toBe(1);
+      expect(b.gesperrt.state).toBe('suspended');
+      expect(b.gesperrt.knopf, 'die Kachel zeigt ihre Sperre').toBe(true);
+      expect(b.gesperrt.versuche, 'und hat es schon selbst versucht').toBeGreaterThan(0);
+      expect(b.frei.state, 'eine Geste irgendwo auf der Seite setzt den Zug fort').toBe('running');
+      expect(b.frei.knopf, 'und die Sperre verschwindet').toBe(false);
+      expect(b.frei.ankerStumm).toBe(true);
+    });
+  });
+
+  test('Mitglieder-Stimmen: ein angehaltener Kontext meldet sich (Overlay), der Tipp darauf setzt fort', async ({
+    page
+  }) => {
+    // Vergleich mit dem Gast: dort fehlt der Knopf, hier gibt es ihn (`onBlocked`
+    // -> `voice.audioBlocked` -> „Ton aktivieren“ -> `replayAll`). Keine Lücke.
+    const b = await page.evaluate(
+      async ([hilfe]) => {
+        const h = await import(/* @vite-ignore */ hilfe);
+        // @ts-expect-error - Vite-served path resolved at browser runtime
+        const { RemoteAudioElements } = await import('/src/lib/voice/audioElements.ts');
+        const ton = h.tonSpur('TR_stimme2');
+        const k = h.gesperrteKontexte();
+        const stimmen = new RemoteAudioElements();
+        let gemeldet = 0;
+        stimmen.attach(ton, 'u2', () => gemeldet++);
+        await new Promise((r) => setTimeout(r, 200));
+        const gesperrt = { state: k.kontexte[0].state, gemeldet };
+        k.freigeben();
+        stimmen.replayAll(); // was „Ton aktivieren“ ruft
+        await new Promise((r) => setTimeout(r, 200));
+        const r = { gesperrt, danach: k.kontexte[0].state };
+        stimmen.destroy();
+        return r;
+      },
+      [HILFE]
+    );
+    expect(b.gesperrt.state).toBe('suspended');
+    expect(b.gesperrt.gemeldet, 'onBlocked -> Overlay „Audio ist stummgeschaltet“').toBe(1);
+    expect(b.danach).toBe('running');
+  });
+
   test('Mitglieder-Stimmen (RemoteAudioElements) hatten den Fehler nie', async ({ page }) => {
     const b = await page.evaluate(
       async ([hilfe]) => {

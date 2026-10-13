@@ -1,4 +1,5 @@
 import { applySinkId } from '$lib/audio/applySinkId';
+import { kontextFortsetzen } from '$lib/audio/kontextFortsetzen';
 
 /**
  * Volume control for a WebRTC `MediaStream` that can go above 100% via a Web
@@ -82,6 +83,13 @@ export class VolumeBoost {
     if (this.ctx && this.ctx.state !== 'running') {
       await this.ctx.resume();
     }
+  }
+
+  /** Setzt den Kontext fort, falls er angehalten ist; klappt das nicht, bei der
+   *  nächsten Geste auf der Seite (`audio/kontextFortsetzen.ts`). Für Aufrufer,
+   *  die nicht warten wollen, bis jemand ihren eigenen Knopf trifft. */
+  resumeOnGesture(): void {
+    if (this.ctx) kontextFortsetzen(this.ctx);
   }
 
   setVolume(v: number): void {

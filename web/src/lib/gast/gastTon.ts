@@ -21,6 +21,7 @@
 import { Track, type RemoteAudioTrack, type RemoteTrack } from 'livekit-client';
 import { isMobile } from '$lib/platform/runtime';
 import { ankerBefestigen, ankerLoesen } from '$lib/audio/stummerAnker';
+import { kontextFortsetzen } from '$lib/audio/kontextFortsetzen';
 
 /** Eingehender Ton wird auf dem Desktop mit diesem Faktor verstärkt — dieselbe
  *  Hauslautstärke wie in der Mitglieder-Oberfläche
@@ -97,6 +98,19 @@ export class GastTon {
     if (track.kind === Track.Kind.Audio) this.#tonLoesen((track as RemoteAudioTrack).sid);
   }
 
+  /** Den Ton fortsetzen, falls der Browser den Kontext angehalten hat (oder
+   *  einen Anker): die Gastseite hat keinen „Ton aktivieren“-Knopf. Safari lässt
+   *  den Kontext, der beim ersten Ton MITTEN im Handschlag entsteht, angehalten
+   *  (die Geste des Beitritts liegt zu weit zurück); gerufen wird deshalb, sobald
+   *  das Mikrofon läuft und wenn LiveKit den Abspielstatus ändert. Klappt es
+   *  nicht, setzt die nächste Geste auf der Seite fort (`kontextFortsetzen`). */
+  fortsetzen(): void {
+    if (this.#tonCtx) kontextFortsetzen(this.#tonCtx);
+    for (const { anker } of this.#tonZuege.values()) {
+      if (anker.paused) void anker.play().catch(() => undefined);
+    }
+  }
+
   /** Alles weg (Abbau des Raums): Elemente, Züge, Kontext. */
   alleLoesen(): void {
     for (const el of this.#audioEls) el.remove();
@@ -121,9 +135,7 @@ export class GastTon {
     if (!this.#tonCtx || this.#tonCtx.state === 'closed') {
       this.#tonCtx = new AudioContext();
     }
-    if (this.#tonCtx.state === 'suspended') {
-      void this.#tonCtx.resume().catch(() => undefined);
-    }
+    kontextFortsetzen(this.#tonCtx);
     return this.#tonCtx;
   }
 

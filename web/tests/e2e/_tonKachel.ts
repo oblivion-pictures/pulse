@@ -66,3 +66,49 @@ export function kachelEinhaengen(ton: RemoteAudioTrack, bild: RemoteVideoTrack):
     ziel.remove();
   };
 }
+
+/**
+ * Ersetzt `window.AudioContext` durch eine Fassung, die wie WebKit nach langer
+ * Pause startet: ANGEHALTEN, und `resume()` lehnt ab, bis `freigeben()` die
+ * Geste nachstellt. Chromium selbst lässt den Kontext in der Test-Seite immer
+ * laufen (bleibende Aktivierung), den Fall gäbe es sonst nicht.
+ * `gesperrt: false` beobachtet nur (echter Zustand, `resume()` erlaubt).
+ */
+export function gesperrteKontexte(opts: { gesperrt?: boolean } = {}) {
+  const Echt = window.AudioContext;
+  const gesperrt = opts.gesperrt ?? true;
+  const kontexte: AudioContext[] = [];
+  let erlaubt = !gesperrt;
+  let versuche = 0;
+  class Beobachtet extends Echt {
+    #angehalten = gesperrt;
+    constructor(...a: ConstructorParameters<typeof AudioContext>) {
+      super(...a);
+      kontexte.push(this);
+    }
+    get state(): AudioContextState {
+      const echt = super.state;
+      return echt === 'closed' || !this.#angehalten ? echt : 'suspended';
+    }
+    resume(): Promise<void> {
+      versuche++;
+      if (!erlaubt) return Promise.reject(new DOMException('nicht erlaubt', 'NotAllowedError'));
+      const war = this.#angehalten;
+      this.#angehalten = false;
+      if (war) this.dispatchEvent(new Event('statechange'));
+      return super.resume();
+    }
+  }
+  window.AudioContext = Beobachtet;
+  return {
+    kontexte,
+    /** Die Geste ist da: ab jetzt gelingt `resume()`. */
+    freigeben: () => {
+      erlaubt = true;
+    },
+    versuche: () => versuche,
+    zurueck: () => {
+      window.AudioContext = Echt;
+    }
+  };
+}
