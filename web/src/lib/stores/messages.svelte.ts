@@ -3,13 +3,15 @@ import { dispatchingUserId } from './currentServerUser';
 import { compareSnowflakeId } from '$lib/utils/snowflake';
 import { clearBlobCache } from '$lib/attachments/blobCache';
 import {
+  echoErsetzen,
   einfuegen,
   entfernen,
   ersetzeNachricht,
+  identitaetenVon,
   kappen,
-  kryptoIdsVon,
   letzteServerId,
   lueckeZusammenfuehren,
+  mengenNachLuecke,
   ohneGrabsteine,
   vorneAnfuegen
 } from '$lib/nachrichten/listenKern';
@@ -34,13 +36,13 @@ class MessageStore {
   private confirmedNonces = new Set<string>();
   // Track message IDs in the current channel for O(1) dedup during upsert.
   private messageIds = $state<Record<string, Set<string>>>({});
-  // Kanonische (krypto) IDs je Kanal — dasselbe Spiel für die geraete-
-  // übergreifende `krypto_id`: dieselbe logische Nachricht trägt je Gerät
-  // eine andere lokale ID (Empfangs-ID hier, Archiv-Kopie des anderen
-  // Geräts beim Hochscrollen). Nur über die kanonische ID erkennt der
+  // Identitäten je Kanal (Autor + Kennung, `nachrichten/listenKern.ts`) —
+  // dasselbe Spiel geräteübergreifend: dieselbe logische Nachricht trägt je
+  // Gerät eine andere lokale ID (Empfangs-ID hier, Archiv- oder
+  // Verfasser-Kopie beim Hochscrollen). Nur über die Identität erkennt der
   // Store sie als dieselbe Nachricht.
-  private kryptoIds = $state<Record<string, Set<string>>>({});
-  // `krypto_id`s gelöschter Nachrichten, überleben Kappen und Neuladen (`grabsteine.ts`).
+  private identitaeten = $state<Record<string, Set<string>>>({});
+  // Identitäten gelöschter Nachrichten, überleben Kappen und Neuladen (`grabsteine.ts`).
   private grabsteine = new Grabsteine();
   // LRU order of cached channels, evicts beyond MAX_CACHED_CHANNELS (`nachrichten/kanalCache.ts`).
   private lru = new ZuletztBenutzt();
@@ -92,7 +94,7 @@ class MessageStore {
     this.loadedChannels = { ...this.loadedChannels, [channelId]: true };
     // Populate the ID set for O(1) dedup during upsert.
     this.messageIds = { ...this.messageIds, [channelId]: new Set(sorted.map((m) => m.id)) };
-    this.kryptoIds = { ...this.kryptoIds, [channelId]: kryptoIdsVon(sorted, begraben) };
+    this.identitaeten = { ...this.identitaeten, [channelId]: identitaetenVon(sorted, begraben) };
     this.touch(channelId);
   }
 
@@ -105,13 +107,13 @@ class MessageStore {
     const list = this.byChannel[channelId] ?? [];
     const ids = this.messageIds[channelId] ?? new Set(list.map((m) => m.id));
     const begraben = this.grabsteine.fuer(channelId);
-    const krypto = this.kryptoIds[channelId] ?? kryptoIdsVon(list, begraben);
-    const angefuegt = vorneAnfuegen(list, ids, krypto, msgs, MessageStore.CAP, begraben);
+    const bekannt = this.identitaeten[channelId] ?? identitaetenVon(list, begraben);
+    const angefuegt = vorneAnfuegen(list, ids, bekannt, msgs, MessageStore.CAP, begraben);
     if (!angefuegt) return false;
     this.vergiss(angefuegt.verworfen);
     this.byChannel = { ...this.byChannel, [channelId]: angefuegt.liste };
     this.messageIds = { ...this.messageIds, [channelId]: ids };
-    this.kryptoIds = { ...this.kryptoIds, [channelId]: krypto };
+    this.identitaeten = { ...this.identitaeten, [channelId]: bekannt };
     for (const m of angefuegt.neu) this.bestaetige(m);
     return true;
   }
@@ -126,35 +128,28 @@ class MessageStore {
         const next = list.slice();
         next[idxNonce] = msg;
         this.byChannel = { ...this.byChannel, [msg.channel_id]: next };
-        // Update the ID set.
-        ids.delete(list[idxNonce].id);
-        ids.add(msg.id);
+        // Beide Mengen ummelden: die vorläufige Kopie eines verschlüsselten
+        // Sendens (`vorlaeufigVerschluesselt.ts`) hat eine `tmp-`-Id und keine
+        // `krypto_id`, die echte Nachricht beides (`senden.ts`).
+        const begraben = this.grabsteine.fuer(msg.channel_id);
+        const bekannt = this.identitaeten[msg.channel_id] ?? identitaetenVon(list, begraben);
+        echoErsetzen(ids, bekannt, list[idxNonce], msg);
         this.messageIds = { ...this.messageIds, [msg.channel_id]: ids };
-        // Krypto-Set mitführen — nur bei Abweichung ummelden. Die vorläufige
-        // Kopie eines verschlüsselten Sendens (`vorlaeufigVerschluesselt.ts`)
-        // hat keine `krypto_id`, die echte Nachricht schon (`senden.ts`).
-        const kryptoAlt = list[idxNonce].krypto_id;
-        const kryptoNeu = msg.krypto_id;
-        if (kryptoAlt !== kryptoNeu) {
-          const krypto = this.kryptoIds[msg.channel_id] ?? new Set();
-          if (kryptoAlt) krypto.delete(kryptoAlt);
-          if (kryptoNeu) krypto.add(kryptoNeu);
-          this.kryptoIds = { ...this.kryptoIds, [msg.channel_id]: krypto };
-        }
+        this.identitaeten = { ...this.identitaeten, [msg.channel_id]: bekannt };
         this.bestaetige(msg);
         return;
       }
     }
     // Echo-Ersatz (Nonce) läuft OBEN — ein Skip in `einfuegen` trifft nur
-    // Duplikate (über die Id und die kanonische ID).
+    // Duplikate (über die Id und die Identität).
     const begraben = this.grabsteine.fuer(msg.channel_id);
-    const krypto = this.kryptoIds[msg.channel_id] ?? kryptoIdsVon(list, begraben);
-    const eingefuegt = einfuegen(list, ids, krypto, msg, MessageStore.CAP, begraben);
+    const bekannt = this.identitaeten[msg.channel_id] ?? identitaetenVon(list, begraben);
+    const eingefuegt = einfuegen(list, ids, bekannt, msg, MessageStore.CAP, begraben);
     if (!eingefuegt) return;
     this.vergiss(eingefuegt.verworfen);
     this.byChannel = { ...this.byChannel, [msg.channel_id]: eingefuegt.liste };
     this.messageIds = { ...this.messageIds, [msg.channel_id]: ids };
-    this.kryptoIds = { ...this.kryptoIds, [msg.channel_id]: krypto };
+    this.identitaeten = { ...this.identitaeten, [msg.channel_id]: bekannt };
     this.bestaetige(msg);
   }
 
@@ -191,12 +186,12 @@ class MessageStore {
     if (!list) return;
     const begraben = this.grabsteine.fuer(channelId);
     const ids = this.messageIds[channelId] ?? new Set(list.map((m) => m.id));
-    const krypto = this.kryptoIds[channelId] ?? kryptoIdsVon(list, begraben);
-    const next = entfernen(list, ids, krypto, begraben, id);
+    const bekannt = this.identitaeten[channelId] ?? identitaetenVon(list, begraben);
+    const next = entfernen(list, ids, bekannt, begraben, id);
     if (!next) return;
     this.byChannel = { ...this.byChannel, [channelId]: next };
     this.messageIds = { ...this.messageIds, [channelId]: ids };
-    this.kryptoIds = { ...this.kryptoIds, [channelId]: krypto };
+    this.identitaeten = { ...this.identitaeten, [channelId]: bekannt };
   }
 
   /** Apply a delta to a message's reactions list. `delta` is +1 for add, -1
@@ -279,14 +274,14 @@ class MessageStore {
     for (const nonce of bestaetigteNonces) this.confirmedNonces.add(nonce);
     this.vergiss(verworfen);
     this.byChannel = { ...this.byChannel, [channelId]: liste };
-    // Rebuild the ID set after merge.
-    this.messageIds = { ...this.messageIds, [channelId]: new Set(liste.map((m) => m.id)) };
-    // Wurde gekappt, gehen die `krypto_id`s der weggefallenen Nachrichten mit —
-    // sonst gälte eine davon, wieder hochgescrollt, als Dublette (Grabsteine bleiben).
-    if (verworfen.length > 0) {
-      const krypto = kryptoIdsVon(liste, this.grabsteine.fuer(channelId));
-      this.kryptoIds = { ...this.kryptoIds, [channelId]: krypto };
-    }
+    // Beide Mengen nach der Liste; wurde gekappt, gehen die Identitäten der
+    // weggefallenen Nachrichten mit — sonst gälte eine davon, wieder
+    // hochgescrollt, als Dublette (Grabsteine bleiben).
+    const begraben = this.grabsteine.fuer(channelId);
+    const bekannt = this.identitaeten[channelId] ?? identitaetenVon(list, begraben);
+    mengenNachLuecke(haveIds, bekannt, liste, verworfen, begraben);
+    this.messageIds = { ...this.messageIds, [channelId]: haveIds };
+    this.identitaeten = { ...this.identitaeten, [channelId]: bekannt };
   }
 
   /** Re-sync already-present messages from a freshly re-fetched page —
@@ -324,7 +319,7 @@ class MessageStore {
     this.byChannel = ohne(this.byChannel, channelId);
     this.loadedChannels = ohne(this.loadedChannels, channelId);
     this.messageIds = ohne(this.messageIds, channelId);
-    this.kryptoIds = ohne(this.kryptoIds, channelId);
+    this.identitaeten = ohne(this.identitaeten, channelId);
     this.grabsteine.vergessen(channelId);
     this.pinsByChannel = ohne(this.pinsByChannel, channelId);
     // Clear stale nonces from this channel.
@@ -338,7 +333,7 @@ class MessageStore {
     this.byChannel = {};
     this.loadedChannels = {};
     this.messageIds = {};
-    this.kryptoIds = {};
+    this.identitaeten = {};
     this.grabsteine.leeren();
     this.pinsByChannel = {};
     this.confirmedNonces.clear();

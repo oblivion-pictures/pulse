@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { GRABSTEINE_JE_KANAL, Grabsteine, grabsteinSetzen } from '../src/lib/nachrichten/grabsteine.ts';
 
 describe('Grabsteine: Buchführung und Grenze', () => {
-	it('setzen trägt die krypto_id in beide Mengen ein', () => {
+	it('setzen trägt die Identität in beide Mengen ein', () => {
 		const krypto = new Set<string>();
 		const begraben = new Set<string>();
 		grabsteinSetzen(krypto, begraben, 'k1');

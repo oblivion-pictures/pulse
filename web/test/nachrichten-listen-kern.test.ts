@@ -2,14 +2,16 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import {
+	echoErsetzen,
 	einfuegen as einfuegenKern,
 	einsortieren,
 	entfernen,
 	ersetzeNachricht,
+	identitaetenVon,
 	kappen,
-	kryptoIdsVon,
 	letzteServerId,
 	lueckeZusammenfuehren,
+	mengenNachLuecke,
 	ohneGrabsteine,
 	vorneAnfuegen as vorneAnfuegenKern
 } from '../src/lib/nachrichten/listenKern.ts';
@@ -43,6 +45,8 @@ const msg = (id: string, over: Partial<Message> = {}): Message => ({
 	...over
 });
 const ids = (l: Message[]) => l.map((m) => m.id);
+/** Die Identität, wie der Store sie führt: Autor + Kennung (Vorgabe-Autor `a`). */
+const ident = (kennung: string, autor = 'a') => `${autor}:${kennung}`;
 
 describe('Nachrichtenliste: kappen / einsortieren / ersetzen', () => {
 	it('kappen lässt eine kurze Liste unangetastet (dieselbe Referenz)', () => {
@@ -83,9 +87,14 @@ describe('Nachrichtenliste: kappen / einsortieren / ersetzen', () => {
 		assert.equal(l[1].content, 'inhalt 2', 'die Eingabeliste bleibt unverändert');
 	});
 
-	it('kryptoIdsVon sammelt nur vorhandene krypto_ids', () => {
-		const s = kryptoIdsVon([msg('1', { krypto_id: 'k' }), msg('2'), msg('3', { krypto_id: 'k' })]);
-		assert.deepEqual([...s], ['k']);
+	it('identitaetenVon: Autor + krypto_id, ohne sie die eigene Id', () => {
+		const s = identitaetenVon([
+			msg('1', { krypto_id: 'k' }),
+			msg('2'),
+			msg('3', { krypto_id: 'k' }),
+			msg('4', { krypto_id: 'k', author_id: 'b' })
+		]);
+		assert.deepEqual([...s].sort(), [ident('2'), ident('k'), ident('k', 'b')]);
 	});
 });
 
@@ -151,15 +160,28 @@ describe('Nachrichtenliste: Historie vorn anfügen', () => {
 		assert.deepEqual(ids(r.liste), ['10', '20', '30']);
 		assert.deepEqual(ids(r.neu), ['10', '20']);
 		assert.deepEqual([...i].sort(), ['10', '20', '30']);
-		assert.deepEqual([...k], ['x']);
+		assert.deepEqual([...k].sort(), [ident('10'), ident('x')]);
 	});
 
-	it('die kanonische Id blockt die Archiv-Kopie mit fremder lokaler Id', () => {
-		// Live empfangen: id=Zustellungs-Id, krypto_id=kanonisch. Die Archiv-Kopie
-		// trägt die kanonische Id als `id`.
+	it('die Identität blockt die Archiv-Kopie mit fremder lokaler Id', () => {
+		// Live empfangen: id=Zustellungs-Id, krypto_id=Kennung. Die Archiv-Kopie
+		// trägt die Kennung als `id`.
 		const l = [msg('30', { krypto_id: '15' })];
-		const r = vorneAnfuegen(l, new Set(['30']), new Set(['15']), [msg('15')], 100);
+		const r = vorneAnfuegen(l, new Set(['30']), identitaetenVon(l), [msg('15')], 100);
 		assert.equal(r, null);
+	});
+
+	it('zwei Kopien derselben Nachricht in EINER Seite: nur die erste kommt durch', () => {
+		const l = [msg('30')];
+		const r = vorneAnfuegen(
+			l,
+			new Set(['30']),
+			identitaetenVon(l),
+			[msg('15'), msg('12', { krypto_id: '15' })],
+			100
+		);
+		assert.ok(r);
+		assert.deepEqual(ids(r.neu), ['12']);
 	});
 
 	it('liefert null, wenn nichts Neues dabei war, und lässt die Mengen unberührt', () => {
@@ -171,33 +193,41 @@ describe('Nachrichtenliste: Historie vorn anfügen', () => {
 	it('baut beide Mengen aus der gekappten Liste neu auf', () => {
 		const l = [msg('30', { krypto_id: 'k30' })];
 		const i = new Set(['30']);
-		const k = new Set(['k30']);
+		const k = identitaetenVon(l);
 		const r = vorneAnfuegen(l, i, k, [msg('10', { krypto_id: 'k10' }), msg('20', { krypto_id: 'k20' })], 2);
 		assert.ok(r);
 		assert.deepEqual(ids(r.liste), ['20', '30']);
 		assert.deepEqual(ids(r.verworfen), ['10']);
 		assert.deepEqual([...i].sort(), ['20', '30']);
-		assert.deepEqual([...k].sort(), ['k20', 'k30']);
+		assert.deepEqual([...k].sort(), [ident('k20'), ident('k30')]);
 	});
 });
 
 describe('Nachrichtenliste: einzelne Nachricht aufnehmen', () => {
-	it('nimmt eine neue Nachricht auf und bucht Id und krypto_id', () => {
+	it('nimmt eine neue Nachricht auf und bucht Id und Identität', () => {
 		const i = new Set<string>();
 		const k = new Set<string>();
 		const r = einfuegen([], i, k, msg('10', { krypto_id: 'x' }), 100);
 		assert.ok(r);
 		assert.deepEqual(ids(r.liste), ['10']);
 		assert.deepEqual([...i], ['10']);
-		assert.deepEqual([...k], ['x']);
+		assert.deepEqual([...k], [ident('x')]);
 	});
 
-	it('weist ein Duplikat über die Id UND über die kanonische Id ab', () => {
+	it('weist ein Duplikat über die Id UND über die Identität ab', () => {
 		const l = [msg('10', { krypto_id: 'x' })];
-		assert.equal(einfuegen(l, new Set(['10']), new Set(['x']), msg('10'), 100), null);
-		assert.equal(einfuegen(l, new Set(['10']), new Set(['x']), msg('99', { krypto_id: 'x' }), 100), null);
-		// Die Gegenrichtung: die kanonische Id der bekannten Kopie ist die neue `id`.
-		assert.equal(einfuegen(l, new Set(['10']), new Set(['x']), msg('x'), 100), null);
+		const k = identitaetenVon(l);
+		assert.equal(einfuegen(l, new Set(['10']), k, msg('10'), 100), null);
+		assert.equal(einfuegen(l, new Set(['10']), k, msg('99', { krypto_id: 'x' }), 100), null);
+		// Die Gegenrichtung: die Kennung der bekannten Kopie ist die neue `id`.
+		assert.equal(einfuegen(l, new Set(['10']), k, msg('x'), 100), null);
+	});
+
+	it('Autor-Bindung: dieselbe Kennung eines anderen Autors ist eine andere Nachricht', () => {
+		const l = [msg('10', { krypto_id: 'x' })];
+		const r = einfuegen(l, new Set(['10']), identitaetenVon(l), msg('99', { krypto_id: 'x', author_id: 'b' }), 100);
+		assert.ok(r);
+		assert.deepEqual(ids(r.liste), ['10', '99']);
 	});
 
 	it('kappt und baut die Id-Menge neu auf', () => {
@@ -211,7 +241,7 @@ describe('Nachrichtenliste: einzelne Nachricht aufnehmen', () => {
 
 	it('baut beim Kappen auch die krypto-Menge aus der Liste neu auf', () => {
 		const i = new Set(['10', '20']);
-		const k = new Set(['k10', 'k20']);
+		const k = new Set([ident('k10'), ident('k20')]);
 		const r = einfuegen(
 			[msg('10', { krypto_id: 'k10' }), msg('20', { krypto_id: 'k20' })],
 			i,
@@ -222,12 +252,12 @@ describe('Nachrichtenliste: einzelne Nachricht aufnehmen', () => {
 		assert.ok(r);
 		assert.deepEqual(ids(r.liste), ['20', '30']);
 		assert.deepEqual([...i].sort(), ['20', '30']);
-		assert.deepEqual([...k].sort(), ['k20', 'k30']);
+		assert.deepEqual([...k].sort(), [ident('k20'), ident('k30')]);
 	});
 
 	it('nach dem Kappen erkennt die Dublettenprüfung nur noch, was wirklich in der Liste steht', () => {
 		const i = new Set(['10', '20']);
-		const k = new Set(['k10', 'k20']);
+		const k = new Set([ident('k10'), ident('k20')]);
 		const erste = einfuegen(
 			[msg('10', { krypto_id: 'k10' }), msg('20', { krypto_id: 'k20' })],
 			i,
@@ -236,10 +266,10 @@ describe('Nachrichtenliste: einzelne Nachricht aufnehmen', () => {
 			2
 		);
 		assert.ok(erste);
-		// Noch in der Liste: weiterhin Dublette, über Id wie über kanonische Id.
+		// Noch in der Liste: weiterhin Dublette, über Id wie über Identität.
 		assert.equal(einfuegen(erste.liste, i, k, msg('20'), 2), null);
 		assert.equal(einfuegen(erste.liste, i, k, msg('99', { krypto_id: 'k20' }), 2), null);
-		// Weggekappt: weder die Id noch die kanonische Id gelten als bekannt.
+		// Weggekappt: weder die Id noch die Identität gelten als bekannt.
 		const zurueck = einfuegen(erste.liste, i, k, msg('99', { krypto_id: 'k10' }), 3);
 		assert.ok(zurueck, 'die gekappte Nachricht darf wieder aufgenommen werden');
 		assert.deepEqual(ids(zurueck.liste), ['20', '30', '99']);
@@ -247,7 +277,7 @@ describe('Nachrichtenliste: einzelne Nachricht aufnehmen', () => {
 
 	it('kappt auch dann sauber, wenn die neue Nachricht selbst die älteste ist', () => {
 		const i = new Set(['20', '30']);
-		const k = new Set(['k20', 'k30']);
+		const k = new Set([ident('k20'), ident('k30')]);
 		const r = einfuegen(
 			[msg('20', { krypto_id: 'k20' }), msg('30', { krypto_id: 'k30' })],
 			i,
@@ -258,30 +288,68 @@ describe('Nachrichtenliste: einzelne Nachricht aufnehmen', () => {
 		assert.ok(r);
 		assert.deepEqual(ids(r.liste), ['20', '30']);
 		assert.deepEqual([...i].sort(), ['20', '30']);
-		assert.deepEqual([...k].sort(), ['k20', 'k30']);
+		assert.deepEqual([...k].sort(), [ident('k20'), ident('k30')]);
 	});
 });
 
+describe('Nachrichtenliste: Echo-Ersatz und Lücke — die Mengen', () => {
+	it('echoErsetzen meldet Id und Identität der tmp-Kopie auf das Echo um', () => {
+		const tmp = msg('tmp-1', { nonce: 'n' });
+		const echo = msg('1790000000000000001', { nonce: 'n', krypto_id: '1790000000000000001' });
+		const i = new Set(['tmp-1']);
+		const k = identitaetenVon([tmp]);
+		echoErsetzen(i, k, tmp, echo);
+		assert.deepEqual([...i], ['1790000000000000001']);
+		assert.deepEqual([...k], [ident('1790000000000000001')]);
+		// Eine spätere Kopie derselben Nachricht unter fremder Id ist eine Dublette.
+		const spaeter = msg('120000000000000001', { krypto_id: '1790000000000000001' });
+		assert.equal(einfuegen([echo], i, k, spaeter, 100), null);
+	});
+
+	it('mengenNachLuecke: ohne Kappen bleiben Grabsteine stehen, die neuen kommen dazu', () => {
+		// `remove` lässt die Identität einer gelöschten Nachricht stehen.
+		const i = new Set(['10']);
+		const k = new Set([ident('10'), ident('weg')]);
+		mengenNachLuecke(i, k, [msg('10'), msg('20')], [], new Set());
+		assert.deepEqual([...i].sort(), ['10', '20']);
+		assert.deepEqual([...k].sort(), [ident('10'), ident('20'), ident('weg')]);
+	});
+
+	it('mengenNachLuecke: nach dem Kappen nur noch, was in der Liste steht — und die Grabsteine', () => {
+		const i = new Set(['10', '20']);
+		const k = new Set([ident('10'), ident('20'), ident('weg'), ident('tot')]);
+		mengenNachLuecke(i, k, [msg('20'), msg('30')], [msg('10')], new Set([ident('tot')]));
+		assert.deepEqual([...i].sort(), ['20', '30']);
+		assert.deepEqual([...k].sort(), [ident('20'), ident('30'), ident('tot')]);
+	});
+});
+
+// Die Grabstein-Fälle stammen von main (243e9164, d05ac5d1) und führten dort
+// blosse `krypto_id`s. Auf diesem Stand sind Dublettenmenge und Grabsteine
+// Identitäten (Autor + Kennung, `verlauf/identitaet.ts`): ein Grabstein ohne
+// Autor könnte die Nachricht eines anderen Autors unter derselben Kennung
+// verdecken. Die Fälle prüfen deshalb dasselbe Verhalten mit `ident(…)`, dazu
+// kommt der Fälschungsfall am Ende.
 describe('Nachrichtenliste: Grabsteine gelöschter Nachrichten', () => {
-	/** Drei Nachrichten mit den krypto_ids `k1` bis `k3`, samt passenden Id-Mengen. */
+	/** Drei Nachrichten mit den krypto_ids `k1` bis `k3`, samt passenden Mengen. */
 	function dreiNachrichten() {
 		const liste = [msg('10', { krypto_id: 'k1' }), msg('20', { krypto_id: 'k2' }), msg('30', { krypto_id: 'k3' })];
 		return {
 			liste,
 			ids: new Set(['10', '20', '30']),
-			krypto: new Set(['k1', 'k2', 'k3']),
+			krypto: new Set([ident('k1'), ident('k2'), ident('k3')]),
 			begraben: new Set<string>()
 		};
 	}
 
-	it('entfernen streicht die Id, lässt die krypto_id als Grabstein stehen und vermerkt sie', () => {
+	it('entfernen streicht die Id, lässt die Identität als Grabstein stehen und vermerkt sie', () => {
 		const { liste, ids: i, krypto, begraben } = dreiNachrichten();
 		const r = entfernen(liste, i, krypto, begraben, '20');
 		assert.ok(r);
 		assert.deepEqual(ids(r), ['10', '30']);
 		assert.deepEqual([...i].sort(), ['10', '30']);
-		assert.ok(krypto.has('k2'), 'der Grabstein bleibt in der Dublettenmenge');
-		assert.deepEqual([...begraben], ['k2']);
+		assert.ok(krypto.has(ident('k2')), 'der Grabstein bleibt in der Dublettenmenge');
+		assert.deepEqual([...begraben], [ident('k2')]);
 		assert.equal(liste.length, 3, 'die Eingabeliste bleibt unverändert');
 	});
 
@@ -318,13 +386,13 @@ describe('Nachrichtenliste: Grabsteine gelöschter Nachrichten', () => {
 	it('der Grabstein überlebt das Kappen beim Voranstellen älterer Historie', () => {
 		const liste = [msg('30', { krypto_id: 'k3' }), msg('40', { krypto_id: 'k4' })];
 		const i = new Set(['30', '40']);
-		const krypto = new Set(['k3', 'k4', 'k2']);
-		const begraben = new Set(['k2']);
+		const krypto = new Set([ident('k3'), ident('k4'), ident('k2')]);
+		const begraben = new Set([ident('k2')]);
 		const r = vorneAnfuegen(liste, i, krypto, [msg('10', { krypto_id: 'k1' }), msg('20')], 3, begraben);
 		assert.ok(r);
 		assert.deepEqual(ids(r.liste), ['20', '30', '40']);
 		assert.deepEqual(ids(r.verworfen), ['10']);
-		assert.ok(krypto.has('k2'), 'der Abgleich hat den Grabstein zurückgelegt');
+		assert.ok(krypto.has(ident('k2')), 'der Abgleich hat den Grabstein zurückgelegt');
 		assert.equal(vorneAnfuegen(r.liste, i, krypto, [msg('5', { krypto_id: 'k2' })], 3, begraben), null);
 	});
 
@@ -333,25 +401,47 @@ describe('Nachrichtenliste: Grabsteine gelöschter Nachrichten', () => {
 		// Dieselbe Folge, aber der Aufrufer reicht keine Grabsteine durch.
 		entfernen(liste, i, krypto, new Set<string>(), '20');
 		einfuegen(liste.filter((m) => m.id !== '20'), i, krypto, msg('40'), 2);
-		assert.equal(krypto.has('k2'), false);
+		assert.equal(krypto.has(ident('k2')), false);
 	});
 
-	it('kryptoIdsVon legt die Grabsteine zu den krypto_ids der Liste', () => {
-		const s = kryptoIdsVon([msg('1', { krypto_id: 'a' }), msg('2')], new Set(['tot']));
-		assert.deepEqual([...s].sort(), ['a', 'tot']);
-		assert.deepEqual([...kryptoIdsVon([msg('1', { krypto_id: 'a' })])], ['a']);
+	it('identitaetenVon legt die Grabsteine zu den Identitäten der Liste', () => {
+		const s = identitaetenVon([msg('1', { krypto_id: 'a' }), msg('2')], new Set([ident('tot')]));
+		assert.deepEqual([...s].sort(), [ident('2'), ident('a'), ident('tot')]);
+		assert.deepEqual([...identitaetenVon([msg('1', { krypto_id: 'a' })])], [ident('a')]);
+	});
+
+	it('Autor-Bindung: der Grabstein einer gelöschten Nachricht verdeckt keine fremde unter derselben Kennung', () => {
+		// Bob schickt eine Nachricht unter der Kennung K einer Nachricht von
+		// Alice und löscht sie. Alices Nachricht (dieselbe Kennung, anderer
+		// Autor) muss danach weiter aufgenommen werden — ob sie live kommt,
+		// beim Hochscrollen oder beim Wiederöffnen.
+		const bobs = msg('20', { krypto_id: 'K', author_id: 'bob' });
+		const liste = [msg('10'), bobs];
+		const i = new Set(['10', '20']);
+		const krypto = identitaetenVon(liste);
+		const begraben = new Set<string>();
+		const rest = entfernen(liste, i, krypto, begraben, '20') ?? [];
+		assert.deepEqual([...begraben], [ident('K', 'bob')]);
+		const alices = msg('25', { krypto_id: 'K', author_id: 'alice' });
+		assert.ok(einfuegen(rest, i, krypto, alices, 100, begraben), 'live');
+		const aelter = msg('5', { krypto_id: 'K', author_id: 'alice' });
+		const hoch = vorneAnfuegen(rest, new Set(['10']), identitaetenVon(rest, begraben), [aelter], 100, begraben);
+		assert.ok(hoch, 'Hochscrollen');
+		assert.deepEqual(ids(ohneGrabsteine([msg('10'), alices], begraben)), ['10', '25'], 'Wiederöffnen');
+		// Bobs eigene Kopie unter anderer Id bleibt dagegen weg.
+		assert.equal(einfuegen(rest, i, krypto, msg('26', { krypto_id: 'K', author_id: 'bob' }), 100, begraben), null);
 	});
 });
 
 describe('Nachrichtenliste: Grabsteine beim erneuten Laden', () => {
-	it('ohneGrabsteine nimmt Nachrichten heraus, deren kanonische Id ein Grabstein ist', () => {
+	it('ohneGrabsteine nimmt Nachrichten heraus, deren Identität ein Grabstein ist', () => {
 		const liste = [
 			msg('10', { krypto_id: 'tot' }), // Kopie eines Empfängergeräts unter lokaler Zustellungs-Id
 			msg('20'),
 			msg('tot2'), // Kopie des Autors ohne krypto_id: die eigene Id ist die kanonische
 			msg('30', { krypto_id: 'lebt' })
 		];
-		const r = ohneGrabsteine(liste, new Set(['tot', 'tot2']));
+		const r = ohneGrabsteine(liste, new Set([ident('tot'), ident('tot2')]));
 		assert.deepEqual(ids(r), ['20', '30']);
 		assert.equal(liste.length, 4, 'die Eingabeliste bleibt unverändert');
 	});
@@ -359,14 +449,15 @@ describe('Nachrichtenliste: Grabsteine beim erneuten Laden', () => {
 	it('ohneGrabsteine gibt ohne Treffer dieselbe Liste zurück', () => {
 		const liste = [msg('10', { krypto_id: 'a' }), msg('20')];
 		assert.equal(ohneGrabsteine(liste, new Set()), liste);
-		assert.equal(ohneGrabsteine(liste, new Set(['fremd'])), liste);
+		assert.equal(ohneGrabsteine(liste, new Set([ident('fremd')])), liste);
+		assert.equal(ohneGrabsteine(liste, new Set([ident('a', 'b')])), liste, 'derselbe Schlüssel eines anderen Autors');
 	});
 
 	it('Wiederöffnen: löschen, Liste neu laden, Nachzug-Seite mit der Kopie — die Kopie bleibt weg', () => {
 		// Zustand des Stores: zwei Nachrichten, die mittlere wird gelöscht.
 		const liste = [msg('10'), msg('20', { krypto_id: 'k2' }), msg('30')];
 		const i = new Set(['10', '20', '30']);
-		const krypto = new Set(['k2']);
+		const krypto = identitaetenVon(liste);
 		const begraben = new Set<string>();
 		assert.ok(entfernen(liste, i, krypto, begraben, '20'));
 		// Wiederöffnen: `setInitial` bekommt den Verlauf, der die Nachricht noch
@@ -374,7 +465,7 @@ describe('Nachrichtenliste: Grabsteine beim erneuten Laden', () => {
 		const geladen = ohneGrabsteine([msg('10'), msg('25', { krypto_id: 'k2' }), msg('30')], begraben);
 		assert.deepEqual(ids(geladen), ['10', '30']);
 		const ids2 = new Set(geladen.map((m) => m.id));
-		const krypto2 = kryptoIdsVon(geladen, begraben);
+		const krypto2 = identitaetenVon(geladen, begraben);
 		// Der Archiv-Nachzug liefert danach noch einmal die Kopie, in einer Seite vor dem Fenster.
 		assert.equal(vorneAnfuegen(geladen, ids2, krypto2, [msg('5', { krypto_id: 'k2' })], 100, begraben), null);
 		// Eine lebende Nachricht aus derselben Seite kommt dagegen durch.

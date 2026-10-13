@@ -1,7 +1,8 @@
 /**
- * Die geräteübergreifende Identität einer verschlüsselten Nachricht
- * (`verlauf/nachrichtIdentitaet.ts`) — und die Wurzel, an der sie fehlte:
- * die Kopie des Absenders trug bis zum 2026-10-13 keine `krypto_id`.
+ * Die geräteübergreifende Identität einer verschlüsselten Nachricht im
+ * Nachrichten-Store (`nachrichten/listenKern.ts`, Regel in
+ * `verlauf/identitaet.ts`) — und die Wurzel, an der sie fehlte: die Kopie
+ * des Absenders trug bis zum 2026-10-13 keine `krypto_id`.
  *
  * Fehlerbild: spiegeln zwei eigene Geräte in dieselbe Sicherung (das
  * Sendegerät seine Kopie unter der eigenen Id A, das Zweitgerät die
@@ -9,76 +10,105 @@
  * Frischgerät beim Wiederherstellen beide Zeilen — jeder Abgleich verglich
  * nur `kryptoId` mit `kryptoId`, nie mit der `id` einer anderen Zeile.
  *
+ * Die Fälle liefen bis zum 2026-10-13 gegen eine Prüfung aus Kennung allein
+ * (c5a25317); sie gehen jetzt durch die Rechnung des Stores selbst, und
+ * jeder nennt den Autor. Der Fälschungsfall unten ist der Grund: die Kennung
+ * wählt der Absender frei.
+ *
  * Werte im Format der echten Ids: lokale Autor-Id 19 Ziffern
  * (`lokaleNachrichtId`), Zustellungs-Ids Server-Snowflakes mit 18 Ziffern.
  */
 
-import { test, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import {
-  kanonischeNachrichtId,
-  istBekannteNachricht
-} from '../src/lib/verlauf/nachrichtIdentitaet.ts';
+import { einfuegen, identitaetenVon, vorneAnfuegen } from '../src/lib/nachrichten/listenKern.ts';
+import type { Message } from '../src/lib/api/types.ts';
 
 const AUTOR_ID = '1791841626624331125'; // vom Absender gewählt
 const ZUSTELLUNG_ZWEITGERAET = '103281734567890123';
 const ZUSTELLUNG_EMPFAENGER = '103281734567890124';
+const ALICE = '103247050000000001';
+const BOB = '103247050000000002';
 
-test('kanonische Id: die mitgereiste kryptoId, ohne sie die eigene id', () => {
-  assert.equal(kanonischeNachrichtId(ZUSTELLUNG_ZWEITGERAET, AUTOR_ID), AUTOR_ID);
-  assert.equal(kanonischeNachrichtId(AUTOR_ID, AUTOR_ID), AUTOR_ID);
-  assert.equal(kanonischeNachrichtId(AUTOR_ID, null), AUTOR_ID);
-  assert.equal(kanonischeNachrichtId(AUTOR_ID, undefined), AUTOR_ID);
-});
+function nachricht(id: string, autor: string, kryptoId?: string): Message {
+  return {
+    id,
+    channel_id: 'k1',
+    author_id: autor,
+    content: `von ${autor}`,
+    nonce: null,
+    created_at: '2026-10-13T09:00:00Z',
+    ...(kryptoId ? { krypto_id: kryptoId } : {})
+  };
+}
 
-describe('istBekannteNachricht (Prüfung des Nachrichten-Stores)', () => {
-  it('Empfangs-Kopie trifft die Absender-Kopie aus dem Altbestand (nur unter den ids bekannt)', () => {
+/** Hält der Store `liegend`, ist `neu` dann eine Dublette? */
+function istDublette(liegend: Message[], neu: Message): boolean {
+  const ids = new Set(liegend.map((m) => m.id));
+  return einfuegen(liegend, ids, identitaetenVon(liegend), neu, 100) === null;
+}
+
+describe('Nachrichten-Store: Kopien derselben Nachricht', () => {
+  it('Empfangs-Kopie trifft die Absender-Kopie aus dem Altbestand', () => {
     assert.equal(
-      istBekannteNachricht(ZUSTELLUNG_ZWEITGERAET, AUTOR_ID, new Set([AUTOR_ID]), new Set()),
+      istDublette([nachricht(AUTOR_ID, ALICE)], nachricht(ZUSTELLUNG_ZWEITGERAET, ALICE, AUTOR_ID)),
       true
     );
   });
 
-  it('Absender-Kopie aus dem Altbestand trifft eine liegende Empfangs-Kopie (unter den kryptoIds)', () => {
+  it('Absender-Kopie aus dem Altbestand trifft eine liegende Empfangs-Kopie', () => {
     assert.equal(
-      istBekannteNachricht(
-        AUTOR_ID,
-        undefined,
-        new Set([ZUSTELLUNG_ZWEITGERAET]),
-        new Set([AUTOR_ID])
-      ),
+      istDublette([nachricht(ZUSTELLUNG_ZWEITGERAET, ALICE, AUTOR_ID)], nachricht(AUTOR_ID, ALICE)),
       true
     );
   });
 
-  it('neue Absender-Kopie (kryptoId = id) trifft eine liegende Empfangs-Kopie', () => {
+  it('neue Absender-Kopie (krypto_id = id) trifft eine liegende Empfangs-Kopie', () => {
     assert.equal(
-      istBekannteNachricht(
-        AUTOR_ID,
-        AUTOR_ID,
-        new Set([ZUSTELLUNG_ZWEITGERAET]),
-        new Set([AUTOR_ID])
+      istDublette(
+        [nachricht(ZUSTELLUNG_ZWEITGERAET, ALICE, AUTOR_ID)],
+        nachricht(AUTOR_ID, ALICE, AUTOR_ID)
       ),
       true
     );
   });
 
   it('gleiche id bleibt bekannt, eine fremde Nachricht nicht', () => {
-    assert.equal(istBekannteNachricht('5', undefined, new Set(['5']), new Set()), true);
+    assert.equal(istDublette([nachricht('5', ALICE)], nachricht('5', ALICE)), true);
     assert.equal(
-      istBekannteNachricht('6', undefined, new Set(['5']), new Set([AUTOR_ID])),
+      istDublette([nachricht('5', ALICE), nachricht(ZUSTELLUNG_ZWEITGERAET, ALICE, AUTOR_ID)], nachricht('6', ALICE)),
       false,
-      'Klartext ohne kryptoId mit anderer id ist eine andere Nachricht'
+      'Klartext ohne krypto_id mit anderer id ist eine andere Nachricht'
     );
     assert.equal(
-      istBekannteNachricht(ZUSTELLUNG_EMPFAENGER, '1791841626624331126', new Set([AUTOR_ID]), new Set()),
+      istDublette([nachricht(AUTOR_ID, ALICE)], nachricht(ZUSTELLUNG_EMPFAENGER, ALICE, '1791841626624331126')),
       false,
       'andere Autor-Id, andere Nachricht'
     );
+  });
+
+  it('Fälschung: Bobs Kopie mit Alices Kennung bleibt neben Alices sichtbar', () => {
+    const alices = [nachricht(AUTOR_ID, ALICE), nachricht(AUTOR_ID, ALICE, AUTOR_ID)];
+    const bobs = nachricht(ZUSTELLUNG_EMPFAENGER, BOB, AUTOR_ID);
+    for (const alice of alices) {
+      // In beiden Reihenfolgen und auch beim Hochscrollen.
+      assert.equal(istDublette([alice], bobs), false, 'Bob nach Alice');
+      assert.equal(istDublette([bobs], alice), false, 'Alice nach Bob');
+      const liegend = [nachricht('120000000000000099', ALICE)];
+      const seite = vorneAnfuegen(
+        liegend,
+        new Set(liegend.map((m) => m.id)),
+        identitaetenVon(liegend),
+        [alice, bobs],
+        100
+      );
+      assert.ok(seite);
+      assert.deepEqual(seite.neu.map((m) => m.author_id).sort(), [ALICE, BOB].sort());
+    }
   });
 });
 

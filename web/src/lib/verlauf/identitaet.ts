@@ -2,26 +2,31 @@
  * Wann zwei lokale Sätze dieselbe Nachricht sind — EINE Regel für alle
  * Duplikat-Stellen: den Sicherungs-Leser (`sicherung/eintragsGruppen.ts`),
  * den Anzeige-Merge (`zusammenfuegen.ts`) und den Nachrichten-Store
- * (`stores/messages.svelte.ts`).
+ * (`stores/messages.svelte.ts`, die Rechnung in `nachrichten/listenKern.ts`).
  *
  * **Warum es eine eigene Regel braucht.** Dieselbe verschlüsselte Nachricht
  * liegt auf jedem Gerät unter einer ANDEREN lokalen ID: beim Verfasser unter
  * der selbst gewählten (`krypto/senden.ts::lokaleNachrichtId`), bei jedem
  * Empfängergerät unter der Zustellungs-ID seines Umschlags, im Server-Archiv
- * wieder unter der des Verfassers. Die geräteübergreifende Kennung reist nur
- * beim EMPFANGENEN Satz als `kryptoId` mit — die Kopie des Verfassers trägt
- * sie nicht, weil ihre `id` sie schon ist. Bis 2026-10-11 verglichen alle drei
- * Stellen nur `kryptoId` mit `kryptoId`; die Verfasser-Kopie (`id` = K, ohne
- * `kryptoId`) und die Empfangs-Kopie (`id` = D, `kryptoId` = K) galten damit
- * als zwei Nachrichten, und nach Gerätewechsel plus Wiederherstellung stand
- * dieselbe Nachricht doppelt da. Die kanonische Kennung ist deshalb
- * `kryptoId ?? id`.
+ * wieder unter der des Verfassers. Die geräteübergreifende Kennung reist beim
+ * EMPFANGENEN Satz als `kryptoId` mit; die Kopie des Verfassers trägt sie erst
+ * seit 2026-10-13 (`krypto/senden.ts` setzt `krypto_id` gleich der `id`).
+ * Verläufe und Sicherungen von davor enthalten sie ohne, und eine Sicherung
+ * ist nicht nachträglich umschreibbar. Lange verglichen alle drei Stellen nur
+ * `kryptoId` mit `kryptoId`; die Verfasser-Kopie (`id` = K, ohne `kryptoId`)
+ * und die Empfangs-Kopie (`id` = D, `kryptoId` = K) galten damit als zwei
+ * Nachrichten, und nach Gerätewechsel plus Wiederherstellung stand dieselbe
+ * Nachricht doppelt da. Die kanonische Kennung ist deshalb `kryptoId ?? id`:
+ * einer Zeile ohne das Feld fehlt nur, was ihre eigene ID schon ist.
  *
  * **Autor-Bindung ist Pflicht, kein Zierrat.** Die Kennung wählt der
  * Absender frei — er schreibt sie selbst in seine Nutzlast. Ohne den Autor im
  * Schlüssel könnte jeder Gesprächspartner eine Nachricht mit der Kennung
  * einer fremden schicken und sie damit als „Duplikat" verdrängen oder mit
- * ihr zusammenlegen lassen. Beim Postfach-Empfang stammt der Autor aus der
+ * ihr zusammenlegen lassen. Eine Zwischenfassung ohne Autor (c5a25317, am
+ * 2026-10-13 kurz auf `main`) tat genau das: eine Nachricht des Partners mit
+ * der Kennung einer eigenen verdrängte diese in der Anzeige, und löschte er
+ * seine, war auch die eigene weg. Beim Postfach-Empfang stammt der Autor aus der
  * authentisierten Zustellung (`zustellungOeffnen.ts`). Im Server-Archiv
  * schreibt ihn der Einliefernde selbst in die Nutzlast, und einliefern darf
  * jedes Kanalmitglied; seit 2026-10-12 nennt der Server deshalb zu jeder

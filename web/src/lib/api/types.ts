@@ -200,7 +200,7 @@ export type Message = {
    * Empfaenger verschieden), bei der eigenen gesendeten gleich `id` (seit
    * 2026-10-13, `krypto/senden.ts`). Fehlt bei eigenen Nachrichten von davor
    * und bei der vorlaeufigen `tmp-`-Kopie — wer Kopien vergleicht, nimmt
-   * deshalb `verlauf/nachrichtIdentitaet.ts`. Wird gebraucht, um eine
+   * deshalb `verlauf/identitaet.ts`. Wird gebraucht, um eine
    * EINGEHENDE Antwort auf DIESE Nachricht wiederzufinden
    * (`kanonischeAntwortId.ts`, `MessageList.svelte::replyMetaFor`) und um die
    * Kopien anderer Geraete als dieselbe Nachricht zu erkennen (Sicherung,
