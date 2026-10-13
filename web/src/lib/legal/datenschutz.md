@@ -159,6 +159,10 @@ ggf. der E-Mail-Versanddienst). Mit diesen bestehen Verträge zur
 Auftragsverarbeitung nach Art. 28 DSGVO. Eine darüber hinausgehende Weitergabe
 oder ein Verkauf von Daten findet nicht statt.
 
+Beim Herunterladen der Apps (Ziffer 21) verbindet sich dein Gerät direkt mit
+GitHub. GitHub ist dabei kein Auftragsverarbeiter von uns; wir geben keine Daten
+an GitHub weiter, dein Gerät übermittelt sie selbst.
+
 ## 15. Drittlandübermittlung
 
 Im Zusammenhang mit dem E-Mail-Versand über Resend (Plus Five Five, Inc., USA —
@@ -167,6 +171,12 @@ stattfinden. Resend sichert diese Übermittlung durch geeignete Garantien im
 Sinne des Art. 46 DSGVO ab: Es gelten die EU-Standardvertragsklauseln (Standard
 Contractual Clauses); zusätzlich ist Resend nach dem EU-U.S. Data Privacy
 Framework (einschließlich der UK-Erweiterung) zertifiziert.
+
+Auch GitHub (siehe Ziffer 21) hat seinen Sitz in den USA und verarbeitet Daten
+dort. Nach eigenen Angaben stützt GitHub Übermittlungen aus der EU auf die
+EU-Standardvertragsklauseln und ist nach dem EU-U.S. Data Privacy Framework
+(einschließlich der UK-Erweiterung) sowie dem Swiss-U.S. Data Privacy Framework
+zertifiziert.
 
 Eine darüber hinausgehende Übermittlung in Drittländer findet nicht statt.
 
@@ -235,13 +245,49 @@ erforderlich, damit du den von dir gewählten Server nutzen kannst.
 Möchtest du das nicht, melde dich an dem betreffenden Server nicht an. Für die
 Nutzung von howispulse.com selbst wird kein solcher Ausweis ausgestellt.
 
-## 21. Änderungen dieser Datenschutzerklärung
+## 21. Download der Apps über GitHub
+
+Die Installationsdateien der Apps für Windows, macOS und Android sowie der Pulse
+Server-App für Windows und macOS stellen wir über **GitHub Releases** bereit. Das
+Flatpak für Linux laden wir weiterhin von unseren eigenen Servern. GitHub
+verarbeitet die Daten, die beim Herunterladen anfallen, in eigener Verantwortung
+(laut seiner Datenschutzerklärung die GitHub, Inc., 88 Colin P. Kelly Jr. St.,
+San Francisco, CA 94107, USA, bzw. die GitHub B.V., Prins Bernhardplein 200, 1097
+JB Amsterdam, Niederlande).
+
+- **Wann Daten fließen:** Erst wenn du einen Download-Knopf oder -Link anklickst,
+  verbindet sich dein Gerät mit GitHub. Beim bloßen Aufruf unserer Webseite
+  werden keine Daten an GitHub übertragen; wir binden von GitHub keine Skripte,
+  Schriftarten oder Bilder ein. Ältere Download-Adressen auf howispulse.com
+  leiten zu GitHub weiter; unsere Server verarbeiten die Anfrage dabei zunächst
+  wie jede andere (siehe Ziffer 4).
+- **Welche Daten GitHub erhält:** Beim Herunterladen erhält GitHub, was dein
+  Gerät bei jedem Abruf übermittelt: deine **IP-Adresse**, Datum und Uhrzeit, die
+  angefragte Datei, Angaben zu Browser und Betriebssystem (User-Agent) und, wenn
+  du von unserer Webseite kommst, deren Domain (howispulse.com) als Herkunft.
+  Diese Daten verarbeitet GitHub nach seiner eigenen Datenschutzerklärung; uns
+  werden sie nicht übermittelt. Sichtbar ist uns höchstens, wie oft eine Datei
+  insgesamt heruntergeladen wurde.
+- **Zweck und Rechtsgrundlage:** Die Installationsdateien sind teils sehr groß
+  (über 100 Megabyte). GitHub liefert sie schnell und zuverlässig aus, ohne dass
+  wir dafür eigene Server-Kapazität vorhalten müssen. Rechtsgrundlage ist
+  Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einer zuverlässigen und
+  effizienten Bereitstellung unserer Software).
+- **Drittland:** GitHub verarbeitet Daten auch in den USA — siehe Ziffer 15.
+- **Alternativen:** Wenn du keine Verbindung zu GitHub aufbauen möchtest, kannst
+  du Pulse im Browser nutzen (ohne Download) oder unter Linux das Flatpak von
+  unseren Servern installieren.
+
+Weitere Informationen findest du in der
+[Datenschutzerklärung von GitHub](https://docs.github.com/de/site-policy/privacy-policies/github-general-privacy-statement).
+
+## 22. Änderungen dieser Datenschutzerklärung
 
 Wir behalten uns vor, diese Datenschutzerklärung anzupassen, damit sie stets den
 aktuellen rechtlichen Anforderungen entspricht oder um Änderungen des Dienstes
 umzusetzen. Es gilt die jeweils aktuelle, hier veröffentlichte Fassung.
 
-Stand: 28. September 2026
+Stand: 13. Oktober 2026
 
 ---
 
