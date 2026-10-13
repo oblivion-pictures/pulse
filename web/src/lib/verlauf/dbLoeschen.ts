@@ -170,7 +170,7 @@ export function verlaufSatzLoeschen(
  *  des Verfassers (oder eine Archiv-Kopie) trägt sie als `nachrichtId`.
  *  Dieselbe Regel wie für die geladene Anzeige (`trifftFrame`), mit
  *  Autor-Bindung, sobald `autorId` gesetzt ist. Bereichs-Cursor über den
- *  Kanal wie in `verlaufLesenSaetze`; leer, wenn kein Satz dieses Kontos
+ *  Kanal (`dbRegister.ts::kanalBereich`); leer, wenn kein Satz dieses Kontos
  *  getroffen wird. */
 export function verlaufSatzIdsFuerFrame(
   kanalId: string,

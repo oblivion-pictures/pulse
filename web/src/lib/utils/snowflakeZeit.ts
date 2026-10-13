@@ -45,8 +45,8 @@
  * Aufloesen scheitert.
  */
 
-const SNOWFLAKE_EPOCH_MS = 1767225600000n; // dcc_shared/snowflake.py::DEFAULT_EPOCH_MS
-const SNOWFLAKE_ZEIT_SHIFT = 22n; // WORKER_BITS(10) + SEQ_BITS(12)
+export const SNOWFLAKE_EPOCH_MS = 1767225600000n; // dcc_shared/snowflake.py::DEFAULT_EPOCH_MS
+export const SNOWFLAKE_ZEIT_SHIFT = 22n; // WORKER_BITS(10) + SEQ_BITS(12)
 const LOKALE_ID_LAENGE = 19; // lokaleNachrichtId(): 13-stelliger Date.now() + 6 Zufallsstellen (unter int64, Befund 2026-09-02)
 const LOKALE_ID_LAENGE_ALT = 20; // dieselbe Form bis 2026-09-02 mit 7 Zufallsstellen — Altbestand, s. zeitOderNull
 const LOKALE_ID_ZEIT_STELLEN = 13;
@@ -120,7 +120,7 @@ function lexikografisch(a: string, b: string): number {
  *  Wer ein VIERTES Schema einfuehrt, traegt es hier ein. Der `null`-Zweig
  *  ist ein Auffangnetz gegen den Absturz, keine Einladung, sich darauf zu
  *  verlassen: er ordnet nur noch, er versteht nichts. */
-function zeitOderNull(id: string): bigint | null {
+export function zeitOderNull(id: string): bigint | null {
   if (istVorlaeufig(id)) {
     const rest = id.slice(VORLAEUFIG_PRAEFIX.length);
     const trenner = rest.indexOf('-');

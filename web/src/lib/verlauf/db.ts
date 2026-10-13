@@ -15,7 +15,8 @@ import { mitVerbindung } from './verbindung';
 import { sortierSchluessel, satzAnhangIds } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
 import { serverWegDarfSchreiben } from './schreibRegel';
-import { ablegenMitRegister, kanalBereich, OBERE_ID } from './dbRegister';
+import { ablegenMitRegister, kanalBereich } from './dbRegister';
+import { neuesteNachZeit, zeitBereiche } from './zeitSeite';
 import { anhaengeVerwaistLoeschen } from './dbAnhaenge';
 
 // Medien-Index und Anhang-Bytes liegen in `dbAnhaenge.ts`, `satzAnhangIds`
@@ -176,31 +177,23 @@ export function verlaufSatzVorhanden(
 }
 
 /**
- * Liest bis zu `anzahl` Saetze eines Kanals — laeuft ueber den PRIMAERschluessel
- * (`schluessel` beginnt mit `<kanalId>:`, s. `satz.ts::sortierSchluessel`),
- * kein Umweg ueber den `nach_kanal`-Index noetig, der Primaerschluessel
- * sortiert schon richtig. `vor` grenzt EXKLUSIV auf Saetze vor dieser
- * Nachrichten-ID ein (Hochscrollen); ohne `vor` sind es die neuesten
- * `anzahl` Saetze. Sammelt rueckwaerts (neueste zuerst) und dreht am Ende um
- * — die Reihenfolge, in der `MessageStore` sie erwartet.
+ * Liest bis zu `anzahl` Saetze eines Kanals, nach der ZEIT: je ID-Form ein
+ * Bereich-Cursor ueber den Primaerschluessel, dann gemischt (`zeitSeite.ts`,
+ * Gegenpruefung 2026-10-14, V2 — EIN Cursor ueber den rohen Schluessel
+ * stellte jede lokale ID ueber jede Snowflake). `vor` grenzt EXKLUSIV auf
+ * Saetze vor dieser Nachrichten-ID ein (Hochscrollen); ohne `vor` sind es
+ * die neuesten. Aelteste zuerst, wie `MessageStore` sie erwartet.
  *
- * `kontoId` (Befund 1): der Primaerschluessel ist ausschliesslich nach
- * `kanalId` getrennt, nicht nach Konto — ein Satz eines FREMDEN Kontos unter
- * derselben `kanalId` (z. B. nach einem Kontowechsel auf demselben Geraet)
- * wird uebersprungen statt mitgezaehlt; er zaehlt auch nicht gegen `anzahl`.
+ * `kontoId` (Befund 1): ein Satz eines FREMDEN Kontos unter derselben
+ * `kanalId` wird uebersprungen und zaehlt nicht gegen `anzahl`.
  */
 export function verlaufLesenSaetze(
   kanalId: string,
   opts: { vor?: string; anzahl: number },
   kontoId: string
 ): Promise<Satz[]> {
-  if (opts.anzahl <= 0) return Promise.resolve([]);
-  const untereGrenze = sortierSchluessel(kanalId, '');
-  const obereGrenze =
-    opts.vor !== undefined
-      ? sortierSchluessel(kanalId, opts.vor)
-      : sortierSchluessel(kanalId, OBERE_ID);
-  const bereich = IDBKeyRange.bound(untereGrenze, obereGrenze, false, opts.vor !== undefined);
+  const bereiche = opts.anzahl > 0 ? zeitBereiche(opts.vor) : [];
+  if (bereiche.length === 0) return Promise.resolve([]);
 
   return mitVerbindung(
     (db) =>
@@ -208,18 +201,31 @@ export function verlaufLesenSaetze(
         const tx = db.transaction(STORE_NACHRICHTEN, 'readonly');
         const store = tx.objectStore(STORE_NACHRICHTEN);
         const gefunden: Satz[] = [];
-        const req = store.openCursor(bereich, 'prev');
-        req.onsuccess = () => {
-          const cursor = req.result;
-          if (!cursor || gefunden.length >= opts.anzahl) {
-            resolve(gefunden.reverse());
-            return;
-          }
-          const satz = cursor.value as Satz;
-          if (gehoertZuKonto(satz, kontoId)) gefunden.push(satz);
-          cursor.continue();
-        };
-        req.onerror = () => reject(req.error);
+        let offen = bereiche.length;
+        for (const { von, bis, bisOffen } of bereiche) {
+          const bereich = IDBKeyRange.bound(
+            sortierSchluessel(kanalId, von),
+            sortierSchluessel(kanalId, bis),
+            false,
+            bisOffen
+          );
+          let imBereich = 0;
+          const req = store.openCursor(bereich, 'prev');
+          req.onsuccess = () => {
+            const cursor = req.result;
+            if (!cursor || imBereich >= opts.anzahl) {
+              if (--offen === 0) resolve(neuesteNachZeit(gefunden, opts.anzahl));
+              return;
+            }
+            const satz = cursor.value as Satz;
+            if (gehoertZuKonto(satz, kontoId)) {
+              gefunden.push(satz);
+              imBereich++;
+            }
+            cursor.continue();
+          };
+          req.onerror = () => reject(req.error);
+        }
       })
   );
 }
