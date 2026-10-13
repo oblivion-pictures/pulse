@@ -32,12 +32,13 @@ import { ankerBefestigen, ankerLoesen } from '$lib/audio/stummerAnker';
 const TON_MAKEUP = 4.0;
 
 export class GastTon {
-  /** Die eingehängten Ton-Elemente. Eine Menge, keine Karte: gelöst werden
-   *  sie über ``track.detach()`` (das gibt seine Elemente selbst zurück),
-   *  gebraucht wird die Sammlung nur beim Abbau. Vorher war es eine Karte,
-   *  deren Schlüssel beim Setzen und beim Löschen VERSCHIEDEN gebildet wurden
-   *  (Rückfall auf die Identität gegen Rückfall auf den leeren Text) — ein
-   *  Eintrag, den niemand mehr findet. */
+  /** Die eingehängten Ton-Elemente: mobil die hörbaren, per ``track.attach()``
+   *  angehängten (gelöst über ``track.detach()``, das seine Elemente selbst
+   *  zurückgibt), auf dem Desktop die stummen Anker (gelöst über ``#tonLoesen``).
+   *  Gebraucht wird die Sammlung beim Abbau. Eine Menge, keine Karte: vorher war
+   *  es eine Karte, deren Schlüssel beim Setzen und beim Löschen VERSCHIEDEN
+   *  gebildet wurden (Rückfall auf die Identität gegen Rückfall auf den leeren
+   *  Text) — ein Eintrag, den niemand mehr findet. */
   #audioEls = new Set<HTMLAudioElement>();
   /** Web-Audio-Zug je Ton-Track (Desktop): Quelle → Gain → Ausgabe, dazu der
    *  stumme Anker, der den Decoder am Laufen hält. Schlüssel ist die
@@ -64,9 +65,7 @@ export class GastTon {
       // spielt es (und soll es auch).
       const el = track.attach() as HTMLAudioElement;
       el.autoplay = true;
-      el.style.display = 'none';
-      document.body.appendChild(el);
-      this.#audioEls.add(el);
+      this.#einhaengen(el);
       return;
     }
     const mst = track.mediaStreamTrack;
@@ -74,10 +73,8 @@ export class GastTon {
     const strom = new MediaStream([mst]);
     // Eigener stummer Anker, den LiveKit nicht kennt (s. Kopf der Datei).
     const anker = document.createElement('audio');
-    anker.style.display = 'none';
-    document.body.appendChild(anker);
+    this.#einhaengen(anker);
     ankerBefestigen(anker, strom);
-    this.#audioEls.add(anker);
     const ctx = this.#tonKontext();
     const quelle = ctx.createMediaStreamSource(strom);
     const zug = ctx.createGain();
@@ -113,6 +110,13 @@ export class GastTon {
     }
   }
 
+  /** Ein Ton-Element unsichtbar ins Dokument hängen und für den Abbau merken. */
+  #einhaengen(el: HTMLAudioElement): void {
+    el.style.display = 'none';
+    document.body.appendChild(el);
+    this.#audioEls.add(el);
+  }
+
   #tonKontext(): AudioContext {
     if (!this.#tonCtx || this.#tonCtx.state === 'closed') {
       this.#tonCtx = new AudioContext();
@@ -130,12 +134,12 @@ export class GastTon {
     try {
       zug.quelle.disconnect();
     } catch {
-      /* sitzt schon lösen */
+      /* schon gelöst */
     }
     try {
       zug.zug.disconnect();
     } catch {
-      /* sitzt schon lösen */
+      /* schon gelöst */
     }
     ankerLoesen(zug.anker);
     zug.anker.remove();
