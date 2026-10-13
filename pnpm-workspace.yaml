@@ -1,3 +1,29 @@
 packages:
   - "web"
   - "desktop"
+
+# pnpm-Einstellungen stehen hier, nicht im Feld "pnpm" der package.json: pnpm 11
+# liest jenes Feld nicht mehr (pnpm 10, das das Projekt über `packageManager`
+# fährt, liest beide Orte). Stünden sie dort, fiele die virtua-Reparatur beim
+# nächsten Neuschreiben der Lockdatei unter pnpm 11 heraus, angezeigt nur durch
+# eine Warnung, die in der Ausgabe leicht untergeht.
+
+# Die virtua-Reparatur: Schätzung je Eintrag statt Pauschalwert, gegen Ruckeln
+# beim Scrollen der Nachrichtenliste (2db6fd55a, 2026-10-03).
+patchedDependencies:
+  virtua: patches/virtua.patch
+
+# Bausteine, deren Einbau-Skripte laufen dürfen (esbuild legt sein natives
+# Binary ab, electron-winstaller wählt das 7-Zip seiner Architektur; 7zip-bin
+# hat kein Einbau-Skript und steht nur aus der früheren Liste hier). Zwei
+# Schreibweisen für dieselbe Liste: `onlyBuiltDependencies` liest pnpm 10,
+# `allowBuilds` pnpm 11, das jene ignoriert. Beim Umstieg auf pnpm 11 entfällt
+# die erste.
+onlyBuiltDependencies:
+  - esbuild
+  - 7zip-bin
+  - electron-winstaller
+allowBuilds:
+  esbuild: true
+  7zip-bin: true
+  electron-winstaller: true

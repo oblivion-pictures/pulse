@@ -160,8 +160,10 @@ bereich_hash() {
 # (`infra/self-host/tests/test_livekit_fork.py`) laufen im pytest mit — ohne
 # den Eintrag fuhr eine Änderung NUR am Fork-Rezept keinen einzigen Test.
 BEREICH_backend="services shared plugins uv.lock pyproject.toml conftest.py infra/self-host infra/livekit-fork"
-BEREICH_web="web plugins pnpm-lock.yaml package.json"
-BEREICH_desktop="desktop pnpm-lock.yaml package.json"
+# pnpm-workspace.yaml und patches/ tragen die pnpm-Einstellungen (virtua-Reparatur,
+# erlaubte Einbau-Skripte, seit 2026-10-13 nicht mehr in package.json).
+BEREICH_web="web plugins pnpm-lock.yaml package.json pnpm-workspace.yaml patches"
+BEREICH_desktop="desktop pnpm-lock.yaml package.json pnpm-workspace.yaml patches"
 # Der Auslieferer auf dem VPS läuft per Cron und meldet sich nur, wenn er etwas
 # tut — ein Fehler darin sieht aus wie „es passiert nichts". Seine
 # Entscheidungslogik hat deshalb einen eigenen Prüfstand. Dasselbe gilt für

@@ -19,15 +19,5 @@
   },
   "engines": {
     "node": ">=20"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "7zip-bin",
-      "electron-winstaller"
-    ],
-    "patchedDependencies": {
-      "virtua": "patches/virtua.patch"
-    }
   }
 }
