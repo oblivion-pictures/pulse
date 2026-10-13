@@ -27,21 +27,12 @@ import {
 } from 'livekit-client';
 import { createSendProcessor } from '$lib/voice/noiseFilter';
 import { NOISE_GATE_DB_DEFAULT } from '$lib/settings-registry/sections/audio';
-import { isMobile } from '$lib/platform/runtime';
 import { startAudioAbbruchfest } from '$lib/audio/abspielen';
 import { toast } from 'svelte-sonner';
 import { m } from '$lib/paraglide/messages.js';
 import { istGastKennung } from '$lib/stores/voicePresence.svelte';
 import { gastBeitritt, gastVoiceToken, type GastBeitritt, type GastVoiceToken } from './api';
-
-/** Eingehender Ton wird auf dem Desktop mit diesem Faktor verstärkt — dieselbe
- *  Hauslautstärke wie in der Mitglieder-Oberfläche
- *  (``RemoteAudioElements.DEFAULT_MAKEUP_GAIN``). Der Wert ist hier kopiert,
- *  nicht importiert: das Modul schleift räumlichen Klang, Kompressor und
- *  Resonanz-Loader mit, alles Dinge, die eine Gastseite nicht braucht. Ohne
- *  die 4× hört der Gast alle nur „ganz leise" — Mitglieder hören sich
- *  gegenseitig laut, weil ihre Wiedergabe durch denselben Gain läuft. */
-const TON_MAKEUP = 4.0;
+import { GastTon } from './gastTon';
 
 type GastVideo = {
   /** LiveKit-Identität des Sendenden (`user-<id>` oder `gast-<id>`). */
@@ -86,19 +77,8 @@ class GastRaum {
   }
 
   #room: Room | null = null;
-  /** Die eingehängten Ton-Elemente. Eine Menge, keine Karte: gelöst werden
-   *  sie über ``track.detach()`` (das gibt seine Elemente selbst zurück),
-   *  gebraucht wird die Sammlung nur beim Abbau. Vorher war es eine Karte,
-   *  deren Schlüssel beim Setzen und beim Löschen VERSCHIEDEN gebildet wurden
-   *  (Rückfall auf die Identität gegen Rückfall auf den leeren Text) — ein
-   *  Eintrag, den niemand mehr findet. */
-  #audioEls = new Set<HTMLAudioElement>();
-  /** Web-Audio-Zug je Ton-Track (Desktop): Quelle → Gain → Ausgabe. Schlüssel
-   *  ist die Track-SID; mobil gibt es den Zug nicht, dort ist das
-   *  ``<audio>``-Element selbst der hörbare Weg. */
-  #tonZuege = new Map<string, { quelle: MediaStreamAudioSourceNode; zug: GainNode }>();
-  /** Der AudioContext der Ton-Züge — einer für alle, beim Abbau geschlossen. */
-  #tonCtx: AudioContext | null = null;
+  /** Der eingehende Ton (Elemente, Web-Audio-Züge, Kontext) — s. `gastTon.ts`. */
+  #ton = new GastTon();
   /** Das Mikrofon-Track-Objekt, an dem der Rauschfilter hängt (für den Abbau). */
   #mikroTrack: LocalAudioTrack | null = null;
   /** Generationen-Zähler gegen das Destroy/Mount-Race: ein nachlaufender
@@ -250,15 +230,7 @@ class GastRaum {
         // dann gibt es beim Abbau auch nichts zu stoppen.
       }
     }
-    for (const el of this.#audioEls) el.remove();
-    this.#audioEls.clear();
-    // Derselbe Weg wie beim Track-Unsubscribe (#tonLoesen): Züge lösen und
-    // aus der Karte nehmen — keine zweite Kopie dieses Abbaus.
-    for (const sid of this.#tonZuege.keys()) this.#tonLoesen(sid);
-    if (this.#tonCtx) {
-      void this.#tonCtx.close().catch(() => undefined);
-      this.#tonCtx = null;
-    }
+    this.#ton.alleLoesen();
     this.videos = [];
     this.teilnehmer = [];
     const room = this.#room;
@@ -333,7 +305,7 @@ class GastRaum {
         (track: RemoteTrack, _pub: RemoteTrackPublication, p: RemoteParticipant) => {
           if (!aktiv()) return;
           if (track.kind === Track.Kind.Audio) {
-            this.#tonAnhaengen(track as RemoteAudioTrack);
+            this.#ton.anhaengen(track as RemoteAudioTrack);
           }
           this.#auffrischen();
         }
@@ -350,70 +322,9 @@ class GastRaum {
       })
       .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
         if (!aktiv()) return;
-        // ``detach()`` ohne Argument löst ALLE Elemente dieses Tracks und
-        // gibt sie zurück — mehr braucht es nicht.
-        for (const el of track.detach()) {
-          el.remove();
-          this.#audioEls.delete(el as HTMLAudioElement);
-        }
-        if (track.kind === Track.Kind.Audio) this.#tonLoesen((track as RemoteAudioTrack).sid);
+        this.#ton.loesen(track);
         this.#auffrischen();
       });
-  }
-
-  /** Einen eingehenden Ton-Track hörbar machen.
-   *
-   * Desktop: stummer ``<audio>``-Anker hält den Decoder am Laufen, hörbar
-   * ist der Web-Audio-Zug mit dem 4×-Make-up — dieselbe Hauslautstärke, die
-   * Mitglieder über ``RemoteAudioElements`` bekommen. Der direkte Weg
-   * (Element bei Volume 1) ließ den Gast die Besprechung wie halblaut
-   * erleben. Mobil bleibt es beim Element: ``volume`` geht dort nicht über
-   * 1 hinaus, dafür spielt es weiter, wenn der Bildschirm sperriert. */
-  #tonAnhaengen(track: RemoteAudioTrack): void {
-    const el = track.attach() as HTMLAudioElement;
-    el.autoplay = true;
-    el.style.display = 'none';
-    document.body.appendChild(el);
-    this.#audioEls.add(el);
-    if (isMobile()) return;
-    el.muted = true;
-    const mst = track.mediaStreamTrack;
-    if (!mst) return;
-    const ctx = this.#tonKontext();
-    const quelle = ctx.createMediaStreamSource(new MediaStream([mst]));
-    const zug = ctx.createGain();
-    zug.gain.value = TON_MAKEUP;
-    quelle.connect(zug);
-    zug.connect(ctx.destination);
-    const sid = track.sid;
-    if (sid) this.#tonZuege.set(sid, { quelle, zug });
-  }
-
-  #tonKontext(): AudioContext {
-    if (!this.#tonCtx || this.#tonCtx.state === 'closed') {
-      this.#tonCtx = new AudioContext();
-    }
-    if (this.#tonCtx.state === 'suspended') {
-      void this.#tonCtx.resume().catch(() => undefined);
-    }
-    return this.#tonCtx;
-  }
-
-  #tonLoesen(sid: string | undefined): void {
-    if (!sid) return;
-    const zug = this.#tonZuege.get(sid);
-    if (!zug) return;
-    try {
-      zug.quelle.disconnect();
-    } catch {
-      /* sitzt schon lösen */
-    }
-    try {
-      zug.zug.disconnect();
-    } catch {
-      /* sitzt schon lösen */
-    }
-    this.#tonZuege.delete(sid);
   }
 
   /** Teilnehmer- und Videoliste aus dem Raum neu bauen.
