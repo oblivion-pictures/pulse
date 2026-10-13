@@ -44,8 +44,7 @@ class MessageStore {
   // Geräts beim Hochscrollen). Nur über die kanonische ID erkennt der
   // Store sie als dieselbe Nachricht.
   private kryptoIds = $state<Record<string, Set<string>>>({});
-  // LRU order of cached channels — beyond MAX_CACHED_CHANNELS the
-  // least-recently-active channel is evicted (`nachrichten/kanalCache.ts`).
+  // LRU order of cached channels, evicts beyond MAX_CACHED_CHANNELS (`nachrichten/kanalCache.ts`).
   private lru = new ZuletztBenutzt();
 
   for(channelId: string): Message[] {
@@ -173,8 +172,7 @@ class MessageStore {
     }));
   }
 
-  /** Ersetzt eine geladene Nachricht durch das, was `aendern` aus ihr macht —
-   *  nicht geladen oder `null` zurück = nichts zu tun. */
+  /** Ersetzt eine geladene Nachricht durch `aendern(alt)`; `null` = nichts zu tun. */
   private ersetze(channelId: string, id: string, aendern: (alt: Message) => Message | null): void {
     const list = this.byChannel[channelId];
     const next = list && ersetzeNachricht(list, id, aendern);
@@ -280,12 +278,17 @@ class MessageStore {
     const haveIds = this.messageIds[channelId] ?? new Set(list.map((m) => m.id));
     const merged = lueckeZusammenfuehren(list, haveIds, msgs, MessageStore.CAP);
     if (!merged) return;
-    for (const nonce of merged.bestaetigteNonces) this.confirmedNonces.add(nonce);
-    this.vergiss(merged.verworfen);
-    this.byChannel = { ...this.byChannel, [channelId]: merged.liste };
+    const { liste, verworfen, bestaetigteNonces } = merged;
+    for (const nonce of bestaetigteNonces) this.confirmedNonces.add(nonce);
+    this.vergiss(verworfen);
+    this.byChannel = { ...this.byChannel, [channelId]: liste };
     // Rebuild the ID set after merge.
-    const ids = new Set(merged.liste.map((m) => m.id));
-    this.messageIds = { ...this.messageIds, [channelId]: ids };
+    this.messageIds = { ...this.messageIds, [channelId]: new Set(liste.map((m) => m.id)) };
+    // Wurde gekappt, gehen die `krypto_id`s der weggefallenen Nachrichten mit —
+    // sonst gälte eine davon, wieder hochgescrollt, als Dublette.
+    if (verworfen.length > 0) {
+      this.kryptoIds = { ...this.kryptoIds, [channelId]: kryptoIdsVon(liste) };
+    }
   }
 
   /** Re-sync already-present messages from a freshly re-fetched page —

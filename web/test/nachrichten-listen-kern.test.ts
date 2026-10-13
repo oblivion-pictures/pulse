@@ -189,11 +189,55 @@ describe('Nachrichtenliste: einzelne Nachricht aufnehmen', () => {
 		assert.deepEqual([...i].sort(), ['20', '30']);
 	});
 
-	it('lässt die krypto-Menge beim Kappen unverändert (bisheriges Verhalten, s. Doku)', () => {
-		// Charakterisierung, kein Soll: stünde hier ein Neuaufbau, wäre 'k10' weg.
-		const k = new Set(['k10']);
-		const r = einfuegen([msg('10', { krypto_id: 'k10' }), msg('20')], new Set(['10', '20']), k, msg('30'), 2);
+	it('baut beim Kappen auch die krypto-Menge aus der Liste neu auf', () => {
+		const i = new Set(['10', '20']);
+		const k = new Set(['k10', 'k20']);
+		const r = einfuegen(
+			[msg('10', { krypto_id: 'k10' }), msg('20', { krypto_id: 'k20' })],
+			i,
+			k,
+			msg('30', { krypto_id: 'k30' }),
+			2
+		);
 		assert.ok(r);
-		assert.deepEqual([...k], ['k10']);
+		assert.deepEqual(ids(r.liste), ['20', '30']);
+		assert.deepEqual([...i].sort(), ['20', '30']);
+		assert.deepEqual([...k].sort(), ['k20', 'k30']);
+	});
+
+	it('nach dem Kappen erkennt die Dublettenprüfung nur noch, was wirklich in der Liste steht', () => {
+		const i = new Set(['10', '20']);
+		const k = new Set(['k10', 'k20']);
+		const erste = einfuegen(
+			[msg('10', { krypto_id: 'k10' }), msg('20', { krypto_id: 'k20' })],
+			i,
+			k,
+			msg('30'),
+			2
+		);
+		assert.ok(erste);
+		// Noch in der Liste: weiterhin Dublette, über Id wie über kanonische Id.
+		assert.equal(einfuegen(erste.liste, i, k, msg('20'), 2), null);
+		assert.equal(einfuegen(erste.liste, i, k, msg('99', { krypto_id: 'k20' }), 2), null);
+		// Weggekappt: weder die Id noch die kanonische Id gelten als bekannt.
+		const zurueck = einfuegen(erste.liste, i, k, msg('99', { krypto_id: 'k10' }), 3);
+		assert.ok(zurueck, 'die gekappte Nachricht darf wieder aufgenommen werden');
+		assert.deepEqual(ids(zurueck.liste), ['20', '30', '99']);
+	});
+
+	it('kappt auch dann sauber, wenn die neue Nachricht selbst die älteste ist', () => {
+		const i = new Set(['20', '30']);
+		const k = new Set(['k20', 'k30']);
+		const r = einfuegen(
+			[msg('20', { krypto_id: 'k20' }), msg('30', { krypto_id: 'k30' })],
+			i,
+			k,
+			msg('10', { krypto_id: 'k10' }),
+			2
+		);
+		assert.ok(r);
+		assert.deepEqual(ids(r.liste), ['20', '30']);
+		assert.deepEqual([...i].sort(), ['20', '30']);
+		assert.deepEqual([...k].sort(), ['k20', 'k30']);
 	});
 });

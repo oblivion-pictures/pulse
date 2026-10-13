@@ -26,6 +26,20 @@ export function kryptoIdsVon(list: Message[]): Set<string> {
   return new Set(list.flatMap((m) => (m.krypto_id ? [m.krypto_id] : [])));
 }
 
+/** Gleicht beide Mengen mit der Liste ab, nachdem diese gekappt wurde: danach
+ *  stehen in `ids` und `krypto` nur noch Nachrichten, die wirklich in der Liste
+ *  sind — nur das macht die Dublettenprüfung ehrlich (eine weggekappte
+ *  Nachricht darf nach dem Hochscrollen wieder aufgenommen werden). Ändert die
+ *  übergebenen Mengen an Ort und Stelle. */
+export function mengenNeuAufbauen(ids: Set<string>, krypto: Set<string>, liste: Message[]): void {
+  ids.clear();
+  krypto.clear();
+  for (const m of liste) {
+    ids.add(m.id);
+    if (m.krypto_id) krypto.add(m.krypto_id);
+  }
+}
+
 /** Kappt eine id-sortierte Liste auf die neuesten `cap` Einträge. `verworfen`
  *  sind die ältesten, die dabei wegfallen — der Aufrufer braucht sie, um deren
  *  bestätigte Nonces zu vergessen. Ist nichts zu kappen, kommt dieselbe Liste
@@ -163,12 +177,7 @@ export function vorneAnfuegen(
     ids.add(m.id);
     if (m.krypto_id) krypto.add(m.krypto_id);
   }
-  if (ids.size > liste.length) {
-    ids.clear();
-    for (const m of liste) ids.add(m.id);
-    krypto.clear();
-    for (const m of liste) if (m.krypto_id) krypto.add(m.krypto_id);
-  }
+  if (verworfen.length > 0 || ids.size > liste.length) mengenNeuAufbauen(ids, krypto, liste);
   return { liste, neu, verworfen };
 }
 
@@ -179,14 +188,13 @@ export function vorneAnfuegen(
  *  live zugestellte (zustellungs-eigene Id, kanonische in `krypto_id`) sie
  *  nicht verdoppeln. Vorfall 2026-10-05: ohne das erschien jede Nachricht
  *  doppelt, deren Archivabholung vor der Live-Zustellung fertig war. Schreibt
- *  `ids` / `krypto` fort. `null` bei einem Duplikat.
+ *  `ids` / `krypto` fort und baut BEIDE aus der Liste neu auf, sobald gekappt
+ *  wurde. `null` bei einem Duplikat.
  *
- *  Nach dem Kappen wird nur `ids` aus der Liste neu aufgebaut, `krypto` nicht:
- *  so verhielt sich der Store schon vorher (die Prüfung dafür stand hinter dem
- *  Neuaufbau von `ids` und traf nie zu). Die `krypto_id`s längst gekappter
- *  Nachrichten bleiben dadurch in der Menge, bis der Kanal neu geladen wird
- *  oder `vorneAnfuegen` kappt — hier bewusst nicht geändert, weil dieses
- *  Modul ohne Verhaltensänderung aus dem Store gezogen wurde. */
+ *  Bis zum 2026-10-13 baute der Store nach dem Kappen nur `ids` neu auf: die
+ *  Prüfung für `krypto` stand dahinter und traf deshalb nie zu. Die
+ *  `krypto_id`s längst gekappter Nachrichten blieben in der Menge, und eine
+ *  davon, wieder hochgescrollt, galt als Dublette und fehlte in der Anzeige. */
 export function einfuegen(
   list: Message[],
   ids: Set<string>,
@@ -197,12 +205,10 @@ export function einfuegen(
   if (istBekannteNachricht(msg.id, msg.krypto_id, ids, krypto)) return null;
   const { liste, verworfen } = kappen(einsortieren(list, msg), cap);
   ids.add(msg.id);
-  if (ids.size > liste.length) {
-    // Es wurde gekappt (ids enthält die neue Id schon, die Liste ist aber auf
-    // `cap` zurückgeschnitten): neu aufbauen, damit die veralteten Ids gehen.
-    ids.clear();
-    for (const m of liste) ids.add(m.id);
-  }
   if (msg.krypto_id) krypto.add(msg.krypto_id);
+  // Gekappt (die Mengen enthalten die neue Nachricht schon, die Liste ist aber
+  // auf `cap` zurückgeschnitten, vielleicht ohne sie): neu aufbauen, damit die
+  // veralteten Einträge gehen.
+  if (verworfen.length > 0 || ids.size > liste.length) mengenNeuAufbauen(ids, krypto, liste);
   return { liste, verworfen };
 }
