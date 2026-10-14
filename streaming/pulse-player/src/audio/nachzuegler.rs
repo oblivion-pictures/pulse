@@ -55,6 +55,41 @@
 //! **Sender-Pause** (RTP springt nach vorn): das erste Paket danach liegt der
 //! Position voraus, nichts wird verworfen.
 //!
+//! **Älter als das zuletzt vermessene Paket** (umsortiert, doppelt, später
+//! auch reparierter Ton aus einer Redundanz): immer ganz weg, nicht nur nach
+//! einem Unterlauf. Sein Platz im Ring ist vergeben — angehängt klänge es nach
+//! neuerem Ton —, und `Tonuhr::paket` läse den Rückschritt mit seiner
+//! vorzeichenlosen Wrap-Rechnung als Sprung um 2^32 Takte (rund 24,8 h) nach
+//! vorn; der Lippen-Fehler wäre danach Unsinn. Liegt es mehr als
+//! [`VERSPAETUNG_MAX_MS`] zurück, ist es ein Bruch der Zeitbasis: dann wird
+//! die Tonuhr verworfen und am Paket neu verankert (Rest: ihr Start-Vorhalt
+//! ist dann der Sollwert MIT dem Lippen-Eingriff, `fuetterung.rs`).
+//!
+//! **Nachlauf: der Rest, den die Positionsrechnung nicht sieht** (Nachprüfung
+//! 2026-10-14, nachgerechnet). Geprüft wird nur bei leerem Ring. Reißt die
+//! Lieferung ein zweites Mal ab, während der Ring noch vorfüllt (Füllstand
+//! zwischen null und Sollwert), schweigt das Gerät, die Position läuft weiter,
+//! und der Schwall danach wird ungeprüft angehängt; ebenso, wenn der Nachschub
+//! erst NACH dem Anlauf in Raten aufholt. Der Ring steht dann deutlich über
+//! dem Sollwert und doch unter der Kappschwelle (nachgestellt in
+//! `audio/tests.rs`, Szenarien A–C: 60–110 ms darüber). Deshalb liegt die
+//! Kappschwelle bis [`NACHLAUF`] nach dem letzten Paket im Anlauf tiefer, bei
+//! Sollwert plus [`NACHLAUF_RUECKSTAND_MS`] (`Shared::kapp_schwelle`): die
+//! bestehende Grobkappung schneidet den Überstand, sobald der Schwall vorbei
+//! ist (`ringregelung::SCHWALL_RUHE`), auf den Sollwert — älteste Samples
+//! zuerst; gezählt als Schnitt (`dropped`, „Schnitte“ in der Statistikzeile).
+//! Bei gleichmäßigem Nachschub steigt der Ring nicht über den Sollwert plus
+//! ein Paket (gerechnet) und es wird nichts geschnitten.
+//!
+//! **Warum nicht NUR der Nachlauf** (er fängt den Hauptfall auch): er
+//! schneidet frühestens nach der Ruhezeit, bis dahin klingt der verspätete Ton
+//! schon, und der Schnitt ist ein hörbarer Sprung. Das Verwerfen per Position
+//! nimmt den Hauptfall — jeder Aussetzer im Befund — vor dem ersten Sample
+//! heraus. Und eine Kappung genau beim Ende des Anlaufs (im Geräte-Rückruf)
+//! verfehlte den Teil eines Schwalls, der erst nach dem Anlaufen ankommt: der
+//! Rückruf kann mitten in einen Schwall fallen, und Raten-Aufholen nach dem
+//! Anlauf sieht sie gar nicht.
+//!
 //! **Buchführung.** Der verworfene Anfang erreicht weder Ring noch Kappung,
 //! Uhrenabgleich oder Lippen-Vermessung — die sehen nur den Rest, dessen Marke
 //! um die verworfenen Takte weitergerückt ist (`Tonuhr::paket`). Gezählt wird
@@ -65,6 +100,9 @@
 //! nur, wenn der Vorrat beim Aussetzer es war; fehlt etwas, füllt das
 //! Vorfüllen es wie gehabt auf.
 
+use std::time::{Duration, Instant};
+
+use super::ringregelung::RING_SOLL_MS;
 use super::Shared;
 
 /// Wie viel ein Paket mindestens hinter der Position liegen muss, damit
@@ -89,6 +127,20 @@ const VERSPAETUNG_MAX_MS: i64 = 1000;
 /// RTP-Takte je Millisekunde — Opus über RTP läuft immer mit 48 kHz.
 const TAKTE_JE_MS: i64 = 48;
 
+/// Wie lange nach dem letzten Paket im Anlauf die tiefere Kappschwelle gilt.
+///
+/// Angenommen, nicht gemessen: ein Aufholen nach einem Aussetzer ist binnen
+/// weniger hundert Millisekunden vorbei. Länger tiefer zu kappen hiesse, dass
+/// auch Ankunftsjitter (mehrere Pakete auf einmal) geschnitten werden kann.
+const NACHLAUF: Duration = Duration::from_secs(1);
+
+/// Kappschwelle im Nachlauf: so viele Millisekunden über dem wirksamen
+/// Sollwert. Halber Grundwert = 30 ms = drei 10-ms-Pakete; der Sägezahn im
+/// gleichmäßigen Betrieb reicht bis Sollwert plus ein Paket (gerechnet). Die
+/// Schwall-Toleranz der Grobkappung (`SCHWALL_TOLERANZ_TEILER`) beträgt damit
+/// knapp 4 ms statt 15 ms.
+const NACHLAUF_RUECKSTAND_MS: usize = RING_SOLL_MS / 2;
+
 /// Zustand des Verwerfens. Liegt in `Shared`, gepflegt vom Fütter-Faden.
 #[derive(Default)]
 pub(super) struct Nachzuegler {
@@ -99,9 +151,33 @@ pub(super) struct Nachzuegler {
     /// Verworfene verschränkte Samples (Gerätetakt), für die Statistikzeile.
     /// Steckt zusätzlich in `Shared::dropped`.
     pub(super) verworfen: u64,
+    /// Bis wann die tiefere Kappschwelle gilt ([`NACHLAUF`]).
+    nachlauf_bis: Option<Instant>,
 }
 
 impl Nachzuegler {
+    /// Ein Paket kam, während die Ausgabe (wieder) anläuft — beim Start oder
+    /// nach einem Unterlauf. Öffnet den Nachlauf.
+    pub(super) fn im_anlauf(&mut self, jetzt: Instant) {
+        self.nachlauf_bis = Some(jetzt + NACHLAUF);
+    }
+
+    /// Die Kappschwelle: im Nachlauf Sollwert plus [`NACHLAUF_RUECKSTAND_MS`],
+    /// sonst `normal`. Nie höher als `normal`, nie am Sollwert selbst (dort
+    /// schnitte die Grobkappung jeden Sägezahn).
+    pub(super) fn kappschwelle(
+        &self,
+        normal: usize,
+        soll: usize,
+        per_ms: usize,
+        jetzt: Instant,
+    ) -> usize {
+        match self.nachlauf_bis {
+            Some(bis) if jetzt < bis => normal.min(soll + NACHLAUF_RUECKSTAND_MS * per_ms),
+            _ => normal,
+        }
+    }
+
     /// Wie viele RTP-Takte vom Anfang dieses Pakets zu verwerfen sind
     /// (0 bis `takte`).
     ///
@@ -185,11 +261,45 @@ impl Shared {
             return Some(rtp_roh);
         }
         let start = uhr.marke(rtp_roh);
+        let rueck = uhr.zuletzt() - start;
+        if rueck > VERSPAETUNG_MAX_MS * TAKTE_JE_MS {
+            // Bruch der Zeitbasis: neu verankern (s. Modulkopf).
+            self.tonuhr = None;
+            self.nachzuegler.grenze = None;
+            return Some(rtp_roh);
+        }
+        if rueck >= 0 {
+            // Nicht neuer als das zuletzt vermessene Paket: ganz weg.
+            return self.vorn_verwerfen(samples, frames, kanaele_n, rate, rtp_roh);
+        }
         let position = uhr.position(self.ausgabe, rate, kanaele);
         let leer_im_anlauf = self.anlauf && self.ring.is_empty();
         let takte = frames_in_takte(frames, rate);
         let spaet = self.nachzuegler.pruefen(start, takte, position, leer_im_anlauf);
-        let weg_frames = takte_in_frames(spaet, rate).min(frames);
+        // Ganz oder teilweise entscheidet `pruefen`, nicht die Rundung: bei
+        // Geräteraten ungleich 48 kHz trifft die Rückrechnung in Frames nicht
+        // genau — ein Ganzverwurf liesse sonst einen Frame stehen, ein
+        // Teilverwurf leerte womöglich das Paket, obwohl `pruefen` die Grenze
+        // schon für erledigt hält.
+        let weg_frames = if spaet >= takte {
+            frames
+        } else {
+            takte_in_frames(spaet, rate).min(frames - 1)
+        };
+        self.vorn_verwerfen(samples, weg_frames, kanaele_n, rate, rtp_roh)
+    }
+
+    /// `weg_frames` Frames vom Anfang des Pakets verwerfen und zählen. Gibt
+    /// die RTP-Marke des Rests zurück (um die verworfenen Takte weiter), `None`
+    /// wenn nichts übrig blieb.
+    fn vorn_verwerfen(
+        &mut self,
+        samples: &mut Vec<f32>,
+        weg_frames: usize,
+        kanaele_n: usize,
+        rate: u32,
+        rtp_roh: u32,
+    ) -> Option<u32> {
         if weg_frames == 0 {
             return Some(rtp_roh);
         }
@@ -274,6 +384,22 @@ mod tests {
         assert_eq!(n.pruefen(0, PAKET, 1200.0, true), PAKET);
         assert_eq!(n.pruefen(-48_000 * 3600, PAKET, 1200.0, true), 0, "mittendrin");
         assert!(n.grenze.is_none(), "und der Unterlauf ist damit beendet");
+    }
+
+    /// Der Nachlauf senkt die Kappschwelle auf Sollwert plus 30 ms — nur in
+    /// seinem Fenster und nie über die normale.
+    #[test]
+    fn der_nachlauf_senkt_die_kappschwelle_auf_zeit() {
+        let per_ms = 96;
+        let soll = 60 * per_ms;
+        let normal = 180 * per_ms;
+        let jetzt = Instant::now();
+        let mut n = Nachzuegler::default();
+        assert_eq!(n.kappschwelle(normal, soll, per_ms, jetzt), normal, "ohne Anlauf");
+        n.im_anlauf(jetzt);
+        assert_eq!(n.kappschwelle(normal, soll, per_ms, jetzt), 90 * per_ms);
+        assert_eq!(n.kappschwelle(70 * per_ms, soll, per_ms, jetzt), 70 * per_ms, "nie höher");
+        assert_eq!(n.kappschwelle(normal, soll, per_ms, jetzt + NACHLAUF), normal, "abgelaufen");
     }
 
     /// Die Umrechnung trifft ganze Frames auch bei 44,1 kHz: 10 ms sind

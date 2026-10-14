@@ -377,6 +377,7 @@ fn nach_einer_sender_pause_wird_nichts_verworfen() {
     gleichmaessig(&shared, naechste + 10 * PAKET_TAKTE, 5);
     let s = shared.lock().unwrap();
     assert_eq!(s.nachzuegler.verworfen, 0);
+    assert_eq!(s.regelung.resyncs, 0, "gleichmaessiger Nachschub kostet auch im Nachlauf nichts");
     assert_eq!(s.ring.len(), soll, "vorgefuellt bis zum Sollwert");
 }
 
@@ -424,6 +425,202 @@ fn ein_latenzsprung_endet_nicht_in_dauerstille() {
     assert_eq!(s.nachzuegler.verworfen, 4 * PAKET_SAMPLES as u64, "einmal 40 ms, nicht mehr");
     assert!(!s.anlauf, "die Ausgabe laeuft wieder");
     assert_eq!(s.ring.len(), soll);
+}
+
+/// Sender und Netz nachgestellt: der Sender legt je Takt (10 ms) ein Paket an,
+/// das Netz liefert je Takt `liefern` Pakete aus seiner Warteschlange, in
+/// Reihenfolge. Damit laesst sich jedes Muster aus Aussetzern und Aufholen
+/// beschreiben, ohne Marken von Hand zu rechnen.
+#[derive(Default)]
+struct Strecke {
+    erzeugt: u32,
+    geliefert: u32,
+}
+
+impl Strecke {
+    /// Ein Takt: Geraete-Aufruf, ein neues Paket beim Sender, Lieferung.
+    fn takt(&mut self, shared: &Mutex<Shared>, liefern: u32) {
+        geraet(shared);
+        self.erzeugt += 1;
+        let n = liefern.min(self.erzeugt - self.geliefert);
+        fuettern(shared, (self.geliefert..self.geliefert + n).map(|k| k * PAKET_TAKTE));
+        self.geliefert += n;
+    }
+
+    fn takte(&mut self, shared: &Mutex<Shared>, liefern: u32, anzahl: u32) {
+        for _ in 0..anzahl {
+            self.takt(shared, liefern);
+        }
+    }
+
+    fn rueckstand(&self) -> u32 {
+        self.erzeugt - self.geliefert
+    }
+}
+
+/// Der Weg bis zum zweiten Aussetzer, gemeinsam fuer A/B/C: eingeschwungen,
+/// erster Aussetzer (90 ms), ein Teilnachschub, von dem nach dem Verwerfen
+/// 20 ms im Ring bleiben, dann der zweite Aussetzer (90 ms) — WAEHREND der
+/// Ring noch vorfuellt. Den sieht die Positionspruefung nicht (Ring nicht leer).
+fn zweiter_aussetzer_beim_vorfuellen(shared: &Mutex<Shared>) -> Strecke {
+    let mut strecke = Strecke::default();
+    strecke.takte(shared, 1, 60);
+    strecke.takte(shared, 0, 9);
+    strecke.takt(shared, 6);
+    {
+        let s = shared.lock().unwrap();
+        assert!(s.anlauf, "Vorbedingung: noch im Vorfuellen");
+        assert_eq!(s.ring.len(), 2 * PAKET_SAMPLES, "Vorbedingung: 20 ms im Ring");
+    }
+    strecke.takte(shared, 0, 9);
+    strecke
+}
+
+/// Nach dem Aufholen: Ruhezeit der Grobkappung abwarten (echte Zeit, sie
+/// liest die Uhr), dann gleichmaessig weiter. Der Ring muss auf dem Sollwert
+/// stehen, und die Ausgabe laeuft ohne weitere Unterlaeufe.
+fn nach_dem_aufholen_auf_dem_sollwert(shared: &Mutex<Shared>, strecke: &mut Strecke) {
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    strecke.takte(shared, 1, 3);
+    let unterlaeufe = shared.lock().unwrap().underruns;
+    strecke.takte(shared, 1, 20);
+    let s = shared.lock().unwrap();
+    let soll = RING_SOLL_MS * TEST_PER_MS;
+    assert_eq!(s.ring.len(), soll, "Ring nach dem Anhaengen auf dem Sollwert");
+    assert!(s.regelung.resyncs >= 1, "der Ueberstand wurde geschnitten");
+    assert_eq!(s.underruns, unterlaeufe);
+}
+
+/// Szenario A der Nachpruefung (2026-10-14): nach dem zweiten Aussetzer holt
+/// das Netz troepfelnd auf, zwei Pakete je Takt. Der Ring laeuft dabei an und
+/// steigt danach weiter — ohne Nachlauf blieb er rund 110 ms ueber dem
+/// Sollwert, unter der normalen Kappschwelle.
+#[test]
+fn zweiter_aussetzer_troepfelnd_aufgeholt() {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    let mut strecke = zweiter_aussetzer_beim_vorfuellen(&shared);
+    while strecke.rueckstand() > 0 {
+        strecke.takt(&shared, 2);
+    }
+    nach_dem_aufholen_auf_dem_sollwert(&shared, &mut strecke);
+}
+
+/// Szenario B: Teilschwall (zehn Pakete auf einmal), der Rest troepfelt nach.
+#[test]
+fn zweiter_aussetzer_teilschwall_dann_aufgeholt() {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    let mut strecke = zweiter_aussetzer_beim_vorfuellen(&shared);
+    strecke.takt(&shared, 10);
+    while strecke.rueckstand() > 0 {
+        strecke.takt(&shared, 2);
+    }
+    nach_dem_aufholen_auf_dem_sollwert(&shared, &mut strecke);
+}
+
+/// Szenario C: Teilschwall, danach ein Paket je Takt — der Rest bleibt im Netz
+/// haengen, die Lieferung ist dauerhaft spaeter. Auch dann gehoert der Ring
+/// auf den Sollwert: mehr Vorrat ist nur mehr Versatz.
+#[test]
+fn zweiter_aussetzer_teilschwall_rest_bleibt_haengen() {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    let mut strecke = zweiter_aussetzer_beim_vorfuellen(&shared);
+    strecke.takt(&shared, 10);
+    strecke.takte(&shared, 1, 10);
+    assert!(strecke.rueckstand() > 0, "Vorbedingung: der Rest haengt noch");
+    nach_dem_aufholen_auf_dem_sollwert(&shared, &mut strecke);
+}
+
+/// Faellt die Grenze mitten in ein Paket, wird nur sein Anfang verworfen —
+/// und die Tonuhr traegt den Rest an der RICHTIGEN Marke ein: was jetzt
+/// klingen muesste, ist genau der Anfang des Rests (der Ring haelt nur ihn,
+/// gespielt ist noch nichts).
+#[test]
+fn ein_teilverwurf_rueckt_die_marke_nach() {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    let naechste = eingeschwungen(&shared);
+    // 6 Aufrufe leeren den Ring, dann 25 ms Stille: zwei volle und ein halber.
+    for _ in 0..8 {
+        geraet(&shared);
+    }
+    let mut halb = vec![0.0f32; PAKET_SAMPLES / 2];
+    fill_output(&shared, &mut halb);
+    // Position jetzt: naechste + 25 ms = naechste + 1200 Takte.
+    fuettern(&shared, (0..3).map(|k| naechste + k * PAKET_TAKTE));
+    let s = shared.lock().unwrap();
+    assert_eq!(s.ring.len(), PAKET_SAMPLES / 2, "vom dritten Paket bleibt die zweite Haelfte");
+    assert_eq!(s.nachzuegler.verworfen, (2 * PAKET_SAMPLES + PAKET_SAMPLES / 2) as u64);
+    let uhr = s.tonuhr.as_ref().unwrap();
+    let position = uhr.position(s.ausgabe, 48_000, 2);
+    let rest = f64::from(naechste + 1200);
+    assert!((position - rest).abs() < 1.0, "Position {position} statt {rest}");
+}
+
+/// Ein Paket, das aelter ist als das zuletzt vermessene (umsortiert, doppelt,
+/// reparierter Ton), wird verworfen — auch mitten im Betrieb — und laesst die
+/// Tonuhr stehen. Angehaengt klaenge es nach neuerem Ton, und `Tonuhr::paket`
+/// laese den Rueckschritt als Sprung um 2^32 Takte nach vorn.
+#[test]
+fn ein_aelteres_paket_wird_verworfen_und_die_tonuhr_bleibt() {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    let naechste = eingeschwungen(&shared);
+    let zuletzt = shared.lock().unwrap().tonuhr.as_ref().unwrap().zuletzt();
+    // Doppelt und zwei Pakete zu alt.
+    fuettern(&shared, [naechste - PAKET_TAKTE, naechste - 3 * PAKET_TAKTE]);
+    let s = shared.lock().unwrap();
+    assert_eq!(s.tonuhr.as_ref().unwrap().zuletzt(), zuletzt, "kein Sprung der Tonuhr");
+    assert_eq!(s.ring.len(), RING_SOLL_MS * TEST_PER_MS, "nichts angehaengt");
+    assert_eq!(s.nachzuegler.verworfen, 2 * PAKET_SAMPLES as u64);
+}
+
+/// Springt die Zeitbasis um mehr als die Hoechstverspaetung zurueck (neuer
+/// Sender), wird nicht verworfen, sondern neu verankert — sonst bliebe es
+/// still, bis die Marken die alte Stelle wieder erreichen.
+#[test]
+fn ein_bruch_der_zeitbasis_verankert_die_tonuhr_neu() {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    let naechste = eingeschwungen(&shared);
+    let neu = naechste.wrapping_sub(48_000 * 3600);
+    fuettern(&shared, [neu]);
+    let s = shared.lock().unwrap();
+    assert_eq!(s.tonuhr.as_ref().unwrap().zuletzt(), i64::from(neu), "neu verankert");
+    assert_eq!(s.nachzuegler.verworfen, 0);
+    assert_eq!(s.ring.len(), RING_SOLL_MS * TEST_PER_MS + PAKET_SAMPLES);
+}
+
+/// Ein `Shared` im Vorfuellen nach einem Unterlauf mit einer Tonuhr, nach der
+/// bei `ausgabe` die Marke `position` klingt (Anker bei Marke 0).
+fn nach_unterlauf_bei(ausgabe: u64) -> Mutex<Shared> {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    {
+        let mut s = shared.lock().unwrap();
+        s.tonuhr = Some(lippen::Tonuhr::neu(0, 0, std::time::Instant::now(), 0.0));
+        s.ausgabe = ausgabe;
+    }
+    shared
+}
+
+/// Bei Geraeteraten ungleich 48 kHz trifft die Rueckrechnung in Frames nicht
+/// genau. Ein Ganzverwurf darf keinen Frame stehen lassen (88,2 kHz, ein Paket
+/// mit 881 Frames = 479 Takte), ein Teilverwurf das Paket nicht leeren
+/// (22,05 kHz, 220 Frames = 479 Takte, 478 davon verspaetet).
+#[test]
+fn ganz_heisst_ganz_und_teilweise_heisst_teilweise_bei_jeder_rate() {
+    // 88,2 kHz: Position bei rund 1088 Takten, Paket ab 480 — ganz davor.
+    let shared = nach_unterlauf_bei(4000);
+    let mut s = shared.lock().unwrap();
+    let mut paket = vec![0.0f32; 881 * 2];
+    assert_eq!(s.verspaetetes_verwerfen(&mut paket, 480, 88_200, 2), None, "ganz weg");
+    assert_eq!(s.nachzuegler.verworfen, 881 * 2);
+    drop(s);
+
+    // 22,05 kHz: Position bei 958 Takten, Paket 480 bis 959 — der letzte
+    // Takt ist puenktlich, also bleibt ein Frame.
+    let shared = nach_unterlauf_bei(881);
+    let mut s = shared.lock().unwrap();
+    let mut paket = vec![0.0f32; 220 * 2];
+    let rest = s.verspaetetes_verwerfen(&mut paket, 480, 22_050, 2);
+    assert_eq!(paket.len(), 2, "ein Frame bleibt");
+    assert_eq!(rest, Some(480 + 477), "Marke um 219 Frames = 477 Takte weiter");
 }
 
 /// Der Opus-Decoder muss auf jeder Maschine oeffnen — sonst waere der

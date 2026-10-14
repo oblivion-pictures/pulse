@@ -1146,14 +1146,15 @@ impl App {
         // liegt es am anderen Ende — es kommt mehr an, als ausgegeben wird.
         // Ausnahme „davon verspaetet": das ist Ton, der nach einem Unterlauf
         // fuer die schon gespielte Stille kam (`audio::nachzuegler`) — er
-        // steigt zusammen mit den Unterlaeufen.
+        // steigt zusammen mit den Unterlaeufen. „Schnitte" zaehlt die
+        // Grobkappungen — hoerbar, deshalb in der Zeile.
         let media = &st.media;
         if media.audio_active || media.audio_underruns > 0 {
             // `concat!` wie oben, nicht `\` am Zeilenende — aus demselben Grund.
             eprintln!(
                 concat!(
                     "pulse-player: Sitzung {}: Ton — Unterlaeufe {}, verworfen {} ",
-                    "(davon verspaetet {}), ",
+                    "(davon verspaetet {}, Schnitte {}), ",
                     "Puffer {} Samples, Uhrenabgleich {:+} ppm, Lippen {:+.0} ms ",
                     "(Eingriff {:+} ms){}"
                 ),
@@ -1161,6 +1162,7 @@ impl App {
                 media.audio_underruns,
                 media.audio_dropped,
                 media.audio_verspaetet,
+                media.audio_resyncs,
                 media.audio_buffered,
                 media.audio_abgleich_ppm,
                 media.audio_lippen_ms,

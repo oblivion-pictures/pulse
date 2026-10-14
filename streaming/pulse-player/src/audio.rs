@@ -172,9 +172,13 @@ impl Shared {
     /// Regelbetrieb dauernd „im Rueckstand", der Lippen-Regler waere
     /// eingefroren, und ein Fuellstand zwischen Schwelle und Sollwert liesse
     /// den Schnitt unterlaufen (Nachpruefung 2026-10-14, gerechnet).
+    ///
+    /// Kurz nach einem (Wieder-)Anlauf tiefer: wirksamer Sollwert plus 30 ms
+    /// (Begruendung an `nachzuegler::NACHLAUF`).
     fn kapp_schwelle(&self) -> usize {
         let grund = (RING_SOLL_MS + self.trim_ms.max(0) as usize) * self.per_ms;
-        grund.max(self.target_fill) + RING_RUECKSTAND_MS * self.per_ms
+        let normal = grund.max(self.target_fill) + RING_RUECKSTAND_MS * self.per_ms;
+        self.nachzuegler.kappschwelle(normal, self.target_fill, self.per_ms, Instant::now())
     }
 
     /// Ring-Sollwert aus Nutz-Trim und Lippen-Eingriff neu setzen.

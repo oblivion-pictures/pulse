@@ -65,6 +65,11 @@ pub(super) fn pump_commands(
             // auftreten.
             AudioCommand::Packet(..) => {}
             AudioCommand::Pcm(mut samples, rtp_ts) => {
+                // Im Anlauf (Start oder nach einem Unterlauf) beginnt der
+                // Nachlauf mit tieferer Kappschwelle (s. [`super::nachzuegler`]).
+                if s.anlauf {
+                    s.nachzuegler.im_anlauf(Instant::now());
+                }
                 // Nach einem Unterlauf: was fuer die schon gespielte Stille
                 // bestimmt war, verwerfen statt hinten anhaengen (s.
                 // [`super::nachzuegler`]). VOR allem anderen — Ring, Kappung,

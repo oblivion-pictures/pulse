@@ -64,6 +64,9 @@ pub(super) const RING_SOLL_MS: usize = 60;
 /// Rueckstand, ab rund 1,9 s Trim nie, weil die Schwelle ueber der Ringgrenze
 /// laege). Ein Rueckstand ist aber ein Zuviel an Zeit, unabhaengig davon, wie
 /// viel Vorlauf jemand eingestellt hat.
+///
+/// Bis eine Sekunde nach einem (Wieder-)Anlauf gilt eine tiefere Schwelle,
+/// Sollwert plus 30 ms (`nachzuegler::NACHLAUF`, seit 2026-10-14).
 pub(super) const RING_RUECKSTAND_MS: usize = 2 * RING_SOLL_MS;
 
 /// Untergrenze des Ring-Sollwerts in Millisekunden, die auch der

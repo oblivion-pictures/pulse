@@ -164,6 +164,11 @@ impl Tonuhr {
         self.rtp + i64::from(rtp_roh.wrapping_sub(self.roh) as i32)
     }
 
+    /// Verlaengerte RTP-Marke des zuletzt vermessenen Pakets.
+    pub fn zuletzt(&self) -> i64 {
+        self.rtp
+    }
+
     /// Lippenfehler in Millisekunden: positiv = der Ton klingt SPAETER, als
     /// seine RTP-Uhr sagt (= Ton haengt hinterher), negativ = er eilt.
     ///
@@ -204,10 +209,18 @@ pub fn fehler_ohne_ringabweichung(fehler_ms: f64, mittel: f64, soll: usize, per_
 ///
 /// Nicht nach langer Stille (`dt_s` > 2 s: der Fehler ist Schnee von
 /// gestern), nicht solange der Ring nach einem Leerlauf neu vorfuellt
-/// (`anlauf`: das erste Paket nach einem Aussetzer kommt um die ganze Pause
-/// verspaetet — gerechnet rund +580 ms bei 640 ms Pause, ein einziger Schritt
-/// ueber ~0,65 s bewegte den Eingriff um rund 6 ms) und nicht bei einem
-/// Rueckstand ueber der Kappschwelle (den schneidet die Grobkappung weg).
+/// (`anlauf`) und nicht bei einem Rueckstand ueber der Kappschwelle (den
+/// schneidet die Grobkappung weg).
+///
+/// Zum Anlauf: bis 2026-10-14 kam das erste Paket nach einem Aussetzer um die
+/// ganze Pause verspaetet in den Ring (gerechnet rund +580 ms bei 640 ms
+/// Pause, ein einziger Schritt ueber ~0,65 s bewegte den Eingriff um rund
+/// 6 ms). Diesen verspaeteten Anfang verwirft seitdem `super::nachzuegler`.
+/// Die Sperre bleibt trotzdem richtig: beim Vorfuellen steht der Ring, die
+/// Position der Tonuhr laeuft aber weiter (bis zum naechsten Paket) — der
+/// gemessene Fehler ist dort keiner, und ein Schwall, den die Nachzuegler-
+/// Pruefung nicht sieht (zweiter Aussetzer beim Vorfuellen), steht ebenfalls
+/// noch im Ring.
 pub fn darf_nachfuehren(dt_s: f64, anlauf: bool, rueckstand: bool) -> bool {
     dt_s <= 2.0 && !anlauf && !rueckstand
 }
