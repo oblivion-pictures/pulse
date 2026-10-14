@@ -166,7 +166,8 @@ impl Shared {
     /// Ab welchem Fuellstand die Grobkappung schneidet: Sollwert OHNE den
     /// Lippen-Eingriff plus [`RING_RUECKSTAND_MS`] (Begruendung dort).
     ///
-    /// **Nie unter dem wirksamen Sollwert plus Rueckstand.** Ein positiver
+    /// **Ausser im Nachlauf (unten) nie unter dem wirksamen Sollwert plus
+    /// Rueckstand** — und auch dort immer ueber dem Sollwert. Ein positiver
     /// Eingriff (bis +150 ms) hebt den Sollwert ueber den Grundwert; ohne das
     /// `max` laege die Schwelle dann unter ihm, der Ring stuende im
     /// Regelbetrieb dauernd „im Rueckstand", der Lippen-Regler waere
