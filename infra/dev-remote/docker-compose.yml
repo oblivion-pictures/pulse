@@ -287,7 +287,7 @@ services:
   # weiterhin CI und einen neuen Tag — Quellcode-Sync hilft dabei nicht.
   mediamtx:
     <<: *base
-    image: ghcr.io/oblivion8282-1337/pulse-mediamtx:1.19.1-pulse7
+    image: ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse8
     container_name: pulsetest_mediamtx
     environment:
       PULSE_KEYFRAME_INTERVAL: "0"
@@ -303,6 +303,9 @@ services:
       # und im Kopf des Patches.
       PULSE_KEYFRAME_ON_DISCARD: "1"
       PULSE_VIDEO_REORDER_BUFFER: "128"
+      # Patch 0008 (2026-10-14), wirksam ab Bild `1.19.1-pulse8`; ebenso 1:1
+      # mit infra/prod/docker-compose.yml, Begruendung dort.
+      PULSE_AUDIO_REORDER_BUFFER: "4"
       # Muss 1:1 mit infra/prod/docker-compose.yml übereinstimmen — sonst
       # testet man gegen einen Stand, den es in Produktion nicht gibt. Volle
       # Begründung der Werte dort.
