@@ -2,10 +2,14 @@
 
 POST /experimental-logs — öffentlich, rate-limited (30/Stunde pro IP).
 
-Die Desktop-App ruft das bei Stream-Ende und Stream-Fehler auf, und nur, wenn
-der Nutzer die Diagnose-Checkbox aktiviert hat (Opt-in, Vorgabe aus; Tab
-„Diagnose"). Speichert einen bereits token-redacted `sidecar.log`-Ausschnitt +
-Systeminfo in Postgres zur Fehlerdiagnose. Vorlage: routes_complaints.py.
+Die Desktop-App ruft das auf, wenn der Sidecar `stopped` meldet (Grund
+`error`, wenn vorher ein Fehler kam — ein Fehler ohne nachfolgendes `stopped`
+lädt nichts hoch, siehe `onSidecarEventForUpload`), solange der
+Schalter „Diagnoseberichte senden" (Reiter „Experimental") an ist. Seit
+2026-08-06 ist er standardmäßig an und lässt sich dort abwählen (Begründung in
+`desktop/electron/experimental-log-upload.ts`); vorher war er aus. Speichert
+einen bereits token-redacted `sidecar.log`-Ausschnitt + Systeminfo in Postgres
+zur Fehlerdiagnose. Vorlage: routes_complaints.py.
 
 **Hier stand bis 2026-08-06 „der experimentellen Rust-Sidecar-Version".** Das
 war zweifach überholt: der Rust-Sidecar ist auf Linux längst der Standard, und

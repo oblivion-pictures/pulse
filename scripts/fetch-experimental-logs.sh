@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Holt die vom Desktop-Client hochgeladenen Sidecar-Diagnose-Logs von der Cloud.
 #
-# Wozu: Der Linux-HQ-Sidecar (Rust) lädt bei Stream-Ende/-Fehler den Schwanz
-# seiner `sidecar.log` hoch — aber nur, wenn der Nutzer im Kompatibilitäts-Tab
-# "Diagnose-Protokolle senden" eingeschaltet hat (`uploadDiagnosticLogs`).
+# Wozu: Die Desktop-App (Linux, Windows, macOS) lädt bei Stream-Ende den
+# Schwanz der `sidecar.log` hoch — solange der Nutzer im Reiter „Experimental"
+# „Diagnoseberichte senden" nicht abgewählt hat (`uploadDiagnosticLogs`, seit
+# 2026-08-06 Vorgabe an).
 # Die Uploads landen in `auth.experimental_logs` auf dem Cloud-Postgres; von
 # außen gibt es KEINE Leseroute (bewusst — die Logs sind Support-Material).
 # Dieses Skript ist der Lesezugriff: ssh → docker exec → psql.

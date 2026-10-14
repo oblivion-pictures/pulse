@@ -1620,8 +1620,8 @@ function wireSidecar(): void {
   // Zug, noch bevor der erste `call()` etwas senden kann.
   onSidecarCreated((manager, slot) => {
     manager.onEvent((ev) => {
-      // Experimental-Version: bei Stream-Ende/Fehler die sidecar.log hochladen
-      // (no-op, wenn die Rust-Version aus ist — prüft den Store selbst).
+      // Bei Stream-Ende die sidecar.log hochladen (no-op, wenn „Diagnoseberichte
+      // senden" abgewählt ist — prüft den Store selbst).
       onSidecarEventForUpload(ev, slot);
       sendToMainWindow('sidecar:event', { ...ev, slot });
     });
@@ -2004,9 +2004,10 @@ const ALLOWED_STORE_KEYS = new Set([
   // (window.pulse.store.set), der Main-Prozess liest ihn synchron im
   // Fenster-close-Handler (quitOnClose → wirklich beenden statt Tray).
   'quitOnClose',
-  // Diagnose-Logs des Linux-Sidecars hochladen. Eigener Opt-in, default aus —
+  // Diagnose-Logs des Sidecars hochladen (alle Plattformen). Eigener Schalter,
   // hing früher am Rust-Toggle; seit Rust der Standard ist, wäre das eine
-  // stille Telemetrie für jeden Linux-Nutzer gewesen.
+  // stille Telemetrie für jeden Linux-Nutzer gewesen. Seit 2026-08-06
+  // standardmäßig an, sichtbar und abwählbar (experimental-log-upload.ts).
   'uploadDiagnosticLogs',
   // Nativer HQ-Player (`streaming/pulse-player/`) statt des <video>-WHEP-Wegs.
   // Default aus — experimentell, noch ohne Tonausgabe (siehe player.ts).

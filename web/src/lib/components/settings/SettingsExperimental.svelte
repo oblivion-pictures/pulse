@@ -16,8 +16,8 @@
   geben, und es kam nie ein Bericht von dort an. Der Upload-Weg selbst war die
   ganze Zeit plattformneutral.
 
-  Übrig ist DIAGNOSEBERICHTE senden (`uploadDiagnosticLogs`, default aus) — ein
-  eigener Opt-in, auf jeder Plattform. Begründung in
+  Übrig ist DIAGNOSEBERICHTE senden (`uploadDiagnosticLogs`) — ein eigener
+  Schalter, auf jeder Plattform, seit 2026-08-06 standardmäßig an und abwählbar. Begründung in
   `desktop/electron/experimental-log-upload.ts`.
 
   **Das Aufnahme-Verfahren stand bis 2026-08-16 hier**: eine Statuszeile und
@@ -104,7 +104,8 @@
     <p class="text-text-muted text-xs">{m.settings_diag_intro()}</p>
   </div>
 
-  <!-- Diagnose-Logs: eigener Opt-in, bewusst als eigenes Feld. Auf JEDER
+  <!-- Diagnose-Logs: eigener Schalter (seit 2026-08-06 standardmäßig an,
+       abwählbar), bewusst als eigenes Feld. Auf JEDER
        Plattform sichtbar — das ist der Punkt der Änderung vom 2026-08-06. -->
   <div class="border-border flex flex-col gap-3 rounded-2xl border p-4">
     <label class="flex items-start gap-3">

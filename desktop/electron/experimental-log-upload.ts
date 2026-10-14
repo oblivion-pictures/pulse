@@ -3,7 +3,7 @@
  *
  * Lädt bei Stream-Ende (und bei einem Stream-Fehler) die `sidecar.log` +
  * etwas Systeminfo an den Server hoch. Schalter: `uploadDiagnosticLogs`,
- * Tab „Diagnose".
+ * Tab „Experimental".
  *
  * **Seit 2026-08-06 ist der Schalter standardmäßig AN** (Produktentscheidung).
  * Vorher war er aus und musste ausdrücklich eingeschaltet werden — mit der
