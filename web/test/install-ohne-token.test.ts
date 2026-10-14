@@ -99,7 +99,7 @@ test('ohne Token und mit PULSE_HOSTNAME läuft der Installer bis zum Plan', () =
   assert.equal(e.exit, 0, e.ausgabe);
   assert.match(e.ausgabe, /Server address: chat\.example\.org/);
   assert.match(e.ausgabe, /DRY RUN — nothing changed\./);
-  assert.match(e.ausgabe, /ghcr\.io\/oblivion-pictures\/pulse:stable/);
+  assert.match(e.ausgabe, /ghcr\.io\/oblivion-pictures\/pulse:edge/);
   assert.doesNotMatch(e.ausgabe, /token/i);
 });
 

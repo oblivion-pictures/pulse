@@ -1,10 +1,11 @@
 /**
  * `web/static/install.sh` — welches Bild ein erneuter Lauf nimmt (`waehle_bild`).
  *
- * Vorgabe ohne `PULSE_IMAGE` ist `ghcr.io/oblivion-pictures/pulse:stable`. Ein
+ * Vorgabe ohne `PULSE_IMAGE` ist `ghcr.io/oblivion-pictures/pulse:edge` (seit
+ * 2026-10-14, vorher `:stable`; Begründung in `install.sh`). Ein
  * erneuter Lauf auf einem Server, der schon läuft, darf ihn nicht still auf
- * diese Vorgabe umstellen: einzelne Server stehen bewusst auf
- * `:edge`, und die drei Bestandsserver ziehen vom Spiegel. Deshalb gilt, in
+ * diese Vorgabe umstellen: einzelne Server stehen bewusst auf einem
+ * anderen Tag, und die drei Bestandsserver ziehen vom Spiegel. Deshalb gilt, in
  * dieser Reihenfolge:
  *
  *   1. `PULSE_IMAGE` gewinnt immer;
@@ -35,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 
 const SKRIPT = join(dirname(fileURLToPath(import.meta.url)), '../static/install.sh');
 
-const VORGABE = 'ghcr.io/oblivion-pictures/pulse:stable';
+const VORGABE = 'ghcr.io/oblivion-pictures/pulse:edge';
 const SPIEGEL_EDGE = 'registry.howispulse.com/pulse-allinone:edge';
 
 /** Shell-Funktion bis zur `}` in Spalte 0 — heredoc-bewusst (wie install-updater.test.ts). */
@@ -116,7 +117,7 @@ echo "IMAGE=$IMAGE"
   return { image: treffer[1], ausgabe };
 }
 
-test('kein Container, keine pulse-update.sh: es bleibt bei der Vorgabe :stable', () => {
+test('kein Container, keine pulse-update.sh: es bleibt bei der Vorgabe :edge', () => {
   const e = waehle({});
   assert.equal(e.image, VORGABE);
   assert.doesNotMatch(e.ausgabe, /Keeping image|Using image/);

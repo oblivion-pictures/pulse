@@ -1,6 +1,6 @@
 # Pulse Self-Host — Single-Container Image (Phase 6.A)
 
-`ghcr.io/oblivion-pictures/pulse:stable` — one container that bundles every
+`ghcr.io/oblivion-pictures/pulse:edge` — one container that bundles every
 Pulse-Backend-Service, an embedded Postgres + Redis, LiveKit (voice SFU),
 MediaMTX (HQ-stream relay), Garage (S3 object store for message attachments),
 coturn (TURN/STUN), and Caddy (reverse proxy + auto-TLS), supervised by
@@ -21,8 +21,11 @@ accepts those of any active instance, but only servers set up before October
 installer knows the credentials only from such a server's `pulse.env`. New
 servers pull from GHCR. Both `:edge` (every `main` push) and
 `:stable` (tagged releases `vX.Y.Z` only) exist on both. The installer
-(`web/static/install.sh`) and the Compose files use `:stable`; the installer
-takes another image via `PULSE_IMAGE`. Run again on a server that already
+(`web/static/install.sh`) and the Compose files use `:edge` for now — the
+owner's decision of 2026-10-14 (“we are still fixing”): every change on `main`
+reaches new servers right away, as it does the Pulse Server apps. Back to
+`:stable` once releases are tagged regularly. The installer takes another
+image via `PULSE_IMAGE`. Run again on a server that already
 exists, the installer keeps that server's image (and tag) unless `PULSE_IMAGE`
 is set.
 
@@ -85,7 +88,7 @@ docker run -d --name pulse --restart unless-stopped \
     -p 49160-49200:49160-49200/udp \
     -p 1936:1936 -p 8189:8189/udp \
     -e PULSE_HOSTNAME=chat.example.com \
-    ghcr.io/oblivion-pictures/pulse:stable
+    ghcr.io/oblivion-pictures/pulse:edge
 docker exec -it pulse pulse-connect
 ```
 

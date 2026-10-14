@@ -44,7 +44,8 @@ services:
     # Public image, no login needed. Servers set up before October 2026 may
     # keep registry.howispulse.com/pulse-allinone:stable here — that one needs
     # the credentials from their .env (docker login, see pulse-update.sh).
-    image: ghcr.io/oblivion-pictures/pulse:stable
+    # `:edge` vorerst, wie der Installer (Begründung dort, 2026-10-14).
+    image: ghcr.io/oblivion-pictures/pulse:edge
     container_name: pulse
     restart: unless-stopped
     # Log-Begrenzung wie Prod (x-logging-Anker in infra/prod/docker-compose.yml):

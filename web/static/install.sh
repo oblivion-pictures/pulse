@@ -26,7 +26,13 @@ set -euo pipefail
 
 # --- Konfiguration (per Env überschreibbar) --------------------------------
 CLOUD_ORIGIN="${PULSE_CLOUD_ORIGIN:-https://howispulse.com}"
-IMAGE="${PULSE_IMAGE:-ghcr.io/oblivion-pictures/pulse:stable}"
+# Vorgabe vorerst `:edge` statt `:stable` (Entscheidung des Eigentümers
+# 2026-10-14: „wir sind noch am fixen“) — jede Änderung auf main erreicht damit
+# auch neu eingerichtete Server sofort, wie die Server-Apps
+# (desktop/electron/localBackend/containerEnv.ts). Bis dahin bekamen sie nur
+# getaggte Releases, und die Fixes eines Tages kamen dort nicht an. Zurück auf
+# `:stable`, sobald regelmäßig Releases getaggt werden.
+IMAGE="${PULSE_IMAGE:-ghcr.io/oblivion-pictures/pulse:edge}"
 CONTAINER="${PULSE_CONTAINER:-pulse}"
 VOLUME="${PULSE_VOLUME:-pulse-data}"
 # Config-Verzeichnis: root → /opt/pulse, sonst ins Home (Docker-Gruppen-User
@@ -293,9 +299,9 @@ bestand_uebernehmen() {
 
 # --- Bild: das eines vorhandenen Servers beibehalten --------------------- #
 #
-# Ohne ausdrückliches PULSE_IMAGE ist die Vorgabe `…/pulse:stable`. Ein
+# Ohne ausdrückliches PULSE_IMAGE ist die Vorgabe `…/pulse:edge` (s. oben). Ein
 # erneuter Lauf auf einem Server, der schon steht, darf ihn nicht still darauf
-# umstellen: einzelne Server stehen bewusst auf `:edge`, die drei
+# umstellen: einzelne Server stehen bewusst auf einem anderen Tag, die drei
 # Bestandsserver ziehen vom Spiegel. Also das Bild des vorhandenen eigenen
 # Containers übernehmen, ersatzweise die IMAGE-Zeile einer vorhandenen
 # pulse-update.sh (Container entfernt, Updater liegt noch da).
@@ -324,10 +330,11 @@ waehle_bild() {
     registry.howispulse.com/*)
       if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
         tag="${vorhanden##*/}"
+        # Ohne lesbaren Tag der Tag der Vorgabe oben (`:edge` seit 2026-10-14).
         case "$tag" in
-          *@*) tag=stable ;;
+          *@*) tag=edge ;;
           *:*) tag="${tag##*:}" ;;
-          *)   tag=stable ;;
+          *)   tag=edge ;;
         esac
         IMAGE="ghcr.io/oblivion-pictures/pulse:${tag}"
         log "Using image ${IMAGE} — the registry mirror needs credentials this server does not have."

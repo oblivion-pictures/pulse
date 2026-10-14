@@ -5,7 +5,7 @@
 # Single container that runs every Pulse-Backend-Service + embedded
 # Postgres/Redis + LiveKit + MediaMTX + coturn + Caddy under s6-overlay as
 # process supervisor. Distribution target:
-#   ghcr.io/oblivion-pictures/pulse:stable
+#   ghcr.io/oblivion-pictures/pulse:edge  (and :stable for tagged releases)
 #
 # Build (from repo root):
 #   docker build -f infra/self-host/Dockerfile \
