@@ -713,6 +713,39 @@ test.describe('Grabstein-Register im lokalen Verlauf (echte IndexedDB)', () => {
     expect(gelesen).toEqual([serverNeuer, lokalAelter]);
   });
 
+  test('W2 (Gegenprüfung 2026-10-14): im selben Stapel überschreibt eine fremde Anhang-Angabe die Medienzeile nicht', async ({ page }) => {
+    // Ein Zyklus legt meine Selbstzustellung und Bobs spätere Nachricht mit
+    // derselben Anhang-ID in EINEN Stapel. Die Medien-Prüfung sah bis dahin
+    // für beide einen freien Platz, und Bob gewann als Letzter.
+    const autorVonX = async (X: string, ids: [string, string], opts: { nurUeberKlartext?: boolean }) =>
+      page.evaluate(
+        async ({ kanalId, kontoId, X, ids, ALICE, BOB, opts }) => {
+          const w = window as unknown as { __db: Record<string, Function>; __satz: { zuSatz: Function } };
+          const satz = (id: string, autor: string, name: string) =>
+            w.__satz.zuSatz(
+              kanalId,
+              {
+                id, author_id: autor, content: 'bild', created_at: '2026-10-12T00:00:00Z',
+                attachments: [{ id: X, filename: name, mime: 'image/png', size: 1 }]
+              },
+              kontoId
+            );
+          await w.__db.verlaufPutSaetze(
+            [satz(ids[0], ALICE, 'alice.png'), satz(ids[1], BOB, 'bob.png')],
+            opts
+          );
+          const zeilen = (await w.__db.medienLesen(kontoId)) as { id: string; autorId: string; dateiname: string }[];
+          return zeilen.filter((z) => z.id === X).map((z) => [z.autorId, z.dateiname]);
+        },
+        { kanalId: KANAL, kontoId: KONTO, X, ids, ALICE, BOB, opts }
+      );
+    const paar = (n: string): [string, string] => [`70000000000000${n}1`, `70000000000000${n}2`];
+    expect(await autorVonX('700000000000007000', paar('600'), {})).toEqual([[ALICE, 'alice.png']]);
+    // Derselbe Stapel über den Server-Weg (erst `get`, dann Ablegen).
+    const ueberKlartext = { nurUeberKlartext: true };
+    expect(await autorVonX('700000000000007001', paar('610'), ueberKlartext)).toEqual([[ALICE, 'alice.png']]);
+  });
+
   test('Register-Einträge erscheinen in keinem Leseweg', async ({ page }) => {
     await gebundenLoeschen(page, ALICE, [K]);
     const gelesen = await page.evaluate(

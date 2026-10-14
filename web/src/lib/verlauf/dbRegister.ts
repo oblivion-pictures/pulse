@@ -14,7 +14,12 @@
  * stehen importfrei in `grabsteinRegister.ts`, der Ablauf ist per E2E belegt
  * (`tests/e2e/verlauf-register.spec.ts`).
  */
-import { medienZeileDarfSchreiben, medienZeilenAusSatz, type Satz } from './schema';
+import {
+  medienZeileDarfSchreiben,
+  medienZeilenAusSatz,
+  type MedienZeile,
+  type Satz
+} from './schema';
 import { sortierSchluessel } from './satz';
 import { gehoertZuKonto } from './kontoFilter';
 import {
@@ -41,6 +46,13 @@ export function kanalBereich(kanalId: string): IDBKeyRange {
  * (`alsGrabstein`, ohne Medien-Zeilen). `fertig` bekommt die abgelegte
  * Fassung. Ein Satz ohne Autor hat keine gebundene Identität und wird
  * abgelegt, wie er ist.
+ *
+ * Die Medien-Prüfung sieht zuerst auf die Zeilen, die DIESE Transaktion
+ * schon schreibt (`geplantIn`, Gegenprüfung 2026-10-14, W2): ein Stapel
+ * (`verlaufPutSaetze`) stellt die `get` aller Sätze, bevor das `put` des
+ * ersten aus seinem `onsuccess` entsteht — beide Prüfungen sähen sonst einen
+ * freien Platz, und der letzte Satz gewänne. Die Rückrufe laufen in der
+ * Reihenfolge der Anfragen, die Merkliste ist beim zweiten also gefüllt.
  */
 export function ablegenMitRegister(
   nachrichten: IDBObjectStore,
@@ -48,6 +60,7 @@ export function ablegenMitRegister(
   satz: Satz,
   fertig?: (abgelegt: Satz) => void
 ): void {
+  const geplant = geplantIn(medien.transaction);
   const schreiben = (fassung: Satz): void => {
     nachrichten.put(fassung);
     // Eine Index-Zeile nur auf einen freien Platz oder über eine eigene
@@ -55,7 +68,10 @@ export function ablegenMitRegister(
     for (const zeile of medienZeilenAusSatz(fassung)) {
       const liegend = medien.get(zeile.id);
       liegend.onsuccess = () => {
-        if (medienZeileDarfSchreiben(liegend.result, zeile)) medien.put(zeile);
+        const vorher = geplant.get(zeile.id) ?? (liegend.result as MedienZeile | undefined);
+        if (!medienZeileDarfSchreiben(vorher, zeile)) return;
+        medien.put(zeile);
+        geplant.set(zeile.id, zeile);
       };
     }
     fertig?.(fassung);
@@ -67,6 +83,19 @@ export function ablegenMitRegister(
   }
   const anfrage = nachrichten.get(schluessel);
   anfrage.onsuccess = () => schreiben(anfrage.result !== undefined ? alsGrabstein(satz) : satz);
+}
+
+/** Die Medien-Zeilen, die eine Transaktion schon schreibt. An der
+ *  Transaktion statt als Parameter, damit kein Aufrufer sie vergessen kann. */
+const geplantJeTransaktion = new WeakMap<IDBTransaction, Map<string, MedienZeile>>();
+
+function geplantIn(tx: IDBTransaction): Map<string, MedienZeile> {
+  let geplant = geplantJeTransaktion.get(tx);
+  if (geplant === undefined) {
+    geplant = new Map();
+    geplantJeTransaktion.set(tx, geplant);
+  }
+  return geplant;
 }
 
 /**
