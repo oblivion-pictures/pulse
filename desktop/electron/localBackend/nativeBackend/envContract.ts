@@ -1,7 +1,9 @@
 /**
  * Env-Vertrag für die nativen Services.
- * Portiert 1:1 von infra/self-host/s6/etc/s6-overlay/scripts/07-render-env.sh —
- * der Ports-Satz ist identisch (NATIVE_PORTS spiegelt den Container-Internraum).
+ * Portiert von infra/self-host/s6/etc/s6-overlay/scripts/07-render-env.sh —
+ * der Ports-Satz ist identisch (NATIVE_PORTS spiegelt den Container-Internraum);
+ * die übrigen Variablen nicht in jedem Punkt (Abgleich vom 2026-10-14: einzelne
+ * Schalter fehlen hier oder stehen nur hier).
  *
  * Reine Funktion — kein I/O, kein Secret-Logging.
  */

@@ -79,12 +79,21 @@ writeQueueSize: 2048
 api: yes
 apiAddress: 127.0.0.1:9997
 
+# RTMP-Eingang nur verschluesselt (RTMPS :1936), RTSP und SRT aus — wie die
+# Cloud (infra/prod/mediamtx.yml, dort die Begruendung): media-svc gibt nur
+# rtmps:// oder WHIP aus, ueber unverschluesseltes RTMP oder SRT laege das
+# Sende-Token im Klartext auf der Leitung. Bis 2026-10-14 standen hier
+# "rtmpEncryption: optional" und ":1935", RTSP und SRT liefen mit ihren
+# Vorgaben (:8554, :8890/udp) — ohne Nutzer, ohne festgehaltenen Grund
+# (Abgleich Cloud/Self-Host vom 2026-10-14).
 rtmp: yes
-rtmpEncryption: optional
-rtmpAddress: :1935
+rtmpEncryption: strict
 rtmpsAddress: :${NATIVE_MEDIA_PORTS.rtmps}
 rtmpServerCert: ${join(certDir, 'mediamtx.crt').replace(/\\/g, '/')}
 rtmpServerKey: ${join(certDir, 'mediamtx.key').replace(/\\/g, '/')}
+
+rtsp: no
+srt: no
 
 webrtc: yes
 webrtcAddress: 127.0.0.1:8889

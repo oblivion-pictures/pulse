@@ -43,9 +43,12 @@ export const DIREKT_MUX = 7900;
 /** MediaMTX-WHEP-ICE (Stream-Wiedergabe). */
 export const WHEP_ICE = 8189;
 /** MediaMTX-RTMPS-Ingest (Owner-Push auf `rtmps://127.0.0.1:1936` —
- *  07-render-env.sh setzt für app_host `MEDIAMTX_INGEST=127.0.0.1`). Nur
- *  Loopback: Gäste publishen per WHIP, RTMPS aus dem LAN/Internet ist nicht
- *  vorgesehen. Gilt auf ALLEN Plattformen (Windows: RELAY_TCP_PORTS). */
+ *  07-render-env.sh setzt für app_host `MEDIAMTX_INGEST=127.0.0.1`). Gedacht
+ *  nur für Loopback: Gäste publishen per WHIP, RTMPS aus dem LAN/Internet ist
+ *  nicht vorgesehen, und weitergereicht wird der Port auf keiner Plattform
+ *  (Windows: RELAY_TCP_PORTS). **Gebunden ist er im nativen Windows-Backend
+ *  trotzdem auf allen Schnittstellen** (`configs.ts`, `rtmpsAddress: :1936`),
+ *  im Heimnetz also erreichbar — TLS-geschützt, aber nicht nur Loopback. */
 export const RTMPS = 1936;
 
 /** Alle Medien-UDP-Ports, die der Container bedient (macOS-Gateway-Relay). */

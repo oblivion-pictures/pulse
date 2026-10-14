@@ -64,6 +64,11 @@ services:
       - "443:443"
       # Voice (LiveKit WebRTC) + HQ-Stream-ICE
       - "7882-7892:7882-7892/udp"
+      # Voice-Rueckfall ueber TCP (LiveKit `tcp_port`, livekit.yaml.template)
+      # fuer Netze, die UDP sperren (Firma, Hotel) — wie die Cloud
+      # (infra/prod/livekit.yaml). Fehlte bis 2026-10-14: konfiguriert, aber
+      # nicht freigegeben; die Server-App hatte ihn seit 2026-10-08.
+      - "7881:7881/tcp"
       # TURN/STUN (coturn) — NAT-Traversal für Voice
       - "3478:3478/tcp"
       - "3478:3478/udp"

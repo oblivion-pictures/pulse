@@ -41,13 +41,11 @@ export const FESTE_TCP_PORTS: readonly FesterPort[] = [
   { port: NATIVE_PORTS.livekitRtcTcp, dienst: 'LiveKit RTC/TCP' },
   { port: NATIVE_PORTS.caddyHttp, dienst: 'Caddy' },
   { port: NATIVE_PORTS.caddyDesktop, dienst: 'Caddy (Verwaltung)' },
-  // MediaMTX: API, WebRTC/HTTP, RTMP, RTMPS (configs.ts::renderMediamtxYml)
+  // MediaMTX: API, WebRTC/HTTP, RTMPS (configs.ts::renderMediamtxYml).
+  // Unverschluesseltes RTMP (:1935) und RTSP (:8554) sind seit 2026-10-14 aus.
   { port: 9997, dienst: 'MediaMTX-API' },
   { port: 8889, dienst: 'MediaMTX WebRTC' },
-  { port: 1935, dienst: 'MediaMTX RTMP' },
   { port: NATIVE_MEDIA_PORTS.rtmps, dienst: 'MediaMTX RTMPS' },
-  // RTSP schaltet renderMediamtxYml nicht ab → MediaMTX-Vorgabe :8554.
-  { port: 8554, dienst: 'MediaMTX RTSP' },
 ];
 
 /** Alle belegten Ports (parallel geprüft). */

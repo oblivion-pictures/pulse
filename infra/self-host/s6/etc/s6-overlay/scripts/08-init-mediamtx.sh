@@ -91,12 +91,21 @@ writeQueueSize: 2048
 api: yes
 apiAddress: 127.0.0.1:9997
 
+# RTMP-Eingang nur verschluesselt (RTMPS :1936), RTSP und SRT aus — wie die
+# Cloud (infra/prod/mediamtx.yml, dort die Begruendung): media-svc gibt nur
+# rtmps:// oder WHIP aus, ueber unverschluesseltes RTMP oder SRT laege das
+# Sende-Token im Klartext auf der Leitung. Bis 2026-10-14 standen hier
+# `rtmpEncryption: optional` und `:1935`, RTSP und SRT liefen mit ihren
+# Vorgaben (:8554, :8890/udp) — ohne Nutzer, ohne festgehaltenen Grund
+# (Abgleich Cloud/Self-Host vom 2026-10-14).
 rtmp: yes
-rtmpEncryption: optional
-rtmpAddress: :1935
+rtmpEncryption: strict
 rtmpsAddress: :1936
 rtmpServerCert: /data/certs/mediamtx.crt
 rtmpServerKey: /data/certs/mediamtx.key
+
+rtsp: no
+srt: no
 
 webrtc: yes
 webrtcAddress: :8889
@@ -194,9 +203,13 @@ EOF
         sed -i -e 's|^webrtcLocalUDPAddress: :8189$|webrtcLocalUDPAddress: 0.0.0.0:8189|' \
                -e 's|^webrtcIPsFromInterfaces: no$|webrtcIPsFromInterfaces: yes|' \
             /etc/mediamtx/mediamtx.yml
+        # Dieselbe Liste und Schreibweise wie der VPS-Zweig unten und der
+        # Direktpfad-Adapter (`direct-adapter/src/config.rs`: Komma-getrennt,
+        # Google UND Cloudflare). Bis 2026-10-14 nur Google, und eine gesetzte
+        # Komma-Liste wurde hier als EIN Eintrag geschrieben.
         {
             printf 'webrtcICEServers2:\n'
-            for stun in ${PULSE_DIRECT_STUN_SERVERS:-stun.l.google.com:19302}; do
+            for stun in $(printf '%s' "${PULSE_DIRECT_STUN_SERVERS:-stun.l.google.com:19302 stun.cloudflare.com:3478}" | tr ',' ' '); do
                 printf '  - url: stun:%s\n' "${stun}"
             done
         } >> /etc/mediamtx/mediamtx.yml

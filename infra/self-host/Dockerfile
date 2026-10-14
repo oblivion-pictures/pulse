@@ -346,7 +346,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # System packages:
 #   - postgresql 15: Debian Bookworm ships 15 (we don't need 16 — schema
 #     features used are PG 12+). initdb runs in cont-init.d on first boot.
-#   - redis-server: same Debian-packaged binary as the prod stack.
+#   - redis-server: Debian-packaged Redis 7 (the cloud runs `redis:7-alpine`
+#     — same major version, not the same binary).
 #   - coturn: NAT-traversal helper for voice (Phase 6 plan, Fallstrick #6).
 #   - ca-certificates + curl: TLS roots + healthcheck helpers.
 #   - tini: not used as PID 1 (s6 owns that), but kept for `tini -s` wrapper
@@ -429,6 +430,7 @@ RUN groupadd -g 10001 pulse \
 #                       Port via PULSE_HTTP_PORT änderbar). Externer Proxy zeigt hierauf.
 #   3478, 3478/udp    — coturn STUN/TURN
 #   7882-7892/udp     — LiveKit ICE
+#   7881              — LiveKit ICE over TCP (fallback for networks that block UDP)
 #   1936              — MediaMTX RTMPS ingest (HQ-stream push; raw TCP, can't go via Caddy)
 #   8189/udp          — MediaMTX WebRTC/WHEP ICE (HQ-stream playback media plane)
 # Internal-only (NOT exposed): 5432 (pg), 6379 (redis), 7880 (livekit ws),
@@ -436,7 +438,7 @@ RUN groupadd -g 10001 pulse \
 #   8888 (mediamtx hls — listening, but NO Caddy route and not published:
 #         unreachable from outside; see the note in 08-init-mediamtx.sh),
 #   9000 (garage S3 API, proxied via Caddy /pulse-attachments/*), 9997 (mediamtx api).
-EXPOSE 80 443 8080 1936 3478 3478/udp 7882-7892/udp 8189/udp
+EXPOSE 80 443 8080 1936 3478 3478/udp 7881 7882-7892/udp 8189/udp
 
 VOLUME ["/data"]
 

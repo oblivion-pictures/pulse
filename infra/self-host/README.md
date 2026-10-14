@@ -80,7 +80,7 @@ Updates verwaltet der Compose-Pfad bewusst selbst — kein Auto-Updater-Containe
 docker run -d --name pulse --restart unless-stopped \
     -v pulse-data:/data \
     -p 443:443 -p 80:80 \
-    -p 7882-7892:7882-7892/udp \
+    -p 7882-7892:7882-7892/udp -p 7881:7881/tcp \
     -p 3478:3478 -p 3478:3478/udp \
     -p 49160-49200:49160-49200/udp \
     -p 1936:1936 -p 8189:8189/udp \

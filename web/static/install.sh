@@ -138,6 +138,7 @@ check_ports() {
     hostproxy)  port_busy "$HTTP_PORT" && belegt="${belegt} ${HTTP_PORT}/tcp" ;;
   esac
   port_busy 3478 && belegt="${belegt} 3478/tcp"
+  port_busy 7881 && belegt="${belegt} 7881/tcp"
   port_busy 1936 && belegt="${belegt} 1936/tcp"
   udp_port_busy 3478 && belegt="${belegt} 3478/udp"
   udp_port_busy 8189 && belegt="${belegt} 8189/udp"
@@ -743,9 +744,12 @@ build_run_args() {
   RUN_ARGS=( -d --name "$CONTAINER" --restart unless-stopped
              --env-file "$ENV_FILE" -v "${VOLUME}:/data" )
   # Voice/HQ-Ports immer (Mirror infra/self-host/docker-compose.yml):
-  # LiveKit-WebRTC, TURN, RTMPS-Ingest + MediaMTX-WHEP-ICE (8189/udp —
-  # ohne den kommt die HQ-Stream-Wiedergabe nicht über den ICE-Handshake).
-  RUN_ARGS+=( -p 7882-7892:7882-7892/udp -p 3478:3478/tcp -p 3478:3478/udp
+  # LiveKit-WebRTC (UDP und der TCP-Rückfall 7881 für Netze, die UDP
+  # sperren — seit 2026-10-14, wie die Cloud), TURN, RTMPS-Ingest +
+  # MediaMTX-WHEP-ICE (8189/udp — ohne den kommt die HQ-Stream-Wiedergabe
+  # nicht über den ICE-Handshake).
+  RUN_ARGS+=( -p 7882-7892:7882-7892/udp -p 7881:7881/tcp
+              -p 3478:3478/tcp -p 3478:3478/udp
               -p 1936:1936/tcp -p 8189:8189/udp )
 
   case "$MODE" in
