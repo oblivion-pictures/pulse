@@ -26,6 +26,7 @@ import { gatewayPool } from '$lib/ws/gateway-pool.svelte';
 import { serversStore } from './servers.svelte';
 import { sessionTokens } from './session_tokens.svelte';
 import { holeTicket, loeseTicketEin, TicketFehler } from './server-ticket';
+import { DirectUnavailableError } from '$lib/direct/transport';
 import { instancesApi } from './instances';
 import type { ServerEntry } from './servers.svelte';
 import { merkeGrund, vergissGrund } from './anmelde-fehler';
@@ -111,6 +112,12 @@ async function ueberTicket(serverId: string, server: ServerEntry): Promise<strin
       if (err.code === 'instance banned' && server.instance_id) {
         void instancesApi.leaveInstanceMembership(server.instance_id).catch(() => undefined);
       }
+    } else if (err instanceof DirectUnavailableError) {
+      // Keine Ablehnung, sondern ein App-Host, der gerade nicht erreichbar ist.
+      // Den Grund zeigt die Oberfläche schon über directStatus; ein alter
+      // Ablehnungsgrund darf dieser Störung nicht vorgehalten werden.
+      vergissGrund(serverId);
+      console.info(`[self-host-reauth] ${serverId}: Direktweg ${err.reason}`);
     } else {
       console.warn(`[self-host-reauth] ${serverId}: unexpected`, err);
     }

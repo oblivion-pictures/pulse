@@ -24,7 +24,11 @@ import { request } from './client';
 import { renewSession } from './cookie-client';
 import { istAblehnungscode } from './anmelde-fehler-codes';
 import { melde } from '$lib/diagnose/app-diagnose';
-import { transportFetch, type DirectTransportServer } from '$lib/direct/transport';
+import {
+  DirectUnavailableError,
+  transportFetch,
+  type DirectTransportServer,
+} from '$lib/direct/transport';
 import type { Ablehnungscode } from './anmelde-fehler-codes';
 
 /**
@@ -117,7 +121,14 @@ export async function loeseTicketEin(
         ...(zugang.publicJoinHandle ? { public_join_handle: zugang.publicJoinHandle } : {}),
       }),
     });
-  } catch {
+  } catch (err) {
+    // Die Weiche eines App-Hosts hat den Grund schon benannt (offline, keine
+    // Direktverbindung, Identität geändert) — und die Anfrage ist nie
+    // losgegangen. Als 'network' umetikettiert stand im Diagnose-Gedächtnis
+    // „POST /api/chat/session nicht erreichbar" für eine Server-App, die
+    // schlicht aus war (2026-10-14), und der Nutzer las „prüfe deine
+    // Verbindung" statt „Server ist offline".
+    if (err instanceof DirectUnavailableError) throw err;
     // Ein Netzfehler ist ein eigener Grund und kein „ungültiges Ticket". Die
     // Vermischung der beiden war der Kern der alten Sammelmeldung.
     // Genau DIESER Fehler war der 2026-09-21-Fall (Community anlegen → „nicht
