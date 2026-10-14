@@ -623,6 +623,9 @@ export class ManagedHqStream {
         slot: this.slot,
         zehnBit: this.tenBit,
       });
+      // Welche Adressen der Server anbietet — trennt „falscher Kandidat“ von
+      // „Port gesperrt“, wenn ICE nie zustande kommt (`sdpKandidaten.ts`).
+      this.#diagnose.ereignis('server_kandidaten', { liste: s.angeboteneKandidaten });
       this.#statsTimer = setInterval(async () => {
         const cur = this.#session;
         if (!cur) return;

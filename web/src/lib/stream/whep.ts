@@ -22,6 +22,8 @@
  * auth-hook, which rejects anonymous reads.
  */
 
+import { kandidatenAusSdp } from './sdpKandidaten';
+
 /** Public STUN — MediaMTX with host networking usually doesn't need it, but
  *  it's harmless and helps when the viewer is behind NAT. Mirrors player.html. */
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -111,6 +113,10 @@ export interface WhepSession {
   resourceUrl: string | null;
   /** Tear down: close the peer connection + best-effort DELETE the resource. */
   close(): Promise<void>;
+  /** ICE-Kandidaten, die der SERVER in seiner Antwort anbietet (Kurzform aus
+   *  `sdpKandidaten.ts`; `keine` bis die Antwort da ist) — für den
+   *  Zuschauer-Bericht, s. dort. */
+  readonly angeboteneKandidaten: string;
 }
 
 async function waitForIceGathering(pc: RTCPeerConnection): Promise<void> {
@@ -193,10 +199,14 @@ export async function connectWhep(
   };
 
   let resourceUrl: string | null = null;
+  let angeboteneKandidaten = 'keine';
   const session: WhepSession = {
     pc,
     get resourceUrl() {
       return resourceUrl;
+    },
+    get angeboteneKandidaten() {
+      return angeboteneKandidaten;
     },
     async close() {
       try {
@@ -249,6 +259,7 @@ export async function connectWhep(
     if (!answer.includes('v=')) {
       throw new WhepError('WHEP answer was not valid SDP');
     }
+    angeboteneKandidaten = kandidatenAusSdp(answer);
     await pc.setRemoteDescription({ type: 'answer', sdp: answer });
     // ERST hier setzen, nicht beim addTransceiver: vor der Antwort trägt der
     // Receiver noch keinen ausgehandelten Codec, und Chromium verwirft den
