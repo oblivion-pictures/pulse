@@ -90,6 +90,27 @@ export function zeitBereiche(vor?: string): ZeitBereich[] {
   return aus;
 }
 
+/** Der `before`-Anker für `listMessages` zu „vor `vor`“, oder `null`, wenn
+ *  beim Server nichts davor liegen kann (Gegenprüfung 2026-10-14, W1).
+ *
+ *  **Der Server braucht eine Snowflake.** Er vergleicht `before` als Zahl
+ *  (`routes/messages.py`: `Message.id < before`, höchstens 2^63−1). Die
+ *  älteste angezeigte Nachricht ist aber oft eine eigene verschlüsselte mit
+ *  lokaler ID: 19 Stellen liegen numerisch über jeder Snowflake (der Server
+ *  lieferte die NEUESTE Seite des Kanals statt der älteren), 20 Stellen
+ *  liegen über 2^63−1 (422, das Hochscrollen brach mit Ladefehler ab), `tmp-`
+ *  ist keine Zahl. Die Grenze kommt deshalb aus derselben Rechnung wie die
+ *  lokale Seite: die obere Grenze des Snowflake-Bereichs für „vor `vor`“ in
+ *  der Zeit. Für eine Snowflake ist das `vor` selbst, für alles andere die
+ *  erste Snowflake ab der Millisekunde danach (gleiche Millisekunde sortiert
+ *  der Vergleich vor die lokale ID). Lokale und Serverseite meinen damit
+ *  dasselbe Fenster. */
+export function serverAnker(vor: string): string | null {
+  const grenze = obereGrenze(BEREICHE[0], vor);
+  if (grenze === null) return null;
+  return String(grenze.offen ? grenze.wert : grenze.wert + 1n);
+}
+
 /** Mischt die Treffer der Bereiche: die `anzahl` neuesten nach der Zeit,
  *  älteste zuerst — die Reihenfolge, die `MessageStore` erwartet. */
 export function neuesteNachZeit<S extends { nachrichtId: string }>(

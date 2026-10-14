@@ -54,6 +54,7 @@ import {
 import { betrifftLuecke, lueckeNachServerantwortAktualisieren } from './luecke';
 import { ermittleGeloeschteIds } from './abgleich';
 import { ohneFrischeGrabsteine } from './ohneFrischeGrabsteine';
+import { serverAnker } from './zeitSeite';
 import { messages } from '$lib/stores/messages.svelte';
 import { directMessages } from '$lib/stores/directMessages.svelte';
 import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
@@ -158,9 +159,12 @@ export async function ladeAeltereSeite(
   // gaebe hier eine Abweisung, die als Ladefehler aussaehe.
   if (!hatServerVerlauf(channelId)) return { nachrichten: [], vomServer: false, sicherungLieferte };
 
+  // Der Server versteht nur eine Snowflake als Anker (s. `serverAnker`).
+  const before = serverAnker(oldest);
+  if (before === null) return { nachrichten: [], vomServer: true, sicherungLieferte };
   const vomServer = await chatApi.listMessages(
     channelId,
-    { before: oldest, limit: seitenGroesse },
+    { before, limit: seitenGroesse },
     route
   );
   void verlaufSpeichern(channelId, vomServer);
@@ -182,10 +186,12 @@ async function reconciliereAeltereSeite(
   lokal: { id: string }[],
   route: { serverId?: string } | undefined
 ): Promise<void> {
+  const before = serverAnker(oldest);
+  if (before === null) return;
   try {
     const vomServer = await chatApi.listMessages(
       channelId,
-      { before: oldest, limit: seitenGroesse },
+      { before, limit: seitenGroesse },
       route
     );
     // Inhalt/Bearbeitungszeit: put ist ein Upsert (s. `db.ts`), ueberschreibt
@@ -197,9 +203,11 @@ async function reconciliereAeltereSeite(
       .map((n) => n.id);
     void verlaufSpeichern(channelId, ohneFrischeGrabsteine(vomServer, frischGeloeschteIds));
     messages.reconcile(channelId, vomServer);
-    for (const id of ermittleGeloeschteIds(lokal, vomServer)) {
-      // `ermittleGeloeschteIds` nimmt Verschlüsseltes schon aus
-      // (`abgleich.ts`); `nurKlartext` hält das auch im Verlauf fest.
+    const fenster = { before, limit: seitenGroesse };
+    for (const id of ermittleGeloeschteIds(lokal, vomServer, fenster)) {
+      // `ermittleGeloeschteIds` nimmt Verschlüsseltes und alles außerhalb
+      // des abgedeckten Fensters schon aus (`abgleich.ts`); `nurKlartext`
+      // hält das auch im Verlauf fest.
       verlaufNachrichtGeloescht(channelId, id, { nurKlartext: true });
       messages.remove(channelId, id);
     }
