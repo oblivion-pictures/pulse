@@ -5,14 +5,14 @@ the organisation (October 2026) it is published to
 `ghcr.io/oblivion-pictures/pulse-mediamtx:<tag>` and copied into the self-host
 image (`infra/self-host/Dockerfile`). `streaming/server/docker-compose.yml`
 (dev), `infra/dev-remote/docker-compose.yml` and `infra/prod/docker-compose.yml`
-(prod) still pin the copy built before the move under
-`ghcr.io/oblivion8282-1337/pulse-mediamtx`. At the next new tag — even a mere
-`PULSE_REVISION` bump — namespace and tag change together in all three files
-(order rules in the Dockerfile header).
+(prod) pinned the copy built before the move under
+`ghcr.io/oblivion8282-1337/pulse-mediamtx` up to `1.19.1-pulse7`; with
+`1.19.1-pulse8` namespace and tag change together in all three files, once
+the workflow has built it (order rules in the Dockerfile header).
 
 ## What it does
 
-**Seven patches, in two groups.** The Dockerfile header carries the full
+**Eight patches, in two groups.** The Dockerfile header carries the full
 rationale for each; this is the map.
 
 `patches/` — applied to the MediaMTX source right after clone:
@@ -25,6 +25,7 @@ rationale for each; this is the map.
 | `0004-flexfec-adaptiv` | drives that parity off the incoming NACK instead of paying it unconditionally (`PULSE_FLEXFEC_ADAPTIV=1`). |
 | `0006-bildmarke-durchreichen` | carries the AV1 Dependency Descriptor (a running frame number) across MediaMTX's re-packetisation, so a viewer can tell a *lost* frame from one the sender never produced (`PULSE_DEPENDENCY_DESCRIPTOR=1`). |
 | `0007-vollbild-nach-verwurf` | asks the publisher for a key frame the moment MediaMTX's own RTP decoder discards a video frame (`PULSE_KEYFRAME_ON_DISCARD=1`) — nobody else can see that loss, the outgoing packets are re-numbered — and makes the inbound reorder buffer for video tracks configurable (`PULSE_VIDEO_REORDER_BUFFER`, packets, power of two), because the 64-packet default expires just before the first NACK repair arrives. |
+| `0008-ton-umordnung-klein` | makes the inbound reorder buffer for audio tracks configurable too, in the other direction (`PULSE_AUDIO_REORDER_BUFFER`, packets, power of two up to 64). Opus has no NACK on our senders, so a lost audio packet never comes back — and the 64-packet default holds every packet after it: 640 ms of silence, then a burst, at 10 ms per packet (computed; dropouts of 560-650 ms measured on 2026-10-14). Intended value: `4`, set where `PULSE_VIDEO_REORDER_BUFFER` is set. |
 
 `patches-vendor/` — applied to vendored third-party code, after `go mod vendor`:
 
@@ -32,7 +33,7 @@ rationale for each; this is the map.
 |---|---|
 | `0005-flexfec-nachlieferungen-nicht-puffern` | keeps NACK retransmissions out of pion's parity buffer; a single one otherwise left the whole group unprotected. |
 
-**Every one of 0002-0007 is off unless its environment variable is set.** An
+**Every one of 0002-0008 is off unless its environment variable is set.** An
 un-configured deployment behaves exactly like upstream plus 0001.
 
 > **Dieser Abschnitt beschrieb den Fork bis 2026-08-04 als „minimal" mit genau
@@ -50,7 +51,7 @@ wendet **jeden** Patch in `patches/` an, und der Workflow baut daraus das Image,
 das Produktion pinnt.
 
 **Seit 2026-08-04 steht der Patch-Stand im Tag** (`PULSE_REVISION` im
-Dockerfile → aktuell `1.19.1-pulse7`). Hier stand vorher, ein Patch lande „in Produktion
+Dockerfile → aktuell `1.19.1-pulse8`). Hier stand vorher, ein Patch lande „in Produktion
 — ohne Versionswechsel und ohne dass man es am Tag ablesen könnte". Genau das
 ist jetzt behoben: wer den Satz ändert, ändert den Tag mit, das alte Image
 bleibt in der Registry stehen, und ein Rückweg ist eine Zeile in der
@@ -73,7 +74,7 @@ Testserver von Hand versorgt wird.
 `.github/workflows/mediamtx-fork.yml` rebuilds the image when anything under
 `infra/mediamtx-fork/` changes on `main`. It pushes two tags to GHCR:
 
-- `ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse7` — version pin (MediaMTX-Fassung + unser Patch-Stand, s. `PULSE_REVISION` im Dockerfile)
+- `ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse8` — version pin (MediaMTX-Fassung + unser Patch-Stand, s. `PULSE_REVISION` im Dockerfile)
 - `ghcr.io/oblivion-pictures/pulse-mediamtx:latest`        — rolling
 
 Both compose files reference the version-pinned tag. The image sets no labels
@@ -106,7 +107,7 @@ cd infra/mediamtx-fork
 # Edit Dockerfile: MEDIAMTX_VERSION=<new>
 # Verify the patch still applies cleanly against the new tag:
 git clone --depth=1 -b v<new> https://github.com/bluenviron/mediamtx.git /tmp/mediamtx-check
-# EVERY patch, not just 0001 — there are six here plus one vendored.
+# EVERY patch, not just 0001 — there are seven here plus one vendored.
 ( cd /tmp/mediamtx-check && for p in ../patches/*.patch; do patch -p1 --dry-run < "$p"; done )
 # If one fails to apply, rebase that patch against the new line numbers.
 #

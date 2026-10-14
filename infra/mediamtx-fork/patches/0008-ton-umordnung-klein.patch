@@ -1,0 +1,244 @@
+# Kleines Umordnungsfenster fuer Tonspuren — ein verlorenes Opus-Paket haelt
+# sonst bis zu 640 ms Ton fest.
+#
+# Gefunden am 2026-10-14 an einem Self-Host (Windows-Sender, nativer Player,
+# Fernsteuerung): der Ton fiel immer wieder aus und lief danach dem Bild
+# hinterher (so vom Nutzer berichtet).
+#
+#   * Gemessen (Player-Log): Ton-Stillstand von 560-650 ms, danach ein
+#     Schwall, Hunderte Unterlaeufe je Minute, danach ein Ton-Versatz von
+#     +200 bis +1300 ms. Dass der Versatz aus den Schwaellen folgt, ist
+#     gefolgert, nicht getrennt gemessen.
+#   * Aus dem Code gefolgert, die Zahlen passen dazu: unsere Sender melden fuer
+#     Opus kein NACK an (`streaming/pulse-whip/src/sdp.rs` im Pulse-Repo), ein
+#     verlorenes Tonpaket kommt also nie nach. gortsplibs Umordnungspuffer am
+#     Eingang (`pkg/rtpreceiver`, v5.6.0) haelt trotzdem jedes spaetere Paket
+#     zurueck, bis die Luecke einen ganzen Puffer zurueckliegt, und gibt dann
+#     alles auf einmal heraus. 64 Pakete zu 10 ms (Windows/Linux, eigener
+#     Sendeweg) = 640 ms, zu 20 ms (macOS) = 1,3 s.
+#
+# Was der Patch tut (AUS, bis die Variable gesetzt ist):
+#
+#   PULSE_AUDIO_REORDER_BUFFER=4    Umordnungspuffer fuer Tonspuren, Pakete,
+#                                   Zweierpotenz zwischen 2 und 64. 4 haelt
+#                                   einen echten Verlust 40 ms fest (unter
+#                                   dem Soll-Fuellstand des Players von 60 ms;
+#                                   macOS mit 20-ms-Paketen 80 ms) und stellt
+#                                   eine Vertauschung um bis zu drei Plaetze
+#                                   noch richtig. Preis und Randfall (Reset
+#                                   nach fuenf verspaeteten Paketen) im
+#                                   Kommentar am Code. Bekommt Opus einmal
+#                                   NACK, gehoert der Wert neu bedacht: die
+#                                   erste Nachlieferung braucht ~160 ms.
+#
+# Gerechnet und an gortsplib getestet (`TestPulseAudioLossHold`), an einer
+# echten Leitung noch nicht nachgemessen.
+#
+# Dazu waehlt `pulseReorderBuffer` das Fenster je Spurart; der Bild-Schalter
+# aus 0007 bleibt unveraendert.
+#
+# Geht gegen den Stand NACH 0001-0007. Nachrechnen wie bei den anderen:
+#   git clone --depth=1 -b v1.19.1 https://github.com/bluenviron/mediamtx.git
+#   for p in 0001 0002 0003 0004 0006 0007 0008; do patch -p1 < $p-*.patch; done
+#
+diff --git a/internal/protocols/webrtc/inbound_track.go b/internal/protocols/webrtc/inbound_track.go
+index 6ee7eb8..63c0f63 100644
+--- a/internal/protocols/webrtc/inbound_track.go
++++ b/internal/protocols/webrtc/inbound_track.go
+@@ -103,6 +103,68 @@ func pulseVideoReorderBuffer() int {
+ 	return n
+ }
+ 
++// pulseAudioReorderBuffer returns the size of the inbound reorder buffer for
++// AUDIO tracks (Pulse, `PULSE_AUDIO_REORDER_BUFFER`, patch 0008). Zero means
++// "leave the gortsplib default", which is 64 packets.
++//
++// Why the default hurts audio, found 2026-10-14 on a self-hosted server
++// (Windows sender, native player): the viewer's sound dropped out for
++// 560-650 ms at a time and came back as a burst, then stayed out of sync with
++// the picture. Measured in the player log; the cause below is read from the
++// code, and the numbers fit it. Our senders negotiate no NACK for Opus
++// (`streaming/pulse-whip/src/sdp.rs` in the Pulse repo), so a lost audio
++// packet never comes back. The reorder buffer does not know that: it holds
++// every later packet until the gap is a full buffer behind, then releases
++// them all at once. 64 packets of 10 ms (the Windows/Linux WHIP path) are a
++// 640 ms hold, 64 of 20 ms (macOS) 1.3 s — for a packet that cannot arrive.
++//
++// Without repairs, all the buffer can still do for audio is undo genuine
++// reordering. A 4-packet window still puts back a packet overtaken by up to
++// three others (30 ms on the WHIP path, 60 ms on macOS), and it holds a real
++// loss for 40 ms on the WHIP path — less than the native player's target
++// fill of 60 ms (`RING_SOLL_MS`) — instead of ten times that. On macOS it is
++// 80 ms, above the target but an eighth of the 1.3 s before. Computed from
++// the code, not yet measured on a real line.
++//
++// The price of a small window, read from gortsplib: a packet later than the
++// window is dropped as lost instead of being put back, and once more packets
++// in a row than the window holds arrive behind the expected one, the
++// receiver takes that for a stream reset and flushes — with 4, five such
++// packets suffice (64 with the default). That needs a sustained path change
++// of 50 ms or more; it costs one out-of-order packet and an overstated loss
++// count, not a stall.
++//
++// If Opus ever gets NACK, revisit this: the first repair lands after
++// ~160 ms (see pulseVideoReorderBuffer), well past a 4-packet window.
++//
++// Must be a power of two (gortsplib masks with size-1) between 2 and 64;
++// anything else is ignored. Larger than the default makes no sense here —
++// that only lengthens the hold this switch exists to shorten.
++func pulseAudioReorderBuffer() int {
++	v, ok := os.LookupEnv("PULSE_AUDIO_REORDER_BUFFER")
++	if !ok || v == "" {
++		return 0
++	}
++	n, err := strconv.Atoi(v)
++	if err != nil || n < 2 || n > 64 || n&(n-1) != 0 {
++		return 0
++	}
++	return n
++}
++
++// pulseReorderBuffer picks the reorder buffer for a track (0 = gortsplib
++// default): video and audio have opposite needs, see the two functions above.
++func pulseReorderBuffer(kind webrtc.RTPCodecType) int {
++	switch kind {
++	case webrtc.RTPCodecTypeVideo:
++		return pulseVideoReorderBuffer()
++	case webrtc.RTPCodecTypeAudio:
++		return pulseAudioReorderBuffer()
++	default:
++		return 0
++	}
++}
++
+ func inboundTrackTWCCExtensionID(params webrtc.RTPParameters) uint8 {
+ 	for _, ext := range params.HeaderExtensions {
+ 		if ext.URI == twccExtensionURI {
+@@ -450,8 +512,9 @@ func (t *InboundTrack) start() {
+ 			t.writeRTCP([]rtcp.Packet{p}) //nolint:errcheck
+ 		},
+ 	}
+-	// Pulse: give NACK repairs on video a real deadline (see pulseVideoReorderBuffer).
+-	if n := pulseVideoReorderBuffer(); n != 0 && t.track.Kind() == webrtc.RTPCodecTypeVideo {
++	// Pulse: give NACK repairs on video a real deadline, and keep a lost audio
++	// packet from holding up the sound (see pulseReorderBuffer).
++	if n := pulseReorderBuffer(t.track.Kind()); n != 0 {
+ 		t.rtpReceiver.BufferSize = n
+ 	}
+ 	err := t.rtpReceiver.Initialize()
+diff --git a/internal/protocols/webrtc/inbound_track_pulse_audio_test.go b/internal/protocols/webrtc/inbound_track_pulse_audio_test.go
+new file mode 100644
+index 0000000..3d447c3
+--- /dev/null
++++ b/internal/protocols/webrtc/inbound_track_pulse_audio_test.go
+@@ -0,0 +1,110 @@
++package webrtc
++
++import (
++	"testing"
++	"time"
++
++	"github.com/bluenviron/gortsplib/v5/pkg/rtpreceiver"
++	"github.com/pion/rtcp"
++	"github.com/pion/rtp"
++	"github.com/pion/webrtc/v4"
++	"github.com/stretchr/testify/require"
++)
++
++// Pulse, patch 0008: the audio switch accepts only a power of two between 2
++// and the gortsplib default, and otherwise leaves the default alone.
++func TestPulseAudioReorderBuffer(t *testing.T) {
++	for _, ca := range []struct {
++		env  string
++		want int
++	}{
++		{"", 0},
++		{"2", 2},
++		{"4", 4},
++		{"64", 64},
++		{"1", 0},   // below the floor
++		{"6", 0},   // not a power of two
++		{"128", 0}, // longer than the default: the opposite of the point
++		{"abc", 0},
++	} {
++		t.Run(ca.env, func(t *testing.T) {
++			t.Setenv("PULSE_AUDIO_REORDER_BUFFER", ca.env)
++			require.Equal(t, ca.want, pulseAudioReorderBuffer())
++		})
++	}
++}
++
++// Each kind reads its own switch — the video window must never reach audio,
++// and the other way round.
++func TestPulseReorderBufferPerKind(t *testing.T) {
++	t.Setenv("PULSE_VIDEO_REORDER_BUFFER", "128")
++	t.Setenv("PULSE_AUDIO_REORDER_BUFFER", "4")
++	require.Equal(t, 128, pulseReorderBuffer(webrtc.RTPCodecTypeVideo))
++	require.Equal(t, 4, pulseReorderBuffer(webrtc.RTPCodecTypeAudio))
++	require.Equal(t, 0, pulseReorderBuffer(webrtc.RTPCodecType(0)))
++}
++
++// newAudioReceiver builds a gortsplib receiver the way InboundTrack does for
++// an Opus track, with the reorder buffer at the given size.
++func newAudioReceiver(t *testing.T, size int) *rtpreceiver.Receiver {
++	t.Helper()
++	rr := &rtpreceiver.Receiver{
++		ClockRate:            48000,
++		UnrealiableTransport: true,
++		BufferSize:           size,
++		Period:               time.Hour,
++		WritePacketRTCP:      func(rtcp.Packet) {},
++	}
++	require.NoError(t, rr.Initialize())
++	t.Cleanup(rr.Close)
++	return rr
++}
++
++// heldAfterLoss feeds a gortsplib receiver of the given size one packet, then
++// loses the next for good (no NACK on Opus), and counts how many later packets
++// it holds back before releasing anything. That count times the packet length
++// is the silence the viewer hears.
++func heldAfterLoss(t *testing.T, size int) int {
++	t.Helper()
++	rr := newAudioReceiver(t, size)
++
++	pkt := func(seq uint16) *rtp.Packet {
++		return &rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: seq, Timestamp: uint32(seq) * 480}}
++	}
++	out, _ := rr.ProcessPacket2(pkt(100), time.Now(), true)
++	require.Len(t, out, 1)
++
++	// 101 never arrives.
++	for seq := uint16(102); ; seq++ {
++		out, lost := rr.ProcessPacket2(pkt(seq), time.Now(), true)
++		if len(out) != 0 {
++			require.Equal(t, uint64(1), lost, "exactly the one packet is reported lost")
++			require.Len(t, out, int(seq-101), "everything held comes out in one burst")
++			return int(seq - 101)
++		}
++		require.Less(t, int(seq), 100+2*size, "the buffer never released")
++	}
++}
++
++// The mechanism the patch relies on, pinned against the vendored gortsplib:
++// the hold after a loss is the buffer size in packets. 64 × 10 ms is the
++// 640 ms dropout measured on 2026-10-14; 4 × 10 ms fits the player's ring.
++func TestPulseAudioLossHold(t *testing.T) {
++	require.Equal(t, 64, heldAfterLoss(t, 64))
++	require.Equal(t, 4, heldAfterLoss(t, 4))
++}
++
++// The small window still undoes a genuine swap.
++func TestPulseAudioReorderStillWorks(t *testing.T) {
++	rr := newAudioReceiver(t, 4)
++
++	var got []uint16
++	for _, seq := range []uint16{1, 3, 4, 2, 5} {
++		out, lost := rr.ProcessPacket2(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: seq}}, time.Now(), true)
++		require.Zero(t, lost)
++		for _, p := range out {
++			got = append(got, p.SequenceNumber)
++		}
++	}
++	require.Equal(t, []uint16{1, 2, 3, 4, 5}, got)
++}

@@ -13,9 +13,9 @@
 #   ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse7  ← copied by infra/self-host/Dockerfile
 #   ghcr.io/oblivion-pictures/pulse-mediamtx:latest        ← rolling, unused
 # (Seit dem Umzug in die Organisation, Oktober 2026. Die drei Compose-Dateien
-# pinnen noch das vorher gebaute Bild unter ghcr.io/oblivion8282-1337/; beim
-# nächsten neuen Tag wechseln Namensraum und Tag dort zugleich — Reihenfolge
-# im Kopf von infra/mediamtx-fork/Dockerfile.)
+# pinnten bis 1.19.1-pulse7 das vorher gebaute Bild unter
+# ghcr.io/oblivion8282-1337/; mit 1.19.1-pulse8 wechseln Namensraum und Tag
+# dort zugleich — Reihenfolge im Kopf von infra/mediamtx-fork/Dockerfile.)
 #
 # Build time: ~3 min cold, ~30 s with the gha cache warm.
 #
