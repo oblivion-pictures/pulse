@@ -1620,8 +1620,8 @@ function wireSidecar(): void {
   // Zug, noch bevor der erste `call()` etwas senden kann.
   onSidecarCreated((manager, slot) => {
     manager.onEvent((ev) => {
-      // Bei Stream-Ende die sidecar.log hochladen (no-op, wenn „Diagnoseberichte
-      // senden" abgewählt ist — prüft den Store selbst).
+      // Bei Stream-Ende oder -Fehler die sidecar.log hochladen (no-op, wenn
+      // „Diagnoseberichte senden" abgewählt ist — prüft den Store selbst).
       onSidecarEventForUpload(ev, slot);
       sendToMainWindow('sidecar:event', { ...ev, slot });
     });

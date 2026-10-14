@@ -1,7 +1,7 @@
 /**
  * Diagnose-Log-Upload des Sidecars.
  *
- * Lädt bei Stream-Ende (und bei einem Stream-Fehler) die `sidecar.log` +
+ * Lädt bei Stream-Ende und nach einem Stream-Fehler die `sidecar.log` +
  * etwas Systeminfo an den Server hoch. Schalter: `uploadDiagnosticLogs`,
  * Tab „Experimental".
  *
@@ -37,6 +37,7 @@ import { join } from 'node:path';
 
 import { app } from 'electron';
 
+import { createUploadAusloeser, type UploadGrund } from './diagnose-ausloeser';
 import { getSidecar } from './sidecar';
 import { logSidecar } from './sidecar-log';
 import { storeGet, storeSet } from './store';
@@ -102,9 +103,6 @@ function liesSchwanz(path: string, bytes: number): string {
  */
 const SIDECAR_FELDER = ['vendor', 'display_server', 'video_codecs', 'ten_bit', 'hdr'];
 
-/** Pro Slot: kam seit dem letzten Start ein `error`-Event? → bestimmt `reason`. */
-const sawError = new Set<number>();
-
 /**
  * Bestandsinstallationen auf den neuen Standard heben. Einmal beim Start
  * aufrufen.
@@ -154,28 +152,27 @@ export function diagnoseEingeschaltet(): boolean {
 }
 
 /**
- * Im `sidecar:event`-Handler aufrufen. Sammelt `error`-Zustand und triggert beim
- * `stopped`-Event den Upload — no-op, wenn ausdrücklich abgewählt.
+ * Im `sidecar:event`-Handler aufrufen. Lädt bei `stopped` hoch und nach einem
+ * `error` auch dann, wenn kein `stopped` mehr folgt — wann genau, steht in
+ * `diagnose-ausloeser.ts`. No-op, wenn ausdrücklich abgewählt; der Schalter
+ * wird erst beim Senden gelesen.
  */
-export function onSidecarEventForUpload(ev: { ev?: string }, slot: number): void {
-  if (ev.ev === 'error') {
-    sawError.add(slot);
-    return;
-  }
-  if (ev.ev !== 'stopped') return;
-
-  const reason = sawError.has(slot) ? 'error' : 'stream_end';
-  sawError.delete(slot);
-
-  if (!diagnoseEingeschaltet()) return;
-
-  void uploadExperimentalLog(reason, slot).catch((e) => {
-    logSidecar(
-      'lifecycle',
-      `experimental log upload failed: ${e instanceof Error ? e.message : String(e)}`,
-    );
-  });
-}
+export const onSidecarEventForUpload = createUploadAusloeser(
+  (reason: UploadGrund, slot: number) => {
+    if (!diagnoseEingeschaltet()) return;
+    void uploadExperimentalLog(reason, slot).catch((e) => {
+      logSidecar(
+        'lifecycle',
+        `experimental log upload failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    });
+  },
+  (fn, ms) => {
+    const t = setTimeout(fn, ms);
+    return () => clearTimeout(t);
+  },
+  () => performance.now(),
+);
 
 /**
  * Fragt beim Sidecar ab, was der Bericht über die Aufnahme-Seite braucht:
@@ -226,6 +223,11 @@ async function sidecarAngaben(
   } catch {
     // still: siehe Funktionskommentar
   }
+
+  // Noch einmal prüfen: seit dem Fehlerbericht (`diagnose-ausloeser.ts`)
+  // wird bis zu 2 s nach einem `error` gefragt, und der Sidecar kann gerade
+  // während `health` enden — `call` spawnte dann einen neuen.
+  if (!sidecar.istGestartet()) return { version, gpu };
 
   try {
     const info = (await sidecar.call('gpu_info')) as Record<string, unknown>;

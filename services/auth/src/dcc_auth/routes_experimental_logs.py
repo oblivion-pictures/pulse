@@ -2,9 +2,8 @@
 
 POST /experimental-logs — öffentlich, rate-limited (30/Stunde pro IP).
 
-Die Desktop-App ruft das auf, wenn der Sidecar `stopped` meldet (Grund
-`error`, wenn vorher ein Fehler kam — ein Fehler ohne nachfolgendes `stopped`
-lädt nichts hoch, siehe `onSidecarEventForUpload`), solange der
+Die Desktop-App ruft das bei Stream-Ende und nach einem Stream-Fehler auf
+(Regel in `desktop/electron/diagnose-ausloeser.ts`), solange der
 Schalter „Diagnoseberichte senden" (Reiter „Experimental") an ist. Seit
 2026-08-06 ist er standardmäßig an und lässt sich dort abwählen (Begründung in
 `desktop/electron/experimental-log-upload.ts`); vorher war er aus. Speichert

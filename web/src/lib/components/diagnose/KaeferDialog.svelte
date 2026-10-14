@@ -64,7 +64,7 @@
    *  Klick — Sendungen dieses Rechners (Zustand/FPS/Laufzeit/Fehler) und die
    *  offenen Zuschau-Kacheln mit ihren Live-Zahlen. Schließt die Lücke, dass
    *  der Käfer die Streaming-Welt nicht sah (die automatischen Berichte des
-   *  Experimental-Schalters gehen nur bei Stream-ENDE, nicht auf Klick).
+   *  Experimental-Schalters gehen nur bei Stream-Ende/-Fehler, nicht auf Klick).
    *  Alles schon Erhobene — kein neuer Sammel-Motor. */
   function streamKontext(): Record<string, unknown> {
     const sendungen = runningStreamSlots().map((slot) => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Holt die vom Desktop-Client hochgeladenen Sidecar-Diagnose-Logs von der Cloud.
 #
-# Wozu: Die Desktop-App (Linux, Windows, macOS) lädt bei Stream-Ende den
+# Wozu: Die Desktop-App (Linux, Windows, macOS) lädt bei Stream-Ende/-Fehler den
 # Schwanz der `sidecar.log` hoch — solange der Nutzer im Reiter „Experimental"
 # „Diagnoseberichte senden" nicht abgewählt hat (`uploadDiagnosticLogs`, seit
 # 2026-08-06 Vorgabe an).
