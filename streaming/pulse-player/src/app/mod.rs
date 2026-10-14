@@ -1144,18 +1144,23 @@ impl App {
         // was man hoert: der Geraete-Rueckruf fand zu wenig im Ring und hat mit
         // Stille aufgefuellt. Steigen stattdessen die verworfenen Samples,
         // liegt es am anderen Ende — es kommt mehr an, als ausgegeben wird.
+        // Ausnahme „davon verspaetet": das ist Ton, der nach einem Unterlauf
+        // fuer die schon gespielte Stille kam (`audio::nachzuegler`) — er
+        // steigt zusammen mit den Unterlaeufen.
         let media = &st.media;
         if media.audio_active || media.audio_underruns > 0 {
             // `concat!` wie oben, nicht `\` am Zeilenende — aus demselben Grund.
             eprintln!(
                 concat!(
-                    "pulse-player: Sitzung {}: Ton — Unterlaeufe {}, verworfen {}, ",
+                    "pulse-player: Sitzung {}: Ton — Unterlaeufe {}, verworfen {} ",
+                    "(davon verspaetet {}), ",
                     "Puffer {} Samples, Uhrenabgleich {:+} ppm, Lippen {:+.0} ms ",
                     "(Eingriff {:+} ms){}"
                 ),
                 id,
                 media.audio_underruns,
                 media.audio_dropped,
+                media.audio_verspaetet,
                 media.audio_buffered,
                 media.audio_abgleich_ppm,
                 media.audio_lippen_ms,

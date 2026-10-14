@@ -156,6 +156,14 @@ impl Tonuhr {
         self.rtp as f64 + interleaved / f64::from(channels) * 48_000.0 / f64::from(sample_rate)
     }
 
+    /// Verlaengerte RTP-Marke eines NEUEN Pakets, vorzeichenbehaftet gegen die
+    /// zuletzt vermessene: ein aelteres Paket liegt davor, statt wie in der
+    /// Wrap-Rechnung von [`Self::paket`] einen Tag voraus. Fuer den Vergleich
+    /// mit [`Self::position`] in `super::nachzuegler`.
+    pub fn marke(&self, rtp_roh: u32) -> i64 {
+        self.rtp + i64::from(rtp_roh.wrapping_sub(self.roh) as i32)
+    }
+
     /// Lippenfehler in Millisekunden: positiv = der Ton klingt SPAETER, als
     /// seine RTP-Uhr sagt (= Ton haengt hinterher), negativ = er eilt.
     ///

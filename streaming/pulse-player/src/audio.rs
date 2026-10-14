@@ -24,6 +24,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 mod fuetterung;
 mod lippen;
+mod nachzuegler;
 mod opus;
 mod ringregelung;
 #[cfg(test)]
@@ -31,6 +32,7 @@ mod tests;
 mod uhrenabgleich;
 
 use fuetterung::pump_commands;
+use nachzuegler::Nachzuegler;
 #[cfg(test)]
 use opus::OpusDecoder;
 #[cfg(test)]
@@ -76,6 +78,8 @@ struct Shared {
     target_fill: usize,
     underruns: u64,
     dropped: u64,
+    /// Verspaeteten Ton nach einem Unterlauf verwerfen (s. [`nachzuegler`]).
+    nachzuegler: Nachzuegler,
     /// Notausgang fuer grobe Ausreisser (s. [`ringregelung`]). Die laufende
     /// Regelung macht der [`Uhrenabgleich`].
     regelung: Ringregelung,
@@ -245,8 +249,12 @@ pub struct AudioOutput {
 pub struct AudioCounters {
     /// Wie oft dem Ausgabegeraet Daten fehlten.
     pub underruns: u64,
-    /// Verworfene Samples (harte Ringgrenze und Rueckfuehrung zusammen).
+    /// Verworfene Samples (harte Ringgrenze, Rueckfuehrung und verspaeteter
+    /// Ton zusammen).
     pub dropped: u64,
+    /// Davon nach einem Unterlauf als verspaetet verworfen (s.
+    /// `audio::nachzuegler`).
+    pub verspaetet: u64,
     /// Aktueller Fuellstand des Rings in Samples.
     pub buffered: usize,
     /// Grobkappungen der Rueckfuehrung (s. `audio::ringregelung`).
@@ -331,6 +339,7 @@ impl AudioOutput {
             target_fill: RING_SOLL_MS * per_ms,
             underruns: 0,
             dropped: 0,
+            nachzuegler: Nachzuegler::default(),
             regelung: Ringregelung::default(),
             abgleich: Uhrenabgleich::default(),
             anlauf: true,
@@ -433,6 +442,7 @@ impl AudioOutput {
             .map(|s| AudioCounters {
                 underruns: s.underruns,
                 dropped: s.dropped,
+                verspaetet: s.nachzuegler.verworfen,
                 buffered: s.ring.len(),
                 resyncs: s.regelung.resyncs,
                 abgleich_ppm: s.abgleich.letzte_ppm,

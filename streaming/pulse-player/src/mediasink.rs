@@ -21,8 +21,12 @@ use crate::whep::Codec;
 pub struct MediaStats {
     /// Wie oft dem Ausgabegeraet Daten fehlten.
     pub audio_underruns: u64,
-    /// Verworfene Samples, weil der Ring uebergelaufen ist.
+    /// Verworfene Samples (harte Ringgrenze, Grobkappung und verspaeteter Ton
+    /// zusammen, s. `audio::AudioCounters::dropped`).
     pub audio_dropped: u64,
+    /// Davon nach einem Unterlauf als verspaetet verworfen
+    /// (s. `audio::nachzuegler`).
+    pub audio_verspaetet: u64,
     /// Wie oft der Ton-Ring grob auf den Sollwert zurueckgeschnitten wurde.
     /// Sichtbar, weil der Schnitt hoerbar ist — ein Eingriff, den niemand
     /// sieht, war genau der alte Fehler (s. `audio.rs::RING_SOLL_MS`).
@@ -195,6 +199,7 @@ impl MediaSink {
         MediaStats {
             audio_underruns: ton.underruns,
             audio_dropped: ton.dropped,
+            audio_verspaetet: ton.verspaetet,
             audio_buffered: ton.buffered as u64,
             audio_abgleich_ppm: ton.abgleich_ppm,
             audio_geraetefehler: ton.geraetefehler,

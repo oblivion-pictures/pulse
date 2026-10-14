@@ -1,8 +1,8 @@
 //! Die Fuetterschleife der Tonausgabe: Befehle annehmen, Opus dekodieren,
-//! den Ring fuellen, Grobkappung, Uhrenabgleich und Lippen-Regelung
-//! anstossen. Aus `audio.rs` herausgeloest (Groessengrenze, `PLAN.md` §12.1) am
-//! 2026-10-14, im selben Zug angepasst (Schwall-Erkennung, Lippen-Regler ohne
-//! Ringabweichung).
+//! verspaeteten Ton nach einem Unterlauf verwerfen, den Ring fuellen,
+//! Grobkappung, Uhrenabgleich und Lippen-Regelung anstossen. Aus `audio.rs`
+//! herausgeloest (Groessengrenze, `PLAN.md` §12.1) am 2026-10-14, im selben
+//! Zug angepasst (Schwall-Erkennung, Lippen-Regler ohne Ringabweichung).
 
 use std::sync::Mutex;
 use std::time::Instant;
@@ -64,7 +64,21 @@ pub(super) fn pump_commands(
             // Oben in fertiges PCM verwandelt — hier kann es nicht mehr
             // auftreten.
             AudioCommand::Packet(..) => {}
-            AudioCommand::Pcm(samples, rtp_ts) => {
+            AudioCommand::Pcm(mut samples, rtp_ts) => {
+                // Nach einem Unterlauf: was fuer die schon gespielte Stille
+                // bestimmt war, verwerfen statt hinten anhaengen (s.
+                // [`super::nachzuegler`]). VOR allem anderen — Ring, Kappung,
+                // Uhrenabgleich und Lippen-Vermessung sehen nur den Rest.
+                let rtp_ts = match rtp_ts {
+                    Some(ts) => {
+                        match s.verspaetetes_verwerfen(&mut samples, ts, sample_rate, channels) {
+                            Some(rest_ts) => Some(rest_ts),
+                            // Ganz verspaetet: nichts anzuhaengen, nichts zu vermessen.
+                            None => continue,
+                        }
+                    }
+                    None => None,
+                };
                 let angehaengt = samples.len();
                 s.ring.extend(samples);
                 // NACH dem Anhaengen kappen, nicht vorher: eine einzelne Charge

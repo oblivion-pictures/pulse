@@ -15,6 +15,7 @@ fn shared_mit(target_fill: usize) -> Mutex<Shared> {
         target_fill,
         underruns: 0,
         dropped: 0,
+        nachzuegler: Default::default(),
         regelung: Ringregelung::default(),
         abgleich: Uhrenabgleich::default(),
         anlauf: true,
@@ -260,6 +261,169 @@ fn trim_addiert_sich_auf_den_sollwert() {
         (RING_SOLL_MS + 40) * TEST_PER_MS,
         "Trim muss auf den Sollwert addieren"
     );
+}
+
+// --- Verspaeteter Ton nach einem Unterlauf (s. `nachzuegler`) -------------
+//
+// Die Tests treiben Fuetterschleife und Geraete-Rueckruf von Hand im Wechsel:
+// ein Paket = 10 ms Opus = 480 RTP-Takte = 960 verschraenkte Samples, ein
+// Geraete-Aufruf ebenfalls 10 ms. So stehen Ausgabezaehler und Marken genau
+// in dem Verhaeltnis, das die Tonuhr zur Laufzeit sieht.
+
+const PAKET_TAKTE: u32 = 480;
+const PAKET_SAMPLES: usize = 10 * TEST_PER_MS;
+
+/// Pakete mit den Marken `marken` in einem Zug durch die Fuetterschleife.
+fn fuettern(shared: &Mutex<Shared>, marken: impl IntoIterator<Item = u32>) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    for marke in marken {
+        tx.send(AudioCommand::Pcm(vec![0.1; PAKET_SAMPLES], Some(marke))).unwrap();
+    }
+    tx.send(AudioCommand::Stop).unwrap();
+    pump_commands(&rx, shared, TEST_PER_MS, TEST_MAX_RING, 48_000, 2);
+}
+
+/// Ein Geraete-Aufruf ueber 10 ms.
+fn geraet(shared: &Mutex<Shared>) {
+    let mut out = vec![0.0f32; PAKET_SAMPLES];
+    fill_output(shared, &mut out);
+}
+
+/// Gleichmaessiger Betrieb: je Runde ein Geraete-Aufruf und ein Paket, ab der
+/// Marke `ab`. Gibt die naechste Marke zurueck.
+fn gleichmaessig(shared: &Mutex<Shared>, ab: u32, runden: u32) -> u32 {
+    for k in 0..runden {
+        geraet(shared);
+        fuettern(shared, [ab + k * PAKET_TAKTE]);
+    }
+    ab + runden * PAKET_TAKTE
+}
+
+/// Start: sechs Pakete (= Sollwert) vorfuellen, dann eine halbe Sekunde
+/// gleichmaessig. Danach steht der Ring nach jedem Anhaengen auf dem Sollwert.
+fn eingeschwungen(shared: &Mutex<Shared>) -> u32 {
+    fuettern(shared, (0..6).map(|k| k * PAKET_TAKTE));
+    gleichmaessig(shared, 6 * PAKET_TAKTE, 50)
+}
+
+/// **Der Befund vom 2026-10-14.** Nach einem Aussetzer laeuft der Ring leer,
+/// das Geraet spielt 30 ms Stille, dann kommt alles Verpasste mit dem
+/// Puenktlichen in einem Schwall. Angehaengt stand der Ring danach 30 ms ueber
+/// dem Sollwert — und blieb dort, weil das unter der Kappschwelle liegt.
+/// Verworfen wird genau, was fuer die Stille bestimmt war; der Ring steht
+/// danach auf dem Sollwert, und der puenktliche Ton liegt wieder um den
+/// Ringvorrat vor der Position — nichts weiter wird verworfen.
+#[test]
+fn verspaeteter_ton_nach_einem_unterlauf_wird_verworfen() {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    let soll = RING_SOLL_MS * TEST_PER_MS;
+    let naechste = eingeschwungen(&shared);
+    let vorher = shared.lock().unwrap().nachzuegler.verworfen;
+    assert_eq!(vorher, 0, "Start und Betrieb verwerfen nichts");
+
+    // 90 ms ohne Nachschub: 60 ms Vorrat, dann 30 ms Stille.
+    for _ in 0..9 {
+        geraet(&shared);
+    }
+    {
+        let s = shared.lock().unwrap();
+        assert!(s.anlauf && s.ring.is_empty(), "Vorbedingung: der Ring lief leer");
+    }
+    // Der Schwall: alles, was in den 90 ms haette kommen sollen.
+    fuettern(&shared, (0..9).map(|k| naechste + k * PAKET_TAKTE));
+    {
+        let s = shared.lock().unwrap();
+        assert_eq!(s.ring.len(), soll, "Sollwert statt Sollwert + 30 ms Stille");
+        assert_eq!(s.nachzuegler.verworfen, 3 * PAKET_SAMPLES as u64, "genau die 30 ms Stille");
+        assert_eq!(s.dropped, 3 * PAKET_SAMPLES as u64, "und in der Gesamtzahl");
+    }
+
+    // Weiter in Echtzeit: das Geraet laeuft an, und das naechste Paket liegt
+    // um den Vorrat VOR dem Anhaengen vor der Position — Sollwert minus ein
+    // Paket. Mit diesem Abstand kann es nicht als verspaetet gelten.
+    geraet(&shared);
+    let marke = naechste + 9 * PAKET_TAKTE;
+    {
+        let s = shared.lock().unwrap();
+        assert!(!s.anlauf, "der Ring stand auf dem Sollwert, die Ausgabe laeuft");
+        let uhr = s.tonuhr.as_ref().unwrap();
+        let vorsprung = uhr.marke(marke) as f64 - uhr.position(s.ausgabe, 48_000, 2);
+        let erwartet = ((soll - PAKET_SAMPLES) / 2) as f64;
+        assert!((vorsprung - erwartet).abs() < 1.0, "Vorsprung {vorsprung} statt {erwartet} Takte");
+    }
+    fuettern(&shared, [marke]);
+    let unterlaeufe = shared.lock().unwrap().underruns;
+    gleichmaessig(&shared, marke + PAKET_TAKTE, 100);
+    let s = shared.lock().unwrap();
+    assert_eq!(s.nachzuegler.verworfen, 3 * PAKET_SAMPLES as u64, "danach nichts mehr");
+    assert_eq!(s.ring.len(), soll);
+    assert_eq!(s.underruns, unterlaeufe);
+}
+
+/// Pausiert der Sender, springen seine Marken nach vorn: das erste Paket nach
+/// der Pause liegt VOR der Position. Nichts wird verworfen, und das Vorfuellen
+/// laeuft wie gehabt bis zum Sollwert.
+#[test]
+fn nach_einer_sender_pause_wird_nichts_verworfen() {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    let soll = RING_SOLL_MS * TEST_PER_MS;
+    let naechste = eingeschwungen(&shared);
+    for _ in 0..9 {
+        geraet(&shared);
+    }
+    // Der Sender schickte 90 ms lang nichts und macht mit seiner Jetzt-Marke
+    // weiter, eins nach dem anderen.
+    fuettern(&shared, [naechste + 9 * PAKET_TAKTE]);
+    gleichmaessig(&shared, naechste + 10 * PAKET_TAKTE, 5);
+    let s = shared.lock().unwrap();
+    assert_eq!(s.nachzuegler.verworfen, 0);
+    assert_eq!(s.ring.len(), soll, "vorgefuellt bis zum Sollwert");
+}
+
+/// Beim Vorfuellen mit Vorrat wird nicht geprueft: da steht der Ring, die
+/// Position der Tonuhr laeuft aber weiter — ein Paket, das nur 10 ms Jitter
+/// hat, laege scheinbar hinter ihr. Verworfen werden darf das nicht; es klingt
+/// ja noch gar nichts. Und das Vorfuellen erreicht den Sollwert.
+#[test]
+fn jitter_beim_vorfuellen_wird_nicht_verworfen() {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    let soll = RING_SOLL_MS * TEST_PER_MS;
+    let naechste = eingeschwungen(&shared);
+    for _ in 0..9 {
+        geraet(&shared);
+    }
+    let erste = naechste + 9 * PAKET_TAKTE;
+    fuettern(&shared, [erste]);
+    // Das naechste Paket kommt erst nach ZWEI Geraete-Aufrufen.
+    geraet(&shared);
+    geraet(&shared);
+    fuettern(&shared, [erste + PAKET_TAKTE]);
+    gleichmaessig(&shared, erste + 2 * PAKET_TAKTE, 4);
+    let s = shared.lock().unwrap();
+    assert_eq!(s.nachzuegler.verworfen, 0);
+    assert_eq!(s.ring.len(), soll);
+}
+
+/// Ein Latenzsprung: ab jetzt kommt jedes Paket 100 ms spaeter als vorher,
+/// in Echtzeit. Mit der Position als mitlaufender Grenze laege JEDES Paket
+/// 40 ms hinter ihr, der Ring bliebe leer — Stille ohne Ende. Die feste
+/// Grenze verwirft einmal die 40 ms, dann fuellt der Ring vor und laeuft.
+#[test]
+fn ein_latenzsprung_endet_nicht_in_dauerstille() {
+    let shared = shared_mit_soll(TEST_PER_MS);
+    let soll = RING_SOLL_MS * TEST_PER_MS;
+    let naechste = eingeschwungen(&shared);
+    // 100 ms ohne Paket (60 ms Vorrat, 40 ms Stille): neun Aufrufe hier, der
+    // zehnte ist der erste in `gleichmaessig`.
+    for _ in 0..9 {
+        geraet(&shared);
+    }
+    // Dann wieder ein Paket je Aufruf, lueckenlos ab der verpassten Marke.
+    gleichmaessig(&shared, naechste, 30);
+    let s = shared.lock().unwrap();
+    assert_eq!(s.nachzuegler.verworfen, 4 * PAKET_SAMPLES as u64, "einmal 40 ms, nicht mehr");
+    assert!(!s.anlauf, "die Ausgabe laeuft wieder");
+    assert_eq!(s.ring.len(), soll);
 }
 
 /// Der Opus-Decoder muss auf jeder Maschine oeffnen — sonst waere der
