@@ -30,6 +30,33 @@ zusatz_kandidaten_zeile() {
     return 0
 }
 
+# Kandidaten-Zeile eines VPS-Self-Hosts. $1 = PULSE_HOSTNAME, $2 = öffentliche
+# IPv4 (PULSE_PUBLIC_IP oder STUN; leer/kaputt = unbekannt), $3 = wohin der
+# Hostname IM CONTAINER auflöst (leerzeichengetrennt, leer = gar nicht).
+# Begründung beim Aufruf unten. Zwei Sonderfälle:
+# - die IP steht schon unter den Auflösungen → nur der Hostname. Auf einem
+#   gewöhnlichen VPS bleibt die Konfiguration damit genau wie bis 2026-10-14.
+# - der Hostname ist im Container gar nicht auflösbar → nur die IP. MediaMTX
+#   bricht `addAdditionalCandidates` beim ersten nicht auflösbaren Eintrag mit
+#   Fehler ab (peer_connection.go, 1.19.1); eine IP dahinter käme nie an.
+vps_kandidaten_zeile() {
+    _ip="${2:-}"
+    case "$_ip" in
+        *[!0-9.]* | *..* | *.*.*.*.* | .* | *. ) _ip="" ;;
+        *.*.*.*) ;;
+        *) _ip="" ;;
+    esac
+    [ -n "$_ip" ] && case " ${3:-} " in *" $_ip "*) _ip="" ;; esac
+    if [ -z "$_ip" ]; then
+        printf 'webrtcAdditionalHosts: [%s]\n' "$1"
+    elif [ -z "${3:-}" ]; then
+        printf 'webrtcAdditionalHosts: [%s]\n' "$_ip"
+    else
+        printf 'webrtcAdditionalHosts: [%s, %s]\n' "$1" "$_ip"
+    fi
+    return 0
+}
+
 # Self-signed cert for MediaMTX RTMPS (rtmpsAddress :1936). Idempotent —
 # only generated on first start. Self-host operators that want a real cert
 # can drop their own ${CERT_DIR}/mediamtx.{crt,key} into the data volume.
@@ -192,9 +219,42 @@ EOF
             >> /etc/mediamtx/mediamtx.yml
     else
         # ---- VPS-Self-Host: öffentlich erreichbar, der Hostname IST der Server ----
-        # Der einzige brauchbare Host-Kandidat ist der öffentliche Hostname —
-        # die Interface-IPs des Containers sind interne Bridge-Adressen.
-        printf 'webrtcAdditionalHosts: [%s]\n' "${PULSE_HOSTNAME}" >> /etc/mediamtx/mediamtx.yml
+        # Die Interface-IPs des Containers sind interne Bridge-Adressen und
+        # taugen nicht als Kandidat. Angekündigt werden der Hostname und, wo
+        # er im Container nicht ohnehin darauf zeigt, die öffentliche IPv4.
+        #
+        # Warum der Hostname allein nicht reicht: MediaMTX löst ihn bei jeder
+        # Sitzung IM CONTAINER per DNS auf (`net.LookupIP`, peer_connection.go
+        # in 1.19.1) und kündigt nur das Ergebnis an. In einem Netz mit
+        # Split-DNS ist das die interne Adresse — von innen erreichbar, von
+        # außen nicht. So bei pulse.all3media.de (2026-10-14): von innen
+        # sendeten und sahen HQ-Streams einwandfrei, von außen kam ICE in
+        # keiner Richtung zustande, Voice lief von außen. Dass es dort
+        # Split-DNS ist und nicht eine Firewall vor 8189/udp, ist aus diesem
+        # Muster GEFOLGERT, nicht am Server gemessen; die Logzeile unten macht
+        # es beim nächsten Start sichtbar.
+        #
+        # Die öffentliche Adresse: eine von Hand gesetzte PULSE_PUBLIC_IP hat
+        # Vorrang (derselbe Schalter wie für coturn, .env.example), sonst STUN
+        # — aus demselben Container, auf dem Weg, auf dem auch LiveKit
+        # (`use_external_ip`, templates/livekit.yaml.template) seine Adresse
+        # findet, und die funktioniert dort von außen. Zwei STUN-Server wie
+        # beim Direktpfad-Adapter (direct-adapter/src/config.rs); dort ist die
+        # Liste kommagetrennt, deshalb das `tr`. `timeout` deckelt einen
+        # hängenden DNS, sonst stünde der ganze Start. Ohne Antwort bleibt es
+        # beim Hostnamen allein, wie bisher.
+        _intern="$(getent ahostsv4 "${PULSE_HOSTNAME}" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ')"
+        _intern="${_intern% }"
+        _oeffentlich="${PULSE_PUBLIC_IP:-}"
+        if [ -z "${_oeffentlich}" ]; then
+            # shellcheck disable=SC2046 # Wortzerlegung der Serverliste ist gewollt
+            _oeffentlich="$(timeout 8 /usr/local/bin/pulse-oeffentliche-ip \
+                $(printf '%s' "${PULSE_DIRECT_STUN_SERVERS:-stun.l.google.com:19302 stun.cloudflare.com:3478}" | tr ',' ' ') \
+                2>/dev/null || true)"
+        fi
+        _zeile="$(vps_kandidaten_zeile "${PULSE_HOSTNAME}" "${_oeffentlich}" "${_intern}")"
+        printf '%s\n' "${_zeile}" >> /etc/mediamtx/mediamtx.yml
+        echo "[08-init-mediamtx] ${PULSE_HOSTNAME} im Container: ${_intern:-nicht auflösbar}; öffentlich: ${_oeffentlich:-unbekannt} → ${_zeile}"
     fi
 fi
 

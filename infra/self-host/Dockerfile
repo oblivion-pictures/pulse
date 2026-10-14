@@ -383,9 +383,10 @@ COPY --from=garage-upstream /garage              /usr/local/bin/garage
 COPY infra/self-host/garage-init.sh /usr/local/bin/garage-init
 COPY infra/self-host/livekit-node-ip.sh /usr/local/bin/pulse-livekit-node-ip
 COPY infra/self-host/servername.py /usr/local/bin/pulse-servername
+COPY infra/self-host/oeffentliche_ip.py /usr/local/bin/pulse-oeffentliche-ip
 COPY --from=binaries /opt/frp/frpc               /usr/local/bin/frpc
 COPY --from=rust-build /opt/pulse-direct-adapter /usr/local/bin/pulse-direct-adapter
-RUN chmod +x /usr/local/bin/caddy /usr/local/bin/livekit-server /usr/local/bin/mediamtx /usr/local/bin/garage /usr/local/bin/frpc /usr/local/bin/pulse-direct-adapter /usr/local/bin/pulse-livekit-node-ip /usr/local/bin/pulse-servername
+RUN chmod +x /usr/local/bin/caddy /usr/local/bin/livekit-server /usr/local/bin/mediamtx /usr/local/bin/garage /usr/local/bin/frpc /usr/local/bin/pulse-direct-adapter /usr/local/bin/pulse-livekit-node-ip /usr/local/bin/pulse-servername /usr/local/bin/pulse-oeffentliche-ip
 
 # Python venv + service source from stage 1 — already at /opt/pulse, no path
 # rewrite needed (UV_PROJECT_ENVIRONMENT made the venv live at /opt/pulse/venv
