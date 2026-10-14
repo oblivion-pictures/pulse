@@ -2,6 +2,18 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-14",
+      "date": "2026-10-14",
+      "style": "Sachlich",
+      "title": "Verlauf zuverlässiger",
+      "items": [
+        "Gelöschte Nachrichten bleiben gelöscht, auch nach einem Neustart.",
+        "Bearbeitungen kommen auch auf neuen Geräten an.",
+        "Ältere Nachrichten laden beim Hochscrollen vollständig und in der richtigen Reihenfolge.",
+        "Nachrichten anderer können deine nicht mehr verändern oder entfernen."
+      ]
+    },
+    {
       "id": "2026-10-13.7",
       "date": "2026-10-13",
       "style": "Sachlich",
