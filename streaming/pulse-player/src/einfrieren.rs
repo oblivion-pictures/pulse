@@ -873,7 +873,7 @@ mod tests {
     /// Sekunden, bevor die Wacht ein wirklich haengendes Bild ueberhaupt
     /// anfasst — vorher waren es 2,5. Dieselbe Aenderung, die den
     /// Vollbild-Abstand verdreissigfacht hat, hat die Rettung mit
-    /// verdreissigfacht, und niemand hat es bemerkt: `CLAUDE.md` fuehrt zwei
+    /// verdreissigfacht, und niemand hat es bemerkt: `intern/docs/wissen/hq-streaming.md` fuehrt zwei
     /// Zahlen auf, die der Vorgabe nicht folgen duerfen — es waren drei.
     ///
     /// Aufgeloest wird das nicht mit einem Deckel (der brachte die

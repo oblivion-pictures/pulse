@@ -270,6 +270,29 @@ addresses are announced as host candidates next to `node_ip`
 **NOTICE (Apache-2.0 §4(d))**, reproduced from both upstream repositories:
 "Copyright 2023 LiveKit, Inc. Licensed under the Apache License, Version 2.0."
 
+## MediaMTX (streaming relay, `infra/mediamtx-fork/`)
+
+HQ streams are relayed by MediaMTX. Cloud, self-host image and — since
+2026-10-14 — the Windows Pulse Server installer all run a **modified** build:
+upstream MediaMTX with the Pulse patches in `infra/mediamtx-fork/patches/` and
+`patches-vendor/` (the latter against the vendored pion FlexFEC interceptor).
+Until 2026-10-14 the Windows installer bundled the unmodified official release
+binary, and this file did not list MediaMTX at all.
+
+| Component | Version / pin | License | Notes |
+|---|---|---|---|
+| [MediaMTX](https://github.com/bluenviron/mediamtx) | v1.19.1, Pulse patch level in `PULSE_REVISION` (`infra/mediamtx-fork/Dockerfile`) | MIT | **Modified by Pulse** — patches listed and explained in `infra/mediamtx-fork/README.md` |
+
+Where it ships: the image `ghcr.io/oblivion-pictures/pulse-mediamtx` (copied
+into the self-host image as `/usr/local/bin/mediamtx`) and the Windows Pulse
+Server installer (`native/native-bin/mediamtx.exe`, with MediaMTX's LICENSE
+and the applied patches in `native/native-bin/mediamtx-lizenz/`). The two
+images carry the binary only — no license file next to it yet; the notice
+below is, for them, the only place it is reproduced. The Go modules compiled
+into the binary (gortsplib, pion and others) are not listed here.
+
+**License notice:** "MIT License. Copyright (c) 2019 aler9."
+
 ## Landing page (`web/static/landing.html`, cloud only)
 
 The marketing page at https://howispulse.com/ ships its two typefaces from the
@@ -303,4 +326,4 @@ outstanding audit.
 
 ---
 
-Stand / last updated: 13. Oktober 2026 (LiveKit, von Pulse verändert)
+Stand / last updated: 14. Oktober 2026 (MediaMTX und LiveKit, von Pulse verändert)

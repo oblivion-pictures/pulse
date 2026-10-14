@@ -8,7 +8,7 @@
 #
 # **Bis zum 2026-08-21 trug dieses Verzeichnis zusaetzlich zwei Patches**, die
 # rollenden Intra-Refresh fuer die VA-API- und AMF-Encoder freilegten. Die
-# Betriebsart ist entfallen (Begruendung im Wurzel-`CLAUDE.md`), die Patches
+# Betriebsart ist entfallen (Begruendung in `intern/streaming/win-hq-labor/CLAUDE.md`), die Patches
 # damit auch — gebaut wird jetzt unveraenderter Upstream-Quelltext.
 #
 # WOHIN: $XDG_CACHE_HOME/pulse/ffmpeg/ (Standard ~/.cache/pulse/ffmpeg/) —

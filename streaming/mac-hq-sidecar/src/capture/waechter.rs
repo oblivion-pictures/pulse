@@ -17,7 +17,7 @@
 //!
 //! macOS war damit an dieser Stelle schlechter gestellt als Windows, wo
 //! wenigstens Fenster-Quellen erkannt werden (Bildschirme dort nicht — der in
-//! der Wurzel-`CLAUDE.md` offen geführte Punkt).
+//! `intern/docs/wissen/sidecars.md` offen geführte Punkt).
 //!
 //! **Was hier NICHT passiert: aufräumen.** Der Wächter legt die Begründung ab,
 //! mehr nicht. Beendet wird der Strom von der Medienschleife, die den Merker

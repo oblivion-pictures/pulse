@@ -15,6 +15,11 @@ infra/self-host/** text=auto eol=lf
 # `\r` an — der Commit-Vergleich schlüge fehl. Die Patches darin bleiben über
 # `*.patch -text` weiter unten unangetastet (spätere Zeilen gewinnen).
 infra/livekit-fork/** text=auto eol=lf
+# Ebenso der MediaMTX-Fork (seit 2026-10-14): `bauen.sh` liest Fassung und
+# Patch-Stand per sed aus den `ARG`-Zeilen des Dockerfiles, und ein CRLF-
+# Dockerfile liesse den Ausdruck ins Leere laufen — der Windows-Installer-Bau
+# braeche ab. Patches und Pruefstein bleiben über die Ausnahmen unten roh.
+infra/mediamtx-fork/** text=auto eol=lf
 *.sh text eol=lf
 
 # Patch-Dateien niemals in CRLF umschreiben: `git apply` vergleicht sie

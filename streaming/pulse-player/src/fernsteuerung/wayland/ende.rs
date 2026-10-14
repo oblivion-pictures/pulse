@@ -103,7 +103,7 @@ use std::time::{Duration, Instant};
 /// 5 s ist die Haelfte von `REMOTE_DISCONNECT_GRACE_S` (10 s), mit dem dieses
 /// Haus dieselbe Abwaegung schon einmal getroffen hat: lieber eine womoeglich
 /// gehaltene Taste in Kauf nehmen als eine laufende Sitzung toeten
-/// (`CLAUDE.md`, Fernsteuerung).
+/// (`intern/docs/wissen/fernsteuerung.md`).
 ///
 /// **Der „zu kurz"-Schaden ist mit 5 s nicht weg, nur selten** (Review I-1),
 /// und was dann bleibt, gehoert benannt: `Unklar` entsteht bei JEDEM `Leave` —

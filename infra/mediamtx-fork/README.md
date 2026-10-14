@@ -77,7 +77,19 @@ Testserver von Hand versorgt wird.
 - `ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse8` — version pin (MediaMTX-Fassung + unser Patch-Stand, s. `PULSE_REVISION` im Dockerfile)
 - `ghcr.io/oblivion-pictures/pulse-mediamtx:latest`        — rolling
 
-Both compose files reference the version-pinned tag. The image sets no labels
+**Windows Pulse Server:** there is no container there, so
+`desktop/scripts/fetch-win-native.ps1 -MediamtxSource` builds `mediamtx.exe`
+with `bauen.sh` in this directory (Git Bash, Go cross-compile) — same upstream
+tag, same patches, version and revision read from the Dockerfile's `ARG`
+lines. `win-build-server.yml` therefore also triggers on this directory.
+Until 2026-10-14 the installer shipped the official release instead, without
+a single one of these patches. `bauen.sh` runs only the Pulse tests of the
+patched packages (the full packages run in the image build, on Linux).
+Changing `bauen.sh` alone does not change the patch set — no
+`PULSE_REVISION` bump for it; it does, like any file here, make the workflow
+rebuild and re-push the current tag (same content, possibly a new digest).
+
+The compose files reference the version-pinned tag. The image sets no labels
 on purpose: Watchtower is gone project-wide (it mounted the Docker socket),
 so an update only happens via an explicit
 `docker compose pull mediamtx && up -d` — every bump is a deliberate compose

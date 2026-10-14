@@ -158,7 +158,18 @@ export function nativeComponents(
     name: 'mediamtx',
     command: resolveNativeBin('mediamtx'),
     args: [mediamtxYmlPath],
-    env: { PULSE_KEYFRAME_INTERVAL: '0' },
+    // Die Schalter des Pulse-Forks, wortgleich zum allinone-Image
+    // (`infra/self-host/s6/etc/s6-overlay/s6-rc.d/mediamtx/run`, Begründung
+    // je Schalter in `infra/prod/docker-compose.yml`). Bis 2026-10-14 lief
+    // hier das offizielle MediaMTX, und nur der erste stand da — wirkungslos,
+    // ihn kennt nur der Fork. Seither baut `fetch-win-native.ps1` den Fork.
+    env: {
+      PULSE_KEYFRAME_INTERVAL: '0',
+      PULSE_DEPENDENCY_DESCRIPTOR: '1',
+      PULSE_KEYFRAME_ON_DISCARD: '1',
+      PULSE_VIDEO_REORDER_BUFFER: '128',
+      PULSE_AUDIO_REORDER_BUFFER: '4',
+    },
     healthCheck: () => tcpProbe(9997),
   };
 

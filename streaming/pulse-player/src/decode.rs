@@ -377,7 +377,7 @@ impl Sendeart {
     /// die es seit dem Entfernen von Intra-Refresh gar nicht mehr geben kann.
     ///
     /// Es ist die vierte Zahl, die dem Vollbild-Abstand stillschweigend
-    /// gefolgt ist (CLAUDE.md fuehrt zwei auf, Commit 3f311c94 fand die
+    /// gefolgt ist (intern/docs/wissen/hq-streaming.md fuehrt zwei auf, Commit 3f311c94 fand die
     /// dritte). Deshalb keine neue Schwelle: es gibt nur noch EINE Betriebsart,
     /// also ist jede Deutung ueberfluessig. Die Zahlen sagen ohnehin mehr —
     /// wer den Abstand sehen will, liest ihn ab.

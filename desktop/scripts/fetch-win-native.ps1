@@ -22,12 +22,17 @@
 # Linux-Image, via -LivekitSource. Ein offizielles Release taugt nicht mehr:
 # die Server-App schreibt extra_node_ips in die livekit.yaml, und das
 # offizielle Binary verweigert damit den Start.
+# mediamtx.exe: ebenso der Pulse-Fork (infra/mediamtx-fork/, seit 2026-10-14),
+# gebaut von infra/mediamtx-fork/bauen.sh via -MediamtxSource. Vorher lag hier
+# das offizielle Release — ohne einen einzigen Fork-Patch (Vollbild-Rückweg,
+# kleines Ton-Fenster), und PULSE_KEYFRAME_INTERVAL lief ins Leere.
 
 param(
     [string]$Root = (Join-Path $PSScriptRoot "..\resources-native"),
     [switch]$WeedSource,    # weed.exe selbst bauen (braucht go + Netz)
     [switch]$AdapterSource, # direct-adapter.exe selbst bauen (braucht cargo)
-    [switch]$LivekitSource  # livekit-server.exe aus dem Pulse-Fork bauen (braucht go + Git Bash)
+    [switch]$LivekitSource, # livekit-server.exe aus dem Pulse-Fork bauen (braucht go + Git Bash)
+    [switch]$MediamtxSource # mediamtx.exe aus dem Pulse-Fork bauen (braucht go + Git Bash)
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,11 +45,14 @@ $ErrorActionPreference = "Stop"
 #
 # Woher die Werte stammen (Stand 2026-10-12, je Datei mit curl geladen und mit
 # sha256sum nachgerechnet):
-#   Caddy, frp, MediaMTX, .NET: gegen die Liste des Herstellers
+#   Caddy, frp, .NET: gegen die Liste des Herstellers
 #     geprüft (Caddy `caddy_<v>_checksums.txt` und .NET `releases.json` führen
 #     SHA512 — die SHA256 hier ist selbst berechnet, die Datei zuvor gegen die
-#     SHA512 des Herstellers bestätigt; frp und MediaMTX führen SHA256
-#     und stimmen wörtlich überein).
+#     SHA512 des Herstellers bestätigt; frp führt SHA256 und stimmt wörtlich
+#     überein).
+#   MediaMTX: kein Download mehr — gebaut aus dem Pulse-Fork, Fassung und
+#     Patch-Stand allein in infra/mediamtx-fork/Dockerfile (Abschnitt
+#     „MediaMTX" unten).
 #   LiveKit: kein Download mehr — gebaut aus dem Pulse-Fork, festgeschrieben
 #     sind die Commits in infra/livekit-fork/quelle.env (eine Quelle für
 #     Linux-Image und Windows; Abschnitt „LiveKit" unten).
@@ -58,8 +66,6 @@ $CaddyVersion   = "2.8.4"
 $CaddySha256    = "2631fbe1c4f6fb08783ed6dc6ac238d6655b4c923abe2bce1433dbd7fd079630"
 $GarnetVersion  = "2.2.0"
 $GarnetSha256   = "8812ae916dd2386db6ebfaeeee3fb6508024f82ee4c66284532a1a5baa6afea2"
-$MediamtxVersion = "1.19.1"  # upstream; Fork-Windows-Artifact steht noch aus
-$MediamtxSha256 = "ca3d89c370bf73dc33ef9ee87afea04834f21b129f499d4b645490fcb01cce22"
 $PgVersion      = "15.14-1"
 $PgSha256       = "234ccc7a5cf07fce70f93faea701fd75fad6bec968359b06cdfc208ed7dfbc30"
 $DotnetVersion  = "10.0.12"
@@ -95,6 +101,33 @@ function Fetch($Url, $Out, $Sha256) {
 
 function Unzip($Zip, $Dest) {
     Expand-Archive -Path $Zip -DestinationPath $Dest -Force
+}
+
+# Git Bash neben git.exe suchen — NICHT `bash` aus dem PATH: unter Windows ist
+# das oft der WSL-Starter (System32\bash.exe), und der fände weder go noch
+# diese Pfade. Für die beiden Fork-Bauten (LiveKit, MediaMTX).
+function Find-GitBash($Schalter) {
+    if (-not (Get-Command go -ErrorAction SilentlyContinue)) { throw "go nicht gefunden ($Schalter)" }
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $git) { throw "git nicht gefunden ($Schalter)" }
+    $dir = Split-Path $git.Source
+    for ($i = 0; $i -lt 4 -and $dir; $i++) {
+        $kandidat = Join-Path $dir "bin\bash.exe"
+        if (Test-Path $kandidat) { return $kandidat }
+        $dir = Split-Path $dir
+    }
+    throw "Git Bash nicht gefunden (bin\bash.exe neben $($git.Source))"
+}
+
+# Eine zwischengespeicherte Kopie, deren Stempel (<exe>.fork, von bauen.sh)
+# nicht zum erwarteten Fork-Stand passt, wird verworfen — auch ein offizielles
+# Binary aus der Zeit vor dem Fork, das noch in resources-native liegen kann.
+function Remove-StaleFork($Exe, $Stempel, $Name) {
+    $datei = "$Exe.fork"
+    if ((Test-Path $Exe) -and (-not (Test-Path $datei) -or (Get-Content $datei -Raw).Trim() -ne $Stempel)) {
+        Write-Warning "$Name ist nicht der Pulse-Fork $Stempel — wird ersetzt."
+        Remove-Item $Exe, $datei -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # ── Caddy ────────────────────────────────────────────────────────────────────
@@ -149,26 +182,10 @@ foreach ($k in @("LIVEKIT_VERSION", "PULSE_REVISION", "LIVEKIT_COMMIT", "MTU_COM
 $LivekitStempel = "$($LivekitQuelle.LIVEKIT_VERSION)-pulse$($LivekitQuelle.PULSE_REVISION) livekit=$($LivekitQuelle.LIVEKIT_COMMIT) mediatransportutil=$($LivekitQuelle.MTU_COMMIT)"
 $lkExe = Join-Path $Bin "livekit-server.exe"
 $lkStempel = "$lkExe.fork"
-if ((Test-Path $lkExe) -and (-not (Test-Path $lkStempel) -or (Get-Content $lkStempel -Raw).Trim() -ne $LivekitStempel)) {
-    Write-Warning "livekit-server.exe ist nicht der Pulse-Fork $LivekitStempel — wird ersetzt."
-    Remove-Item $lkExe, $lkStempel -Force -ErrorAction SilentlyContinue
-}
+Remove-StaleFork $lkExe $LivekitStempel "livekit-server.exe"
 if (-not (Test-Path $lkExe)) {
     if ($LivekitSource) {
-        if (-not (Get-Command go -ErrorAction SilentlyContinue)) { throw "go nicht gefunden (-LivekitSource)" }
-        # Git Bash neben git.exe suchen — NICHT `bash` aus dem PATH: unter
-        # Windows ist das oft der WSL-Starter (System32\bash.exe), und der
-        # fände weder dieses go noch diese Pfade.
-        $git = Get-Command git -ErrorAction SilentlyContinue
-        if (-not $git) { throw "git nicht gefunden (-LivekitSource)" }
-        $gitBash = $null
-        $dir = Split-Path $git.Source
-        for ($i = 0; $i -lt 4 -and $dir; $i++) {
-            $kandidat = Join-Path $dir "bin\bash.exe"
-            if (Test-Path $kandidat) { $gitBash = $kandidat; break }
-            $dir = Split-Path $dir
-        }
-        if (-not $gitBash) { throw "Git Bash nicht gefunden (bin\bash.exe neben $($git.Source))" }
+        $gitBash = Find-GitBash "-LivekitSource"
         # Vorwärts-Schrägstriche: bash rechnet mit / als Trenner (dirname).
         $bauSkript = (Join-Path $Repo "infra\livekit-fork\bauen.sh").Replace('\', '/')
         $bauAus = $lkExe.Replace('\', '/')
@@ -183,11 +200,38 @@ if (-not (Test-Path $lkExe)) {
     }
 }
 
-# ── MediaMTX ────────────────────────────────────────────────────────────────
-if (-not (Test-Path (Join-Path $Bin "mediamtx.exe"))) {
-    Fetch "https://github.com/bluenviron/mediamtx/releases/download/v$MediamtxVersion/mediamtx_v${MediamtxVersion}_windows_amd64.zip" "$Tmp/mediamtx.zip" $MediamtxSha256
-    Unzip "$Tmp/mediamtx.zip" "$Tmp/mediamtx"
-    Copy-Item "$Tmp/mediamtx/mediamtx.exe" $Bin
+# ── MediaMTX (Pulse-Fork) ───────────────────────────────────────────────────
+# Gebaut von infra/mediamtx-fork/bauen.sh, in Git Bash wie LiveKit oben. Es
+# wendet dieselben Patches an wie das Dockerfile des Linux-Bildes und liest
+# Fassung und Patch-Stand aus dessen ARG-Zeilen — dieselben zwei Werte bilden
+# hier den Stempel, gegen den eine zwischengespeicherte Kopie geprüft wird.
+$MediamtxArg = @{}
+foreach ($zeile in Get-Content (Join-Path $Repo "infra\mediamtx-fork\Dockerfile")) {
+    if ($zeile -match '^ARG (MEDIAMTX_VERSION|PULSE_REVISION)=(\S+)$' -and -not $MediamtxArg[$Matches[1]]) {
+        $MediamtxArg[$Matches[1]] = $Matches[2]
+    }
+}
+foreach ($k in @("MEDIAMTX_VERSION", "PULSE_REVISION")) {
+    if (-not $MediamtxArg[$k]) { throw "infra/mediamtx-fork/Dockerfile: ARG $k fehlt" }
+}
+# Wortgleich mit STEMPEL in infra/mediamtx-fork/bauen.sh.
+$MediamtxStempel = "$($MediamtxArg.MEDIAMTX_VERSION)-pulse$($MediamtxArg.PULSE_REVISION)"
+$mtxExe = Join-Path $Bin "mediamtx.exe"
+$mtxStempel = "$mtxExe.fork"
+Remove-StaleFork $mtxExe $MediamtxStempel "mediamtx.exe"
+if (-not (Test-Path $mtxExe)) {
+    if ($MediamtxSource) {
+        $gitBash = Find-GitBash "-MediamtxSource"
+        $bauSkript = (Join-Path $Repo "infra\mediamtx-fork\bauen.sh").Replace('\', '/')
+        $bauAus = $mtxExe.Replace('\', '/')
+        $bauLizenz = (Join-Path $Bin "mediamtx-lizenz").Replace('\', '/')
+        & $gitBash $bauSkript --aus $bauAus --os windows --arch amd64 --lizenz $bauLizenz
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $mtxExe) -or -not (Test-Path $mtxStempel)) {
+            throw "MediaMTX-Fork-Bau fehlgeschlagen (Exit $LASTEXITCODE) — Log oben"
+        }
+    } else {
+        throw "mediamtx.exe fehlt — -MediamtxSource verwenden (Pulse-Fork, kein offizielles Release; siehe infra/mediamtx-fork/README.md)."
+    }
 }
 
 # ── weed (SeaweedFS) — self-built bis ein volles Windows-Release existiert ──
@@ -297,7 +341,7 @@ Write-Host "`nresources-native fertig: $Root"
 # Pflicht-Binaries: fehlt auch nur eine, ist der Installer unbrauchbar —
 # lieber hier hart scheitern als Stillstand beim Nutzer (0.1.93-Lektion:
 # still fehlendes weed.exe fiel erst im Feld auf).
-foreach ($required in @("caddy.exe", "frpc.exe", "livekit-server.exe", "livekit-server.exe.fork", "mediamtx.exe", "weed.exe", "direct-adapter.exe", "garnet\GarnetServer.exe", "dotnet\dotnet.exe", "pg\bin\postgres.exe")) {
+foreach ($required in @("caddy.exe", "frpc.exe", "livekit-server.exe", "livekit-server.exe.fork", "mediamtx.exe", "mediamtx.exe.fork", "mediamtx-lizenz\LICENSE", "weed.exe", "direct-adapter.exe", "garnet\GarnetServer.exe", "dotnet\dotnet.exe", "pg\bin\postgres.exe")) {
     if (-not (Test-Path (Join-Path $Bin $required))) {
         throw "Pflicht-Binary fehlt: $required"
     }

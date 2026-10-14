@@ -35,11 +35,13 @@
 //     node           : vite :5173, electron
 //
 // MEDIAMTX-VERSION: bewusst auf 1.19.1 gepinnt, NICHT auf das neueste
-// Release — der Pulse-Fork (`ghcr.io/…/pulse-mediamtx:1.19.1-pulse5`, Prod)
+// Release — der Pulse-Fork (`ghcr.io/…/pulse-mediamtx:1.19.1-pulse8`, Prod)
 // basiert auf 1.19.1. MediaMTX ändert gelegentlich Config-Schlüssel; gegen eine
 // neuere Version kann die Vorlage hier still falsch laufen. Der native Binary
-// hat die sieben Pulse-Patches NICHT (AV1-Temporal-Delimiter, Vollbild-Rückweg,
-// Keyframe-Takt, FlexFEC, Dependency-Descriptor, Vollbild nach Verwurf) — für App-Entwicklung reicht er, für Messläufe zu
+// hat die Pulse-Patches NICHT (AV1-Temporal-Delimiter, Vollbild-Rückweg,
+// Keyframe-Takt, FlexFEC, Dependency-Descriptor, Vollbild nach Verwurf, kleines
+// Ton-Fenster; die Server-App baut sie seit 0.1.103 mit
+// `infra/mediamtx-fork/bauen.sh`) — für App-Entwicklung reicht er, für Messläufe zu
 // diesen Features gilt: Linux-Dev-Stack oder Testserver.
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process';

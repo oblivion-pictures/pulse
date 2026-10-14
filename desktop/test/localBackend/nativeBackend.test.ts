@@ -177,6 +177,34 @@ test('nativeComponents: frpc nur mit Relay-Config (Steuerungs-Tunnel)', () => {
   assert.equal(frpc!.args[1], join(dirs.run, 'frpc.toml'));
 });
 
+// Die MediaMTX-Schalter des Forks: die Server-App muss dieselben setzen wie
+// das allinone-Image, sonst verhält sich derselbe Stream auf einem
+// Windows-Heimserver anders (bis 2026-10-14 stand hier nur einer davon).
+test('nativeComponents: MediaMTX-Schalter wortgleich zum allinone-Image', () => {
+  process.env.PULSE_NATIVE_ROOT = TMP;
+  const dirs = datenDirs(join(TMP, 'data'));
+  const env = renderNativeEnv(dirs, SECRETS, IDENTITY);
+  const specs = nativeComponents({
+    dirs, secrets: SECRETS, env, identity: IDENTITY,
+    livekitYamlPath: join(dirs.run, 'livekit.yaml'),
+    mediamtxYmlPath: join(dirs.run, 'mediamtx.yml'),
+    caddyfilePath: join(dirs.run, 'Caddyfile'),
+    weedS3JsonPath: join(dirs.run, 'weed-s3.json'),
+    garnetConfPath: join(dirs.run, 'garnet.conf'),
+    frpcTomlPath: null,
+  });
+  const mediamtx = specs.find((s) => s.name === 'mediamtx')!;
+  const run = readFileSync(
+    join(import.meta.dirname, '../../../infra/self-host/s6/etc/s6-overlay/s6-rc.d/mediamtx/run'),
+    'utf8',
+  );
+  const imImage = Object.fromEntries(
+    [...run.matchAll(/^(PULSE_[A-Z_]+)=(\S+) \\$/gm)].map((m) => [m[1], m[2]]),
+  );
+  assert.ok(Object.keys(imImage).length >= 5, 'run-Datei nicht mehr lesbar?');
+  assert.deepEqual(mediamtx.env, imImage);
+});
+
 test('renderFrpcToml: Portierung von 11-render-frpc.sh', () => {
   const toml = renderFrpcToml('clever-cobalt-11af.relay.howispulse.com', 'relay.example.com:7000', 'tok-secret', 8080);
   assert.ok(toml.includes('serverAddr = "relay.example.com"'));

@@ -55,7 +55,7 @@
 //! **Offene Frage aus der Aufgabenstellung — GEMESSEN, nicht nur per
 //! Protokolltext gefolgert.** Liefert EIN Datengeraet je Sitzplatz `enter`
 //! fuer MEHRERE eigene Flaechen (mehrere Player-Fenster derselben
-//! Fernsteuerungs-Sitzung, s. `CLAUDE.md` "Mehrere Bildschirme")? Die erste
+//! Fernsteuerungs-Sitzung, s. `intern/docs/wissen/fernsteuerung.md`, mehrere Host-Bildschirme)? Die erste
 //! Fassung dieses Modulkopfs hielt das fuer unbelegt (angeblich kein
 //! laufender Compositor auf dieser Maschine) — das war falsch: **`niri`
 //! laeuft hier** (`WAYLAND_DISPLAY=wayland-1`), nur eben nicht ueber die
