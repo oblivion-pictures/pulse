@@ -430,17 +430,20 @@ impl WhipSender {
             .add_track(Arc::clone(&audio) as Arc<dyn TrackLocal + Send + Sync>)
             .await?;
 
-        // Auch der Ton-Sender MUSS gelesen werden. Sein RTCP interessiert uns
-        // inhaltlich nicht (eine Vollbild-Anforderung gibt es fuer Ton nicht),
-        // aber ungelesene Rueckmeldungen laufen intern auf und bremsen den
-        // Sender aus.
-        tokio::spawn(async move {
-            let mut buf = vec![0u8; 1500];
-            while audio_sender.read(&mut buf).await.is_ok() {}
-        });
+        // Auch der Ton-Sender MUSS gelesen werden (ungelesene Rueckmeldungen
+        // stauen den Sender). Seit 2026-10-14 nicht mehr nur leergelesen: die
+        // Empfaengerberichte des Servers sagen, wie viele Tonpakete auf der
+        // Strecke hierher fehlten (`pulse_whip::strecke`).
+        let strecke = pulse_whip::strecke::Strecke::neu();
+        tokio::spawn(pulse_whip::strecke::ton_rueckkanal(
+            audio_sender,
+            Arc::clone(&strecke),
+            |zeile| tracing::info!(target: "whip", "{zeile}"),
+        ));
 
-        // RTCP lesen. PLI und FIR sind die Bitte um ein Vollbild; alles andere
-        // wird verworfen, MUSS aber gelesen werden, sonst staut der Sender.
+        // RTCP lesen. PLI und FIR sind die Bitte um ein Vollbild; REMB,
+        // Empfaengerberichte und NACKs werden ausgewertet, der Rest verworfen —
+        // gelesen werden MUSS aber alles, sonst staut der Sender.
         //
         // `PULSE_WHIP_IGNORE_PLI=1` liest weiter, antwortet aber nicht. Das ist
         // kein Betriebsschalter, sondern der Trennschnitt einer Messung: nur so
@@ -479,6 +482,10 @@ impl WhipSender {
                         continue;
                     }
                 };
+                // Empfaengerberichte und NACKs des Servers zum Bild (s. Ton oben).
+                if let Some(zeile) = strecke.rtcp(pulse_whip::strecke::Spur::Bild, &pakete) {
+                    tracing::info!(target: "whip", "{zeile}");
+                }
                 for p in &pakete {
                     let any = p.as_any();
                     if let Some(remb) = any.downcast_ref::<ReceiverEstimatedMaximumBitrate>() {

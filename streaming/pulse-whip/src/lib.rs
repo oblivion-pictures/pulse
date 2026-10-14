@@ -47,5 +47,8 @@ pub mod h264;
 pub mod hevc;
 pub mod pacer;
 pub mod sdp;
+/// Was der Server auf der Strecke vom Sender her vermisst (RTCP-Empfänger-
+/// berichte je Spur) — als Log-Zeile, seit dem 2026-10-14.
+pub mod strecke;
 pub mod verbindung;
 pub mod zeitbasis;
