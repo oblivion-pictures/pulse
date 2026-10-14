@@ -6,7 +6,8 @@
  * needs (Rust on Linux/Windows/macOS, the Python GSR sidecar only as the Linux
  * fallback) and all of them speak the same newline-JSON protocol on stdio.
  * This module captures that traffic — `stdout` (the JSON-RPC events/responses:
- * state transitions, fps, health, error messages; fps is thinned out, see
+ * state transitions, fps, health, error messages; fps, the remote-control
+ * input acknowledgements and pointer shapes are thinned out, see
  * `sidecar-log-noise.ts` for why) and `stderr` (Rust panics / anyhow chains /
  * Python tracebacks — and, decisive for GPU cases, FFmpeg's own av_log lines,
  * which surface nowhere else) — plus lifecycle markers (spawn / exit / error),
@@ -63,7 +64,8 @@ function redact(line: string): string {
   return out;
 }
 
-/** fps-Ausdünnung (Begründung + Testbarkeit: `sidecar-log-noise.ts`). */
+/** Ausdünnung von fps, Eingabe-Quittungen und Zeigerformen (Begründung +
+ *  Testbarkeit: `sidecar-log-noise.ts`). */
 const suppressAsNoise = createNoiseFilter();
 
 let cachedPath: string | null = null;

@@ -47,3 +47,65 @@ test('gemessenes Rauschverhältnis: aus 60 fps/min wird 1', () => {
   for (let s = 0; s < 3600; s++) if (!f('out', FPS, s * 1_000)) durch++;
   assert.equal(durch, 60, 'genau eine Stichprobe pro Minute');
 });
+
+// Fernsteuerung (2026-10-14): die Quittungen auf Eingaben und die
+// Zeigerform-Meldungen leerten den Vorrat der Drossel — 12 443 bzw. 1 600
+// Zeilen in einer Sitzung. Zeilen in der Form jener Sitzung (Werte erfunden).
+const QUITTUNG = '{"id":4711,"ok":true,"processed":3,"state":"live"}';
+const QUITTUNG_HOST = '{"id":4712,"ok":true,"processed":0,"state":"host_active"}';
+const QUITTUNG_MASKIERT = '{"id":4714,"ok":true,"processed":0,"state":"masked"}';
+const ABGELEHNT = '{"error":"…","id":4713,"ok":false}';
+const ZEIGER = '{"ev":"remote_pointer","shape":"default","slot":0}';
+const ZEIGER_IM_BILD = '{"ev":"remote_pointer_in_frame","in_frame":false,"slot":0}';
+
+test('Eingabe-Quittungen: eine Stichprobe je Minute, wie fps', () => {
+  const f = createNoiseFilter();
+  let durch = 0;
+  // Eine Minute Fernsteuerung bei 125 Anfragen je Sekunde.
+  for (let i = 0; i < 125 * 60; i++) if (!f('out', QUITTUNG, i * 8)) durch++;
+  assert.equal(durch, 1);
+  assert.equal(f('out', QUITTUNG, FPS_SAMPLE_MS), false, 'nach der Minute die nächste');
+});
+
+test('ein neuer Zustand der Quittung steht sofort im Log', () => {
+  const f = createNoiseFilter();
+  assert.equal(f('out', QUITTUNG, 0), false);
+  assert.equal(f('out', QUITTUNG, 10), true);
+  assert.equal(f('out', QUITTUNG_MASKIERT, 20), false, 'live -> masked erklärt fehlende Eingaben');
+  assert.equal(f('out', QUITTUNG_HOST, 30), false);
+  assert.equal(f('out', QUITTUNG_HOST, 40), true, 'danach wird auch dieser Zustand ausgedünnt');
+});
+
+test('remote_pointer_in_frame ist keine Zeigerform-Stichprobe', () => {
+  const f = createNoiseFilter();
+  assert.equal(f('out', ZEIGER, 0), false);
+  for (const now of [1, 2, 3]) assert.equal(f('out', ZEIGER_IM_BILD, now), false);
+});
+
+test('eine abgelehnte Eingabe geht immer durch', () => {
+  const f = createNoiseFilter();
+  for (const now of [0, 1, 2]) assert.equal(f('out', ABGELEHNT, now), false);
+});
+
+test('Zeigerformen: eine Stichprobe je Minute', () => {
+  const f = createNoiseFilter();
+  assert.equal(f('out', ZEIGER, 0), false);
+  assert.equal(f('out', ZEIGER, 500), true);
+  assert.equal(f('out', ZEIGER, FPS_SAMPLE_MS), false);
+});
+
+test('die Sorten teilen sich kein Fenster', () => {
+  const f = createNoiseFilter();
+  assert.equal(f('out', FPS, 0), false);
+  assert.equal(f('out', QUITTUNG, 1), false, 'die erste Quittung trotz frischer fps-Stichprobe');
+  assert.equal(f('out', ZEIGER, 2), false, 'die erste Zeigerform ebenso');
+  assert.equal(f('out', QUITTUNG, 3), true);
+});
+
+test('state öffnet auch das Fenster der Quittungen erneut', () => {
+  const f = createNoiseFilter();
+  assert.equal(f('out', QUITTUNG, 0), false);
+  assert.equal(f('out', QUITTUNG, 10), true);
+  assert.equal(f('out', STATE, 20), false);
+  assert.equal(f('out', QUITTUNG, 30), false);
+});
