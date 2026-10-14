@@ -21,8 +21,8 @@
  * Grabstein-Zeile im Archiv (Einlieferer = Autor), ein Sicherungs-Stein, der
  * seinen Autor nennt, die eigene Löschung eines liegenden Satzes (Autor aus
  * dem Satz), ein übernommener Grabstein-Satz der Kopplung (Autor aus dem
- * Satz, außer er trägt `loeschungUngebunden`). Nie über eine bloße ID: die Kennung wählt der Absender frei, und
- * ohne den Autor im Schlüssel könnte jeder Gesprächspartner fremde
+ * Satz, außer er trägt `loeschungUngebunden`). Nie über eine bloße ID: die
+ * Kennung wählt der Absender frei, und ohne den Autor im Schlüssel könnte jeder Gesprächspartner fremde
  * Nachrichten vorab „löschen".
  *
  * **Kein eigener Objektspeicher, mit Absicht.** Ein neuer Speicher ginge nur

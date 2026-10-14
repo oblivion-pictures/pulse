@@ -33,7 +33,7 @@ import { trifftFrame } from '../krypto/loeschZiel';
 /** Obere Grenze fuer den Primaerschluessel-Bereich eines Kanals ohne `vor` —
  *  20 Neunen sind lexikografisch groesser als jede echte gepolsterte ID
  *  (deren Ziffern hoechstens 9 sind), dient nur als Bereichsende. */
-export const OBERE_ID = '9'.repeat(20);
+const OBERE_ID = '9'.repeat(20);
 
 /** Alle Sätze eines Kanals (Primärschlüssel-Bereich, `satz.ts::sortierSchluessel`). */
 export function kanalBereich(kanalId: string): IDBKeyRange {
@@ -42,10 +42,10 @@ export function kanalBereich(kanalId: string): IDBKeyRange {
 
 /**
  * Legt `satz` ab (put = Upsert über den Primärschlüssel) samt seiner
- * Medien-Zeilen, soweit ihr Platz frei oder ihr eigener ist — oder, steht seine Identität im Register, als Grabstein
- * (`alsGrabstein`, ohne Medien-Zeilen). `fertig` bekommt die abgelegte
- * Fassung. Ein Satz ohne Autor hat keine gebundene Identität und wird
- * abgelegt, wie er ist.
+ * Medien-Zeilen, soweit ihr Platz frei oder ihr eigener ist — oder, steht
+ * seine Identität im Register, als Grabstein (`alsGrabstein`, ohne
+ * Medien-Zeilen). `fertig` bekommt die abgelegte Fassung. Ein Satz ohne Autor
+ * hat keine gebundene Identität und wird abgelegt, wie er ist.
  *
  * Die Medien-Prüfung sieht zuerst auf die Zeilen, die DIESE Transaktion
  * schon schreibt (`geplantIn`, Gegenprüfung 2026-10-14, W2): ein Stapel

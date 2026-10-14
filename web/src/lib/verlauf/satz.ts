@@ -331,13 +331,11 @@ export function satzErgaenzen<S extends Satz>(
  *
  * Gegenprüfung 2026-10-12, Fund 5: `verlaufSaetzeErgaenzen` stellte früher
  * alle Leseanfragen, bevor die erste Antwort kam, und sah die eigenen
- * Schreibvorgänge desselben Aufrufs deshalb nicht. Zwei Archiv-Zeilen mit
- * derselben ID (eine Zeile eines Mitglieds mit der ID einer fremden
- * Nachricht, oder einfach doppelt eingeliefert) liefen beide gegen „liegt
- * nichts" und wurden beide geschrieben — die spätere blind über die
- * frühere. Heute legt `dbErgaenzen.ts` die Sätze zusätzlich nacheinander ab,
- * jeder sieht also den vorigen. Die Reihenfolge bleibt die des ersten
- * Auftretens.
+ * Schreibvorgänge desselben Aufrufs nicht. Zwei Archiv-Zeilen mit derselben
+ * ID liefen beide gegen „liegt nichts" und wurden beide geschrieben — die
+ * spätere blind über die frühere. Heute legt `dbErgaenzen.ts` die Sätze
+ * zusätzlich nacheinander ab, jeder sieht also den vorigen. Die Reihenfolge
+ * bleibt die des ersten Auftretens.
  */
 export function nachSchluesselVerdichten<S extends Satz>(saetze: S[], herkunft: Nachschub): S[] {
   const jeSchluessel = new Map<string, S>();

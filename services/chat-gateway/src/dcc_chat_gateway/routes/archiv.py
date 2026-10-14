@@ -61,8 +61,8 @@ log = logging.getLogger(__name__)
 router = APIRouter(dependencies=[CloudOnly])
 
 # Deckel je Abruf: ein Gesprächsjahr liegt bei ein paar tausend Zeilen;
-# der Klient blättert mit ``vor_id`` nach (s. ``archiv_lesen``). Grob an den Postfach-Batch
-# angelehnt, kein hartes Limit-Studio.
+# der Klient blättert mit ``vor_id`` nach (s. ``archiv_lesen``). Grob an den
+# Postfach-Batch angelehnt, kein hartes Limit-Studio.
 MAX_ZEILEN_JE_ABRUF = 500
 MAX_ZEILEN_JE_EINLIEFERUNG = 2000
 

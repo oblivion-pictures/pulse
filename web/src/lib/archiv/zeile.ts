@@ -180,8 +180,8 @@ export type ArchivEintrag =
  * Archiv-Verlauf bis zur Umstellung. Eine Bestandszeile kann trotzdem nichts
  * an einem liegenden Satz ändern als seine Kennung
  * (`verlauf/satz.ts::satzErgaenzen`), und eine Grabstein- oder
- * Bearbeitungs-Zeile gibt es nur mit Einlieferer. Der Satz aus einer Bestandszeile trägt `ungeprueft` und
- * wird nie eigene Wahrheit: keine Erstsicherung, keine Kopplung, jeder
+ * Bearbeitungs-Zeile gibt es nur mit Einlieferer. Der Satz aus einer
+ * Bestandszeile trägt `ungeprueft` und wird nie eigene Wahrheit: keine Erstsicherung, keine Kopplung, jeder
  * geprüfte Satz ersetzt ihn (`verlauf/herkunft.ts`, Gegenprüfung 2026-10-12,
  * Fund 4). Produktentscheidung, offen gemeldet am 2026-10-12.
  */
@@ -201,9 +201,9 @@ export type ZeilenHerkunft = {
  * Klartext einer Zeile plus ihre Herkunft → Eintrag, oder `null`: die Zeile
  * wird verworfen. Verworfen wird eine Zeile, deren Autor nicht ihr
  * Einlieferer ist, und jede Grabstein- oder Bearbeitungs-Zeile ohne bekannten
- * Einlieferer. Eine
- * Nachricht liegt danach unter der Zeilen-ID, wenn ein anderes Konto sie
- * eingeliefert hat, sonst unter `i` (s. Modulkopf). Wirft bei kaputtem JSON.
+ * Einlieferer. Eine Nachricht liegt danach unter der Zeilen-ID, wenn ein
+ * anderes Konto sie eingeliefert hat, sonst unter `i` (s. Modulkopf). Wirft
+ * bei kaputtem JSON.
  */
 export function leseZeile(
 	kanalId: string,

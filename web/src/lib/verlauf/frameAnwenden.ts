@@ -48,8 +48,8 @@ function gemeldet<T>(arbeit: Promise<T>, ersatz: T): Promise<T> {
  * Wendet EINE Reaktion (eigene oder per Umschlag empfangene) auf den Satz
  * `nachrichtId` an — `nachrichtId` ist die LOKALE ID; eine kanonische ID aus
  * einem Umschlag loest der Aufrufer vorher auf
- * (`verlaufLokaleIdsFuerFramePflicht`, s. `krypto/empfangen.ts`). Gibt die neue Anzeige-Form zurueck, oder `null`,
- * wenn nichts geschrieben wurde: kein solcher Satz, Grabstein, fremdes
+ * (`verlaufLokaleIdsFuerFramePflicht`, s. `krypto/empfangen.ts`). Gibt die
+ * neue Anzeige-Form zurueck, oder `null`, wenn nichts geschrieben wurde: kein solcher Satz, Grabstein, fremdes
  * Konto, oder der Umschlag aenderte nichts (doppelt angekommen, s.
  * `krypto/reaktionen.ts`). Wirft bei einem Fehlschlag (s. Modulkopf).
  */
@@ -139,7 +139,6 @@ export async function verlaufLokaleIdsFuerFramePflicht(
   if (kontoId === null) return [];
   return verlaufSatzIdsFuerFrame(kanalId, frameId, kontoId, autorId);
 }
-
 
 /** Die Bearbeitungs-Zeilen des Server-Archivs (`archivBearbeitung.ts`) auf
  *  die Sätze dieses Kontos im Kanal anwenden — sie ergänzen nur
