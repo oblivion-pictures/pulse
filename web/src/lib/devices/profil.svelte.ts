@@ -50,6 +50,13 @@
 
 import { loadAll, saveAll } from '$lib/stream/persistence';
 import type { OverrideSet } from '$lib/stream/settingsCatalog';
+import {
+  hdrGilt,
+  istProfilCodec,
+  profilCodecFuerKarte,
+  type KartenFaehigkeit,
+  type ProfilCodec,
+} from './profilCodec';
 
 const SPEICHER_SCHLUESSEL = 'remote.standplatzProfil';
 
@@ -63,13 +70,16 @@ export const HAUPTBILDSCHIRM = 'monitor';
 export interface StandplatzProfil {
   /** Aufnahmequelle: [`HAUPTBILDSCHIRM`] oder `Monitor: <n>`. */
   quelle: string;
-  codec: 'h264' | 'av1';
+  /** Seit 2026-10-14 auch HEVC; angeboten und gesendet wird nur, was die Karte
+   *  encodieren kann (`profilCodec.ts`). */
+  codec: ProfilCodec;
   /** Wert aus `RESOLUTION_VALUES` (`Native`, `1440p`, …). */
   aufloesung: string;
   fps: number;
   bitrate_kbps: number;
   /**
-   * 10 bit Farbtiefe — **nur mit AV1** und nur, wenn die Karte es kann.
+   * 10 bit Farbtiefe — **nur mit AV1 oder HEVC** und nur, wenn die Karte es
+   * für diesen Codec kann (`tenBitPossible`; HEVC seit 2026-10-14).
    *
    * Wählbar seit 2026-08-16, vorher fest aus. Die Begründung dagegen war die
    * Startverweigerung, und die trägt nicht: sie gilt für die rollende
@@ -110,7 +120,7 @@ function ausSpeicher(roh: unknown): StandplatzProfil {
   const o = roh as Record<string, unknown>;
   return {
     quelle: typeof o.quelle === 'string' && o.quelle ? o.quelle : VORGABE.quelle,
-    codec: o.codec === 'av1' ? 'av1' : 'h264',
+    codec: istProfilCodec(o.codec) ? o.codec : 'h264',
     aufloesung:
       typeof o.aufloesung === 'string' && o.aufloesung ? o.aufloesung : VORGABE.aufloesung,
     fps: typeof o.fps === 'number' && o.fps > 0 ? o.fps : VORGABE.fps,
@@ -150,16 +160,23 @@ class StandplatzProfilStore {
    *
    * **Farbtiefe und HDR reisen als WUNSCH mit** (seit 2026-08-16), nicht als
    * Befehl: `buildStartArgs` schickt sie nur hinaus, wenn sie im Moment des
-   * Weckens auch einlösbar sind (AV1, passende Karte, gemeldete Fähigkeit).
+   * Weckens auch einlösbar sind (AV1 oder HEVC, passende Karte, gemeldete Fähigkeit).
    * Ein `hdr: true`, das der Rechner gerade nicht kann, bräche den Start ab —
    * und auf einem Gerät, vor dem niemand sitzt, liefe der Weckruf wortlos ins
    * Leere. Der gespeicherte Wunsch bleibt davon unberührt und greift wieder,
    * sobald die Karte es hergibt.
+   *
+   * **Der Codec wird an die Karte angepasst** (`profilCodecFuerKarte`): ein
+   * AV1-Profil auf einer Karte ohne AV1 sendet HEVC oder H.264, statt am
+   * Encoder zu scheitern. `karte` fehlt = ungemessen, dann bleibt er, wie er
+   * ist. HDR gibt es nur mit AV1 (`VIDEO_MODES` kennt keinen HEVC-HDR-Weg) und
+   * fällt deshalb mit jedem anderen Codec weg.
    */
-  alsUebersteuerung(): OverrideSet {
+  alsUebersteuerung(karte?: KartenFaehigkeit): OverrideSet {
     const p = this.profil;
+    const codec = profilCodecFuerKarte(p.codec, karte);
     return {
-      codec: p.codec,
+      codec,
       resolution: p.aufloesung,
       fps: p.fps,
       bitrate_kbps: p.bitrate_kbps,
@@ -167,7 +184,7 @@ class StandplatzProfilStore {
       // `buildStartArgs` — dort ist sie für den Knopf des Besitzers und für den
       // Weckruf dieselbe, und es gibt sie nur einmal.
       ...(p.zehn_bit ? { bit_depth: 10 as const } : {}),
-      ...(p.hdr ? { hdr: true } : {}),
+      ...(hdrGilt(codec, p.hdr) ? { hdr: true } : {}),
     };
   }
 }

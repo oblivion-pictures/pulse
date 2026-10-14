@@ -42,6 +42,7 @@
 import { gatewayForServer } from '$lib/ws/connection';
 import { geraeteAnmeldung } from './anmeldung.svelte';
 import { HAUPTBILDSCHIRM, standplatzProfil } from './profil.svelte';
+import { kartenFaehigkeit, kartenFaehigkeitSicherstellen } from './kartenFaehigkeit';
 import { streamStarten } from '$lib/stream/starten';
 import { MAX_STREAM_SLOTS, runningStreamSlots } from '$lib/stream/state.svelte';
 import { stopSlot } from '$lib/stream/slotControl.svelte';
@@ -362,12 +363,17 @@ export async function weckrufBehandeln(
     // **P2P**: der Sidecar startet im WARTENDE-Zustand — kein WHIP-Push, kein
     // Token, der Server sieht von diesem Stream nichts. Der Encoder legt los,
     // sobald die Direktverbindung zum Steuernden steht (`direktbild`).
+    //
+    // Den Codec passt das Profil an die Karte an (`profilCodec.ts`) — dafür
+    // muss ihre Encoder-Probe vorliegen, und auf einem Rechner, an dem nie
+    // jemand den Stream-Dialog geöffnet hat, liegt sie sonst nicht vor.
+    await kartenFaehigkeitSicherstellen();
     const r = await streamStarten(
       channelId,
       slot,
       {
         quelle,
-        uebersteuerung: standplatzProfil.alsUebersteuerung(),
+        uebersteuerung: standplatzProfil.alsUebersteuerung(kartenFaehigkeit()),
         ton: erster ? 'Desktop' : 'Aus',
       },
       p2p,

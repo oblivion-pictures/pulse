@@ -8,7 +8,7 @@
  */
 interface ProfilAuszug {
   quelleName: string;
-  codec: 'h264' | 'av1';
+  codec: 'h264' | 'hevc' | 'av1';
   /** Wert aus dem Katalog (`Native`, `4K`, …) — `Native` wird übersetzt. */
   aufloesung: string;
   aufloesungNativ: string;
@@ -18,15 +18,21 @@ interface ProfilAuszug {
   hdr: boolean;
 }
 
+// Dieselben Namen wie `PROFIL_CODECS` in `profilCodec.ts` — hier doppelt, weil
+// die Datei importfrei bleiben muss.
+const CODEC_NAME = { h264: 'H.264', hevc: 'HEVC', av1: 'AV1' } as const;
+
 export function profilZusammenfassung(p: ProfilAuszug): string {
   const teile = [
     p.quelleName,
-    p.codec === 'av1' ? 'AV1' : 'H.264',
+    CODEC_NAME[p.codec],
     p.aufloesung === 'Native' ? p.aufloesungNativ : p.aufloesung,
     `${p.fps} fps`,
     `${p.bitrate_kbps} kbit/s`,
   ];
-  if (p.hdr) teile.push('HDR');
-  else if (p.zehn_bit) teile.push('10 Bit');
+  // Wie beim Senden: HDR nur mit AV1 (`hdrGilt` in `profilCodec.ts`), 10 bit
+  // nicht mit H.264 — sonst nennt die Zeile, was nie hinausgeht.
+  if (p.hdr && p.codec === 'av1') teile.push('HDR');
+  else if (p.zehn_bit && p.codec !== 'h264') teile.push('10 Bit');
   return teile.join(' · ');
 }

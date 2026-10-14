@@ -37,6 +37,8 @@
   import { geraeteAnmeldung } from '$lib/devices/anmeldung.svelte';
   import { standplatzProfil, HAUPTBILDSCHIRM } from '$lib/devices/profil.svelte';
   import { profilZusammenfassung } from '$lib/devices/profilZusammenfassung';
+  import { profilCodecFuerKarte } from '$lib/devices/profilCodec';
+  import { kartenFaehigkeit } from '$lib/devices/kartenFaehigkeit';
   import { remoteProtokoll } from '$lib/remote/protokoll.svelte';
   import { streamSettings } from '$lib/stream/settings.svelte';
   import { MONITOR_CAPTURE_PREFIX } from '$lib/stream/settingsCatalog';
@@ -76,6 +78,9 @@
   const profilZeile = $derived(
     profilZusammenfassung({
       ...standplatzProfil.profil,
+      // Was dieser Rechner tatsächlich sendet, nicht das Gespeicherte — eine
+      // Karte ohne AV1 sendet HEVC oder H.264 (`profilCodec.ts`).
+      codec: profilCodecFuerKarte(standplatzProfil.profil.codec, kartenFaehigkeit()),
       quelleName,
       aufloesungNativ: m.standplatz_profil_resolution_native(),
     }),

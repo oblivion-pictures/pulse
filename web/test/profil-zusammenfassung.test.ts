@@ -30,3 +30,15 @@ test('AV1 mit HDR nennt HDR, nicht zusätzlich 10 Bit', () => {
 test('10 Bit ohne HDR wird genannt', () => {
   assert.match(profilZusammenfassung({ ...basis, codec: 'av1', zehn_bit: true }), / · 10 Bit$/);
 });
+
+test('HEVC wird als HEVC genannt, mit 10 Bit', () => {
+  assert.equal(
+    profilZusammenfassung({ ...basis, codec: 'hevc', zehn_bit: true }),
+    'Hauptbildschirm · HEVC · nativ · 30 fps · 8000 kbit/s · 10 Bit',
+  );
+});
+
+test('HDR nur bei AV1, 10 Bit nie bei H.264 — wie beim Senden', () => {
+  assert.match(profilZusammenfassung({ ...basis, codec: 'hevc', zehn_bit: true, hdr: true }), / · HEVC · .* · 10 Bit$/);
+  assert.doesNotMatch(profilZusammenfassung({ ...basis, zehn_bit: true }), /10 Bit/);
+});

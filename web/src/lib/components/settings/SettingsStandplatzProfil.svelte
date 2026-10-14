@@ -33,6 +33,8 @@
     type StandplatzProfil,
   } from '$lib/devices/profil.svelte';
   import { monitoreSicherstellen } from '$lib/stream/captureSource';
+  import { farbSchalter } from '$lib/devices/profilCodec';
+  import SettingsStandplatzCodec from './SettingsStandplatzCodec.svelte';
   import { streamSettings } from '$lib/stream/settings.svelte';
   import { MONITOR_CAPTURE_PREFIX, RESOLUTION_VALUES } from '$lib/stream/settingsCatalog';
   import { capabilities } from '$lib/stores/capabilities.svelte';
@@ -86,13 +88,14 @@
   });
 
   /**
-   * 10 bit gibt es nur mit AV1 und nur, wenn der Sidecar es meldet; HDR nur
-   * obendrauf. Beides hängt am **Entwurf**, nicht am gespeicherten Profil —
+   * Welche Codec-Farbtiefen gehen, rechnet `farbSchalter` (`profilCodec.ts`).
+   * Beides hängt am **Entwurf**, nicht am gespeicherten Profil —
    * wer im Formular auf H.264 stellt, sieht die Kästchen sofort ausgrauen,
    * statt erst nach dem Speichern zu merken, dass es nicht zusammengeht.
    */
-  const zehnBitMoeglich = $derived(entwurf.codec === 'av1' && stream.tenBitAvailable);
-  const hdrMoeglich = $derived(zehnBitMoeglich && entwurf.zehn_bit && stream.hdrAvailable);
+  const schalter = $derived(farbSchalter(entwurf.codec, stream));
+  const zehnBitMoeglich = $derived(schalter.zehnBit);
+  const hdrMoeglich = $derived(schalter.hdr && entwurf.zehn_bit);
 
   /**
    * Eine Zahl aus einem Zahlenfeld, geklemmt — und mit Vorgabe für „nichts".
@@ -134,12 +137,9 @@
     })),
   ]);
 
-  // Statische Listen ohne m.*-Aufruf — einmal berechnet als const, kein
-  // `$derived` (das wäre eine Ableitung ohne Abhängigkeit).
-  const codecOptionen = [
-    { value: 'h264', label: 'H.264' },
-    { value: 'av1', label: 'AV1' },
-  ];
+  // Statische Liste ohne m.*-Aufruf — als const, kein `$derived` (das wäre eine
+  // Ableitung ohne Abhängigkeit). Die Codec-Liste hängt an der Karte und steht
+  // deshalb im eigenen Feld (`SettingsStandplatzCodec.svelte`).
   const aufloesungOptionen = RESOLUTION_VALUES.map((r) => ({ value: r, label: r }));
 
   function speichern(): void {
@@ -167,15 +167,7 @@
     </label>
 
     <div class="grid grid-cols-2 gap-2">
-      <label class="flex flex-col gap-1">
-        <span class="text-text-muted text-xs">{m.standplatz_profil_codec()}</span>
-        <Select
-          value={entwurf.codec}
-          options={codecOptionen}
-          onchange={(v) => (entwurf = { ...entwurf, codec: v as 'h264' | 'av1' })}
-          data-testid="standplatz-profil-codec"
-        />
-      </label>
+      <SettingsStandplatzCodec bind:codec={entwurf.codec} />
 
       <label class="flex flex-col gap-1">
         <span class="text-text-muted text-xs">{m.standplatz_profil_resolution()}</span>
