@@ -2,6 +2,16 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-14.2",
+      "date": "2026-10-14",
+      "style": "Sachlich",
+      "title": "Korrekturen beim Streamen",
+      "items": [
+        "Kommt dein HQ-Stream beim Server nicht an, zeigt Pulse nach kurzer Zeit eine Warnung, statt weiter „Live“ anzuzeigen.",
+        "Ist eine Server-App ausgeschaltet, heißt es beim Beitreten jetzt „Server ist offline“ statt „nicht erreichbar“."
+      ]
+    },
+    {
       "id": "2026-10-14",
       "date": "2026-10-14",
       "style": "Sachlich",
