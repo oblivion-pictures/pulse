@@ -21,9 +21,19 @@
 //!    nach vorn (Mindest-Latenz — dasselbe Prinzip wie der Bild-Takt in
 //!    `app::takt`). Verankerungsfehler sind KONSTANT, kein Drift.
 //! 3. **NACHFUEHREN**: klingt der Ton spaeter als seine Uhr sagt, sinkt der
-//!    Soll-Fuellstand des Rings (Zeitkonstante 60 s, Deckel ±150 ms). Den
+//!    Soll-Fuellstand des Rings (Zeitkonstante 60 s, Deckel +150 ms nach
+//!    oben; nach unten haelt ihn seit 2026-10-14 die Ring-Untergrenze
+//!    `ringregelung::RING_BODEN_MS`, beim Grundwert also bei -20 ms). Den
 //!    Rest setzt der bestehende Uhrenabgleich ueber die Abspielrate um —
 //!    unhoerbar, statt Ton wegzuschneiden.
+//!
+//! **Was dieser Regler NICHT regelt** (seit 2026-10-14): eine Abweichung
+//! des Rings von seinem Sollwert (die baut der Uhrenabgleich ab, ein
+//! Rueckstand ueber der Kappschwelle die Grobkappung), und nichts waehrend
+//! der Ring nach einem Leerlauf neu vorfuellt. Vorher integrierte er beides
+//! mit: nach einer Serie von Lieferaussetzern (Fernsteuerung, je rund 600 ms)
+//! stand er am Deckel, der Ring auf 1 ms Sollwert, und es folgte eine
+//! Unterlauf-Serie ([`fehler_ohne_ringabweichung`], [`darf_nachfuehren`]).
 //!
 //! **Bewusst nur der TON geregelt, nicht das Bild**: der Bild-Takt hat seine
 //! eigene, bewaehrte Nachfuehrung (Mindest-Latenz-Anker, Neuverankerung).
@@ -48,7 +58,8 @@ pub const NACHFUEHR_S: f64 = 60.0;
 
 /// Deckel des Regel-Eingriffs in Millisekunden. Mehr Versatz als so viel
 /// ist kein Uhrenfehler mehr, sondern ein kaputter Zustand — dann lieber
-/// ehrlich daneben liegen, als den Ring bis zur Stille lehrziehen.
+/// ehrlich daneben liegen, als den Ring bis zur Stille lehrziehen. Nach unten
+/// greift schon vorher die Ring-Untergrenze (`audio.rs`, `ziel_setzen`).
 pub const VERSATZ_MAX_MS: i32 = 150;
 
 /// Ab wie viel Millisekunden Frueheintreffen gilt eine Ankunftszeit als neue
@@ -80,6 +91,19 @@ pub struct Tonuhr {
 }
 
 impl Tonuhr {
+    /// Den Start-Vorhalt verschieben — wenn der Nutz-Trim den Sollwert
+    /// aendert (`audio.rs`, `OffsetMs`).
+    ///
+    /// **Warum** (2026-10-14, gerechnet, nicht gemessen): der Vorhalt wird beim
+    /// ersten Paket festgeschrieben. Hebt jemand danach den Schieberegler um
+    /// 100 ms an, waechst der Ring um 100 ms, und ohne diese Verschiebung saehe
+    /// der Regler darin 100 ms Fehler und regelte den Trim binnen Minuten
+    /// wieder weg — genau das Werkzeug, das der Modulkopf fuer den Restfehler
+    /// empfiehlt.
+    pub fn vorhalt_verschieben(&mut self, delta_s: f64) {
+        self.startvorhalt_s += delta_s;
+    }
+
     /// Erste Verankerung beim ersten Paket. `startvorhalt_s` = Ring-Sollwert
     /// in Sekunden bei der ersten Messung (s. Feld).
     pub fn neu(rtp_roh: u32, klingt_bei: u64, jetzt: Instant, startvorhalt_s: f64) -> Self {
@@ -148,6 +172,36 @@ impl Tonuhr {
         let delta_s = (pos - self.anker_rtp as f64) / 48_000.0;
         ((jetzt - self.anker_lokal).as_secs_f64() - delta_s - self.startvorhalt_s) * 1000.0
     }
+}
+
+/// Den Lippenfehler um die Abweichung des Rings von seinem Sollwert
+/// bereinigen.
+///
+/// Der gemessene Fehler enthaelt sie: steht der Ring 40 ms ueber dem Sollwert,
+/// klingt der Ton 40 ms spaeter. Abbauen soll sie aber der Uhrenabgleich (ein
+/// Rueckstand ueber der Kappschwelle die Grobkappung) — regelte dieser Regler
+/// sie mit, arbeiteten zwei Kreise an derselben Abweichung, und der aeussere
+/// liefe nach jedem Aussetzer ein Stueck weiter in den Deckel. `mittel` =
+/// geglaetteter Fuellstand (`Uhrenabgleich::mittel`), nicht der Wert direkt
+/// nach dem Anhaengen, der der Hochpunkt der Saegezahnkurve ist; `soll` und
+/// `mittel` in verschraenkten Samples, `per_ms` ebenso.
+pub fn fehler_ohne_ringabweichung(fehler_ms: f64, mittel: f64, soll: usize, per_ms: usize) -> f64 {
+    if per_ms == 0 {
+        return fehler_ms;
+    }
+    fehler_ms - (mittel - soll as f64) / per_ms as f64
+}
+
+/// Darf dieser Paket-Schritt den Eingriff nachfuehren?
+///
+/// Nicht nach langer Stille (`dt_s` > 2 s: der Fehler ist Schnee von
+/// gestern), nicht solange der Ring nach einem Leerlauf neu vorfuellt
+/// (`anlauf`: das erste Paket nach einem Aussetzer kommt um die ganze Pause
+/// verspaetet — gerechnet rund +580 ms bei 640 ms Pause, ein einziger Schritt
+/// ueber ~0,65 s bewegte den Eingriff um rund 6 ms) und nicht bei einem
+/// Rueckstand ueber der Kappschwelle (den schneidet die Grobkappung weg).
+pub fn darf_nachfuehren(dt_s: f64, anlauf: bool, rueckstand: bool) -> bool {
+    dt_s <= 2.0 && !anlauf && !rueckstand
 }
 
 /// Takte (48 kHz) in eine Dauer umrechnen. Nur fuer NICHT-negative Takte
@@ -283,6 +337,44 @@ mod tests {
         // unter der Schwelle, Anker bleibt stehen.
         uhr.paket(48_480, 960, 960, 0, jetzt + Duration::from_millis(507));
         assert_eq!(uhr.anker_rtp, 48_000, "3 ms Fruehe liegen unter der Schwelle");
+    }
+
+    /// Steht der Ring ueber seinem Sollwert, ist das Sache des Uhrenabgleichs:
+    /// der Regelfehler zieht genau diese Abweichung ab, eine Abweichung nach
+    /// unten zaehlt umgekehrt.
+    #[test]
+    fn die_ringabweichung_zaehlt_nicht_zum_regelfehler() {
+        let per_ms = 96;
+        let soll = 60 * per_ms;
+        assert_eq!(fehler_ohne_ringabweichung(50.0, (soll + 40 * per_ms) as f64, soll, per_ms), 10.0);
+        assert_eq!(fehler_ohne_ringabweichung(50.0, soll as f64, soll, per_ms), 50.0);
+        assert_eq!(fehler_ohne_ringabweichung(0.0, (soll - 20 * per_ms) as f64, soll, per_ms), 20.0);
+    }
+
+    /// Nicht nachgefuehrt wird nach langer Stille, beim Vorfuellen nach einem
+    /// Leerlauf und bei einem Rueckstand ueber der Kappschwelle — jeweils fuer
+    /// sich allein.
+    #[test]
+    fn wann_nicht_nachgefuehrt_wird() {
+        assert!(darf_nachfuehren(0.02, false, false));
+        assert!(!darf_nachfuehren(2.5, false, false), "lange Stille");
+        assert!(!darf_nachfuehren(0.65, true, false), "erstes Paket nach einem Aussetzer");
+        assert!(!darf_nachfuehren(0.02, false, true), "Rueckstand ueber der Kappschwelle");
+    }
+
+    /// Ein spaeter verstellter Nutz-Trim verschiebt den Bezugspunkt mit: der
+    /// um 100 ms vollere Ring ist dann kein Fehler.
+    #[test]
+    fn ein_verstellter_trim_ist_kein_fehler() {
+        let jetzt = Instant::now();
+        let mut uhr = Tonuhr::neu(48_000, 0, jetzt, 0.060);
+        // Wie `start_vorhalt_ist_kein_fehler`, aber 100 ms weniger gespielt —
+        // der Ring haelt sie zusaetzlich, weil der Trim um 100 ms stieg.
+        let ausgabe = 48_000 * 2 * 840 / 1000;
+        let spaeter = jetzt + Duration::from_millis(1000);
+        assert!((99.0..=101.0).contains(&uhr.fehler_ms(ausgabe, 48_000, 2, spaeter)));
+        uhr.vorhalt_verschieben(0.100);
+        assert!(uhr.fehler_ms(ausgabe, 48_000, 2, spaeter).abs() < 0.1);
     }
 
     /// Der Startfall vom 2026-09-27 (E2E-Lauf): der Ring fuellt sich mit

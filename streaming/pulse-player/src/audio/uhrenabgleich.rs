@@ -93,6 +93,29 @@ pub(super) struct Uhrenabgleich {
 }
 
 impl Uhrenabgleich {
+    /// Die Glaettung verwerfen — nach einer Grobkappung (`audio.rs`).
+    ///
+    /// Das gleitende Mittel traegt nach einem Schnitt noch rund eine Sekunde
+    /// lang den weggeschnittenen Rueckstand mit: der Regler sieht einen Ring,
+    /// der viel zu voll ist, obwohl er gerade auf den Sollwert gesetzt wurde,
+    /// und der Lippen-Regler (der seit 2026-10-14 die Ringabweichung aus seinem
+    /// Fehler herausrechnet, `lippen::fehler_ohne_ringabweichung`) eine
+    /// Abweichung, die es nicht mehr gibt. Der Schnitt beginnt einen neuen
+    /// Abschnitt, ein Mittel ueber den alten ist dort keine Beobachtung mehr.
+    /// Die Wirkung auf die Abspielrate ist klein (hoechstens 1 ms je Sekunde),
+    /// die auf den Lippen-Regler nicht. Die Stellgroesse bleibt bis zum
+    /// naechsten Intervall stehen, das ist hoechstens eine Sekunde.
+    pub(super) fn neu_beginnen(&mut self) {
+        self.mittel = None;
+        self.seit_stellgroesse = 0;
+    }
+
+    /// Der geglaettete Fuellstand in Samples — `None` vor der ersten
+    /// Beobachtung und nach [`Self::neu_beginnen`].
+    pub(super) fn mittel(&self) -> Option<f64> {
+        self.mittel
+    }
+
     /// Einen frisch angehängten Block beobachten und, wenn das Intervall voll
     /// ist, die neue Stellgröße liefern.
     ///

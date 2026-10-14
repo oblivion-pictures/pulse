@@ -48,21 +48,73 @@ use std::time::{Duration, Instant};
 /// den es hier zu beheben gilt. Der Trim ist jetzt ein ZUSCHLAG hierauf.
 pub(super) const RING_SOLL_MS: usize = 60;
 
-/// Ab dem Wievielfachen des Sollwerts grob gekappt wird.
+/// Wie viele Millisekunden ueber dem Sollwert grob gekappt wird — gerechnet
+/// auf den Sollwert OHNE Lippen-Eingriff (Grundwert plus Nutz-Trim,
+/// `audio.rs`, `Shared::kapp_schwelle`).
 ///
-/// Darunter regelt der Uhrenabgleich, ohne zu schneiden. Der Schnitt klingt wie ein kurzer Aussetzer —
-/// verglichen mit sechs Sekunden bleibendem Versatz ist das der bessere Tausch,
-/// aber er ist teuer genug, dass er nicht bei jedem Jitter feuern darf.
-const RING_KAPP_FAKTOR: usize = 3;
-
-/// Sperrfrist nach einer Grobkappung.
+/// Darunter regelt der Uhrenabgleich, ohne zu schneiden. Der Schnitt klingt wie
+/// ein kurzer Aussetzer — verglichen mit sechs Sekunden bleibendem Versatz ist
+/// das der bessere Tausch, aber er ist teuer genug, dass er nicht bei jedem
+/// Jitter feuern darf.
 ///
-/// Ohne sie erzeugen mehrere Lieferpausen kurz hintereinander mehrere Schnitte.
-/// Der Wert ist NICHT gemessen — er ist ein begruendeter Anfang, und wer ihn
-/// aendert, misst nach.
-const RING_KAPP_SPERRE: Duration = Duration::from_secs(5);
+/// **Bis zum 2026-10-14 ein Faktor** (das Dreifache des Sollwerts — beim
+/// Grundwert dieselben 180 ms). Ein Faktor wanderte aber mit allem, was im
+/// Sollwert steckt: mit dem Lippen-Eingriff (bei 40 ms Sollwert schon ab
+/// 120 ms geschnitten) und mit dem Nutz-Trim (bei 500 ms Trim erst ab 1,68 s
+/// Rueckstand, ab rund 1,9 s Trim nie, weil die Schwelle ueber der Ringgrenze
+/// laege). Ein Rueckstand ist aber ein Zuviel an Zeit, unabhaengig davon, wie
+/// viel Vorlauf jemand eingestellt hat.
+pub(super) const RING_RUECKSTAND_MS: usize = 2 * RING_SOLL_MS;
 
+/// Untergrenze des Ring-Sollwerts in Millisekunden, die auch der
+/// Lippen-Eingriff nicht unterschreitet (`audio.rs`, `Shared::ziel_setzen`).
+///
+/// **Der Anlass** (Fernsteuerung, 2026-10-14): nach einer Serie von
+/// Lieferaussetzern stand der Eingriff am Deckel (-150 ms), der Sollwert damit
+/// bei 60 - 150 ms, also auf der damaligen Untergrenze von 1 ms. Der Ring hielt
+/// 10-30 ms, und es folgten 60-150 Unterlaeufe je zehn Sekunden — jeder davon
+/// Stille, die den Ton weiter hinter seine Uhr schob und den Regler noch tiefer
+/// drueckte. Ein Kreis, der sich selbst naehrt.
+///
+/// Weniger Puffer kann den Ton nicht frueher machen, als seine Pakete
+/// ankommen: kommt das Netz spaeter, ist auch das Bild spaeter (der Bild-Takt
+/// zeigt ein verspaetetes Bild sofort, `app::takt`). Unter rund drei Geraete-
+/// Aufrufen (WASAPI-Shared alle 10 ms) und gut einem Paket (10-20 ms) Vorrat
+/// wird dagegen jeder normale Jitter zum Unterlauf: drei Aufrufe (30 ms) plus
+/// ein Paket des eigenen Sendewegs (10 ms unter Windows und Linux; macOS
+/// sendet 20 ms, dort bleibt entsprechend weniger Reserve) sind 40 ms. Gerechnet, nicht
+/// gemessen — wer ihn aendert, misst nach. (Der Grundwert `RING_SOLL_MS` liegt
+/// mit seinen gemessenen 2-3 Ankunftsabstaenden darueber; die Untergrenze ist
+/// das, worunter auch ein Regler ihn nicht druecken darf.)
+pub(super) const RING_BODEN_MS: usize = 40;
 
+/// Wie lange der Ring ueber der Kappschwelle keinen neuen Hoechststand
+/// erreicht haben muss, bevor geschnitten wird — „der Nachhol-Schwall ist
+/// vorbei".
+///
+/// **Warum eine Zeit und nicht der Vergleich mit dem vorigen Paket** (so stand
+/// es vom 2026-08-22 bis 2026-10-14): ein Schwall kommt nicht in einem Zug in
+/// den Ring. Zwischen zwei seiner Pakete holt das Geraet seinen naechsten
+/// Block ab, der Ring ist dann kurz KLEINER als beim Paket davor — und der
+/// Vergleich hielt den Schwall fuer vorbei. Es wurde mitten im Schwall
+/// geschnitten, die damalige Sperrfrist von fuenf Sekunden begann, und der
+/// Rest des Schwalls blieb liegen. Gemessen am 2026-10-14 (Fernsteuerung,
+/// Windows-Sender): nach jedem Aussetzer fuenf bis sechs Sekunden lang
+/// 0,5-0,7 s Ton hinter dem Bild, dann ein zweiter hoerbarer Schnitt.
+///
+/// Angenommen, nicht gemessen: ein Schwall laeuft in wenigen Millisekunden in
+/// den Ring (die Pakete kommen gesammelt, `audio.rs` dekodiert sie
+/// hintereinander weg), 60 ms ohne neuen Hoechststand heisst dann, er ist
+/// vorbei. Kommt er doch in Stuecken mit groesseren Abstaenden, wird zweimal
+/// geschnitten — hoerbar, aber ohne bleibenden Versatz. Der Ton haengt
+/// hoechstens diese 60 ms laenger nach als noetig.
+const SCHWALL_RUHE: Duration = Duration::from_millis(60);
+
+/// Wie viel ueber dem bisherigen Hoechststand ein Fuellstand liegen muss, um
+/// als neuer zu gelten — ein Achtel des Rueckstands bis zur Schwelle (15 ms).
+/// Ohne Toleranz setzte jeder normale Ankunftsjitter die Ruhezeit zurueck; ein
+/// Schwall aus 10-ms-Paketen uebertrifft sie mit jedem zweiten Paket.
+const SCHWALL_TOLERANZ_TEILER: usize = 8;
 
 /// Zustand der Regelung. Liegt in `Shared` und wird nur vom Fuetter-Thread
 /// beschrieben.
@@ -75,11 +127,18 @@ pub(super) struct Ringregelung {
     /// behoben wird: der alte 6-Sekunden-Deckel kappte auch, nur eben zu spaet
     /// und lautlos.
     pub(super) resyncs: u64,
-    /// Wann zuletzt grob gekappt wurde — fuer [`RING_KAPP_SPERRE`].
-    letzte_kappung: Option<Instant>,
-    /// Fuellstand beim vorigen Anhaengen — daran haengt, ob der Rueckstand
-    /// gerade noch WAECHST (s. `nach_anhaengen`).
-    letzter_fuellstand: Option<usize>,
+    /// Hoechster Fuellstand, seit der Ring ueber der Kappschwelle steht, und
+    /// wann er erreicht wurde — daran haengt, ob der Schwall vorbei ist
+    /// ([`SCHWALL_RUHE`]). `None` = unter der Schwelle.
+    hoch: Option<(usize, Instant)>,
+}
+
+/// Steht der Ring ueber der Kappschwelle, baut ihn also die Grobkappung ab?
+/// Auch fuer den Lippen-Regler (`audio.rs`): einen solchen Rueckstand regelt
+/// er nicht mit, sonst integriert er einen Zustand auf, der gleich
+/// weggeschnitten wird.
+pub(super) fn im_rueckstand(fuellstand: usize, schwelle: usize) -> bool {
+    schwelle > 0 && fuellstand > schwelle
 }
 
 impl Ringregelung {
@@ -91,51 +150,58 @@ impl Ringregelung {
     /// Die Kanalzahl braucht es hier deshalb nicht mehr — sie war nur fuer den
     /// entfernten Feinabbau noetig, der einzelne Samples anfasste und dabei bis
     /// 2026-08-08 die Kanalzuordnung kippen konnte.
-    pub(super) fn nach_anhaengen(&mut self, ring: &mut VecDeque<f32>, soll: usize) -> u64 {
-        if soll == 0 {
+    ///
+    /// `soll` = wohin geschnitten wird (der wirksame Sollwert), `schwelle` =
+    /// ab wann ([`RING_RUECKSTAND_MS`]). `jetzt` = Zeitpunkt des Anhaengens —
+    /// fuer die Ruhezeit nach dem Schwall ([`SCHWALL_RUHE`]); hereingereicht
+    /// statt selbst gelesen, damit die Tests einen Schwall in Mikrosekunden
+    /// nachstellen koennen.
+    pub(super) fn nach_anhaengen(
+        &mut self,
+        ring: &mut VecDeque<f32>,
+        soll: usize,
+        schwelle: usize,
+        jetzt: Instant,
+    ) -> u64 {
+        if soll == 0 || !im_rueckstand(ring.len(), schwelle) {
+            self.hoch = None;
             return 0;
         }
-        // **Nur schneiden, wenn der Rueckstand nicht mehr WAECHST** (2026-08-22).
-        //
-        // Ohne diese Bedingung entschied der Schnitt mitten im Nachhol-Schwall:
-        // dessen erstes Stueck reisst die Schwelle, es wird geschnitten, die
-        // Sperrfrist beginnt — und der Rest des Schwalls landet danach in einem
-        // Ring, der fuer die naechsten fuenf Sekunden nicht mehr angefasst
-        // werden darf. Gemessen am 2026-08-22: Ring neunfach voll, Uhrenabgleich
-        // sechs Sekunden am Anschlag (-1000 ppm, er braeuchte Minuten fuer
-        // diesen Rueckstand), dann ein zweiter Schnitt. Fuer den Hoerer ein
-        // Aussetzer, sechs Sekunden Ton hinter dem Bild und ein zweiter
-        // hoerbarer Schnitt — aus einer halben Sekunde Lieferpause.
-        //
-        // Es ist derselbe Fehler, den der entfernte Feinabbau unten machte, nur
-        // in gross: **auf einem Augenblickswert entscheiden, waehrend sich der
-        // Wert noch bewegt.** Waechst der Ring, ist der Schwall noch unterwegs
-        // und jede Zahl von jetzt ist die falsche Grundlage.
-        //
-        // Kein neuer Zeitwert dafuer, sondern der Vergleich mit dem vorigen
-        // Fuellstand: der Schwall ist vorbei, wenn das Geraet wieder so viel
-        // abholt, wie hereinkommt. Streng `>`, ohne Toleranz — im schlechtesten
-        // Fall verschiebt ein Sample Zuwachs den Schnitt um EIN Paket
-        // (rund 20 ms) statt um fuenf Sekunden. Das erste Anhaengen ueberhaupt
-        // gilt als nicht wachsend: ohne Vorgeschichte gibt es keinen Schwall,
-        // an dem man sein koennte.
-        let waechst = self.letzter_fuellstand.is_some_and(|vorher| ring.len() > vorher);
-        self.letzter_fuellstand = Some(ring.len());
-        let darf_kappen = self.letzte_kappung.is_none_or(|t| t.elapsed() >= RING_KAPP_SPERRE);
-        if ring.len() > soll * RING_KAPP_FAKTOR && darf_kappen && !waechst {
-            // Grob: nach einem Nachhol-Schwall in EINEM Schnitt zurueck auf den
-            // Sollwert. Hoerbar wie ein kurzer Aussetzer — und der bessere
-            // Tausch gegen einen Rueckstand, der sonst bis Sitzungsende bleibt.
-            let excess = ring.len() - soll;
-            ring.drain(..excess);
-            self.resyncs += 1;
-            self.letzte_kappung = Some(Instant::now());
-            // Der Bezugswert muss den Schnitt mitmachen, sonst sieht das
-            // naechste Anhaengen einen "wachsenden" Ring, obwohl nur das
-            // Geschnittene fehlt.
-            self.letzter_fuellstand = Some(ring.len());
-            return excess as u64;
+        // **Erst schneiden, wenn der Schwall vorbei ist** — und das heisst:
+        // seit [`SCHWALL_RUHE`] kein neuer Hoechststand. Auf einem
+        // Augenblickswert zu entscheiden, waehrend sich der Wert noch bewegt,
+        // war zweimal der Fehler hier (2026-08-22 ein Schnitt bei der ersten
+        // Ueberschreitung, 2026-10-14 einer zwischen zwei Paketen des
+        // Schwalls; Begruendung an `SCHWALL_RUHE`).
+        let toleranz = schwelle.saturating_sub(soll) / SCHWALL_TOLERANZ_TEILER;
+        let seit = match self.hoch {
+            Some((hoch, seit)) if ring.len() <= hoch + toleranz => seit,
+            _ => {
+                self.hoch = Some((ring.len(), jetzt));
+                jetzt
+            }
+        };
+        if jetzt.saturating_duration_since(seit) < SCHWALL_RUHE {
+            return 0;
         }
+        // Grob: nach einem Nachhol-Schwall in EINEM Schnitt zurueck auf den
+        // Sollwert. Hoerbar wie ein kurzer Aussetzer — und der bessere Tausch
+        // gegen einen Rueckstand, der sonst bis Sitzungsende bleibt.
+        //
+        // **Ohne Sperrfrist danach** (bis 2026-10-14: fuenf Sekunden). Sie
+        // sollte mehrere Schnitte bei mehreren Lieferpausen kurz hintereinander
+        // verhindern — aber jede dieser Pausen hinterlaesst ihren eigenen
+        // Rueckstand, und ihn fuenf Sekunden liegen zu lassen heisst, den Ton
+        // fuenf Sekunden lang um eine halbe Sekunde hinter dem Bild laufen zu
+        // lassen. Dass ein Schwall nur EINEN Schnitt bekommt, sichert jetzt
+        // die Ruhezeit.
+        // Abgesichert, obwohl `audio.rs::kapp_schwelle` die Schwelle ueber dem
+        // Sollwert haelt: ein Unterlauf hier risse den Ton-Faden mit.
+        let Some(excess) = ring.len().checked_sub(soll) else { return 0 };
+        ring.drain(..excess);
+        self.resyncs += 1;
+        self.hoch = None;
+        excess as u64
         // **Hier stand bis zum 2026-08-13 ein Feinabbau, und er war die Ursache
         // des Fehlers, den er verhindern sollte.** Ein Frame je 2000 angehaengter
         // Samples, gemessen am Fuellstand unmittelbar NACH dem Anhaengen — also
@@ -150,7 +216,6 @@ impl Ringregelung {
         // Ersetzt durch [`super::uhrenabgleich`]: der fuehrt die Abspielrate um
         // Bruchteile eines Promille nach, statt Ton zu schneiden — stetig,
         // unhoerbar, und erstmals auch in der Gegenrichtung.
-        0
     }
 }
 
@@ -174,17 +239,22 @@ mod tests {
     ///
     /// Was bleibt, ist der Grobschnitt, und der wird hier geprueft.
 
-    /// Ueber dem Vielfachen des Sollwerts wird in EINEM Schnitt zurueckgesetzt.
+    const SOLL: usize = RING_SOLL_MS * 96;
+    const SCHWELLE: usize = (RING_SOLL_MS + RING_RUECKSTAND_MS) * 96;
+
+    /// Ueber dem Vielfachen des Sollwerts wird in EINEM Schnitt zurueckgesetzt —
+    /// sobald der Ring [`SCHWALL_RUHE`] lang keinen neuen Hoechststand hatte.
     #[test]
     fn ueber_der_kappschwelle_geht_es_zurueck_auf_den_sollwert() {
-        let soll = RING_SOLL_MS * 96;
-        let mut ring = stereo_ring(soll * RING_KAPP_FAKTOR + 100);
+        let t0 = Instant::now();
+        let mut ring = stereo_ring(SCHWELLE + 100);
         let mut r = Ringregelung::default();
 
-        let verworfen = r.nach_anhaengen(&mut ring, soll);
+        assert_eq!(r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, t0), 0, "erst warten, ob noch mehr kommt");
+        let verworfen = r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, t0 + SCHWALL_RUHE);
 
-        assert_eq!(ring.len(), soll);
-        assert_eq!(verworfen, (soll * RING_KAPP_FAKTOR + 100 - soll) as u64);
+        assert_eq!(ring.len(), SOLL);
+        assert_eq!(verworfen, (SCHWELLE + 100 - SOLL) as u64);
         assert_eq!(r.resyncs, 1);
     }
 
@@ -192,103 +262,124 @@ mod tests {
     /// sonst waeren nach dem Schnitt links und rechts vertauscht.
     #[test]
     fn der_grobschnitt_laesst_die_kanalzuordnung_stehen() {
-        let soll = RING_SOLL_MS * 96;
-        let mut ring = stereo_ring(soll * RING_KAPP_FAKTOR + 100);
+        let t0 = Instant::now();
+        let mut ring = stereo_ring(SCHWELLE + 100);
         let mut r = Ringregelung::default();
         assert_eq!(ring[0], 1.0, "Vorbedingung: der Ring beginnt auf dem linken Kanal");
 
-        r.nach_anhaengen(&mut ring, soll);
+        r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, t0);
+        r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, t0 + SCHWALL_RUHE);
 
+        assert_eq!(r.resyncs, 1, "Vorbedingung: es wurde geschnitten");
         assert_eq!(ring[0], 1.0, "nach dem Schnitt muss der Ring links beginnen");
     }
 
-    /// Unterhalb der Kappschwelle wird **nichts** mehr angefasst. Genau das ist
-    /// die Aenderung vom 2026-08-13: hier lag der Feinabbau, der die
-    /// Sicherheitsreserve aufzehrte und damit die Unterlaeufe erzeugte, die er
-    /// verhindern sollte.
+    /// Unterhalb der Kappschwelle wird **nichts** angefasst — dort regelt der
+    /// Uhrenabgleich (2026-08-13: hier lag der Feinabbau, der die
+    /// Sicherheitsreserve aufzehrte).
     #[test]
     fn unter_der_kappschwelle_bleibt_der_ring_unberuehrt() {
-        let soll = RING_SOLL_MS * 96;
-        // Deutlich ueber dem Sollwert, aber unter dem Kappfaktor.
-        let laenge = soll * 2;
+        let t0 = Instant::now();
+        let laenge = SOLL * 2;
         let mut ring = stereo_ring(laenge);
         let mut r = Ringregelung::default();
 
-        let verworfen = r.nach_anhaengen(&mut ring, soll);
-
-        assert_eq!(verworfen, 0, "kein Schnitt unterhalb der Schwelle");
+        for i in 0..10 {
+            assert_eq!(r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, t0 + SCHWALL_RUHE * i), 0);
+        }
         assert_eq!(ring.len(), laenge, "und der Ring bleibt unveraendert lang");
         assert_eq!(r.resyncs, 0);
     }
 
-    /// Nach einem Schnitt gilt die Sperrfrist — mehrere Lieferpausen kurz
-    /// hintereinander duerfen nicht mehrere Schnitte erzeugen.
+    /// **Der Fall vom 2026-10-14.** Der Schwall kommt in Stuecken, und
+    /// zwischen zweien holt das Geraet einen Block ab — der Ring ist dann kurz
+    /// kleiner als beim Paket davor. Der alte Vergleich mit dem vorigen Paket
+    /// hielt das fuer das Ende des Schwalls und schnitt mittendrin; der Rest
+    /// blieb danach fuenf Sekunden liegen (Sperrfrist). Jetzt wird erst
+    /// geschnitten, wenn der Schwall wirklich vorbei ist — EINMAL, und der
+    /// ganze Rueckstand ist weg.
     #[test]
-    fn nach_einem_schnitt_gilt_die_sperrfrist() {
-        let soll = RING_SOLL_MS * 96;
+    fn zwischen_den_paketen_des_schwalls_wird_nicht_geschnitten() {
+        let t0 = Instant::now();
+        let paket = 10 * 96; // 10 ms Stereo
+        let mut ring = stereo_ring(SOLL);
         let mut r = Ringregelung::default();
-        let mut ring = stereo_ring(soll * RING_KAPP_FAKTOR + 100);
-        r.nach_anhaengen(&mut ring, soll);
 
-        // **Zweimal mit demselben Ring**, und das ist seit dem 2026-08-22
-        // noetig: der erste Aufruf traegt den Fuellstand nur ein (gegenueber dem
-        // geschnittenen Ring ist er gewachsen, also wird ohnehin nicht
-        // geschnitten). Erst beim zweiten ist der Ring nicht mehr wachsend —
-        // ab da kann NUR noch die Sperrfrist blockieren, und genau das soll
-        // dieser Test zeigen. Mit einem einzigen Aufruf bestuende er auch dann,
-        // wenn es die Sperrfrist gar nicht mehr gaebe.
-        let mut wieder_voll = stereo_ring(soll * RING_KAPP_FAKTOR + 100);
-        r.nach_anhaengen(&mut wieder_voll, soll);
-        let verworfen = r.nach_anhaengen(&mut wieder_voll, soll);
+        // 64 Pakete in 6 ms, nach jedem vierten holt das Geraet 10 ms ab.
+        for i in 0..64u32 {
+            ring.extend(stereo_ring(paket));
+            if i % 4 == 3 {
+                ring.drain(..paket);
+            }
+            let jetzt = t0 + Duration::from_micros(u64::from(i) * 100);
+            assert_eq!(r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, jetzt), 0, "Paket {i}: mitten im Schwall");
+        }
+        let hoehepunkt = ring.len();
+        assert!(im_rueckstand(hoehepunkt, SCHWELLE), "Vorbedingung: weit ueber der Schwelle");
 
-        assert_eq!(verworfen, 0, "innerhalb der Sperrfrist wird nicht erneut geschnitten");
-        assert_eq!(r.resyncs, 1);
+        // Danach der Regelbetrieb: je Paket rein, je Aufruf raus.
+        let mut verworfen = 0;
+        for k in 1..=10u32 {
+            ring.extend(stereo_ring(paket));
+            ring.drain(..paket);
+            verworfen += r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, t0 + Duration::from_millis(6 + 10 * u64::from(k)));
+        }
+        assert_eq!(r.resyncs, 1, "genau EIN Schnitt, nach dem Schwall");
+        assert_eq!(verworfen, (hoehepunkt - SOLL) as u64, "und er raeumt den ganzen Rueckstand");
     }
 
-    /// **Der Nachhol-Schwall aus dem Protokoll vom 2026-08-22.** Ein
-    /// Lieferaussetzer laesst den Ring leerlaufen; der Rueckstand kommt danach
-    /// als Schwall in vielen Stuecken. Waehrend er noch laeuft, darf NICHT
-    /// geschnitten werden — sonst schneidet man einen Ring, der gleich wieder
-    /// volllaeuft, und verbraucht dabei die Sperrfrist fuer den Schnitt, auf
-    /// den es ankommt.
-    ///
-    /// Gemessen sah das so aus (Sitzung 1, Sollwert 6240 Samples):
-    /// ```text
-    /// Puffer 0                                  <- leergelaufen
-    /// Puffer 58758  verworfen +12480            <- Schnitt bei 3x Soll, mitten im Schwall
-    /// Puffer 58408  ppm -1000                   <- und jetzt sechs Sekunden
-    /// Puffer 57992  ppm -1000                      Sperrfrist, Ring neunfach voll,
-    /// Puffer 57640  ppm -1000                      Uhrenabgleich am Anschlag
-    /// Puffer  5844  verworfen +53012            <- erst jetzt der richtige Schnitt
-    /// ```
-    /// Die verworfenen 12480 sind exakt `2 * Soll` — die Signatur eines
-    /// Schnitts von der Schwelle auf den Sollwert. Fuer den Hoerer heisst der
-    /// Ablauf: Aussetzer, dann rund sechs Sekunden Ton hinter dem Bild, dann
-    /// ein zweiter hoerbarer Schnitt.
+    /// Ein Schwall, der LAENGER als die Ruhezeit waechst, wird nicht
+    /// angeschnitten: gemessen wird ab dem letzten Hoechststand, nicht ab dem
+    /// ersten Ueberschreiten der Schwelle.
     #[test]
-    fn waehrend_der_schwall_laeuft_wird_nicht_geschnitten() {
-        let soll = RING_SOLL_MS * 96;
+    fn ein_langer_schwall_wird_erst_an_seinem_ende_geschnitten() {
+        let t0 = Instant::now();
+        let mut ring = stereo_ring(SCHWELLE + 100);
         let mut r = Ringregelung::default();
-        let mut ring: VecDeque<f32> = VecDeque::new();
-
-        // Der Schwall: zehn Stuecke, der Ring waechst bei jedem.
-        for _ in 0..10 {
-            ring.extend(stereo_ring(soll));
-            r.nach_anhaengen(&mut ring, soll);
+        // 300 ms lang alle 20 ms ein Stueck von 20 ms obendrauf.
+        for k in 0..=15u64 {
+            let jetzt = t0 + Duration::from_millis(20 * k);
+            assert_eq!(r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, jetzt), 0, "nach {} ms", 20 * k);
+            ring.extend(stereo_ring(20 * 96));
         }
-        assert_eq!(r.resyncs, 0, "solange der Rueckstand noch ankommt, wird nicht geschnitten");
-        let hoehepunkt = ring.len();
-        assert!(hoehepunkt > soll * RING_KAPP_FAKTOR, "Vorbedingung: der Ring ist weit ueber der Schwelle");
+        let ende = t0 + Duration::from_millis(320);
+        r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, ende);
+        assert_eq!(r.resyncs, 0, "der letzte Hoechststand ist frisch");
+        r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, ende + SCHWALL_RUHE);
+        assert_eq!(r.resyncs, 1);
+        assert_eq!(ring.len(), SOLL);
+    }
 
-        // Der Schwall ist vorbei: ab jetzt kommt so viel herein, wie das Geraet
-        // abholt — der Fuellstand waechst nicht mehr.
-        ring.drain(..soll);
-        ring.extend(stereo_ring(soll));
-        let verworfen = r.nach_anhaengen(&mut ring, soll);
+    /// Ankunftsjitter unterhalb der Toleranz setzt die Ruhezeit nicht zurueck —
+    /// sonst wuerde ein Rueckstand im Regelbetrieb nie geschnitten.
+    #[test]
+    fn jitter_unter_der_toleranz_haelt_die_ruhezeit_nicht_auf() {
+        let t0 = Instant::now();
+        let mut ring = stereo_ring(SCHWELLE + 100);
+        let mut r = Ringregelung::default();
+        r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, t0);
+        // 5 ms ueber dem Hoechststand — unter den 15 ms Toleranz.
+        ring.extend(stereo_ring(5 * 96));
+        r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, t0 + Duration::from_millis(30));
+        r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, t0 + SCHWALL_RUHE);
+        assert_eq!(r.resyncs, 1, "die Ruhezeit lief ab dem ersten Hoechststand");
+    }
 
-        assert_eq!(r.resyncs, 1, "genau EIN Schnitt, und zwar nach dem Schwall");
-        assert_eq!(ring.len(), soll, "und er raeumt den ganzen Rueckstand");
-        assert_eq!(verworfen, (hoehepunkt - soll) as u64, "in einem Zug, nicht in zwei");
+    /// Zwei Aussetzer kurz hintereinander bekommen zwei Schnitte — jeder hat
+    /// seinen eigenen Rueckstand, und den liegen zu lassen hiesse, den Ton
+    /// hinter dem Bild laufen zu lassen (bis 2026-10-14: fuenf Sekunden
+    /// Sperrfrist).
+    #[test]
+    fn ein_zweiter_schwall_bekommt_seinen_eigenen_schnitt() {
+        let t0 = Instant::now();
+        let mut r = Ringregelung::default();
+        for start in [t0, t0 + Duration::from_secs(1)] {
+            let mut ring = stereo_ring(SCHWELLE + 100);
+            r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, start);
+            r.nach_anhaengen(&mut ring, SOLL, SCHWELLE, start + SCHWALL_RUHE);
+            assert_eq!(ring.len(), SOLL);
+        }
+        assert_eq!(r.resyncs, 2);
     }
 
     /// Ohne Sollwert (Geraet noch nicht bekannt) passiert gar nichts.
@@ -296,7 +387,7 @@ mod tests {
     fn ohne_sollwert_passiert_nichts() {
         let mut ring = stereo_ring(10_000);
         let mut r = Ringregelung::default();
-        assert_eq!(r.nach_anhaengen(&mut ring, 0), 0);
+        assert_eq!(r.nach_anhaengen(&mut ring, 0, 0, Instant::now()), 0);
         assert_eq!(ring.len(), 10_000);
     }
 }
