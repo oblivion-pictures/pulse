@@ -67,6 +67,24 @@ pub struct Konfig {
     pub hoehe: u32,
     /// Ziel-Bitrate — Maßstab für die REMB-Einordnung beim Aufrufer.
     pub bitrate_kbps: u32,
+    /// Encodiert der Strom mit 10 bit? Geht wie im WHIP-Sender in die
+    /// HEVC-Fähigkeit (`crate::sdp::codec_capability`: Main 10,
+    /// `profile-id=2`, sonst Main). Der Aufrufer muss den Wert kennen, BEVOR
+    /// der Encoder läuft: ausgehandelt wird vor dem ersten Bild.
+    ///
+    /// **Auf der Leitung ändert das heute nichts** (H.264 und AV1 lesen den
+    /// Wert ohnehin nicht, es geht nur um HEVC) — am 2026-10-14 im Test
+    /// `sdp::angebot_tests::hevc_main10_passt_zum_angebot_des_players`
+    /// nachgesehen: der Direktweg ANTWORTET, und webrtc-rs übernimmt in die
+    /// Antwort die fmtp-Zeile des Angebots. Der Player bietet HEVC ohne eine
+    /// an, die Antwort nennt also gar kein Profil, weder für 8 noch für 10 bit;
+    /// der Decoder liest die Bittiefe aus dem Strom. Hier stand bis dahin fest
+    /// `false` mit der Behauptung, der Direktweg encodiere 8 bit — der
+    /// Windows-Sidecar fährt aber auch hier 10 bit, wenn der Start es verlangt
+    /// (`bit_depth: 10` oder `hdr`).
+    /// Das Feld hält die Fähigkeit wahr für den Fall, dass ein Angebot je ein
+    /// Profil nennt.
+    pub zehn_bit: bool,
 }
 
 /// Die Bildspur: Zustand + Paketierer + Taktgeber, Form wie im WHIP-Sender.

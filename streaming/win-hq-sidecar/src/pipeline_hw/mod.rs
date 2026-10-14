@@ -153,8 +153,10 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
     // steht am Codec (`supports_ten_bit`), nicht hier — sonst hätte der nächste
     // Codec sie wieder zu suchen. Den Rest entscheidet der Ziel-Pool, und zwar
     // an EINER Stelle (`bildencoder::pool_wahl`): dort weiss man, ob sich ein
-    // Encode-Weg angemeldet hat und welches Format der braucht.
-    let pool = crate::encode::bildencoder::pool_wahl(params.ten_bit && codec.supports_ten_bit());
+    // Encode-Weg angemeldet hat und welches Format der braucht. Zusammengesetzt
+    // in `StartParams::pool_wahl`, weil der Direktweg dieselbe Antwort schon
+    // vor dem ersten Bild braucht.
+    let pool = params.pool_wahl();
     // **Die Bittiefe kommt aus dem Pool zurück, nicht aus dem Wunsch.** Sonst
     // liefe „10 bit" unverändert in die Encoder-Konfiguration weiter, während
     // der Pool NV12 führt — ein Auftrag, der sich selbst widerspricht, ohne
@@ -164,7 +166,7 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
         // Ein Nutzer, der einen 10-bit-Schalter umlegt und 8 bit bekommt, muss
         // herausfinden können, warum — beide Gründe deshalb getrennt.
         let grund = if !codec.supports_ten_bit() {
-            "nur mit AV1 (10-bit-H.264 waere High 10, das dekodiert kein Browser)"
+            "nur mit AV1 oder HEVC (10-bit-H.264 waere High 10, das dekodiert kein Browser)"
         } else {
             "der angemeldete Encode-Weg verlangt einen 8-bit-Pool"
         };

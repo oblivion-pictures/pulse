@@ -78,7 +78,7 @@ pub mod zehnbit;
 /// nicht kann (CPU/D3D12), bricht seit `encode::zehnbit::pruefen` schon VOR
 /// diesem Punkt ab — bis hierher kommen nur noch die feineren Ruecknahmen
 /// INNERHALB des D3D11-Zero-Copy-Wegs: ein Codec, der 10 bit gar nicht traegt
-/// (nur AV1), oder ein angemeldeter Encode-Weg, der einen 8-bit-Pool verlangt
+/// (H.264 — getragen wird es von AV1 und seit 2026-09-13 von HEVC), oder ein angemeldeter Encode-Weg, der einen 8-bit-Pool verlangt
 /// (`bildencoder::pool_wahl`, eigene Log-Zeile in `pipeline_hw::run`). Die
 /// Auffrischung haengt unveraendert am Encoder. Ohne diese Zeile
 /// stand nirgends, was am Ende wirklich lief — und beim ersten

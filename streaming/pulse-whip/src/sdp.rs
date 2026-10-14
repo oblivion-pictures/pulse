@@ -406,9 +406,30 @@ mod fassung_tests {
 #[cfg(test)]
 mod angebot_tests {
     use super::{baue_api, codec_capability, opus_capability};
+    use std::sync::Arc;
     use webrtc::peer_connection::configuration::RTCConfiguration;
+    use webrtc::peer_connection::RTCPeerConnection;
+    use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
     use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
     use webrtc::track::track_local::TrackLocal;
+
+    /// Meldet Bild- und Tonspur an, wie der Sender es tut.
+    async fn spuren_anmelden(
+        pc: &RTCPeerConnection,
+        video: RTCRtpCodecCapability,
+        audio: RTCRtpCodecCapability,
+    ) {
+        for (cap, art) in [(video, "video"), (audio, "audio")] {
+            let track = Arc::new(TrackLocalStaticSample::new(
+                cap,
+                art.to_owned(),
+                "pulse-hq".to_owned(),
+            ));
+            pc.add_track(track as Arc<dyn TrackLocal + Send + Sync>)
+                .await
+                .unwrap();
+        }
+    }
 
     /// Baut das Angebot fuer diese Bildgroesse — ohne Netz: `create_offer`
     /// sammelt keine Kandidaten, es schreibt nur auf, was angemeldet ist.
@@ -417,16 +438,7 @@ mod angebot_tests {
         let audio = opus_capability();
         let api = baue_api(&video, &audio).unwrap();
         let pc = api.new_peer_connection(RTCConfiguration::default()).await.unwrap();
-        for (cap, art) in [(video, "video"), (audio, "audio")] {
-            let track = std::sync::Arc::new(TrackLocalStaticSample::new(
-                cap,
-                art.to_owned(),
-                "pulse-hq".to_owned(),
-            ));
-            pc.add_track(track as std::sync::Arc<dyn TrackLocal + Send + Sync>)
-                .await
-                .unwrap();
-        }
+        spuren_anmelden(&pc, video, audio).await;
         let offer = pc.create_offer(None).await.unwrap();
         pc.close().await.unwrap();
         offer.sdp
@@ -490,5 +502,54 @@ mod angebot_tests {
         assert!(!s8.contains("profile-id=2"), "8 bit nennt Main 10:\n{s8}");
         assert!(s10.contains("profile-id=2"), "10 bit:\n{s10}");
         assert!(!s10.contains("profile-id=1"), "10 bit nennt Main:\n{s10}");
+    }
+
+    /// Der Direktweg ANTWORTET, statt anzubieten: der Player offeriert mit
+    /// den Vorgabe-Codecs von webrtc-rs (`pulse-player/src/whep.rs`,
+    /// `baue_empfaenger_pc` — HEVC dort OHNE fmtp-Zeile, recvonly Video +
+    /// Audio). Main 10 muss gegen dieses Angebot genauso zustande kommen wie
+    /// Main. Und die Antwort nennt KEIN Profil: webrtc-rs übernimmt die
+    /// (leere) fmtp-Zeile des Angebots — deshalb kann sie auch kein falsches
+    /// nennen (`direct::Konfig::zehn_bit`).
+    #[tokio::test]
+    async fn hevc_main10_passt_zum_angebot_des_players() {
+        use webrtc::api::media_engine::MediaEngine;
+        use webrtc::api::APIBuilder;
+        use webrtc::rtp_transceiver::rtp_codec::RTPCodecType;
+        use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
+        use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
+
+        for zehn_bit in [false, true] {
+            let mut media = MediaEngine::default();
+            media.register_default_codecs().unwrap();
+            let player = APIBuilder::new().with_media_engine(media).build();
+            let player_pc = player.new_peer_connection(RTCConfiguration::default()).await.unwrap();
+            for art in [RTPCodecType::Video, RTPCodecType::Audio] {
+                let init = RTCRtpTransceiverInit {
+                    direction: RTCRtpTransceiverDirection::Recvonly,
+                    send_encodings: vec![],
+                };
+                player_pc.add_transceiver_from_kind(art, Some(init)).await.unwrap();
+            }
+            let offer = player_pc.create_offer(None).await.unwrap();
+
+            let video = codec_capability("hevc", 2560, 1440, 60, zehn_bit).unwrap();
+            let audio = opus_capability();
+            let api = baue_api(&video, &audio).unwrap();
+            let sender_pc = api.new_peer_connection(RTCConfiguration::default()).await.unwrap();
+            spuren_anmelden(&sender_pc, video, audio).await;
+            sender_pc.set_remote_description(offer).await.unwrap();
+            let answer = sender_pc.create_answer(None).await.unwrap().sdp;
+            assert!(
+                answer.contains("H265/90000"),
+                "zehn_bit={zehn_bit}: kein HEVC:\n{answer}"
+            );
+            assert!(
+                !answer.contains("profile-id"),
+                "zehn_bit={zehn_bit}: Profil in der Antwort:\n{answer}"
+            );
+            sender_pc.close().await.unwrap();
+            player_pc.close().await.unwrap();
+        }
     }
 }

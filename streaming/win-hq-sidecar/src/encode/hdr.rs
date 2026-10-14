@@ -350,7 +350,8 @@ mod tests {
     /// — „ungemessen heißt Nein", damit ein späteres `true` für NVIDIA eine
     /// bewusste Änderung ist. Die Messung ist gefahren, die Änderung ist
     /// bewusst, der Test dreht sich um: **auf NVIDIA trägt AV1 HDR, H.264
-    /// nicht** (10 bit lässt `supports_ten_bit` nur bei AV1 durch).
+    /// nicht** (10 bit lässt `supports_ten_bit` bei AV1 und seit 2026-09-13
+    /// bei HEVC durch, H.264 nie).
     ///
     /// Intel bleibt Nein und aus einem anderen Grund als „ungemessen": der Weg
     /// dorthin führt über die CPU-Pipeline, die BGRA entgegennimmt und gar

@@ -111,7 +111,7 @@ pub struct StartParams {
     /// Wunsch dort still auf 8 bit zurück. Innerhalb des D3D11-Zero-Copy-Wegs
     /// bleibt die feinere Rücknahme bestehen: trägt der gewählte CODEC 10 bit
     /// nicht ([`VideoCodec::supports_ten_bit`](crate::encode::VideoCodec::supports_ten_bit)
-    /// sagt nur AV1 zu) oder verlangt ein angemeldeter Encode-Weg einen
+    /// sagt AV1 und seit 2026-09-13 HEVC zu) oder verlangt ein angemeldeter Encode-Weg einen
     /// 8-bit-Pool, entscheidet `pipeline_hw` das weiterhin mit einer
     /// Log-Zeile statt einem Abbruch (`bildencoder::pool_wahl`) — dort ist
     /// „8 bit statt 10" die einzig sichtbare Abweichung, kein ganzer Weg, der
@@ -119,11 +119,11 @@ pub struct StartParams {
     /// keine 12 stehen kann, die nirgends behandelt wird — gleiche Form wie
     /// im Linux-Sidecar (`StartParams::ten_bit`).
     ///
-    /// **Das Frontend schickt `bit_depth` heute nicht.** Der Weg ist nur über
-    /// einen von Hand gebauten Request erreichbar (Labor, `/app/dev/stream`).
-    /// Wer ihn in die Oberfläche holt, muss den Abbruch aus
-    /// `encode::zehnbit::pruefen` im Renderer abfangen und anzeigen — sonst
-    /// meldet ein Schalter dort einfach nichts, wenn der Sidecar ablehnt.
+    /// **Das Frontend schickt `bit_depth`** — aus dem Codec-Feld („… 10 bit",
+    /// seit 2026-07-26) und aus dem Standplatz-Profil (seit 2026-08-16), beides
+    /// über `buildStartArgs` in `web/src/lib/stream/settings.svelte.ts` und nur,
+    /// wenn `health` die Fähigkeit meldet (`tenBitPossible`). Hier stand bis
+    /// 2026-10-14, es schicke ihn nicht.
     pub ten_bit: bool,
     /// HDR senden: die Aufnahme in scRGB holen und als PQ/BT.2020 encodieren.
     ///
@@ -170,6 +170,19 @@ impl StartParams {
     pub(crate) fn codec(&self) -> VideoCodec {
         self.override_codec
             .unwrap_or_else(|| VideoCodec::from_slug(self.profile.codec))
+    }
+
+    /// Der Ziel-Pool und damit die Bittiefe, die der Encoder WIRKLICH fährt:
+    /// Wunsch aus dem Request (`ten_bit`, HDR ist beim Parsen schon
+    /// hineingefaltet, `ops/start.rs`) UND ein Codec, der ihn trägt
+    /// (`supports_ten_bit` — die Regel steht am Codec), den Rest entscheidet
+    /// `bildencoder::pool_wahl`.
+    ///
+    /// **An einer Stelle, weil zwei sie brauchen und dasselbe herausbekommen
+    /// müssen** (seit 2026-10-14): die Pipeline (`pipeline_hw::run`) und der
+    /// Direktweg, der vor dem ersten Bild aushandelt (`direct::aushandle`).
+    pub(crate) fn pool_wahl(&self) -> crate::encode::bildencoder::PoolWahl {
+        crate::encode::bildencoder::pool_wahl(self.ten_bit && self.codec().supports_ten_bit())
     }
 }
 

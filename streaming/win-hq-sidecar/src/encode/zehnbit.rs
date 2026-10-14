@@ -73,7 +73,7 @@ pub fn pruefen(disable_zc: bool, pfad: EncodePath) -> Result<()> {
             "10 bit verlangt, aber dieser Stream liefe über die CPU-Pipeline (auf Intel der \
              Regelweg) — die hat kein `ten_bit`-Feld in ihrer Encoder-Konfiguration \
              (encode/encoder.rs) und liefert deshalb immer 8 bit. Abhilfe: auf NVIDIA/AMD mit \
-             AV1 streamen."
+             AV1 oder HEVC streamen."
         ),
     }
 }

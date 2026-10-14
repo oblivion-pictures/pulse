@@ -130,12 +130,20 @@ impl Sitzung {
         let bitrate_kbps = params
             .override_bitrate_kbps
             .unwrap_or(params.profile.bitrate_kbps);
+        // Die Bittiefe, die der Encoder WIRKLICH fahren wird — ausgehandelt
+        // wird vor dem ersten Bild. Dieselbe Entscheidung wie in
+        // `pipeline_hw::run` (`StartParams::pool_wahl`). Wege ohne 10 bit
+        // verweigern den Start dort ohnehin (`encode::zehnbit::pruefen`). Was
+        // der Wert auf der Leitung bewirkt (heute nichts), steht an
+        // `pulse_whip::direct::Konfig::zehn_bit`.
+        let zehn_bit = params.pool_wahl().ten_bit;
         let konfig = pulse_whip::direct::Konfig {
             codec_slug: params.codec().slug(),
             fps,
             breite,
             hoehe,
             bitrate_kbps,
+            zehn_bit,
         };
         let sender = Arc::new(
             pulse_whip::direct::DirectSender::neu(&konfig)
