@@ -29,6 +29,12 @@ webhook:
 
 log_level: info
 
+# Teilnehmergrenze je Raum NUR in der Cloud — bewusst (Eigentümer-Entscheidung
+# 2026-10-14, nach dem Abgleich Cloud/Self-Host): hier schützt sie den
+# gemeinsamen Server vor einem einzelnen Riesenraum; ein Self-Host gehört
+# seinem Betreiber, dort gilt keine Grenze (livekit.yaml.template, Server-App
+# configs.ts). `enable_remote_unmute` bewirkt laut demselben Abgleich nichts
+# (Pulse ruft kein MutePublishedTrack auf, Force-Mute läuft über Rechte).
 room:
   enable_remote_unmute: true
   max_participants: 50

@@ -4,6 +4,11 @@
 # Ohne dieses Template fällt 05-init-livekit auf eine Minimal-Config zurück, die
 # KEIN use_external_ip kennt → LiveKit nimmt die interne Docker-IP (10.x) als
 # ICE-Kandidat → externe Clients bekommen keine Media-Verbindung (F13).
+#
+# Kein `room`-Block, also keine Teilnehmergrenze je Raum — bewusst
+# (Eigentümer-Entscheidung 2026-10-14): die Cloud begrenzt auf 50, um ihren
+# gemeinsamen Server zu schützen (infra/prod/livekit.yaml); ein Self-Host
+# gehört seinem Betreiber. Gilt ebenso für die Server-App (configs.ts).
 port: 7880
 bind_addresses:
   - 0.0.0.0
