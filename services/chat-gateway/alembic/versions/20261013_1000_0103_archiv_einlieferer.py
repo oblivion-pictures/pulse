@@ -60,5 +60,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_archiv_zeilen_kanal_zeit", table_name="archiv_zeilen", schema=SCHEMA)
+    # IF EXISTS: eine DB, die die erste Fassung von 0103 (ohne Index) schon
+    # gefahren hat, hat ihn nicht — ein `drop_index` bräche dort ab.
+    op.execute(f"DROP INDEX IF EXISTS {SCHEMA}.ix_archiv_zeilen_kanal_zeit")
     op.drop_column("archiv_zeilen", "user_id", schema=SCHEMA)
