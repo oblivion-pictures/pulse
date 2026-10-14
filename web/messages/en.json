@@ -2906,6 +2906,8 @@
   "stream_controls_state_stopped": "Stopped",
   "stream_controls_toast_start_failed": "Failed to start stream",
   "stream_einstellungen_oeffnen": "Open stream settings",
+  "stream_ankunft_fehlt": "The server is not receiving your stream",
+  "stream_ankunft_fehlt_desc": "The connection to the server is up, but no video data is arriving. A common cause is a firewall blocking the server's media port (UDP 8189). The server operator can check this.",
   "stream_error_start_timeout": "Stream did not start within 20 seconds — sidecar or network.",
   "stream_fps_capped": "Frame rate limited",
   "stream_grid_participants_collapse_aria": "Hide participants",

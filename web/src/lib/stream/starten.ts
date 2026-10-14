@@ -27,6 +27,8 @@ import { streamSettings } from './settingsState.svelte';
 import { startMerken, type StandplatzStart } from './neustartGedaechtnis';
 import { stream } from './state.svelte';
 import { melde } from '$lib/diagnose/app-diagnose';
+import { activeServer } from '$lib/stores/active-server.svelte';
+import { ankunftWacheBeenden, ankunftZielMerken } from './ankunftWache';
 
 export type StartErgebnis =
   | { ok: true }
@@ -49,6 +51,8 @@ export async function streamStarten(
   standplatz?: StandplatzStart,
   p2p = false,
 ): Promise<StartErgebnis> {
+  // Der Server, an den das Token gleich geht — für die Ankunfts-Wache, s. dort.
+  const tokenServer = activeServer.serverId;
   let tok;
   if (p2p) {
     // **Im P2P-Modus fragt der Client bewusst KEIN Token an.** Es gäbe keins,
@@ -125,6 +129,13 @@ export async function streamStarten(
       standplatz,
       p2p,
     );
+    // Ziel der Ankunfts-Wache VOR dem Start setzen: Ereignisse und die Antwort
+    // auf `start` reisen getrennt, ihre Reihenfolge ist nicht zugesichert — ein
+    // frühes `live` fände sonst kein Ziel und die Wache liefe nie an.
+    // Ohne Token (P2P) geht nichts an den Server — dort gibt es nichts zu
+    // bewachen, und ein altes Ziel dieses Platzes muss weg.
+    if (tok) ankunftZielMerken(slot, channelId, tokenServer);
+    else ankunftWacheBeenden(slot);
     const r = await sidecar.start(args, slot);
     if (r && !r.ok) {
       // Start-Fehlschläge (z. B. DEV-Fehlerinjektion „Sidecar kaputt“) laufen

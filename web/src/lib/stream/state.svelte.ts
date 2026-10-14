@@ -147,12 +147,13 @@ const wasRunning: Record<number, boolean> = {};
 /**
  * How long ``starting`` may run before we give up and flip the slot to
  * ``error``. The sidecar emits ``starting`` when it kicks the encoder off, then
- * ``live`` (or fps ticks) once the publisher is detected server-side. If
- * neither lands — encoder init failed silently, the RTMPS push never connected,
- * the sidecar hung — the UI would otherwise sit on "Connecting…" forever with
- * no clue. Generous: covers encoder warmup + RTMPS handshake + the ~3 s
- * server-side poller that detects the publisher. See the matching startup
- * watchdog in ``hqStreamManager.svelte.ts`` (viewer side).
+ * ``live`` (or fps ticks) once its push is set up — for WHIP that is the SDP
+ * answer, BEFORE ICE has connected, so ``live`` does NOT mean the server
+ * receives anything; that check is ``ankunftWache.ts``. If neither lands —
+ * encoder init failed silently, the push handshake never completed, the
+ * sidecar hung — the UI would otherwise sit on "Connecting…" forever with no
+ * clue. See the matching startup watchdog in ``hqStreamManager.svelte.ts``
+ * (viewer side).
  */
 const START_TIMEOUT_MS = 20_000;
 const startTimers: Record<number, ReturnType<typeof setTimeout>> = {};
@@ -328,7 +329,13 @@ export function markStarting(slot: number): void {
 function applyEvent(ev: SidecarEvent): void {
   const slot = ev.slot ?? 0;
   const s = streamForSlot(slot);
+  const warLive = s.state === 'live';
   applyEventInner(s, ev);
+  // Die Kante „wird live" am Zustand selbst, NICHT an `wasRunning`: jeder
+  // Sidecar meldet schon `starting` mit `running: true`, `wasRunning` steht beim
+  // `live` also längst. Bis 2026-10-14 hing `stream_sender_live` daran und
+  // feuerte deshalb nie. `fps` kann den Zustand ebenfalls auf `live` kippen.
+  const wirdLive = !warLive && s.state === 'live';
   // Sendungs-Meilensteine ins Diagnose-Gedächtnis (Käfer-Knopf): die ZEITACHSE
   // der Sendungen — live/fehler/stopp je Slot. Der Sidecar-Log geht zwar beim
   // Stream-Ende automatisch weg (Experimental-Schalter), aber der Käfer-Bericht
@@ -336,7 +343,7 @@ function applyEvent(ev: SidecarEvent): void {
   // den Fehler dazwischen. Melde() verdichtet selbst (10-s-Fenster).
   if (ev.ev === 'error') {
     melde('stream', 'stream_sender_fehler', ev.message, { slot });
-  } else if (ev.ev === 'state' && ev.state === 'live' && !wasRunning[slot]) {
+  } else if (wirdLive) {
     melde('stream', 'stream_sender_live', 'Sendung live', { slot });
   } else if (ev.ev === 'stopped') {
     melde('stream', 'stream_sender_stopp', 'Sendung gestoppt', { slot });
@@ -345,10 +352,16 @@ function applyEvent(ev: SidecarEvent): void {
   // other state (`live`/`error`/`stopped`/`idle`) so a normal start never trips.
   if (s.state === 'starting') armStartWatchdog(slot);
   else clearStartWatchdog(slot);
+  // Erstes `live` dieser Sendung: nachfragen, ob der Server sie wirklich
+  // empfängt (`ankunftWache.ts`). Lazy — die Wache zieht die Chat-API nach.
+  if (wirdLive) {
+    void import('./ankunftWache').then((w) => w.ankunftWacheStarten(slot));
+  }
   // Fire on the running→stopped edge only (once per stream session, per slot).
   if (wasRunning[slot] && !s.running) {
     wasRunning[slot] = false;
     notifyBackendStopped(slot);
+    void import('./ankunftWache').then((w) => w.ankunftWacheBeenden(slot));
   } else if (s.running) {
     wasRunning[slot] = true;
   }

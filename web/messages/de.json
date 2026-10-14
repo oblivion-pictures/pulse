@@ -2906,6 +2906,8 @@
   "stream_controls_state_stopped": "Gestoppt",
   "stream_controls_toast_start_failed": "Stream konnte nicht gestartet werden",
   "stream_einstellungen_oeffnen": "Stream-Einstellungen öffnen",
+  "stream_ankunft_fehlt": "Der Server empfängt deinen Stream nicht",
+  "stream_ankunft_fehlt_desc": "Die Verbindung zum Server steht, aber es kommen keine Bilddaten an. Eine häufige Ursache ist eine Firewall, die den Medienport des Servers sperrt (UDP 8189). Der Betreiber kann das prüfen.",
   "stream_error_start_timeout": "Stream-Start nach 20 Sekunden abgebrochen — Sidecar oder Netzwerk.",
   "stream_fps_capped": "Bildrate begrenzt",
   "stream_grid_participants_collapse_aria": "Teilnehmer ausblenden",
