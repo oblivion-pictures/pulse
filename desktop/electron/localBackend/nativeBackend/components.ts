@@ -169,6 +169,10 @@ export function nativeComponents(
       PULSE_KEYFRAME_ON_DISCARD: '1',
       PULSE_VIDEO_REORDER_BUFFER: '128',
       PULSE_AUDIO_REORDER_BUFFER: '4',
+      PULSE_FLEXFEC: '1',
+      PULSE_FLEXFEC_MEDIA: '10',
+      PULSE_FLEXFEC_FEC: '2',
+      PULSE_FLEXFEC_ADAPTIV: '1',
     },
     healthCheck: () => tcpProbe(9997),
   };

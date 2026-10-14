@@ -2,7 +2,7 @@
 # MediaMTX — HQ stream relay (RTMPS→WHEP). authHTTP → mediamtx-auth-hook
 # at 127.0.0.1:8005. Config rendered by cont-init.
 #
-# Fuenf PULSE_*-Schalter, wie in der Cloud (die setzt zusaetzlich FlexFEC) (infra/prod/docker-compose.yml —
+# Dieselben PULSE_*-Schalter wie die Cloud (infra/prod/docker-compose.yml —
 # dort je Schalter Begruendung samt Messung): PULSE_KEYFRAME_INTERVAL=0
 # schaltet den fest verdrahteten 2-s-Vollbild-Takt des Forks ab (Fork kennt
 # die Schalter seit PULSE_MEDIAMTX_TAG im Dockerfile, 2026-09-07; ohne ihn
@@ -12,11 +12,22 @@
 # Descriptor ueber die Neuverpackung tragen (sonst Vollbilder auf Verdacht),
 # Vollbild erst bei echtem Verwurf anfordern, Umordnungsfenster 128 Pakete
 # fuer Bild und 4 fuer Ton (Patch 0008, ab `1.19.1-pulse8`: ein verlorenes
-# Opus-Paket hielt sonst 640 ms Ton fest).
+# Opus-Paket hielt sonst 640 ms Ton fest), und FlexFEC-Paritaet zu den
+# Zuschauern, verlustgeregelt (Patches 0003/0004).
+#
+# FlexFEC fehlte hier bis 2026-10-14 — ohne festgehaltenen Grund, und der
+# Kopf behauptete trotzdem „identisch zur Cloud". Verlustgeregelt kostet sie
+# einen sauber angebundenen Zuschauer gemessen 0,65 % Datenrate statt 20 %
+# (Begruendung in der Cloud-Datei), auch die Upload-Leitung eines
+# Heimservers ist damit kein Grund dagegen.
 exec 2>&1
 PULSE_KEYFRAME_INTERVAL=0 \
 PULSE_DEPENDENCY_DESCRIPTOR=1 \
 PULSE_KEYFRAME_ON_DISCARD=1 \
 PULSE_VIDEO_REORDER_BUFFER=128 \
 PULSE_AUDIO_REORDER_BUFFER=4 \
+PULSE_FLEXFEC=1 \
+PULSE_FLEXFEC_MEDIA=10 \
+PULSE_FLEXFEC_FEC=2 \
+PULSE_FLEXFEC_ADAPTIV=1 \
     exec /usr/sbin/gosu pulse /usr/local/bin/mediamtx /etc/mediamtx/mediamtx.yml
