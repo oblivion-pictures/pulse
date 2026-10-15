@@ -14,7 +14,7 @@
 //!
 //! | | Windows | Wayland | **macOS** |
 //! |---|---|---|---|
-//! | Beobachten | `WM_CLIPBOARDUPDATE` | `wl_data_device::selection` | **Abfrage** von `changeCount` (200 ms) |
+//! | Beobachten | `WM_CLIPBOARDUPDATE` + Abfrage der Aenderungsnummer je Takt | `wl_data_device::selection` | **Abfrage** von `changeCount` (200 ms) |
 //! | Faul liefern | `WM_RENDERFORMAT` | `wl_data_source::send` | `pasteboard:provideDataForType:` |
 //! | Faden | Fenster (`HWND_MESSAGE`) | Ereignisschleife + Schreibfaden | eigene Run-Loop |
 //!
@@ -28,13 +28,13 @@
 //!   still). macOS kennt das nicht — [`Ablagequelle::seriennummer`] liefert
 //!   hier eine feste Zahl, jeder angemeldete Anspruch wird sofort eingeloest.
 //!   Dasselbe tut die Windows-Umsetzung.
-//! * **`Ablagestand::erwartet`**, der Zaehler fuer eigene Aenderungen, deren
-//!   MELDUNG noch unterwegs ist. Hier ist keine unterwegs: die eigenen
-//!   Vorgaenge liefern den neuen Zaehlerstand zurueck, und
-//!   [`faden`] legt ihn als „gesehen" ab. Verbucht wird deshalb ueber
-//!   [`crate::stand::Ablagestand::selbst_geaendert_quittiert`] — mit dem
-//!   Meldungs-Zaehler waere der Poll-Faden ein Rennen, das die naechste echte
-//!   Kopie des Nutzers schluckt (Begruendung an der Methode).
+//! * **Die Aenderungsnummer der Windows-Seite** (`Ablagestand::meldung`).
+//!   Hier liefern die eigenen Vorgaenge den neuen Zaehlerstand zurueck, und
+//!   [`faden`] legt ihn als „gesehen" ab — der Poll sieht die eigene
+//!   Aenderung gar nicht erst. Bis zum 2026-10-15 stand hier, warum der
+//!   damalige Windows-Zaehler fuer eigene Aenderungen auf einem Poll ein
+//!   Rennen waere, das die naechste echte Kopie des Nutzers schluckt; den
+//!   Zaehler gibt es nicht mehr (`crate::stand`, Modulkopf).
 //!
 //! **Ungeprueft auf der Entwicklungsmaschine.** Belegt ist, dass alles hier
 //! uebersetzt (`cargo check --target aarch64-apple-darwin` gegen genau diese

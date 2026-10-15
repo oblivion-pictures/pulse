@@ -22,8 +22,7 @@
 //!
 //! macOS meldet keine Aenderung — `NSPasteboard.changeCount` wird abgefragt.
 //! Das ist kein Notbehelf, sondern der einzige Weg; alle pollen. Zwei
-//! Zahlen genuegen dafuer, und sie erklaeren zugleich, warum
-//! `Ablagestand::erwartet` hier nicht gebraucht wird (s. dort):
+//! Zahlen genuegen dafuer:
 //!
 //! * `gesehen` — der zuletzt verbuchte Stand. Ist er gleich, ist nichts
 //!   geschehen.
@@ -206,7 +205,7 @@ pub(super) fn eigenen_stand_verbuchen(neu: isize, eigen: bool) {
     }
     // **Die Sperre um den Zaehler ist hier schon gefallen.** Dieselbe Regel wie
     // ueberall in diesem Weg: nie zwei Sperren uebereinander halten.
-    stand().selbst_geaendert_quittiert(eigen);
+    stand().selbst_geaendert(eigen);
 }
 
 /// Den Aenderungszaehler abfragen — der Ersatz fuer die Meldung, die es auf

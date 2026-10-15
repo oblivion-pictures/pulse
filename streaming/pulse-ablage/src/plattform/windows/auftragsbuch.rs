@@ -106,13 +106,22 @@ fn zuruecknehmen(nr: u64) {
 pub(super) fn abarbeiten(h: HWND) {
     let offen = std::mem::take(&mut *AUFTRAEGE.lock().unwrap_or_else(|e| e.into_inner()));
     for (_nr, a, fertig) in offen {
+        // Bis zum Verbuchen wird das Fach nicht ausgewertet — mittendrin passen
+        // Eigentuemer und Stand nicht zusammen (`Ablagestand::vorgang`). Jeder
+        // Zweig unten beendet den Vorgang: verbucht oder abgebrochen.
+        if !matches!(a, Auftrag::Lesen) {
+            stand().vorgang_beginnen();
+        }
         match a {
             Auftrag::Beanspruchen => match fach::beanspruchen(h) {
                 Ok(()) => stand().selbst_geaendert(true),
-                Err(grund) => eprintln!(
-                    "[ablage] Zwischenablage nicht beansprucht ({grund}) — \
-                     ein Einfuegen auf dieser Maschine bleibt leer."
-                ),
+                Err(grund) => {
+                    stand().vorgang_abbrechen();
+                    eprintln!(
+                        "[ablage] Zwischenablage nicht beansprucht ({grund}) — \
+                         ein Einfuegen auf dieser Maschine bleibt leer."
+                    );
+                }
             },
             Auftrag::Freigeben(zurueck) => match zurueck {
                 Some(text) => match fach::zurueckschreiben(h, &text) {
@@ -120,14 +129,20 @@ pub(super) fn abarbeiten(h: HWND) {
                     // dem gemerkten Text. Wir bleiben Eigentuemer, aber was in
                     // der Ablage liegt, gehoert wieder dem Nutzer.
                     Ok(()) => stand().selbst_geaendert(true),
-                    Err(grund) => eprintln!(
-                        "[ablage] Vorbestand nicht zurueckgeschrieben ({grund}) — \
-                         die Ablage bleibt, wie sie ist."
-                    ),
+                    Err(grund) => {
+                        stand().vorgang_abbrechen();
+                        eprintln!(
+                            "[ablage] Vorbestand nicht zurueckgeschrieben ({grund}) — \
+                             die Ablage bleibt, wie sie ist."
+                        );
+                    }
                 },
                 None => match fach::raeumen() {
                     Ok(()) => stand().selbst_geaendert(false),
-                    Err(grund) => eprintln!("[ablage] Ablage nicht geraeumt ({grund})."),
+                    Err(grund) => {
+                        stand().vorgang_abbrechen();
+                        eprintln!("[ablage] Ablage nicht geraeumt ({grund}).");
+                    }
                 },
             },
             Auftrag::Lesen => {

@@ -13,14 +13,22 @@
 //! **Wie weit sie plattformfrei ist, ehrlich:** die Zaehl-Regeln (Eigentum
 //! verloren = unverbuchte Aenderung, nur Text zaehlt, ein Wechsel verwirft ein
 //! gelesenes Ergebnis) und die beiden Handschlaege (Rendervorgang, Lesevorgang)
-//! gelten ueberall. Der Zaehler [`Ablagestand::erwartet`] ist dagegen an einer
-//! **Meldung** aufgehaengt; macOS hat keine, dort wird `changeCount` gepollt.
+//! gelten ueberall.
 //!
-//! **Beantwortet in Plan 1c** (die Frage stand hier bis zum 2026-08-31 offen):
-//! macOS benutzt den Zaehler NICHT, sondern quittiert seine eigene Aenderung
-//! selbst ([`Ablagestand::selbst_geaendert_quittiert`]). Auf einem Poll waere
-//! `erwartet` nicht bloss ueberfluessig, sondern falsch — Begruendung an jener
-//! Methode.
+//! **Ob eine Aenderung die eigene war, entscheidet auf Windows der
+//! Eigentuemer des Fachs, nicht ein Zaehler** (macOS vergleicht seinen eigenen
+//! Zaehlerstand, `macos::faden`). Bis zum 2026-10-15 merkte sich Windows jede
+//! eigene Aenderung in einem Zaehler `erwartet` vor und verbuchte die naechste
+//! `WM_CLIPBOARDUPDATE` als „das war ich" — die Rechnung ging nur auf, wenn
+//! auf jede eigene Aenderung genau eine Meldung folgt. **Anlass des Umbaus:**
+//! ein Windows-Host kuendigte an einem ganzen Abend Fernsteuerung genau eine
+//! Kopie an (Sender-Berichte vom 2026-10-15, 0.1.110), waehrend die
+//! Gegenrichtung jede Kopie abholte. **Die Ursache ist ungeklaert.** Dass der
+//! Zaehler volllief, ist unwahrscheinlich: die Wine-Tests, die echtes
+//! Windows-Verhalten festhalten (`dlls/user32/tests/clipboard.c`), zeigen die
+//! Meldung auch fuer die eigene Aenderung. Der heutige Weg haengt an keiner
+//! Annahme ueber Zahl oder Zeitpunkt der Meldungen, und die Zeile
+//! „[ablage] Fach geaendert …" macht beim naechsten Mal sichtbar, was ankommt.
 //!
 //! **Die Invariante, die diese Struktur traegt:** die Sperre darum wird **nie
 //! ueber einen Aufruf ans Betriebssystem gehalten**. Auf Windows schickt
@@ -44,41 +52,17 @@ pub struct Ablagestand {
     /// einem Merker: hat der Nutzer selbst kopiert, ist „wir haben
     /// beansprucht" laengst falsch.
     eigen: bool,
-    /// Selbst ausgeloeste Aenderungen, deren Meldung noch unterwegs ist.
-    ///
-    /// **Wozu:** ohne ihn kuendigte jeder eigene Anspruch der Gegenseite ihren
-    /// eigenen Inhalt als Neuigkeit zurueck, sie beanspruchte daraufhin, und
-    /// das ginge endlos — dieselbe Falle, die auf Wayland
-    /// `AblageZustand::eigene` abfaengt.
-    ///
-    /// **Warum er aufgehen SOLLTE — gefolgert, nicht gemessen.** Die Rechnung:
-    /// jede eigene Aenderung laeuft auf dem Faden mit dem Fensterrueckruf, und
-    /// `WM_CLIPBOARDUPDATE` wird an dasselbe Fenster *gepostet*; die Meldung
-    /// kann also erst dran sein, wenn der laufende Rueckruf zurueck ist, und
-    /// der Zaehler steht dann. **Sie setzt zwei Dinge ueber Windows voraus,
-    /// die auf der Entwicklungsmaschine niemand pruefen kann** (kein Windows,
-    /// kein Bau): dass die Meldung gepostet und nicht synchron gesendet wird,
-    /// und dass es **genau eine** je eigener Operation gibt. Beides ist aus
-    /// der Doku gefolgert.
-    ///
-    /// **Die drei Ausgaenge, wenn eine der beiden Annahmen nicht traegt** —
-    /// sie gehoeren auf die Liste des ersten Handlaufs auf einer echten
-    /// Maschine:
-    ///
-    /// * **synchron zugestellt** (aus `SetClipboardData` heraus): dann laeuft
-    ///   [`Ablagestand::systemmeldung`] VOR [`Ablagestand::selbst_geaendert`],
-    ///   `erwartet` steht auf 0, der eigene Anspruch geht als Ankuendigung
-    ///   hinaus, die Gegenseite beansprucht zurueck — **genau die
-    ///   Endlosschleife, gegen die dieser Zaehler gebaut ist.**
-    /// * **zwei Meldungen je Operation**: dasselbe, nur eine Runde spaeter.
-    /// * **gar keine Meldung**: der Zaehler bleibt stehen und schluckt die
-    ///   naechste echte Kopie des Nutzers — eine ausbleibende Ankuendigung,
-    ///   also die harmlose Richtung.
-    ///
-    /// Erkennbar ist der erste Fall im Betrieb daran, dass unmittelbar nach
-    /// einem Anspruch eine Ankuendigung hinausgeht, ohne dass jemand kopiert
-    /// hat.
-    erwartet: u32,
+    /// Laeuft gerade ein eigener Vorgang am Fach (Beanspruchen, Zurueckschreiben,
+    /// Raeumen)? Dann wird nicht ausgewertet: mittendrin stimmen Eigentuemer
+    /// und [`Self::eigen`] noch nicht ueberein (nach dem Raeumen gehoert das
+    /// Fach niemandem, `eigen` steht aber erst danach auf `false`), und der
+    /// Blick ergaebe einen Eigentumsverlust, den es nicht gibt. Ausgewertet
+    /// wird beim naechsten Blick — die Nummer ist dann noch nicht verbucht.
+    vorgang: bool,
+    /// Die zuletzt ausgewertete Aenderungsnummer des Fachs
+    /// (`GetClipboardSequenceNumber`). Meldung und Takt schauen beide nach;
+    /// dieselbe Nummer zweimal zu verbuchen kuendigte dieselbe Kopie zweimal an.
+    nummer: Option<u32>,
     /// Ein `WM_RENDERFORMAT` wartet auf Inhalt — auf Windows blockiert dabei
     /// das einfuegende Programm.
     wartet: bool,
@@ -101,7 +85,8 @@ impl Ablagestand {
             stand: 0,
             gesehen: 0,
             eigen: false,
-            erwartet: 0,
+            vorgang: false,
+            nummer: None,
             wartet: false,
             antwort: None,
             abbruch: false,
@@ -110,8 +95,8 @@ impl Ablagestand {
         }
     }
 
-    /// Eine Meldung des Systems, dass sich die Ablage geaendert hat
-    /// (`WM_CLIPBOARDUPDATE` auf Windows).
+    /// Die Ablage hat sich geaendert — gerufen vom Poll (macOS) bzw. ueber
+    /// [`Self::meldung`] (Windows).
     ///
     /// `eigner` = gehoert die Ablage jetzt unserem Fenster, `text_da` = liegt
     /// Text darin.
@@ -120,12 +105,10 @@ impl Ablagestand {
         self.gelesen = None;
         let verloren = self.eigen && !eigner;
         self.eigen = eigner;
-        if self.erwartet > 0 {
-            // Unsere eigene Aenderung — sie anzukuendigen hiesse, der
-            // Gegenseite ihren eigenen Inhalt als Neuigkeit zurueckzumelden.
-            self.erwartet -= 1;
-            return;
-        }
+        // **Eine eigene Aenderung faellt hier von selbst heraus:** danach sind
+        // wir Eigentuemer (`eigner`), und weder ein Verlust noch ein fremder
+        // Text liegt vor. Nach dem Raeumen ist `eigen` schon `false` (s.
+        // [`Ablagestand::selbst_geaendert`]), ein leeres Fach zaehlt nicht.
         // **Der Eigentumsverlust zaehlt selbst dann, wenn kein Text im Fach
         // liegt** — fail-closed, dieselbe Begruendung wie
         // `AblageZustand::abgeloest` auf Wayland: solange wir die Ablage
@@ -142,41 +125,81 @@ impl Ablagestand {
         }
     }
 
-    /// Eine Aenderung, die wir selbst gerade ausgeloest haben. **Erst nach dem
-    /// geglueckten Win32-Aufruf rufen** — sonst schluckte der Zaehler bei einem
-    /// Fehlschlag die naechste fremde Meldung.
-    pub fn selbst_geaendert(&mut self, eigen: bool) {
-        self.erwartet += 1;
-        self.eigen = eigen;
-        self.gelesen = None;
+    /// Windows: ein Blick aufs Fach, ausgeloest von `WM_CLIPBOARDUPDATE` ODER
+    /// vom Takt — `nummer` ist `GetClipboardSequenceNumber`.
+    ///
+    /// **Ausgewertet wird nur eine neue Nummer und nie mitten in einem eigenen
+    /// Vorgang** ([`Self::nummer_neu`]). Der Takt-Blick ist das Netz unter der
+    /// Meldung: kommt sie nicht (oder nicht fuer jede Aenderung), sieht der
+    /// naechste Takt die Nummer trotzdem.
+    ///
+    /// **`nummer == 0` heisst „keine Auskunft"** (laut Doku, wenn der
+    /// Fensterstation das Recht auf die Zwischenablage fehlt). Dann zaehlt
+    /// jeder Blick, der Aufrufer schaut nur auf eine Meldung hin nach — so wie
+    /// vor dem 2026-10-15.
+    ///
+    /// Liefert, ob ausgewertet wurde.
+    pub fn meldung(&mut self, nummer: u32, eigner: bool, text_da: bool) -> bool {
+        if !self.nummer_neu(nummer) {
+            return false;
+        }
+        if nummer != 0 {
+            self.nummer = Some(nummer);
+        }
+        self.systemmeldung(eigner, text_da);
+        true
     }
 
-    /// Eine eigene Aenderung, die die Plattform **selbst schon quittiert hat**.
+    /// Lohnt ein Blick? Nur ausserhalb eines eigenen Vorgangs, und nur bei
+    /// einer Nummer, die NACH der zuletzt verbuchten liegt — der Aufrufer
+    /// fragt das, bevor er Eigentuemer und Inhaltstyp beim Betriebssystem
+    /// erfragt.
     ///
-    /// Der Unterschied zu [`Ablagestand::selbst_geaendert`] ist die Frage, wer
-    /// die eigene Aenderung wieder herausrechnet:
+    /// **Nur vorwaerts:** Meldung und Takt schauen auf zwei Faeden nach. Liest
+    /// der eine N, der andere N+1 und verbucht zuerst, darf das spaete N nicht
+    /// mehr ausgewertet werden — sein Eigentuemer ist veraltet. Verglichen wird
+    /// mit Ueberlauf, die Nummer ist ein `u32` und laeuft ewig.
+    pub fn nummer_neu(&self, nummer: u32) -> bool {
+        if self.vorgang {
+            return false;
+        }
+        match self.nummer {
+            Some(alt) if nummer != 0 => (nummer.wrapping_sub(alt) as i32) > 0,
+            _ => true,
+        }
+    }
+
+    /// Die Nummer beim Start als gesehen ablegen, **ohne auszuwerten**: was vor
+    /// der Sitzung kopiert wurde, wird nicht angekuendigt. Sonst koennte die
+    /// Gegenseite einen Inhalt abrufen, den der Nutzer nie waehrend der
+    /// Sitzung kopiert hat.
+    pub fn nummer_vorgeben(&mut self, nummer: u32) {
+        self.nummer = Some(nummer);
+    }
+
+    /// Ein eigener Vorgang am Fach beginnt (s. [`Self::vorgang`]).
+    pub fn vorgang_beginnen(&mut self) {
+        self.vorgang = true;
+    }
+
+    /// Ein eigener Vorgang ist gescheitert — es gibt nichts zu verbuchen.
+    pub fn vorgang_abbrechen(&mut self) {
+        self.vorgang = false;
+    }
+
+    /// Eine Aenderung, die wir selbst gerade ausgeloest haben. **Erst nach dem
+    /// geglueckten Aufruf ans Betriebssystem rufen.**
     ///
-    /// * Wo das Betriebssystem eine Aenderung **meldet** (Windows), kommt die
-    ///   Meldung fuer die eigene Aenderung erst spaeter — sie muss vorgemerkt
-    ///   werden, sonst kuendigte jeder eigene Anspruch der Gegenseite ihren
-    ///   eigenen Inhalt als Neuigkeit zurueck. Das ist `erwartet`.
-    /// * Wo **gepollt** wird (macOS, `NSPasteboard.changeCount`), gibt es
-    ///   nichts vorzumerken: `declareTypes`/`clearContents` liefern den neuen
-    ///   Zaehlerstand als Rueckgabewert zurueck, die Plattform legt ihn als
-    ///   „gesehen" ab, und der naechste Poll sieht die eigene Aenderung gar
-    ///   nicht erst.
-    ///
-    /// **`erwartet` waere auf einem Poll nicht bloss ueberfluessig, sondern
-    /// falsch**, und zwar in der gefaehrlichen Richtung: der Poll-Faden laeuft
-    /// nebenher, er kann den eigenen Zaehlerstand also VOR
-    /// [`Ablagestand::selbst_geaendert`] sehen. Dann stuende `erwartet` auf 1,
-    /// wenn niemand mehr etwas Eigenes erwartet — und die naechste echte Kopie
-    /// des Nutzers wuerde geschluckt. Das ist genau der erste der drei
-    /// Ausgaenge, die an [`Ablagestand::erwartet`] als Windows-Risiko
-    /// notiert sind; auf macOS waere er kein Risiko, sondern der Regelfall.
-    pub fn selbst_geaendert_quittiert(&mut self, eigen: bool) {
+    /// Vorgemerkt wird nichts: die Meldung oder der Poll, der die eigene
+    /// Aenderung danach sieht, findet uns als Eigentuemer
+    /// ([`Self::systemmeldung`]) — oder, nach dem Raeumen, ein leeres Fach bei
+    /// `eigen == false`. Beides zaehlt nicht. **macOS legt den Zaehlerstand
+    /// seines eigenen Vorgangs zusaetzlich als gesehen ab** (`macos::faden`),
+    /// dort kommt der Poll also gar nicht erst vorbei.
+    pub fn selbst_geaendert(&mut self, eigen: bool) {
         self.eigen = eigen;
         self.gelesen = None;
+        self.vorgang = false;
     }
 
     /// Verbrauchend, wie `Beobachter::geaendert` es verlangt.
@@ -269,18 +292,96 @@ mod tests {
     #[test]
     fn der_eigene_anspruch_zaehlt_nicht_als_aenderung() {
         let mut g = Ablagestand::neu();
+        g.vorgang_beginnen();
         g.selbst_geaendert(true);
-        g.systemmeldung(true, false);
+        g.meldung(1, true, true);
         assert!(!g.aenderung_abholen(), "die eigene Aenderung darf nicht hinausgehen");
     }
 
-    /// Kopiert der Nutzer selbst, geht genau eine Ankuendigung hinaus.
+    /// **Der Fehler vom 2026-10-15:** eigene Ansprueche, fuer die keine Meldung
+    /// kommt, duerfen keine spaetere Kopie des Nutzers verschlucken.
+    #[test]
+    fn eigene_ansprueche_ohne_meldung_schlucken_keine_kopie() {
+        let mut g = Ablagestand::neu();
+        for _ in 0..7 {
+            g.vorgang_beginnen();
+            g.selbst_geaendert(true);
+        }
+        // Der Nutzer kopiert selbst — ein anderes Programm wird Eigentuemer.
+        g.meldung(8, false, true);
+        assert!(g.aenderung_abholen(), "die Kopie des Nutzers muss angekuendigt werden");
+    }
+
+    /// Kopiert der Nutzer selbst, geht genau eine Ankuendigung hinaus — auch
+    /// wenn Meldung UND Takt dieselbe Nummer sehen.
     #[test]
     fn fremdes_kopieren_zaehlt_einmal() {
         let mut g = Ablagestand::neu();
-        g.systemmeldung(false, true);
+        g.meldung(3, false, true);
+        g.meldung(3, false, true);
         assert!(g.aenderung_abholen());
         assert!(!g.aenderung_abholen(), "verbrauchend, sonst antwortet jedes hol mit veraltet");
+    }
+
+    /// Mitten in einem eigenen Vorgang wird nicht ausgewertet — und die Nummer
+    /// nicht verbucht, damit der naechste Blick sie nachholt.
+    #[test]
+    fn mitten_im_eigenen_vorgang_wird_nicht_ausgewertet() {
+        let mut g = Ablagestand::neu();
+        g.vorgang_beginnen();
+        g.selbst_geaendert(true);
+        g.meldung(1, true, true);
+        g.aenderung_abholen();
+        // Raeumen: das Fach gehoert gleich niemandem, `eigen` steht aber noch.
+        g.vorgang_beginnen();
+        assert!(!g.nummer_neu(2));
+        g.meldung(2, false, false);
+        g.selbst_geaendert(false);
+        g.meldung(2, false, false);
+        assert!(!g.aenderung_abholen(), "das eigene Raeumen ist kein Eigentumsverlust");
+    }
+
+    /// Ein gescheiterter Vorgang gibt die Auswertung wieder frei.
+    #[test]
+    fn ein_gescheiterter_vorgang_sperrt_nicht_dauerhaft() {
+        let mut g = Ablagestand::neu();
+        g.vorgang_beginnen();
+        g.vorgang_abbrechen();
+        g.meldung(4, false, true);
+        assert!(g.aenderung_abholen());
+    }
+
+    /// Eine aeltere Nummer, die nach einer neueren eintrifft, wird nicht mehr
+    /// ausgewertet — ihr Eigentuemer ist veraltet. Auch ueber den Ueberlauf.
+    #[test]
+    fn nur_neuere_nummern_werden_ausgewertet() {
+        let mut g = Ablagestand::neu();
+        g.nummer_vorgeben(u32::MAX);
+        assert!(g.meldung(1, false, true), "nach dem Ueberlauf ist 1 neuer");
+        g.aenderung_abholen();
+        assert!(!g.meldung(u32::MAX, true, true), "die alte Nummer kommt zu spaet");
+        assert!(!g.eigen(), "ihr veralteter Eigentuemer darf nichts verbuchen");
+    }
+
+    /// Ohne Auskunft (Nummer 0) zaehlt jede Meldung, wie vor dem Umbau.
+    #[test]
+    fn ohne_nummer_zaehlt_jede_meldung() {
+        let mut g = Ablagestand::neu();
+        g.nummer_vorgeben(0);
+        assert!(g.meldung(0, false, true));
+        assert!(g.aenderung_abholen());
+        assert!(g.meldung(0, false, true));
+    }
+
+    /// Was vor der Sitzung im Fach lag, wird nicht angekuendigt.
+    #[test]
+    fn der_stand_beim_start_wird_nicht_angekuendigt() {
+        let mut g = Ablagestand::neu();
+        g.nummer_vorgeben(17);
+        g.meldung(17, false, true);
+        assert!(!g.aenderung_abholen());
+        g.meldung(18, false, true);
+        assert!(g.aenderung_abholen(), "die erste Kopie danach schon");
     }
 
     /// **Der Eigentumsverlust ist eine unverbuchte Aenderung** — auch ohne Text
@@ -322,16 +423,12 @@ mod tests {
         assert_eq!(g.antwort_nehmen().as_deref(), Some(""));
     }
 
-    /// **Der Poll-Weg quittiert die eigene Aenderung selbst** — er merkt sich
-    /// nichts vor.
-    ///
-    /// Die Gegenprobe steckt in der zweiten Haelfte: nach einer eigenen
-    /// Aenderung muss die naechste FREMDE sofort zaehlen. Mit `erwartet`
-    /// (dem Meldungs-Weg) taete sie das nicht — sie fiele in den Zaehler.
+    /// **macOS: der Poll-Weg** — nach einer eigenen Aenderung zaehlt die
+    /// naechste FREMDE sofort.
     #[test]
-    fn der_poll_weg_merkt_die_eigene_aenderung_nicht_vor() {
+    fn nach_der_eigenen_aenderung_zaehlt_die_naechste_fremde_sofort() {
         let mut g = Ablagestand::neu();
-        g.selbst_geaendert_quittiert(true);
+        g.selbst_geaendert(true);
         assert!(!g.aenderung_abholen(), "die eigene Aenderung darf nicht hinausgehen");
         assert!(g.eigen());
         // Der Nutzer kopiert selbst — der Poll sieht einen fremden Stand.

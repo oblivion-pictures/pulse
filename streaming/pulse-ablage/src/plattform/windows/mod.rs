@@ -1,5 +1,6 @@
-//! Die geteilte Zwischenablage auf Windows — `AddClipboardFormatListener` und
-//! verzoegertes Rendern ueber `WM_RENDERFORMAT`.
+//! Die geteilte Zwischenablage auf Windows — `AddClipboardFormatListener` samt
+//! Abfrage der Aenderungsnummer (`fenster::nachsehen`) und verzoegertes Rendern
+//! ueber `WM_RENDERFORMAT`.
 //!
 //! **Warum diese Umsetzung seit dem 2026-08-31 in der Kiste liegt und nicht
 //! mehr im `win-hq-sidecar`.** Sie lag dort, solange Windows nur EINEN
@@ -89,7 +90,10 @@ pub fn stoppen() {
 pub struct WinAblage;
 
 impl Beobachter for WinAblage {
+    /// Vorher selbst nachsehen, nicht nur auf `WM_CLIPBOARDUPDATE` warten —
+    /// Begruendung bei `fenster::nachsehen`.
     fn geaendert(&mut self) -> bool {
+        fenster::nachsehen(false);
         stand().aenderung_abholen()
     }
 

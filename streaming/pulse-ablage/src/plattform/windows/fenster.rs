@@ -47,8 +47,8 @@ use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::DataExchange::{
-    AddClipboardFormatListener, GetClipboardOwner, IsClipboardFormatAvailable,
-    RemoveClipboardFormatListener, SetClipboardData,
+    AddClipboardFormatListener, GetClipboardOwner, GetClipboardSequenceNumber,
+    IsClipboardFormatAvailable, RemoveClipboardFormatListener, SetClipboardData,
 };
 use windows::Win32::System::Ole::CF_UNICODETEXT;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -149,6 +149,10 @@ fn faden(melden: Sender<Result<isize, String>>) {
         let _ = melden.send(Err(format!("Ablage-Beobachtung nicht anmeldbar: {e}")));
         return;
     }
+    // Was vor der Sitzung im Fach lag, wird nicht angekuendigt (s.
+    // `Ablagestand::nummer_vorgeben`).
+    let nummer = unsafe { GetClipboardSequenceNumber() };
+    stand().nummer_vorgeben(nummer);
     // **Vor der Meldung setzen, nicht erst beim Empfaenger**: der Auftraggeber
     // darf sofort nach `starten()` einen Auftrag geben, und der braucht das
     // Fenster.
@@ -205,11 +209,7 @@ fn fenster_bauen() -> Result<HWND, String> {
 unsafe extern "system" fn fensterruf(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
         WM_CLIPBOARDUPDATE => {
-            // **Erst fragen, dann sperren.** Beide Auskuenfte sind Win32, und
-            // die Sperre darf nie ueber einen solchen Aufruf gehalten werden.
-            let eigner = unsafe { GetClipboardOwner() }.is_ok_and(|o| o == h);
-            let text_da = unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT.0 as u32) }.is_ok();
-            stand().systemmeldung(eigner, text_da);
+            nachsehen(true);
             LRESULT(0)
         }
         WM_RENDERFORMAT if w.0 as u16 == CF_UNICODETEXT.0 => {
@@ -236,6 +236,45 @@ unsafe extern "system" fn fensterruf(h: HWND, msg: u32, w: WPARAM, l: LPARAM) ->
         // zurueck, statt einen Rest der Gegenseite in der Ablage zu hinterlassen.
         _ => unsafe { DefWindowProcW(h, msg, w, l) },
     }
+}
+
+/// Hat sich das Fach geaendert, und wem gehoert es jetzt? — gerufen von
+/// `WM_CLIPBOARDUPDATE` UND von jedem Takt des Verbrauchers
+/// (`WinAblage::geaendert`).
+///
+/// **Der Takt ist das Netz unter der Meldung:** am 2026-10-15 kuendigte ein
+/// Windows-Host an einem ganzen Abend Fernsteuerung eine einzige Kopie an,
+/// Ursache ungeklaert (Modulkopf von `crate::stand`). Was auch immer mit den
+/// Meldungen war — die Nummer sieht der naechste Takt. Die Aenderungsnummer zu lesen kostet einen
+/// Aufruf ohne Oeffnen des Fachs und ohne Inhalt; erst wenn sie neu ist,
+/// werden Eigentuemer und Inhaltstyp erfragt. Beides geht ohne
+/// `OpenClipboard`, also von jedem Faden aus.
+///
+/// **Erst fragen, dann sperren**: alle Auskuenfte sind Win32, und die Sperre
+/// darf nie ueber einen solchen Aufruf gehalten werden.
+///
+/// `aus_meldung`: ausgeloest von `WM_CLIPBOARDUPDATE`. Nur dann wird ohne
+/// Nummer (`0`, keine Auskunft) ueberhaupt nachgesehen — sonst ergaebe jeder
+/// Takt eine Aenderung.
+pub(super) fn nachsehen(aus_meldung: bool) {
+    let Some(h) = hwnd() else { return };
+    let nummer = unsafe { GetClipboardSequenceNumber() };
+    if (nummer == 0 && !aus_meldung) || !stand().nummer_neu(nummer) {
+        return;
+    }
+    let eigner = unsafe { GetClipboardOwner() }.is_ok_and(|o| o == h);
+    let text_da = unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT.0 as u32) }.is_ok();
+    if !stand().meldung(nummer, eigner, text_da) {
+        return;
+    }
+    // **Ohne Inhalt**, nur der Ablauf: bis hierher sah das Log von einer
+    // Aenderung des Fachs gar nichts, und genau das fehlte beim Fehler vom
+    // 2026-10-15. Eine Zeile je ausgewerteter Aenderung, nicht je Takt.
+    eprintln!(
+        "[ablage] Fach geaendert (Nummer {nummer}, Eigentuemer {}, Text {})",
+        if eigner { "wir" } else { "fremd" },
+        if text_da { "ja" } else { "nein" },
+    );
 }
 
 /// Der blockierende Rueckruf: **hier wartet ein fremdes Programm.**

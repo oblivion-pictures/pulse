@@ -137,14 +137,26 @@ Rolle abgedeckt, die es gibt; dass Linux nicht Host sein kann, liegt an
   nicht. Wer eine vierte Plattform ergänzt, stellt zuerst diese Frage.
 - **macOS pollt, und zwar richtigerweise.** Eine Änderungs-Benachrichtigung gibt
   es dort nicht — `NSPasteboard.changeCount` wird alle 200 ms abgefragt (liest
-  **keinen Inhalt**, nur eine Zahl). Folge für die gemeinsame Buchführung: der
-  Zähler `Ablagestand::erwartet`, der eigene Änderungen vormerkt, bis ihre
-  MELDUNG eintrifft, ist auf einem Poll nicht bloss überflüssig, sondern falsch
-  in der gefährlichen Richtung — der Poll-Faden läuft nebenher und kann den
-  eigenen Stand vor dem Vormerken sehen, womit der Zähler die nächste echte
-  Kopie des Nutzers schluckte. macOS quittiert die eigene Änderung deshalb
-  selbst (`selbst_geaendert_quittiert`): `declareTypes`/`clearContents` liefern
-  den neuen Zählerstand zurück, und der wird als „gesehen" abgelegt.
+  **keinen Inhalt**, nur eine Zahl). Die eigenen Vorgänge
+  (`declareTypes`/`clearContents`) liefern den neuen Zählerstand zurück, und
+  der wird als „gesehen" abgelegt — der Poll sieht die eigene Änderung gar
+  nicht erst.
+- **Windows sieht ebenfalls nach, statt sich allein auf die Meldung zu
+  verlassen** (seit 2026-10-15). Jeder Takt liest die Änderungsnummer des Fachs
+  (`GetClipboardSequenceNumber`, kein Inhalt), `WM_CLIPBOARDUPDATE` ist nur der
+  schnelle Anstoss; ob eine Änderung die eigene war, entscheidet der Eigentümer
+  des Fachs. Bis dahin merkte ein Zähler (`Ablagestand::erwartet`) eigene
+  Änderungen vor und verbuchte die nächste Meldung als eigene. Anlass: ein
+  Windows-Host kündigte an einem ganzen Abend genau eine Kopie an, die
+  Gegenrichtung lief. **Die Ursache ist ungeklärt** — dass der Zähler
+  volllief, ist laut den Wine-Tests (Meldung auch für die eigene Änderung)
+  unwahrscheinlich. Jede ausgewertete Änderung schreibt jetzt
+  `[ablage] Fach geaendert (Nummer …, Eigentuemer wir|fremd, Text ja|nein)`
+  ins Log, ohne Inhalt.
+- **Ins `sidecar.log` kommt vom Ablage-Verkehr nur der Ablauf, nie der Inhalt**
+  (`desktop/electron/sidecar-log-ablage.ts`, seit 2026-10-15). Vorher stand der
+  Text jedes `stueck` dort, und die Datei geht beim Diagnose-Upload an den
+  Server, beim Sender automatisch am Stream-Ende.
 - **Die Frist wird VOR dem nächsten Abruf geprüft** (`pulse_ablage::lage::takt`,
   Schritt 2 vor Schritt 3). Andersherum war die Kopplung wirkungslos:
   `Empfaenger::abrufen` räumt einen abgelaufenen Vorgänger selbst und begann

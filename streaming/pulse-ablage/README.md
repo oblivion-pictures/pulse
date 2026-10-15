@@ -57,18 +57,22 @@ Merkmale stehen nicht im Lockfile. **Die Grenze bleibt hart**, jede weitere
 braucht ihre eigene Entscheidung.
 
 **Auf macOS gibt es keine Änderungs-Benachrichtigung** — `NSPasteboard.change`
-`Count` wird abgefragt (200 ms), und alle machen das so. Zwei Stücke der Kiste
-bleiben deshalb ungenutzt, beide mit Begründung am Code: `eigentum::Anspruch`
-(eine Wayland-Not) und `stand::Ablagestand::erwartet` (hängt an einer
-Meldung; auf macOS quittiert die Plattform ihre eigene Änderung selbst,
-`selbst_geaendert_quittiert`).
+`Count` wird abgefragt (200 ms), und alle machen das so. `eigentum::Anspruch`
+bleibt dort ungenutzt (eine Wayland-Not, Begründung am Code).
+
+**Auf Windows wird ebenfalls nachgesehen, nicht nur gemeldet** (seit
+2026-10-15): jeder Takt liest die Änderungsnummer des Fachs
+(`GetClipboardSequenceNumber`), `WM_CLIPBOARDUPDATE` ist nur noch der schnelle
+Anstoß. Ob eine Änderung die eigene war, entscheidet überall der Eigentümer des
+Fachs. Anlass: ein Windows-Host kündigte an einem ganzen Abend genau eine
+Kopie an; die Ursache ist ungeklärt (`stand.rs`, Modulkopf).
 
 ## Tests
 
     cargo test
 
 Läuft ohne FFmpeg, ohne Fenster, ohne Netz — die Kiste ist reine Rechnung.
-88 Tests, warnungsfrei; `scripts/gate-rust.sh` fährt sie mit (er nimmt jede
+94 Tests, warnungsfrei; `scripts/gate-rust.sh` fährt sie mit (er nimmt jede
 geänderte `streaming/pulse-*`, ohne sie einzeln zu nennen).
 
 **Die Plattform-Teile sind davon NICHT gedeckt**, und das ist keine

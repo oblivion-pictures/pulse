@@ -17,7 +17,7 @@
 //!
 //! **Was hier ebenfalls NICHT liegt, und das ist der groessere Teil:** die
 //! Zustandsfuehrung (`pulse_ablage::lage`, 28 Tests) und die Buchfuehrung
-//! ueber eigene und fremde Aenderungen (`pulse_ablage::stand`, 7 Tests) —
+//! ueber eigene und fremde Aenderungen (`pulse_ablage::stand`, 13 Tests) —
 //! beides plattformfrei und in jedem Gate gefahren, das diese Kiste anfasst.
 //!
 //! ## Ein Prozess je Platz, eine Zwischenablage je Maschine
