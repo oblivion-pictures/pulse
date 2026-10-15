@@ -49,6 +49,7 @@
 
 mod auswahl;
 
+use std::fs::File;
 use std::io::Write;
 use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
@@ -254,16 +255,28 @@ impl Ablagequelle for Gastverbindung {
 /// keine.
 fn schreiben(fd: OwnedFd, text: String) {
     std::thread::spawn(move || {
-        // **`UnixStream` nur als Huelle um den Deskriptor**, nicht als Zusage,
-        // dass eine Steckdose dahinter steht (ueblich ist eine Roehre): allein
-        // `set_nonblocking` fehlt der `File`. Es geht ueber `ioctl(FIONBIO)`,
-        // und das behandelt der Kernel fuer jeden Deskriptor gleich — nicht
-        // ueber `setsockopt`, das an einer Roehre scheiterte.
-        let mut ziel = UnixStream::from(fd);
-        if ziel.set_nonblocking(true).is_err() {
-            // Ohne O_NONBLOCK bleibt es beim alten Verhalten: blockierend
-            // schreiben, ohne Frist. Der Faden ist dann wieder unbegrenzt —
-            // aber immer noch nicht der Schleifen-Faden.
+        // **`UnixStream` nur zum Umschalten, geschrieben wird als `File`.**
+        // Allein `set_nonblocking` fehlt der `File`; die Huelle bringt es mit,
+        // ueber `ioctl(FIONBIO)`, und das behandelt der Kernel fuer jeden
+        // Deskriptor gleich. SCHREIBEN ueber die Huelle dagegen geht ueber
+        // `send()`, und das scheitert an einer Roehre mit `ENOTSOCK`.
+        //
+        // **Genau das war der Fehler bis einschliesslich 0.1.113** (gefunden
+        // 2026-10-16): hier wurde ueber die Huelle geschrieben, jeder Versuch
+        // endete im damals stillen `Err(_) => break` (unten heute mit Log),
+        // und das einfuegende Programm bekam einen leeren Inhalt — waehrend
+        // Ankuendigung, Abruf und Antwort der Gegenseite alle sauber liefen.
+        // Ueblich ist eine Roehre (`pipe()`), also traf es praktisch jedes
+        // Einfuegen. Nachgestellt mit einer echten Roehre: `send()` →
+        // „Socket operation on non-socket", `File` nach FIONBIO →
+        // geschrieben, und bei voller Roehre `WouldBlock`.
+        let huelle = UnixStream::from(fd);
+        let umgeschaltet = huelle.set_nonblocking(true).is_ok();
+        let mut ziel = File::from(OwnedFd::from(huelle));
+        if !umgeschaltet {
+            // Ohne O_NONBLOCK: blockierend schreiben, ohne Frist. Der Faden
+            // ist dann wieder unbegrenzt — aber immer noch nicht der
+            // Schleifen-Faden.
             let _ = ziel.write_all(text.as_bytes());
             return;
         }
@@ -271,12 +284,24 @@ fn schreiben(fd: OwnedFd, text: String) {
         let mut rest = text.as_bytes();
         while !rest.is_empty() {
             match ziel.write(rest) {
-                // Der Klient hat sein Ende geschlossen — nichts mehr zu tun.
+                // Bei nicht leerem Puffer nicht zu erwarten; als Schutz gegen
+                // eine Endlosschleife trotzdem ein Ende.
                 Ok(0) => break,
                 Ok(n) => rest = &rest[n..],
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                // Der Klient hat sein Lese-Ende geschlossen — er will nichts
+                // mehr, das Einfuegen ist dort schon vorbei. **Kein Absturz:**
+                // Rust ignoriert SIGPIPE in jedem Programm (der Player setzt
+                // das nirgends zurueck), das Schreiben endet hier mit `EPIPE`.
+                // Test: `ein_geschlossener_leser_beendet_nichts`.
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => break,
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     if Instant::now() >= ende {
+                        eprintln!(
+                            "pulse-player: Zwischenablage — das einfuegende Programm liest \
+                             nicht, nach {} ms aufgegeben.",
+                            SCHREIB_FRIST.as_millis()
+                        );
                         break;
                     }
                     // Gewartet wird schlafend, nicht drehend: ohne
@@ -285,8 +310,60 @@ fn schreiben(fd: OwnedFd, text: String) {
                     // nicht liest. 10 ms sind gegen die Frist unten fein genug.
                     std::thread::sleep(SCHREIB_TAKT);
                 }
-                Err(_) => break,
+                // **Laut, nicht still** — der stille Abbruch hier hat den
+                // Fehler bis 0.1.113 verborgen (s. oben). Ohne Inhalt.
+                Err(e) => {
+                    eprintln!(
+                        "pulse-player: Zwischenablage nicht geschrieben ({e}) — \
+                         das Einfuegen bleibt leer."
+                    );
+                    break;
+                }
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Read;
+    use std::time::Duration;
+
+    /// **Der Fehler bis 0.1.113:** in eine ROEHRE geschrieben — das, was
+    /// einfuegende Programme ueblicherweise schicken — kam nichts an.
+    #[test]
+    fn schreiben_erreicht_eine_roehre() {
+        let (mut lesen, schreib) = std::io::pipe().expect("Roehre");
+        super::schreiben(schreib.into(), "hallo drueben".to_string());
+        let mut ankunft = String::new();
+        lesen.read_to_string(&mut ankunft).expect("lesbar bis zum Dateiende");
+        assert_eq!(ankunft, "hallo drueben");
+    }
+
+    /// Mehr als die Roehre fasst, mit einem Leser, der erst spaeter liest —
+    /// der nicht blockierende Weg muss warten statt abzubrechen.
+    #[test]
+    fn schreiben_wartet_auf_einen_langsamen_leser() {
+        let (mut lesen, schreib) = std::io::pipe().expect("Roehre");
+        let text = "x".repeat(200 * 1024);
+        super::schreiben(schreib.into(), text.clone());
+        // Kurz gegen die Frist von 500 ms — der Test soll das Warten pruefen,
+        // nicht unter Last an der Frist scheitern.
+        std::thread::sleep(Duration::from_millis(15));
+        let mut ankunft = String::new();
+        lesen.read_to_string(&mut ankunft).expect("lesbar bis zum Dateiende");
+        assert_eq!(ankunft.len(), text.len());
+    }
+
+    /// Ein Klient, der sein Ende vor der Lieferung schliesst, darf den
+    /// Player nicht beenden (SIGPIPE) — es bleibt beim Fehler `EPIPE`.
+    #[test]
+    fn ein_geschlossener_leser_beendet_nichts() {
+        let (lesen, schreib) = std::io::pipe().expect("Roehre");
+        drop(lesen);
+        super::schreiben(schreib.into(), "ins Leere".to_string());
+        // Lebt der Prozess nach dem Schreibversuch noch, ist das Signal
+        // ignoriert; ein Absturz liesse den ganzen Testlauf scheitern.
+        std::thread::sleep(Duration::from_millis(30));
+    }
 }
