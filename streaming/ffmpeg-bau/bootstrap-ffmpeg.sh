@@ -70,8 +70,8 @@ flacher_klon "$REPO" "$VERSION" "$quelle" "$COMMIT"
 #
 #   * Decoder bleiben AN. Das Flatpak schaltet sie ab (`--disable-decoders`),
 #     weil dort bisher nur encodiert wurde. Der native Player dekodiert
-#     (`av1`/`h264` + VAAPI-hwaccel, `opus`) — ohne Decoder baut er zwar, findet
-#     zur Laufzeit aber keinen und zeigt nichts an.
+#     (`av1`/`h264` + VAAPI-hwaccel, `libopus`/`opus`) — ohne Decoder baut
+#     er zwar, findet zur Laufzeit aber keinen und zeigt nichts an.
 #   * Filter bleiben AN. Das Flatpak laesst nur fuenf uebrig; hier waere das
 #     eingesparte Platz, den niemand braucht, und die `ffmpeg`-Kommandozeile
 #     (unten die Gegenprobe) verlangt mehr davon als diese fuenf.

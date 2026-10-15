@@ -146,7 +146,15 @@ modules:
       # ist um ein Vielfaches langsamer, und ohne dav1d waere Software-Decode
       # kein brauchbarer Rueckfall, sondern nur ein nomineller. Die Runtime
       # bringt `libdav1d.so.7` bereits mit.
-      # `opus` fuer den Ton, `*_cuvid` fuer NVIDIA-Zuschauer.
+      # `*_cuvid` fuer NVIDIA-Zuschauer.
+      #
+      # Ton: `libopus` zuerst, `opus` (FFmpegs eigener) als Rueckfall — dieselbe
+      # Reihenfolge sucht der Player (`audio/opus.rs`). Nur libopus setzt einen
+      # verlorenen Rahmen per PLC fort; FFmpegs Decoder blendet aus und gibt
+      # danach Stille (gemessen 2026-10-15, `audio/verdeckung`). Bis 0.1.110
+      # stand hier nur `opus`, das Flatpak hatte als einzige Plattform kein PLC
+      # — Windows und macOS bauen ohne Whitelist. Keine neue Abhaengigkeit:
+      # libopus ist fuer den Encoder ohnehin gelinkt (`--enable-libopus`).
       #
       # `hevc` spielt dieselbe Rolle wie `av1`/`h264` fuer den VAAPI-Weg auf
       # AMD/Intel — mit einem Unterschied: der Player bietet HEVC bewusst NIE
@@ -161,7 +169,7 @@ modules:
       # `av1`-/`hevc`-Decoder bzw. im VAAPI-hwaccel, und ob die Karte sie
       # traegt, entscheidet der Player zur Laufzeit selbst.
       - --disable-decoders
-      - --enable-decoder=av1,h264,hevc,opus,libdav1d,av1_cuvid,h264_cuvid,hevc_cuvid
+      - --enable-decoder=av1,h264,hevc,opus,libopus,libdav1d,av1_cuvid,h264_cuvid,hevc_cuvid
       - --enable-libdav1d
       - --enable-cuvid
       - --enable-nvdec

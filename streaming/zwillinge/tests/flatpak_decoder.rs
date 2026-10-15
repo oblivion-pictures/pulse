@@ -134,3 +134,45 @@ fn jeder_codec_der_aushandlung_hat_einen_decoder_im_flatpak() {
         fehlt.join(", ")
     );
 }
+
+/// Die Opus-Decoder, die der Player der Reihe nach sucht, gelesen aus
+/// `OpusDecoder::new` in `audio/opus.rs` (`Self::mit(&["…", …], …)`).
+fn opus_kandidaten() -> Vec<String> {
+    let pfad = wurzel().join("streaming/pulse-player/src/audio/opus.rs");
+    let text = fs::read_to_string(&pfad)
+        .unwrap_or_else(|e| panic!("{} nicht lesbar: {e}", pfad.display()));
+    let zeile = text
+        .lines()
+        .map(str::trim)
+        .find(|z| z.starts_with("Self::mit(&["))
+        .unwrap_or_else(|| panic!("`Self::mit(&[` in {} nicht gefunden — umgebaut?", pfad.display()));
+    let liste = zeile
+        .split_once("&[")
+        .and_then(|(_, rest)| rest.split_once(']'))
+        .expect("Klammern eben noch enthalten")
+        .0;
+    liste.split(',').map(|n| n.trim().trim_matches('"').to_string()).collect()
+}
+
+/// Der BEVORZUGTE Opus-Decoder des Players muss im Flatpak gebaut sein —
+/// nicht nur irgendeiner. Faellt er weg, findet der Player still den
+/// Rueckfall (`opus`), und der Ton laeuft weiter; verloren geht nur die
+/// PLC bei Paketverlust (`audio/verdeckung`). Genau diese stille Luecke
+/// bestand bis 0.1.110: im Flatpak stand allein `opus`.
+#[test]
+fn der_bevorzugte_opus_decoder_ist_im_flatpak() {
+    let manifest_pfad = wurzel().join("packaging/com.howispulse.Pulse.yml");
+    let manifest = fs::read_to_string(&manifest_pfad)
+        .unwrap_or_else(|e| panic!("{} nicht lesbar: {e}", manifest_pfad.display()));
+    let liste = whitelist(&manifest);
+
+    let kandidaten = opus_kandidaten();
+    let erster = kandidaten.first().expect("Kandidatenliste leer");
+    assert_eq!(erster, "libopus", "Auswertung von audio/opus.rs greift nicht: {kandidaten:?}");
+    assert!(
+        liste.iter().any(|d| d == erster),
+        "packaging/com.howispulse.Pulse.yml: der Opus-Decoder `{erster}` fehlt in der \
+         --enable-decoder-Zeile ({liste:?}). Der Player faellt dann still auf den \
+         naechsten Kandidaten zurueck und verdeckt Tonverluste ohne PLC."
+    );
+}
