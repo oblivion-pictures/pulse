@@ -560,7 +560,11 @@ modules:
       - install -d /app/pulse
       - install -m644 app-dist/main.cjs /app/pulse/main.cjs
       - install -m644 app-dist/preload.cjs /app/pulse/preload.cjs
-      - install -m644 packaging/pulse-app.package.json /app/pulse/package.json
+      # Version und Metainfo: eine Nummer fuer alle Plattformen, Quelle
+      # `desktop/package.json` (s. packaging/version-einsetzen.sh).
+      - install -d /app/share/metainfo
+      - sh packaging/version-einsetzen.sh packaging/desktop-package.json packaging/pulse-app.package.json /app/pulse/package.json packaging/com.howispulse.Pulse.metainfo.xml /app/share/metainfo/com.howispulse.Pulse.metainfo.xml
+      - chmod 644 /app/pulse/package.json /app/share/metainfo/com.howispulse.Pulse.metainfo.xml
       - install -Dm644 icon.png /app/icon.png
       # Launcher + desktop integration
       - install -Dm755 packaging/launcher.sh /app/bin/pulse
@@ -571,7 +575,6 @@ modules:
       # an SVG icon is present. Newer 1.x is happy with SVG alone, but the CI
       # runner is on the older version.
       - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/com.howispulse.Pulse.png
-      - install -Dm644 packaging/com.howispulse.Pulse.metainfo.xml /app/share/metainfo/com.howispulse.Pulse.metainfo.xml
     sources:
       - type: archive
         url: https://github.com/electron/electron/releases/download/v43.0.0/electron-v43.0.0-linux-x64.zip
@@ -607,5 +610,12 @@ modules:
       - type: file
         path: pulse-app.package.json
         dest: packaging
+      - type: file
+        path: version-einsetzen.sh
+        dest: packaging
+      - type: file
+        path: ../desktop/package.json
+        dest: packaging
+        dest-filename: desktop-package.json
       - type: file
         path: ../desktop/electron/icon.png

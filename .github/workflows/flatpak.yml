@@ -80,6 +80,8 @@ on:
       - 'packaging/com.howispulse.Pulse.metainfo.xml'
       - 'packaging/com.howispulse.Pulse.svg'
       - 'packaging/pulse-app.package.json'
+      # setzt die Version aus desktop/package.json ein (beide Manifeste)
+      - 'packaging/version-einsetzen.sh'
       # Server-App teilt sich Repo + Signaturschlüssel mit dem Client.
       - 'packaging/com.howispulse.PulseServer.yml'
       - 'packaging/launcher-server.sh'
