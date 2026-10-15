@@ -30,6 +30,7 @@ mod ringregelung;
 #[cfg(test)]
 mod tests;
 mod uhrenabgleich;
+mod verdeckung;
 
 use fuetterung::pump_commands;
 use nachzuegler::Nachzuegler;
@@ -142,6 +143,8 @@ struct Shared {
     /// beides gebraucht, um den Sollwert aus Trim + Eingriff neu zu setzen.
     per_ms: usize,
     max_ziel: usize,
+    /// Abruftakt des Geraets und Zaehler der Verlust-Verdeckung (s. [`verdeckung`]).
+    verdeckung: verdeckung::Stand,
 }
 
 impl Shared {
@@ -209,6 +212,7 @@ fn fill_output(shared: &Mutex<Shared>, out: &mut [f32]) {
     // Unterlauf — sonst stünde die Lippen-Vermessung still, genau wenn der
     // Puffer leerlaeuft und der Fehler am groessten waere.
     s.ausgabe += out.len() as u64;
+    s.verdeckung.abruf(out.len(), Instant::now());
     // Erst anlaufen lassen, wenn der Zielfuellstand da ist — sonst startet die
     // Wiedergabe direkt mit Unterlauf. Das gilt beim Start und nach einem
     // leergelaufenen Ring, NICHT bei jeder Delle darunter (s. [`Shared::anlauf`]).
@@ -277,6 +281,8 @@ pub struct AudioCounters {
     pub lippen_ms: f32,
     /// Regel-Eingriff der Lippen-Synchronisation auf den Ring-Sollwert in ms.
     pub sync_versatz_ms: i32,
+    /// Verdeckte Verluste (s. `audio::verdeckung`).
+    pub verdeckung: verdeckung::Zaehler,
 }
 
 /// Abtastrate von Opus. Der Codec kennt nur diese eine — alles andere
@@ -358,6 +364,7 @@ impl AudioOutput {
             letzte_nachfuehr: None,
             per_ms,
             max_ziel: (MAX_RING_SECONDS * sample_rate as usize * channels as usize) / 2,
+            verdeckung: Default::default(),
         }));
         let max_ring_samples =
             MAX_RING_SECONDS * sample_rate as usize * channels as usize;
@@ -455,6 +462,7 @@ impl AudioOutput {
                 geraetefehler: s.geraetefehler,
                 lippen_ms: s.letzte_fehler_ms as f32,
                 sync_versatz_ms: s.sync_ms.round() as i32,
+                verdeckung: s.verdeckung.zaehler,
             })
             .unwrap_or_default()
     }

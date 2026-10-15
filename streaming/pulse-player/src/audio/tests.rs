@@ -8,7 +8,7 @@ use super::*;
 use ffmpeg_next as ffmpeg;
 
 /// Ein frisches `Shared` mit dem gewuenschten Zielfuellstand, Ring leer.
-fn shared_mit(target_fill: usize) -> Mutex<Shared> {
+pub(super) fn shared_mit(target_fill: usize) -> Mutex<Shared> {
     Mutex::new(Shared {
         ring: VecDeque::new(),
         volume: 1.0,
@@ -29,6 +29,7 @@ fn shared_mit(target_fill: usize) -> Mutex<Shared> {
         letzte_nachfuehr: None,
         per_ms: TEST_PER_MS,
         max_ziel: TEST_MAX_RING / 2,
+        verdeckung: Default::default(),
     })
 }
 

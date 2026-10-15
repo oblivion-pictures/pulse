@@ -4,12 +4,14 @@
 //! herausgeloest (Groessengrenze, `PLAN.md` §12.1) am 2026-10-14, im selben
 //! Zug angepasst (Schwall-Erkennung, Lippen-Regler ohne Ringabweichung).
 
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::Mutex;
 use std::time::Instant;
 
 use super::lippen;
 use super::opus::OpusDecoder;
 use super::ringregelung::im_rueckstand;
+use super::verdeckung::{luecke_fuellen, Verdeckung};
 use super::{AudioCommand, Shared};
 
 /// Nimmt Befehle entgegen, bis der Sender weg ist oder `Stop` kommt.
@@ -29,7 +31,19 @@ pub(super) fn pump_commands(
     let mut decoder_failed = false;
     // Einmalige Meldung, falls der Umrechner die Nachfuehrung nicht annimmt.
     let mut abgleich_gemeldet = false;
-    while let Ok(cmd) = rx.recv() {
+    let mut verdeckung = Verdeckung::default();
+    loop {
+        // Vor jedem Warten: droht der naechste Geraete-Abruf leerzulaufen,
+        // erst Ersatzton anhaengen (s. [`super::verdeckung`]). Das Warten ist
+        // deshalb befristet — auch ohne Befehl muss rechtzeitig nachgesehen
+        // werden.
+        let frist =
+            luecke_fuellen(shared, decoder.as_mut(), &mut verdeckung, sample_rate, channels);
+        let cmd = match rx.recv_timeout(frist) {
+            Ok(cmd) => cmd,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
         // Dekodieren VOR der Sperre: auf dieselbe Sperre wartet der
         // Geraete-Callback, und ein Decode unter ihr wuerde ihn ausbremsen —
         // aus einem Bildruckler wuerde ein Tonaussetzer.
@@ -37,7 +51,10 @@ pub(super) fn pump_commands(
             AudioCommand::Packet(bytes, rtp_ts) => {
                 if decoder.is_none() && !decoder_failed {
                     match OpusDecoder::new(sample_rate, channels) {
-                        Ok(d) => decoder = Some(d),
+                        Ok(d) => {
+                            eprintln!("pulse-player: Opus-Decoder {}", d.verdeckungsart());
+                            decoder = Some(d);
+                        }
                         Err(e) => {
                             eprintln!("pulse-player: Opus-Decoder: {e:#} — bleibt stumm");
                             decoder_failed = true;
@@ -45,8 +62,16 @@ pub(super) fn pump_commands(
                     }
                 }
                 let Some(dec) = decoder.as_mut() else { continue };
+                // Schon verdeckt: zu spaet, der Decoder hat die Zeit per
+                // Ersatzton hinter sich (s. [`super::verdeckung`]).
+                if !verdeckung.echtes_paket(&bytes, rtp_ts) {
+                    continue;
+                }
                 match dec.decode(&bytes) {
-                    Ok(pcm) => AudioCommand::Pcm(pcm, rtp_ts),
+                    Ok(pcm) => {
+                        verdeckung.angehaengt(&bytes, rtp_ts);
+                        AudioCommand::Pcm(pcm, rtp_ts)
+                    }
                     Err(e) => {
                         eprintln!("pulse-player: Opus-Decode: {e:#}");
                         continue;

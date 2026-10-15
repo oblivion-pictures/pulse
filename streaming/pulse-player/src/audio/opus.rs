@@ -16,14 +16,25 @@ pub struct OpusDecoder {
     resampler: Option<ffmpeg::software::resampling::Context>,
     out_rate: u32,
     out_channels: u16,
+    /// Ob der Decoder einen Verlust per PLC fortsetzt (s. [`Self::verdecken`])
+    /// — nur libopus.
+    plc: bool,
 }
 
 impl OpusDecoder {
     pub fn new(out_rate: u32, out_channels: u16) -> Result<Self> {
+        Self::mit(&["libopus", "opus"], out_rate, out_channels)
+    }
+
+    /// Den ersten vorhandenen Decoder aus `namen` oeffnen. Eigener Eingang,
+    /// damit die Tests beide Decoder gezielt pruefen koennen (`verdeckung`).
+    pub fn mit(namen: &[&str], out_rate: u32, out_channels: u16) -> Result<Self> {
         ffmpeg::init().ok();
-        let codec = ffmpeg::decoder::find_by_name("libopus")
-            .or_else(|| ffmpeg::decoder::find_by_name("opus"))
+        let codec = namen
+            .iter()
+            .find_map(|n| ffmpeg::decoder::find_by_name(n))
             .ok_or_else(|| anyhow!("kein Opus-Decoder in diesem FFmpeg-Build"))?;
+        let plc = codec.name() == "libopus";
 
         let mut context = ffmpeg::codec::context::Context::new_with_codec(codec);
         // Opus ueber RTP ist immer 48 kHz; die Kanalzahl steht im TOC-Byte, der
@@ -36,7 +47,7 @@ impl OpusDecoder {
         }
         let decoder = context.decoder().audio().context("Opus-Decoder oeffnen")?;
 
-        Ok(Self { decoder, resampler: None, out_rate, out_channels })
+        Ok(Self { decoder, resampler: None, out_rate, out_channels, plc })
     }
 
     /// Dekodiert ein Opus-Paket und liefert verschraenkte f32-Samples in der
@@ -56,6 +67,42 @@ impl OpusDecoder {
             out.extend_from_slice(&converted);
         }
         Ok(out)
+    }
+
+    /// Ersatzton fuer einen verlorenen Rahmen: `toc` = erstes Byte des zuletzt
+    /// dekodierten Pakets. `None`, wenn der Decoder nichts liefert — dann
+    /// fuellt `verdeckung` Stille auf.
+    ///
+    /// **Der Weg dorthin**: FFmpeg reicht keine Verlustmeldung an den Decoder
+    /// durch (ein leeres Paket heisst bei `avcodec_send_packet` „Ende des
+    /// Stroms"). Gegeben wird deshalb ein Paket aus NUR dem TOC-Byte (Code 0,
+    /// ein Rahmen der Laenge null) — fuer Opus ein gueltiges Paket ohne
+    /// Rahmendaten. Gemessen am 2026-10-15 (FFmpeg 8.1 des Pruefbaus, Test
+    /// `verdeckung::tests::decoder_verdeckt_ueber_das_toc_paket`): libopus
+    /// liefert einen Rahmen der im TOC genannten Dauer, der das Signal
+    /// fortsetzt und ueber einige Rahmen abklingt (PLC). FFmpegs eigener
+    /// Decoder `opus` klingt im ersten Ersatzrahmen aus und gibt danach
+    /// Stille. Beide steigen beim naechsten echten Paket ohne Sprung wieder ein
+    /// — der Decoder weiss ja, dass ein Rahmen fehlte. Genutzt wird es fuer
+    /// beide; PLC im eigentlichen Sinn ist es nur bei libopus ([`Self::mit_plc`]).
+    pub fn verdecken(&mut self, toc: u8) -> Option<Vec<f32>> {
+        self.decode(&[toc & 0xFC]).ok().filter(|pcm| !pcm.is_empty())
+    }
+
+    /// Ob [`Self::verdecken`] das Signal fortsetzt (libopus) oder nur
+    /// ausblendet (FFmpegs eigener Decoder).
+    pub fn mit_plc(&self) -> bool {
+        self.plc
+    }
+
+    /// Fuer die Startmeldung: welcher Decoder, und was er aus einem Verlust
+    /// macht (s. [`Self::verdecken`]).
+    pub fn verdeckungsart(&self) -> &'static str {
+        if self.plc {
+            "libopus — Verluste per PLC verdeckt"
+        } else {
+            "opus (FFmpeg) — Verluste ausgeblendet, kein PLC"
+        }
     }
 
     /// Die Abspielrate nachfuehren: ueber die naechsten `distanz` Ausgabe-Frames

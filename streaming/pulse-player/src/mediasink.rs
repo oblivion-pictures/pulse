@@ -27,6 +27,11 @@ pub struct MediaStats {
     /// Davon nach einem Unterlauf als verspaetet verworfen
     /// (s. `audio::nachzuegler`).
     pub audio_verspaetet: u64,
+    /// Verdeckte Tonrahmen, davon per PLC, und echte Pakete, die danach zu
+    /// spaet kamen (s. `audio::verdeckung`).
+    pub audio_verdeckt: u64,
+    pub audio_verdeckt_plc: u64,
+    pub audio_ersetzt: u64,
     /// Wie oft der Ton-Ring grob auf den Sollwert zurueckgeschnitten wurde.
     /// Sichtbar, weil der Schnitt hoerbar ist — ein Eingriff, den niemand
     /// sieht, war genau der alte Fehler (s. `audio.rs::RING_SOLL_MS`).
@@ -200,6 +205,9 @@ impl MediaSink {
             audio_underruns: ton.underruns,
             audio_dropped: ton.dropped,
             audio_verspaetet: ton.verspaetet,
+            audio_verdeckt: ton.verdeckung.verdeckt,
+            audio_verdeckt_plc: ton.verdeckung.plc,
+            audio_ersetzt: ton.verdeckung.ersetzt,
             audio_buffered: ton.buffered as u64,
             audio_abgleich_ppm: ton.abgleich_ppm,
             audio_geraetefehler: ton.geraetefehler,
