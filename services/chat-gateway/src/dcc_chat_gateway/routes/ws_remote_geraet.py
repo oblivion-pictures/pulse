@@ -27,25 +27,56 @@ Der Standplatz ist der Rechteanker des Geräts (``models/devices.py``). Also:
   Rennen „Gerät meldet sich an, NACHDEM die Einladung hinausging".
 
 Die Prüfung ist **hier** verbindlich. Der Client prüft dieselbe Sache noch
-einmal (er kennt seine Dauerfreigabe besser), aber ein Client ist der Teil des
-Systems, der dem Angreifer gehört.
+einmal, aber ein Client ist der Teil des Systems, der dem Angreifer gehört.
+
+## Seit 2026-10-16: die Freigabeliste ist die Tür, nicht das Kanalrecht
+
+Eine Anfrage, die ein Gerät nennt, verlangt Sicht auf den Standplatz UND eine
+deckende Freigabe (:func:`geraet_anfrage_fehler`, Regel in
+``geraete_freigabe.py``). ``REMOTE_CONTROL`` spielt dafür keine Rolle mehr;
+eine Anfrage ohne Freigabe kommt gar nicht erst beim Gerät an (4062), es gibt
+also keinen Dialog an einem Rechner, vor dem niemand sitzt.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from dcc_chat_gateway.geraete_freigabe import NICHT_FREIGEGEBEN, OK, steuer_pruefung
 from dcc_chat_gateway.models import Device
 
+#: Fehlercode, wenn der Rufer das Gerät sieht, aber keine Freigabe ihn deckt
+#: (Eigentümer-Entscheid 2026-10-16). Eigener Code statt 4051, weil die Lage
+#: für den Nutzer eine andere ist: nicht „kein Zugriff auf den Kanal", sondern
+#: „der Besitzer hat dich nicht freigegeben". Wer den Kanal nicht sieht, bekommt
+#: weiterhin 4051 — sonst verriete die Antwort ein Gerät in einem versteckten
+#: Kanal. Gleicher Code beim Weckruf (``ws_device_handlers.handle_wake``).
+#: Gegenstück im Client: ``WS_FEHLER.GERAET_NICHT_FREIGEGEBEN`` in
+#: ``web/src/lib/api/constants.ts``.
+NICHT_FREIGEGEBEN_CODE = 4062
 
-async def standplatz_stimmt(session, device_id: int, channel_id: int) -> bool:
-    """Steht das Gerät ``device_id`` wirklich im Kanal ``channel_id``?
 
-    ``False`` auch für ein Gerät, das es gar nicht gibt — der Rufer soll aus
-    der Antwort nicht ablesen können, welche Kennungen vergeben sind.
+async def geraet_anfrage_fehler(
+    session, user, device_id: int, channel_id: int
+) -> tuple[int, str] | None:
+    """Darf ``user`` dieses Gerät in diesem Kanal anfragen? ``None`` = ja,
+    sonst ``(code, text)`` für den Fehlerrahmen.
+
+    Reihenfolge = Verrat-Schutz: erst der Standplatz (falscher Kanal oder
+    unbekannte Kennung → 4051, wie „kein Zugriff" — bis 2026-10-16 die eigene
+    Funktion ``standplatz_stimmt``), dann die Sicht (4051),
+    erst danach die Freigabe (4062). Ein Unberechtigter kann so aus der Antwort
+    nicht ablesen, welche Gerätekennungen es gibt.
     """
     device = await session.get(Device, device_id)
-    return device is not None and device.channel_id == channel_id
+    if device is None or device.channel_id != channel_id:
+        return 4051, "no access"
+    pruefung = await steuer_pruefung(session, user, device)
+    if pruefung == OK:
+        return None
+    if pruefung == NICHT_FREIGEGEBEN:
+        return NICHT_FREIGEGEBEN_CODE, "device not granted"
+    return 4051, "no access"
 
 
 def einladungsziele(mgr, host_user_id: int, device_id: int | None) -> list[Any]:

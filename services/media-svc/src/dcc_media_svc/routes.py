@@ -177,6 +177,13 @@ class StreamTokenIn(BaseModel):
     # Welcher Codec läuft ("h264"|"hevc"|"av1")? Reist wie ``ten_bit`` bis zum
     # Zuschauer. Fehlt das Feld (ältere Clients/Streams), gilt "h264".
     codec: Annotated[str | None, Field(default=None, pattern=r"^(h264|hevc|av1)$")] = None
+    # **Strom eines Standplatz-Geraets** (seit 2026-10-16). Der chat-gateway
+    # hat vorher geprueft, dass das Geraet dem Rufer gehoert und in diesem
+    # Kanal steht. Reist wie ``codec`` ueber Token-Record → auth-hook →
+    # ``stream:active``; ``GET /whep`` stellt fuer einen solchen Datensatz nur
+    # aus, wenn der chat-gateway das Zusehen fuer genau dieses Geraet erlaubt
+    # hat (``geraet``), und der Gast-Weg nie.
+    device_id: Annotated[str | None, Field(default=None, max_length=20, pattern=r"^\d+$")] = None
 
 
 class StreamTokenOut(BaseModel):
@@ -346,6 +353,8 @@ async def issue_stream_token(
     # zeigen. "h264" (der historische Default) bleibt aus dem Record raus.
     if payload.codec and payload.codec != "h264":
         record["codec"] = payload.codec
+    if payload.device_id:
+        record["device_id"] = payload.device_id
     await redis.set(
         TOKEN_KEY.format(token=token),
         json.dumps(record, separators=(",", ":")),
@@ -461,6 +470,7 @@ async def _read_token_fuer(
     user_id: str,
     slot: int,
     ttl_max_s: int | None = None,
+    device_id: str | None = None,
 ) -> str:
     """Das WHEP-Lese-Token fuer genau ein (Zuschauer, Kanal, Streamer, Platz).
 
@@ -486,16 +496,23 @@ async def _read_token_fuer(
     # Form in `dcc_shared.streaming` — chat-gateway loescht diese Schluessel
     # beim Bann, und zwei Fassungen davon waeren eine stille Fehlerquelle.
     cache_key = read_cache_key(viewer_id, channel_id, user_id, slot)
-    read_record = json.dumps(
-        {
-            "channel_id": channel_id,
-            "user_id": user_id,
-            "scope": "read",
-            "protocol": "webrtc",
-            "created_at": int(time.time()),
-        },
-        separators=(",", ":"),
-    )
+    lese: dict[str, Any] = {
+        "channel_id": channel_id,
+        "user_id": user_id,
+        "scope": "read",
+        "protocol": "webrtc",
+        "created_at": int(time.time()),
+    }
+    # **Beim Strom eines Geraets an den Platz gebunden** (seit 2026-10-16):
+    # sonst gilt ein Lese-Token fuer JEDEN Pfad dieses Streamers im Kanal, und
+    # wer einmal waehrend einer Steuerung zusehen durfte, kaeme mit dem Token
+    # seines normalen Go-Live-Stroms auch an einen spaeteren Geraetestrom,
+    # dessen Pfad er kennt. Der auth-hook prueft ``slot`` nur, wenn es im
+    # Datensatz steht — normale Stroeme bleiben byte-gleich.
+    if device_id is not None:
+        lese["slot"] = int(slot)
+        lese["device_id"] = device_id
+    read_record = json.dumps(lese, separators=(",", ":"))
     return _text(
         await redis.eval(  # type: ignore[arg-type]
             _LUA_LESE_TOKEN,
@@ -517,8 +534,17 @@ async def _whep_fuer_zuschauer(
     user_id: str,
     slot: int,
     ttl_max_s: int | None = None,
+    geraet_erlaubt: str | None = None,
 ) -> WhepOut:
     """Der gemeinsame Rumpf beider WHEP-Routen (Mitglied und Gast).
+
+    ``geraet_erlaubt``: das Geraet, fuer das der chat-gateway das Zusehen
+    erlaubt hat (``geraete_zuschauen.py`` dort). Traegt der Datensatz ein
+    ANDERES oder ueberhaupt ein Geraete-Merkmal, ohne dass es erlaubt wurde,
+    gibt es 403 — die Entscheidung faellt hier am selben Datensatz, aus dem der
+    Pfad kommt, und schliesst damit den Wettlauf „zwischen Pruefung im Gateway
+    und Ausstellung hier lief auf dem Platz ein Geraetestrom an". Der Gast-Weg
+    reicht nie etwas herein und bekommt damit nie einen Geraetestrom.
 
     Der Zuschauer taucht nur als Schluessel-Bestandteil des Lese-Tokens auf
     (``read_cache_key``); ob dort eine Nutzer-ID oder eine Gast-Kennung steht,
@@ -534,9 +560,13 @@ async def _whep_fuer_zuschauer(
     # bedeuten fuer den Zuschauer dasselbe: kein liefernder Stream.
     if not isinstance(path, str) or not path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="no active stream for this user")
+    merkmal = data.get("device_id")
+    geraet = str(merkmal) if merkmal else None
+    if geraet is not None and geraet != geraet_erlaubt:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="device stream not cleared")
     s = get_settings()
     read_token = await _read_token_fuer(
-        redis, zuschauer_id, channel_id, user_id, slot, ttl_max_s=ttl_max_s
+        redis, zuschauer_id, channel_id, user_id, slot, ttl_max_s=ttl_max_s, device_id=geraet
     )
     base = s.mediamtx_public_base.rstrip("/")
     return WhepOut(
@@ -605,6 +635,7 @@ async def get_whep_url(
     user: CurrentUser,
     request: Request,
     slot: SlotQuery = 0,
+    geraet: Annotated[str | None, Query(max_length=20, pattern=r"^\d+$")] = None,
 ) -> WhepOut:
     """WHEP URL for ``user_id``'s live stream in ``channel_id``.
 
@@ -626,6 +657,7 @@ async def get_whep_url(
         channel_id=channel_id,
         user_id=user_id,
         slot=slot,
+        geraet_erlaubt=geraet,
     )
 
 

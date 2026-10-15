@@ -134,10 +134,38 @@ class DeviceStore {
 
   // ── Vom WS-Handler ────────────────────────────────────────────────────────
 
+  /**
+   * Die Liste einer Community neu holen, auch wenn sie schon geladen ist —
+   * `device_access_changed`: wer ein Gerät steuern darf (`steuerbar`), steht
+   * nur in der REST-Antwort, je Betrachter berechnet. Fehler wie bei
+   * `ensureLoaded`: die alte Liste bleibt stehen.
+   */
+  async neuLaden(guildId: string | null | undefined): Promise<void> {
+    if (!guildId) return;
+    const laufend = this.#laufend.get(guildId);
+    if (laufend) await laufend;
+    try {
+      this.byGuild.set(guildId, await devicesApi.list(guildId));
+      this.#geladen.add(guildId);
+    } catch {
+      // Wie oben: lieber der alte Stand als eine leere Kategorie.
+    }
+  }
+
   /** `device_changed` — eingetragen, umbenannt, umgestellt oder entfernt. */
   _changed(guildId: string, device: Device, removed: boolean): void {
+    const bisher = this.forGuild(guildId).find((d) => d.id === device.id);
     const liste = this.forGuild(guildId).filter((d) => d.id !== device.id);
-    if (!removed) liste.push(device);
+    // `steuerbar` reist nicht mit (es gilt je Betrachter, der Rahmen geht an
+    // alle) — den bekannten Wert behalten, sonst schaltete jede Umbenennung
+    // die Zeile auf „nicht freigegeben".
+    if (!removed) {
+      liste.push(
+        device.steuerbar === undefined && bisher?.steuerbar !== undefined
+          ? { ...device, steuerbar: bisher.steuerbar }
+          : device,
+      );
+    }
     liste.sort((a, b) => a.name.localeCompare(b.name));
     this.byGuild.set(guildId, liste);
     // **Nicht als geladen vermerken** (Bughunt 2026-08-16). Eine Meldung trägt

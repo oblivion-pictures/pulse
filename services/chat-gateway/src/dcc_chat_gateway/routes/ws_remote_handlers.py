@@ -41,15 +41,19 @@ Handler mit **verbindungsgebundenem Zustand** (die Bremsen) bekommen den
 Error frames are fire-and-forget (``_err``) — the socket is never closed:
   * 4050 required field missing / invalid (input: bad slot, bad base64, or a
     batch over the limits — those frames are dropped, the session survives)
-  * 4051 no access (not a member / no VIEW_CHANNEL / no REMOTE_CONTROL / das
-    genannte Geraet steht nicht in diesem Kanal / ein Geraet stimmt einer
-    Sitzung zu, die ihm nicht gilt — s. :mod:`routes.ws_remote_geraet`)
+  * 4051 no access (not a member / no VIEW_CHANNEL / no REMOTE_CONTROL bei
+    einer Anfrage OHNE Geraet / das genannte Geraet steht nicht in diesem
+    Kanal / ein Geraet stimmt einer Sitzung zu, die ihm nicht gilt — s.
+    :mod:`routes.ws_remote_geraet`)
   * 4052 host not reachable (offline, not a member, cannot see the channel, or
     das gemeinte Geraet ist nicht angemeldet)
   * 4053 no matching session / not a peer / input from the host, not the controller
   * 4054 host already has an active session (je Host UND Geraet)
   * 4055 the host just refused (or ignored) an invite — cooldown running
   * 4056 der Rufer fragt zu schnell hintereinander an (Bremse, s. unten)
+  * 4062 Anfrage an ein Geraet, das der Rufer sieht, fuer das ihn aber keine
+    Freigabe deckt (seit 2026-10-16; ``REMOTE_CONTROL`` zaehlt fuer Geraete
+    nicht — :mod:`geraete_freigabe`)
 """
 
 from __future__ import annotations
@@ -61,10 +65,7 @@ from collections.abc import Callable
 from typing import Any
 
 from fastapi import WebSocket
-from sqlalchemy import select
 
-from dcc_chat_gateway.device_grants import freigaben_lesen, gedeckt
-from dcc_chat_gateway.models import MemberRole
 from dcc_chat_gateway.permissions import Permissions, has_permission, resolve_permissions
 from dcc_chat_gateway.remote_guard import peer_channel_perms
 from dcc_chat_gateway.remote_registry import send_to_socket
@@ -78,7 +79,7 @@ from dcc_chat_gateway.routes.ws_ops_registry import WSOpContext
 from dcc_chat_gateway.routes.ws_remote_geraet import (
     darf_zustimmen,
     einladungsziele,
-    standplatz_stimmt,
+    geraet_anfrage_fehler,
 )
 from dcc_chat_gateway.security import AuthenticatedUser
 
@@ -152,17 +153,6 @@ def _session_id(value: object) -> str:
     return str(value or "").strip()
 
 
-async def _rollen_von(session, guild_id: int, user_id: int) -> set[int]:
-    """Die Rollenkennungen, die der Nutzer in dieser Community hält."""
-    treffer = await session.execute(
-        select(MemberRole.role_id).where(
-            MemberRole.guild_id == guild_id,
-            MemberRole.user_id == user_id,
-        )
-    )
-    return set(treffer.scalars())
-
-
 async def handle_request(
     ctx: WSOpContext,
     msg: dict[str, Any],
@@ -202,37 +192,25 @@ async def handle_request(
             await _err(websocket, 4051, "no access")
             return
         perms = await resolve_permissions(session, user, channel.guild_id, cid_int)
-        if not has_permission(perms, Permissions.VIEW_CHANNEL) or not has_permission(
-            perms, Permissions.REMOTE_CONTROL
-        ):
+        if not has_permission(perms, Permissions.VIEW_CHANNEL):
             await _err(websocket, 4051, "no access")
             return
-        # **Ein genanntes Geraet muss in GENAU DIESEM Kanal stehen.** Sonst
-        # prueft der Gateway die Rechte an einem Kanal, den der Rufer sich
-        # aussucht, waehrend die Dauerfreigabe des Geraets ohne Rueckfrage
-        # zustimmt — der Standplatz und sein Overwrite waeren umgangen
-        # (Begruendung im Kopf von ``ws_remote_geraet``). Steht hinter der
-        # Rechtepruefung: sonst wuerde die Antwort verraten, welche
-        # Geraetekennungen es gibt.
-        if geraet is not None and not await standplatz_stimmt(session, geraet, cid_int):
-            await _err(websocket, 4051, "no access")
-            return
-        # **Deckt eine Dauerfreigabe diese Anfrage?** Reiner Zusatz zur
-        # Rechteprüfung oben — sie ersetzt niemals VIEW_CHANNEL/REMOTE_CONTROL
-        # oder ``standplatz_stimmt``, sondern spart nur die Rückfrage am
-        # Gerät. Kein Gerät gemeint → kein zusätzlicher Datenbankgriff.
-        # ``channel.guild_id`` ist der bereits geprüfte, autoritative Wert
-        # (``standplatz_stimmt`` hat oben bestätigt, dass das Gerät in GENAU
-        # diesem Kanal steht) — ein zusätzlicher ``session.get(Device, …)``
-        # nur für die Guild-Kennung entfällt damit.
-        freigabe_gilt = False
-        if geraet is not None:
-            rollen = await _rollen_von(session, channel.guild_id, user.id)
-            freigabe_gilt = gedeckt(
-                await freigaben_lesen(session, geraet),
-                anfragender_id=user.id,
-                rollen=rollen,
-            )
+        if geraet is None:
+            # Die normale Fernsteuerung (Person bittet eine streamende
+            # Person): unverändert ``REMOTE_CONTROL``, und der Host stimmt
+            # jedes Mal im Dialog zu.
+            if not has_permission(perms, Permissions.REMOTE_CONTROL):
+                await _err(websocket, 4051, "no access")
+                return
+        else:
+            # **Ein Gerät entscheidet allein die Freigabeliste** (Eigentümer-
+            # Entscheid 2026-10-16) — ``REMOTE_CONTROL`` zählt hier weder als
+            # nötig noch als hinreichend. Standplatz, Sicht und Freigabe prüft
+            # ``geraet_anfrage_fehler`` am Kanal, den die ZEILE nennt.
+            fehler = await geraet_anfrage_fehler(session, user, geraet, cid_int)
+            if fehler is not None:
+                await _err(websocket, *fehler)
+                return
         # Den Host als ``AuthenticatedUser`` aus seiner offenen Verbindung holen,
         # nicht aus der id nachbauen: der Resolver liest ``is_admin``/``is_owner``
         # daraus, und ein nachgebauter Nutzer mit is_admin=False wuerde einem
@@ -314,13 +292,14 @@ async def handle_request(
     # oben schon entschieden.
     if geraet is not None:
         frame["device_id"] = str(geraet)
-        # **Deckt eine Dauerfreigabe diese Anfrage?** Der Gateway rechnet es
-        # aus, weil nur er Rollen auflösen kann — der Client kennt sie
-        # bestenfalls für die gerade geöffnete Community, und eine Anfrage kommt
-        # auch herein, während man woanders steht. Das Gerät ENTSCHEIDET
-        # trotzdem weiter: es antwortet mit einer ganz gewöhnlichen Zustimmung,
-        # nur ohne Dialog. Damit bleibt „Gerät offline = keine Zustimmung".
-        frame["freigabe"] = freigabe_gilt
+        # **Immer ``True``**, seit eine Geräte-Anfrage ohne deckende Freigabe
+        # gar nicht mehr bis hierher kommt (4062 oben). Das Feld bleibt, weil
+        # ältere Geräte-Clients ohne ``freigabe: true`` einen Dialog zeigten,
+        # und ein Gerät hat niemanden davor. Das Gerät antwortet weiterhin mit
+        # einer gewöhnlichen Zustimmung — und lehnt ab, wenn sein lokaler
+        # Schalter „Steuern erlauben" aus ist. Damit bleibt „Gerät offline =
+        # keine Zustimmung".
+        frame["freigabe"] = True
     # **P2P-Wunsch des Steuernden** — reine Weitergabe wie ``device_id``: der
     # Host liest daraus, dass der Stream diesmal DIREKT zum Steuernden fließt
     # und der Serverweg nichts zu tun hat. Kein eigenes Verhalten des Gateways,

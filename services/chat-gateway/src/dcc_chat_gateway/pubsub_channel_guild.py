@@ -141,7 +141,7 @@ async def handle_guild_events(
     # Geraet nicht, das dort steht" (Entwurf §5) — und das gilt fuer die
     # Kanalliste wie fuer diesen Weg, sonst waere die Liste nur kosmetisch
     # gefiltert (DevTools sieht den rohen Rahmen).
-    elif op in ("device_changed", "device_state"):
+    elif op in ("device_changed", "device_state", "device_access_changed"):
         cid = str(payload.get("channel_id", ""))
         if cid:
             targets = await manager._filter_by_view_channel(targets, cid)

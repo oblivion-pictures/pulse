@@ -69,7 +69,7 @@ log = logging.getLogger(__name__)
 # * ``ws_ops_handlers.py`` — 4003/4004/4011/4012 (subscribe/voice errors)
 # * ``ws_op_send.py``      — 4005/4006/4008/4013/4014/4290 (send-Pfad)
 # * ``ws_watch.py``        — 4012–4017 (watch-party-Fehler)
-# * Fernsteuerung/Geraete  — 4050–4061 (Fehler-Frames)
+# * Fernsteuerung/Geraete  — 4050–4062 (Fehler-Frames; 4062 seit 2026-10-16)
 #
 # Zwei GETRENNTE Raeume, die nur zufaellig dieselben Zahlen benutzen: ein
 # Fehler-FRAME (``{"op":"error","code":…}``) und ein SCHLIESScode. Der Klient

@@ -1,16 +1,17 @@
-"""Auflösung der Dauerfreigaben eines Geräts.
+"""Auflösung der Freigabeliste eines Geräts.
 
-**Warum das hier steht und nicht im WS-Handler:** die Frage „darf dieser Mensch
-diesen Rechner ohne Rückfrage übernehmen" ist eine reine Rechnung über Zeilen,
-Zeit und Rollen. Als Funktion ist sie ohne Datenbank prüfbar; im Handler wäre
-sie es nur mit einer offenen WebSocket.
+**Warum das hier steht und nicht im WS-Handler:** die Frage „deckt eine Zeile
+diesen Menschen" ist eine reine Rechnung über Zeilen, Zeit und Rollen. Als
+Funktion ist sie ohne Datenbank prüfbar; im Handler wäre sie es nur mit einer
+offenen WebSocket.
 
-**Die Rechteprüfung ist NICHT Teil dieser Funktion.** Sie hat schon
-stattgefunden, bevor jemand hierher kommt: ``handle_request`` prüft
-``VIEW_CHANNEL`` und ``REMOTE_CONTROL`` am genannten Kanal und lässt ein
-genanntes Gerät nur zu, wenn es in genau diesem Kanal steht
-(``standplatz_stimmt``). Eine Freigabe ersetzt diese Prüfung nie — sie verzichtet
-nur auf die zusätzliche Rückfrage.
+**Die Sichtprüfung ist NICHT Teil dieser Funktion.** Seit dem 2026-10-16 ist
+die Liste die einzige Tür zu einem Gerät (wecken und steuern), und die Regel
+dazu steht in ``geraete_freigabe.py``: ``VIEW_CHANNEL`` am Standplatz UND
+:func:`gedeckt`. ``REMOTE_CONTROL`` zählt für Geräte nicht mehr. Wer
+:func:`gedeckt` allein ruft, hat die Sicht deshalb noch nicht geprüft —
+``everyone`` deckt hier jeden, gemeint ist aber „jeder, der den Standplatz
+sieht".
 """
 
 from __future__ import annotations

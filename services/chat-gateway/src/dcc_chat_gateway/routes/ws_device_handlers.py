@@ -38,13 +38,10 @@ from typing import Any
 from dcc_shared.streaming import MAX_MONITORS
 
 from dcc_chat_gateway.db import SessionLocal
+from dcc_chat_gateway.geraete_freigabe import NICHT_FREIGEGEBEN, UNSICHTBAR, steuer_pruefung
 from dcc_chat_gateway.models import Device
-from dcc_chat_gateway.permissions import (
-    Permissions,
-    has_permission,
-    resolve_permissions,
-)
 from dcc_chat_gateway.remote_registry import send_to_socket
+from dcc_chat_gateway.routes.ws_remote_geraet import NICHT_FREIGEGEBEN_CODE
 from dcc_chat_gateway.routes.ws_remote_handlers import _err, _int_or_none
 
 log = logging.getLogger(__name__)
@@ -306,10 +303,19 @@ async def handle_wake(ctx: Any, msg: dict[str, Any]) -> None:
     wecken → übertragen → **dann** die unveränderte ``remote_request``. In der
     Oberfläche darf das ein Klick sein; hier bleiben es zwei Vorgänge.
 
-    Geprüft wird ``REMOTE_CONTROL`` am **Standplatz** — dasselbe Recht, das für
-    die Übernahme nötig ist. Wer nicht übernehmen darf, darf auch keinen fremden
-    Rechner zum Encodieren bringen; sonst wäre das Wecken ein Weg, einem Gerät
-    dauerhaft Last aufzuzwingen.
+    Geprüft wird dieselbe Regel wie bei der Übernahme
+    (``geraete_freigabe.steuer_pruefung``): ``VIEW_CHANNEL`` am **Standplatz**
+    UND eine deckende Freigabe. Wer nicht übernehmen darf, darf auch keinen
+    fremden Rechner zum Encodieren bringen; sonst wäre das Wecken ein Weg, einem
+    Gerät dauerhaft Last aufzuzwingen — und seinen ungeschützten Schirm zu
+    sehen. Bis zum 2026-10-16 genügte hier ``REMOTE_CONTROL``; das zählt für
+    Geräte nicht mehr.
+
+    Antworten: 4060 „gibt es nicht" auch für ein Gerät in einem Kanal, den der
+    Rufer nicht sieht; 4062 „nicht freigegeben", wenn er es sieht; 4061
+    „offline". Erst nach bestandener Prüfung UND hinausgegangenem Ruf wird der
+    Rufer als Wecker gemerkt (``device_wecker.py``) — er darf dann bis zum
+    Sitzungsbeginn dem Strom zusehen, auf den sein Player wartet.
     """
     device_id = _int_or_none(msg.get("device_id"))
     mgr = _manager(ctx)
@@ -327,12 +333,17 @@ async def handle_wake(ctx: Any, msg: dict[str, Any]) -> None:
         if device is None:
             await _err(ctx.websocket, 4060, "no such device")
             return
-        wert = await resolve_permissions(session, ctx.user, device.guild_id, device.channel_id)
-        if not has_permission(wert, Permissions.REMOTE_CONTROL):
-            # Dieselbe Antwort wie „gibt es nicht": wer das Gerät nicht
-            # übernehmen darf, soll aus der Antwort nicht schliessen können,
-            # dass es existiert.
+        pruefung = await steuer_pruefung(session, ctx.user, device)
+        if pruefung == UNSICHTBAR:
+            # Dieselbe Antwort wie „gibt es nicht": wer den Standplatz nicht
+            # sieht, soll aus der Antwort nicht schliessen können, dass dort
+            # ein Gerät steht.
             await _err(ctx.websocket, 4060, "no such device")
+            return
+        if pruefung == NICHT_FREIGEGEBEN:
+            # Wer den Kanal sieht, sieht das Gerät ohnehin in der Liste — hier
+            # darf die Antwort ehrlich sein.
+            await _err(ctx.websocket, NICHT_FREIGEGEBEN_CODE, "device not granted")
             return
         channel_id = device.channel_id
 
@@ -357,12 +368,13 @@ async def handle_wake(ctx: Any, msg: dict[str, Any]) -> None:
     # **P2P-Wunsch.** Nur eine Markierung: sie sagt dem Gerät, dass der
     # Steuernde das Bild DIREKT empfangen will und der Serverweg (WHIP→
     # MediaMTX) diesmal nichts zu tun hat. Entscheidet hier nichts — die
-    # Berechtigung ist dieselbe REMOTE_CONTROL-Prüfung wie oben, und die
+    # Berechtigung ist dieselbe Freigabe-Prüfung wie oben, und die
     # Direktverbindung selbst wird später über die ganz normale Consent-
     # Sitzung verhandelt (`remote_signal`), die ohne Zustimmung gar nicht
     # erst fließt.
     if msg.get("p2p") is True:
         frame["p2p"] = True
+    mgr.device_wecker_setzen(device_id, ctx.user.id)
     for sock in ziele:
         await send_to_socket(sock, frame)
 

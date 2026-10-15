@@ -389,14 +389,65 @@ async def test_freigabe_greift_im_rahmen_wenn_remote_control_da_ist(
 
 
 @pytest.mark.asyncio
-async def test_freigabe_rettet_fehlendes_remote_control_nicht(
+async def test_freigabe_genuegt_ohne_remote_control(client, _auth_signer, session_factory):
+    """**Seit 2026-10-16 umgekehrt** (vorher
+    ``test_freigabe_rettet_fehlendes_remote_control_nicht``): für ein Gerät
+    zählt ``REMOTE_CONTROL`` nicht mehr. Ein Mitglied OHNE das Recht, das die
+    Liste deckt, kommt durch — die Freigabe des Besitzers ist die Tür."""
+    from dcc_chat_gateway.routes import ws_remote_handlers
+
+    owner_token, _owner_uid, _, host_uid, gid, a, device = await _fernaufbau(
+        client, _auth_signer
+    )
+    did = int(device["id"])
+    await _freigeben(session_factory, did)
+    mgr = _register(client)
+    sock = _geraet_verbinden(mgr, client, did, host_uid, gid, a)
+
+    from .conftest import everyone_remote_control_entfernen
+
+    await everyone_remote_control_entfernen(client, owner_token, gid)
+    _fremd_token, fremd_uid = await _mitglied(client, owner_token, gid, _auth_signer)
+    ctx = _ctx(client, fremd_uid)
+    await ws_remote_handlers.handle_request(
+        ctx,
+        {"channel_id": str(a), "host_user_id": str(host_uid), "device_id": device["id"]},
+        session_factory=session_factory,
+    )
+    assert [f for f in ctx.websocket.sent if f.get("op") == "error"] == []
+    einladung = [f for f in sock.sent if f.get("op") == "remote_request"]
+    assert len(einladung) == 1 and einladung[0]["freigabe"] is True
+    mgr.remote_cancel_timeout(mgr.remote_sessions_snapshot()[0].session_id)
+
+
+@pytest.mark.asyncio
+async def test_remote_control_ohne_freigabe_reicht_nicht(client, _auth_signer, session_factory):
+    """REMOTE_CONTROL allein (hier: Community-Besitzer, der alles darf) deckt
+    keine Geräte-Anfrage mehr — 4062, und beim Gerät kommt nichts an."""
+    from dcc_chat_gateway.routes import ws_remote_handlers
+
+    _, owner_uid, _, host_uid, gid, a, device = await _fernaufbau(client, _auth_signer)
+    mgr = _register(client)
+    sock = _geraet_verbinden(mgr, client, int(device["id"]), host_uid, gid, a)
+
+    ctx = _ctx(client, owner_uid)
+    await ws_remote_handlers.handle_request(
+        ctx,
+        {"channel_id": str(a), "host_user_id": str(host_uid), "device_id": device["id"]},
+        session_factory=session_factory,
+    )
+    assert ctx.websocket.sent[-1]["code"] == 4062
+    assert [f for f in sock.sent if f.get("op") == "remote_request"] == []
+    assert mgr.remote_sessions_snapshot() == []
+
+
+@pytest.mark.asyncio
+async def test_everyone_ohne_sicht_auf_den_kanal_reicht_nicht(
     client, _auth_signer, session_factory
 ):
-    """Freigabe vorhanden, aber der RUFER hat kein REMOTE_CONTROL am
-    Standplatz: die eigene Rechteprüfung greift vor jeder Freigaben-Rechnung —
-    die Anfrage kommt gar nicht bis zum Rahmenbau (4051), die Freigabe wird nie
-    ausgewertet. Eine Dauerfreigabe am GERÄT ersetzt nie das Recht des
-    RUFERS."""
+    """``everyone`` heisst „jeder, der den Standplatz sieht": ohne
+    ``VIEW_CHANNEL`` bleibt es bei 4051 — dieselbe Antwort wie „kein Zugriff",
+    kein Hinweis auf das Gerät."""
     from dcc_chat_gateway.routes import ws_remote_handlers
 
     owner_token, _owner_uid, _, host_uid, gid, a, device = await _fernaufbau(
@@ -406,15 +457,15 @@ async def test_freigabe_rettet_fehlendes_remote_control_nicht(
     await _freigeben(session_factory, did)
     mgr = _register(client)
     _geraet_verbinden(mgr, client, did, host_uid, gid, a)
-
-    # Ein DRITTES Mitglied — das @everyone-Recht ist hier ausdrücklich auf
-    # VIEW_CHANNEL ja, REMOTE_CONTROL nein reduziert: seit f3dff047 ist das
-    # Bit Default für neue Communitys, dieser Test will seinen Wegfall (s.
-    # conftest::everyone_remote_control_entfernen).
-    from .conftest import everyone_remote_control_entfernen
-
-    await everyone_remote_control_entfernen(client, owner_token, gid)
-    _fremd_token, fremd_uid = await _mitglied(client, owner_token, gid, _auth_signer)
+    _t, fremd_uid = await _mitglied(client, owner_token, gid, _auth_signer)
+    async with session_factory() as s:
+        s.add(
+            PermissionOverwrite(
+                channel_id=a, target_id=fremd_uid, target_type=1,
+                allow_bf=0, deny_bf=int(Permissions.VIEW_CHANNEL),
+            )
+        )
+        await s.commit()
     ctx = _ctx(client, fremd_uid)
     await ws_remote_handlers.handle_request(
         ctx,
@@ -462,8 +513,9 @@ async def test_abgelaufene_freigabe_aus_der_datenbank_greift_nicht(
     """Der Nachweis für K-1: eine abgelaufene Zeile wird ECHT aus der
     Datenbank gelesen (nicht handgebaut) — unter aiosqlite kommt
     ``expires_at`` dabei naiv zurück. ``gedeckt`` darf daran nicht mit einem
-    ``TypeError`` scheitern; das Ergebnis muss ``False`` sein, nicht der
-    Absturz des WS-Ops."""
+    ``TypeError`` scheitern; das Ergebnis muss „nicht gedeckt" sein, nicht der
+    Absturz des WS-Ops. Seit 2026-10-16 heisst das: 4062, keine Einladung
+    (vorher ging sie mit ``freigabe: False`` als Dialog hinaus)."""
     from datetime import UTC, datetime, timedelta
 
     from dcc_chat_gateway.routes import ws_remote_handlers
@@ -480,10 +532,9 @@ async def test_abgelaufene_freigabe_aus_der_datenbank_greift_nicht(
         {"channel_id": str(a), "host_user_id": str(host_uid), "device_id": device["id"]},
         session_factory=session_factory,
     )
-    einladung = [f for f in sock.sent if f.get("op") == "remote_request"]
-    assert len(einladung) == 1
-    assert einladung[0]["freigabe"] is False
-    mgr.remote_cancel_timeout(mgr.remote_sessions_snapshot()[0].session_id)
+    assert ctx.websocket.sent[-1]["code"] == 4062
+    assert [f for f in sock.sent if f.get("op") == "remote_request"] == []
+    assert mgr.remote_sessions_snapshot() == []
 
 
 @pytest.mark.asyncio

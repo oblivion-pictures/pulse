@@ -38,6 +38,7 @@ from dcc_chat_gateway import gaeste
 from dcc_chat_gateway.client_ip import bremsen_schluessel, client_ip
 from dcc_chat_gateway.config import get_settings
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.geraete_zuschauen import geraetestrom
 from dcc_chat_gateway.models import Channel, GuestLink, Guild
 from dcc_chat_gateway.routes.streaming import SlotQuery, _bearer_from_header
 from dcc_chat_gateway.security import CurrentGast
@@ -353,6 +354,7 @@ async def _mitglieder_profile(
 async def gast_whep(
     gast: CurrentGast,
     request: Request,
+    session: SessionDep,
     user_id: Annotated[str, Query(min_length=1, max_length=20, pattern=r"^\d+$")],
     # Dieselbe Schranke wie auf dem Mitglieder-Weg, aus derselben Quelle: eine
     # eigene Zahl hier liesse Plätze durch, die media-svc nie annimmt (sie
@@ -369,6 +371,20 @@ async def gast_whep(
     IST die Berechtigung.
     """
     await _gast_pruefen(gast, request, gast.channel_id)
+    # **Kein Gerätestrom für Gäste** (seit 2026-10-16): ein Gast hat kein
+    # ``VIEW_CHANNEL``, und die Regel für Remote-Rechner verlangt es
+    # (``geraete_zuschauen.py``). media-svc verweigert Datensätze mit
+    # Geräte-Merkmal auf dem Gast-Weg ohnehin; hier zusätzlich der Rückfall
+    # über das Register für Geräte-Clients ohne Merkmal.
+    if await geraetestrom(
+        session,
+        getattr(request.app.state, "connection_manager", None),
+        getattr(request.app.state, "redis", None),
+        int(gast.channel_id),
+        int(user_id),
+        slot,
+    ) is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="device stream")
     settings = get_settings()
     # Den vorhandenen Helfer nehmen statt selbst zu zerlegen: er wirft bei
     # einem Header ohne ``Bearer``-Präfix, wo die Handarbeit hier den ganzen

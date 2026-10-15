@@ -61,3 +61,22 @@ export const WS_CLOSE = {
   /** Konto ohne bestaetigte E-Mail — braucht eine Handlung des Nutzers. */
   EMAIL_UNVERIFIED: 4071,
 } as const;
+
+/**
+ * Fehler-RAHMEN (`{op:'error', code}`) rund um Standplatz-Geraete — KEINE
+ * Schliesscodes: sie laufen nie durch `_mapCloseCode` und duerfen sich mit
+ * `WS_CLOSE` ueberschneiden (s. Kommentarblock in `routes/ws.py`).
+ * Gegenstuecke: `routes/ws_device_handlers.py::handle_wake` (4060/4061/4062)
+ * und `routes/ws_remote_geraet.py::NICHT_FREIGEGEBEN_CODE` (4062 auch bei
+ * `remote_request` mit Geraet) — **synchron halten**.
+ *
+ * 4062 seit 2026-10-16: der Rufer sieht das Geraet, aber keine Zeile der
+ * Freigabeliste deckt ihn. Wer den Standplatz NICHT sieht, bekommt weiterhin
+ * 4060 (Wecken) bzw. 4051 (Anfrage), damit nichts ueber versteckte Kanaele
+ * verraten wird.
+ */
+export const WS_FEHLER = {
+  GERAET_UNBEKANNT: 4060,
+  GERAET_OFFLINE: 4061,
+  GERAET_NICHT_FREIGEGEBEN: 4062,
+} as const;

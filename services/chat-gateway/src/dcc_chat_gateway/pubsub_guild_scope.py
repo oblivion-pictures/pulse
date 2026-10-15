@@ -55,6 +55,9 @@ GUILD_MEMBER_SCOPED_OPS = frozenset(
         # duerfen (die zweite Schranke sitzt in ``pubsub_channel_guild``).
         "device_changed",
         "device_state",
+        # Nur „lade neu", ohne Inhalt — trotzdem dieselbe Schranke: schon dass
+        # sich an einem Gerät etwas ändert, geht Fremde nichts an.
+        "device_access_changed",
         # Dropbox / Ablage events carry entry metadata + presigned GET URLs
         # (for files). The bandwidth cost is negligible but the privacy cost
         # matters — a member with ``@everyone`` ``VIEW_CHANNEL`` denied on the

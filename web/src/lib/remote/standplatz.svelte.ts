@@ -12,14 +12,16 @@
  * Gerät und gibt es frei; danach beantwortet dieser Client die Anfrage
  * selbsttätig.
  *
- * ## Warum das nichts am Protokoll ändert
+ * ## Seit 2026-10-16: der Schalter ist ein Notaus („Steuern erlauben")
  *
- * Der Gateway sieht eine ganz gewöhnliche Zustimmung, nur nach 20 ms statt nach
- * vier Sekunden. `ws_remote_handlers.py`, `remote_registry.py` und der
- * Drahtvertrag bleiben wortgleich, und der gesamte Schutzapparat bleibt in
- * Kraft: Rechteprüfung, Rechte-Wache im 30-s-Takt, Sitzungsdeckel, eine Sitzung
- * je Host, Abbau bei Rauswurf und Bann. Diese Datei entscheidet nur, **ob der
- * Dialog überhaupt jemandem vorgelegt wird**.
+ * WER wecken und steuern darf, entscheidet allein der Server über die
+ * Freigabeliste (`geraete_freigabe.py`); eine Anfrage ohne deckende Freigabe
+ * kommt gar nicht mehr an (4062), und ein Gerät zeigt keinen Dialog mehr. Der
+ * Schalter hier kann nur noch verbieten: aus = der Rechner weckt sich nicht
+ * (`devices/wecken.ts`) und lehnt jede Anfrage ab (`geraeteanbindung.ts`).
+ * Die Regel steht importfrei in `notausRegel.ts`. Der Gateway sieht weiterhin
+ * eine gewöhnliche Zustimmung bzw. Absage — Drahtvertrag und Schutzapparat
+ * (Rechte-Wache, Sitzungsdeckel, Abbau bei Rauswurf und Bann) bleiben.
  *
  * ## Wo die Liste liegt, seit 2026-08-20 — und was am Gerät bleibt
  *
@@ -65,11 +67,11 @@
 import { m } from '$lib/paraglide/messages.js';
 import { loadAll, saveAll } from '$lib/stream/persistence';
 import { umziehenNoetig, serverBereitsUmgezogen } from './umzugRegel';
+import { steuernErlaubt } from './notausRegel';
 import { freigaben } from '$lib/devices/freigaben.svelte';
 import { dedupliziertLaden } from '$lib/devices/ladeWaechter';
 import type { GrantEingabe } from '$lib/api/devices';
 
-/** Wie lange eine erteilte Freigabe gilt. */
 /**
  * Wie lange eine Freigabe gilt.
  *
@@ -382,8 +384,8 @@ class StandplatzFreigabe {
     }
     // **`expires_at: null` — unbefristet** (Fix zu Prüfbefund W-2, 2026-08-20).
     // Im Altbestand liefen `nutzer`/`jeder` nie ab, nur die Scharfschaltung des
-    // Hauptschalters tat das. `this.#endeIso()` wäre die Frist des Haupt-
-    // schalters gewesen — bei einem aktiven Gerät mit z. B. 8-Stunden-Fenster
+    // Hauptschalters tat das. Dessen Ende (`gueltigBis`) als Frist zu nehmen
+    // hätte geheissen: bei einem aktiven Gerät mit z. B. 8-Stunden-Fenster
     // wären alle migrierten Freigaben in 8 Stunden verfallen, obwohl der
     // Server den Umzug längst als erledigt vermerkt und den Altbestand nie
     // wieder liest. Die Befristung bleibt allein am Hauptschalter.
@@ -455,9 +457,14 @@ class StandplatzFreigabe {
    * Server (`device_grants`); hier bleibt der Hauptschalter.
    */
   selbsttaetigZustimmen(freigabeVomServer: boolean): boolean {
-    // Alle drei fail-closed (s. `umzugRegel.ts`-Muster): gespeicherter Stand
-    // gelesen, Hauptschalter am Gerät, deckende Dauerfreigabe vom Server.
-    return this.geladen && this.aktiv && freigabeVomServer;
+    // Alle fail-closed: Schalter an (gelesen, nicht abgelaufen — `notausRegel`)
+    // UND deckende Freigabe vom Server.
+    return this.steuernErlaubt() && freigabeVomServer;
+  }
+
+  /** Der Notaus: darf dieser Rechner gerade geweckt und gesteuert werden? */
+  steuernErlaubt(): boolean {
+    return steuernErlaubt(this, Date.now());
   }
 
   /** Wie lange die Freigabe noch gilt (ms), `null` = ohne Ablauf, `0` = nicht
@@ -479,13 +486,6 @@ class StandplatzFreigabe {
   restStunden(): number | null {
     const rest = this.restMs();
     return rest === null || rest === 0 ? null : Math.max(1, Math.round(rest / 3_600_000));
-  }
-
-  /** Das Ende der aktuellen Freigabe als ISO-Zeitstempel, `null` = ohne
-   *  Ablauf — dieselbe Bedeutung wie `gueltigBis`, nur in der Wire-Form, die
-   *  der Server für `expires_at` erwartet. */
-  #endeIso(): string | null {
-    return this.gueltigBis === null ? null : new Date(this.gueltigBis).toISOString();
   }
 
   #uebernehmen(stand: { aktiv: boolean; geltung: Geltung; gueltigBis: number | null }): void {

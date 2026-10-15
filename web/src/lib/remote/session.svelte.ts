@@ -289,7 +289,7 @@ class RemoteSessionStore {
     // laufen denselben Pfad), damit Host und Controller synchron umschalten.
   }
 
-  deny(): void {
+  deny(grund?: string): void {
     if (this.phase !== 'incoming' || !this.sessionId) return;
     const id = this.sessionId;
     // Ergebnis absichtlich ungeprüft: ob die Ablehnung hinausging oder nicht,
@@ -307,7 +307,7 @@ class RemoteSessionStore {
     // sie nie). Hier gibt es eine, also wird nicht gewartet: bis dahin lief der
     // ungeschützte Schirm anderthalb Minuten weiter in den Kanal, obwohl der
     // Besitzer eben Nein gesagt hat.
-    void geraet.abgelehntEingeschlafen();
+    void geraet.abgelehntEingeschlafen(grund);
   }
 
   // ── Beide ─────────────────────────────────────────────────────────────────
@@ -366,7 +366,17 @@ class RemoteSessionStore {
     // Meint die Anfrage ein anderes Gerät, lehnt sie dort still ab — sonst
     // bediente der Steuernde am Ende den falschen Rechner.
     if (geraet.fremdesGeraetAblehnen(sessionId, deviceId)) return;
-    if (!eingabeMoeglich() || !stream.fernsteuerbar) {
+    // Gilt die Anfrage DIESEM Gerät, gibt es keinen Dialog: annehmen oder
+    // ablehnen (Notaus, fehlende Eingabe-Brücke), Begründung in
+    // `geraeteanbindung.ts::geraeteEntscheid`. Ein Gerät lehnt hörbar ab —
+    // die Einladung erreicht nur seine eigenen Verbindungen, es gibt also
+    // keinen Browser-Tab, den eine Absage überholen könnte.
+    const entscheid = geraet.geraeteEntscheid(
+      deviceId,
+      freigabe,
+      eingabeMoeglich() && stream.fernsteuerbar,
+    );
+    if (entscheid === null && (!eingabeMoeglich() || !stream.fernsteuerbar)) {
       // Seit dem Bughunt 2026-08-16 SCHWEIGEND statt mit einer Absage: die
       // Einladung geht an alle Fenster des Hosts, der Gateway nimmt die erste
       // Antwort. Ein Browser-Tab desselben Kontos — der hier immer landet —
@@ -392,13 +402,13 @@ class RemoteSessionStore {
     // „Erlauben" holte sich wortlos ein 4053 ab.
     this.#watchFrist('Die Anfrage ist abgelaufen.');
     this.#watchErrors();
-    // Dauerfreigabe (`geraeteanbindung.ts`) — NACH den Wachten: ein
-    // fehlgeschlagenes `accept()` räumt über `#reset` auf, das sie braucht.
-    // `freigabe` hat der Gateway schon aufgelöst (Rollen, Kanalmitgliedschaft);
-    // hier sticht nur noch der Hauptschalter am Gerät.
-    if (geraet.ohneRueckfrage(freigabe)) {
+    // Geräte-Entscheid — NACH den Wachten: ein fehlgeschlagenes `accept()`
+    // räumt über `#reset` auf, das sie braucht.
+    if (entscheid === 'annehmen') {
       this.selbsttaetig = true;
       this.accept();
+    } else if (entscheid === 'ablehnen') {
+      this.deny('Anfrage abgelehnt: Steuern an diesem Rechner aus');
     }
   }
 

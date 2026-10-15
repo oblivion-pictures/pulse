@@ -28,6 +28,7 @@ from sqlalchemy import select
 
 from dcc_chat_gateway.config import get_settings
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.geraete_zuschauen import geraet_fuer_stream_token, whep_geraet_pruefen
 from dcc_chat_gateway.models import CHANNEL_TYPE_VOICE, Channel, Guild
 from dcc_chat_gateway.permissions import Permissions, check_permission
 from dcc_chat_gateway.routes._deps import (
@@ -35,6 +36,7 @@ from dcc_chat_gateway.routes._deps import (
     require_member,
     visible_voice_channel_ids,
 )
+from dcc_chat_gateway.schemas import SnowflakeId
 from dcc_chat_gateway.security import CurrentUser
 from dcc_chat_gateway.guild_limits import LIMITS_BY_KEY, effective
 from dcc_shared.streaming import MONITOR_INDEX_MAX, MONITOR_INDEX_MIN, SLOT_MAX
@@ -111,6 +113,13 @@ class StreamTokenIn(BaseModel):
     # Aushandlung den Wiedergabeweg — HEVC lässt sich im Linux-Browser nicht
     # verhandeln, dort muss direkt der native Player aufgehen.
     codec: Annotated[str | None, Field(default=None, pattern=r"^(h264|hevc|av1)$")] = None
+    # **Dieser Strom kommt von einem Standplatz-Geraet** (seit 2026-10-16).
+    # Nur der Besitzer fuer sein eigenes Geraet an dessen Standplatz (sonst
+    # 403); media-svc schreibt es in den Token-Datensatz, der auth-hook nach
+    # ``stream:active``. Daran erkennt ``GET /whep`` einen Geraetestrom und
+    # laesst nur Besitzer, Steuernden, Wecker oder bei belegtem Geraet zusehen
+    # (``geraete_zuschauen.py``). Fehlt das Feld, ist es ein normaler Strom.
+    device_id: SnowflakeId | None = None
 
 
 class StreamTokenOut(BaseModel):
@@ -257,6 +266,14 @@ async def issue_stream_token(
         token_body["remote_input"] = True
     if payload.codec:
         token_body["codec"] = payload.codec
+    if payload.device_id is not None:
+        if not await geraet_fuer_stream_token(
+            session, payload.device_id, current.id, channel_id
+        ):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, detail="not your device in this channel"
+            )
+        token_body["device_id"] = str(payload.device_id)
     try:
         resp = await _media_svc_request(
             "POST",
@@ -318,7 +335,13 @@ async def get_whep_url(
 ) -> WhepOut:
     """WHEP playback URL for `user_id`'s HQ stream in `channel_id` (``slot`` picks
     which of that user's streams, default 0). The caller just has to be a member
-    of the channel's guild (they're watching, not the streamer)."""
+    of the channel's guild (they're watching, not the streamer).
+
+    **Ausnahme Standplatz-Geraet** (seit 2026-10-16): ist der Strom der eines
+    Geraets, braucht es zusaetzlich Besitz, Steuerung, die Weckfrist oder ein
+    belegtes Geraet (``geraete_zuschauen.py``), sonst 403. media-svc bekommt
+    dann ``geraet=<id>`` mit und verweigert jeden anderen Geraetestrom auf
+    demselben Platz — Begruendung des Wettlaufs dort."""
     channel = await _require_voice_channel_member(session, channel_id, current.id)
     # VIEW_CHANNEL must not be overwrite-denied for this member — a member
     # explicitly excluded from a channel must not be able to watch streams
@@ -329,13 +352,20 @@ async def get_whep_url(
     )
     bearer = _bearer_from_header(authorization)
     http = getattr(request.app.state, "media_svc_http", None)
+    pfad = f"/channels/{channel_id}/whep?user_id={user_id}&slot={slot}"
+    geraet = await whep_geraet_pruefen(
+        session,
+        getattr(request.app.state, "connection_manager", None),
+        getattr(request.app.state, "redis", None),
+        channel_id=channel_id,
+        streamer_id=user_id,
+        slot=slot,
+        viewer_id=current.id,
+    )
+    if geraet is not None:
+        pfad += f"&geraet={geraet}"
     try:
-        resp = await _media_svc_request(
-            "GET",
-            f"/channels/{channel_id}/whep?user_id={user_id}&slot={slot}",
-            bearer=bearer,
-            http=http,
-        )
+        resp = await _media_svc_request("GET", pfad, bearer=bearer, http=http)
     except httpx.HTTPError as exc:
         raise _media_svc_unavailable(exc) from exc
     if resp.status_code >= 400:

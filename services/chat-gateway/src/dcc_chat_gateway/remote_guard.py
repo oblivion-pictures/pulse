@@ -123,12 +123,24 @@ async def _end_reason(session, manager, sess, max_session_s: float) -> str | Non
         cid = int(sess.channel_id)
     except ValueError:
         return "permission_revoked"
-    controller_perms = await peer_channel_perms(session, cid, controller)
-    if controller_perms is None or not (
-        has_permission(controller_perms, Permissions.VIEW_CHANNEL)
-        and has_permission(controller_perms, Permissions.REMOTE_CONTROL)
-    ):
-        return "permission_revoked"
+    if sess.device_id is not None:
+        # **Gerätesitzung: dieselbe Latte wie beim Aufbau** — Sicht am
+        # Standplatz UND eine deckende, nicht abgelaufene Freigabe; nicht
+        # ``REMOTE_CONTROL`` (Eigentümer-Entscheid 2026-10-16). Läuft die
+        # Freigabe des Steuernden ab oder wird er aus der Liste genommen, endet
+        # die Sitzung hier, spätestens einen Takt später (sofort, wenn die
+        # Liste über die Route ersetzt wird: ``routes/device_grants.py``).
+        from dcc_chat_gateway.geraete_freigabe import sitzung_noch_gedeckt  # noqa: PLC0415
+
+        if not await sitzung_noch_gedeckt(session, controller, int(sess.device_id), cid):
+            return "permission_revoked"
+    else:
+        controller_perms = await peer_channel_perms(session, cid, controller)
+        if controller_perms is None or not (
+            has_permission(controller_perms, Permissions.VIEW_CHANNEL)
+            and has_permission(controller_perms, Permissions.REMOTE_CONTROL)
+        ):
+            return "permission_revoked"
     # Der Host wird gegen dieselbe Latte gemessen wie beim Aufbau: Mitglied UND
     # VIEW_CHANNEL. Wer den Kanal nicht mehr sehen darf, in dem er hergegeben
     # wurde, wird auch nicht weiter gesteuert.
@@ -193,9 +205,10 @@ async def remove_devices_for_member(session, manager, guild_id: int, user_id: in
     """Die Standplatz-Geraete eines ausgeschiedenen Mitglieds entfernen.
 
     **Warum das dazugehoert** (Bughunt 2026-08-16): ein Geraet steht im Kanal
-    einer Community und laesst sich von jedem wecken und uebernehmen, der dort
-    ``REMOTE_CONTROL`` hat — geprueft wird das RECHT DES RUFERS, nicht die
-    Mitgliedschaft des Besitzers. Bliebe die Zeile nach einem Rauswurf oder Bann
+    einer Community und laesst sich von jedem wecken und uebernehmen, den seine
+    Freigabeliste deckt und der den Kanal sieht (bis 2026-10-16: jeder mit
+    ``REMOTE_CONTROL``) — geprueft wird der RUFER, nicht die Mitgliedschaft des
+    Besitzers. Bliebe die Zeile nach einem Rauswurf oder Bann
     stehen, stuende der Rechner eines Ex-Mitglieds weiter im Raum und waere
     weiter benutzbar. Der Besitzer selbst kaeme nicht einmal mehr heran, um ihn
     auszutragen.

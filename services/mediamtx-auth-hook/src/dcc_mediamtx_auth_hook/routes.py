@@ -26,7 +26,8 @@ Policy:
   * ``read`` / ``playback`` on ``channel-<id>`` → 200 iff ``token`` (the
                                              ``?token=`` query MediaMTX forwards) names a Redis
                                              ``stream:token:<…>`` record with scope ``read`` whose
-                                             ``channel_id`` + ``user_id`` match the path; else 401.
+                                             ``channel_id`` + ``user_id`` match the path (and, when the
+                                             record carries one, ``slot`` — Geraetestroeme); else 401.
                                              Read tokens are NOT consumed (multi-use within TTL).
                                              Disable via ``read_token_required=false`` (anonymous).
   * everything else / non-channel paths    → 401.
@@ -216,6 +217,7 @@ async def _consume_token_and_mark_active(
     redis: Redis, token: str, channel_id: str, user_id: str, slot: str, path: str,
     label: str | None = None, ten_bit: bool = False, remote_input: bool = False,
     monitor_index: int | None = None, codec: str | None = None,
+    device_id: str | None = None,
 ) -> bool:
     """Atomically consume the token and write the publisher-active record.
 
@@ -264,6 +266,12 @@ async def _consume_token_and_mark_active(
     # denen er nie etwas bewirken kann.
     if remote_input:
         active["remote_input"] = True
+    # Und das Geraete-Merkmal (seit 2026-10-16): daran erkennen chat-gateway
+    # und media-svc den Strom eines Standplatz-Geraets und lassen nur
+    # Besitzer, Steuernden, Wecker oder bei belegtem Geraet zusehen. Im
+    # Normalfall fehlt es, der Datensatz bleibt byte-gleich.
+    if device_id:
+        active["device_id"] = device_id
     payload = json.dumps(active, separators=(",", ":"))
     aktiv = active_key(channel_id, user_id, int(slot))
     # Grabstein-Key = aktiver Key mit Präfix-Tausch (Spiegel zu
@@ -348,12 +356,18 @@ async def _handle(req: AuthRequest, redis: Redis) -> None:
             if isinstance(monitor_index_val, int) and not isinstance(monitor_index_val, bool)
             else None
         )
+        # Nur eine Ziffernfolge uebernehmen — dieselbe Sorgfalt wie oben.
+        device_id_val = rec.get("device_id")
+        device_id = (
+            device_id_val if isinstance(device_id_val, str) and device_id_val.isdigit() else None
+        )
         if not await _consume_token_and_mark_active(
             redis, req.credential, channel_id, path_user_id, path_slot, req.path, label,
             rec.get("ten_bit") is True,
             rec.get("remote_input") is True,
             monitor_index,
             rec.get("codec"),
+            device_id,
         ):
             raise _deny("publish_token_already_consumed", path=req.path)
         log.info(
@@ -370,8 +384,10 @@ async def _handle(req: AuthRequest, redis: Redis) -> None:
             raise _deny("read_non_channel_path", path=req.path)
         # Reads are authorised per (channel, user) — a viewer cleared for the
         # publisher may read any of that publisher's slots — so slot/nonce here
-        # are informational only.
-        channel_id, path_user_id, _path_slot, _path_nonce = cu
+        # are informational only. **Ausnahme seit 2026-10-16:** ein Lese-Token
+        # fuer den Strom eines Standplatz-Geraets traegt ``slot`` und gilt nur
+        # fuer diesen Platz (media-svc ``_read_token_fuer``).
+        channel_id, path_user_id, path_slot, _path_nonce = cu
         if not get_settings().read_token_required:
             return  # 200 — anonymous reads (fallback / self-host)
         # Read tokens are validated but NOT consumed: a WHEP handshake triggers
@@ -390,6 +406,8 @@ async def _handle(req: AuthRequest, redis: Redis) -> None:
             raise _deny(
                 "read_user_mismatch", path=req.path, token_user=rec.get("user_id")
             )
+        if "slot" in rec and str(rec.get("slot")) != path_slot:
+            raise _deny("read_slot_mismatch", path=req.path, token_slot=rec.get("slot"))
         return  # 200
 
     raise _deny("unknown_action", action=action, path=req.path)

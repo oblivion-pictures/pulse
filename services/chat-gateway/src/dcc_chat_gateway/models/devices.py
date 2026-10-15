@@ -4,20 +4,24 @@ Teilnehmer zu sein.
 Entwurf und Begründungen:
 ``docs/plans/2026-08-14-fernsteuerung-unbeaufsichtigte-geraete.md``.
 
-**Warum die Zeile überhaupt existiert.** Die Dauerfreigabe (Stufe 1) lebt
-vollständig auf dem Gerät und braucht den Server nicht. Was sie nicht leisten
-kann, ist der zweite Teil des Problems: ein Gerät braucht einen **Ort**, an dem
+**Warum die Zeile überhaupt existiert.** Die Dauerfreigabe lebte in Stufe 1
+vollständig auf dem Gerät und brauchte den Server nicht (seit 2026-08-20 liegt
+sie als ``DeviceGrant`` hier). Was sie nicht leisten konnte, ist der zweite
+Teil des Problems: ein Gerät braucht einen **Ort**, an dem
 man es findet und an dem festgelegt ist, wer es benutzen darf. Diese Tabelle ist
 dieser Ort.
 
-**Der Kanal ist der Rechteanker, nicht Zierde.** An ihm hängt die ganze
-bestehende Mechanik — ``resolve_permissions(user, guild_id, channel_id)``, die
-Rechte-Wache im 30-s-Takt (``remote_guard.py``), ``REMOTE_CONTROL`` als
-Kanal-Overwrite. Ein Gerät ohne Kanal hätte keine Stelle, an der sich festlegen
-liesse, wer es übernehmen darf; deshalb ist ``channel_id`` nicht optional.
+**Der Kanal ist der Rechteanker, nicht Zierde.** An ihm hängt, wer das Gerät
+überhaupt sieht (``VIEW_CHANNEL`` über ``resolve_permissions(user, guild_id,
+channel_id)``), und die Rechte-Wache im 30-s-Takt (``remote_guard.py``) misst
+dort nach. WER es wecken und steuern darf, legt seit 2026-10-16 allein die
+Freigabeliste (``DeviceGrant`` unten) fest — und zwar nur für Leute, die den
+Standplatz sehen (``geraete_freigabe.py``). ``REMOTE_CONTROL`` als
+Kanal-Overwrite zählt für Geräte nicht mehr. Ein Gerät ohne Kanal hätte keine
+Sicht-Schranke; deshalb ist ``channel_id`` nicht optional.
 
 **Ein Standplatz je Gerät.** Sollen mehrere Teams zugreifen, regelt das eine
-Rolle im Standplatz-Kanal. Mit mehreren Standplätzen bräuchte es eine
+Rolle in der Freigabeliste. Mit mehreren Standplätzen bräuchte es eine
 Zuordnungstabelle und eine Entscheidung, welcher Kanal gilt, wenn zwei Leute
 aus verschiedenen Kanälen gleichzeitig wollen — dieselbe Frage wie bei
 Kanal-Overwrites, nur ohne deren Rangfolge.
@@ -104,9 +108,11 @@ class Device(Base):
 
 #: Die drei Arten, auf die eine Freigabe jemanden meinen kann.
 #:
-#: ``everyone`` heisst „jeder, der überhaupt anfragen darf" — also jeder, der am
-#: Standplatz ``REMOTE_CONTROL`` hat. Es ist keine Abkürzung an der
-#: Rechteprüfung vorbei, sondern der Verzicht auf eine ZUSÄTZLICHE Einengung.
+#: ``everyone`` heisst seit 2026-10-16 „jeder, der den Standplatz-Kanal sehen
+#: kann" (``VIEW_CHANNEL``; vorher: jeder mit ``REMOTE_CONTROL`` dort). Es ist
+#: keine Abkürzung an der Sichtprüfung vorbei — die macht
+#: ``geraete_freigabe.steuer_pruefung`` immer zuerst. Eine leere Liste heisst:
+#: niemand darf wecken oder steuern.
 SUBJECT_USER = "user"
 SUBJECT_ROLE = "role"
 SUBJECT_EVERYONE = "everyone"
@@ -114,14 +120,16 @@ SUBJECT_TYPES = (SUBJECT_USER, SUBJECT_ROLE, SUBJECT_EVERYONE)
 
 
 class DeviceGrant(Base):
-    """Eine Dauerfreigabe an einem Gerät.
+    """Eine Zeile der Freigabeliste eines Geräts — wer es wecken und steuern
+    darf (seit 2026-10-16 die einzige Tür, ``geraete_freigabe.py``).
 
     **Warum die Zeile keinen Kanal trägt.** Die alte, gerätelokale Fassung
     speicherte zu jeder Freigabe den Kanal, in dem sie erteilt wurde — sonst
     stimmte sie einer Anfrage zu, die einen ganz anderen Kanal nannte, und der
     Standplatz samt seinem Overwrite war umgangen. Hier ist der Ort implizit der
-    Standplatz des Geräts, und geprüft wird ``REMOTE_CONTROL`` genau dort
-    (``device_grants.py::gedeckt``). Das Loch kann damit nicht wiederkommen.
+    Standplatz des Geräts, und geprüft wird die Sicht genau dort
+    (``geraete_freigabe.steuer_pruefung``). Das Loch kann damit nicht
+    wiederkommen.
 
     **Abgelaufene Zeilen werden nicht gefegt**, sondern beim Auflösen ignoriert
     und beim nächsten Setzen derselben Freigabe überschrieben. Ein Fegelauf wäre

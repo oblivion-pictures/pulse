@@ -1,9 +1,10 @@
 /**
- * Standplatz-Geräte — die beiden Meldungen vom Gateway.
+ * Standplatz-Geräte — die Meldungen vom Gateway.
  *
  * `device_changed` trägt die ganze Zeile (eingetragen, umbenannt, umgestellt,
- * entfernt), `device_state` nur den Zustand (bereit / belegt / offline). Beide
- * sind schon im Gateway nach dem Standplatz gefiltert: wer den Kanal nicht
+ * entfernt), `device_state` nur den Zustand (bereit / belegt / offline),
+ * `device_access_changed` nur „wer steuern darf, hat sich geändert, lade neu".
+ * Alle sind schon im Gateway nach dem Standplatz gefiltert: wer den Kanal nicht
  * sehen darf, bekommt sie gar nicht (`pubsub_channel_guild.py`).
  *
  * Der Handler prüft trotzdem die Form, wie überall auf diesem Weg — was hier
@@ -82,6 +83,16 @@ export function register(): void {
         void geraeteAnmeldung.nachziehen(geraet.id, guildId, geraet.name);
         break;
     }
+  });
+
+  // Wer ein Geraet steuern darf, hat sich geaendert. Der Rahmen traegt kein
+  // Ergebnis (`steuerbar` gilt je Betrachter) — also die Liste dieser
+  // Community neu holen. Nur wenn sie schon geladen ist: sonst holt sie der
+  // erste Blick ohnehin frisch.
+  registerWsHandler('device_access_changed', (evt) => {
+    if (!evt.guild_id) return;
+    const guildId = String(evt.guild_id);
+    if (deviceStore.istGeladen(guildId)) void deviceStore.neuLaden(guildId);
   });
 
   registerWsHandler('device_state', (evt) => {

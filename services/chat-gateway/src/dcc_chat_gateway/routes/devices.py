@@ -2,8 +2,9 @@
 
 Ein Gerät ist ein Rechner, der in einem Kanal **steht**, ohne dort Teilnehmer zu
 sein (Entwurf: ``docs/plans/2026-08-14-fernsteuerung-unbeaufsichtigte-geraete.md``).
-Wie ein Werkzeug in einem Raum: wer den Raum betreten darf, sieht es; wer die
-Berechtigung hat, benutzt es.
+Wie ein Werkzeug in einem Raum: wer den Raum betreten darf, sieht es; benutzen
+darf es, wen sein Besitzer in die Freigabeliste schreibt (seit 2026-10-16,
+``geraete_freigabe.py`` — die Liste trägt das Feld ``steuerbar`` je Betrachter).
 
 Endpunkte
 ---------
@@ -33,12 +34,13 @@ entfernen, begründet mit „räumen können, wenn der Besitzer nicht erreichbar
 ist" — das verwechselte den Raum mit dem, was darin steht.
 
 Für das **Umstellen** kam ein zweiter Grund dazu, der unverändert gilt: der
-Standplatz ist der Rechteanker, wer ihn setzt, bestimmt, wer den Rechner
-übernehmen darf. Mit ``MANAGE_GUILD`` allein liesse sich ein fremder Rechner
-sonst in einen Kanal schieben, in dem ``@everyone`` ``REMOTE_CONTROL`` hat.
+Standplatz ist der Rechteanker, wer ihn setzt, bestimmt, wer den Rechner sieht
+— und eine ``everyone``-Freigabe meint genau die. Mit ``MANAGE_GUILD`` allein
+liesse sich ein fremder Rechner sonst in einen Kanal schieben, den jeder sieht.
 
-Der Verwaltung bleibt, was ihren Raum betrifft: übernehmen nach den
-Kanalrechten, und eine laufende Sitzung beenden. Verlässt ein Besitzer die
+Der Verwaltung bleibt, was ihren Raum betrifft: die Kanalrechte (wer den
+Standplatz sieht), und eine laufende Sitzung beenden. Übernehmen darf sie nur,
+wenn der Besitzer sie freigibt. Verlässt ein Besitzer die
 Community oder wird er gebannt, bleibt seine Eintragung als **toter** Eintrag
 stehen (siehe ``_require_owner``) — ohne Verbindung meldet sich das Gerät nie
 wieder an und steht dauerhaft auf „offline".
@@ -72,7 +74,9 @@ from dcc_chat_gateway.device_meldungen import (
     manager_von,
     melden,
     sitzung_beenden,
+    zugang_melden,
 )
+from dcc_chat_gateway.geraete_freigabe import steuerbar_je_geraet
 from dcc_chat_gateway.guild_limits import LIMITS_BY_KEY, effective
 from dcc_chat_gateway.models import (
     CHANNEL_TYPE_VOICE,
@@ -208,8 +212,9 @@ async def _require_owner(session, user, device: Device) -> None:
     verwechselt zwei Dinge: der Rechner gehört nicht der Community, er steht nur
     darin. Wer ihn zur Verfügung stellt, entscheidet allein, wie er heisst und
     ob er dort noch steht — alles andere ist Verfügung über fremdes Eigentum.
-    Der Verwaltung bleibt, was ihr Raum betrifft: übernehmen darf sie nach den
-    Kanalrechten, und eine laufende Sitzung beenden.
+    Der Verwaltung bleibt, was ihr Raum betrifft: wer den Standplatz sieht,
+    und eine laufende Sitzung beenden; übernehmen nur mit Freigabe des
+    Besitzers (seit 2026-10-16).
 
     **Verlässt der Besitzer die Community oder wird er gebannt, räumt der
     Server selbst**: ``_after_member_removed`` (``routes/guilds.py``) ruft
@@ -248,13 +253,21 @@ async def list_devices(
     # Teil dieser Route.
     mgr = manager_von(request)
     sichtbar: dict[int, bool] = {}
-    ergebnis: list[DeviceOut] = []
+    zeilen: list[Device] = []
     for device in treffer.scalars():
         if device.channel_id not in sichtbar:
             wert = await resolve_permissions(session, user, guild_id, device.channel_id)
             sichtbar[device.channel_id] = has_permission(wert, Permissions.VIEW_CHANNEL)
         if sichtbar[device.channel_id]:
-            ergebnis.append(device_out(device, mgr))
+            zeilen.append(device)
+    # ``steuerbar`` je Betrachter: Sicht UND eine deckende Freigabe — dieselbe
+    # Regel, die Weckruf und Anfrage durchsetzen (``geraete_freigabe.py``).
+    steuerbar = await steuerbar_je_geraet(session, user, zeilen)
+    ergebnis: list[DeviceOut] = []
+    for device in zeilen:
+        aus = device_out(device, mgr)
+        aus.steuerbar = steuerbar.get(device.id, False)
+        ergebnis.append(aus)
     return ergebnis
 
 
@@ -340,10 +353,10 @@ async def patch_device(
     ):
         # **Umstellen darf nur der Besitzer** (Bughunt 2026-08-16). Der
         # Standplatz ist der Rechteanker des Geräts: wer ihn setzt, bestimmt,
-        # wer den Rechner übernehmen darf. Mit ``MANAGE_GUILD`` allein liesse
-        # sich ein fremder Rechner in einen Kanal schieben, in dem ``@everyone``
-        # ``REMOTE_CONTROL`` hat. Gilt unverändert für den Community-Wechsel: er
-        # ist nur eine weitere Form des Umstellens.
+        # wer den Rechner sieht — und damit, wen eine ``everyone``-Freigabe
+        # meint. Mit ``MANAGE_GUILD`` allein liesse sich ein fremder Rechner in
+        # einen Kanal schieben, den jeder sieht. Gilt unverändert für den
+        # Community-Wechsel: er ist nur eine weitere Form des Umstellens.
         #
         # Diese Prüfung ist seit dem 2026-08-26 die zweite ihrer Art: seither
         # verlangt schon ``_require_owner`` oben den Besitzer, für JEDE Änderung.
@@ -449,6 +462,11 @@ async def patch_device(
         )
     stand = device_out(device, mgr)
     await melden(request, device, stand)
+    if alter_kanal is not None:
+        # Am neuen Standplatz gilt eine andere Sicht (und nach einem
+        # Community-Wechsel eine kürzere Liste): ``device_changed`` lässt
+        # ``steuerbar`` weg, also sollen die Empfänger ihren Wert neu holen.
+        await zugang_melden(request, device)
     return DevicePatchOut(**stand.model_dump(), role_grants_cleared=geraeumt)
 
 

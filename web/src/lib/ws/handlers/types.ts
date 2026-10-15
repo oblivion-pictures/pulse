@@ -516,6 +516,10 @@ export type ServerEvent =
        *  Sidecar startet im Wartezustand, ohne WHIP-Push zum Server. */
       p2p?: boolean;
     }
+  // Wer dieses Geraet steuern darf, hat sich geaendert (Freigabeliste ersetzt
+  // oder Geraet umgestellt) — ohne Ergebnis, weil `steuerbar` je Betrachter
+  // gilt: der Empfaenger laedt die Geraeteliste der Community neu.
+  | { op: 'device_access_changed'; guild_id: string; channel_id: string; device_id: string }
   | {
       op: 'device_state';
       guild_id: string;

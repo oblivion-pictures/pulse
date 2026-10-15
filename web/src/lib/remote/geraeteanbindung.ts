@@ -5,8 +5,9 @@
  * Zustandsmaschine gehören (`session.svelte.ts`) — sie sind Anhängsel an deren
  * Übergängen, nicht Teil des Handschlags:
  *
- * * **Die Dauerfreigabe** beantwortet die Frage „muss hier überhaupt jemand
- *   gefragt werden" (`standplatz.svelte.ts`).
+ * * **Der Notaus** („Steuern erlauben", `standplatz.svelte.ts`) entscheidet,
+ *   ob das Gerät eine Anfrage annimmt oder ablehnt — einen Dialog gibt es an
+ *   einem Gerät seit 2026-10-16 nicht mehr.
  * * **Das Protokoll** hält fest, wer wann wie lange übernommen hat
  *   (`protokoll.svelte.ts`).
  *
@@ -65,30 +66,36 @@ export function fremdesGeraetAblehnen(sessionId: string, deviceId?: string): boo
 }
 
 /**
- * Darf diese Anfrage ohne Dialog angenommen werden?
+ * Was ein Gerät mit einer Anfrage tut, die IHM gilt: annehmen oder ablehnen —
+ * **nie ein Dialog** (seit 2026-10-16). `null` heisst „keine Geräte-Anfrage",
+ * dann bleibt alles wie bisher (ein Mensch bekommt den Zustimmungsdialog).
  *
- * Fail-closed an jeder Abzweigung — die Prüfung selbst liegt in
- * `standplatz.svelte.ts`; hier steht nur, wo sie gerufen wird.
+ * Gerufen erst NACH [`fremdesGeraetAblehnen`]: ein `deviceId` hier ist also
+ * immer das eigene.
  *
- * **Seit 2026-08-20 reicht das nur noch durch.** Wer diese Anfrage deckt, weiss
- * seit dem Server-Umzug der Freigabeliste (`device_grants`) allein der
- * Gateway — er kennt Rollen und Kanalmitgliedschaft, der Client nicht. Das
- * Ergebnis kommt als Feld `freigabe` am `remote_request`-Rahmen herein
- * (`ws/handlers/remote.ts`); der Hauptschalter am Gerät bleibt trotzdem hier,
- * nicht auf dem Server (Begründung im Datei-Kopf von `standplatz.svelte.ts`).
+ * Wer anfragen darf, hat der Gateway schon entschieden (Freigabeliste, sonst
+ * kommt die Anfrage gar nicht an — 4062) und meldet es als `freigabe: true`.
+ * Hier sticht nur noch der Notaus „Steuern erlauben" (`notausRegel.ts`), und
+ * `kannSteuern` — ohne Eingabe-Brücke stürbe eine angenommene Sitzung beim
+ * ersten Frame. Eine Ablehnung schickt den geweckten Rechner sofort schlafen
+ * (`session.svelte.ts::deny` → [`abgelehntEingeschlafen`]), statt 90 s
+ * Nachlauf abzuwarten.
  */
-export function ohneRueckfrage(freigabeVomServer: boolean): boolean {
-  // Der Aufrufer merkt sich das Ergebnis als `selbsttaetig`, und daran hängen
-  // zwei Dinge: der Zustimmungsdialog bleibt zu (er stünde sonst einen
-  // Serverumlauf lang sichtbar da — die Phase bleibt bis zum Echo auf
-  // 'incoming' —, und ein Dialog, der von selbst verschwindet, sieht aus wie
-  // ein Fehler), und das Protokoll trennt daran die selbsttätige von der
-  // bestätigten Übernahme.
-  return standplatz.selbsttaetigZustimmen(freigabeVomServer);
+export function geraeteEntscheid(
+  deviceId: string | undefined,
+  freigabeVomServer: boolean,
+  kannSteuern: boolean,
+): 'annehmen' | 'ablehnen' | null {
+  if (!deviceId) return null;
+  // Der Aufrufer merkt sich „annehmen" als `selbsttaetig`; das Protokoll
+  // trennt daran die selbsttätige von der bestätigten Übernahme.
+  return kannSteuern && standplatz.selbsttaetigZustimmen(freigabeVomServer)
+    ? 'annehmen'
+    : 'ablehnen';
 }
 
 /**
- * Der Besitzer hat abgelehnt — der geweckte Rechner hört sofort auf.
+ * Die Anfrage ist abgelehnt — der geweckte Rechner hört sofort auf.
  *
  * Getrennt von [`uebernahmeBeenden`], weil die Anlässe verschieden sind: dort
  * endet eine Sitzung (und nur eine zustande gekommene schickt das Gerät
@@ -99,9 +106,9 @@ export function ohneRueckfrage(freigabeVomServer: boolean): boolean {
  * Nur auf einem eingetragenen Gerät und nur für die Ströme, die ein Weckruf
  * gestartet hat; was der Besitzer von Hand gestartet hat, bleibt unangetastet.
  */
-export async function abgelehntEingeschlafen(): Promise<void> {
+export async function abgelehntEingeschlafen(grund = 'Anfrage vom Besitzer abgelehnt'): Promise<void> {
   if (geraeteAnmeldung.eintragungen.length === 0) return;
-  await wiederEinschlafen('Anfrage vom Besitzer abgelehnt');
+  await wiederEinschlafen(grund);
 }
 
 /**

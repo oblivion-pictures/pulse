@@ -785,11 +785,34 @@ async def test_abmelden_von_fremdem_socket_kappt_keine_sitzung(client, _auth_sig
     assert mgr.device_state(did) == ("offline", None)
 
 
+async def _freigabe(session_factory, device_id: int, art: str, subject_id=None, expires_at=None):
+    """Eine Zeile der Freigabeliste direkt schreiben."""
+    from dcc_chat_gateway.models import DeviceGrant
+    from dcc_chat_gateway.snowflake import next_id
+
+    async with session_factory() as s:
+        s.add(
+            DeviceGrant(
+                id=next_id(),
+                device_id=int(device_id),
+                subject_type=art,
+                subject_id=subject_id,
+                expires_at=expires_at,
+                created_by_user_id=1,
+            )
+        )
+        await s.commit()
+
+
 @pytest.mark.asyncio
-async def test_wecken_verlangt_remote_control(client, _auth_signer, session_factory):
-    """Wer nicht übernehmen darf, darf auch keinen fremden Rechner zum
-    Encodieren bringen — sonst wäre das Wecken ein Weg, einem Gerät dauerhaft
-    Last aufzuzwingen. Die Ablehnung ist wortgleich mit „gibt es nicht"."""
+async def test_wecken_verlangt_freigabe_nicht_remote_control(
+    client, _auth_signer, session_factory
+):
+    """**Seit 2026-10-16** (Eigentümer-Entscheid): wecken darf nur, wen die
+    Freigabeliste deckt — ``REMOTE_CONTROL`` ist weder nötig noch hinreichend.
+    Wer den Standplatz sieht, bekommt ehrlich 4062; ein Gerät ohne Liste ist
+    für niemanden weckbar. Ersetzt ``test_wecken_verlangt_remote_control``,
+    das die alte Regel festschrieb."""
     from dcc_chat_gateway.routes import ws_device_handlers
 
     owner_token, _ = await _make_token(_auth_signer)
@@ -803,23 +826,25 @@ async def test_wecken_verlangt_remote_control(client, _auth_signer, session_fact
         )
     ).json()
     did = int(device["id"])
-    fremd_token, fremd_uid = await _mitglied(client, owner_token, gid, _auth_signer)
+    _fremd_token, fremd_uid = await _mitglied(client, owner_token, gid, _auth_signer)
 
-    # Seit f3dff047 ist REMOTE_CONTROL Default für neue Communitys — dieser
-    # Test will das Bit ausdrücklich NICHT in @everyone (s. conftest).
+    # REMOTE_CONTROL hat das Mitglied (Vorgabe für neue Communitys) — es
+    # reicht trotzdem nicht: leere Liste = niemand.
+    ohne = _ctx(client, fremd_uid)
+    await ws_device_handlers.handle_wake(ohne, {"device_id": str(did)})
+    assert ohne.websocket.sent[-1]["code"] == 4062
+
+    # Mit Freigabe, aber ohne REMOTE_CONTROL: genügt.
     from .conftest import everyone_remote_control_entfernen
 
     await everyone_remote_control_entfernen(client, owner_token, gid)
-
-    ohne = _ctx(client, fremd_uid)
-    await ws_device_handlers.handle_wake(ohne, {"device_id": str(did)})
-    assert ohne.websocket.sent[-1]["code"] == 4060
-
-    await _erlauben(session_factory, cid, fremd_uid, int(Permissions.REMOTE_CONTROL))
+    await _freigabe(session_factory, did, "user", fremd_uid)
     mit = _ctx(client, fremd_uid)
     await ws_device_handlers.handle_wake(mit, {"device_id": str(did)})
-    # Jetzt scheitert es nur noch daran, dass niemand da ist.
+    # Jetzt scheitert es nur noch daran, dass niemand da ist — und ein
+    # Weckruf, der nicht hinausging, macht niemanden zum Wecker.
     assert mit.websocket.sent[-1]["code"] == 4061
+    assert _register(client).device_wecker(did) is None
 
     # Und mit angemeldetem Gerät kommt der Weckruf wirklich an.
     geraet_sock = _Sock(client._transport.app)
@@ -828,6 +853,48 @@ async def test_wecken_verlangt_remote_control(client, _auth_signer, session_fact
     await ws_device_handlers.handle_wake(dritter, {"device_id": str(did), "monitor": 2})
     assert geraet_sock.sent[-1]["op"] == "device_wake"
     assert geraet_sock.sent[-1]["monitor"] == 2
+    # Der Rufer ist jetzt der Wecker (darf dem Strom bis zur Sitzung zusehen).
+    assert _register(client).device_wecker(did) == str(fremd_uid)
+
+
+@pytest.mark.asyncio
+async def test_wecken_im_versteckten_kanal_antwortet_wie_kein_geraet(
+    client, _auth_signer, session_factory
+):
+    """``everyone`` heisst „jeder, der den Standplatz sieht" — wer ihn nicht
+    sieht, bekommt trotz Freigabe 4060 („gibt es nicht"), nicht 4062: die
+    Antwort darf kein Gerät in einem verborgenen Kanal verraten."""
+    from dcc_chat_gateway.models import SUBJECT_EVERYONE
+    from dcc_chat_gateway.routes import ws_device_handlers
+
+    owner_token, _ = await _make_token(_auth_signer)
+    gid = await _guild(client, owner_token)
+    cid = await _voice_channel(client, owner_token, gid)
+    device = (
+        await client.post(
+            f"/guilds/{gid}/devices",
+            json={"channel_id": str(cid), "name": "werkstatt-pc"},
+            headers=_auth(owner_token),
+        )
+    ).json()
+    did = int(device["id"])
+    await _freigabe(session_factory, did, SUBJECT_EVERYONE)
+    _t, fremd_uid = await _mitglied(client, owner_token, gid, _auth_signer)
+    async with session_factory() as s:
+        s.add(
+            PermissionOverwrite(
+                channel_id=int(cid),
+                target_id=int(fremd_uid),
+                target_type=1,
+                allow_bf=0,
+                deny_bf=int(Permissions.VIEW_CHANNEL),
+            )
+        )
+        await s.commit()
+
+    ctx = _ctx(client, fremd_uid)
+    await ws_device_handlers.handle_wake(ctx, {"device_id": str(did)})
+    assert ctx.websocket.sent[-1]["code"] == 4060
 
 
 @pytest.mark.asyncio
@@ -1080,6 +1147,8 @@ async def test_anfrage_im_standplatz_erreicht_genau_das_geraet(
     _, owner_uid, _, host_uid, gid, a, _b, device = await _fernaufbau(client, _auth_signer)
     mgr = _register(client)
     did = int(device["id"])
+    # Seit 2026-10-16 kommt eine Geräte-Anfrage nur mit Freigabe durch.
+    await _freigabe(session_factory, did, "user", owner_uid)
     sock = _geraet_verbinden(mgr, client, did, host_uid, gid, a)
 
     ctx = _ctx(client, owner_uid)
@@ -1142,6 +1211,8 @@ async def test_zwei_geraete_desselben_besitzers_blockieren_sich_nicht(
     mgr = _register(client)
     _geraet_verbinden(mgr, client, int(erstes["id"]), host_uid, gid, a)
     _geraet_verbinden(mgr, client, int(zweites["id"]), host_uid, gid, a)
+    for geraet in (erstes, zweites):
+        await _freigabe(session_factory, int(geraet["id"]), "everyone")
 
     for geraet in (erstes, zweites):
         # Je eine eigene Verbindung: die Mindestpause zwischen zwei Anfragen

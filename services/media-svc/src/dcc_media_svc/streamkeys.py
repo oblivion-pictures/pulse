@@ -60,7 +60,13 @@ CHANNEL_USER_PATH_RE = re.compile(r"^channel-(\d+)-(\d+)(?:-s(\d+))?-([0-9a-f]{3
 #                                          ``monitor_index`` rides the same way (added 2026-08-24): the
 #                                          screen NUMBER the stream shows, because two identically named
 #                                          monitors are otherwise indistinguishable to the viewer.
-# stream:active:channel-<cid>-<uid>[-s<slot>] → JSON {user_id, started_at, path, label?, ten_bit?, monitor_index?}
+#                                          ``device_id`` (added 2026-10-16): the stream comes from a
+#                                          Standplatz-Geraet; ``GET /whep`` then only issues when chat-gateway
+#                                          cleared that device (``geraet=``), never on the guest route. Read
+#                                          tokens for such a stream carry ``slot`` + ``device_id`` and the hook
+#                                          binds them to that slot.
+# stream:active:channel-<cid>-<uid>[-s<slot>] → JSON {user_id, started_at, path, label?, ten_bit?, monitor_index?,
+#                                          device_id?}
 #                                          written by the hook on a successful publish-auth (path carries the
 #                                          nonce so viewers can locate the live MediaMTX path). ``label``/
 #                                          ``monitor_index`` are copied from the token record so the poller can

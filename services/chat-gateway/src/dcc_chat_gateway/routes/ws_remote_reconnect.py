@@ -21,6 +21,7 @@ from typing import Any
 from dcc_shared.permissions import Permissions
 from fastapi import WebSocket
 
+from dcc_chat_gateway.geraete_freigabe import sitzung_noch_gedeckt
 from dcc_chat_gateway.permissions import has_permission
 from dcc_chat_gateway.remote_guard import peer_channel_perms
 from dcc_chat_gateway.remote_registry import send_to_socket
@@ -82,12 +83,27 @@ async def handle_reclaim(
         return
     async with session_factory() as db:
         perms = await peer_channel_perms(db, cid, user)
+        # **Gerätesitzung: dieselbe Latte wie Aufbau und Wache** (seit
+        # 2026-10-16) — Sicht + deckende Freigabe statt ``REMOTE_CONTROL``.
+        # Sonst verlöre ein Freigegebener ohne das Kanalrecht seine Sitzung
+        # beim ersten Wackler, und einer mit dem Recht, aber ohne Freigabe
+        # holte sie sich über den Reconnect zurück.
+        geraet_gedeckt = (
+            await sitzung_noch_gedeckt(db, user, int(sess.device_id), cid)
+            if role == "controller" and sess.device_id is not None
+            else True
+        )
     if perms is None or not has_permission(perms, Permissions.VIEW_CHANNEL):
         await send_to_socket(websocket, frame_failed("no access"))
         return
-    if role == "controller" and not has_permission(perms, Permissions.REMOTE_CONTROL):
-        await send_to_socket(websocket, frame_failed("no access"))
-        return
+    if role == "controller":
+        if sess.device_id is not None:
+            darf = geraet_gedeckt
+        else:
+            darf = has_permission(perms, Permissions.REMOTE_CONTROL)
+        if not darf:
+            await send_to_socket(websocket, frame_failed("no access"))
+            return
     reclaimed = await mgr.remote_reclaim(session_id, role, str(user.id), websocket)
     if reclaimed is None:
         # Falsche Rolle (der andere Peer versucht's, oder die Gnadenfrist

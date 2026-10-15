@@ -27,6 +27,11 @@ export interface StandplatzStart {
   quelle: string;
   uebersteuerung: OverrideSet;
   ton: AudioMode;
+  /** Das Gerät, für das gestartet wird — reist als `device_id` in die
+   *  Stream-Token-Anfrage (`starten.ts`) und macht den Strom serverseitig als
+   *  Gerätestrom erkennbar. Bleibt beim Auto-Neustart erhalten, weil der
+   *  ganze Satz gemerkt wird. Optional: ältere Aufrufer kennen es nicht. */
+  deviceId?: string;
 }
 
 export interface Neustartbar {

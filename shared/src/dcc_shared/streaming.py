@@ -119,6 +119,20 @@ def token_key(token: str) -> str:
     return TOKEN_KEY.format(token=token)
 
 
+def active_key(channel_id: str | int, user_id: str | int, slot: int = 0) -> str:
+    """``stream:active``-Schluessel fuer ein (Kanal, Streamer, Platz).
+
+    Platz 0 traegt KEIN ``-s0`` (Altform, s. ``dcc_media_svc.streamkeys``).
+    Zwillinge: ``dcc_media_svc.streamkeys.active_key`` und
+    ``dcc_mediamtx_auth_hook.shared.active_key`` — dieselbe Regel, synchron
+    halten. Seit 2026-10-16 liest auch der chat-gateway diesen Datensatz: er
+    erkennt daran den Strom eines Standplatz-Geraets (Feld ``device_id``,
+    ``geraete_zuschauen.py``).
+    """
+    suffix = "" if int(slot) == 0 else f"-s{int(slot)}"
+    return ACTIVE_KEY.format(channel_id=channel_id, user_id=user_id) + suffix
+
+
 def read_cache_key(viewer_id: str, channel_id: str, user_id: str, slot: int | str) -> str:
     """Der Nachschlage-Schluessel fuer genau ein (Zuschauer, Kanal, Streamer,
     Platz)."""

@@ -49,12 +49,18 @@ from typing import Any
 
 from dcc_shared.events import DeviceChangedEvent, DeviceStateEvent
 
+from dcc_chat_gateway.device_wecker import _DeviceWeckerMixin
+
 log = logging.getLogger(__name__)
 
 
-class _DeviceRegistryMixin:
+class _DeviceRegistryMixin(_DeviceWeckerMixin):
     """Ergänzt den ConnectionManager um das Geräte-Register. Nicht allein
-    verwendbar; ``_init_device_registry()`` einmal im ``__init__`` rufen."""
+    verwendbar; ``_init_device_registry()`` einmal im ``__init__`` rufen.
+
+    Der Wecker-Merker (:mod:`device_wecker`) hängt als Basis daran, weil er
+    mit dem Register lebt und stirbt — ein Gerät, das offline geht oder
+    vergessen wird, hat auch keinen Wecker mehr."""
 
     #: ``device_id`` → die Sockets, die dieses Gerät angemeldet haben.
     #:
@@ -122,6 +128,7 @@ class _DeviceRegistryMixin:
         self._device_where = {}
         self._device_monitors = {}
         self._device_streams = {}
+        self._init_device_wecker()
 
     # ── Abfragen ────────────────────────────────────────────────────────────
 
@@ -226,6 +233,12 @@ class _DeviceRegistryMixin:
         ort = self._device_where.get(device_id)
         return ort[1] if ort is not None else None
 
+    def device_ids_im_kanal(self, channel_id: int) -> list[int]:
+        """Die angemeldeten (gemerkten) Geräte mit diesem Standplatz — der
+        Vorfilter, mit dem ``geraete_zuschauen`` einen Gerätestrom ohne
+        Datenbankgriff ausschliesst, solange im Kanal gar kein Gerät steht."""
+        return [d for d, (_g, c) in self._device_where.items() if c == int(channel_id)]
+
     # ── Anmelden und abmelden ───────────────────────────────────────────────
 
     def _socket_entkoppeln(self, socket: Any, device_id: int) -> None:
@@ -285,6 +298,9 @@ class _DeviceRegistryMixin:
         # Platz in diesem Kanal, wandert das LIVE-Abzeichen sonst an das
         # laengst offline gegangene Geraet statt an ihn.
         self._device_streams.pop(device_id, None)
+        # Und ohne Wecker: ein Gerät, das gegangen ist, überträgt nichts mehr,
+        # dem jemand zusehen dürfte (``device_wecker.py``).
+        self.device_wecker_loeschen(device_id)
         # Die Bildschirme bleiben stehen: sie sind die letzte bekannte Auskunft
         # über ein Gerät, das gerade offline ist, und beim nächsten Anmelden
         # ohnehin überschrieben. Die Liste zu leeren hiesse, dass die
@@ -312,6 +328,7 @@ class _DeviceRegistryMixin:
         self._device_where.pop(device_id, None)
         self._device_monitors.pop(device_id, None)
         self._device_streams.pop(device_id, None)
+        self.device_wecker_loeschen(device_id)
 
     def device_forget_socket(self, socket: Any) -> list[int]:
         """Alles vergessen, was dieser Socket angemeldet hatte. Liefert die
@@ -338,6 +355,9 @@ class _DeviceRegistryMixin:
             self._device_busy[device_id] = str(controller_user_id)
             if socket is not None:
                 self._device_busy_socket[device_id] = socket
+            # Ab der Zustimmung zählt die Belegung, nicht mehr der Weckruf
+            # (``device_wecker.py``): der Merker hat seinen Zweck erfüllt.
+            self.device_wecker_loeschen(device_id)
 
     async def device_mark_busy_and_publish(
         self, device_id: int, controller_user_id: str, socket: Any
@@ -374,12 +394,17 @@ class _DeviceRegistryMixin:
 
         ``moved`` markiert die Abmeldung an den ALTEN Standplatz beim
         Umstellen — sonst von einem echten Löschen nicht unterscheidbar
-        (Prüfbefund K-1, 2026-08-20)."""
+        (Prüfbefund K-1, 2026-08-20).
+
+        ``steuerbar`` fällt hier heraus: es gilt je BETRACHTER
+        (``geraete_freigabe.steuerbar_je_geraet``), dieser Rahmen geht an alle,
+        die den Standplatz sehen. Ein mitgeschicktes ``False`` überschriebe beim
+        Empfänger den richtigen Wert aus seiner Liste."""
         await self.publish_guild_event(
             DeviceChangedEvent(
                 guild_id=str(guild_id),
                 channel_id=str(channel_id),
-                device=device,
+                device={k: v for k, v in device.items() if k != "steuerbar"},
                 removed=removed,
                 moved=moved,
             )

@@ -352,6 +352,27 @@ class DeviceStateEvent(_EventBase):
     stream_slots: list[int] = []
 
 
+class DeviceAccessChangedEvent(_EventBase):
+    """Wer dieses Geraet steuern darf, hat sich geaendert — bitte neu laden.
+
+    Traegt bewusst KEIN Ergebnis: ``steuerbar`` gilt je Betrachter
+    (``geraete_freigabe.steuerbar_je_geraet`` im chat-gateway), dieser Rahmen
+    geht aber an jeden, der den Standplatz sieht. Der Empfaenger holt sich
+    seinen eigenen Wert ueber ``GET /guilds/{id}/devices``. Und er verraet
+    nichts aus der Freigabeliste — die darf nur der Besitzer lesen.
+
+    Ausgeloest beim Ersetzen der Freigabeliste und beim Umstellen eines
+    Geraets. NICHT ausgeloest, wenn eine Freigabe von selbst ablaeuft oder sich
+    Rollen/Kanalrechte aendern; dort bleibt das Feld bis zum naechsten Abruf
+    stehen, die Durchsetzung prueft trotzdem frisch.
+    """
+
+    op: Literal["device_access_changed"] = "device_access_changed"
+    guild_id: str
+    channel_id: str
+    device_id: str
+
+
 # ---- Dropbox / Ablage ------------------------------------------------------
 # (Ponytail-Audit Runde 2, 2026-09-21: die entry-Created/Updated/Deleted/
 # Restored-Events sind mit der alten Browser-UI gestorben — nichts published

@@ -374,6 +374,12 @@ _PAYLOADS: dict[str, dict[str, Any]] = {
         "state": "ready",
         "busy_with": None,
     },
+    "device_access_changed": {
+        "op": "device_access_changed",
+        "guild_id": "1",
+        "channel_id": "2",
+        "device_id": "3",
+    },
     "dropbox_quota_updated": {
         "op": "dropbox_quota_updated",
         "guild_id": "1",

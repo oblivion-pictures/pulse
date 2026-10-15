@@ -113,6 +113,8 @@ export async function streamStarten(
         // Reist bis zum Zuschauer: HEVC + Linux-Browser = direkt nativer Player.
         ((standplatz ? standplatz.uebersteuerung.codec : streamSettings.overrides.codec) ??
           'h264') as 'h264' | 'hevc' | 'av1',
+        // Gerätestrom-Merkmal (seit 2026-10-16) — nur beim Standplatz-Start.
+        standplatz?.deviceId,
       );
     } catch (fehler) {
       return { ok: false, stufe: 'token', fehler };

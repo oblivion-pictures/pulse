@@ -60,6 +60,20 @@ export interface Device {
   /** Plätze, auf denen dieses Gerät gerade sendet. Leer heisst „sendet nicht"
    *  — und ebenso „meldet es nicht" (ältere Client-Fassung). */
   stream_slots: number[];
+  /**
+   * Darf ICH dieses Gerät wecken und steuern? Vom Server je Betrachter
+   * berechnet (`geraete_freigabe.py::steuerbar_je_geraet`): Sicht auf den
+   * Standplatz UND eine deckende, nicht abgelaufene Zeile der Freigabeliste;
+   * für den Besitzer immer `false`. `REMOTE_CONTROL` zählt dafür nicht
+   * (seit 2026-10-16).
+   *
+   * **Optional, weil nur die REST-Liste es trägt.** Die Meldung
+   * `device_changed` geht an alle und lässt das Feld weg — der Store behält
+   * dann den bekannten Wert (`store.svelte.ts::_changed`). Ändert sich die
+   * Freigabeliste, kommt `device_access_changed`, und die Liste wird neu
+   * geladen. Fehlt es ganz (älterer Server): als `false` lesen.
+   */
+  steuerbar?: boolean;
 }
 
 /**

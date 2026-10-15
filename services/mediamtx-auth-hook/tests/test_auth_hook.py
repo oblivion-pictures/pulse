@@ -535,3 +535,48 @@ async def test_auth_rate_limit_je_nutzer_ip(client):
         assert (await client.post("/", json=andere)).status_code == 200
     finally:
         hook_routes._hook_zeiten.clear()
+
+
+# ── Standplatz-Geraete (seit 2026-10-16) ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_publish_copies_device_id_into_active_record(client, redis):
+    """Das Geraete-Merkmal reist vom Token-Datensatz nach ``stream:active`` —
+    daran erkennen chat-gateway und media-svc den Strom eines Geraets."""
+    cid = _unique_cid()
+    token = "tok-" + uuid.uuid4().hex
+    await _put_token(redis, token, channel_id=cid, user_id="42")
+    roh = json.loads(await redis.get(TOKEN_KEY.format(token=token)))
+    roh["device_id"] = "555"
+    await redis.set(TOKEN_KEY.format(token=token), json.dumps(roh), ex=60)
+    try:
+        r = await client.post("/", json=_body("publish", _ch_path(cid, "42"), password=token))
+        assert r.status_code == 200, r.text
+        rec = json.loads(await redis.get(active_key(cid, "42")))
+        assert rec["device_id"] == "555"
+    finally:
+        await redis.delete(TOKEN_KEY.format(token=token), active_key(cid, "42"))
+
+
+@pytest.mark.asyncio
+async def test_read_token_mit_platz_gilt_nur_fuer_diesen_platz(client, redis):
+    """Ein Lese-Token fuer einen Geraetestrom traegt ``slot`` und oeffnet nur
+    diesen Platz; ein Token ohne ``slot`` (normaler Strom) bleibt wie bisher
+    fuer alle Plaetze des Streamers gueltig."""
+    cid = _unique_cid()
+    gebunden = "read-" + uuid.uuid4().hex
+    frei = "read-" + uuid.uuid4().hex
+    await _put_token(redis, gebunden, channel_id=cid, user_id="1", scope="read", slot=1)
+    await _put_token(redis, frei, channel_id=cid, user_id="1", scope="read")
+    try:
+        r = await client.post("/", json=_body("read", _ch_path(cid, "1", slot=1), token=gebunden))
+        assert r.status_code == 200
+        r = await client.post("/", json=_body("read", _ch_path(cid, "1", slot=2), token=gebunden))
+        assert r.status_code == 401
+        r = await client.post("/", json=_body("read", _ch_path(cid, "1"), token=gebunden))
+        assert r.status_code == 401
+        r = await client.post("/", json=_body("read", _ch_path(cid, "1", slot=2), token=frei))
+        assert r.status_code == 200
+    finally:
+        await redis.delete(TOKEN_KEY.format(token=gebunden), TOKEN_KEY.format(token=frei))

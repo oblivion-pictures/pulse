@@ -211,6 +211,7 @@ class _RemoteRegistryMixin:
                 await self.device_release_for_socket(sess.host_socket)
             except Exception:  # noqa: BLE001  # pragma: no cover
                 log.debug("device release failed", exc_info=True)
+            await self._nach_geraetesitzung(sess)
             try:
                 # Jede laufende Gnadenfrist (`remote_reconnect_registry.py`)
                 # dieser Sitzung mit abraeumen, gleich welcher Rolle — sonst
@@ -232,7 +233,20 @@ class _RemoteRegistryMixin:
             sess = self._remote_sessions.get(session_id)
             if sess is None or sess.state != "pending":
                 return None
-            return self._remote_sessions.pop(session_id)
+            self._remote_sessions.pop(session_id)
+        await self._nach_geraetesitzung(sess)
+        return sess
+
+    async def _nach_geraetesitzung(self, sess: RemoteSession) -> None:
+        """Wecker-Merker und Zuschauer eines Geräts nach dem Ende räumen
+        (``geraete_zuschauen.nach_geraetesitzung``). Fehlertolerant wie die
+        Freigabe oben: ein Ende darf nie an einer Nebenwirkung hängen."""
+        try:
+            from dcc_chat_gateway.geraete_zuschauen import nach_geraetesitzung  # noqa: PLC0415
+
+            await nach_geraetesitzung(self, sess)
+        except Exception:  # noqa: BLE001  # pragma: no cover
+            log.debug("device session cleanup failed", exc_info=True)
 
     async def remote_dismiss_host_tabs(
         self, sess: RemoteSession, *, answered: Any = None

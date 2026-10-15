@@ -51,6 +51,7 @@ import { streamSettings } from '$lib/stream/settingsState.svelte';
 import { gegenstelle } from '$lib/remote/gegenstelle';
 import { remoteProtokoll } from '$lib/remote/protokoll.svelte';
 import { remoteSession } from '$lib/remote/session.svelte';
+import { standplatz } from '$lib/remote/standplatz.svelte';
 
 /**
  * Welcher Platz welchen Bildschirm überträgt — nur auf dem GERÄT geführt.
@@ -286,9 +287,9 @@ let nachlaufWecker: ReturnType<typeof setTimeout> | null = null;
  * **Der Fehlerfall** (Bughunt 2026-08-16): [`wiederEinschlafen`] hing am Ende
  * einer Fernsteuer-Sitzung — und nur daran. Es gibt aber mehrere Wege zu einem
  * Weckruf, aus dem nie eine Sitzung wird: der Encoder braucht länger als die
- * Wartefrist des Steuernden, dem Steuernden fehlt `REMOTE_CONTROL` (die
- * Übernahme springt still zurück), oder die Anfrage wird abgelehnt bzw. läuft
- * ab. In allen dreien lief der Strom weiter, und zwar unbegrenzt. Das ist mehr
+ * Wartefrist des Steuernden, die Anfrage scheitert am Server (seit 2026-10-16
+ * etwa an einer gerade abgelaufenen Freigabe, 4062 — davon erfährt das Gerät
+ * nichts), oder die Anfrage wird abgelehnt bzw. läuft ab. In allen dreien lief der Strom weiter, und zwar unbegrenzt. Das ist mehr
  * als verschwendete Bandbreite: ohne Sitzung greift auch der Sichtschutz nicht,
  * der unbeaufsichtigte Rechner überträgt also seinen ungeschützten Desktop an
  * jeden im Kanal.
@@ -326,6 +327,14 @@ export async function weckrufBehandeln(
 ): Promise<void> {
   const eintrag = geraeteAnmeldung.fuerServer(serverId);
   if (!eintrag || eintrag.deviceId !== deviceId) return;
+  // **Der Notaus** (seit 2026-10-16, `remote/notausRegel.ts`): steht „Steuern
+  // erlauben" auf aus, weckt sich der Rechner nicht — auch nicht für jemanden,
+  // den die Freigabeliste deckt. Der Server kennt den Schalter nicht und hat
+  // den Ruf deshalb durchgelassen; der Steuernde läuft in seine Wartefrist.
+  if (!standplatz.steuernErlaubt()) {
+    console.info('[geraet] Weckruf verworfen — Steuern ist an diesem Rechner ausgeschaltet');
+    return;
+  }
 
   const quelle = quelleFuerMonitor(monitor);
   if (laeuftSchon(quelle)) {
@@ -375,6 +384,10 @@ export async function weckrufBehandeln(
         quelle,
         uebersteuerung: standplatzProfil.alsUebersteuerung(kartenFaehigkeit()),
         ton: erster ? 'Desktop' : 'Aus',
+        // Das Merkmal „dieser Strom kommt vom Gerät" (seit 2026-10-16): der
+        // Server lässt daran nur Besitzer, Steuernden, Wecker oder bei
+        // belegtem Gerät zusehen (`geraete_zuschauen.py`).
+        deviceId,
       },
       p2p,
     );

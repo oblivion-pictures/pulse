@@ -123,6 +123,12 @@ function isDmChannel(channelId: string | null): boolean {
  * - PURE_SOCIAL + PRESENCE → immer true.
  * - MESSAGE-Familie → nur wenn `evt.channel_id` ein DM-Channel ist.
  * - alles andere (Guild/Voice/Stream/Watch/Roles/…) → false (aktiv-only).
+ *   Bewusst darunter: die Geräte-Listenops `device_changed`, `device_state`
+ *   und (seit 2026-10-16) `device_access_changed`. Letzteres lädt die
+ *   Geräteliste über REST neu, und REST geht an den AKTIVEN Server — im
+ *   Hintergrund der Cloud-Verbindung fragte es also den falschen. Das Gerät
+ *   selbst braucht es nicht: ob gesteuert werden darf, entscheidet der Server
+ *   (`geraeteEligible` unten betrifft nur Weckruf und Anfrage).
  *
  * Wird ausschließlich auf der Cloud-Connection ausgewertet; die aktive
  * Connection dispatcht weiterhin alles.
@@ -210,9 +216,10 @@ export function istGeraetAuf(serverId: string): boolean {
  * gegen eine Einladung aus einer Community, die man nicht ansieht, bleibt sonst
  * unberührt (s. `REMOTE_SESSION_OPS`): eine Anfrage ohne Gerätekennung meint
  * einen Menschen, und die soll weiterhin nur dort auftauchen, wo er gerade ist.
- * Eine Anfrage MIT unserer Kennung meint dagegen den Rechner selbst — dort ist
- * die Zustimmung als Dauerfreigabe längst erteilt, und ohne diesen Weg käme sie
- * nie an.
+ * Eine Anfrage MIT unserer Kennung meint dagegen den Rechner selbst — sie kommt
+ * seit 2026-10-16 nur noch an, wenn die Freigabeliste den Anfragenden deckt
+ * (der Server prüft das), das Gerät antwortet ohne Dialog, und ohne diesen Weg
+ * käme sie nie an.
  */
 export function geraeteEligible(conn: GatewayConnection, evt: ServerEvent): boolean {
   if (evt.op !== 'device_wake' && evt.op !== 'remote_request') return false;

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 
+from dcc_shared.events import DeviceAccessChangedEvent
 from fastapi import Request
 from pydantic import BaseModel
 
@@ -45,6 +46,13 @@ class DeviceOut(BaseModel):
     #: Besitzers und trägt keine Geräte-Kennung, das Gerät meldet es also
     #: selbst (``device_streams``).
     stream_slots: list[int] = []
+    #: Darf DIESER Betrachter das Gerät wecken und steuern? Sicht am Standplatz
+    #: UND eine deckende, nicht abgelaufene Freigabe; für den Besitzer immer
+    #: ``False`` (``geraete_freigabe.steuerbar_je_geraet``). Nur in den
+    #: REST-Antworten belegt — die Meldung ``device_changed`` geht an alle und
+    #: lässt das Feld deshalb weg (``device_registry.publish_device_change``).
+    #: Ändert sich die Liste, kommt ``device_access_changed`` (:func:`zugang_melden`).
+    steuerbar: bool = False
 
 
 def manager_von(request: Request):
@@ -118,6 +126,29 @@ async def melden(
         )
     except Exception:  # pragma: no cover - Meldung ist nie kritisch
         log.debug("device_changed not published", exc_info=True)
+
+
+async def zugang_melden(request: Request, device: Device) -> None:
+    """``device_access_changed`` an alle, die den Standplatz sehen — „wer
+    dieses Gerät steuern darf, hat sich geändert, lade neu".
+
+    Ohne Ergebnis im Rahmen (Begründung an ``DeviceAccessChangedEvent``):
+    ``steuerbar`` ist je Betrachter verschieden, und die Liste selbst darf nur
+    der Besitzer lesen. Fehlertolerant wie :func:`melden`.
+    """
+    mgr = manager_von(request)
+    if mgr is None:
+        return
+    try:
+        await mgr.publish_guild_event(
+            DeviceAccessChangedEvent(
+                guild_id=str(device.guild_id),
+                channel_id=str(device.channel_id),
+                device_id=str(device.id),
+            )
+        )
+    except Exception:  # pragma: no cover - Meldung ist nie kritisch
+        log.debug("device_access_changed not published", exc_info=True)
 
 
 async def sitzung_beenden(request: Request, device: Device) -> None:

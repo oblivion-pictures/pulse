@@ -1,10 +1,16 @@
 """Freigabeliste eines Standplatz-Geräts — lesen und ersetzen.
 
-**Nur der Besitzer, lesend wie schreibend.** ``MANAGE_GUILD`` darf ein Gerät
-räumen und umbenennen (``routes/devices.py``), aber nicht in seine Freigaben
-sehen und nicht freigeben: Räumen ist Hausrecht, Freigeben wäre der
-Admin-Fernschalter, den der Entwurf gerade ausschliesst. Hineinsehen wäre dessen
-Vorstufe und hat keinen Zweck, den Räumen nicht schon erfüllt.
+**Nur der Besitzer, lesend wie schreibend** — auch ``MANAGE_GUILD`` nicht:
+Freigeben wäre der Admin-Fernschalter, den der Entwurf gerade ausschliesst, und
+Hineinsehen dessen Vorstufe. (Hier stand bis 2026-10-16 noch, ``MANAGE_GUILD``
+dürfe ein Gerät räumen und umbenennen; das gilt seit dem 2026-08-26 nicht mehr,
+s. ``routes/devices.py::_require_owner``.)
+
+**Die Liste ist seit dem 2026-10-16 die einzige Tür** zu einem Gerät: wecken
+und steuern darf nur, wen eine nicht abgelaufene Zeile deckt UND wer den
+Standplatz sieht (``geraete_freigabe.py``); ``REMOTE_CONTROL`` zählt dafür
+nicht. Eine leere Liste heisst: niemand. ``everyone`` heisst: jeder, der den
+Standplatz-Kanal sehen kann.
 
 **Ersetzen statt einzeln ändern.** Ein ``PUT`` der ganzen Liste hat keinen
 Zwischenzustand „scharf, aber für niemanden" — dieselbe Begründung, aus der die
@@ -15,11 +21,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy import delete, select
 
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.device_meldungen import manager_von, zugang_melden
+from dcc_chat_gateway.geraete_freigabe import sitzungen_ohne_freigabe_beenden
 from dcc_chat_gateway.models import SUBJECT_EVERYONE, SUBJECT_TYPES, Device, DeviceGrant
 from dcc_chat_gateway.routes._deps import require_member
 from dcc_chat_gateway.schemas import SnowflakeId
@@ -108,6 +116,7 @@ async def set_grants(
     body: GrantsIn,
     user: CurrentUser,
     session: SessionDep,
+    request: Request,
 ) -> list[GrantOut]:
     await require_member(session, guild_id, user.id)
     await _eigenes_geraet(session, guild_id, device_id, user)
@@ -127,4 +136,13 @@ async def set_grants(
     await session.commit()
     for z in neu:
         await session.refresh(z)
+    geraet = await session.get(Device, device_id)
+    # **Entzug wirkt sofort** (Eigentümer-Entscheid 2026-10-16, R5): wer gerade
+    # steuert und von der neuen Liste nicht mehr gedeckt ist, verliert die
+    # Sitzung jetzt, nicht erst beim nächsten Takt der Wache. NACH dem Commit —
+    # davor läse die Prüfung noch die alte Liste.
+    if geraet is not None:
+        await sitzungen_ohne_freigabe_beenden(session, manager_von(request), geraet.id)
+        # Und alle, die den Standplatz sehen, holen ihr ``steuerbar`` neu.
+        await zugang_melden(request, geraet)
     return [_out(z) for z in neu]

@@ -661,7 +661,12 @@ export const chatApi = {
      *  Aushandlung den Wiedergabeweg — HEVC im Linux-Browser heißt: direkt der
      *  native Player, statt erst eine Fehlermeldung. "h264"/fehlend = nichts
      *  mitschicken (Legacy-Form bleibt byte-identisch). */
-    codec?: 'h264' | 'hevc' | 'av1'
+    codec?: 'h264' | 'hevc' | 'av1',
+    /** Dieser Strom kommt vom Standplatz-Gerät `deviceId` (seit 2026-10-16).
+     *  Der Server nimmt das nur vom Besitzer für sein Gerät an dessen
+     *  Standplatz an (sonst 403) und lässt dann nur Besitzer, Steuernden,
+     *  Wecker oder bei belegtem Gerät zusehen. Fehlt es: normaler Strom. */
+    deviceId?: string
   ): Promise<StreamTokenResponse> {
     return request<StreamTokenResponse>(`/channels/${channelId}/stream-token`, {
       method: 'POST',
@@ -672,7 +677,8 @@ export const chatApi = {
         ...(tenBit ? { ten_bit: true } : {}),
         ...(remoteInput ? { remote_input: true } : {}),
         ...(monitorIndex === undefined ? {} : { monitor_index: monitorIndex }),
-        ...(codec && codec !== 'h264' ? { codec } : {})
+        ...(codec && codec !== 'h264' ? { codec } : {}),
+        ...(deviceId ? { device_id: deviceId } : {})
       }
     });
   },
