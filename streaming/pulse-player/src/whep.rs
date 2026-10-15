@@ -594,23 +594,28 @@ pub(crate) async fn baue_empfaenger_pc(
     let fec_an = crate::fec::eingeschaltet();
     let fec_zaehler = Arc::new(crate::fec::Zaehler::default());
     let fec_fuer_track = fec_zaehler.clone();
+    // Je Verbindung, nicht je Programm: s. `fec::Sammlersperre`.
+    let fec_sperre = Arc::new(crate::fec::Sammlersperre::default());
     let tx_fuer_track = tx.clone();
     pc.on_track(Box::new(move |track, receiver, _transceiver| {
         let tx = tx_fuer_track.clone();
         let fec_zaehler = fec_fuer_track.clone();
+        let fec_sperre = fec_sperre.clone();
         Box::pin(async move {
             // Nur am VIDEO-Track: dort liegt der geschuetzte Strom, und nur
             // dort sind Codec und Taktrate bekannt, die ein repariertes Paket
             // fuer den Empfangsweg braucht.
             let capability = track.codec().capability;
             let medien_tx = match Codec::from_mime(&capability.mime_type) {
-                Some(codec) if fec_an && codec.is_video() => Some(crate::fec::starten(
-                    receiver.transport(),
-                    tx.clone(),
-                    codec,
-                    capability.clock_rate,
-                    fec_zaehler,
-                )),
+                Some(codec) if fec_an && codec.is_video() && fec_sperre.erstmals() => {
+                    Some(crate::fec::starten(
+                        receiver.transport(),
+                        tx.clone(),
+                        codec,
+                        capability.clock_rate,
+                        fec_zaehler,
+                    ))
+                }
                 _ => None,
             };
             tokio::spawn(pump_track(track, tx, medien_tx));

@@ -53,6 +53,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use webrtc::dtls_transport::dtls_transport_state::RTCDtlsTransportState;
 use webrtc::dtls_transport::RTCDtlsTransport;
 
 /// Nutzlasttyp der Paritaetspakete, abgestimmt mit `FLEXFEC_PAYLOAD_TYPE` in
@@ -122,6 +123,26 @@ impl Zaehler {
     }
 }
 
+/// Laesst je Verbindung genau einen Paritaets-Empfang zu.
+///
+/// **Warum je Verbindung und nicht je Programmlauf.** Bis 2026-10-15 stand
+/// hier eine prozessweite `static`-Sperre — aus der Zeit, als ein Player genau
+/// eine Sitzung hatte. Seit ein Player mehrere Bildschirme zeigt (eine
+/// WHEP-Verbindung mit eigenem Paritaetsstrom je Sitzung), bekam nur die
+/// ERSTE Sitzung einen Sammler. Die zweite handelte FlexFEC aus, ihr
+/// Empfaenger lief, aber niemand las ihre Paritaet — repariert wurde dort
+/// nie etwas, und es fiel nicht auf, weil die Zaehler einfach auf null blieben.
+/// Gesehen am 2026-10-15: zwei Sitzungen, ein einziger Paritaetsstrom im Log.
+#[derive(Debug, Default)]
+pub struct Sammlersperre(AtomicBool);
+
+impl Sammlersperre {
+    /// `true` genau beim ersten Aufruf fuer diese Verbindung.
+    pub fn erstmals(&self) -> bool {
+        !self.0.swap(true, Ordering::SeqCst)
+    }
+}
+
 /// Startet den Paritaets-Empfang und liefert den Kanal, ueber den der
 /// Video-Track seine Pakete meldet.
 ///
@@ -181,27 +202,29 @@ pub fn starten(
 
 /// Sammelt die Paritaetspakete der Sitzung ein.
 ///
-/// Laeuft, bis die Verbindung abgebaut wird — `read_rtp` bricht dann mit einem
-/// Fehler ab und die jeweilige Aufgabe endet.
+/// Laeuft, bis die Verbindung abgebaut wird: die Lese-Aufgabe je Strom endet,
+/// wenn `read_rtp` mit einem Fehler abbricht, die Suche, sobald der Transport
+/// `Closed` oder `Failed` meldet (`pc.close()` → `dtls_transport.stop()`).
+/// Ohne diese Abbruchbedingung bliebe je geschlossener Sitzung eine Schleife
+/// zurueck, die alle 200 ms sucht und den Transport festhaelt.
 ///
-/// **Nur einmal je Programmlauf.** Der Aufrufer haengt an `on_track`, und das
-/// feuert je Spur — fuer Bild und Ton also zweimal, mit demselben Transport.
-/// Zwei Sammler am selben Strom wuerden sich die Pakete TEILEN (jedes Paket
-/// bekommt nur ein `read_rtp`), und die Paritaet waere in beiden Haelften
-/// unbrauchbar. Der Fehler faellt nicht auf: beide Seiten zaehlen munter
-/// Pakete, nur eben die Haelfte.
+/// **Hoechstens einmal je Verbindung** — dafuer sorgt der Aufrufer mit
+/// [`Sammlersperre`]. Zwei Sammler am selben Transport wuerden sich die
+/// Pakete TEILEN (jedes Paket bekommt nur ein `read_rtp`), und die Paritaet
+/// waere in beiden Haelften unbrauchbar.
 pub fn aufsammeln(
     transport: Arc<RTCDtlsTransport>,
     weiter: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
 ) {
-    static GESTARTET: AtomicBool = AtomicBool::new(false);
-    if GESTARTET.swap(true, Ordering::SeqCst) {
-        return;
-    }
-
     tokio::spawn(async move {
         let mut gesehen: HashSet<u32> = HashSet::new();
         loop {
+            if matches!(
+                transport.state(),
+                RTCDtlsTransportState::Closed | RTCDtlsTransportState::Failed
+            ) {
+                break;
+            }
             for ssrc in transport.undeclared_stream_ssrcs().await {
                 if !gesehen.insert(ssrc) {
                     continue;
@@ -250,4 +273,21 @@ pub fn aufsammeln(
             tokio::time::sleep(SUCHINTERVALL).await;
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Sammlersperre;
+
+    /// Die Sperre gilt je Verbindung: eine zweite Sitzung im selben Programm
+    /// bekommt ihren eigenen Sammler (der Fehler bis 2026-10-15).
+    #[test]
+    fn sperre_gilt_je_verbindung() {
+        let erste = Sammlersperre::default();
+        let zweite = Sammlersperre::default();
+        assert!(erste.erstmals());
+        assert!(!erste.erstmals());
+        assert!(zweite.erstmals());
+        assert!(!zweite.erstmals());
+    }
 }

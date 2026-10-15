@@ -18,6 +18,10 @@
 //! Paritaet laeuft — seit 2026-08-03 der Standard, s. [`super::eingeschaltet`]).
 //! Reine Pruefbetriebsart: sie repariert nichts und veraendert den
 //! Empfangsweg nicht.
+//!
+//! **Nur mit EINER Sitzung aussagekraeftig.** Der Pruefstand ist prozessweit
+//! (`PRUEFSTAND`); zeigt der Player mehrere Bildschirme, landen deren
+//! Sequenznummern und Paritaet im selben Topf und die Bilanz vermischt sie.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
