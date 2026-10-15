@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-16",
+      "date": "2026-10-16",
+      "style": "Sachlich",
+      "title": "Zwischenablage unter Linux",
+      "items": [
+        "Linux: Text, der bei der Fernsteuerung auf dem gesteuerten Rechner kopiert wurde, lässt sich jetzt auch auf dem eigenen Rechner einfügen."
+      ]
+    },
+    {
       "id": "2026-10-15.4",
       "date": "2026-10-15",
       "style": "Sachlich",
