@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-15",
+      "date": "2026-10-15",
+      "style": "Sachlich",
+      "title": "Stream-Wiedergabe mit zwei Bildschirmen",
+      "items": [
+        "Werden zwei Bildschirme geteilt, ist jetzt auch der zweite gegen Paketverluste abgesichert. Auf schwächeren Leitungen gibt es dort weniger Bildfehler."
+      ]
+    },
+    {
       "id": "2026-10-14.5",
       "date": "2026-10-14",
       "style": "Sachlich",
