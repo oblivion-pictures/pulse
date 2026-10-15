@@ -580,3 +580,57 @@ async def test_read_token_mit_platz_gilt_nur_fuer_diesen_platz(client, redis):
         assert r.status_code == 200
     finally:
         await redis.delete(TOKEN_KEY.format(token=gebunden), TOKEN_KEY.format(token=frei))
+
+
+@pytest.mark.asyncio
+async def test_geraetestrom_verlangt_ein_token_fuer_genau_dieses_geraet(client, redis):
+    """**Sicherheitspruefung 2026-10-16:** ein gewoehnliches Lese-Token fuer
+    denselben Streamer (etwa fuer sein normales Go-Live) darf den Strom seines
+    Geraets nicht oeffnen. Das Ziel entscheidet, nicht das Token."""
+    cid = _unique_cid()
+    await redis.set(
+        active_key(cid, "1", 1),
+        json.dumps({"user_id": "1", "path": "x", "device_id": "777"}),
+        ex=60,
+    )
+    frei = "read-" + uuid.uuid4().hex
+    fremdes_geraet = "read-" + uuid.uuid4().hex
+    passend = "read-" + uuid.uuid4().hex
+    await _put_token(redis, frei, channel_id=cid, user_id="1", scope="read")
+    await _put_token(redis, fremdes_geraet, channel_id=cid, user_id="1", scope="read", slot=1)
+    await _put_token(redis, passend, channel_id=cid, user_id="1", scope="read", slot=1)
+    for tok, geraet in ((fremdes_geraet, "778"), (passend, "777")):
+        roh = json.loads(await redis.get(TOKEN_KEY.format(token=tok)))
+        roh["device_id"] = geraet
+        await redis.set(TOKEN_KEY.format(token=tok), json.dumps(roh), ex=60)
+    try:
+        r = await client.post("/", json=_body("read", _ch_path(cid, "1", slot=1), token=frei))
+        assert r.status_code == 401, "ein Token ohne Geraet darf den Geraetestrom nicht oeffnen"
+        r = await client.post(
+            "/", json=_body("read", _ch_path(cid, "1", slot=1), token=fremdes_geraet)
+        )
+        assert r.status_code == 401
+        r = await client.post("/", json=_body("read", _ch_path(cid, "1", slot=1), token=passend))
+        assert r.status_code == 200
+        # Ein gewoehnlicher Strom desselben Streamers bleibt mit dem freien Token lesbar.
+        r = await client.post("/", json=_body("read", _ch_path(cid, "1", slot=2), token=frei))
+        assert r.status_code == 200
+    finally:
+        await redis.delete(
+            active_key(cid, "1", 1),
+            *(TOKEN_KEY.format(token=t) for t in (frei, fremdes_geraet, passend)),
+        )
+
+
+@pytest.mark.asyncio
+async def test_unlesbarer_aktiv_datensatz_wird_abgewiesen(client, redis):
+    """Fail-closed: ein kaputter ``stream:active``-Eintrag oeffnet nichts."""
+    cid = _unique_cid()
+    await redis.set(active_key(cid, "1"), "{kaputt", ex=60)
+    tok = "read-" + uuid.uuid4().hex
+    await _put_token(redis, tok, channel_id=cid, user_id="1", scope="read")
+    try:
+        r = await client.post("/", json=_body("read", _ch_path(cid, "1"), token=tok))
+        assert r.status_code == 401
+    finally:
+        await redis.delete(active_key(cid, "1"), TOKEN_KEY.format(token=tok))

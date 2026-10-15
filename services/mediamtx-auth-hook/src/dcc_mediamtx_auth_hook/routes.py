@@ -168,6 +168,35 @@ def _deny(reason: str, **fields: Any) -> HTTPException:
     return HTTPException(status.HTTP_401_UNAUTHORIZED, detail="denied")
 
 
+_UNLESBAR = object()
+
+
+async def _geraet_am_ziel(
+    redis: Redis, channel_id: str, user_id: str, slot: str
+) -> str | object | None:
+    """Das Geraete-Merkmal des Zielstroms aus ``stream:active`` — ``None``
+    ohne Merkmal (gewoehnlicher Strom, oder Strom nicht aktiv), ``_UNLESBAR``
+    bei einem kaputten Datensatz.
+
+    **Ein unlesbarer Datensatz wird abgewiesen, nicht als „kein Geraet"
+    gedeutet** (fail-closed): sonst oeffnete ein beschaedigter Eintrag genau
+    die Tuer, die das Merkmal schliessen soll. Die Datensaetze schreibt
+    ausschliesslich ``_consume_token_and_mark_active``; kaputt ist also ein
+    Ausnahmefall, kein Alltag.
+    """
+    raw = await redis.get(active_key(channel_id, user_id, int(slot)))
+    if raw is None:
+        return None
+    try:
+        aktiv = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+    except (ValueError, TypeError, AttributeError):
+        return _UNLESBAR
+    if not isinstance(aktiv, dict):
+        return _UNLESBAR
+    geraet = aktiv.get("device_id")
+    return str(geraet) if geraet else None
+
+
 async def _peek_token(redis: Redis, token: str) -> dict[str, Any] | None:
     """GET the token record without consuming it.
 
@@ -406,6 +435,24 @@ async def _handle(req: AuthRequest, redis: Redis) -> None:
             raise _deny(
                 "read_user_mismatch", path=req.path, token_user=rec.get("user_id")
             )
+        # **Ob ein Geraetestrom gelesen wird, entscheidet das ZIEL, nicht das
+        # Token** (Sicherheitspruefung 2026-10-16). Ein gewoehnliches
+        # Lese-Token traegt keinen Platz und gilt fuer alle Stroeme des
+        # Streamers; wer es fuer einen anderen Strom desselben Besitzers
+        # bekommen hat (ein normales Go-Live, ein weiterer Platz), haette damit
+        # auch den Geraetestrom lesen koennen — an der Regel „zusehen nur,
+        # solange jemand steuert" vorbei, die chat-gateway und media-svc beim
+        # Ausstellen pruefen. Deshalb hier: traegt ``stream:active`` des Ziels
+        # ein Geraete-Merkmal, gilt nur ein Token, das fuer genau dieses
+        # Geraet und diesen Platz ausgestellt wurde. Der Datensatz entsteht
+        # beim Publish-Auth, also bevor der Strom lesbar ist.
+        ziel = await _geraet_am_ziel(redis, channel_id, path_user_id, path_slot)
+        if ziel is _UNLESBAR:
+            raise _deny("read_active_unreadable", path=req.path)
+        if ziel is not None:
+            if str(rec.get("device_id") or "") != ziel or str(rec.get("slot")) != path_slot:
+                raise _deny("read_device_token_required", path=req.path, device_id=ziel)
+            return  # 200
         if "slot" in rec and str(rec.get("slot")) != path_slot:
             raise _deny("read_slot_mismatch", path=req.path, token_slot=rec.get("slot"))
         return  # 200
