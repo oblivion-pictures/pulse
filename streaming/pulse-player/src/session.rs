@@ -102,8 +102,9 @@ const EINSTIEG_REQUEST_INTERVAL: Duration = Duration::from_millis(500);
 /// 100 ms) wirkt NUR bei einer Luecke: so lange wartet der Puffer auf ein
 /// fehlendes Paket, bevor er die Luecke meldet — und die Meldung kostet ein
 /// angefordertes Vollbild plus Anzeigesperre. Die Nachlieferung braucht
-/// mindestens eine Umlaufzeit: NACK-Erzeuger (10-ms-Takt) + Sperrfrist (20 ms)
-/// + Strecke. Eine Geduld UNTER RTT + Aufschlag hiesse also: jede Nachlieferung
+/// mindestens eine Umlaufzeit plus bis zu einen Takt des NACK-Erzeugers
+/// (10 ms); geht die erste Anforderung verloren, kommt die Sperrfrist (20 ms)
+/// dazu. Eine Geduld UNTER RTT + Aufschlag hiesse also: jede Nachlieferung
 /// kommt zu spaet, jeder einzelne Verlust wird zur Luecke — schneller wird es
 /// davon nicht, nur kaputter. Deshalb senkt die Fernsteuerung nicht blind auf
 /// einen kleinen Wert, sondern auf `max(40, RTT + 30)`, gedeckelt auf die
@@ -111,7 +112,8 @@ const EINSTIEG_REQUEST_INTERVAL: Duration = Duration::from_millis(500);
 /// (~88 ms), im Stadtnetz (RTT 10) faellt die Wartezeit je Verlust von 100 auf
 /// 40 ms.
 ///
-/// Ohne RTT-Messung (Verbindungsaufbau) bleibt die Geduld unveraendert.
+/// Ohne belastbare RTT-Messung bleibt die Geduld unveraendert (s.
+/// [`fern_jitter_ziel`]).
 const FERN_JITTER_MIN_MS: u64 = 40;
 const FERN_JITTER_RTT_AUFSCHLAG_MS: u64 = 30;
 
@@ -158,8 +160,18 @@ fn gcd(a: u64, b: u64) -> u64 {
 
 /// Die Zielgeduld waehrend einer Fernsteuerung — pure Rechnung, getrennt von
 /// der Schleife, damit die Grenzen pruefbar sind.
-fn fern_jitter_ziel(rtt_ms: u64, basis_ms: u64) -> u64 {
-    (rtt_ms + FERN_JITTER_RTT_AUFSCHLAG_MS).clamp(FERN_JITTER_MIN_MS.min(basis_ms), basis_ms)
+///
+/// `rtt_ms` ist die BELASTBARE Antwortzeit
+/// ([`crate::nachforderung::rtt_belastbar`]); ohne sie bleibt es bei der
+/// Geduld des Nutzers. Bis 2026-10-15 senkte schon eine einzige, viel zu
+/// kleine Messung die Geduld auf 40 ms — und die Nachlieferungen kamen danach
+/// zu spaet (s. `patches/0002-...`, Messung ab der ersten Anforderung).
+fn fern_jitter_ziel(rtt_ms: Option<u64>, basis_ms: u64) -> u64 {
+    match rtt_ms {
+        Some(rtt) => (rtt + FERN_JITTER_RTT_AUFSCHLAG_MS)
+            .clamp(FERN_JITTER_MIN_MS.min(basis_ms), basis_ms),
+        None => basis_ms,
+    }
 }
 
 /// Die Puffergeduld, die der Nutzer eingestellt hat — die Basis, auf die jede
@@ -213,7 +225,12 @@ pub struct SessionStats {
     pub fps: Option<u64>,
     pub kbps: Option<u64>,
     pub packets_lost: u64,
+    /// Davon auf der Tonspur (eigener Puffer, eigener Nummernkreis).
+    pub packets_lost_ton: u64,
+    /// Pakete, die erst nach ihrer Freigabe-Stelle kamen (`seq < next`).
     pub packets_reordered: u64,
+    /// Davon: Luecke war schon aufgegeben (s. `JitterBuffer::nach_aufgabe`).
+    pub packets_nach_aufgabe: u64,
     pub packets_duplicate: u64,
     /// Was die FlexFEC-Paritaet ausgerichtet hat: wiederhergestellte Pakete,
     /// Gruppen mit mehr Loechern als Paritaet (XOR loest nur EINE Unbekannte
@@ -235,11 +252,13 @@ pub struct SessionStats {
     /// versagte, und trug damit die falsche Aussage „XOR scheitert nie".
     pub fec_mehrfach_loch: u64,
     pub fec_zu_spaet: u64,
-    /// Gemessene Umlaufzeit der nominierten ICE-Paarung, in Millisekunden.
-    /// Steuert die NACK-Sperrfrist (s. `whep::sperre_aus_rtt`) und gehoert
-    /// deshalb in die Akte: ohne sie ist nicht nachvollziehbar, mit welcher
-    /// Sperre ein Lauf gefahren ist.
+    /// Vom NACK-Erzeuger gemessene Antwortzeit auf eigene Nachforderungen,
+    /// in Millisekunden (s. [`crate::nachforderung`]) — KEINE ICE-Umlaufzeit.
+    /// Steuert die Puffergeduld der Fernsteuerung ([`fern_jitter_ziel`]) und,
+    /// nur mit `PULSE_PLAYER_NACK_SPERRE_AUTO=1`, die Sperrfrist.
     pub rtt_ms: Option<u64>,
+    /// Wie viele Messungen in `rtt_ms` stecken.
+    pub rtt_proben: u64,
     pub frames_decoded: u64,
     pub frames_dropped: u64,
     /// Bilder, die verworfen wurden, weil die Darstellung nicht mitkam.
@@ -365,10 +384,10 @@ impl Strom {
         }
     }
 
-    fn rtt_ms(&self) -> Option<u64> {
+    fn nack(&self) -> &crate::nachforderung::NackZellen {
         match self {
-            Strom::Whep(s) => s.rtt_ms(),
-            Strom::Direkt(s) => s.rtt_ms(),
+            Strom::Whep(s) => s.nack(),
+            Strom::Direkt(s) => s.nack(),
         }
     }
 
@@ -606,8 +625,8 @@ pub async fn run(
     let mut fernsteuerung = false;
     // Die zuletzt GERECHNETE Fern-Geduld — damit ein Options-Patch sie sofort
     // wieder anwenden kann, statt bis zum nächsten Statistik-Takt auf der
-    // Basis zu stehen. `None` = noch keine RTT-Messung oder keine
-    // Fernsteuerung.
+    // Basis zu stehen. `None` = keine Fernsteuerung oder seit ihrem Beginn
+    // noch kein Statistik-Takt.
     let mut fern_geduld: Option<u64> = None;
     let mut ticker = tokio::time::interval(POLL_INTERVAL);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -740,7 +759,7 @@ pub async fn run(
                     // JEDEM set_option die Basis her — und der Lautstärkeregler
                     // sitzt ausgerechnet im Fernsteuerungs-Menü. Ohne diese
                     // Zeile stünde die Geduld bis zum nächsten Statistik-Takt
-                    // (bzw. ohne RTT-Messung dauerhaft) wieder auf 100 ms.
+                    // wieder auf 100 ms.
                     if fernsteuerung {
                         if let Some(g) = fern_geduld {
                             let ziel = g.min(basis_jitter_ms(&options));
@@ -1257,9 +1276,11 @@ pub async fn run(
         stats.packets_received = buffers.values().map(|b| b.received).sum();
         stats.bytes_received = buffers.values().map(|b| b.bytes_received).sum();
         stats.packets_lost = buffers.values().map(|b| b.lost).sum();
+        stats.packets_lost_ton = buffers.get(&Codec::Opus).map_or(0, |b| b.lost);
         (stats.fec_repariert, stats.fec_unreparierbar, stats.fec_verworfen,
          stats.fec_mehrfach_loch, stats.fec_zu_spaet) = strom.fec_zaehler();
         stats.packets_reordered = buffers.values().map(|b| b.reordered).sum();
+        stats.packets_nach_aufgabe = buffers.values().map(|b| b.nach_aufgabe).sum();
         stats.packets_duplicate = buffers.values().map(|b| b.duplicates).sum();
         stats.buffered_packets = buffers.values().map(|b| b.buffered() as u64).sum();
 
@@ -1337,24 +1358,24 @@ pub async fn run(
                     true,
                 );
             }
-            // NACK-Sperre an die gemessene Umlaufzeit koppeln. Im selben Takt
-            // wie die Statistik, weil `get_stats()` ueber alle Transporte
-            // laeuft — bei jedem Schleifendurchlauf waere das ueber 1000-mal
-            // je Sekunde.
-            stats.rtt_ms = strom.rtt_ms();
+            // Antwortzeit des NACK-Erzeugers abholen (s. `crate::nachforderung`).
+            stats.rtt_ms = strom.nack().rtt_ms();
+            stats.rtt_proben = strom.nack().proben();
             // Fernsteuerung: Jitter-Geduld an die gemessene Umlaufzeit koppeln
             // (Begruendung bei FERN_JITTER_MIN_MS). Im Statistik-Takt, nicht je
             // Durchlauf — die RTT aendert sich nicht schneller, und `set_target`
             // auf jedem der >1000 Durchlaeufe je Sekunde waere Laerm.
             if fernsteuerung {
-                if let Some(rtt) = stats.rtt_ms {
-                    let ziel = fern_jitter_ziel(rtt, basis_jitter_ms(&options));
-                    fern_geduld = Some(ziel);
-                    if ziel != stats.jitter_target_ms {
-                        jitter_setzen(&mut buffers, &mut stats, &mut target, ziel);
-                    }
+                let rtt = crate::nachforderung::rtt_belastbar(stats.rtt_ms, stats.rtt_proben);
+                let ziel = fern_jitter_ziel(rtt, basis_jitter_ms(&options));
+                fern_geduld = Some(ziel);
+                if ziel != stats.jitter_target_ms {
+                    jitter_setzen(&mut buffers, &mut stats, &mut target, ziel);
                 }
             }
+            // Nachforderungen enden mit der Geduld des Puffers, aber nie vor der
+            // des Nutzers — s. `nachforderung::hoechstalter_aus_geduld`.
+            strom.nack().hoechstalter_setzen(stats.jitter_target_ms, basis_jitter_ms(&options));
             // Erst hier abfragen: `media.stats()` nimmt die Sperre des
             // Audio-Ringpuffers, auf die auch der Geraete-Callback wartet.
             // Bei jedem Durchlauf waere das ueber 1000-mal pro Sekunde.
@@ -1568,18 +1589,22 @@ mod tests {
     use super::*;
 
     /// Die Grenzen der Fernsteuerungs-Geduld: nie unter die NACK-Umlaufzeit,
-    /// nie ueber die Geduld des Nutzers.
+    /// nie ueber die Geduld des Nutzers, ohne belastbare Messung keine Senkung.
     #[test]
     fn fern_jitter_haelt_beide_grenzen() {
         // Teststrecke Hetzner (RTT ~58): fast beim Alten — Nachlieferungen
         // muessen weiter ankommen koennen.
-        assert_eq!(fern_jitter_ziel(58, 100), 88);
+        assert_eq!(fern_jitter_ziel(Some(58), 100), 88);
         // Stadtnetz: der eigentliche Gewinn.
-        assert_eq!(fern_jitter_ziel(10, 100), 40);
+        assert_eq!(fern_jitter_ziel(Some(10), 100), 40);
         // Lange Strecke: die Geduld des Nutzers ist der Deckel.
-        assert_eq!(fern_jitter_ziel(90, 100), 100);
+        assert_eq!(fern_jitter_ziel(Some(90), 100), 100);
         // Nutzer hat selbst tiefer gestellt (Pruefstand): nie anheben.
-        assert_eq!(fern_jitter_ziel(58, 20), 20);
+        assert_eq!(fern_jitter_ziel(Some(58), 20), 20);
+        // Keine belastbare Messung: die Geduld des Nutzers, NICHT die
+        // Untergrenze 40.
+        assert_eq!(fern_jitter_ziel(None, 100), 100);
+        assert_eq!(fern_jitter_ziel(None, 20), 20);
     }
 
     /// Bildraten-Erkennung fuer den Aufnahme-Container (Michaels Fund

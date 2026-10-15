@@ -17,7 +17,7 @@
 //!   gemeldet und uebersprungen — lieber ein verworfener Frame als ein
 //!   stehender Puffer.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use webrtc::rtp::packet::Packet;
@@ -34,6 +34,14 @@ pub(crate) const RESYNC_DISTANCE: u64 = 3000;
 /// werden duerfen, bevor der Strom als neu gestartet gilt. Echte Nachzuegler
 /// kommen vereinzelt; bleibt es dabei, ist es kein Nachzuegler mehr.
 const MAX_LATE_STREAK: u32 = 8;
+
+/// Wie viele aufgegebene Luecken sich der Puffer merkt, um ein spaeter doch
+/// noch eintreffendes Paket als „nach Aufgabe" zu erkennen. 64 Luecken sind
+/// bei einer Luecke je 50 ms gut drei Sekunden; die Nachforderung endet mit
+/// der Geduld, bei abgesenkter Fern-Geduld erst mit der des Nutzers
+/// (`nachforderung::hoechstalter_aus_geduld`) — Antworten weit danach sind
+/// also nicht zu erwarten. Was trotzdem kommt, zaehlt nur als `reordered`.
+const AUFGABE_GEDAECHTNIS: usize = 64;
 
 pub enum Release {
     /// Faelliges Paket samt seiner ANKUNFTSZEIT. Die Zeit reist mit, weil sie
@@ -78,8 +86,18 @@ pub struct JitterBuffer {
     /// bei gemischten Paketgroessen (Keyframe gegen Zwischenbild) falsch.
     pub bytes_received: u64,
     pub lost: u64,
+    /// Pakete mit `seq < next`: ihre Stelle ist schon vorbei.
     pub reordered: u64,
+    /// Davon die, deren Luecke der Puffer bereits als verloren gemeldet hatte
+    /// — zu spaete Nachlieferungen, verspaetete Originale oder zu spaete
+    /// Paritaet-Reparaturen; der Puffer unterscheidet sie nicht. Der Rest von
+    /// `reordered` sind Kopien schon ausgelieferter Pakete. Steigt diese Zahl
+    /// unter Verlust, ist die Geduld vermutlich kuerzer als die Antwortzeit
+    /// der Nachforderung.
+    pub nach_aufgabe: u64,
     pub duplicates: u64,
+    /// Zuletzt aufgegebene Luecken als `[von, bis)` erweiterter Nummern.
+    aufgegeben: VecDeque<(u64, u64)>,
 }
 
 impl JitterBuffer {
@@ -96,7 +114,9 @@ impl JitterBuffer {
             bytes_received: 0,
             lost: 0,
             reordered: 0,
+            nach_aufgabe: 0,
             duplicates: 0,
+            aufgegeben: VecDeque::with_capacity(AUFGABE_GEDAECHTNIS),
         }
     }
 
@@ -164,6 +184,9 @@ impl JitterBuffer {
                 if seq < next {
                     // Zu spaet — die Einheit ist bereits raus.
                     self.reordered += 1;
+                    if self.aufgegeben.iter().any(|&(von, bis)| (von..bis).contains(&seq)) {
+                        self.nach_aufgabe += 1;
+                    }
                     return;
                 }
                 // Grosser Vorwaertssprung: der Sender hat neu begonnen.
@@ -222,6 +245,7 @@ impl JitterBuffer {
                     if oldest > next {
                         let missing = oldest - next;
                         self.lost += missing;
+                        self.aufgabe_merken(next, oldest);
                         // Aufaddieren, nicht ueberschreiben: laeuft der Puffer
                         // zweimal zwischen zwei `poll`-Durchgaengen ueber, ginge
                         // die erste Zahl sonst verloren und `lost` und die
@@ -262,9 +286,20 @@ impl JitterBuffer {
 
             let missing = first - next;
             self.lost += missing;
+            self.aufgabe_merken(next, first);
             self.next = Some(first);
             out.push(Release::Gap { missing });
         }
+    }
+
+    /// Eine aufgegebene Luecke `[von, bis)` fuer `nach_aufgabe` merken. Der
+    /// Resync-Zweig in `push` merkt sich nichts: dort ist die Nummernfolge
+    /// des alten Stroms gegenstandslos.
+    fn aufgabe_merken(&mut self, von: u64, bis: u64) {
+        if self.aufgegeben.len() == AUFGABE_GEDAECHTNIS {
+            self.aufgegeben.pop_front();
+        }
+        self.aufgegeben.push_back((von, bis));
     }
 }
 
@@ -419,6 +454,22 @@ mod tests {
         j.push(pkt(4), t0); // kommt nach der Freigabe
         assert!(seqs(&j.poll(t0)).is_empty());
         assert_eq!(j.reordered, 1);
+    }
+
+    /// Ein Paket, dessen Luecke schon gemeldet war, zaehlt als „nach
+    /// Aufgabe"; die Kopie eines ausgelieferten Pakets nur als `reordered`.
+    #[test]
+    fn spaete_nachlieferung_nach_aufgabe_wird_erkannt() {
+        let t0 = Instant::now();
+        let mut j = JitterBuffer::new(Duration::from_millis(20));
+        j.push(pkt(1), t0);
+        j.push(pkt(3), t0);
+        j.poll(t0);
+        j.poll(t0 + Duration::from_millis(25)); // 2 aufgegeben
+        j.push(pkt(2), t0 + Duration::from_millis(40)); // Nachlieferung, zu spaet
+        j.push(pkt(1), t0 + Duration::from_millis(41)); // Kopie, laengst raus
+        assert_eq!(j.reordered, 2);
+        assert_eq!(j.nach_aufgabe, 1);
     }
 
     #[test]

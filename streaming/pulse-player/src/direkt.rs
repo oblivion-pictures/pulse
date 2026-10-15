@@ -108,7 +108,9 @@ fn zustand_als_text(zustand: RTCPeerConnectionState) -> &'static str {
 pub struct DirektSitzung {
     pc: Option<Arc<RTCPeerConnection>>,
     fec: Arc<crate::fec::Zaehler>,
-    nack_rtt: Arc<std::sync::atomic::AtomicU64>,
+    /// Zellen des NACK-Erzeugers; schon vor dem Aufbau da, damit die
+    /// Sitzung das Hoechstalter jederzeit eintragen kann.
+    nack: crate::nachforderung::NackZellen,
     /// Die ausgehandelte Nummer der Bildmarke aus der ANTWORT (s.
     /// [`crate::whep::bildmarke_id`]); 0 = nicht ausgehandelt. Bleibt vor der
     /// Antwort und ohne Marke null — dann urteilt die Sitzung ueber fehlende
@@ -130,7 +132,7 @@ impl DirektSitzung {
         Self {
             pc: None,
             fec: Arc::default(),
-            nack_rtt: Arc::default(),
+            nack: crate::nachforderung::NackZellen::default(),
             marken_id: 0,
             aushandelt: None,
             zuletzt: Arc::new(Mutex::new(None)),
@@ -154,8 +156,8 @@ impl DirektSitzung {
         // Fernsteuerung verdoppeln. Der Schnittstellen-Filter hält Loopback-
         // und virtuelle Adapter aus dem Gathering heraus (Begruendung am
         // doc-Kommentar von `schnittstelle_ok`).
-        let EmpfaengerBau { pc, fec, nack_rtt, .. } =
-            baue_empfaenger_pc(&tx, &[], |setting: &mut SettingEngine| {
+        let EmpfaengerBau { pc, fec, .. } =
+            baue_empfaenger_pc(&tx, &self.nack, &[], |setting: &mut SettingEngine| {
                 setting.set_interface_filter(Box::new(schnittstelle_ok));
             })
             .await?;
@@ -175,7 +177,6 @@ impl DirektSitzung {
         }
         self.pc = Some(pc);
         self.fec = fec;
-        self.nack_rtt = nack_rtt;
         self.melde("connecting");
         Ok(sdp)
     }
@@ -220,13 +221,10 @@ impl DirektSitzung {
         self.marken_id
     }
 
-    /// Zuletzt gemessene NACK-Antwortzeit in Millisekunden (s. die
-    /// `rtt_ms`-Doku am WHEP-Pendant); `None` vor dem Aufbau.
-    pub fn rtt_ms(&self) -> Option<u64> {
-        match self.nack_rtt.load(std::sync::atomic::Ordering::Relaxed) {
-            0 => None,
-            ms => Some(ms),
-        }
+    /// Die Zellen des NACK-Erzeugers (s. das WHEP-Pendant). Vor dem Aufbau
+    /// ungemessen.
+    pub fn nack(&self) -> &crate::nachforderung::NackZellen {
+        &self.nack
     }
 
     /// `(repariert, unreparierbar, verworfen, mehrfach_loch, zu_spaet)` der

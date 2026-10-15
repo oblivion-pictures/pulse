@@ -155,10 +155,9 @@ pub struct WhepSession {
     /// erreicht — s. [`crate::fec::Zaehler`]. Bleibt bei null, wenn FlexFEC
     /// aus ist; die Statistik zeigt dann drei Nullen und keine Luecke.
     fec: Arc<crate::fec::Zaehler>,
-    /// Sperrfrist des NACK-Erzeugers, in Millisekunden. Wird von
-    /// [`Self::sperre_nachfuehren`] an die gemessene Umlaufzeit angepasst.
-    /// Vom Erzeuger gemessene Antwortzeit; s. [`Self::rtt_ms`].
-    nack_rtt: Arc<std::sync::atomic::AtomicU64>,
+    /// Die Zellen des NACK-Erzeugers: gemessene Antwortzeit, Zahl der
+    /// Messungen, Hoechstalter (s. [`crate::nachforderung`]).
+    nack: crate::nachforderung::NackZellen,
     /// Die ausgehandelte Nummer der Bildmarke; 0 = nicht ausgehandelt.
     ///
     /// Steht schon beim Bau fest — sie kommt aus der SDP-Antwort, nicht aus
@@ -201,25 +200,12 @@ impl WhepSession {
         self.marken_id
     }
 
-    /// Die zuletzt gemessene Antwortzeit auf eigene Nachforderungen, in
-    /// Millisekunden — oder `None`, solange nichts nachgefordert wurde.
-    ///
-    /// Der NACK-Erzeuger misst sie selbst und leitet seine Sperrfrist daraus
-    /// ab (ein Drittel, begrenzt auf 5 bis 200 ms). Hier wird sie nur
-    /// abgeholt, damit sie in der Messakte steht: ohne sie ist nicht
-    /// nachvollziehbar, mit welcher Sperre ein Lauf gefahren ist.
-    ///
-    /// **Der naheliegende Weg ueber `get_stats()` funktioniert nicht** —
-    /// webrtc-rs deklariert `current_round_trip_time`, setzt es aber fest auf
-    /// 0.0 (`ice/src/agent/agent_stats.rs`) und berechnet es nirgends. Eine
-    /// erste Fassung dieser Kopplung las genau dieses Feld und war damit
-    /// wirkungslos; aufgefallen ist es erst, weil die Zahl in keiner Akte
-    /// auftauchte.
-    pub fn rtt_ms(&self) -> Option<u64> {
-        match self.nack_rtt.load(std::sync::atomic::Ordering::Relaxed) {
-            0 => None,
-            ms => Some(ms),
-        }
+    /// Die Zellen des NACK-Erzeugers dieser Verbindung. Die Antwortzeit wird
+    /// nur abgeholt, damit sie in der Messakte steht und die Fernsteuerung
+    /// die Puffergeduld daran ausrichten kann; die Sperrfrist leitet der
+    /// Erzeuger nur mit `PULSE_PLAYER_NACK_SPERRE_AUTO=1` selbst daraus ab.
+    pub fn nack(&self) -> &crate::nachforderung::NackZellen {
+        &self.nack
     }
 
     /// `(repariert, unreparierbar, verworfen, mehrfach_loch, zu_spaet)` der
@@ -295,23 +281,33 @@ fn nack_sperre_start() -> u64 {
 
 /// Soll die Sperre aus der gemessenen Antwortzeit abgeleitet werden?
 ///
-/// **Vorgabe NEIN — die Kopplung ist gebaut, aber sie traegt noch nicht.**
+/// **Vorgabe NEIN — die Kopplung ist gebaut, aber noch nicht nachgemessen.**
 /// Der Erzeuger misst die Zeit zwischen Anforderung und Ankunft selbst
 /// (`patches/0002-...`), und die Messung ist in drei Anlaeufen um den Faktor
 /// acht zu klein geblieben: 7 ms statt der tatsaechlichen 59. Die Sperre fiel
 /// damit auf ihre Untergrenze und war wirkungslos (6,3 Kopien je Paket, also
 /// der Stand vor dem Fix).
 ///
-/// Zwei Ursachen sind gefunden und behoben — ein Mittelwert, den die vielen
-/// UMSORTIERTEN Pakete nach unten zogen (jetzt abklingendes Maximum), und ein
+/// Drei Ursachen sind gefunden. Zwei waren schon behoben — ein Mittelwert,
+/// den kleine Treffer nach unten zogen (jetzt abklingendes Maximum), und ein
 /// Aufraeumfenster, das an die Sperre gekoppelt war und echte Antworten
-/// vergass, bevor sie eintrafen. Beide reichen nicht: der gemessene Wert
-/// bleibt bei 7 ms. Die dritte Ursache ist offen.
+/// vergass, bevor sie eintrafen. Die dritte (2026-10-15, aus dem Code
+/// gefolgert): jede Wiederholung ueberschrieb den Zeitpunkt der Anforderung,
+/// gemessen wurde also ab der LETZTEN statt der ersten. Bei 20 ms Sperre kann
+/// das kaum ueber 20 ms ergeben, gleich wie lang die Strecke ist. Jetzt misst
+/// der Erzeuger ab der ersten Anforderung — **behoben, aber noch nicht
+/// gemessen.** Ob `rtt_ms` damit die echte Umlaufzeit trifft, zeigt erst ein
+/// Lauf ueber eine Strecke mit bekannter Umlaufzeit.
+///
+/// Seit derselben Aenderung gibt der Erzeuger eine Luecke nach dem
+/// Hoechstalter auf (= Puffergeduld, [`crate::nachforderung`]); eine Antwort
+/// danach geht nicht mehr in die Messung. Auf einer Strecke, deren Umlaufzeit
+/// ueber der Geduld liegt, misst er also keine echte Nachlieferung mehr.
 ///
 /// Bis dahin gilt der feste Wert aus [`nack_sperre_start`], der GEMESSEN
 /// funktioniert (Kennlinie im Doc-Kommentar von [`sperre_aus_rtt`]).
-/// `PULSE_PLAYER_NACK_SPERRE_AUTO=1` schaltet die Ableitung zum Weitersuchen
-/// ein; `rtt_ms` in der Statistik zeigt dabei, was der Erzeuger misst.
+/// `PULSE_PLAYER_NACK_SPERRE_AUTO=1` schaltet die Ableitung ein; `rtt_ms` in
+/// der Statistik zeigt dabei, was der Erzeuger misst.
 fn nack_sperre_gekoppelt() -> bool {
     std::env::var("PULSE_PLAYER_NACK_SPERRE_AUTO").as_deref() == Ok("1")
 }
@@ -450,7 +446,7 @@ fn srtp_fenster_fuer_nachlieferung() -> SettingEngine {
 fn interceptors_mit_zuegigem_nack(
     media: &mut MediaEngine,
     sperre: &Arc<std::sync::atomic::AtomicU64>,
-    rtt: &Arc<std::sync::atomic::AtomicU64>,
+    nack: &crate::nachforderung::NackZellen,
 ) -> Result<Registry> {
     for parameter in ["", "pli"] {
         media.register_feedback(
@@ -482,7 +478,9 @@ fn interceptors_mit_zuegigem_nack(
         Generator::builder()
             .with_interval(nack_intervall())
             .with_pulse_resend_delay(sperre.clone())
-            .with_pulse_rtt_cell(rtt.clone())
+            .with_pulse_rtt_cell(nack.rtt_ms.clone())
+            .with_pulse_rtt_proben(nack.proben.clone())
+            .with_pulse_hoechstalter(nack.hoechstalter_ms.clone())
             .with_pulse_auto(nack_sperre_gekoppelt()),
     ));
     registry = configure_rtcp_reports(registry);
@@ -493,7 +491,6 @@ fn interceptors_mit_zuegigem_nack(
 pub(crate) struct EmpfaengerBau {
     pub pc: Arc<RTCPeerConnection>,
     pub fec: Arc<crate::fec::Zaehler>,
-    pub nack_rtt: Arc<std::sync::atomic::AtomicU64>,
 }
 
 /// Baut die EMPFAENGERSEITE einer WebRTC-Sitzung — MediaEngine, Interceptors,
@@ -514,6 +511,7 @@ pub(crate) struct EmpfaengerBau {
 /// Sidecar wird an genau diese Reihenfolge gebaut.
 pub(crate) async fn baue_empfaenger_pc(
     tx: &mpsc::Sender<RtpArrival>,
+    nack: &crate::nachforderung::NackZellen,
     extra_ice: &[String],
     setting_anpassen: impl FnOnce(&mut SettingEngine),
 ) -> Result<EmpfaengerBau> {
@@ -558,8 +556,7 @@ pub(crate) async fn baue_empfaenger_pc(
         flexfec_anbieten(&mut media)?;
     }
     let nack_sperre = Arc::new(std::sync::atomic::AtomicU64::new(nack_sperre_start()));
-    let nack_rtt = Arc::new(std::sync::atomic::AtomicU64::new(0));
-    let registry = interceptors_mit_zuegigem_nack(&mut media, &nack_sperre, &nack_rtt)?;
+    let registry = interceptors_mit_zuegigem_nack(&mut media, &nack_sperre, nack)?;
     let mut setting = srtp_fenster_fuer_nachlieferung();
     setting_anpassen(&mut setting);
     let api = APIBuilder::new()
@@ -626,7 +623,7 @@ pub(crate) async fn baue_empfaenger_pc(
         })
     }));
 
-    Ok(EmpfaengerBau { pc, fec: fec_zaehler, nack_rtt })
+    Ok(EmpfaengerBau { pc, fec: fec_zaehler })
 }
 
 /// Baut eine recvonly-WHEP-Sitzung her und schiebt fertige Frames in `tx`.
@@ -639,8 +636,9 @@ pub async fn connect(
     extra_ice: &[String],
     tx: mpsc::Sender<RtpArrival>,
 ) -> Result<WhepSession> {
-    let EmpfaengerBau { pc, fec: fec_zaehler, nack_rtt, .. } =
-        baue_empfaenger_pc(&tx, extra_ice, |_| {}).await?;
+    let nack = crate::nachforderung::NackZellen::default();
+    let EmpfaengerBau { pc, fec: fec_zaehler, .. } =
+        baue_empfaenger_pc(&tx, &nack, extra_ice, |_| {}).await?;
     // Vor dem Aushandeln: sonst fehlen genau die Wechsel des Aufbaus.
     crate::abriss::zustaende_melden(&pc);
 
@@ -655,7 +653,7 @@ pub async fn connect(
             resource_url,
             http,
             fec: fec_zaehler,
-            nack_rtt,
+            nack,
             marken_id,
         }),
         Err(e) => {

@@ -1,8 +1,8 @@
 diff --git a/interceptor/src/nack/generator/generator_stream.rs b/interceptor/src/nack/generator/generator_stream.rs
-index 8cd5a10..a5934dd 100644
+index 8cd5a10..3a114c7 100644
 --- a/interceptor/src/nack/generator/generator_stream.rs
 +++ b/interceptor/src/nack/generator/generator_stream.rs
-@@ -121,16 +121,35 @@ impl GeneratorStreamInternal {
+@@ -121,16 +121,37 @@ impl GeneratorStreamInternal {
      }
  }
  
@@ -10,13 +10,15 @@ index 8cd5a10..a5934dd 100644
 +/// Nachforderungen zu messen. Siehe `mod.rs`.
 +pub(super) struct PulseRtt {
 +    pub(super) ssrc: u32,
-+    pub(super) gefragt: Arc<tokio::sync::Mutex<std::collections::HashMap<(u32, u16), std::time::Instant>>>,
++    pub(super) gefragt: PulseGefragt,
 +    /// Schneller Vorabtest: ist ueberhaupt etwas offen? Ohne ihn kostete die
 +    /// Messung bei JEDEM Paket eine Sperre, auch wenn nichts nachgefordert
 +    /// wurde — und das ist der Normalfall.
 +    pub(super) offen: Arc<std::sync::atomic::AtomicBool>,
-+    /// Gleitender Mittelwert der Antwortzeit in Millisekunden.
++    /// Abklingendes Maximum der Antwortzeit in Millisekunden (s. `read`).
 +    pub(super) rtt_ms: Arc<std::sync::atomic::AtomicU64>,
++    /// Wie viele Messungen in `rtt_ms` eingegangen sind.
++    pub(super) proben: Arc<std::sync::atomic::AtomicU64>,
 +}
 +
  pub(super) struct GeneratorStream {
@@ -39,60 +41,101 @@ index 8cd5a10..a5934dd 100644
              internal: Mutex::new(GeneratorStreamInternal::new(log2_size_minus_6)),
          }
      }
-@@ -157,6 +176,51 @@ impl RTPReader for GeneratorStream {
+@@ -157,6 +178,69 @@ impl RTPReader for GeneratorStream {
      ) -> Result<(rtp::packet::Packet, Attributes)> {
          let (pkt, attr) = self.parent_rtp_reader.read(buf, a).await?;
  
 +        // PULSE: Antwortzeit auf eigene Nachforderungen messen.
 +        //
 +        // Der Erzeuger weiss, WANN er gefragt hat; hier kommt das Paket an.
-+        // Die Differenz ist genau die Groesse, an der die Sperrfrist haengen
-+        // soll — und sie ist besser als die ICE-Umlaufzeit, weil die
-+        // Verarbeitungszeit der Gegenseite mit drinsteckt. (webrtc-rs meldet
-+        // ohnehin keine: `current_round_trip_time` steht dort fest auf 0.0.)
++        // Die Differenz ist die Groesse, an der Sperrfrist und Puffergeduld
++        // haengen sollen — sie enthaelt die Verarbeitungszeit der Gegenseite.
++        // (Eine ICE-Umlaufzeit liefert webrtc-rs ohnehin nicht:
++        // `current_round_trip_time` steht dort fest auf 0.0.)
++        //
++        // **Gemessen wird ab der ERSTEN Anforderung** (`PulseAnfrage::erste`).
++        // Bis 2026-10-15 ueberschrieb jede Wiederholung den Zeitpunkt; gemessen
++        // wurde damit die Zeit seit der LETZTEN Anforderung, und die liegt bei
++        // 20 ms Sperre nie weit ueber 20 ms, egal wie lang die Strecke ist (aus
++        // dem Code gefolgert; dass das die frueher gemessenen 7 statt 59 ms
++        // vollstaendig erklaert, ist vermutet, nicht nachgemessen).
++        // Ging die erste Anforderung selbst verloren, misst eine Antwort auf
++        // eine spaetere Wiederholung jetzt Umlaufzeit PLUS Sperrfrist — eine
++        // Ueberschaetzung, die das Maximum unten durchreicht. Fuer die
++        // Puffergeduld ist das die sichere Richtung.
++        //
++        // Aufgegebene Luecken (s. `mod.rs`, Hoechstalter) stehen nicht mehr in
++        // der Karte; ein danach eintreffendes Paket geht nicht in die Messung.
 +        if self.pulse_rtt.offen.load(std::sync::atomic::Ordering::Relaxed) {
 +            let schluessel = (self.pulse_rtt.ssrc, pkt.header.sequence_number);
 +            let gemessen = {
 +                let mut offen = self.pulse_rtt.gefragt.lock().await;
-+                offen.remove(&schluessel).map(|t| t.elapsed())
++                offen.remove(&schluessel).map(|a| a.erste.elapsed())
 +            };
 +            if let Some(dauer) = gemessen {
 +                // ABKLINGENDES MAXIMUM, kein Mittelwert.
 +                //
-+                // **Ein Mittelwert misst hier das Falsche.** Die meisten
-+                // Treffer sind gar keine Antworten, sondern nur UMSORTIERTE
-+                // Pakete: die Anforderung ging gerade erst hinaus, das Paket
-+                // war ohnehin schon unterwegs und trifft ein bis zwei
-+                // Millisekunden spaeter ein. Bei der ersten Fassung dominierten
-+                // diese Treffer, der Mittelwert lag bei 2 ms statt der echten
-+                // 59 — die Sperre fiel auf ihre Untergrenze und war wirkungslos
-+                // (6,3 Kopien je Paket, also der Stand vor dem Fix).
++                // Nicht jeder Treffer ist eine Antwort: der Erzeuger fordert
++                // eine Luecke an, sobald ein spaeteres Paket da ist (ohne
++                // `skip_last_n`). Ein bloss umsortiertes Paket, das ein bis zwei
++                // Millisekunden spaeter ohnehin eintrifft, ergibt dann eine
++                // winzige Messung. Ein Mittelwert wuerde davon nach unten
++                // gezogen, das Maximum nicht: die echten Nachlieferungen sind
++                // die LANGSAMEN Treffer. (Die erste Fassung mittelte und kam auf
++                // 2 ms statt 59 — wie viel davon Umsortierung und wie viel der
++                // oben beschriebene Bezug auf die letzte Anforderung war, ist
++                // nicht getrennt gemessen.)
 +                //
-+                // Das Maximum ist unempfindlich dagegen: die echten
-+                // Nachlieferungen sind die LANGSAMEN Treffer. Damit es einer
-+                // besser gewordenen Strecke folgt, sinkt es langsam ab —
-+                // gebremst genug, dass ein Schwung Umsortierungen es nicht
-+                // herunterzieht.
++                // Damit das Maximum einer besser gewordenen Strecke folgt, sinkt
++                // es je kleinerer Messung um 1/64 — nach 44 kleineren Messungen
++                // ist es halbiert. Wie lange das dauert, haengt allein davon ab,
++                // wie oft nachgefordert wird; eine lange Folge reiner
++                // Umsortierungen ohne echte Nachlieferung zieht es also doch
++                // herunter.
 +                let neu = dauer.as_millis() as u64;
 +                let alt = self.pulse_rtt.rtt_ms.load(std::sync::atomic::Ordering::Relaxed);
 +                let gehalten = if neu >= alt {
 +                    neu
 +                } else {
-+                    // 63/64 je Messung: bei rund 400 Paketen je Sekunde ist die
-+                    // Haelfte nach gut einer Sekunde abgebaut.
 +                    alt - (alt / 64).max(1)
 +                };
 +                self.pulse_rtt
 +                    .rtt_ms
 +                    .store(gehalten, std::sync::atomic::Ordering::Relaxed);
++                self.pulse_rtt
++                    .proben
++                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +            }
 +        }
 +
          self.add(pkt.header.sequence_number);
  
          Ok((pkt, attr))
+@@ -167,6 +251,22 @@ impl RTPReader for GeneratorStream {
+ mod test {
+     use super::*;
+ 
++    /// PULSE: das Aufgeben in `mod.rs` traegt eine fehlende Nummer als
++    /// empfangen ein. Danach darf sie nicht mehr als fehlend gelten — sonst
++    /// ginge sie im naechsten Takt als neue Luecke hinaus.
++    #[test]
++    fn pulse_nachgetragene_nummer_fehlt_nicht_mehr() {
++        let mut rl = GeneratorStreamInternal::new(0);
++        for seq in [10u16, 11, 13, 15] {
++            rl.add(seq);
++        }
++        assert_eq!(rl.missing_seq_numbers(0), vec![12, 14]);
++        rl.add(14);
++        assert_eq!(rl.missing_seq_numbers(0), vec![12]);
++        rl.add(12);
++        assert!(rl.missing_seq_numbers(0).is_empty());
++    }
++
+     #[test]
+     fn test_generator_stream() -> Result<()> {
+         let tests: Vec<u16> = vec![
 diff --git a/interceptor/src/nack/generator/mod.rs b/interceptor/src/nack/generator/mod.rs
-index 16b6658..81fcb90 100644
+index 16b6658..401518b 100644
 --- a/interceptor/src/nack/generator/mod.rs
 +++ b/interceptor/src/nack/generator/mod.rs
 @@ -3,8 +3,9 @@ mod generator_stream;
@@ -106,17 +149,19 @@ index 16b6658..81fcb90 100644
  
  use async_trait::async_trait;
  use generator_stream::GeneratorStream;
-@@ -27,6 +28,9 @@ pub struct GeneratorBuilder {
+@@ -27,6 +28,11 @@ pub struct GeneratorBuilder {
      log2_size_minus_6: Option<u8>,
      skip_last_n: Option<u16>,
      interval: Option<Duration>,
 +    pulse_resend_delay: Option<Arc<AtomicU64>>,
 +    pulse_rtt_ms: Option<Arc<AtomicU64>>,
++    pulse_rtt_proben: Option<Arc<AtomicU64>>,
++    pulse_hoechstalter: Option<Arc<AtomicU64>>,
 +    pulse_auto: Option<bool>,
  }
  
  impl GeneratorBuilder {
-@@ -49,6 +53,63 @@ impl GeneratorBuilder {
+@@ -49,6 +55,88 @@ impl GeneratorBuilder {
          self.interval = Some(interval);
          self
      }
@@ -141,18 +186,17 @@ index 16b6658..81fcb90 100644
 +    /// nachgefordert wird.
 +    ///
 +    /// **Die ERSTE Anforderung verzoegert das nicht** — nur die Wiederholung.
-+    /// Der sinnvolle Wert ist etwa eine Umlaufzeit; `Duration::ZERO` schaltet
-+    /// die Sperre ab und stellt das urspruengliche Verhalten wieder her.
 +    /// Der Wert wird bei JEDEM Takt frisch gelesen, nicht einmal beim Bauen:
 +    /// so kann der Aufrufer ihn an die gemessene Umlaufzeit koppeln, ohne den
-+    /// Interceptor neu aufzusetzen. `0` schaltet die Sperre ab.
++    /// Interceptor neu aufzusetzen. `0` schaltet die Sperre ab; das
++    /// Hoechstalter (`with_pulse_hoechstalter`) gilt davon unabhaengig.
 +    pub fn with_pulse_resend_delay(mut self, delay_ms: Arc<AtomicU64>) -> GeneratorBuilder {
 +        self.pulse_resend_delay = Some(delay_ms);
 +        self
 +    }
 +
 +    /// PULSE: Zelle fuer die SELBST gemessene Antwortzeit auf Nachforderungen,
-+    /// in Millisekunden, gleitend gemittelt.
++    /// in Millisekunden, als abklingendes Maximum (s. `generator_stream.rs`).
 +    ///
 +    /// Der Erzeuger misst sie im Lesepfad (`generator_stream.rs`): er weiss,
 +    /// wann er gefragt hat, und sieht das Paket ankommen. Die ICE-Umlaufzeit
@@ -163,6 +207,32 @@ index 16b6658..81fcb90 100644
 +    /// leitet der Erzeuger selbst daraus ab.
 +    pub fn with_pulse_rtt_cell(mut self, rtt_ms: Arc<AtomicU64>) -> GeneratorBuilder {
 +        self.pulse_rtt_ms = Some(rtt_ms);
++        self
++    }
++
++    /// PULSE: Zelle, die mitzaehlt, wie viele Messungen in die Antwortzeit
++    /// eingegangen sind. Damit kann der Aufrufer eine Messung aus einer
++    /// einzigen Probe von einer belastbaren unterscheiden.
++    pub fn with_pulse_rtt_proben(mut self, proben: Arc<AtomicU64>) -> GeneratorBuilder {
++        self.pulse_rtt_proben = Some(proben);
++        self
++    }
++
++    /// PULSE: Hoechstalter einer Nachforderung in Millisekunden, gerechnet ab
++    /// der ERSTEN Anforderung. Ist es ueberschritten, wird die Sequenznummer
++    /// nicht mehr angefordert, sondern aufgegeben.
++    ///
++    /// **Ohne Grenze** fordert der Erzeuger eine Luecke an, solange sie in
++    /// seinem Fenster steht (8192 Pakete, bei rund 400 Paketen je Sekunde
++    /// etwa 20 s) — alle `sperre` Millisekunden erneut, auch wenn der
++    /// Empfaenger sie laengst aufgegeben oder die Paritaet sie hinter diesem
++    /// Interceptor schon repariert hat. Eine Antwort, die erst nach der
++    /// Geduld des Jitter-Puffers eintrifft, nuetzt nichts mehr.
++    ///
++    /// Wie die Sperre bei JEDEM Takt frisch gelesen, damit der Aufrufer sie an
++    /// die laufende Puffergeduld koppeln kann. `0` = keine Grenze.
++    pub fn with_pulse_hoechstalter(mut self, ms: Arc<AtomicU64>) -> GeneratorBuilder {
++        self.pulse_hoechstalter = Some(ms);
 +        self
 +    }
 +
@@ -180,7 +250,7 @@ index 16b6658..81fcb90 100644
  }
  
  impl InterceptorBuilder for GeneratorBuilder {
-@@ -64,6 +125,18 @@ impl InterceptorBuilder for GeneratorBuilder {
+@@ -64,6 +152,26 @@ impl InterceptorBuilder for GeneratorBuilder {
                      Duration::from_millis(100)
                  },
  
@@ -195,11 +265,19 @@ index 16b6658..81fcb90 100644
 +                    .pulse_rtt_ms
 +                    .clone()
 +                    .unwrap_or_else(|| Arc::new(AtomicU64::new(0))),
++                pulse_rtt_proben: self
++                    .pulse_rtt_proben
++                    .clone()
++                    .unwrap_or_else(|| Arc::new(AtomicU64::new(0))),
++                pulse_hoechstalter: self
++                    .pulse_hoechstalter
++                    .clone()
++                    .unwrap_or_else(|| Arc::new(AtomicU64::new(0))),
 +
                  streams: Mutex::new(HashMap::new()),
                  close_rx: Mutex::new(Some(close_rx)),
              }),
-@@ -78,6 +151,20 @@ struct GeneratorInternal {
+@@ -78,6 +186,25 @@ struct GeneratorInternal {
      log2_size_minus_6: u8,
      skip_last_n: u16,
      interval: Duration,
@@ -207,20 +285,84 @@ index 16b6658..81fcb90 100644
 +    /// `pulse_rtt_ms` abgeleitet, sobald eine Messung vorliegt.
 +    /// S. `GeneratorBuilder::with_pulse_resend_delay`.
 +    pulse_resend_delay: Arc<AtomicU64>,
-+    /// PULSE: wann jede Sequenznummer angefordert wurde. Liegt hier statt in
-+    /// der Sendeschleife, weil der LESEPFAD sie ebenfalls braucht — dort wird
-+    /// die Antwortzeit gemessen (`generator_stream.rs`).
-+    pulse_gefragt: Arc<Mutex<HashMap<(u32, u16), Instant>>>,
++    /// PULSE: wann jede offene Sequenznummer angefordert wurde. Liegt hier
++    /// statt in der Sendeschleife, weil der LESEPFAD sie ebenfalls braucht —
++    /// dort wird die Antwortzeit gemessen (`generator_stream.rs`).
++    pulse_gefragt: PulseGefragt,
 +    /// Steht ueberhaupt etwas offen? Schneller Vorabtest fuer den Lesepfad.
 +    pulse_offen: Arc<std::sync::atomic::AtomicBool>,
-+    /// Gemessene Antwortzeit auf eigene Nachforderungen, gleitend gemittelt.
++    /// Gemessene Antwortzeit auf eigene Nachforderungen, abklingendes Maximum.
 +    pulse_rtt_ms: Arc<AtomicU64>,
++    /// Anzahl der Messungen in `pulse_rtt_ms`.
++    pulse_rtt_proben: Arc<AtomicU64>,
++    /// Hoechstalter einer Nachforderung in ms, 0 = keine Grenze.
++    /// S. `GeneratorBuilder::with_pulse_hoechstalter`.
++    pulse_hoechstalter: Arc<AtomicU64>,
 +    /// Sperrfrist aus der Messung ableiten? S. `with_pulse_auto`.
 +    pulse_auto: bool,
  
      streams: Mutex<HashMap<u32, Arc<GeneratorStream>>>,
      close_rx: Mutex<Option<mpsc::Receiver<()>>>,
-@@ -121,12 +208,48 @@ impl Generator {
+@@ -91,6 +218,50 @@ pub struct Generator {
+     pub(crate) close_tx: Mutex<Option<mpsc::Sender<()>>>,
+ }
+ 
++/// PULSE: Stand der Nachforderung einer Sequenznummer.
++pub(super) struct PulseAnfrage {
++    /// Erste Anforderung: Bezug der Antwortzeit und des Hoechstalters.
++    pub(super) erste: Instant,
++    /// Letzte Anforderung: Bezug der Sperrfrist.
++    letzte: Instant,
++    /// Takt, in dem die Sequenznummer zuletzt noch fehlte (Aufraeumen).
++    takt: u64,
++}
++
++/// PULSE: offene Nachforderungen je `(ssrc, seq)`.
++pub(super) type PulseGefragt = Arc<Mutex<HashMap<(u32, u16), PulseAnfrage>>>;
++
++/// PULSE: was mit einer fehlenden Sequenznummer in diesem Takt geschieht.
++#[derive(Debug, PartialEq, Eq)]
++enum PulseSchritt {
++    /// Anfordern — erstmals oder nach Ablauf der Sperrfrist.
++    Anfordern,
++    /// Die letzte Anforderung ist juenger als die Sperrfrist.
++    Warten,
++    /// Die erste Anforderung ist aelter als das Hoechstalter.
++    Aufgeben,
++}
++
++/// PULSE: die Entscheidung je Sequenznummer, ohne Ein-/Ausgabe.
++/// `sperre` oder `hoechstalter` gleich null schalten die jeweilige Regel ab.
++fn pulse_schritt(
++    anfrage: Option<&PulseAnfrage>,
++    jetzt: Instant,
++    sperre: Duration,
++    hoechstalter: Duration,
++) -> PulseSchritt {
++    let Some(a) = anfrage else {
++        return PulseSchritt::Anfordern;
++    };
++    if !hoechstalter.is_zero() && jetzt.duration_since(a.erste) >= hoechstalter {
++        PulseSchritt::Aufgeben
++    } else if jetzt.duration_since(a.letzte) >= sperre {
++        PulseSchritt::Anfordern
++    } else {
++        PulseSchritt::Warten
++    }
++}
++
+ impl Generator {
+     /// builder returns a new GeneratorBuilder.
+     pub fn builder() -> GeneratorBuilder {
+@@ -115,24 +286,112 @@ impl Generator {
+             .ok_or(Error::ErrInvalidCloseRx)?;
+ 
+         let sender_ssrc = rand::random::<u32>();
++        // PULSE: laufende Taktnummer, markiert die noch offenen Eintraege.
++        let mut pulse_takt: u64 = 0;
+         loop {
+             tokio::select! {
+                 _ = ticker.tick() =>{
                      let nacks = {
                          let mut nacks = vec![];
                          let streams = internal.streams.lock().await;
@@ -240,10 +382,13 @@ index 16b6658..81fcb90 100644
 +                        let sperre = Duration::from_millis(
 +                            internal.pulse_resend_delay.load(Ordering::Relaxed),
 +                        );
++                        let hoechstalter = Duration::from_millis(
++                            internal.pulse_hoechstalter.load(Ordering::Relaxed),
++                        );
++                        pulse_takt = pulse_takt.wrapping_add(1);
 +                        let mut pulse_gefragt = internal.pulse_gefragt.lock().await;
                          for (ssrc, stream) in streams.iter() {
--                            let missing = stream.missing_seq_numbers(internal.skip_last_n);
-+                            let mut missing = stream.missing_seq_numbers(internal.skip_last_n);
+                             let missing = stream.missing_seq_numbers(internal.skip_last_n);
                              if missing.is_empty(){
                                  continue;
                              }
@@ -251,58 +396,79 @@ index 16b6658..81fcb90 100644
 +                            // PULSE-FIX: was gerade erst angefordert wurde,
 +                            // nicht erneut anfordern — die Antwort ist noch
 +                            // unterwegs. Nur Wiederholungen sind betroffen;
-+                            // eine neue Luecke geht sofort hinaus.
-+                            if !sperre.is_zero() {
-+                                missing.retain(|seq| {
-+                                    match pulse_gefragt.get(&(*ssrc, *seq)) {
-+                                        None => true,
-+                                        Some(t) => jetzt.duration_since(*t) >= sperre,
++                            // eine neue Luecke geht sofort hinaus. Und was
++                            // seit dem Hoechstalter offen ist, aufgeben.
++                            let mut anfordern = Vec::with_capacity(missing.len());
++                            for seq in missing {
++                                let schluessel = (*ssrc, seq);
++                                match pulse_schritt(
++                                    pulse_gefragt.get(&schluessel),
++                                    jetzt,
++                                    sperre,
++                                    hoechstalter,
++                                ) {
++                                    PulseSchritt::Anfordern => {
++                                        // `erste` bleibt beim Wiederholen
++                                        // stehen — das ist der Bezug der
++                                        // Messung (s. `generator_stream.rs`).
++                                        let a = pulse_gefragt.entry(schluessel).or_insert(
++                                            PulseAnfrage { erste: jetzt, letzte: jetzt, takt: 0 },
++                                        );
++                                        a.letzte = jetzt;
++                                        a.takt = pulse_takt;
++                                        anfordern.push(seq);
 +                                    }
-+                                });
-+                                if missing.is_empty(){
-+                                    continue;
++                                    PulseSchritt::Warten => {
++                                        if let Some(a) = pulse_gefragt.get_mut(&schluessel) {
++                                            a.takt = pulse_takt;
++                                        }
++                                    }
++                                    PulseSchritt::Aufgeben => {
++                                        // Als empfangen eintragen, sonst
++                                        // meldet `missing_seq_numbers` die
++                                        // Luecke im naechsten Takt wieder,
++                                        // und ohne Eintrag hier ginge sie als
++                                        // NEUE Luecke hinaus — alle
++                                        // Hoechstalter Millisekunden von vorn.
++                                        // Das Bitfeld dient nur dem Erzeuger.
++                                        pulse_gefragt.remove(&schluessel);
++                                        stream.add(seq);
++                                    }
 +                                }
-+                                for seq in &missing {
-+                                    pulse_gefragt.insert((*ssrc, *seq), jetzt);
-+                                }
++                            }
++                            if anfordern.is_empty(){
++                                continue;
 +                            }
 +
                              nacks.push(TransportLayerNack{
                                  sender_ssrc,
                                  media_ssrc: *ssrc,
-@@ -136,6 +259,31 @@ impl Generator {
-                         nacks
-                     };
- 
-+                    // PULSE: Gedaechtnis beschneiden, sonst waechst es mit
-+                    // jedem verlorenen Paket der Sitzung weiter.
-+                    {
-+                        let mut pulse_gefragt = internal.pulse_gefragt.lock().await;
-+                        // FESTES Aufraeumfenster, NICHT an die Sperre gekoppelt.
+-                                nacks:  nack_pairs_from_sequence_numbers(&missing),
++                                nacks:  nack_pairs_from_sequence_numbers(&anfordern),
+                             });
+                         }
++
++                        // PULSE: Gedaechtnis beschneiden. Behalten wird genau,
++                        // was in DIESEM Takt noch fehlte; alles andere ist
++                        // angekommen, aufgegeben, aus dem Fenster gefallen
++                        // oder gehoert zu einem abgemeldeten Strom. Die Karte
++                        // ist damit durch das Fenster begrenzt, mit
++                        // Hoechstalter durch dieses.
 +                        //
-+                        // Eine erste Fassung nahm `sperre * 8`, und das ergab
-+                        // einen Teufelskreis: bei kleiner Sperre flog ein
-+                        // Eintrag nach 40 ms heraus, die echte Antwort traf
-+                        // aber erst nach 59 ms ein und fand ihn nicht mehr.
-+                        // Gemessen wurden dann nur noch UMSORTIERUNGEN (7 ms
-+                        // statt 59), die Sperre blieb auf ihrer Untergrenze,
-+                        // das Fenster blieb kurz — und der Fix war wirkungslos.
-+                        //
-+                        // Zwei Sekunden decken jede Antwort ab, die noch etwas
-+                        // nuetzen koennte (der Jitter-Puffer haelt 100 ms), und
-+                        // begrenzen die Karte trotzdem.
-+                        let jetzt = Instant::now();
-+                        pulse_gefragt
-+                            .retain(|_, t| jetzt.duration_since(*t) < Duration::from_secs(2));
++                        // Kein Aufraeumen nach ALTER: eine erste Fassung warf
++                        // Eintraege nach `sperre * 8` weg, die echte Antwort
++                        // traf erst danach ein und fand ihren Eintrag nicht
++                        // mehr. (Die spaetere feste Frist von 2 s hatte das
++                        // Problem nicht, liess aber eine Luecke danach als neue
++                        // erscheinen.)
++                        pulse_gefragt.retain(|_, a| a.takt == pulse_takt);
 +                        internal
 +                            .pulse_offen
 +                            .store(!pulse_gefragt.is_empty(), Ordering::Relaxed);
-+                    }
-+
-                     let a = Attributes::new();
-                     for nack in nacks{
-                         if let Err(err) = rtcp_writer.write(&[Box::new(nack)], &a).await{
-@@ -215,6 +363,12 @@ impl Interceptor for Generator {
+                         nacks
+                     };
+ 
+@@ -215,6 +474,13 @@ impl Interceptor for Generator {
          let stream = Arc::new(GeneratorStream::new(
              self.internal.log2_size_minus_6,
              reader,
@@ -311,7 +477,56 @@ index 16b6658..81fcb90 100644
 +                gefragt: Arc::clone(&self.internal.pulse_gefragt),
 +                offen: Arc::clone(&self.internal.pulse_offen),
 +                rtt_ms: Arc::clone(&self.internal.pulse_rtt_ms),
++                proben: Arc::clone(&self.internal.pulse_rtt_proben),
 +            },
          ));
          {
              let mut streams = self.internal.streams.lock().await;
+@@ -247,3 +513,47 @@ impl Interceptor for Generator {
+         Ok(())
+     }
+ }
++
++#[cfg(test)]
++mod pulse_test {
++    use super::*;
++
++    fn anfrage(erste: Instant, letzte: Instant) -> PulseAnfrage {
++        PulseAnfrage { erste, letzte, takt: 0 }
++    }
++
++    #[test]
++    fn pulse_neue_luecke_geht_sofort_hinaus() {
++        let t0 = Instant::now();
++        let ms = Duration::from_millis;
++        assert_eq!(pulse_schritt(None, t0, ms(20), ms(100)), PulseSchritt::Anfordern);
++    }
++
++    #[test]
++    fn pulse_sperre_misst_ab_der_letzten_anforderung() {
++        let t0 = Instant::now();
++        let ms = Duration::from_millis;
++        let a = anfrage(t0, t0 + ms(20));
++        assert_eq!(pulse_schritt(Some(&a), t0 + ms(30), ms(20), ms(100)), PulseSchritt::Warten);
++        assert_eq!(pulse_schritt(Some(&a), t0 + ms(40), ms(20), ms(100)), PulseSchritt::Anfordern);
++        // Sperre 0: jede Runde erneut, wie ohne Patch.
++        assert_eq!(pulse_schritt(Some(&a), t0 + ms(21), ms(0), ms(100)), PulseSchritt::Anfordern);
++    }
++
++    #[test]
++    fn pulse_hoechstalter_misst_ab_der_ersten_anforderung() {
++        let t0 = Instant::now();
++        let ms = Duration::from_millis;
++        // Zuerst bei 0, zuletzt bei 70 angefordert: bei 99 ist die Sperre um,
++        // bei 100 das Hoechstalter — gezaehlt ab der ERSTEN Anforderung, die
++        // Wiederholung setzt es nicht zurueck.
++        let a = anfrage(t0, t0 + ms(70));
++        assert_eq!(pulse_schritt(Some(&a), t0 + ms(99), ms(20), ms(100)), PulseSchritt::Anfordern);
++        assert_eq!(pulse_schritt(Some(&a), t0 + ms(100), ms(20), ms(100)), PulseSchritt::Aufgeben);
++        // Hoechstalter 0: keine Grenze.
++        assert_eq!(
++            pulse_schritt(Some(&a), t0 + Duration::from_secs(20), ms(20), ms(0)),
++            PulseSchritt::Anfordern
++        );
++    }
++}

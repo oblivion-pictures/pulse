@@ -1031,7 +1031,7 @@ impl App {
                 "Abstand {:.1}-{:.1} ms ({} zu spaet), ",
                 "Ankunft max {:.1} ms ({} ueber 5 ms), ",
                 "dekodieren {:.1}/{:.1} ms, Netz-bis-Schirm {:.1}/{:.1} ms, ",
-                "{} kbit/s, Paketverlust {}, Puffer {} Pakete, uebersprungen {}, ",
+                "{} kbit/s, Paketverlust {} (Ton {}), Puffer {} Pakete, uebersprungen {}, ",
                 // **Der Eimer, der bis zum 2026-08-07 fehlte.** Die Zeile nannte
                 // dekodierte und gezeichnete Bilder und zwei Verlustzaehler —
                 // aber nicht den groessten: nach einer Luecke gilt das Bild
@@ -1060,6 +1060,7 @@ impl App {
             session.phases.age_max_us_last as f64 / 1000.0,
             st.kbps.map_or_else(|| "?".to_string(), |v| v.to_string()),
             st.packets_lost,
+            st.packets_lost_ton,
             st.buffered_packets,
             st.frames_skipped,
             st.frames_dropped,
@@ -1073,6 +1074,7 @@ impl App {
         if let Some(line) = takt_zeile {
             eprintln!("pulse-player: Sitzung {id}{line}");
         }
+        eprintln!("pulse-player: Sitzung {id}: {}", st.nachforderung_zeile());
         // **Was der Sender wirklich schickt**, am Strom gemessen statt aus einer
         // Einstellung gelesen. Eigene Zeile aus demselben Grund wie die
         // Takt-Zeile: die grosse oben soll unveraendert bleiben, der Pruefstand
