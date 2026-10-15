@@ -67,7 +67,10 @@ use super::zug::ZugLage;
 /// kommt auch kein winit-Ereignis, das die Uhr neu stellt. Verfaellt der
 /// Merker zu frueh und der Nutzer zieht DANN los, laeuft der Zug im Compositor
 /// weiter, waehrend wir ihn nicht mehr verfolgen: seine Bewegungen gehen
-/// verloren und sein `Drop` ebenso.
+/// verloren und sein `Drop` ebenso. (Seit dem 2026-10-15 geht `start_drag`
+/// erst hinaus, wenn der Zeiger schon jenseits der Fensterkante ist, also
+/// mitten in einer Bewegung — „drueckt und ueberlegt" trifft seither nur noch
+/// den, der genau dort innehaelt. Die Frist bleibt trotzdem so lang.)
 ///
 /// **Verfallen heisst AUFGEBEN, nicht Beenden.** Ein Ende wuerde alles
 /// Gedrueckte freigeben — und wenn der Nutzer die Taste in diesem Moment
@@ -134,7 +137,9 @@ pub(super) struct Zustand {
     /// Deshalb daneben zwei weitere Felder — `bestaetigt` und, fuer die
     /// Zugehoerigkeit, [`Zustand::fremder_zug`].
     pub(super) eigener_zug: bool,
-    /// **Laeuft er wirklich?** Wird beim ersten `Enter` DIESES Zugs gesetzt.
+    /// **Laeuft er wirklich?** Wird beim ersten `Enter` DIESES Zugs gesetzt —
+    /// oder von [`draussen_angelaufen`], wenn der Compositor den Zeiger
+    /// ausserhalb jeder eigenen Flaeche uebernommen hat.
     /// Vorher ist alles, was winit noch an Zeigerereignissen liefert,
     /// mehrdeutig (es koennen Ereignisse sein, die der Compositor schon vor
     /// unserem `start_drag` abgeschickt hatte); danach ist ein
@@ -253,6 +258,46 @@ pub(super) fn zug_ereignis(zustand: &mut Zustand, ereignis: Zugereignis, jetzt: 
     }
 }
 
+/// Der angeforderte Zug hat den Zeiger uebernommen, **waehrend der Zeiger
+/// ueber keiner eigenen Flaeche steht** — der Fall, der seit dem
+/// 2026-10-15 der Normalfall ist: `start_drag` geht erst hinaus, wenn der
+/// Zeiger das Fenster mit gehaltenem Knopf schon VERLASSEN hat (s.
+/// `app::wayland_zug::rand`). Liegt dort die Luecke zwischen zwei Kacheln oder
+/// ein fremdes Fenster, kommt kein `Enter`, das den Zug bestaetigen koennte.
+///
+/// **Gleichgestellt wird er deshalb einem Zug, der eine eigene Flaeche betreten
+/// und gleich wieder verlassen hat**: bestaetigt, und das Ende `Unklar`. Ohne
+/// das bliebe ein dort losgelassener Zug unbestaetigt, und unbestaetigt gibt
+/// es weder den Beweisweg noch die [`super::ende::NOTFRIST`] — nur die
+/// [`ANLAUFFRIST`], und die gibt nichts frei: die Maustaste bliebe am fernen
+/// Rechner unten, bis der Nutzer das naechste Mal klickt. So greifen dieselben
+/// zwei Wege wie nach jedem `Leave` (ein spaeteres `Enter` hebt das `Unklar`
+/// auf; ein winit-Zeigerereignis oder die Notfrist beenden den Zug).
+///
+/// **Den Anlass liefert der Aufrufer**, nicht das Datengeraet: winits
+/// `CursorLeft` am Ursprungsfenster eines angeforderten, noch unbestaetigten
+/// Zugs. Waehrend der impliziten Ergreifung behaelt das Fenster den
+/// Zeigerfokus auch ausserhalb seiner Flaeche; ein `wl_pointer.leave` kommt
+/// erst, wenn der Compositor den Zeiger an den Zug uebergibt — gemessen am
+/// 2026-08-24 („mit dem Beginn des Zugs kam `wl_pointer.leave`", s.
+/// `app::wayland_zug`-Modulkopf) fuer einen Zug, der IN der Flaeche begann.
+/// Dass es beim Beginn ausserhalb genauso kommt, ist **gefolgert, nicht
+/// gemessen**.
+///
+/// Nur aus „angefordert, unbestaetigt, nicht fremd" heraus; `true` heisst
+/// „uebernommen". Ein bereits bestaetigter Zug (das `Enter` war schneller)
+/// bleibt unangetastet — ihm ein `Unklar` aufzudruecken hiesse, einen Zug, der
+/// gerade ueber einer eigenen Flaeche laeuft, nach der Notfrist zu beenden.
+pub(super) fn draussen_angelaufen(zustand: &mut Zustand, jetzt: Instant) -> bool {
+    if !zustand.eigener_zug || zustand.bestaetigt || zustand.fremder_zug {
+        return false;
+    }
+    zustand.bestaetigt = true;
+    zustand.angefordert_seit = None;
+    zustand.ende.verlassen(jetzt);
+    true
+}
+
 /// Ist der Zug zu Ende — und warum?
 ///
 /// **Nur [`Zugschluss::Beendet`] ist konsumierend** (wie das [`Zugende`]
@@ -297,8 +342,8 @@ fn anlauf_verfallen(zustand: &Zustand, jetzt: Instant) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        anlauf_verfallen, zug_ereignis, zugschluss, DruckNummer, Zugende, Zugereignis, Zugschluss,
-        Zustand, ANLAUFFRIST,
+        anlauf_verfallen, draussen_angelaufen, zug_ereignis, zugschluss, DruckNummer, Zugende,
+        Zugereignis, Zugschluss, Zustand, ANLAUFFRIST,
     };
     use std::time::{Duration, Instant};
     use wayland_backend::sys::client::ObjectId;
@@ -418,6 +463,73 @@ mod tests {
             Zustand { eigener_zug: true, angefordert_seit: Some(jetzt), ..Default::default() };
         zug_ereignis(&mut z, fremdes_enter(), jetzt);
         assert_eq!(z.angefordert_seit, Some(jetzt));
+    }
+
+    // ── draussen_angelaufen (Zug beginnt ausserhalb der Flaeche) ───────
+
+    /// Der Zug hat den Zeiger in der Luecke uebernommen: bestaetigt, Ende
+    /// `Unklar` — genau wie nach `Enter` + `Leave`.
+    #[test]
+    fn draussen_angelaufen_gleicht_einem_betreten_und_verlassen() {
+        let jetzt = Instant::now();
+        let mut z =
+            Zustand { eigener_zug: true, angefordert_seit: Some(jetzt), ..Default::default() };
+        assert!(draussen_angelaufen(&mut z, jetzt));
+        assert!(z.bestaetigt);
+        assert_eq!(z.angefordert_seit, None, "die Anlauf-Frist hat ihren Zweck erfuellt");
+        assert_eq!(z.ende, Zugende::Unklar(jetzt));
+    }
+
+    /// **Der Fall, fuer den es die Funktion gibt:** losgelassen in der Luecke,
+    /// danach meldet sich winit wieder — der Zug endet MIT Freigabe. Ohne die
+    /// Gleichstellung bliebe er unbestaetigt und verfiele nur (ohne Freigabe).
+    #[test]
+    fn draussen_losgelassen_endet_ueber_den_beweisweg() {
+        let jetzt = Instant::now();
+        let mut z = eigener();
+        assert!(draussen_angelaufen(&mut z, jetzt));
+        z.ende.griff_vorbei();
+        assert_eq!(zugschluss(&mut z, jetzt), Zugschluss::Beendet { notfrist: false });
+    }
+
+    /// Erreicht der Zeiger danach das Nachbarfenster, hebt dessen `Enter` das
+    /// `Unklar` auf — der Zug laeuft weiter, kein Ende.
+    #[test]
+    fn das_enter_des_nachbarn_hebt_das_draussen_wieder_auf() {
+        let jetzt = Instant::now();
+        let mut z = eigener();
+        assert!(draussen_angelaufen(&mut z, jetzt));
+        zug_ereignis(&mut z, eigenes_enter(), jetzt);
+        assert_eq!(z.ende, Zugende::Keins);
+        assert_eq!(zugschluss(&mut z, jetzt), Zugschluss::Offen);
+    }
+
+    /// War das `Enter` schneller (der Zeiger stand schon ueber dem Nachbarn),
+    /// darf kein `Unklar` nachkommen — sonst beendete die Notfrist einen Zug,
+    /// der gesund ueber einer eigenen Flaeche laeuft.
+    #[test]
+    fn ein_bestaetigter_zug_bleibt_vom_draussen_unberuehrt() {
+        let jetzt = Instant::now();
+        let mut z = eigener();
+        zug_ereignis(&mut z, eigenes_enter(), jetzt);
+        assert!(!draussen_angelaufen(&mut z, jetzt));
+        assert_eq!(z.ende, Zugende::Keins);
+    }
+
+    /// Ohne angeforderten Zug, oder waehrend ein fremder laeuft, bewegt ein
+    /// `CursorLeft` nichts.
+    #[test]
+    fn ohne_eigenen_oder_bei_fremdem_zug_kein_draussen() {
+        let jetzt = Instant::now();
+        let mut ohne = Zustand::default();
+        assert!(!draussen_angelaufen(&mut ohne, jetzt));
+        assert!(!ohne.bestaetigt);
+        assert_eq!(ohne.ende, Zugende::Keins);
+
+        let mut fremd = eigener();
+        zug_ereignis(&mut fremd, fremdes_enter(), jetzt);
+        assert!(!draussen_angelaufen(&mut fremd, jetzt));
+        assert!(!fremd.bestaetigt);
     }
 
     // ── DruckNummer (aus `mod.rs` mitgezogen, Review M-5) ───────────────

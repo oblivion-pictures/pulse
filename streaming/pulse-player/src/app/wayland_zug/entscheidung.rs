@@ -27,8 +27,9 @@
 //! * **Verfall** ([`Zugschluss::Verfallen`]) — die Anlauf-Frist.
 //! * **Abbruch** ([`App::wayland_zug_abbrechen`]) — Fokusverlust, Erfassung
 //!   aus, Fenster zu.
-//! * **Ein neuer Zugbeginn** — `App::wayland_zug_beginnen` raeumt zuerst ab,
-//!   dann faengt es an.
+//! * **Ein neuer Zugbeginn** — `App::wayland_zug_vormerken` (beim Druck) und
+//!   `wayland_zug_beginnen` (am Rand, s. [`super::rand`]) raeumen zuerst ab,
+//!   dann merken sie vor bzw. fangen an.
 //!
 //! **Der vierte kam erst in der fuenften Runde dazu, und sein Fehlen war der
 //! Beweis der These:** `zug_beginnen` setzte fuenf derselben sechs Felder ein
@@ -79,8 +80,9 @@ impl App {
     /// Drei Haelften, und das ist die vollstaendige Liste:
     /// 1. **Verbindung** — Merker, Bestaetigung, Zugehoerigkeit, Anlauf-Frist,
     ///    Ende, Zug-Lage (`Gastverbindung::zug_aufgeben`).
-    /// 2. **App** — welche Sitzung den Zug traegt, und der Melde-Merker fuer
-    ///    die nicht zuzuordnende Flaeche.
+    /// 2. **App** — welche Sitzung den Zug traegt, welche ihn nur vorgemerkt
+    ///    hat (s. [`super::rand`]), und der Melde-Merker fuer die nicht
+    ///    zuzuordnende Flaeche.
     /// 3. **Erfassung** — das Wayland-Ziel; und **nur bei `freigeben`** die
     ///    Hoch-Ereignisse fuer alles Gedrueckte (beides in
     ///    `Erfassung::zug_abbau`, mit eigenen Tests).
@@ -100,6 +102,7 @@ impl App {
             verbindung.zug_aufgeben();
         }
         self.wayland_zug.inner.ziel_fehler_gemeldet = false;
+        self.wayland_zug.inner.vorgemerkt = None;
         match abbauplan(freigeben, self.wayland_zug.inner.session.take()) {
             Abbauplan::Nichts => {}
             Abbauplan::Sitzung { id, freigeben } => {
@@ -153,14 +156,15 @@ impl App {
     /// `MouseInput`-Weg, der ihn gleich danach ordentlich loslaesst; eine
     /// Freigabe von hier gaebe ihn ein zweites Mal frei.
     ///
-    /// **Hier steht bewusst KEIN Log.** Dieser Zweig ist nicht der
-    /// Ausnahmefall, sondern der haeufigste ueberhaupt: ein gewoehnlicher KLICK
-    /// (druecken, loslassen, ohne zu bewegen) laeuft genau hier durch —
-    /// gemessen am 2026-08-24 beginnt ein Zug erst mit der ersten Bewegung NACH
-    /// dem `start_drag`, bis dahin behaelt winit den Zeigerfokus. Eine Meldung
-    /// „der Zug hat nicht gegriffen" waere bei jedem normalen Klick fachlich
-    /// falsch; der eine Fall, der wirklich ein Defekt waere, laesst sich von
-    /// hier aus nicht davon unterscheiden.
+    /// **Hier steht bewusst KEIN Log.** Ein Loslassen vor der Bestaetigung ist
+    /// kein Defekt: gemessen am 2026-08-24 uebernimmt der Compositor den Zeiger
+    /// erst mit der ersten Bewegung NACH dem `start_drag`, bis dahin behaelt
+    /// winit den Zeigerfokus. Bis zum 2026-10-15 lief deshalb jeder
+    /// gewoehnliche KLICK hier durch (`start_drag` ging beim Druck hinaus);
+    /// seither beginnt der Zug erst am Fensterrand ([`super::rand`]), und hier
+    /// landet nur noch ein Loslassen, das dem `start_drag` beim Compositor
+    /// zuvorkam. Auch das ist kein Fehler, und der eine Fall, der wirklich
+    /// einer waere, laesst sich von hier aus nicht davon unterscheiden.
     ///
     /// **Muss VOR `Erfassung::on_window_event` laufen** (Aufrufer:
     /// `App::window_event`). Andernfalls stuende ein Druck, der einen neuen Zug
@@ -177,8 +181,8 @@ impl App {
         }
         // **Bei einem DRUCK zuerst dispatchen und einen offenen Schluss
         // anwenden** (Review C-A) — unabhaengig davon, ob wir gerade einen Zug
-        // fuehren. Das gehoerte bis zur dritten Runde in
-        // `wayland_zug_beginnen`, und das laeuft NACH
+        // fuehren. Das gehoerte bis zur dritten Runde in den Druck-Zweig
+        // (heute `wayland_zug_vormerken`, s. `rand`), und der laeuft NACH
         // `Erfassung::on_window_event`: Loslassen und neuer Druck koennen im
         // selben winit-Umlauf eintreffen (unter Last leicht 15-30 ms).
         // Zugleich ist das die C1-Auflage der ersten Runde — `nachfassen()`
@@ -246,11 +250,16 @@ impl App {
     /// haette, war unerreichbar. Seit es EINEN Abbau gibt, kann das an keinem
     /// Weg mehr vorbeigehen.
     ///
-    /// **Nur fuer die Sitzung, die den Zug traegt.** Ein anderes Fenster, das
-    /// den Fokus verliert, geht diesen Zug nichts an.
+    /// **Nur fuer die Sitzung, die den Zug traegt oder vorgemerkt hat.** Ein
+    /// anderes Fenster, das den Fokus verliert, geht diesen Zug nichts an. Eine
+    /// blosse Vormerkung haette zwar auch ohne Abbau keinen `start_drag` mehr
+    /// ausgeloest (ohne gehaltenen Knopf verfaellt sie, s. `kante::randschritt`)
+    /// — sie geht trotzdem hier mit, damit nichts von einem Zug den Abbruch
+    /// ueberlebt.
     #[cfg(target_os = "linux")]
     pub(in crate::app) fn wayland_zug_abbrechen(&mut self, id: u64) {
-        if self.wayland_zug.inner.session != Some(id) {
+        let inner = &self.wayland_zug.inner;
+        if inner.session != Some(id) && inner.vorgemerkt != Some(id) {
             return;
         }
         self.wayland_zug_abbau(false);

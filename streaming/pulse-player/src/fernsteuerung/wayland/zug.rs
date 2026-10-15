@@ -156,6 +156,14 @@ impl Gastverbindung {
     /// `icon=None` und der letzten Druck-Seriennummer, Ursprung ist die
     /// Flaeche von `fenster` (s. Modulkopf).
     ///
+    /// **Gerufen erst am Fensterrand, nicht beim Druck** (seit 2026-10-15, s.
+    /// `app::wayland_zug::rand`): der Zeiger steht dann schon AUSSERHALB von
+    /// `fenster`, der Knopf ist noch unten, die implizite Ergreifung und damit
+    /// die Seriennummer des Drucks gelten weiter. Ein `Enter` kommt deshalb,
+    /// wenn ueberhaupt, fuer die Flaeche, ueber der der Zeiger dann steht —
+    /// nicht fuer den Ursprung (fehlt es, s.
+    /// `zustand::draussen_angelaufen`).
+    ///
     /// Scheitert die Vorbereitung — keine Seriennummer (kein Druck seit dem
     /// letzten Zugende) oder `fenster` hat keine rekonstruierbare
     /// Wayland-Flaeche —, wird **nichts** angefasst und `false` kommt zurueck:

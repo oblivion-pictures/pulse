@@ -15,8 +15,9 @@
 //! Getrennt von `app/mod.rs`, aus demselben Grund wie `eingabe.rs` daneben:
 //! die Datei ist ueber der Groessen-Grenze (`PLAN.md` §12.1), und dieser Teil
 //! laesst sich sauber abtrennen. Aus demselben Grund noch einmal geschnitten:
-//! die Zuordnung Flaeche->Fenster ([`zuordnung`]) und das ENDE eines Zugs —
-//! es erkennen und abbauen ([`entscheidung`]).
+//! die Zuordnung Flaeche->Fenster ([`zuordnung`]), der BEGINN eines Zugs —
+//! wann er ausgeloest wird ([`rand`], die reine Entscheidung in [`kante`]) —
+//! und das ENDE — es erkennen und abbauen ([`entscheidung`]).
 //!
 //! **Was zu einem Zug gehoert und wer es raeumt, steht an EINER Stelle:**
 //! `App::wayland_zug_abbau(freigeben)` in [`entscheidung`]. Beenden, Aufgeben
@@ -25,7 +26,7 @@
 //! verschiedene Teilmengen desselben Zustands raeumten — die Ursache dreier
 //! Befund-Runden; der dritte (`zug_beginnen`) fiel eine Runde spaeter auf.
 //!
-//! ## Die fuenf Wege hier hinein
+//! ## Die sechs Wege hier hinein
 //!
 //! 1. **[`App::wayland_zug_bereitstellen`]** — beim EINSCHALTEN der Erfassung
 //!    (`input_capture`). Dort und nicht beim ersten Druck: der zweite
@@ -37,14 +38,20 @@
 //!    kann nicht schaden, spaeter binden kann eine Seriennummer kosten, und
 //!    ohne Seriennummer gibt es kein `start_drag` (Review-Befund I-A: der
 //!    ERSTE Druck konnte deshalb nie einen Zug starten, erst der zweite).
-//! 2. **[`App::wayland_zug_beginnen`]** — beim angenommenen Mausdruck; raeumt
-//!    zuerst ueber den Trichter ab und faengt dann an.
-//! 3. **[`App::wayland_zug_nachfassen`]** — in jedem Schleifendurchlauf.
-//! 4. **`App::wayland_zug_griff_pruefen`** ([`entscheidung`]) — bei jedem
+//! 2. **`App::wayland_zug_vormerken`** ([`rand`]) — beim angenommenen
+//!    Mausdruck; raeumt zuerst ueber den Trichter ab und merkt den Zug vor.
+//!    **Seit dem 2026-10-15 beginnt er dort nicht mehr** (unter `niri` holte
+//!    jeder gehaltene Druck die Leiste ueber das Vollbild, s. [`rand`]).
+//! 3. **`App::wayland_zug_rand`** ([`rand`]) — bei jedem Fensterereignis, NACH
+//!    `Erfassung::on_window_event`: loest den vorgemerkten Zug aus, sobald der
+//!    Zeiger mit gehaltenem Knopf ueber eine Kante hinaus ist, hinter der ein
+//!    Nachbarfenster liegen kann — erst DANN geht `start_drag` hinaus.
+//! 4. **[`App::wayland_zug_nachfassen`]** — in jedem Schleifendurchlauf.
+//! 5. **`App::wayland_zug_griff_pruefen`** ([`entscheidung`]) — bei jedem
 //!    Fensterereignis, s. unten. Holt bei einem DRUCK ausserdem einen noch
 //!    offenen Schluss ab, und zwar VOR `Erfassung::on_window_event`
 //!    (Review C-A).
-//! 5. **`App::wayland_zug_abbrechen`** ([`entscheidung`]) — bei Fokusverlust,
+//! 6. **`App::wayland_zug_abbrechen`** ([`entscheidung`]) — bei Fokusverlust,
 //!    beim Ausschalten der Erfassung und beim Schliessen des Fensters. Ohne
 //!    diese drei Wege bliebe der Merker „eigener Zug" stehen, sobald ein Zug
 //!    nicht regulaer endet (Review C-B).
@@ -56,7 +63,7 @@
 //!   Dasselbe fuer den Beweisweg (`griff_vorbei`). Ein liegengebliebenes Ende
 //!   war Review-Befund C-1 — und weil `zugschluss` konsumiert, ist ein
 //!   weggeworfenes Ende nicht aufgeschoben, sondern vernichtet.
-//! * **Ein zweites `nachfassen()` in `wayland_zug_beginnen`** faellt aus
+//! * **Ein zweites `nachfassen()` in `wayland_zug_beginnen`** ([`rand`]) faellt aus
 //!   demselben Grund auf — und zwar als BAUFEHLER, nicht als Warnung:
 //!   `main.rs` traegt dafuer `#![deny(unused_must_use)]`. (Ohne das waere es
 //!   nur eine Warnung; dieses Projekt hat kein `-D warnings`, weder in
@@ -75,8 +82,9 @@
 //! erreicht `griff_pruefen` nie. Der Beweisweg fiele dort auf `MouseInput`
 //! zusammen, und ein abgebrochener Zug haenge bis zur Notfrist. Ein Zug ergibt
 //! in diesem Modus ohnehin keinen Sinn (es gibt keine Fenstergrenze, ueber die
-//! ein stillstehender Zeiger laufen koennte), deshalb stoesst
-//! [`App::wayland_zug_beginnen`] dort gar keinen erst an (Review I-2).
+//! ein stillstehender Zeiger laufen koennte), deshalb merkt
+//! `App::wayland_zug_vormerken` ([`rand`]) dort gar keinen erst vor, und
+//! `wayland_zug_beginnen` prueft es am Rand noch einmal (Review I-2).
 //!
 //! ## Stolperstein 2: waehrend eines Zugs schweigt winit
 //!
@@ -116,27 +124,33 @@
 //!
 //! ## C1 (erste Review-Runde): die Reihenfolge im Ereignisschleifen-Takt
 //!
-//! `window_event` (wo `wayland_zug_beginnen` haengt) laeuft VOR
+//! `window_event` (wo der Druck ankommt) laeuft VOR
 //! `about_to_wait` -> `eingaben_abgeben` -> `wayland_zug_nachfassen` — die
-//! Druck-Seriennummer unseres zweiten Zeigers liegt beim Aufruf von
-//! `wayland_zug_beginnen` also noch UNGEDISPATCHT in der Warteschlange.
-//! Ohne ein `nachfassen()` VOR `letzte_druck_nummer()` waere sie beim ersten
-//! Druck `None` (kein Zug) und bei jedem weiteren die Nummer des VORIGEN,
-//! bereits entwerteten Drucks (ein Compositor verwirft eine unpassende
-//! Nummer laut Protokolltext still) — der Zug begaenne nie.
+//! Druck-Seriennummer unseres zweiten Zeigers liegt beim Druck also noch
+//! UNGEDISPATCHT in der Warteschlange. Ohne ein `nachfassen()` VOR
+//! `letzte_druck_nummer()` waere sie beim ersten Druck `None` (kein Zug) und
+//! bei jedem weiteren die Nummer des VORIGEN, bereits entwerteten Drucks (ein
+//! Compositor verwirft eine unpassende Nummer laut Protokolltext still) — der
+//! Zug begaenne nie. Deshalb dispatcht `griff_pruefen` beim Druck. Seit der
+//! Zug erst am Rand beginnt ([`rand`]), liegen zwischen Druck und
+//! `start_drag` meist weitere Durchlaeufe — die Regel bleibt trotzdem noetig:
+//! Druck und Austritt koennen im selben Lesevorgang ankommen.
 //!
 //! **Ungeprueft bleibt der Zusammenbau als Ganzes:** es fehlt ein Handlauf mit
 //! zwei Player-Fenstern an einem echten ferngesteuerten Rechner (s. Bericht).
 //! Gemessen ist das PROTOKOLL darunter (zwei Fenster, ein Datengeraet, ein
 //! echter Zug — s. `wayland::ende`); nachrechenbar sind die Stellen, an
 //! denen dieses Vorhaben typischerweise bricht — die Einheit der Koordinaten
-//! ([`zuordnung::logisch_zu_physisch`]), der Abbauplan
+//! ([`zuordnung::logisch_zu_physisch`]), wann ein Zug ausgeloest wird
+//! (`kante::randschritt`), der Abbauplan
 //! (`entscheidung::abbauplan`), was der Abbau an der Erfassung tut
 //! (`fernsteuerung::Erfassung::zug_abbau`) und, eine Ebene tiefer, die
 //! Ereignis-Zugehoerigkeit und der Zugschluss (`wayland::zustand`) — alle mit
 //! eigenen Tests.
 
 mod entscheidung;
+mod kante;
+mod rand;
 #[cfg(target_os = "linux")]
 mod zuordnung;
 
@@ -163,6 +177,11 @@ struct Innen {
     /// Welche Sitzung den laufenden Zug gestartet hat — dorthin gehen seine
     /// Bewegungen, bis er endet.
     session: Option<u64>,
+    /// Welche Sitzung einen Zug VORGEMERKT hat: Druck angenommen, Knopf
+    /// gehalten, aber `start_drag` noch nicht hinaus (s. [`rand`]). Schliesst
+    /// sich mit `session` aus — der Beginn raeumt die Vormerkung ueber den
+    /// Abbau weg, bevor er `session` setzt.
+    vorgemerkt: Option<u64>,
     /// Gemeldet, dass die zuletzt bekannte Flaeche keinem Fenster zugeordnet
     /// werden konnte (Review I4)? Nur fuer die EDGE-getriggerte Meldung: sie
     /// soll einmal je Uebergang ins Log, nicht bei jedem Tick, in dem ein
@@ -206,64 +225,6 @@ impl App {
 
     #[cfg(not(target_os = "linux"))]
     pub(super) fn wayland_zug_bereitstellen(&mut self, _id: u64) {}
-
-    /// Zug anstossen — beim MouseInput-Druck, **nur** wenn der Druck
-    /// tatsaechlich bei der Erfassung ankam (Vorpruefung beim Aufrufer,
-    /// `window_event` — Review I2/M-a: ein Druck auf der Bedienleiste oder
-    /// ausserhalb des Bildes darf keinen Zug anstossen, sonst verliert der
-    /// Griff waehrend einer Fernsteuerung seinen eigenen Zeigerfokus).
-    #[cfg(target_os = "linux")]
-    pub(super) fn wayland_zug_beginnen(&mut self, id: u64) {
-        // Falls das Einschalten die Verbindung nicht gebaut hat (Sitzung erst
-        // nach dem `input_capture` entstanden): hier noch einmal. Kostet ein
-        // `if`, wenn sie schon steht.
-        self.wayland_zug_bereitstellen(id);
-        // C1 (`nachfassen()` vor `letzte_druck_nummer()`) UND das Abholen
-        // eines noch offenen Endes sind beide schon gelaufen — in
-        // `wayland_zug_griff_pruefen`, ganz vorne im selben `window_event`
-        // (Review C-A; die Begruendung, warum es dort und nicht hier steht,
-        // ebenda). **Hier darf kein zweites `nachfassen()` stehen:** es koennte
-        // ein `Drop` dispatchen, das gleich darauf von `zug_beginnen`
-        // weggeraeumt wuerde — und dann bliebe die Maustaste des vorigen Zugs
-        // am fernen Rechner unten.
-        let Some(session) = self.sessions.get(&id) else { return };
-        // **Bei gefangenem Zeiger gar nicht erst anstossen** (Review I-2). Ein
-        // Zug ueber die Fenstergrenze ist dann sinnlos — der Zeiger steht
-        // still, gesteuert wird ueber Differenzen (`DeviceEvent::MouseMotion`),
-        // und es gibt keine Fenstergrenze, ueber die er laufen koennte. Er
-        // waere sogar schaedlich: der Beweisweg haengt an `CursorMoved`, und
-        // genau das liefert winit bei `CursorGrabMode::Locked` nicht mehr —
-        // ein abgebrochener Zug haenge dann bis zur Notfrist.
-        if session.eingabe.zeigerfang() {
-            return;
-        }
-        // **Erst abbauen, dann anfangen** (Review 1 der fuenften Runde). Der
-        // Abbau ist die eine Stelle, an der steht, was zu einem Zug gehoert —
-        // `zug_beginnen` setzte bis dahin fuenf derselben Felder ein zweites
-        // Mal und vergass dabei prompt das sechste. **Ohne Freigabe:** ein
-        // etwaiges Ende ist im selben `window_event` schon in
-        // `griff_pruefen` abgeholt worden (mitsamt Freigabe); was hier noch
-        // stehen kann, ist der Rest eines Zugs, den niemand mehr verfolgt —
-        // und der Knopf, der gleich einen neuen Zug traegt, ist gerade erst
-        // gedrueckt worden.
-        self.wayland_zug_abbau(false);
-        let Some(session) = self.sessions.get(&id) else { return };
-        let Some(verbindung) = self.wayland_zug.inner.verbindung.as_mut() else { return };
-        if verbindung.zug_beginnen(&session.window) {
-            self.wayland_zug.inner.session = Some(id);
-            self.wayland_zug.inner.ziel_fehler_gemeldet = false;
-        } else {
-            // Review I4: still zu bleiben war genau die Stelle, an der der
-            // C1-Befund sich verstecken konnte.
-            eprintln!(
-                "pulse-player: Zug ueber die Fenstergrenze nicht gestartet \
-                 (kein frischer Druck oder Fenster ohne Wayland-Flaeche)."
-            );
-        }
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    pub(super) fn wayland_zug_beginnen(&mut self, _id: u64) {}
 
     /// Warteschlange des Datengeraets leeren (`Gastverbindung::nachfassen`,
     /// s. dortiger Modulkopf „Warum das noetig ist") und, falls ein Zug

@@ -1,6 +1,8 @@
 //! Die Wayland-Gastverbindung fuer den Zug ueber die Fenstergrenze — verdrahtet
 //! in `app::wayland_zug` (`aufbauen` beim Einschalten der Erfassung,
-//! `zug_beginnen` beim Mausdruck, `nachfassen`/`zeiger_ueber` im Takt).
+//! `zug_beginnen` erst, wenn der Zeiger das Fenster mit gehaltenem Knopf zu
+//! einem Nachbarfenster hin verlaesst — s. `app::wayland_zug::rand` —,
+//! `nachfassen`/`zeiger_ueber` im Takt).
 //! Waylands Datengeraet
 //! beantwortet direkt, welches Fenster unter dem Zeiger liegt — auf einem
 //! Compositor gibt es dafuer keine abfragbaren Fensterlagen wie unter X11

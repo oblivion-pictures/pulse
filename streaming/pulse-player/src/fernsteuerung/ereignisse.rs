@@ -34,8 +34,9 @@ impl Erfassung {
     ///
     /// **Der Rueckgabewert beantwortet genau eine Frage: kam DIESER Druck bei
     /// der Erfassung an?** (Review M-a.) Nur dann darf auf Wayland ein Zug
-    /// ueber die Fenstergrenze beginnen — `start_drag` nimmt dem GANZEN
-    /// Fenster den Zeigerfokus, und ein Druck, der hier verworfen wurde (auf
+    /// ueber die Fenstergrenze vorgemerkt werden (ausgeloest wird er erst am
+    /// Fensterrand, s. `app::wayland_zug::rand`) — `start_drag` nimmt dem
+    /// GANZEN Fenster den Zeigerfokus, und ein Druck, der hier verworfen wurde (auf
     /// der Bedienleiste, ausserhalb des Bildes), gehoert der Leiste. Vorher
     /// stand dort `irgendein_knopf_unten()`, also „ist irgendetwas unten": ein
     /// verworfener Druck bei bereits gehaltenem anderen Knopf (Zug im Bild

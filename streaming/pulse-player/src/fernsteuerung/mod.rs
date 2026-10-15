@@ -186,6 +186,16 @@ impl Erfassung {
         self.zeigerfang
     }
 
+    /// Haelt der Steuernde gerade einen Mausknopf, der beim Host als gedrueckt
+    /// gilt? Auf Wayland die Bedingung, unter der ein vorgemerkter Zug ueber
+    /// die Fenstergrenze ueberhaupt noch ausgeloest werden darf (s.
+    /// `app::wayland_zug::rand`) — ohne gehaltenen Knopf gibt es keine
+    /// implizite Ergreifung mehr, an der `start_drag` haengen koennte.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn knopf_unten(&self) -> bool {
+        !self.knoepfe_unten.is_empty()
+    }
+
     /// Zu welcher Fernsteuerungs-Sitzung diese Erfassung gehoert.
     ///
     /// Nur zum Vergleichen — gedeutet wird die Kennung hier nicht und ueber die

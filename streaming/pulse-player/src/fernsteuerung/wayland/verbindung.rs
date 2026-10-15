@@ -26,7 +26,7 @@ use winit::window::Window;
 
 use super::ende::Zugende;
 use super::zug::ZugLage;
-use super::zustand::{zugschluss, Zugschluss, Zustand, ANLAUFFRIST};
+use super::zustand::{draussen_angelaufen, zugschluss, Zugschluss, Zustand, ANLAUFFRIST};
 
 /// Verbindung, Seats, der zweite Zeiger je Seat und das Datengeraet je Seat —
 /// alles, was der Zug ueber die Fenstergrenze auf Wayland braucht.
@@ -150,6 +150,15 @@ impl Gastverbindung {
         if self.zustand.eigener_zug && !self.zustand.bestaetigt {
             self.zustand.angefordert_seit = Some(Instant::now());
         }
+    }
+
+    /// Der Compositor hat den Zeiger an den angeforderten Zug uebergeben,
+    /// waehrend er ueber keiner eigenen Flaeche steht (Anlass: winits
+    /// `CursorLeft` am Ursprungsfenster). Gleichgestellt einem `Enter` mit
+    /// sofortigem `Leave` — Begruendung und was davon gefolgert ist an
+    /// [`super::zustand::draussen_angelaufen`]. `true` heisst „uebernommen".
+    pub fn zug_draussen_angelaufen(&mut self) -> bool {
+        draussen_angelaufen(&mut self.zustand, Instant::now())
     }
 
     /// Der Beweis von der anderen Seite: winit liefert wieder

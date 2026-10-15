@@ -1853,11 +1853,15 @@ impl ApplicationHandler<UserEvent> for App {
                     session.eingabe.on_window_event(&event, lage, antwort.verbraucht);
             }
         }
-        // Wayland: der Zug ueber die Fenstergrenze beginnt im selben Zug, in
-        // dem eben `Erfassung::knopf(..., true)` lief (s. `on_window_event`
-        // oben, MouseInput-Zweig) — NACH der Ausleihe von `session` oben
-        // (die braucht `wayland_zug_beginnen` selbst wieder, ueber `&mut
-        // self`).
+        // Wayland: der Zug ueber die Fenstergrenze wird im selben Zug
+        // VORGEMERKT, in dem eben `Erfassung::knopf(..., true)` lief (s.
+        // `on_window_event` oben, MouseInput-Zweig) — NACH der Ausleihe von
+        // `session` oben (die brauchen beide Aufrufe unten selbst wieder,
+        // ueber `&mut self`). `start_drag` geht erst hinaus, wenn der Zeiger
+        // mit gehaltenem Knopf ueber eine Kante mit Nachbarfenster hinaus ist
+        // (`wayland_zug_rand`, s. `wayland_zug::rand`) — mit EINEM Fenster
+        // nie. Unter `niri` holte ein Zug ab dem Druck die Leiste ueber das
+        // Vollbild, solange die Taste gehalten wurde.
         //
         // **Das Tor ist DIESER Druck, nicht das Umfeld** (Review I2/M-a):
         // `on_window_event` meldet zurueck, ob es ihn angenommen hat. `aktiv()`
@@ -1872,8 +1876,11 @@ impl ApplicationHandler<UserEvent> for App {
         // einer laufenden Fernsteuerung. Auf Nicht-Linux und auf X11 ein
         // Nichtstun (s. `wayland_zug`-Modulkopf).
         if druck_angenommen {
-            self.wayland_zug_beginnen(id);
+            self.wayland_zug_vormerken(id);
         }
+        // NACH `on_window_event`: die Knopf-Menge der Erfassung ist dann auf
+        // dem Stand dieses Ereignisses (ein Loslassen schon verbucht).
+        self.wayland_zug_rand(id, &event);
         match event {
             // Der Zeigerfang ueberlebt den Fokuswechsel NICHT (s.
             // `App::fokus_gewechselt`).
