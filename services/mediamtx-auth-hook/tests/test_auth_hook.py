@@ -634,3 +634,24 @@ async def test_unlesbarer_aktiv_datensatz_wird_abgewiesen(client, redis):
         assert r.status_code == 401
     finally:
         await redis.delete(active_key(cid, "1"), TOKEN_KEY.format(token=tok))
+
+
+@pytest.mark.asyncio
+async def test_auslaufender_strom_wird_nicht_mehr_gelesen(client, redis):
+    """Fail-closed im Stop-Fenster: ``stream:active`` ist schon weg, der
+    Grabstein steht, MediaMTX fuehrt den Pfad noch — ein freies Token darf den
+    (womoeglich Geraete-)Strom nicht mehr oeffnen."""
+    cid = _unique_cid()
+    grabstein = active_key(cid, "1", 1).replace("stream:active:", "stream:stopping:", 1)
+    await redis.set(grabstein, "1", ex=60)
+    tok = "read-" + uuid.uuid4().hex
+    await _put_token(redis, tok, channel_id=cid, user_id="1", scope="read")
+    try:
+        r = await client.post("/", json=_body("read", _ch_path(cid, "1", slot=1), token=tok))
+        assert r.status_code == 401
+        # Ohne Grabstein bleibt das bisherige Verhalten (kein Datensatz → frei).
+        await redis.delete(grabstein)
+        r = await client.post("/", json=_body("read", _ch_path(cid, "1", slot=1), token=tok))
+        assert r.status_code == 200
+    finally:
+        await redis.delete(grabstein, TOKEN_KEY.format(token=tok))

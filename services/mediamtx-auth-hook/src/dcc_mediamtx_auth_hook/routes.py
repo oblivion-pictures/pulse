@@ -176,7 +176,7 @@ async def _geraet_am_ziel(
 ) -> str | object | None:
     """Das Geraete-Merkmal des Zielstroms aus ``stream:active`` — ``None``
     ohne Merkmal (gewoehnlicher Strom, oder Strom nicht aktiv), ``_UNLESBAR``
-    bei einem kaputten Datensatz.
+    bei einem kaputten Datensatz oder einem Strom, der gerade beendet wird.
 
     **Ein unlesbarer Datensatz wird abgewiesen, nicht als „kein Geraet"
     gedeutet** (fail-closed): sonst oeffnete ein beschaedigter Eintrag genau
@@ -184,9 +184,25 @@ async def _geraet_am_ziel(
     ausschliesslich ``_consume_token_and_mark_active``; kaputt ist also ein
     Ausnahmefall, kein Alltag.
     """
-    raw = await redis.get(active_key(channel_id, user_id, int(slot)))
+    aktiv_schluessel = active_key(channel_id, user_id, int(slot))
+    raw = await redis.get(aktiv_schluessel)
     if raw is None:
-        return None
+        # **Ohne Datensatz, aber mit Grabstein: der Strom wird gerade beendet**
+        # (Stop-Klick, ``media-svc`` loescht ``stream:active`` und setzt
+        # ``stream:stopping``), MediaMTX fuehrt den Pfad aber womoeglich noch.
+        # Dieses Fenster darf nicht offen ausfallen — sonst oeffnete ein freies
+        # Token den auslaufenden Geraetestrom. Abgewiesen wird jeder Strom:
+        # was gerade endet, braucht keinen neuen Zuschauer.
+        #
+        # **Nicht abgedeckt, bewusst:** ein Datensatz, der OHNE Grabstein fehlt
+        # (Poller-Aussetzer, abgelaufene TTL bei laufendem Strom). Ihn
+        # abzuweisen schnitte bei einem Aussetzer der MediaMTX-API jeden
+        # Zuschauer eines gewoehnlichen Stroms ab, denn ``stream:active``
+        # entsteht nur beim Publish-Auth neu. Neue Lese-Token gibt es dann
+        # ohnehin nicht mehr (media-svc verlangt den Datensatz); offen bleibt
+        # hoechstens ein schon ausgestelltes freies Token bis zu seiner TTL.
+        grabstein = aktiv_schluessel.replace("stream:active:", "stream:stopping:", 1)
+        return _UNLESBAR if await redis.exists(grabstein) else None
     try:
         aktiv = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
     except (ValueError, TypeError, AttributeError):
