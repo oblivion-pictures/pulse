@@ -2,6 +2,16 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-15.4",
+      "date": "2026-10-15",
+      "style": "Sachlich",
+      "title": "Zwischenablage bei der Fernsteuerung",
+      "items": [
+        "Fernsteuerung mit Windows: Was auf dem gesteuerten Rechner kopiert wird, lässt sich jetzt auch auf dem eigenen Rechner einfügen.",
+        "Kopierte Inhalte landen nicht mehr in den Diagnose-Protokollen der App."
+      ]
+    },
+    {
       "id": "2026-10-15.3",
       "date": "2026-10-15",
       "style": "Sachlich",
