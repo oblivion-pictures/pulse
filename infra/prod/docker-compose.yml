@@ -422,7 +422,7 @@ services:
     # instantly. The AV1 temporal-delimiter patch still applies cleanly and is
     # kept. Rollback: revert this commit → `:1.17.1-pulse` (image still in GHCR
     # and cached on the host) + `docker compose up -d pulse_mediamtx`.
-    image: ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse8
+    image: ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse9
     container_name: pulse_mediamtx
     restart: unless-stopped
     network_mode: host
@@ -482,6 +482,14 @@ services:
       # dann ein Schwall (gemessen 560-650 ms, Windows-Sender, 10-ms-Pakete).
       # 4 haelt einen Verlust 40 ms fest. Begruendung im Kopf des Patches.
       PULSE_AUDIO_REORDER_BUFFER: "4"
+      # Patch 0009 (2026-10-15), wirksam ab Bild `1.19.1-pulse9`: NACK auch
+      # fuer den Ton, nur Richtung Zuschauer (WHEP). pion meldet NACK sonst
+      # nur fuer Bildcodecs an, ein auf dem Weg zum Zuschauer verlorenes
+      # Opus-Paket kam deshalb nie nach — obwohl der native Player `nack` fuer
+      # Opus anbietet (41 verlorene Tonpakete in 10 min gemessen, waehrend
+      # NACK 94-98 % der Bildverluste rettete). Ausgehandelt nur, wo der
+      # Zuschauer `nack` fuer Opus anbietet. Begruendung im Kopf des Patches.
+      PULSE_AUDIO_NACK: "1"
       # FlexFEC-Paritaet auf dem WHEP-Ausgang. **Bedingung dafuer, dass ein
       # Verlust ueberlebt wird** — nicht bloss eine Verbesserung: ein
       # Vollbild-Strom heilt zwar am naechsten Vollbild byte-perfekt, aber der

@@ -35,7 +35,7 @@
 //     node           : vite :5173, electron
 //
 // MEDIAMTX-VERSION: bewusst auf 1.19.1 gepinnt, NICHT auf das neueste
-// Release — der Pulse-Fork (`ghcr.io/…/pulse-mediamtx:1.19.1-pulse8`, Prod)
+// Release — der Pulse-Fork (`ghcr.io/…/pulse-mediamtx:1.19.1-pulse9`, Prod)
 // basiert auf 1.19.1. MediaMTX ändert gelegentlich Config-Schlüssel; gegen eine
 // neuere Version kann die Vorlage hier still falsch laufen. Der native Binary
 // hat die Pulse-Patches NICHT (AV1-Temporal-Delimiter, Vollbild-Rückweg,

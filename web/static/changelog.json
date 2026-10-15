@@ -7,7 +7,7 @@
       "style": "Sachlich",
       "title": "Ton bei Verbindungsaussetzern",
       "items": [
-        "Desktop-App: Gehen beim Zuschauen oder bei der Fernsteuerung unterwegs Tondaten verloren, wird die kurze Lücke jetzt überbrückt, statt dass der Ton aussetzt."
+        "Desktop-App: Gehen beim Zuschauen oder bei der Fernsteuerung unterwegs Tondaten verloren, werden sie jetzt nach Möglichkeit rechtzeitig nachgeladen. Wo das nicht reicht, wird die kurze Lücke überbrückt, statt dass der Ton aussetzt."
       ]
     },
     {

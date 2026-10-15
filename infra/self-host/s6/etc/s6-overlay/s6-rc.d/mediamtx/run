@@ -12,8 +12,9 @@
 # Descriptor ueber die Neuverpackung tragen (sonst Vollbilder auf Verdacht),
 # Vollbild erst bei echtem Verwurf anfordern, Umordnungsfenster 128 Pakete
 # fuer Bild und 4 fuer Ton (Patch 0008, ab `1.19.1-pulse8`: ein verlorenes
-# Opus-Paket hielt sonst 640 ms Ton fest), und FlexFEC-Paritaet zu den
-# Zuschauern, verlustgeregelt (Patches 0003/0004).
+# Opus-Paket hielt sonst 640 ms Ton fest), Nachforderung auch fuer den Ton
+# Richtung Zuschauer (Patch 0009, ab `1.19.1-pulse9`), und FlexFEC-Paritaet
+# zu den Zuschauern, verlustgeregelt (Patches 0003/0004).
 #
 # FlexFEC fehlte hier bis 2026-10-14 — ohne festgehaltenen Grund, und der
 # Kopf behauptete trotzdem „identisch zur Cloud". Verlustgeregelt kostet sie
@@ -26,6 +27,7 @@ PULSE_DEPENDENCY_DESCRIPTOR=1 \
 PULSE_KEYFRAME_ON_DISCARD=1 \
 PULSE_VIDEO_REORDER_BUFFER=128 \
 PULSE_AUDIO_REORDER_BUFFER=4 \
+PULSE_AUDIO_NACK=1 \
 PULSE_FLEXFEC=1 \
 PULSE_FLEXFEC_MEDIA=10 \
 PULSE_FLEXFEC_FEC=2 \
