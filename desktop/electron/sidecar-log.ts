@@ -25,11 +25,14 @@
  *
  * Secret hygiene (project rule: never log stream tokens): anything that looks
  * like a token/password in a query string or JSON field is masked before write.
+ * The same goes for the remote-control clipboard: only the flow of its frames
+ * is written, never their content (`sidecar-log-ablage.ts`).
  */
 import { appendFileSync, existsSync, renameSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
 
+import { ohneAblageInhalt } from './sidecar-log-ablage';
 import { createDrossel } from './sidecar-log-drossel';
 import { createNoiseFilter } from './sidecar-log-noise';
 
@@ -59,7 +62,9 @@ const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 
 function redact(line: string): string {
-  let out = line;
+  // Der Inhalt der geteilten Zwischenablage zuerst — er ist kein Muster,
+  // sondern ein Feld (`sidecar-log-ablage.ts`).
+  let out = ohneAblageInhalt(line);
   for (const [re, repl] of SECRET_PATTERNS) out = out.replace(re, repl);
   return out;
 }
