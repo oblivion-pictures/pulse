@@ -28,7 +28,7 @@ const MAX_BUFFERED: usize = 2048;
 
 /// Ab wie vielen Sequenznummern Abstand ein Sprung als Neustart des Stroms
 /// gilt statt als Luecke (z. B. nach Republish).
-const RESYNC_DISTANCE: u64 = 3000;
+pub(crate) const RESYNC_DISTANCE: u64 = 3000;
 
 /// Wie viele Pakete in Folge als "Nachzuegler von vor dem Ueberlauf" gedeutet
 /// werden duerfen, bevor der Strom als neu gestartet gilt. Echte Nachzuegler

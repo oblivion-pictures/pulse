@@ -261,6 +261,10 @@ pub struct SessionStats {
     pub width: u32,
     pub height: u32,
     pub ten_bit_source: bool,
+    /// Laengen der Verlust-Buendel bei ERSTER Ankunft, kumuliert je Sitzung
+    /// (s. [`crate::buendel`]) — Bild und Ton getrennt, eigene Nummernkreise.
+    pub buendel_bild: crate::buendel::Buendelstand,
+    pub buendel_ton: crate::buendel::Buendelstand,
     /// Ton- und Aufnahme-Zaehler.
     #[serde(flatten)]
     pub media: MediaStats,
@@ -509,6 +513,8 @@ pub async fn run(
     // Die Kennung kommt aus dem ersten Videopaket; vorher gibt es nichts
     // anzufordern.
     let mut video_ssrc: Option<u32> = None;
+    let mut buendel_bild = crate::buendel::Buendelzaehler::default();
+    let mut buendel_ton = crate::buendel::Buendelzaehler::default();
     // Bildraten-Messung fuer den Aufnahme-Container ( Begruendung am
     // Medien-Sink-Aufruf): letzter RTP-Zeitstempel und rollierendes Fenster.
     let mut letzte_rtp_ts: Option<u32> = None;
@@ -751,6 +757,11 @@ pub async fn run(
                     break 'sitzung ("track beendet".to_string(), !schon_gespielt(&decoder));
                 };
                 let codec = arrival.codec;
+                if !arrival.repariert {
+                    let z = if codec == Codec::Opus { &mut buendel_ton } else { &mut buendel_bild };
+                    let h = &arrival.packet.header;
+                    z.einspeisen(h.ssrc, h.sequence_number, arrival.arrived);
+                }
                 // Ankunfts-Abstand der VIDEO-Pakete, so früh wie möglich
                 // gemessen. Das ist die Zahl, die entscheidet, wo die Buendel
                 // entstehen: kommen die Pakete selbst schon in Schueben, ist es
@@ -1352,6 +1363,9 @@ pub async fn run(
             stats.arrival_gaps_over_5ms = arrival_gaps_over_5ms;
             arrival_gap_max = 0;
             arrival_gaps_over_5ms = 0;
+            // Auch ohne weiteres Paket: der Takt schliesst offene Loecher ab.
+            stats.buendel_bild = buendel_bild.stand(Instant::now());
+            stats.buendel_ton = buendel_ton.stand(Instant::now());
             let _ = events.try_send(SessionEvent::Stats(stats));
             // Die drei Dekodier-Posten gelten JE FENSTER, nicht kumulativ —
             // sonst wuerde der Mittelwert ueber die ganze Sitzung glatt gebuegelt

@@ -114,6 +114,10 @@ pub struct RtpArrival {
     pub packet: webrtc::rtp::packet::Packet,
     /// Ankunftszeitpunkt, Grundlage fuer die Puffer-Freigabe.
     pub arrived: Instant,
+    /// Aus der FlexFEC-Paritaet zurueckgerechnet statt empfangen. Nur das
+    /// Buendel-Histogramm unterscheidet (`crate::buendel`): es misst den Verlust
+    /// VOR der Reparatur.
+    pub repariert: bool,
 }
 
 /// Entfernt Stream-Tokens aus einem Text, bevor er irgendwo hingeht, wo ihn
@@ -916,7 +920,8 @@ async fn pump_track(
                 }
             }
         }
-        let arrival = RtpArrival { codec, clock_rate, packet, arrived: Instant::now() };
+        let arrival =
+            RtpArrival { codec, clock_rate, packet, arrived: Instant::now(), repariert: false };
         if tx.send(arrival).await.is_err() {
             return; // Verbraucher ist weg
         }

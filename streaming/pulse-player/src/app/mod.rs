@@ -247,6 +247,8 @@ struct Session {
     /// Bezugspunkt der Statistik-Zeile (s. `App::stats_log`).
     last_log: Option<std::time::Instant>,
     presented_at_last_log: u64,
+    /// Eigener, langsamerer Takt der Buendel-Zeile (s. `buendel::Meldetakt`).
+    buendel_takt: crate::buendel::Meldetakt,
     /// Stand der Verlust-Zaehler beim letzten Melden — s. [`App::bilanz_pruefen`].
     /// Wurde die Bilanz-Warnung schon abgesetzt? (s. [`App::bilanz_pruefen`])
     bilanz_gemeldet: bool,
@@ -759,6 +761,7 @@ impl App {
                 last_frame_at: None,
                 last_log: None,
                 presented_at_last_log: 0,
+                buendel_takt: Default::default(),
                 bilanz_gemeldet: false,
                 state: SessionState::Connecting,
                 eingabe: crate::fernsteuerung::Erfassung::neu(),
@@ -1173,6 +1176,9 @@ impl App {
                 if media.audio_geraetefehler { " — AUSGABEGERAET GESTOERT" } else { "" },
             );
         }
+        if let Some(z) = session.buendel_takt.melden(now, st.buendel_bild, st.buendel_ton, false) {
+            eprintln!("pulse-player: Sitzung {id}: {z}");
+        }
         session.last_log = Some(now);
         session.presented_at_last_log = presented;
         // Zuletzt, weil sie die Sitzung erneut ausleiht.
@@ -1416,6 +1422,14 @@ impl App {
         // naechsten Durchgang von winit.
         if let Some(session) = self.sessions.get_mut(&id) {
             self.tastensperre.freigeben(&mut session.tastensperre);
+        }
+        // Letzte Buendel-Zeile ausserhalb des Zehn-Sekunden-Takts. Stand des letzten
+        // Statistik-Takts: Loecher der letzten paar hundert ms fehlen darin.
+        if let Some(s) = self.sessions.get_mut(&id).filter(|_| self.stats_log) {
+            let (bild, ton) = (s.stats.buendel_bild, s.stats.buendel_ton);
+            if let Some(z) = s.buendel_takt.melden(std::time::Instant::now(), bild, ton, true) {
+                eprintln!("pulse-player: Sitzung {id}: {z}");
+            }
         }
         if let Some(session) = self.sessions.remove(&id) {
             self.by_window.remove(&session.window.id());

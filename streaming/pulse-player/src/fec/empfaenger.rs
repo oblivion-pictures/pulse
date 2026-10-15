@@ -293,6 +293,7 @@ impl Empfaenger {
                     clock_rate: self.clock_rate,
                     packet,
                     arrived: std::time::Instant::now(),
+                    repariert: true,
                 };
                 if self.tx.send(arrival).await.is_err() {
                     self.zu_spaet += 1;
