@@ -16,7 +16,7 @@
 # 1.19.1 establishes it instantly. The AV1 temporal-delimiter patch below still
 # applies cleanly and is still needed (no upstream AV1 fix in 1.18/1.19).
 #
-# Why we maintain this fork — eight patches, two groups:
+# Why we maintain this fork — nine patches, two groups:
 #
 #   patches/         go against the MediaMTX source, applied right after clone
 #     0001  AMD-VAAPI-encoded AV1 freezes in WHEP after a few seconds because
@@ -41,6 +41,10 @@
 #           (PULSE_AUDIO_REORDER_BUFFER): Opus has no NACK on our senders, and
 #           the 64-packet default holds 640 ms of sound (10 ms packets)
 #           behind one lost packet.
+#     0009  NACK for audio on the WHEP SENDING side (PULSE_AUDIO_NACK): pion
+#           negotiates `nack` for video only, so a lost Opus packet on the
+#           way to the viewer never came back, although the native player
+#           asks for it. Negotiated only where the viewer offers it.
 #
 #   patches-vendor/  go against VENDORED third-party code, applied after
 #                    `go mod vendor` (see the step below)
@@ -116,7 +120,16 @@ ARG MEDIAMTX_VERSION=1.19.1
 # berichtigter Kommentar in 0007 (Opus-Paketrate). Die Compose-Dateien und
 # `infra/self-host/Dockerfile` ziehen erst nach, wenn der Workflow das Bild
 # gebaut hat (Reihenfolge s. oben).
-ARG PULSE_REVISION=8
+#
+# 9 (2026-10-15): Patch `0009-ton-nachforderung` — NACK auch fuer den Ton,
+# nur Richtung Zuschauer, hinter `PULSE_AUDIO_NACK`. Dazu zaehlt das
+# Paritaets-Tor aus 0004 nur noch NACKs der Bildspur. Wie bei 8: erst baut der
+# Workflow das Bild, dann ziehen die drei Compose-Dateien und
+# `infra/self-host/Dockerfile` nach, und erst mit dem neuen Bild hat die
+# Variable dort eine Wirkung. Der unveroeffentlichte Zweig `feat/ios` (eigenes
+# 0008, Revision 8 unter dem alten Namensraum) rueckt beim Rebase damit auf
+# 0010 / Revision 10.
+ARG PULSE_REVISION=9
 ARG GO_VERSION=1.26
 
 # ── Stage 1: build the patched binary ──────────────────────────────────────
@@ -225,8 +238,8 @@ RUN CGO_ENABLED=0 GOARCH=${TARGETARCH:-$(go env GOARCH)} \
       -o /out/mediamtx \
       .
 
-# The patches carry their own Go tests (0002/0007/0008 in internal/stream and
-# internal/protocols/webrtc, 0006's fixture check among them), and until
+# The patches carry their own Go tests (0002/0007/0008/0009 in internal/stream
+# and internal/protocols/webrtc, 0006's fixture check among them), and until
 # 2026-09-03 nothing ran them: not this build, not any workflow — a test that
 # never runs looks exactly like a green one. So they run here, after the
 # binary compiled and BEFORE the image gets a tag. ~20 s. Vendored (offline),

@@ -1,0 +1,386 @@
+# Nachforderung (NACK) auch fuer den Ton, Richtung Zuschauer — ein verlorenes
+# Opus-Paket auf dem WHEP-Weg kam bisher nie nach.
+#
+# Gefunden am 2026-10-15 (nativer Player, 10 min an der echten Leitung):
+#
+#   * Gemessen (Player-Statistik): 41 verlorene Tonpakete zu 10 ms, in
+#     Schueben von 6-10 und 21-50 Paketen. Im selben Lauf rettete die
+#     Nachforderung beim Bild 94-98 Prozent der Verluste, bei 86-92 ms
+#     Puffergeduld und 56-62 ms gemessener NACK-Antwortzeit.
+#   * Aus dem Code gefolgert: pions `ConfigureNack` meldet `nack` nur fuer
+#     VIDEO-Codecs an (webrtc/v4 interceptor.go), die Aushandlung bildet die
+#     Schnittmenge mit dem Angebot des Zuschauers, und der NACK-Responder
+#     puffert nur Stroeme mit ausgehandeltem `nack` (interceptor/pkg/nack,
+#     `streamSupportNack`). Der native Player bietet `nack` fuer Opus seit dem
+#     2026-08-05 an (`streaming/pulse-player/src/whep.rs` im Pulse-Repo) —
+#     die Antwort von MediaMTX strich es wieder heraus, und der
+#     NACK-Erzeuger des Players band sich deshalb nie an die Tonspur.
+#
+# Was der Patch tut (AUS, bis die Variable gesetzt ist):
+#
+#   PULSE_AUDIO_NACK=1              In der WHEP-LESEsitzung (`sendet`) wird
+#                                   `nack` (ohne `pli`) auch fuer die
+#                                   Ton-Codecs angemeldet. Ausgehandelt wird
+#                                   es nur, wenn der Zuschauer es selbst
+#                                   anbietet; dann puffert pions Responder den
+#                                   Tonstrom (1024 Pakete, bei 10 ms gut 10 s)
+#                                   und liefert angeforderte Pakete mit der
+#                                   Original-Nummer nach (ohne RTX, wie beim
+#                                   Bild).
+#
+# Was er NICHT anfasst:
+#
+#   * Die Empfangsseite (WHIP): unveraendert wie Upstream. Das kleine
+#     Umordnungsfenster aus 0008 sitzt dort und bleibt richtig — unsere Sender
+#     bieten fuer Opus kein `nack` an (aus dem Code gefolgert,
+#     `streaming/pulse-whip/src/sdp.rs` im Pulse-Repo).
+#   * Zuschauer, die fuer Opus kein `nack` anbieten: dieselbe Antwort wie
+#     vorher. Ob Chromium es anbietet, ist hier nicht geprueft; nach unserem
+#     Kenntnisstand nicht (dann aendert sich fuer den Browser nichts).
+#   * FlexFEC (0003/0004) bleibt Bildsache. Dazu eine Zeile in
+#     outbound_track.go: das Paritaets-Tor zaehlt nur noch NACKs, deren
+#     MediaSSRC die Bildspur ist. pion reicht ein zusammengesetztes
+#     RTCP-Paket an jeden Strom weiter, den eins seiner Teile nennt
+#     (srtp/v3 session_srtcp.go); ein Ton-NACK darin zaehlte sonst mit Nummern
+#     aus dem Ton-Nummernkreis als Bildverlust. Der native Player schickt
+#     jeden NACK einzeln (aus dem Code gefolgert), ihn traf das nicht.
+#
+# Wie viel es dem Ton bringt, ist an der Leitung noch NICHT gemessen. Aus dem
+# Player-Code gefolgert: die Tonspur wartet im selben Jitter-Puffer mit
+# derselben Geduld wie das Bild, eine Nachlieferung nach ~60-80 ms kommt also
+# rechtzeitig; der Ausgabe-Ring haelt aber nur ~60 ms vor, ein kurzer
+# Unterlauf bleibt — kuerzer als heute, wo die Luecke erst nach der vollen
+# Geduld aufgegeben wird.
+#
+# Getestet an pion (`TestTonNachforderungRichtungZuschauer`: Aushandlung und
+# echte Nachlieferung ueber Loopback, je mit und ohne Schalter bzw. Angebot;
+# `TestTonNachforderungNichtAmEingang`; `TestPulseAudioNackSchalter`).
+#
+# Geht gegen den Stand NACH 0001-0008 (outbound_track.go traegt 0002/0004,
+# peer_connection.go 0003/0004). Nachrechnen wie bei den anderen:
+#   git clone --depth=1 -b v1.19.1 https://github.com/bluenviron/mediamtx.git
+#   for p in 0001 0002 0003 0004 0006 0007 0008 0009; do patch -p1 < $p-*.patch; done
+#
+diff --git a/internal/protocols/webrtc/outbound_track.go b/internal/protocols/webrtc/outbound_track.go
+index 67f56ba..702dd59 100644
+--- a/internal/protocols/webrtc/outbound_track.go
++++ b/internal/protocols/webrtc/outbound_track.go
+@@ -117,7 +117,13 @@ func (t *OutboundTrack) setup(p *PeerConnection) error {
+ 					// `fraction lost` aus dem Receiver Report kann das nicht:
+ 					// er wird erst nach der Nachlieferung gebildet, ist auf
+ 					// 1/256 gequantelt und kommt nur einmal je Report-Zyklus.
+-					if p.fecTor != nil && t.isVideo() {
++					//
++					// Nur NACKs fuer DIESEN Strom (Patch 0009): pion reicht ein
++					// zusammengesetztes RTCP-Paket an jeden Strom weiter, den
++					// eins seiner Teile nennt. Ein Ton-NACK darin traefe sonst
++					// auch hier ein, und seine Nummern aus dem Ton-Nummernkreis
++					// zaehlten als Bildverlust.
++					if p.fecTor != nil && t.isVideo() && v.MediaSSRC == t.ssrc {
+ 						var seqnos []uint16
+ 						for i := range v.Nacks {
+ 							seqnos = append(seqnos, v.Nacks[i].PacketList()...)
+diff --git a/internal/protocols/webrtc/peer_connection.go b/internal/protocols/webrtc/peer_connection.go
+index beab5fb..4f787b8 100644
+--- a/internal/protocols/webrtc/peer_connection.go
++++ b/internal/protocols/webrtc/peer_connection.go
+@@ -458,6 +458,10 @@ func registerInterceptors(
+ 		return err
+ 	}
+ 
++	// Pulse (0009): pion meldet `nack` nur fuer Video an. Richtung Zuschauer
++	// auch fuer den Ton, wenn `PULSE_AUDIO_NACK=1` (ton_nachforderung.go).
++	pulseAudioNackAnmelden(mediaEngine, sendet)
++
+ 	err = webrtc.ConfigureSimulcastExtensionHeaders(mediaEngine)
+ 	if err != nil {
+ 		return err
+diff --git a/internal/protocols/webrtc/ton_nachforderung.go b/internal/protocols/webrtc/ton_nachforderung.go
+new file mode 100644
+index 0000000..d8d6397
+--- /dev/null
++++ b/internal/protocols/webrtc/ton_nachforderung.go
+@@ -0,0 +1,56 @@
++package webrtc
++
++import (
++	"os"
++
++	"github.com/pion/webrtc/v4"
++)
++
++// Nachforderung (NACK) fuer die Tonspur, Richtung Zuschauer (Pulse, Patch 0009).
++//
++// Warum es das braucht: pions `ConfigureNack` meldet `nack` nur fuer
++// VIDEO-Codecs an (webrtc/v4 interceptor.go, `ConfigureNackWithOptions`). Die
++// Aushandlung bildet die Schnittmenge aus eigenem und fremdem Angebot
++// (`rtcpFeedbackIntersection`), und der NACK-Responder puffert nur Stroeme,
++// deren ausgehandelte Rueckmeldungen ein `nack` enthalten
++// (interceptor/pkg/nack, `streamSupportNack`). Ein verlorenes Opus-Paket auf
++// dem Weg Server -> Zuschauer kam deshalb nie nach — auch wenn der Zuschauer,
++// wie der native Player, `nack` fuer Opus anbietet und anfordern wuerde.
++//
++// Gemessen am 2026-10-15 am nativen Player: 41 verlorene Tonpakete (10 ms) in
++// 10 min, in Schueben von 6-10 und 21-50 Paketen; das Bild rettet die
++// Nachforderung im selben Lauf zu 94-98 Prozent, bei gemessenen 56-62 ms
++// Antwortzeit.
++//
++// Was sich aendert, aus dem Code gefolgert:
++//
++//   - Nur auf der SENDENDEN Seite (WHEP-Lesesitzung). Auf der Empfangsseite
++//     (WHIP) bleibt alles wie Upstream: unsere Sender bieten fuer Opus kein
++//     `nack` an, und mit `PULSE_AUDIO_REORDER_BUFFER=4` (Patch 0008) gibt der
++//     Eingang eine Luecke nach rund 40 ms auf — eine Nachlieferung kaeme dort
++//     ohnehin zu spaet. Das kleine Fenster aus 0008 bleibt deshalb richtig;
++//     es sitzt am Eingang, dieser Patch am Ausgang.
++//   - Ausgehandelt wird nur, was der Zuschauer selbst anbietet (Schnittmenge,
++//     s. oben). Wer fuer Opus kein `nack` anbietet, bekommt dieselbe Antwort
++//     wie vorher, und sein Tonstrom bindet den Responder nicht.
++//   - Der Responder haelt je Strom 1024 Pakete vor (pion-Vorgabe), beim Ton
++//     mit 10-ms-Paketen also gut zehn Sekunden. Nachgeliefert wird ohne RTX,
++//     mit der Original-Nummer — wie beim Bild, denn MediaMTX meldet keinen
++//     RTX-Codec an.
++//   - FlexFEC (0003/0004) bleibt reine Bildsache; ein Ton-NACK zaehlt nicht
++//     fuer das Paritaets-Tor (s. die Abfrage in outbound_track.go).
++func pulseAudioNack() bool {
++	return os.Getenv("PULSE_AUDIO_NACK") == "1"
++}
++
++// pulseAudioNackAnmelden meldet `nack` (ohne `pli`: eine Vollbild-Anforderung
++// hat auf einer Tonspur keinen Sinn) fuer alle bis hierher registrierten
++// Ton-Codecs an. `RegisterFeedback` wirkt nur auf schon registrierte Codecs —
++// derselbe Grund, aus dem `registerInterceptors` erst nach der
++// Codec-Registrierung laeuft.
++func pulseAudioNackAnmelden(mediaEngine *webrtc.MediaEngine, sendet bool) {
++	if !sendet || !pulseAudioNack() {
++		return
++	}
++	mediaEngine.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack"}, webrtc.RTPCodecTypeAudio)
++}
+diff --git a/internal/protocols/webrtc/ton_nachforderung_test.go b/internal/protocols/webrtc/ton_nachforderung_test.go
+new file mode 100644
+index 0000000..47a26b4
+--- /dev/null
++++ b/internal/protocols/webrtc/ton_nachforderung_test.go
+@@ -0,0 +1,221 @@
++package webrtc
++
++import (
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/bluenviron/mediamtx/internal/test"
++	"github.com/pion/rtcp"
++	"github.com/pion/rtp"
++	"github.com/pion/sdp/v3"
++	"github.com/pion/webrtc/v4"
++	"github.com/stretchr/testify/require"
++)
++
++// Pulse, Patch 0009: der Schalter nimmt nur "1" an, wie PULSE_FLEXFEC.
++func TestPulseAudioNackSchalter(t *testing.T) {
++	for _, ca := range []struct {
++		env  string
++		want bool
++	}{
++		{"", false},
++		{"0", false},
++		{"true", false},
++		{"1", true},
++	} {
++		t.Run(ca.env, func(t *testing.T) {
++			t.Setenv("PULSE_AUDIO_NACK", ca.env)
++			require.Equal(t, ca.want, pulseAudioNack())
++		})
++	}
++}
++
++// nackFuer sagt, ob die SDP fuer die Medienart ein schlichtes `nack` (nicht
++// `nack pli`) ausweist.
++func nackFuer(t *testing.T, sd *webrtc.SessionDescription, art string) bool {
++	var s sdp.SessionDescription
++	require.NoError(t, s.Unmarshal([]byte(sd.SDP)))
++	for _, md := range s.MediaDescriptions {
++		if md.MediaName.Media != art {
++			continue
++		}
++		for _, a := range md.Attributes {
++			if a.Key != "rtcp-fb" {
++				continue
++			}
++			if f := strings.Fields(a.Value); len(f) == 2 && f[1] == "nack" {
++				return true
++			}
++		}
++	}
++	return false
++}
++
++// Ein Zuschauer aus pion: Opus mit oder ohne `nack` im Angebot (der native
++// Player bietet es an, Chromium nach unserem Kenntnisstand nicht). Ohne
++// NACK-Erzeuger — angefordert wird in den Tests von Hand —, und ohne
++// SRTP-Wiedergabeschutz: der verwirft sonst die Nachlieferung eines Pakets,
++// das schon einmal ankam, und genau das ist hier der Pruefling.
++func tonZuschauer(t *testing.T, opusNack bool) *webrtc.PeerConnection {
++	me := &webrtc.MediaEngine{}
++	require.NoError(t, me.RegisterDefaultCodecs())
++	if opusNack {
++		me.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack"}, webrtc.RTPCodecTypeAudio)
++	}
++	se := webrtc.SettingEngine{}
++	se.DisableSRTPReplayProtection(true)
++	api := webrtc.NewAPI(webrtc.WithMediaEngine(me), webrtc.WithSettingEngine(se))
++	pc, err := api.NewPeerConnection(webrtc.Configuration{})
++	require.NoError(t, err)
++	for _, art := range []webrtc.RTPCodecType{webrtc.RTPCodecTypeVideo, webrtc.RTPCodecTypeAudio} {
++		_, err = pc.AddTransceiverFromKind(art, webrtc.RTPTransceiverInit{
++			Direction: webrtc.RTPTransceiverDirectionRecvonly,
++		})
++		require.NoError(t, err)
++	}
++	return pc
++}
++
++// Die WHEP-Lesesitzung handelt `nack` fuer Opus genau dann aus, wenn der
++// Schalter an ist UND der Zuschauer es anbietet — und liefert ein angefordertes
++// Tonpaket dann nach. In allen anderen Faellen bleibt es beim Upstream-Verhalten.
++//
++// Absichtlich NICHT unter dem Namensfilter von `bauen.sh` (`Pulse|Bildmarke`):
++// der Test baut eine echte Verbindung ueber die Loopback-Schnittstelle auf, und
++// unter Windows haengen solche Tests an der Netzwerkumgebung des Laeufers
++// (s. Kopf von bauen.sh). Er laeuft im Bild-Bau, der das ganze Paket prueft.
++func TestTonNachforderungRichtungZuschauer(t *testing.T) {
++	for _, ca := range []struct {
++		name      string
++		env       string
++		opusNack  bool
++		erwartung bool
++	}{
++		{"an, Zuschauer bietet an", "1", true, true},
++		{"aus, Zuschauer bietet an", "", true, false},
++		{"an, Zuschauer bietet nicht an", "1", false, false},
++	} {
++		t.Run(ca.name, func(t *testing.T) {
++			t.Setenv("PULSE_AUDIO_NACK", ca.env)
++
++			server := &PeerConnection{
++				LocalRandomUDP:    true,
++				IPsFromInterfaces: true,
++				Publish:           true,
++				OutboundTracks: []*OutboundTrack{
++					{Caps: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000}},
++					{Caps: webrtc.RTPCodecCapability{
++						MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2,
++					}},
++				},
++				Log: test.NilLogger,
++			}
++			require.NoError(t, server.Start())
++			defer server.Close()
++
++			zuschauer := tonZuschauer(t, ca.opusNack)
++			defer zuschauer.Close() //nolint:errcheck
++
++			ankunft := make(chan *rtp.Packet, 64)
++			zuschauer.OnTrack(func(tr *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
++				if tr.Kind() != webrtc.RTPCodecTypeAudio {
++					return
++				}
++				for {
++					p, _, err := tr.ReadRTP()
++					if err != nil {
++						return
++					}
++					ankunft <- p
++				}
++			})
++
++			offer, err := zuschauer.CreateOffer(nil)
++			require.NoError(t, err)
++			gesammelt := webrtc.GatheringCompletePromise(zuschauer)
++			require.NoError(t, zuschauer.SetLocalDescription(offer))
++			<-gesammelt
++
++			answer, err := server.CreateFullAnswer(zuschauer.LocalDescription(), false)
++			require.NoError(t, err)
++			require.NoError(t, zuschauer.SetRemoteDescription(*answer))
++			require.NoError(t, server.WaitUntilConnected(10*time.Second))
++
++			require.Equal(t, ca.erwartung, nackFuer(t, answer, "audio"), "Ton-NACK in der Antwort")
++			require.True(t, nackFuer(t, answer, "video"), "Bild-NACK bleibt unberuehrt")
++
++			// Fuenf Tonpakete, 10 ms auseinander.
++			ton := server.OutboundTracks[1]
++			for sn := uint16(100); sn < 105; sn++ {
++				require.NoError(t, ton.WriteRTP(&rtp.Packet{
++					Header:  rtp.Header{Version: 2, Marker: true, SequenceNumber: sn, Timestamp: uint32(sn) * 480},
++					Payload: []byte{0xf8, 0xff, 0xfe},
++				}))
++				time.Sleep(10 * time.Millisecond)
++			}
++			var ssrc uint32
++			for erhalten := 0; erhalten < 5; erhalten++ {
++				select {
++				case p := <-ankunft:
++					ssrc = p.SSRC
++				case <-time.After(5 * time.Second):
++					t.Fatal("Tonpakete kamen nicht an")
++				}
++			}
++
++			// Paket 102 nachfordern, als waere es verloren.
++			require.NoError(t, zuschauer.WriteRTCP([]rtcp.Packet{&rtcp.TransportLayerNack{
++				MediaSSRC: ssrc,
++				Nacks:     rtcp.NackPairsFromSequenceNumbers([]uint16{102}),
++			}}))
++
++			select {
++			case p := <-ankunft:
++				require.True(t, ca.erwartung, "Nachlieferung ohne ausgehandeltes NACK")
++				require.Equal(t, uint16(102), p.SequenceNumber)
++				require.Equal(t, []byte{0xf8, 0xff, 0xfe}, p.Payload)
++			case <-time.After(time.Second):
++				require.False(t, ca.erwartung, "keine Nachlieferung binnen 1 s")
++			}
++		})
++	}
++}
++
++// Auf der Empfangsseite (WHIP) bleibt alles wie Upstream, auch mit Schalter:
++// ein Sender, der `nack` fuer Opus anbietet, bekommt es nicht zugesagt.
++func TestTonNachforderungNichtAmEingang(t *testing.T) {
++	t.Setenv("PULSE_AUDIO_NACK", "1")
++
++	me := &webrtc.MediaEngine{}
++	require.NoError(t, me.RegisterDefaultCodecs())
++	me.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack"}, webrtc.RTPCodecTypeAudio)
++	sender, err := webrtc.NewAPI(webrtc.WithMediaEngine(me)).NewPeerConnection(webrtc.Configuration{})
++	require.NoError(t, err)
++	defer sender.Close() //nolint:errcheck
++
++	track, err := webrtc.NewTrackLocalStaticRTP(
++		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2},
++		"audio", "publisher")
++	require.NoError(t, err)
++	_, err = sender.AddTrack(track)
++	require.NoError(t, err)
++
++	offer, err := sender.CreateOffer(nil)
++	require.NoError(t, err)
++	require.True(t, nackFuer(t, &offer, "audio"), "Vorbedingung: der Sender bietet es an")
++	require.NoError(t, sender.SetLocalDescription(offer))
++
++	server := &PeerConnection{
++		LocalRandomUDP:    true,
++		IPsFromInterfaces: true,
++		Publish:           false,
++		Log:               test.NilLogger,
++	}
++	require.NoError(t, server.Start())
++	defer server.Close()
++
++	answer, err := server.CreateFullAnswer(&offer, false)
++	require.NoError(t, err)
++	require.False(t, nackFuer(t, answer, "audio"))
++}
