@@ -77,6 +77,13 @@ TEILE_HALTBARKEIT_S = 24 * 60 * 60
 PACHT_S = 180
 #: Höchstzahl Einträge je Übernahme (beide Arten zusammen).
 STAPEL = 50
+#: Wartezeiten vor den Wiederholungen eines gestörten Versands (Firebase oder
+#: Datenbank kurz weg): fünf Versuche über gut zehn Minuten. Danach wäre die
+#: Mitteilung keine mehr, die man noch braucht — der Eintrag wird mit einer
+#: Warnung verworfen. Vor der Warteschlange gab es gar keine Wiederholung.
+RUECKOFF_S = (30, 60, 120, 180, 240)
+#: Hash Arbeitskennung → Zahl der Wiederholungen.
+VERSUCHE = "push:dm:versuche"
 
 # KEYS[1]=faellig, KEYS[2]=inarbeit; ARGV: jetzt, pacht_bis, grenze, marke,
 # Präfix der Teile-Listen, Präfix der Listen in Arbeit. Liefert die
@@ -244,7 +251,21 @@ async def abschliessen(redis: Any, arbeit: str) -> None:
     pipe = redis.pipeline(transaction=True)
     pipe.delete(arbeitsliste(arbeit))
     pipe.zrem(INARBEIT, arbeit)
+    pipe.hdel(VERSUCHE, arbeit)
     await pipe.execute()
+
+
+async def erneut_einplanen(redis: Any, arbeit: str, *, jetzt_ms: int | None = None) -> bool:
+    """Nach einem gestörten Versand (``fcm.Versand.stoerung``) die Pacht auf
+    den nächsten Rückoff-Zeitpunkt legen — nach ihrem Ablauf übernimmt ein
+    Abarbeiter den Eintrag wie jeden anderen. ``False``, wenn die Versuche
+    aufgebraucht sind; dann schliesst der Aufrufer ab."""
+    versuch = int(await redis.hincrby(VERSUCHE, arbeit, 1))
+    if versuch > len(RUECKOFF_S):
+        return False
+    jetzt = _jetzt_ms() if jetzt_ms is None else jetzt_ms
+    await redis.zadd(INARBEIT, {arbeit: jetzt + RUECKOFF_S[versuch - 1] * 1000}, xx=True)
+    return True
 
 
 async def zurueckgeben(redis: Any, arbeit: str) -> None:
@@ -261,8 +282,10 @@ __all__ = [
     "INARBEIT",
     "PACHT_S",
     "TEILE_PRAEFIX",
+    "RUECKOFF_S",
     "abschliessen",
     "arbeitsliste",
+    "erneut_einplanen",
     "uebernehmen",
     "zurueckgeben",
     "vormerken",

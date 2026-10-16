@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, select
@@ -232,7 +233,23 @@ def _send_one(*, token: str, payload: dict, badge: int | None = None) -> str:
         return "warn"
 
 
-async def fan_out_fcm_dm_push(
+@dataclass(frozen=True)
+class Versand:
+    """Ausgang eines Versands. ``stoerung`` = nichts ging hinaus, und ein
+    späterer Versuch kann helfen (Datenbank weg, Firebase-Zeitüberschreitung
+    oder 5xx) — im Gegensatz zu „niemand zu erreichen" oder toten Tokens."""
+
+    gesendet: int = 0
+    stoerung: bool = False
+
+
+async def fan_out_fcm_dm_push(**kwargs: Any) -> int:
+    """Wie :func:`dm_push_senden`, liefert nur die Zahl erfolgreicher
+    Sendungen (die Form der Aufrufer von vor der Warteschlange)."""
+    return (await dm_push_senden(**kwargs)).gesendet
+
+
+async def dm_push_senden(
     *,
     recipient_ids: set[int],
     author_name: str,
@@ -240,7 +257,7 @@ async def fan_out_fcm_dm_push(
     manager: Any | None = None,
     hat_anhang: bool = False,
     anzahl: int = 1,
-) -> int:
+) -> Versand:
     """Inhaltsfreien FCM-Push an die DM-Empfänger ausliefern — SOFORT.
 
     Der Normalweg geht nicht hierher, sondern über die Warteschlange
@@ -255,13 +272,14 @@ async def fan_out_fcm_dm_push(
     ``ConnectionManager.user_socket_count``; ohne ``manager`` (Tests, pfad-
     lose Aufrufe) gilt jeder Empfänger als offline.
 
-    Liefert die Anzahl erfolgreicher Sendungen zurück. Löst nie aus —
-    Fehlkonfiguration und tote Tokens dürfen den Nachrichtenweg nie brechen.
+    Löst nie aus — Fehlkonfiguration und tote Tokens dürfen den
+    Nachrichtenweg nie brechen. Ob ein neuer Versuch lohnt, sagt
+    :attr:`Versand.stoerung`; die Warteschlange plant danach neu ein.
     """
     if not recipient_ids:
-        return 0
+        return Versand()
     if ensure_fcm() is None:
-        return 0
+        return Versand()
 
     def wach(uid: int) -> bool:
         return manager is not None and manager.user_socket_count(uid) > 0
@@ -286,7 +304,7 @@ async def fan_out_fcm_dm_push(
                 wach=wach,
             )
             if not rows:
-                return 0
+                return Versand()
             # Icon-Badge: EINMAL je Konto hochzählen, nicht je Gerätezeile —
             # ein Konto hat einen Ungelesen-Stand, auch wenn Handy und Tablet
             # beide einen Push bekommen. Ohne Redis (pfadlose Aufrufe, Tests)
@@ -317,15 +335,19 @@ async def fan_out_fcm_dm_push(
                     delete(FcmToken).where(FcmToken.token.in_(dead_tokens))
                 )
                 await session.commit()
-            return sum(1 for outcome in results if outcome == "ok")
+            gesendet = sum(1 for outcome in results if outcome == "ok")
+            gestoert = any(o == "warn" or isinstance(o, BaseException) for o in results)
+            return Versand(gesendet=gesendet, stoerung=gesendet == 0 and gestoert)
     except Exception:  # noqa: BLE001
         log.exception("fan_out_fcm_dm_push fehlgeschlagen")
-        return 0
+        return Versand(stoerung=True)
 
 
 __all__ = [
     "ANDROID_CHANNEL_ID",
     "DM_BODY",
+    "Versand",
+    "dm_push_senden",
     "ensure_fcm",
     "fan_out_fcm_dm_push",
     "reset_fcm_cache_for_tests",

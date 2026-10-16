@@ -287,7 +287,7 @@ async def test_herunterfahren_gibt_die_pacht_sofort_zurueck(
         angehalten.set()
         await asyncio.sleep(3600)
 
-    monkeypatch.setattr(fcm, "fan_out_fcm_dm_push", _haengt)
+    monkeypatch.setattr(fcm, "dm_push_senden", _haengt)
     aufgabe = asyncio.create_task(ab._einer(app.state.connection_manager, arbeit))
     await asyncio.wait_for(angehalten.wait(), 2)
     aufgabe.cancel()
@@ -434,7 +434,7 @@ async def test_ein_haengender_versand_haelt_die_anderen_nicht_auf(
         ws.FAELLIG, {f"{flott['uid_b']}:{flott['dm']}": ws._jetzt_ms() + 300}
     )
     los = asyncio.Event()
-    echt = fcm.fan_out_fcm_dm_push
+    echt = fcm.dm_push_senden
     erreicht: list[int] = []
 
     async def _versand(**kw):
@@ -444,7 +444,7 @@ async def test_ein_haengender_versand_haelt_die_anderen_nicht_auf(
         erreicht.append(uid)
         return await echt(**kw)
 
-    monkeypatch.setattr(fcm, "fan_out_fcm_dm_push", _versand)
+    monkeypatch.setattr(fcm, "dm_push_senden", _versand)
     aufgabe = asyncio.create_task(ab.abarbeiter_loop(app.state.connection_manager))
     try:
         for _ in range(40):
@@ -480,3 +480,55 @@ def test_firebase_bekommt_eine_knappe_zeitgrenze(monkeypatch, _isolate_chat_sett
     assert fcm.ensure_fcm() == "app"
     assert gesehen["httpTimeout"] == fcm.FCM_HTTP_TIMEOUT_S
     assert ws.PACHT_S > 6 * fcm.FCM_HTTP_TIMEOUT_S
+
+
+@pytest.mark.asyncio
+async def test_gestoerter_versand_wird_mit_rueckoff_wiederholt(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange, monkeypatch
+):
+    """P4: ein gestörter Versand (Firebase-Zeitüberschreitung) löschte den
+    Eintrag als erledigt — die Mitteilung war weg."""
+    manager = app.state.connection_manager
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    await _senden(client, sz)
+    ausgaenge = ["warn", "ok"]
+
+    def _send(*, token, payload, badge=None):
+        ausgang = ausgaenge.pop(0)
+        if ausgang == "ok":
+            sender.append((token, payload, badge))
+        return ausgang
+
+    monkeypatch.setattr(fcm, "_send_one", _send)
+    [arbeit] = await ws.uebernehmen(schlange, jetzt_ms=SPAETER)
+    await ab.abarbeiten(manager, arbeit)
+    assert sender == []
+    pacht = await schlange.zscore(ws.INARBEIT, arbeit)
+    assert pacht is not None and pacht > ws._jetzt_ms() + 25_000  # erster Rückoff 30 s
+    assert await ws.uebernehmen(schlange) == []  # vor dem Rückoff: niemand
+    [wieder] = await ws.uebernehmen(schlange, jetzt_ms=int(pacht) + 1)
+    assert wieder == arbeit
+    await ab.abarbeiten(manager, arbeit)
+    assert len(sender) == 1
+    assert await _leer(schlange)
+    assert await schlange.hlen(ws.VERSUCHE) == 0
+
+
+@pytest.mark.asyncio
+async def test_nach_allen_versuchen_wird_aufgegeben_und_gewarnt(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange, monkeypatch,
+    caplog,
+):
+    manager = app.state.connection_manager
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    await _senden(client, sz)
+    versuche: list[int] = []
+    monkeypatch.setattr(fcm, "_send_one", lambda **_k: versuche.append(1) or "warn")
+    jetzt = SPAETER
+    for _ in range(len(ws.RUECKOFF_S) + 1):
+        [arbeit] = await ws.uebernehmen(schlange, jetzt_ms=jetzt)
+        await ab.abarbeiten(manager, arbeit)
+        jetzt += max(ws.RUECKOFF_S) * 1000 + ws.PACHT_S * 1000
+    assert len(versuche) == len(ws.RUECKOFF_S) + 1
+    assert await _leer(schlange)
+    assert "fcm_push_nach_stoerungen_aufgegeben" in caplog.text

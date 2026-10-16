@@ -41,8 +41,9 @@ STOERUNG_PAUSE_S = 5.0
 async def abarbeiten(manager: Any, arbeit: str) -> None:
     """Einen übernommenen Eintrag senden oder verwerfen, danach löschen.
 
-    Wirft nur bei einer Redis-Störung; der Eintrag bleibt dann in Pacht und
-    wird nach ihrem Ablauf neu versucht."""
+    Ein gestörter Versand wird mit Rückoff neu eingeplant
+    (``ablage.erneut_einplanen``). Wirft nur bei einer Redis-Störung; der
+    Eintrag bleibt dann in Pacht und wird nach ihrem Ablauf neu versucht."""
     redis = manager.redis
     try:
         mitglied = arbeit.partition("|")[0]
@@ -63,7 +64,7 @@ async def abarbeiten(manager: Any, arbeit: str) -> None:
     )
     if offen:
         neuester = offen[-1]
-        await fcm.fan_out_fcm_dm_push(
+        versand = await fcm.dm_push_senden(
             recipient_ids={uid},
             author_name=neuester.get("autor") or "",
             channel_id=kanal,
@@ -71,6 +72,12 @@ async def abarbeiten(manager: Any, arbeit: str) -> None:
             hat_anhang=bool(neuester.get("anhang")),
             anzahl=len(offen),
         )
+        if versand.stoerung:
+            # Nicht als erledigt löschen (Gegenprüfung P4): die Warteschlange
+            # hat alles für einen neuen Versuch. Er prüft auch das Lesen neu.
+            if await ablage.erneut_einplanen(redis, arbeit):
+                return
+            log.warning("fcm_push_nach_stoerungen_aufgegeben")
     await ablage.abschliessen(redis, arbeit)
 
 
