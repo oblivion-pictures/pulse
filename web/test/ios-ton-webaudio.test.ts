@@ -4,6 +4,8 @@ import { test } from 'node:test';
 
 import { tonEndungen, tonWeg } from '../src/lib/sounds/tonWeg.ts';
 import {
+  PUFFER_GRENZE,
+  tonSchluessel,
   WebAudioTon,
   type AntwortArtig,
   type KontextArtig,
@@ -171,4 +173,34 @@ test('höchstens drei gleichzeitige Wiedergaben derselben Datei', async () => {
 test('ohne Kontext ist alles still', async () => {
   const ton = new WebAudioTon({ neuerKontext: () => null, holen: async () => antwort() });
   assert.equal(await ton.spielen('/a.m4a', 1), 'still');
+});
+
+test('T3: der Zwischenspeicher hängt am Pfad, nicht an der Signatur', async () => {
+  assert.equal(tonSchluessel('https://h/b/g/x.ogg?X-Amz-Signature=1'), 'https://h/b/g/x.ogg');
+  assert.equal(tonSchluessel('/sounds/a.m4a'), '/sounds/a.m4a');
+  const { ton, geholt } = aufbau();
+  await ton.spielen('https://h/x.ogg?sig=1', 1);
+  await ton.spielen('https://h/x.ogg?sig=2', 1);
+  assert.equal(geholt.length, 1);
+  ton.vergessen('https://h/x.ogg?sig=3');
+  await ton.spielen('https://h/x.ogg?sig=4', 1);
+  assert.equal(geholt.length, 2);
+});
+
+test('T3: höchstens PUFFER_GRENZE dekodierte Töne, der älteste geht', async () => {
+  const { ton, geholt } = aufbau();
+  for (let i = 0; i <= PUFFER_GRENZE; i++) await ton.spielen(`/t${i}.m4a`, 1);
+  assert.equal(geholt.length, PUFFER_GRENZE + 1);
+  await ton.spielen(`/t${PUFFER_GRENZE}.m4a`, 1);
+  assert.equal(geholt.length, PUFFER_GRENZE + 1, 'der jüngste ist noch da');
+  await ton.spielen('/t0.m4a', 1);
+  assert.equal(geholt.length, PUFFER_GRENZE + 2, 'der älteste wurde verworfen');
+});
+
+test('T5: entsperren meldet, ob der Kontext wirklich läuft', async () => {
+  const { ctx, ton } = aufbau();
+  ctx.weckbar = false;
+  assert.equal(await ton.entsperren(), false);
+  ctx.weckbar = true;
+  assert.equal(await ton.entsperren(), true);
 });

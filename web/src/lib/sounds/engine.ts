@@ -42,7 +42,10 @@ const SOUND_DIR = '/sounds';
  *  fetched, and the per-guild MinIO upload pins content-type.
  *  Die Kette hängt am Weg (`tonWeg.ts::tonEndungen`): iOS nimmt `.m4a` zuerst. */
 const DEBOUNCE_MS = 50;
-const GESTEN = ['pointerdown', 'keydown'] as const;
+/** Gesten, die nach WebKits Regel als Nutzeraktivierung zählen: ein Tipp
+ *  aktiviert erst beim Loslassen (`touchend`/`click`), `pointerdown` nur mit
+ *  der Maus (Gegenprüfung T5). */
+const GESTEN = ['touchend', 'click', 'keydown'] as const;
 const MAX_CONCURRENT_PER_URL = 3;
 
 function clamp01(v: number): number {
@@ -96,13 +99,16 @@ class SoundEngine {
   #overrideGuild = new Map<string, string>();
 
   constructor() {
-    // iOS: die erste Geste gibt den Kontext frei (iOS-Safari verlangt das;
-    // die Hülle erlaubt Wiedergabe ohne Geste, dort schadet es nicht). Einmal
-    // genügt — WebKit hebt die Sperre nach dem ersten gelungenen Start auf.
+    // iOS: eine Geste gibt den Kontext frei (iOS-Safari verlangt das; die
+    // Hülle erlaubt Wiedergabe ohne Geste, dort schadet es nicht). WebKit hebt
+    // die Sperre nach dem ersten GELUNGENEN Start auf — abgemeldet wird also
+    // erst danach, nicht schon nach dem ersten Versuch.
     if (typeof document === 'undefined' || aktuellerWeg() !== 'webaudio') return;
     const geste = () => {
-      for (const art of GESTEN) document.removeEventListener(art, geste, true);
-      this.entsperren();
+      void this.entsperren().then((frei) => {
+        if (!frei) return;
+        for (const art of GESTEN) document.removeEventListener(art, geste, true);
+      });
     };
     for (const art of GESTEN) document.addEventListener(art, geste, true);
   }
@@ -189,8 +195,9 @@ class SoundEngine {
 
   /** Aus einer Nutzergeste (iOS): den Kontext freigeben, damit der erste Ton
    *  danach nicht an WebKits Wiedergabe-Regel scheitert. */
-  entsperren(): void {
-    if (aktuellerWeg() === 'webaudio') this.#webAudioHolen().entsperren();
+  entsperren(): Promise<boolean> {
+    if (aktuellerWeg() !== 'webaudio') return Promise.resolve(false);
+    return this.#webAudioHolen().entsperren();
   }
 
   #webAudioHolen(): WebAudioTon {

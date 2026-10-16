@@ -20,6 +20,15 @@
  * zwischengespeichert, damit ein undekodierbarer Gilden-Ton nicht bei jedem
  * Ton neu geholt wird.
  *
+ * **Der Zwischenspeicher hängt am Pfad, nicht an der vollen URL, und ist
+ * begrenzt** (Gegenprüfung T3): Gilden-Töne kommen als vorsignierte URLs, die
+ * alle paar Minuten eine neue Signatur tragen. Je Signatur ein Eintrag mit
+ * dekodiertem PCM (bis ~1 MB je Ton) wuchs über Stunden in Dutzende MB — und
+ * ein Neustart des WebContent-Prozesses ist selbst ein Verdacht in K1. Die
+ * Signatur ist nur die Berechtigung, der Inhalt hängt am Pfad; ersetzt eine
+ * Gilde ihren Ton unter demselben Pfad, vergisst die Engine ihn
+ * (`invalidateUrl`, angestossen von `guildSounds`).
+ *
  * Importfrei, Kontext und `fetch` werden hineingereicht — damit Nodes Läufer
  * den Weg prüfen kann (CLAUDE.md, `pnpm test:unit`).
  */
@@ -76,6 +85,14 @@ export interface WebAudioUmgebung {
 /** Wie in der Engine: mehr gleichzeitige Wiedergaben derselben Datei kappen
  *  die ältesten. */
 const HOECHSTENS_JE_URL = 3;
+/** Höchstens so viele dekodierte Töne im Speicher (16 gebündelte + Gilden). */
+export const PUFFER_GRENZE = 24;
+
+/** Schlüssel ohne Query und Fragment — die Signatur gehört nicht dazu. */
+export function tonSchluessel(url: string): string {
+  const ende = url.search(/[?#]/);
+  return ende < 0 ? url : url.slice(0, ende);
+}
 
 class Dekodierfehler extends Error {}
 class FehltFehler extends Error {}
@@ -111,18 +128,22 @@ export class WebAudioTon {
   /** Aus einer Nutzergeste: den Kontext anlegen und einmal wecken, damit
    *  iOS-Safari ihn für spätere Töne ohne Geste freigibt. Danach schläft er
    *  wieder ein, wenn nichts klingt. */
-  entsperren(): void {
+  async entsperren(): Promise<boolean> {
     const ctx = this.#kontextHolen();
-    if (!ctx || ctx.state === 'running') return;
-    void ctx.resume().then(
-      () => this.#ruheNachHinten(),
-      () => undefined
-    );
+    if (!ctx) return false;
+    if (ctx.state === 'running') return true;
+    try {
+      await ctx.resume();
+    } catch {
+      return false;
+    }
+    this.#ruheNachHinten();
+    return ctx.state === 'running';
   }
 
   /** Eine URL vergessen (Gilden-Ton geändert, Signatur abgelaufen). */
   vergessen(url: string): void {
-    this.#puffer.delete(url);
+    this.#puffer.delete(tonSchluessel(url));
   }
 
   #kontextHolen(): KontextArtig | null {
@@ -137,8 +158,14 @@ export class WebAudioTon {
   }
 
   #dekodiert(ctx: KontextArtig, url: string): Promise<PufferArtig> {
-    const vorhanden = this.#puffer.get(url);
-    if (vorhanden) return vorhanden;
+    const schluessel = tonSchluessel(url);
+    const vorhanden = this.#puffer.get(schluessel);
+    if (vorhanden) {
+      // Zuletzt benutzt nach hinten — die Grenze räumt vorn ab.
+      this.#puffer.delete(schluessel);
+      this.#puffer.set(schluessel, vorhanden);
+      return vorhanden;
+    }
     const laden = (async () => {
       const antwort = await this.#u.holen(url);
       if (!antwort.ok) {
@@ -153,12 +180,17 @@ export class WebAudioTon {
         throw new Dekodierfehler();
       }
     })();
-    this.#puffer.set(url, laden);
+    this.#puffer.set(schluessel, laden);
+    while (this.#puffer.size > PUFFER_GRENZE) {
+      const aeltester = this.#puffer.keys().next().value;
+      if (aeltester === undefined) break;
+      this.#puffer.delete(aeltester);
+    }
     // Nur Dekodierfehler bleiben stehen; alles andere darf der nächste Ton
     // neu versuchen.
     laden.catch((e: unknown) => {
-      if (!(e instanceof Dekodierfehler) && this.#puffer.get(url) === laden) {
-        this.#puffer.delete(url);
+      if (!(e instanceof Dekodierfehler) && this.#puffer.get(schluessel) === laden) {
+        this.#puffer.delete(schluessel);
       }
     });
     return laden;

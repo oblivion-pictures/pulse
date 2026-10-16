@@ -10,6 +10,8 @@ import { roles } from '$lib/stores/roles.svelte';
 import { memberRoles } from '$lib/stores/memberRoles.svelte';
 import { currentServerUserId } from '$lib/stores/currentServerUser';
 import { guildSounds } from '$lib/stores/guildSounds.svelte';
+import { sounds } from '$lib/sounds/engine';
+import { isIosWebKit } from '$lib/platform/runtime';
 import {
   guildPluginActivation,
   setGuildPluginEnabled
@@ -130,6 +132,11 @@ export function register(ctx: HandlerContext): void {
     // /sounds is cheap (≤13 rows) and gives us all fresh URLs in one
     // call regardless of how many overrides changed at once.
     if (guilds.byId[evt.guild_id]) {
+      // iOS hält den DEKODIERTEN Ton je Pfad, und ein ersetzter Ton liegt
+      // unter demselben Pfad (`sounds/webAudioTon.ts`) — also vergessen. Der
+      // Element-Weg der anderen Plattformen bleibt, wie er war.
+      const alt = guildSounds.byGuild[evt.guild_id]?.[evt.sound_id];
+      if (alt && isIosWebKit()) sounds.invalidateUrl(alt);
       void guildSounds.refresh(evt.guild_id);
     }
   });
