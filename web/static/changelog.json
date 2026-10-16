@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-16.3",
+      "date": "2026-10-16",
+      "style": "Sachlich",
+      "title": "Ton und Bild beim Bildschirmteilen",
+      "items": [
+        "Unter Windows verarbeitet Pulse den Ton beim Bildschirmteilen jetzt getrennt vom Bild. Das soll den Fall beheben, dass der Ton – vor allem bei 10 Bit – hörbar hinter dem Bild herläuft."
+      ]
+    },
+    {
       "id": "2026-10-16.2",
       "date": "2026-10-16",
       "style": "Sachlich",
