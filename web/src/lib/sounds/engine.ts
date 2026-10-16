@@ -89,6 +89,10 @@ type PlayOpts = {
 class SoundEngine {
   /** Nur auf iOS-WebKit benutzt — angelegt beim ersten Ton dort. */
   #webAudio: WebAudioTon | null = null;
+  /** Läuft vor jedem Ton auf dem iOS-Weg. Die Hülle hängt hier WebKits
+   *  `ambient`-Erklärung ein (`platform/iosSprache.ts`), solange ein nativer
+   *  Raum steht — sonst bleibt es leer. */
+  vorWebAudioTon: (() => void) | null = null;
   #pool = new Map<string, HTMLAudioElement[]>();
   #lastPlay = new Map<string, number>();
   #missing = new Set<string>();
@@ -135,7 +139,10 @@ class SoundEngine {
     if (url === null) return;
     // iOS: jeder Ton mit WebKits Session-Stand in den Diagnose-Ring — der Ton
     // war der Auslöser in Kette K1 (`diagnose/iosTonDiagnose.ts`).
-    if (weg === 'webaudio') iosTonGespielt(id);
+    if (weg === 'webaudio') {
+      this.vorWebAudioTon?.();
+      iosTonGespielt(id);
+    }
     this.#emit(id, url, gain, weg);
   }
 

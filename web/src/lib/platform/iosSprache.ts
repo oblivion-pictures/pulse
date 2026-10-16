@@ -24,6 +24,7 @@ import { mikrofonBeiDerHuelleMelden } from './mikrofonBeiDerHuelle';
 import { mitFrist, SPRACHE_FRIST_KETTE_MS, SPRACHE_FRIST_SOFORT_MS } from './brueckenFrist';
 import { nativeWacheDa } from './iosSpracheWeiche';
 import { iosTonMelden, webkitSession } from '$lib/diagnose/iosTonDiagnose';
+import { sounds } from '$lib/sounds/engine';
 import type {
   AnsichtThema,
   NativerEigenerZustand,
@@ -179,9 +180,13 @@ const halter = new TonHalter((gehalten) => {
  */
 export function webkitNeuErklaeren(grund: string): void {
   if (!halter.gehalten) return;
-  const vorher = webkitSession();
+  const vorher = String(webkitSession().webkit_typ);
   webSessionTyp('ambient');
-  iosTonMelden('webkit_neu', { grund, vorher_typ: String(vorher.webkit_typ) });
+  // Vor jedem Ton nur melden, wenn die Erklärung WIRKLICH fehlte — sonst
+  // stünde jeder Hinweiston doppelt im Ring.
+  if (grund !== 'ton' || vorher !== 'ambient') {
+    iosTonMelden('webkit_neu', { grund, vorher_typ: vorher });
+  }
 }
 
 if (typeof document !== 'undefined' && isCapacitorIOS()) {
@@ -196,6 +201,15 @@ if (typeof document !== 'undefined' && isCapacitorIOS()) {
  *  `raumBeginnt`/`raumEndet` unten; der Anruf meldet sich hier direkt
  *  (`anrufe/nativerAnrufRaum.ts`), `'vorhalt'` aus `spracheVorhalt.ts`. */
 export function nativerTonHalten(wer: 'sprachkanal' | 'anruf' | 'vorhalt', an: boolean): void {
+  // **Vor jedem Hinweiston, solange ein nativer Raum steht** (Gegenprüfung
+  // T6): ohne Erklärung wählt WebKit für Web Audio `PlayAndRecord`/
+  // `VideoChat`, sobald die geteilte Session schon in `PlayAndRecord` steht —
+  // genau das ist sie im nativen Raum. Ausserhalb eines Raums bleibt es bei
+  // `auto`: dort steht die Session nicht in `PlayAndRecord`, und ein
+  // `ambient` liesse den Ton einer Übertragung dem Stummschalter folgen.
+  // Eingehängt beim ersten Halter statt beim Laden des Moduls — damit hängt
+  // es nicht an der Reihenfolge, in der die Module ausgewertet werden.
+  if (an) sounds.vorWebAudioTon ??= () => webkitNeuErklaeren('ton');
   halter.setzen(wer, an);
 }
 

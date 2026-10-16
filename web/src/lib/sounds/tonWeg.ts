@@ -9,11 +9,15 @@
  * ein solches Element eine NICHT mischbare Session einrichtet — die nimmt der
  * Hülle ihre Audio-Session weg, und im nativen Sprachkanal steht danach das
  * Mikrofon (Messung an `webSessionTyp` in `platform/iosSprache.ts`, Kette K1).
- * Reine Web-Audio-Wiedergabe kennt WebKit dagegen nur als Beiwerk: ohne
- * eigene Erklärung wählt es dafür `AmbientSound`, also mischbar (gelesen in
- * WebKits `MediaSessionManagerCocoa::updateSessionState`, main). Dass dabei
- * auch keine Jetzt-läuft-Karte entsteht, ist gefolgert und am Gerät zu
- * bestätigen.
+ * Reine Web-Audio-Wiedergabe wählt WebKit ohne eigene Erklärung als
+ * `AmbientSound`, also mischbar — **aber nur, solange die geteilte Session
+ * nicht schon in `PlayAndRecord` steht**; dann nimmt es `PlayAndRecord`/
+ * `VideoChat` (gelesen in `MediaSessionManagerCocoa::updateSessionState`,
+ * main). Im nativen Raum steht sie dort, deshalb erklärt die Hülle WebKit vor
+ * jedem Ton ausdrücklich `ambient` (`vorWebAudioTon`, `platform/iosSprache.ts`).
+ * Ob WebKit eine unveränderte Erklärung nach einem Prozess-Neustart neu
+ * überträgt, und dass keine Jetzt-läuft-Karte entsteht, ist am Gerät zu
+ * bestätigen (Unified Log: `setting category = …`).
  *
  * **Kein Rückfall aufs Element.** Fehlt `AudioContext`, bleibt der Ton aus —
  * ein Rückfall brächte genau die Anzeige und den Session-Diebstahl zurück,
