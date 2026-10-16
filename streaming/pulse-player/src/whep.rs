@@ -618,7 +618,8 @@ pub(crate) async fn baue_empfaenger_pc(
             // dort sind Codec und Taktrate bekannt, die ein repariertes Paket
             // fuer den Empfangsweg braucht.
             let capability = track.codec().capability;
-            let medien_tx = match Codec::from_mime(&capability.mime_type) {
+            let codec = Codec::from_mime(&capability.mime_type);
+            let medien_tx = match codec {
                 Some(codec) if fec_an && codec.is_video() && fec_sperre.erstmals() => {
                     Some(crate::fec::starten(
                         receiver.transport(),
@@ -630,7 +631,7 @@ pub(crate) async fn baue_empfaenger_pc(
                 }
                 _ => None,
             };
-            if let Some(codec) = Codec::from_mime(&capability.mime_type) {
+            if let Some(codec) = codec {
                 tokio::spawn(lies_sender_reports(
                     receiver.clone(),
                     track.ssrc(),
