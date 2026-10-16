@@ -2,76 +2,6 @@ import AVFoundation
 import CallKit
 import LiveKit
 
-/// Zählt die Puffer, die das eigene Mikrofon liefert — am Ende der
-/// Aufnahme-Verarbeitung des SDK (`AudioManager.add(localAudioRenderer:)`,
-/// derselbe Haken, mit dem das SDK selbst auf das erste Bild wartet:
-/// `LocalAudioTrack.startWaitingForFrames`).
-///
-/// **Warum es das braucht** (Befund TestFlight 2.1): im Sprachkanal fiel das
-/// Mikrofon aus, ohne dass es irgendwo sichtbar wurde — kein oranger Punkt, der
-/// Desktop hörte nichts, und die Oberfläche zeigte ein offenes Mikrofon. Ein
-/// stehender Aufnahmepfad liefert schlicht keine Puffer mehr; genau das zählt
-/// diese Klasse.
-///
-/// Läuft auf dem Audio-Faden des SDK: nur eine Sperre und drei Zahlen, kein
-/// Brückenverkehr, keine Zuteilung.
-final class MikroPufferZaehler: NSObject, AudioRenderer, @unchecked Sendable {
-    private let sperre = NSLock()
-    private var anzahl: UInt64 = 0
-    private var spitze: Float = 0
-    private var zuletzt: CFAbsoluteTime = 0
-    private var beimErsten: (() -> Void)?
-
-    func render(pcmBuffer: AVAudioPCMBuffer) {
-        let p = Self.spitze(pcmBuffer)
-        let jetzt = CFAbsoluteTimeGetCurrent()
-        sperre.lock()
-        anzahl &+= 1
-        if p > spitze { spitze = p }
-        zuletzt = jetzt
-        let erster = beimErsten
-        beimErsten = nil
-        sperre.unlock()
-        erster?()
-    }
-
-    /// Einmal rufen, sobald der nächste Puffer kommt — für „das Mikrofon
-    /// liefert", ohne auf den nächsten Takt zu warten.
-    func beimNaechsten(_ f: @escaping () -> Void) {
-        sperre.lock()
-        beimErsten = f
-        sperre.unlock()
-    }
-
-    /// Stand lesen; die Spitze gilt seit dem letzten Ablesen.
-    func ablesen() -> (anzahl: UInt64, spitze: Float, zuletzt: CFAbsoluteTime) {
-        sperre.lock()
-        defer {
-            spitze = 0
-            sperre.unlock()
-        }
-        return (anzahl, spitze, zuletzt)
-    }
-
-    /// Spitze 0…1. Das SDK reicht Int16 (`LKAudioBuffer.toAVAudioPCMBuffer`);
-    /// Float wird der Vollständigkeit halber gelesen.
-    static func spitze(_ b: AVAudioPCMBuffer) -> Float {
-        let n = Int(b.frameLength)
-        guard n > 0 else { return 0 }
-        if let k = b.int16ChannelData?[0] {
-            var m: Int32 = 0
-            for i in 0 ..< n { m = max(m, abs(Int32(k[i]))) }
-            return Float(m) / 32768
-        }
-        if let k = b.floatChannelData?[0] {
-            var m: Float = 0
-            for i in 0 ..< n { m = max(m, abs(k[i])) }
-            return m
-        }
-        return 0
-    }
-}
-
 /// Der Wächter über das Mikrofon im nativen Sprachkanal.
 ///
 /// **Was er prüft.** Alle 2 s: steht der Raum, will der Nutzer sprechen
@@ -99,28 +29,6 @@ final class MikroPufferZaehler: NSObject, AudioRenderer, @unchecked Sendable {
 final class SpracheMikroWache: @unchecked Sendable {
     static let stilleGrenze: CFAbsoluteTime = 4
     static let takt: TimeInterval = 2
-    /// So lange gilt eine offene Unterbrechung als fremd und berechtigt (Siri,
-    /// Wecker, eine andere App). Danach, im Vordergrund und ohne fremden Ton,
-    /// ist es das Bild von K1: WebKit hat die Session genommen und gibt sie
-    /// nie mit „Ende" zurück. Gesetzt, nicht gemessen.
-    static let unterbrechungsGeduld: CFAbsoluteTime = 15
-
-    /// Dürfen die Stufen 2 und 3 die Audio-Kette anfassen?
-    ///
-    /// **Nicht gegen einen fremden Halter der Session** (Gegenprüfung T1). Die
-    /// Maschine neu freizugeben heisst für das SDK, die Session zu aktivieren —
-    /// und das lehnt iOS gegen eine laufende fremde Unterbrechung oder aus dem
-    /// Hintergrund ab (`cannotInterruptOthers`, `insufficientPriority`). Dann
-    /// stünde die Maschine auf `.none`, und auch nach dem Ende der Unterbrechung
-    /// liefe weder Mikrofon noch Wiedergabe. In diesen Lagen wartet der Wächter
-    /// und setzt beim Ende der Unterbrechung oder im Vordergrund neu an.
-    static func eingreifenErlaubt(vordergrund: Bool, fremdTon: Bool,
-                                  unterbrochenSeit: CFAbsoluteTime?, jetzt: CFAbsoluteTime) -> Bool {
-        guard vordergrund, !fremdTon else { return false }
-        guard let seit = unterbrochenSeit else { return true }
-        return jetzt - seit >= unterbrechungsGeduld
-    }
-
     private let faden = DispatchQueue(label: "com.howispulse.sprache.wache")
     private let zaehler = MikroPufferZaehler()
     private let anrufe = CXCallObserver()
@@ -136,10 +44,11 @@ final class SpracheMikroWache: @unchecked Sendable {
     private var unterbrochenSeit: CFAbsoluteTime?
     private var vordergrund = true
     private var wartenGemeldet = false
-    /// Die Maschine steht nach einem gescheiterten Freigeben auf `.none` —
-    /// wird bei jeder Prüfung erneut versucht, auch nach Stufe 4: die
-    /// Wiedergabe muss zurückkommen, selbst wenn das Mikrofon tot bleibt.
-    private var maschineOffen = false
+    // Nachholen einer gesperrten Maschine (`nachholenFallsNoetig`).
+    private var nachholLaeuft = false
+    private var nachholenAb: CFAbsoluteTime = 0
+    private var nachholAbstand: TimeInterval = WacheRegeln.nachholStart
+    private var nachholFehlerGemeldet = false
     /// Aufgegeben (Stufe 4)? Gelesen auch vom Zustand — ein `Bool`, das der
     /// Faden schreibt und andere lesen (wie die übrigen Felder des Raums).
     private(set) var tot = false
@@ -152,6 +61,7 @@ final class SpracheMikroWache: @unchecked Sendable {
     func beginnen(vordergrund vorn: Bool) {
         faden.async { [self] in
             vordergrund = vorn
+            nachholZuruecksetzen()
             stufe = 0
             tot = false
             bereitGemeldet = false
@@ -174,19 +84,14 @@ final class SpracheMikroWache: @unchecked Sendable {
         }
     }
 
-    /// Ob das Freigeben der Maschine gelang (`SpracheRaum.maschineNeu`); wenn
-    /// nicht, holt die nächste erlaubte Prüfung es nach.
-    func maschineStand(frei: Bool) {
-        faden.async { [self] in maschineOffen = !frei }
-    }
-
     /// Vordergrund oder Hintergrund (`SpracheRaumSession.swift`) — auch ohne
     /// Raum gemeldet, damit der Merker nie hängen bleibt. Zurück im
-    /// Vordergrund wird sofort geprüft.
+    /// Vordergrund wird sofort geprüft und das Nachholen nicht mehr verzögert.
     func vordergrund(_ an: Bool) {
         faden.async { [self] in
             vordergrund = an
             guard an, uhr != nil else { return }
+            nachholZuruecksetzen()
             pruefen()
         }
     }
@@ -235,6 +140,7 @@ final class SpracheMikroWache: @unchecked Sendable {
             unterbrochenSeit = begonnen ? CFAbsoluteTimeGetCurrent() : nil
             guard uhr != nil else { return }
             guard begonnen else {
+                nachholZuruecksetzen()
                 pruefen()
                 return
             }
@@ -254,11 +160,7 @@ final class SpracheMikroWache: @unchecked Sendable {
         let stand = zaehler.ablesen()
         let neue = stand.anzahl &- letzteAnzahl
         letzteAnzahl = stand.anzahl
-        let erlaubt = eingreifenJetzt(jetzt)
-        if maschineOffen, erlaubt, sprache.raum != nil {
-            maschineOffen = false
-            Task { await self.sprache.maschineFreigeben() }
-        }
+        nachholenFallsNoetig(jetzt)
         guard sollLiefern() else {
             erwartetSeit = nil
             return
@@ -282,7 +184,7 @@ final class SpracheMikroWache: @unchecked Sendable {
         }
         telefonatGemeldet = false
         guard !tot, stufe == 0 || jetzt - stufeSeit >= Self.stilleGrenze else { return }
-        if stufe >= 1, !erlaubt {
+        if !stufeErlaubt(stufe + 1, jetzt) {
             if !wartenGemeldet {
                 wartenGemeldet = true
                 sprache.diagMelden("wache_wartet", [
@@ -297,12 +199,50 @@ final class SpracheMikroWache: @unchecked Sendable {
         stufeAusfuehren(stufe, still: still, maschine: maschine)
     }
 
-    private func eingreifenJetzt(_ jetzt: CFAbsoluteTime) -> Bool {
+    private func stufeErlaubt(_ naechste: Int, _ jetzt: CFAbsoluteTime) -> Bool {
         let s = AVAudioSession.sharedInstance()
-        return Self.eingreifenErlaubt(
-            vordergrund: vordergrund,
+        return WacheRegeln.stufeErlaubt(
+            naechste, vordergrund: vordergrund,
             fremdTon: s.isOtherAudioPlaying || s.secondaryAudioShouldBeSilencedHint,
             unterbrochenSeit: unterbrochenSeit, jetzt: jetzt)
+    }
+
+    // MARK: - Nachholen
+
+    /// **Steht die Maschine gesperrt, ohne dass ein Anruf sie führt, wird sie
+    /// freigegeben** — gelesen am wahren Stand, nicht an einem Merker
+    /// (Gegenprüfung 2, U5): so fällt auch eine gescheiterte CallKit-Rückgabe
+    /// auf, und es greift auch bei stummem Mikrofon. Unter denselben Regeln wie
+    /// Stufe 2, nicht während eines Telefonats, mit Rückzug 2 → 4 → 8 … 30 s
+    /// (U4); gemeldet wird nur der erste Fehlschlag.
+    private func nachholenFallsNoetig(_ jetzt: CFAbsoluteTime) {
+        guard !nachholLaeuft, jetzt >= nachholenAb, sprache.raum != nil else { return }
+        let v = Anrufverwaltung.geteilt
+        guard !v.callkitAktiv, !v.ohneCallKit,
+              WacheRegeln.maschineGesperrt(AudioManager.shared.engineAvailability,
+                                           erlaubt: Anrufverwaltung.mikrofonErlaubt()),
+              !telefonatLaeuft(), stufeErlaubt(2, jetzt) else { return }
+        nachholLaeuft = true
+        let melden = !nachholFehlerGemeldet
+        Task {
+            let frei = await self.sprache.maschineFreigeben(melden: melden)
+            self.faden.async { [self] in
+                nachholLaeuft = false
+                if frei {
+                    nachholZuruecksetzen()
+                } else {
+                    nachholFehlerGemeldet = true
+                    nachholenAb = CFAbsoluteTimeGetCurrent() + nachholAbstand
+                    nachholAbstand = WacheRegeln.naechsterNachholAbstand(nachholAbstand)
+                }
+            }
+        }
+    }
+
+    private func nachholZuruecksetzen() {
+        nachholenAb = 0
+        nachholAbstand = WacheRegeln.nachholStart
+        nachholFehlerGemeldet = false
     }
 
     /// Das Mikrofon liefert — einmal je Beitritt. Das Web spielt erst danach
