@@ -20,6 +20,8 @@
  */
 
 import { chatApi } from '$lib/api/chat';
+import { ApiError } from '$lib/api/client';
+import { serverKenntGeraetMerkmalNicht } from './geraetMerkmalRueckfall';
 import { sidecar } from './sidecar';
 import { buildStartArgs, pushProtokoll, tenBitPossible } from './settings.svelte';
 import { resolveSlotLabel, resolveStreamLabel } from './label';
@@ -84,7 +86,7 @@ export async function streamStarten(
             slot,
           )
         : resolveSlotLabel(slot);
-      t = await chatApi.getStreamToken(
+      const holen = (deviceId: string | undefined) => chatApi.getStreamToken(
         channelId,
         // Warum Betriebsart UND Codec den Transport mitentscheiden: s.
         // `pushProtokoll`. Beim Standplatz-Gerät entscheidet der Codec des
@@ -113,9 +115,24 @@ export async function streamStarten(
         // Reist bis zum Zuschauer: HEVC + Linux-Browser = direkt nativer Player.
         ((standplatz ? standplatz.uebersteuerung.codec : streamSettings.overrides.codec) ??
           'h264') as 'h264' | 'hevc' | 'av1',
-        // Gerätestrom-Merkmal (seit 2026-10-16) — nur beim Standplatz-Start.
-        standplatz?.deviceId,
+        deviceId,
       );
+      // Gerätestrom-Merkmal (seit 2026-10-16) — nur beim Standplatz-Start.
+      // Ein älterer Server kennt es nicht und lehnt mit 422 ab: dann genau
+      // einmal ohne (`geraetMerkmalRueckfall.ts`, dort die Begründung).
+      const deviceId = standplatz?.deviceId;
+      try {
+        t = await holen(deviceId);
+      } catch (fehler) {
+        if (
+          !deviceId ||
+          !(fehler instanceof ApiError) ||
+          !serverKenntGeraetMerkmalNicht(fehler.status, fehler.body)
+        ) {
+          throw fehler;
+        }
+        t = await holen(undefined);
+      }
     } catch (fehler) {
       return { ok: false, stufe: 'token', fehler };
     }

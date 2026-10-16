@@ -17,6 +17,7 @@
  */
 
 import { gegenstelle } from './gegenstelle';
+import { geraetFuerPlatz } from './anfrageGeraet';
 import { deviceStore } from '$lib/devices/store.svelte';
 import { herkunftsVerbindung, sendenAuf } from './draht';
 import { dispatchingServerId } from '$lib/ws/gateway-connection';
@@ -26,14 +27,20 @@ import { remoteProtokoll } from './protokoll.svelte';
 import { standplatz } from './standplatz.svelte';
 
 /**
- * Welches Standplatz-Gerät steht in diesem Kanal und gehört diesem Nutzer?
+ * Welches Standplatz-Gerät meint eine Anfrage am Personen-Knopf auf `slot`?
  *
  * Der Steuernde hängt die Kennung an seine Anfrage, damit sie beim richtigen
- * Rechner landet. `null` heisst „ein Mensch, kein Gerät" — dann bleibt alles
- * wie bisher.
+ * Rechner landet — aber nur, wenn das Gerät gerade auf genau diesem Platz
+ * sendet (`anfrageGeraet.ts`, dort die Begründung). `null` heisst „ein
+ * Mensch, kein Gerät" — dann bleibt alles wie bisher. Die Geräteansicht
+ * übergibt ihr Gerät selbst und kommt hier nicht vorbei.
  */
-export function geraetFuerAnfrage(channelId: string, hostUserId: string): string | null {
-  return deviceStore.byChannelOwner(channelId, hostUserId)?.id ?? null;
+export function geraetFuerAnfrage(
+  channelId: string,
+  hostUserId: string,
+  slot: number,
+): string | null {
+  return geraetFuerPlatz(deviceStore.alleImKanal(channelId, hostUserId), slot);
 }
 
 /**

@@ -131,7 +131,7 @@ function uebernehmen(device: Device, slot: number): void {
   // man selbst, springt `request()` bei laufender Sitzung früh zurück; dieser
   // Riegel meint also genau den Fall „ein anderer hat ihn".
   if (device.state === 'busy') return;
-  remoteSession.request(device.channel_id, device.owner_user_id, slot);
+  remoteSession.request(device.channel_id, device.owner_user_id, slot, false, device.id);
 }
 
 /**
@@ -155,7 +155,7 @@ export function direktUebernehmen(device: Device): void {
   // Deshalb kein eigener Fehlerzweig für den Ruf — „gescheitert" doppelt
   // gemeldet wäre Lärm, gar nicht gemeldet eine tote Schaltfläche.
   geraetWecken(activeServer.serverId, device.id, undefined, true);
-  remoteSession.request(device.channel_id, device.owner_user_id, 0, true);
+  remoteSession.request(device.channel_id, device.owner_user_id, 0, true, device.id);
 }
 
 /**

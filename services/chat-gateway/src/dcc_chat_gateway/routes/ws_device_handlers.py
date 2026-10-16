@@ -315,7 +315,8 @@ async def handle_wake(ctx: Any, msg: dict[str, Any]) -> None:
     Rufer nicht sieht; 4062 „nicht freigegeben", wenn er es sieht; 4061
     „offline". Erst nach bestandener Prüfung UND hinausgegangenem Ruf wird der
     Rufer als Wecker gemerkt (``device_wecker.py``) — er darf dann bis zum
-    Sitzungsbeginn dem Strom zusehen, auf den sein Player wartet.
+    Sitzungsbeginn, längstens ``WECKFRIST_S``, dem Strom zusehen, auf den sein
+    Player wartet.
     """
     device_id = _int_or_none(msg.get("device_id"))
     mgr = _manager(ctx)
@@ -346,6 +347,7 @@ async def handle_wake(ctx: Any, msg: dict[str, Any]) -> None:
             await _err(ctx.websocket, NICHT_FREIGEGEBEN_CODE, "device not granted")
             return
         channel_id = device.channel_id
+        owner_id = device.owner_user_id
 
     ziele = mgr.device_sockets(device_id)
     if not ziele:
@@ -374,9 +376,11 @@ async def handle_wake(ctx: Any, msg: dict[str, Any]) -> None:
     # erst fließt.
     if msg.get("p2p") is True:
         frame["p2p"] = True
-    mgr.device_wecker_setzen(device_id, ctx.user.id)
     for sock in ziele:
         await send_to_socket(sock, frame)
+    # Erst nach dem Ruf merken (Docstring). ``send_to_socket`` schluckt Fehler,
+    # „hinausgegangen" heisst also: an jede Verbindung des Geräts übergeben.
+    mgr.device_wecker_setzen(device_id, ctx.user.id, channel_id=channel_id, owner_id=owner_id)
 
 
 async def on_disconnect(manager: Any, websocket: Any) -> None:

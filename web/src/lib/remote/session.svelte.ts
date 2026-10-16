@@ -114,7 +114,18 @@ class RemoteSessionStore {
   readonly #verworfene = new VerworfeneAnfragen();
 
   // ── Controller-Seite ──────────────────────────────────────────────────────
-  request(channelId: string, hostUserId: string, slot = 0, p2p = false): void {
+  /**
+   * `deviceId`: das Gerät, das die Geräteansicht ausdrücklich meint
+   * (`schirme.svelte.ts`). Fehlt es (Personen-Knopf, Player-Fenster), hängt
+   * nur ein Gerät an, das auf `slot` sendet (`geraetFuerAnfrage`).
+   */
+  request(
+    channelId: string,
+    hostUserId: string,
+    slot = 0,
+    p2p = false,
+    deviceId?: string,
+  ): void {
     if (this.phase !== 'idle') return;
     this.error = null;
     let conn: GatewayConnection;
@@ -138,7 +149,7 @@ class RemoteSessionStore {
       !conn.sendRemoteRequest(
         channelId,
         hostUserId,
-        geraet.geraetFuerAnfrage(channelId, hostUserId),
+        deviceId ?? geraet.geraetFuerAnfrage(channelId, hostUserId, slot),
         p2p,
       )
     ) {

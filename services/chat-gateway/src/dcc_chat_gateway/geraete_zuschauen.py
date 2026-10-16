@@ -41,11 +41,18 @@ trägt kein Merkmal und bleibt unverändert.
 
 ## Widerruf beim Sitzungsende
 
-Endet die Sitzung, fällt (b)/(d) weg. Die Lese-Token der übrigen Zuschauer
-werden dann gelöscht und ihre WHEP-Sitzungen getrennt
-(:func:`zuschauer_widerrufen`, gerufen aus ``remote_registry.remote_end``) —
-derselbe Weg wie beim Bann (``stream_revoke.py``) und beim Gast-Rauswurf
-(``voice_evict.kill_gast_whep_sitzungen``). Der Besitzer behält seins.
+Endet die Sitzung — auch eine, die nie über „wartet" hinauskam —, fällt
+(b)/(c)/(d) weg. Die Lese-Token der übrigen Zuschauer werden dann gelöscht und
+ihre WHEP-Sitzungen getrennt (:func:`widerrufen_und_trennen`, gerufen aus
+``remote_registry.remote_end``/``remote_end_if_pending``) — derselbe Weg wie
+beim Bann (``stream_revoke.py``) und beim Gast-Rauswurf
+(``voice_evict.kill_gast_whep_sitzungen``). Ebenso, wenn die Weckfrist ohne
+Sitzung abläuft (``device_wecker.py``). Der Besitzer behält seins.
+
+**Was der Widerruf nicht fängt:** ein Token, das media-svc ausstellt, NACHDEM
+der Widerruf gesucht hat, obwohl die Prüfung hier noch VOR dem Ende lief. Das
+Fenster ist kurz, aber offen; deshalb leben Lese-Token für Gerätestreams nur
+``GERAET_LESE_TOKEN_TTL_S`` (media-svc ``lese_token.py``, 120 s) statt 10 min.
 """
 
 from __future__ import annotations
@@ -121,6 +128,21 @@ def zuschauen_erlaubt(mgr, viewer_id: int, streamer_id: int, device_id: int) -> 
     return mgr.device_wecker(device_id) == str(viewer_id)
 
 
+async def geraetestrom_oder_503(
+    session, mgr, redis, channel_id: int, streamer_id: int, slot: int
+) -> int | None:
+    """:func:`geraetestrom` für die WHEP-Routen (Mitglied und Gast): ein
+    Redis-Fehler wird zu 503 — fail-closed, nie ein Token auf Verdacht, und
+    kein nackter 500."""
+    try:
+        return await geraetestrom(session, mgr, redis, channel_id, streamer_id, slot)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("device stream check failed: %s", exc)
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, detail="stream state unavailable"
+        ) from exc
+
+
 async def whep_geraet_pruefen(
     session, mgr, redis, *, channel_id: int, streamer_id: int, slot: int, viewer_id: int
 ) -> int | None:
@@ -128,13 +150,7 @@ async def whep_geraet_pruefen(
     einem gehört UND der Betrachter zusehen darf; ``None`` für einen normalen
     Strom; sonst 403. Ein Redis-Fehler wird zu 503 — fail-closed, nie ein Token
     auf Verdacht. Die Sicht auf den Kanal hat die Route schon geprüft."""
-    try:
-        geraet = await geraetestrom(session, mgr, redis, channel_id, streamer_id, slot)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("device stream check failed: %s", exc)
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, detail="stream state unavailable"
-        ) from exc
+    geraet = await geraetestrom_oder_503(session, mgr, redis, channel_id, streamer_id, slot)
     if geraet is not None and not zuschauen_erlaubt(mgr, viewer_id, streamer_id, geraet):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="device stream: only while someone controls it"
@@ -208,29 +224,16 @@ async def zuschauer_widerrufen(
 _trennen_laufend: set[Any] = set()
 
 
-async def nach_geraetesitzung(mgr, sess) -> None:
-    """Aufräumen, wenn eine Sitzung endet, die einem Gerät galt.
-
-    Gerufen aus ``remote_registry.remote_end`` und ``remote_end_if_pending``
-    (Absage/Zeitablauf). Der Wecker-Merker fällt immer (R3c: „gelöscht bei
-    Sitzungsende"); die Zuschauer werden nur nach einer ZUSTANDE GEKOMMENEN
-    Sitzung widerrufen — vorher durfte ausser Besitzer und Wecker niemand
-    zusehen. Das Trennen der laufenden WHEP-Sitzungen geht als eigener Auftrag
-    hinaus: ein Ende darf nicht an einem HTTP-Ruf an media-svc hängen.
-    """
-    if sess.device_id is None:
-        return
-    device_id = int(sess.device_id)
-    loeschen = getattr(mgr, "device_wecker_loeschen", None)
-    if loeschen is not None:
-        loeschen(device_id)
-    if sess.state != "active":
-        return
+async def widerrufen_und_trennen(mgr, *, channel_id: int, owner_id: int, device_id: int) -> None:
+    """:func:`zuschauer_widerrufen` und danach die laufenden WHEP-Sitzungen der
+    gelöschten Token trennen. Das Trennen geht als eigener Auftrag hinaus: ein
+    Sitzungsende oder Fristablauf darf nicht an einem HTTP-Ruf an media-svc
+    hängen."""
     plaetze = getattr(mgr, "device_streams", None)
     werte = await zuschauer_widerrufen(
         getattr(mgr, "_redis", None),
-        channel_id=int(sess.channel_id),
-        owner_id=int(sess.host_user_id),
+        channel_id=channel_id,
+        owner_id=owner_id,
         device_id=device_id,
         slots=set(plaetze(device_id)) if plaetze is not None else set(),
     )
@@ -240,3 +243,30 @@ async def nach_geraetesitzung(mgr, sess) -> None:
         auftrag = asyncio.create_task(kill_gast_whep_sitzungen(werte))
         _trennen_laufend.add(auftrag)
         auftrag.add_done_callback(_trennen_laufend.discard)
+
+
+async def nach_geraetesitzung(mgr, sess) -> None:
+    """Aufräumen, wenn eine Sitzung endet, die einem Gerät galt.
+
+    Gerufen aus ``remote_registry.remote_end`` und ``remote_end_if_pending``
+    (Absage/Zeitablauf). Der Wecker-Merker fällt (R3c: „gelöscht bei
+    Sitzungsende"), und die Lese-Token der Zuschauer werden widerrufen —
+    **auch nach einer Sitzung, die nie zustande kam** (Prüfbefund 2026-10-16):
+    dann verliert der Wecker sein Token, das er nur für die Weckfrist bekommen
+    hat, und ein Token, das im Wettlauf mit dem Ende noch ausgestellt wurde,
+    fällt mit. Je Gerät gibt es höchstens eine Sitzung
+    (``remote_create``), das Ende einer wartenden trifft also nie die
+    Zuschauer einer laufenden.
+    """
+    if sess.device_id is None:
+        return
+    device_id = int(sess.device_id)
+    loeschen = getattr(mgr, "device_wecker_loeschen", None)
+    if loeschen is not None:
+        loeschen(device_id)
+    await widerrufen_und_trennen(
+        mgr,
+        channel_id=int(sess.channel_id),
+        owner_id=int(sess.host_user_id),
+        device_id=device_id,
+    )

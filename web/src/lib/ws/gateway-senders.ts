@@ -197,11 +197,15 @@ export function sendDeviceAnnounce(
 
 /** Auf welchen Plaetzen dieser Rechner als GERAET sendet.
  *
- *  Der Server kann es nicht ableiten: der Strom laeuft unter dem Konto des
- *  Besitzers und traegt keine Geraete-Kennung. Ohne diese Meldung muesste die
- *  Oberflaeche raten, ob ein Strom vom Rechner oder vom Menschen davor kommt —
- *  und sie hat falsch geraten (LIVE-Abzeichen am unbeteiligten Standplatz,
- *  behoben 2026-08-16). Leere Liste heisst „sendet nicht". */
+ *  Der Strom laeuft unter dem Konto des Besitzers. Seit 2026-10-16 traegt er
+ *  serverseitig zwar ein Geraete-Merkmal (``device_id`` an der
+ *  Stream-Token-Anfrage, ``stream/starten.ts``) — das nutzt aber nur die
+ *  Zuschauer-Schranke, die Stromliste der Clients fuehrt es nicht. Ohne diese
+ *  Meldung muesste die Oberflaeche raten, ob ein Strom vom Rechner oder vom
+ *  Menschen davor kommt — und sie hat falsch geraten (LIVE-Abzeichen am
+ *  unbeteiligten Standplatz, behoben 2026-08-16). Zudem ist sie der Rueckfall
+ *  der Schranke fuer Geraete-Clients ohne Merkmal
+ *  (``geraete_zuschauen.py``). Leere Liste heisst „sendet nicht". */
 export function sendDeviceStreams(send: SendRaw, deviceId: string, slots: number[]): boolean {
   return send({ op: 'device_streams', device_id: deviceId, slots });
 }

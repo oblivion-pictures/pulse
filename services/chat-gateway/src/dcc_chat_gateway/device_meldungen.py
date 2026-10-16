@@ -43,8 +43,11 @@ class DeviceOut(BaseModel):
     #: Plätze, auf denen dieses Gerät gerade sendet — leer heisst „sendet
     #: nicht". Aus dem Verbindungsregister wie der Zustand, nicht aus der
     #: Datenbank: der Strom eines Geräts läuft unter dem Konto seines
-    #: Besitzers und trägt keine Geräte-Kennung, das Gerät meldet es also
-    #: selbst (``device_streams``).
+    #: Besitzers, das Gerät meldet seine Plätze also selbst
+    #: (``device_streams``). Das Geräte-Merkmal am Strom (seit 2026-10-16,
+    #: ``stream:active``) ersetzt das nicht: es dient nur der
+    #: Zuschauer-Schranke (``geraete_zuschauen.py``), die Stromliste der
+    #: Clients führt es nicht.
     stream_slots: list[int] = []
     #: Darf DIESER Betrachter das Gerät wecken und steuern? Sicht am Standplatz
     #: UND eine deckende, nicht abgelaufene Freigabe; für den Besitzer immer

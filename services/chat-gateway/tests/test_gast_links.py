@@ -491,3 +491,29 @@ async def test_zeitfenster_naive_zeitstempel_schlagen_nicht_als_500_durch(client
         headers=_auth(token),
     )
     assert r.status_code == 200, r.text
+
+
+@pytest.mark.asyncio
+async def test_gast_whep_redis_fehler_bei_geraetepruefung_ist_503(
+    client, _auth_signer, app, monkeypatch
+):
+    """Prüfbefund G3: die Gerätestrom-Prüfung auf dem Gast-Weg liest Redis.
+    Fällt Redis aus, gibt es wie auf dem Mitglieder-Weg 503 — kein 500, und
+    vor allem keine Weitergabe an media-svc auf Verdacht."""
+    token, _ = _owner(_auth_signer)
+    gid = await _guild(client, token)
+    cid = await _voice_channel(client, token, gid)
+    r = await client.post(f"/channels/{cid}/guest-links", json={}, headers=_auth(token))
+    bei = await client.post(f"/gast/{r.json()['code']}/beitritt", json={"name": "G"})
+    ticket = bei.json()["ticket"]
+
+    class _KaputtesRedis:
+        def __getattr__(self, name):
+            async def _wirft(*a, **kw):
+                raise ConnectionError("redis weg")
+
+            return _wirft
+
+    monkeypatch.setattr(app.state, "redis", _KaputtesRedis())
+    antwort = await client.get("/gast/sitzung/whep?user_id=42", headers=_auth(ticket))
+    assert antwort.status_code == 503, antwort.text

@@ -784,7 +784,7 @@ async def test_ausgehaendigtes_lese_token_bleibt_fuer_den_bann_erreichbar(redis)
     ein, der sein Token bereits bekommen hat.  Beide ausgehaendigten Token
     muessen danach ueber den Bann-Weg auffindbar sein.
     """
-    from dcc_media_svc.routes import _read_token_fuer
+    from dcc_media_svc.lese_token import read_token_fuer as _read_token_fuer
     from dcc_shared.streaming import read_cache_channel, read_cache_key, read_cache_scan_pattern
 
     cid = _unique_cid()

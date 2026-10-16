@@ -105,9 +105,12 @@ class _DeviceRegistryMixin(_DeviceWeckerMixin):
     #:
     #: **Warum das Gerät es sagen muss und wir es nicht ableiten können:** der
     #: Strom eines Standplatz-Geräts läuft unter dem Konto seines Besitzers, und
-    #: im Streaming-Weg gibt es keine Geräte-Kennung (`stream/starten.ts`). Für
-    #: jeden anderen Client sieht die Übertragung des Rechners deshalb genauso
-    #: aus wie die des Menschen davor.
+    #: die Stromliste der Clients führt keine Geräte-Kennung. (Das Merkmal am
+    #: Strom seit 2026-10-16, `stream/starten.ts` → ``stream:active``, liest nur
+    #: die Zuschauer-Schranke ``geraete_zuschauen.py``; dort ist dieses Register
+    #: der Rückfall für Geräte-Clients ohne Merkmal.) Für jeden anderen Client
+    #: sieht die Übertragung des Rechners deshalb genauso aus wie die des
+    #: Menschen davor.
     #:
     #: Bis 2026-08-16 hat die Oberfläche daraus geraten — *steht ein Gerät
     #: dieses Besitzers im Kanal, gehört ein Strom dieses Kontos dorthin*. Die

@@ -345,7 +345,9 @@ class DeviceStateEvent(_EventBase):
     #: kann.
     #:
     #: **Wozu:** der Strom eines Geraets laeuft unter dem Konto seines
-    #: Besitzers, im Streaming-Weg gibt es keine Geraete-Kennung. Ohne diese
+    #: Besitzers, und die Stromliste der Clients fuehrt keine Geraete-Kennung
+    #: (das Merkmal am Strom seit 2026-10-16 liest nur die Zuschauer-Schranke
+    #: im chat-gateway). Ohne diese
     #: Liste muss die Oberflaeche raten, welcher Strom vom Rechner kommt und
     #: welcher vom Menschen davor — und sie hat falsch geraten (LIVE-Abzeichen
     #: am unbeteiligten Standplatz).

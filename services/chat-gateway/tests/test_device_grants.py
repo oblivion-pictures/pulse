@@ -1,7 +1,9 @@
 """Tests für die Freigabeliste eines Standplatz-Geräts — lesen und ersetzen.
 
-Die Liste sagt, WER einen Rechner ohne Rückfrage übernehmen darf. Sie lag bis
-2026-08-20 auf dem Gerät selbst und war damit nur vor Ort änderbar; Entwurf:
+Die Liste sagt, WER einen Rechner wecken und steuern darf — seit 2026-10-16
+die einzige Tür (ohne Freigabe kein Zugriff, ``REMOTE_CONTROL`` zählt für
+Geräte nicht, Geräte fragen nie nach). Sie lag bis 2026-08-20 auf dem Gerät
+selbst und war damit nur vor Ort änderbar; Entwurf:
 ``docs/superpowers/specs/2026-08-20-geraeteverwaltung-design.md``.
 """
 
@@ -363,11 +365,12 @@ async def _freigeben(session_factory, device_id: int, *, expires_at=None) -> Non
 
 
 @pytest.mark.asyncio
-async def test_freigabe_greift_im_rahmen_wenn_remote_control_da_ist(
+async def test_freigabe_steht_im_rahmen(
     client, _auth_signer, session_factory
 ):
-    """Freigabe vorhanden UND der Rufer hat REMOTE_CONTROL am Standplatz (als
-    Besitzer ohnehin) → der weitergereichte Rahmen trägt ``freigabe: True``."""
+    """Freigabe vorhanden → der weitergereichte Rahmen trägt ``freigabe: True``.
+    Dass der Rufer hier auch REMOTE_CONTROL hat, ist seit 2026-10-16 ohne
+    Belang (s. ``test_freigabe_genuegt_ohne_remote_control``)."""
     from dcc_chat_gateway.routes import ws_remote_handlers
 
     _, owner_uid, _, host_uid, gid, a, device = await _fernaufbau(client, _auth_signer)

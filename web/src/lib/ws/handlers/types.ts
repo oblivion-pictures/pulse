@@ -455,11 +455,12 @@ export type ServerEvent =
        *  Geraete-Kachel gestellt wurde. Wer nicht dieses Geraet ist, lehnt
        *  still ab (`$lib/remote/geraeteanbindung.ts`). */
       device_id?: string;
-      /** Deckt eine Dauerfreigabe (`device_grants`) diese Anfrage? Nur
-       *  gesetzt, wenn überhaupt ein Geraet gemeint ist — eine Anfrage an
-       *  einen Menschen traegt das Feld gar nicht. Vom Gateway aufgeloest
-       *  (Rollen, Kanalmitgliedschaft); der Client prueft nur noch seinen
-       *  Hauptschalter (`$lib/remote/standplatz.svelte.ts`). */
+      /** Seit 2026-10-16 bei einer Geraete-Anfrage immer `true`: ohne
+       *  deckende Freigabe (`device_grants`, vom Gateway aufgeloest — Rollen,
+       *  Sicht auf den Kanal) kommt sie gar nicht an (4062). Eine Anfrage an
+       *  einen Menschen traegt das Feld nicht. Der Client prueft nur noch
+       *  seinen Notaus „Steuern erlauben" (`$lib/remote/standplatz.svelte.ts`,
+       *  `geraeteanbindung.ts::geraeteEntscheid`). */
       freigabe?: boolean;
       /** **P2P-Wunsch:** das Bild soll direkt zum Steuernden fließen — der
        *  Host startet seinen Sidecar im Wartezustand und beantwortet nach der

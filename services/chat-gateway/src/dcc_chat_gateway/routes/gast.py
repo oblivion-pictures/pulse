@@ -38,7 +38,7 @@ from dcc_chat_gateway import gaeste
 from dcc_chat_gateway.client_ip import bremsen_schluessel, client_ip
 from dcc_chat_gateway.config import get_settings
 from dcc_chat_gateway.db import SessionDep
-from dcc_chat_gateway.geraete_zuschauen import geraetestrom
+from dcc_chat_gateway.geraete_zuschauen import geraetestrom_oder_503
 from dcc_chat_gateway.models import Channel, GuestLink, Guild
 from dcc_chat_gateway.routes.streaming import SlotQuery, _bearer_from_header
 from dcc_chat_gateway.security import CurrentGast
@@ -375,8 +375,9 @@ async def gast_whep(
     # ``VIEW_CHANNEL``, und die Regel für Remote-Rechner verlangt es
     # (``geraete_zuschauen.py``). media-svc verweigert Datensätze mit
     # Geräte-Merkmal auf dem Gast-Weg ohnehin; hier zusätzlich der Rückfall
-    # über das Register für Geräte-Clients ohne Merkmal.
-    if await geraetestrom(
+    # über das Register für Geräte-Clients ohne Merkmal. Ein Redis-Fehler wird
+    # wie auf dem Mitglieder-Weg zu 503, nicht zu 500.
+    if await geraetestrom_oder_503(
         session,
         getattr(request.app.state, "connection_manager", None),
         getattr(request.app.state, "redis", None),

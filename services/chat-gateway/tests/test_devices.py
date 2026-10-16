@@ -283,7 +283,9 @@ async def test_sendende_plaetze_nur_von_angemeldeten_geraeten(client, _auth_sign
     """Ein Gerät meldet selbst, auf welchen Plätzen es sendet.
 
     **Warum es das überhaupt gibt** (2026-08-16): der Strom eines Geräts läuft
-    unter dem Konto seines Besitzers und trägt keine Geräte-Kennung. Ohne diese
+    unter dem Konto seines Besitzers, und die Stromliste der Clients führt
+    keine Geräte-Kennung (das Merkmal seit 2026-10-16 liest nur die
+    Zuschauer-Schranke). Ohne diese
     Meldung muss die Oberfläche raten — und sie hat falsch geraten: klickte der
     Besitzer an seinem eigenen Rechner auf „Live", wanderte das LIVE-Abzeichen
     an den unbeteiligten Standplatz.

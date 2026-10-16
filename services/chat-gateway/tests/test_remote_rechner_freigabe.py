@@ -665,3 +665,114 @@ async def test_reclaim_einer_geraetesitzung_ohne_freigabe_scheitert(
         "op": "remote_reclaim_failed", "session_id": sess.session_id, "reason": "no access",
     }
     await _mgr(client).remote_terminate(sess.session_id, "test")
+
+
+# ── Prüfbefunde M1/M2/G2: Widerruf ohne zustande gekommene Sitzung ───────────
+
+
+async def _token_legen(redis, a, viewer_uid: int, wert: str) -> str:
+    key = read_cache_key(viewer_uid, a["cid"], a["owner_uid"], 0)
+    await redis.set(key, wert)
+    await redis.set(token_key(wert), "{}")
+    return key
+
+
+@pytest.mark.asyncio
+async def test_ende_einer_wartenden_geraetesitzung_widerruft(client, _auth_signer):
+    """Absage oder Zeitablauf einer Anfrage, die nie angenommen wurde: der
+    Wecker verliert sein Token (es galt nur für die Weckfrist), und ein im
+    Wettlauf noch ausgestelltes fällt mit. Der Besitzer behält seins."""
+    a = await _aufbau(client, _auth_signer)
+    mgr = _mgr(client)
+    redis = mgr._redis
+    key = await _geraetestrom_markieren(client, a)
+    geraet = _geraet_verbinden(client, a)
+    ctrl_sock = _Sock(client._transport.app)
+    sess = await mgr.remote_create(
+        str(a["cid"]), str(a["owner_uid"]), geraet, str(a["ctrl_uid"]), ctrl_sock,
+        device_id=str(a["did"]),
+    )
+    wecker = await _token_legen(redis, a, a["ctrl_uid"], "tok-wecker")
+    eigen = await _token_legen(redis, a, a["owner_uid"], "tok-eigen")
+    try:
+        assert await mgr.remote_end_if_pending(sess.session_id) is not None
+        assert await redis.get(wecker) is None
+        assert await redis.get(token_key("tok-wecker")) is None
+        assert await redis.get(eigen) is not None
+    finally:
+        await redis.delete(key, wecker, eigen, token_key("tok-wecker"), token_key("tok-eigen"))
+
+
+@pytest.mark.asyncio
+async def test_ablauf_der_weckfrist_widerruft(client, _auth_signer, monkeypatch):
+    """Wird aus dem Weckruf keine Sitzung, widerruft der Zeitgeber die Token
+    nach der Frist. Gelöscht oder ersetzt (Sitzungsbeginn, neuer Weckruf),
+    widerruft er nichts — ebenso wenig bei belegtem Gerät."""
+    import asyncio
+
+    from dcc_chat_gateway import device_wecker
+
+    monkeypatch.setattr(device_wecker, "WECKFRIST_S", 0.05)
+    a = await _aufbau(client, _auth_signer)
+    mgr = _mgr(client)
+    redis = mgr._redis
+    key = await _geraetestrom_markieren(client, a)
+    _geraet_verbinden(client, a)
+    ort = {"channel_id": a["cid"], "owner_id": a["owner_uid"]}
+    tok = await _token_legen(redis, a, a["ctrl_uid"], "tok-wecker")
+    eigen = await _token_legen(redis, a, a["owner_uid"], "tok-eigen")
+    try:
+        # Gelöscht vor Ablauf (wie beim Sitzungsbeginn): kein Widerruf.
+        mgr.device_wecker_setzen(a["did"], a["ctrl_uid"], **ort)
+        mgr.device_wecker_loeschen(a["did"])
+        await asyncio.sleep(0.15)
+        assert await redis.get(tok) is not None
+        # Belegt bei Ablauf: kein Widerruf, die Steuerung trägt das Zusehen.
+        mgr.device_wecker_setzen(a["did"], a["ctrl_uid"], **ort)
+        mgr._device_busy[a["did"]] = str(a["admin_uid"])
+        await asyncio.sleep(0.15)
+        assert await redis.get(tok) is not None
+        mgr._device_busy.pop(a["did"], None)
+        # Abgelaufen ohne Sitzung: widerrufen, der Besitzer behält seins.
+        mgr.device_wecker_setzen(a["did"], a["ctrl_uid"], **ort)
+        await asyncio.sleep(0.15)
+        assert mgr.device_wecker(a["did"]) is None
+        assert await redis.get(tok) is None
+        assert await redis.get(token_key("tok-wecker")) is None
+        assert await redis.get(eigen) is not None
+    finally:
+        await redis.delete(key, tok, eigen, token_key("tok-wecker"), token_key("tok-eigen"))
+
+
+@pytest.mark.asyncio
+async def test_wecken_merkt_erst_nach_dem_ruf_und_stellt_den_zeitgeber(
+    client, _auth_signer, session_factory
+):
+    """G2: der Docstring von ``handle_wake`` sagt „erst nach hinausgegangenem
+    Ruf gemerkt" — zum Zeitpunkt des Sendens steht der Merker noch nicht.
+    Und ``handle_wake`` gibt Standplatz und Besitzer mit, damit der
+    Fristablauf widerrufen kann."""
+    from dcc_chat_gateway.routes import ws_device_handlers
+
+    a = await _aufbau(client, _auth_signer)
+    await _freigabe(session_factory, a["did"], "user", a["ctrl_uid"])
+    mgr = _mgr(client)
+    beim_senden: list = []
+
+    class _Merkt(_Sock):
+        async def send_json(self, payload: dict) -> None:
+            beim_senden.append(mgr.device_wecker(a["did"]))
+            await super().send_json(payload)
+
+    sock = _Merkt(client._transport.app)
+    mgr._ws_user[sock] = _User(a["owner_uid"])
+    mgr.device_announce(sock, a["did"], a["gid"], a["cid"])
+    ctx = _ctx(client, a["ctrl_uid"])
+    try:
+        await ws_device_handlers.handle_wake(ctx, {"device_id": str(a["did"])})
+        assert sock.sent[-1]["op"] == "device_wake"
+        assert beim_senden == [None]
+        assert mgr.device_wecker(a["did"]) == str(a["ctrl_uid"])
+        assert a["did"] in mgr._device_wecker_ablauf
+    finally:
+        mgr.device_wecker_loeschen(a["did"])

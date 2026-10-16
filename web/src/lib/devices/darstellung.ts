@@ -77,8 +77,10 @@ export function geraetPfad(device: Device): string {
 /**
  * Sendet in diesem Kanal in Wahrheit nur das **Gerät** dieses Nutzers?
  *
- * Der Strom eines Standplatz-Geräts läuft unter dem Konto seines Besitzers — im
- * Streaming-Weg gibt es keine Geräte-Kennung (`stream/starten.ts`). Ungefiltert
+ * Der Strom eines Standplatz-Geräts läuft unter dem Konto seines Besitzers.
+ * Sein Geräte-Merkmal (seit 2026-10-16, `stream/starten.ts`) kennt nur der
+ * Server für die Zuschauer-Schranke; die Stromliste, die hier ankommt
+ * (`streamPresence`), führt es nicht. Ungefiltert
  * heisst das: das LIVE-Abzeichen erscheint **zweimal**, einmal am Rechner und
  * einmal am Menschen, der dabei nicht einmal im Kanal sein muss.
  *

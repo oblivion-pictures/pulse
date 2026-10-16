@@ -431,7 +431,7 @@ async def _handle(req: AuthRequest, redis: Redis) -> None:
         # publisher may read any of that publisher's slots — so slot/nonce here
         # are informational only. **Ausnahme seit 2026-10-16:** ein Lese-Token
         # fuer den Strom eines Standplatz-Geraets traegt ``slot`` und gilt nur
-        # fuer diesen Platz (media-svc ``_read_token_fuer``).
+        # fuer diesen Platz (media-svc ``lese_token.read_token_fuer``).
         channel_id, path_user_id, path_slot, _path_nonce = cu
         if not get_settings().read_token_required:
             return  # 200 — anonymous reads (fallback / self-host)
