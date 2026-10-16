@@ -13,9 +13,12 @@ import { adminComplaintsApi } from '$lib/api/complaints';
 import { auth } from '$lib/stores/auth.svelte';
 import { toast } from 'svelte-sonner';
 import { m } from '$lib/paraglide/messages.js';
+import { sichtbarerTakt } from '$lib/utils/sichtbarerTakt';
 
 // 5 Min statt 60 s (Perf-Hunt 06.10.): WS-Ereignisse rufen refresh() — der
-// Poll ist nur Fallback (z. B. verpasstes Event nach Reconnect).
+// Poll ist nur Fallback (z. B. verpasstes Event nach Reconnect). Bei
+// verdeckter Seite schläft er (`sichtbarerTakt`) und holt beim Sichtbarwerden
+// nach, falls ein Lauf fällig war — Badge und Toast sieht vorher niemand.
 const POLL_MS = 300_000;
 const LS_LAST_SEEN = 'pulse.complaints.lastSeen';
 
@@ -23,14 +26,11 @@ class PendingComplaints {
   /** Anzahl offener (status=new) Beschwerden. 0 für Nicht-Admins. */
   count = $state(0);
 
-  private _timer: ReturnType<typeof setInterval> | null = null;
-  private _running = false;
+  private _stopp: (() => void) | null = null;
 
   start(): void {
-    if (this._running || typeof window === 'undefined') return;
-    this._running = true;
-    void this._poll();
-    this._timer = setInterval(() => void this._poll(), POLL_MS);
+    if (this._stopp || typeof window === 'undefined') return;
+    this._stopp = sichtbarerTakt(() => this._poll(), POLL_MS);
   }
 
   /** Sofort neu laden — z.B. nachdem der Admin eine Beschwerde bearbeitet hat. */
@@ -39,11 +39,8 @@ class PendingComplaints {
   }
 
   stop(): void {
-    if (this._timer !== null) {
-      clearInterval(this._timer);
-      this._timer = null;
-    }
-    this._running = false;
+    this._stopp?.();
+    this._stopp = null;
     this.count = 0;
   }
 

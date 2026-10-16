@@ -22,7 +22,12 @@ import { serversStore } from '$lib/api/servers.svelte';
 import { mitCloudCookie } from '$lib/api/cookie-client';
 import { cloudAuthBasis } from '$lib/direct/registry';
 import { deuteTelefonbuch } from '$lib/direct/policy';
+import { sichtbarerTakt } from '$lib/utils/sichtbarerTakt';
 
+/** Schläft bei verdeckter Seite (`sichtbarerTakt`): die Rail-Dimmung sieht
+ *  dann niemand, und die Weichen fragen über `istOffline` ohnehin frisch nach,
+ *  sobald der Stand älter als `FRISCH_MS` ist. War ein Lauf während der Pause
+ *  fällig, holt das Sichtbarwerden ihn sofort nach. */
 const TAKT_MS = 120_000;
 /** Wie lange eine Messung als verlässlich gilt — danach schaut die async-
  *  Variante einmal frisch nach (Klick auf einen Server, der gerade
@@ -34,8 +39,7 @@ type Eintrag = { offline: boolean; gemessen: number };
 
 class AppHostAnwesenheit {
   private eintraege = $state<Record<string, Eintrag>>({});
-  private _timer: ReturnType<typeof setInterval> | null = null;
-  private _running = false;
+  private _stopp: (() => void) | null = null;
   private _inflight = new Map<string, Promise<boolean>>();
 
   /** Sync für die UI (Rail-Dimmung): true nur bei FRISCHER Offline-Messung. */
@@ -67,18 +71,13 @@ class AppHostAnwesenheit {
 
   /** Startet den Takt (idempotent) — initial sofort, dann alle 2 min. */
   start(): void {
-    if (this._running || typeof window === 'undefined') return;
-    this._running = true;
-    void this._alleMessen();
-    this._timer = setInterval(() => void this._alleMessen(), TAKT_MS);
+    if (this._stopp || typeof window === 'undefined') return;
+    this._stopp = sichtbarerTakt(() => this._alleMessen(), TAKT_MS);
   }
 
   stop(): void {
-    if (this._timer !== null) {
-      clearInterval(this._timer);
-      this._timer = null;
-    }
-    this._running = false;
+    this._stopp?.();
+    this._stopp = null;
   }
 
   /** Stand von außen übernehmen (Push `instance_status`) — zählt wie eine

@@ -3,8 +3,9 @@
  *
  * `gateway-connection.ts` hält `state` als plain Property (kein $state) damit
  * der Konstruktor nicht an Svelte-Runes gekoppelt ist (Tests, evtl. Worker-
- * Re-Use). Diese Brücke pollt 1×/Sekunde alle bekannten Pool-Connections und
- * exposed das als `$state`-Map für UI-Banner & Status-Dots.
+ * Re-Use). Diese Brücke pollt 1×/Sekunde (bei sichtbarer Seite, s. `POLL_MS`)
+ * alle bekannten Pool-Connections und exposed das als `$state`-Map für
+ * UI-Banner & Status-Dots.
  *
  * Poll statt Abonnement: die State-Transitions sind selten (open ↔
  * incompatible ↔ updating ↔ ...), und 1 Hz reicht für Banner und Punkte. Der
@@ -37,6 +38,7 @@
 import { gatewayPool } from './gateway-pool.svelte';
 import { serversStore } from '$lib/api/servers.svelte';
 import type { ConnectionState, HelloMeta } from './gateway-connection';
+import { sichtbarerTakt } from '$lib/utils/sichtbarerTakt';
 
 type Snapshot = {
   state: ConnectionState;
@@ -48,6 +50,15 @@ type Snapshot = {
   seit: number;
 };
 
+/** 1 Hz, solange die Seite sichtbar ist — bei verdeckter Seite schläft der
+ *  Poll (`sichtbarerTakt`): Banner und Punkte sieht dann niemand, und beim
+ *  Sichtbarwerden läuft er sofort einmal nach. `seit` beginnt nach einer
+ *  verdeckten Strecke deshalb erst beim Sichtbarwerden — dieselbe Lage wie
+ *  auf dem Telefon, dessen JS im Hintergrund ohnehin eingefroren ist, und
+ *  die Geduld des Offline-Streifens gilt dann ab dort (ein Wiederverbinden
+ *  nach dem Aufwachen blitzt nicht rot auf). Nicht verlangsamt, solange die
+ *  Seite sichtbar ist: ein Abriss wäre sonst bis zu einem Takt später zu
+ *  sehen. */
 const POLL_MS = 1000;
 
 class ServerStateMirror {
@@ -60,19 +71,16 @@ class ServerStateMirror {
    *  false "changed", which reassigned `byId` 1×/s in steady state. Compare
    *  raw-vs-raw here instead. */
   #last: Record<string, Snapshot> = {};
-  #timer: ReturnType<typeof setInterval> | null = null;
+  #stopp: (() => void) | null = null;
 
   start(): void {
-    if (this.#timer) return;
-    this.refresh();
-    this.#timer = setInterval(() => this.refresh(), POLL_MS);
+    if (this.#stopp) return;
+    this.#stopp = sichtbarerTakt(() => this.refresh(), POLL_MS);
   }
 
   stop(): void {
-    if (this.#timer) {
-      clearInterval(this.#timer);
-      this.#timer = null;
-    }
+    this.#stopp?.();
+    this.#stopp = null;
   }
 
   /** Manuell triggern (z.B. unmittelbar nach connect/disconnect). */
