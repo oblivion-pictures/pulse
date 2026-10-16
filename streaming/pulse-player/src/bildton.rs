@@ -10,7 +10,10 @@
 //! **Was „Sender-Uhrzeit" heute bedeutet.** Über MediaMTX ist sie die
 //! ANKUNFTSzeit am Server, je Spur aus der Mindest-Latenz geschätzt (Befund B4
 //! im Plan) — die Zeile misst damit den Anteil des Players am Versatz, nicht
-//! den des Senders. Den misst die Sender-Zeile `[sync]`. Sobald der Sender
+//! den des Senders. Den misst die Sender-Zeile `[sync]`. Auf dem Direktweg
+//! (P2P zum Sidecar, ohne MediaMTX) ist es dagegen die SENDEZEIT beim Sender:
+//! webrtc-rs schreibt dort die Wanduhr beim letzten Paket in den Report
+//! (Befund B5). Sobald der Sender
 //! seine Aufnahmezeit in die Reports schreibt und MediaMTX sie durchreicht
 //! (Etappe 2/3), misst derselbe Code den ganzen Weg.
 //!
@@ -82,11 +85,12 @@ pub struct SrStand {
 pub struct SrZellen(Arc<Mutex<SrStand>>);
 
 impl SrZellen {
-    pub fn bericht(&self, ist_bild: bool, ntp: u64, rtp: u32, takt_hz: u32) {
-        if let Ok(mut s) = self.0.lock() {
-            let a = Some(SrAbbildung::aus_bericht(ntp, rtp, takt_hz));
-            if ist_bild { s.bild = a } else { s.ton = a }
-        }
+    /// Report ablegen. `true` beim ersten dieser Spur — der Aufrufer meldet
+    /// das einmal, damit eine fehlende Zeile „Bild/Ton" erklärbar bleibt.
+    pub fn bericht(&self, ist_bild: bool, ntp: u64, rtp: u32, takt_hz: u32) -> bool {
+        let Ok(mut s) = self.0.lock() else { return false };
+        let spur = if ist_bild { &mut s.bild } else { &mut s.ton };
+        spur.replace(SrAbbildung::aus_bericht(ntp, rtp, takt_hz)).is_none()
     }
 
     pub fn stand(&self) -> SrStand {
@@ -94,15 +98,24 @@ impl SrZellen {
     }
 }
 
+/// Obergrenze der gesammelten Proben. Ohne Statistik-Log ruft niemand
+/// [`Versatzfenster::zeile`]; ohne Grenze wüchse das Fenster dann eine ganze
+/// Sitzung lang.
+pub const HOECHSTENS_PROBEN: usize = 400;
+
 /// Sammelt Proben über ein Log-Intervall und meldet ihren Median.
 #[derive(Default)]
 pub struct Versatzfenster {
-    proben: Vec<f64>,
+    proben: std::collections::VecDeque<f64>,
 }
 
 impl Versatzfenster {
+    /// Eine Probe; ist das Fenster voll, fällt die älteste heraus.
     pub fn probe(&mut self, ms: f64) {
-        self.proben.push(ms);
+        if self.proben.len() >= HOECHSTENS_PROBEN {
+            self.proben.pop_front();
+        }
+        self.proben.push_back(ms);
     }
 
     /// Die Zeile, sobald `mindestens` Proben beisammen sind — dann wird das
@@ -111,10 +124,10 @@ impl Versatzfenster {
         if self.proben.is_empty() || self.proben.len() < mindestens {
             return None;
         }
-        self.proben.sort_by(f64::total_cmp);
-        let n = self.proben.len();
-        let median = self.proben[n / 2];
-        self.proben.clear();
+        let mut werte: Vec<f64> = self.proben.drain(..).collect();
+        werte.sort_by(f64::total_cmp);
+        let n = werte.len();
+        let median = werte[n / 2];
         Some(format!(
             "Bild/Ton: Ton {median:+.0} ms hinter Bild (Median, n={n}; Bezug: Sender-Reports, ohne Geraete- und Anzeige-Latenz)"
         ))

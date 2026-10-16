@@ -913,8 +913,9 @@ async fn lies_sender_reports(
     while let Ok((pakete, _)) = receiver.read_rtcp().await {
         for p in pakete {
             if let Some(b) = p.as_any().downcast_ref::<SenderReport>() {
-                if b.ssrc == ssrc {
-                    sr.bericht(ist_bild, b.ntp_time, b.rtp_time, takt_hz);
+                if b.ssrc == ssrc && sr.bericht(ist_bild, b.ntp_time, b.rtp_time, takt_hz) {
+                    let spur = if ist_bild { "Bild" } else { "Ton" };
+                    eprintln!("pulse-player: erster Sender Report der {spur}spur (SSRC {ssrc}, {takt_hz} Hz)");
                 }
             }
         }

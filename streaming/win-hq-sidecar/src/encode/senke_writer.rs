@@ -211,7 +211,9 @@ fn sende_schleife(
     for s in rx {
         // Gemessen wird beim Übergeben an den Sendeweg: alles davor — Warten
         // auf den Takt, Kodieren, die Warteschlange hier — gehört zur Latenz
-        // der Spur, alles danach (Paketieren, Netz) ist für beide gleich.
+        // der Spur. Danach fehlt der Zeile etwas: das Bild läuft noch durch
+        // den Taktgeber (`pulse_whip::pacer`), der Ton nicht — ein Rückstau
+        // dort verspätet nur das Bild und steht nicht in diesen Zahlen.
         let jetzt = Instant::now();
         let ergebnis = match &s {
             // Der `pts` wird MIT durchgereicht, nicht neu erfunden: er steht

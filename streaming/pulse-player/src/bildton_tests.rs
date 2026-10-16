@@ -82,3 +82,26 @@ fn fenster_meldet_den_median_ab_genug_proben_und_leert_sich() {
     assert!(z.contains("n=3"), "{z}");
     assert_eq!(f.zeile(1), None, "danach leer");
 }
+
+/// Ohne Statistik-Log ruft niemand `zeile` — dann darf das Fenster nicht ohne
+/// Ende wachsen (Sitzungen laufen Stunden). Es behält die jüngsten Proben.
+#[test]
+fn fenster_waechst_nicht_unbegrenzt() {
+    let mut f = Versatzfenster::default();
+    for i in 0..10_000 {
+        f.probe(f64::from(i));
+    }
+    let z = f.zeile(1).unwrap();
+    assert!(z.contains(&format!("n={}", super::HOECHSTENS_PROBEN)), "{z}");
+}
+
+/// Der erste Report je Spur wird gemeldet (Etappe 0b: „live prüfen, ob
+/// Sender Reports ankommen") — fehlt die Zeile „Bild/Ton", muss man sehen
+/// können, ob es an den Reports liegt.
+#[test]
+fn erster_report_je_spur_wird_erkannt() {
+    let z = SrZellen::default();
+    assert!(z.bericht(true, 1u64 << 32, 7, 90_000), "erster Bild-Report");
+    assert!(!z.bericht(true, 2u64 << 32, 8, 90_000), "zweiter Bild-Report");
+    assert!(z.bericht(false, 2u64 << 32, 9, 48_000), "erster Ton-Report");
+}

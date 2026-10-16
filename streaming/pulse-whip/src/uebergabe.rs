@@ -8,18 +8,27 @@
 //! (Befunde B3/B4 im Plan `intern/docs/plans/2026-10-16-bild-ton-sync-plan.md`).
 //! Jede Spur bekommt damit „Aufnahme + ihre kleinste Übergabe-Latenz" als
 //! Uhrzeit, und der Zuschauer richtet beide danach aus. Verlässt der Ton den
-//! Sender später nach seiner Aufnahme als das Bild, klingt er beim Zuschauer
-//! um genau diese Differenz zu spät.
+//! Sender später nach seiner Aufnahme als das Bild, verschiebt das den Ton
+//! beim Zuschauer nach hinten — um wie viel genau, entscheiden zusätzlich
+//! dessen Jitterpuffer, die ihre Wartezeit aus der STREUUNG der Ankünfte
+//! bemessen, nicht aus dem Minimum.
 //!
-//! **Deshalb steht das MINIMUM in der Zeile, nicht nur der Median**: an ihm
-//! verankert MediaMTX. Der Median sagt, wie es meistens ist; das Minimum, was
-//! der Zuschauer daraus macht. Die Netzstrecke zum Server fehlt beiden — sie
-//! ist für beide Spuren dieselbe Leitung.
+//! **Deshalb stehen Minimum, Median und 95. Perzentil in der Zeile**: am
+//! Minimum verankert MediaMTX, an der Streuung bemessen die Jitterpuffer ihre
+//! Geduld. Ein Umbau, der den Ton gleichmäßiger abgibt (Ton-Faden statt
+//! Bildtakt), bewegt vor allem p50 und p95; das Minimum bleibt dabei fast
+//! stehen, weil im alten Takt immer wieder ein Tonrahmen kurz vor dem Abholen
+//! fertig wurde. Ein unverändertes Minimum widerlegt den Umbau also nicht.
+//! Die Netzstrecke zum Server fehlt allen Werten — sie ist für beide Spuren
+//! dieselbe Leitung.
 //!
 //! **Lücken der Ton-Zeitlinie** zählen mit, weil MediaMTX sie nicht sieht: der
 //! Sender rechnet einen PTS-Sprung in den RTP-Zeitstempel ein
 //! (`senke_writer::ton_dauer_aus_pts` unter Windows), MediaMTX zählt danach
-//! nur Pakete. Jede Lücke fehlt dort der Tonuhr.
+//! nur Pakete. Unter Windows ist der Ton-pts ein reiner Zähler; springen kann
+//! er heute nur beim einmaligen Nachzug auf den ersten Geräte-Zeitstempel
+//! (`encode/audio/sync.rs`) — mehr als „1" im ersten Fenster ist dort ein
+//! Befund.
 //!
 //! Reine Rechnung ohne Plattformbezug — sie liegt hier und nicht im
 //! Windows-Sidecar, weil dessen Tests in keinem Gate laufen.
@@ -107,9 +116,10 @@ impl Uebergabefenster {
         );
         if let (Some(b), Some(t)) = (bild, ton) {
             zeile += &format!(
-                " -> Ton-Bild min {:+.1} ms, p50 {:+.1} ms",
+                " -> Ton-Bild min {:+.1} ms, p50 {:+.1} ms, p95 {:+.1} ms",
                 t.min - b.min,
-                t.p50 - b.p50
+                t.p50 - b.p50,
+                t.p95 - b.p95
             );
         }
         zeile += &format!("; Ton-Luecken {} ({} ms)", self.luecken, self.luecken_ms);

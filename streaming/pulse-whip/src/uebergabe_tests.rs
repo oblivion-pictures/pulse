@@ -51,6 +51,7 @@ fn ton_spaeter_als_bild_ist_positiv() {
     let zeile = f.faellig(t0 + Duration::from_secs(10)).unwrap();
     assert!(zeile.contains("Ton-Bild min +40.0 ms"), "{zeile}");
     assert!(zeile.contains("p50 +43.0 ms"), "{zeile}");
+    assert!(zeile.contains("p95 +46.0 ms"), "{zeile}");
 }
 
 /// Ohne Tonspur (Stream ohne Ton) gibt es keinen Versatz — die Zeile meldet

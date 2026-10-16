@@ -2,17 +2,19 @@
 //! Direktweg).
 //!
 //! **Warum.** Bis hierher holte der Taktfaden den Ton einmal je Durchlauf ab,
-//! NACH dem Warten auf den nächsten Bildplatz (`pipeline_hw::run`). Jeder
-//! Tonrahmen wartete damit bis zu einem Bildabstand plus die Arbeitszeit des
-//! Durchlaufs, bevor er kodiert wurde — und diese Arbeitszeit wächst mit allem,
-//! was das Bild teurer macht (10 bit, Skalierung, ein zäher Encoder). Kein
-//! Zuschauer kennt die Aufnahmezeit des Tons: MediaMTX stempelt Opus nach
-//! Paketzahl neu und verankert jede Spur an ihrer eigenen Ankunft (Plan
-//! `intern/docs/plans/2026-10-16-bild-ton-sync-plan.md`, B3/B4). Jede
-//! Millisekunde, die der Ton hier länger liegt als das Bild, klingt beim
-//! Zuschauer zu spät. Ob das der Grund für den 10-bit-Versatz ist, zeigt die
-//! Messzeile `[sync]` (`senke_writer`) — vorher/nachher über
-//! `PULSE_HQ_TON_IM_TAKT=1`.
+//! zu Beginn des Durchlaufs, nach dem Warten auf den nächsten Bildplatz
+//! (`pipeline_hw::run`). Ein Tonrahmen wartete damit bis zu einem Bildabstand;
+//! länger nur, wenn ein Durchlauf seinen Platz überzieht — und das wird
+//! wahrscheinlicher mit allem, was das Bild teurer macht (10 bit, Skalierung,
+//! ein zäher Encoder). Kein Zuschauer kennt die Aufnahmezeit des Tons:
+//! MediaMTX stempelt Opus nach Paketzahl neu und verankert jede Spur an ihrer
+//! eigenen Ankunft (Plan `intern/docs/plans/2026-10-16-bild-ton-sync-plan.md`,
+//! B3/B4), und die Jitterpuffer der Zuschauer bemessen ihre Wartezeit an der
+//! Streuung der Ankünfte. Unregelmäßig abgegebener Ton verschiebt ihn dort
+//! also nach hinten. Ob das der Grund für den 10-bit-Versatz ist, zeigt die
+//! Messzeile `[sync]` (`senke_writer`) im Vergleich mit
+//! `PULSE_HQ_TON_IM_TAKT=1` — zu lesen an p50/p95, nicht am Minimum
+//! (Begründung in `pulse_whip::uebergabe`).
 //!
 //! **Warum nicht auch auf dem Muxer-Weg.** FLV ist EINE Zeitleiste: der Muxer
 //! gibt ein Bild erst frei, wenn Ton mit passendem Zeitstempel vorliegt
@@ -25,8 +27,10 @@
 //! (`audio::wasapi::send_or_stop` → Disconnected), und der gibt dabei den
 //! Audio-Client frei — genau der Abbau, den `pipeline_hw::run` wegen des
 //! Treiber-Timers nach Stream-Ende vermeidet (`0xC0000005`, Kopf dort). Beides
-//! wird am Ende vergessen, nicht fallengelassen; der Prozess endet ohnehin
-//! direkt nach dem Stopp.
+//! wird am Ende vergessen, nicht fallengelassen. Im Stream-Betrieb endet der
+//! Prozess direkt nach dem Stopp; im Direktweg läuft er weiter, und der
+//! WASAPI-Faden dreht dann in `send_or_stop`, wie schon vorher mit dem
+//! `ManuallyDrop` der Aufnahme.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
@@ -47,12 +51,6 @@ pub struct TonAbzweig {
     pub(super) audio: AudioPipeline,
     pub(super) ausgang: TonAusgang,
 }
-
-// SAFETY: `AudioPipeline` hält den libopus-Kontext und ist deshalb nicht
-// `Send` (ffmpeg-next markiert konservativ). Sie entsteht auf dem Taktfaden,
-// geht per *move* an genau einen Faden und wird nur dort benutzt; der Encoder
-// behält keine Referenz (`FfmpegHwEncoder::ton_abzweigen` nimmt sie heraus).
-unsafe impl Send for TonAbzweig {}
 
 /// Wie lange der Faden höchstens auf Ton wartet, bevor er nach dem
 /// Stopp-Merker sieht. Kurz genug, dass `anhalten` nicht spürbar hängt.
