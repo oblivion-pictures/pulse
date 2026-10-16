@@ -529,9 +529,6 @@ class RemoteSessionStore {
     this.#reset();
   }
 
-  // ── intern ────────────────────────────────────────────────────────────────
-
-  /** Senden über die Verbindung DIESER Sitzung (`draht.ts::sendenAuf`). */
   /** Ein Signal an das Gegenüber der laufenden Sitzung. Heute nur für
    *  `schirm_zu` (`$lib/remote/schirmZu.ts`) — die übrigen Arten bekommen
    *  ihren Sender beim Sitzungsbeginn mitgegeben. */
@@ -541,6 +538,9 @@ class RemoteSessionStore {
     return this.#senden((c) => c.sendRemoteSignal(id, kind, data));
   }
 
+  // ── intern ────────────────────────────────────────────────────────────────
+
+  /** Senden über die Verbindung DIESER Sitzung (`draht.ts::sendenAuf`). */
   #senden(fn: (c: GatewayConnection) => boolean): boolean {
     return sendenAuf(this.#conn, fn);
   }

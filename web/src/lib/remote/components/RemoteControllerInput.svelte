@@ -203,13 +203,13 @@
   // ins Leere laufen.
   $effect(() =>
     onPlayerWindowRequest((kind, session, monitor) => {
-      // Bildschirm aus dem Menü am Griff: dieselbe Entscheidung wie in der
-      // Geräteansicht (`schirme.svelte.ts`) — läuft er schon, kommt sein
-      // Fenster nach vorne; sonst wird er geweckt.
       if (kind === 'remote-screen-close') {
         bildschirmSchliessen(session);
         return;
       }
+      // Bildschirm aus dem Menü am Griff: dieselbe Entscheidung wie in der
+      // Geräteansicht (`schirme.svelte.ts`) — läuft er schon, kommt sein
+      // Fenster nach vorne; sonst wird er geweckt.
       if (kind === 'remote-screen') {
         const channelId = remoteSession.channelId;
         const hostId = remoteSession.peerUserId;
