@@ -45,6 +45,7 @@ import { ueberPulse } from './ablageUeberPulse.ts';
 import { postfachQuelleFuerKanal } from './postfachQuelleVerdrahtung';
 import { base64ZuBytes } from './syncOrdnerSchluessel.ts';
 import { backoffDeckel } from './backoffDeckel.ts';
+import { sichtbarerTakt } from '../utils/sichtbarerTakt.ts';
 
 /** Backoff mit Deckel — je Kanal, nur für diesen Prozess (kein Neuladen der
  *  Seite übersteht ihn, s. `festigung.ts`-Modulkopf für dieselbe Abwägung:
@@ -123,7 +124,7 @@ async function festigeKanalEinmal(kanalId: string): Promise<KanalFestigungsErgeb
  */
 const aktiveSchleifen = new Map<
 	string,
-	{ timer: ReturnType<typeof setInterval>; laufend: boolean; referenzen: number }
+	{ stopp: () => void; laufend: boolean; referenzen: number }
 >();
 
 function stoppeReferenz(kanalId: string): void {
@@ -131,7 +132,7 @@ function stoppeReferenz(kanalId: string): void {
 	if (!eintrag) return;
 	eintrag.referenzen -= 1;
 	if (eintrag.referenzen <= 0) {
-		clearInterval(eintrag.timer);
+		eintrag.stopp();
 		aktiveSchleifen.delete(kanalId);
 	}
 }
@@ -147,23 +148,25 @@ export function starteKanalFestigungsSchleife(kanalId: string, intervalMs = 30_0
 		bestehend.referenzen += 1;
 		return () => stoppeReferenz(kanalId);
 	}
-	const eintrag = {
-		timer: null as unknown as ReturnType<typeof setInterval>,
-		laufend: false,
-		referenzen: 1,
-	};
-	eintrag.timer = setInterval(() => {
+	const eintrag = { stopp: () => {}, laufend: false, referenzen: 1 };
+	aktiveSchleifen.set(kanalId, eintrag);
+	// Der erste Durchlauf geht sofort, statt bis zum ersten Intervall zu
+	// warten — sonst wartet ein frisch verbundener Besitzer bis zu
+	// `intervalMs` auf die erste Festigung. Er läuft seit 2026-10-17 durch
+	// dieselbe Überlappungs-Sperre wie alle weiteren (vorher an ihr vorbei).
+	//
+	// Bei verdeckter Seite schläft der Takt (`sichtbarerTakt`) und holt beim
+	// Sichtbarwerden nach: `nachziehen()` setzt am Ablage-Stand an, nicht an
+	// der Uhr — ein späterer Lauf nimmt den dann offenen Postfach-Bestand ab
+	// dort auf. (Was der normale Empfang inzwischen quittiert hat, liegt
+	// dort nicht mehr; das gilt für jeden Lauf, auch im 30-s-Takt.)
+	eintrag.stopp = sichtbarerTakt(() => {
 		if (eintrag.laufend) return;
 		eintrag.laufend = true;
 		void festigeKanalEinmal(kanalId).finally(() => {
 			eintrag.laufend = false;
 		});
 	}, intervalMs);
-	aktiveSchleifen.set(kanalId, eintrag);
-	// Sofort einen ersten Durchlauf anstossen, statt bis zum ersten Intervall
-	// zu warten — sonst wartet ein frisch verbundener Besitzer bis zu
-	// `intervalMs` auf die erste Festigung.
-	void festigeKanalEinmal(kanalId);
 	return () => stoppeReferenz(kanalId);
 }
 

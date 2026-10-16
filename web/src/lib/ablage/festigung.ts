@@ -25,6 +25,7 @@ import { ablageVerbindungen } from './verbindungen.svelte.ts';
 import { ablageGuildApi } from '../api/ablageGuild.ts';
 import { base64ZuBytes } from './syncOrdnerSchluessel.ts';
 import { backoffDeckel } from './backoffDeckel.ts';
+import { sichtbarerTakt } from '../utils/sichtbarerTakt.ts';
 
 /** Backoff mit Deckel — je fehlgeschlagenem Versuch eines Eintrags in DIESEM
  *  Prozess (nicht persistiert: ein Neuladen der Seite startet bei 0, das ist
@@ -103,23 +104,26 @@ export async function festigeEinmal(guildId: string): Promise<FestigungsErgebnis
 }
 
 /** Periodischer Anstoss fuer eine Community-Ansicht (`onMount`/`onDestroy`).
- *  Gibt eine Stopp-Funktion zurueck. */
+ *  Gibt eine Stopp-Funktion zurueck. Bei verdeckter Seite schläft der Takt
+ *  (`sichtbarerTakt`) und holt beim Sichtbarwerden nach — das Zwischenlager
+ *  hält jeden Eintrag bis zur Quittung, ein späterer Lauf sieht ihn also
+ *  genauso (s. Modulkopf: kein Wasserzeichen). */
 export function starteFestigungsSchleife(guildId: string, intervalMs = 30_000): () => void {
 	let gestoppt = false;
 	let laufend = false;
-	const timer = setInterval(() => {
+	// Der erste Durchlauf geht sofort, statt bis zum ersten Intervall zu
+	// warten — sonst wartet ein frisch verbundener Besitzer bis zu
+	// `intervalMs` auf die erste Festigung. Seit 2026-10-17 durch dieselbe
+	// Überlappungs-Sperre wie alle weiteren (vorher an ihr vorbei).
+	const stopp = sichtbarerTakt(() => {
 		if (laufend || gestoppt) return;
 		laufend = true;
 		void festigeEinmal(guildId).finally(() => {
 			laufend = false;
 		});
 	}, intervalMs);
-	// Sofort einen ersten Durchlauf anstossen, statt bis zum ersten Intervall
-	// zu warten — sonst wartet ein frisch verbundener Besitzer bis zu
-	// `intervalMs` auf die erste Festigung.
-	void festigeEinmal(guildId);
 	return () => {
 		gestoppt = true;
-		clearInterval(timer);
+		stopp();
 	};
 }

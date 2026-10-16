@@ -44,12 +44,15 @@ import { ablageVerbindungen } from './verbindungen.svelte';
 import { starteKanalFestigungsSchleife } from './kanalFestigung.ts';
 import { starteFestigungsSchleife } from './festigung.ts';
 import { planeFestigung, zielSchluessel, type FestigungsZiel } from './festigungsPlan.ts';
+import { sichtbarerTakt } from '../utils/sichtbarerTakt.ts';
 
+/** Bei verdeckter Seite schläft der Rundgang (`sichtbarerTakt`) und holt
+ *  beim Sichtbarwerden nach — wie die Schleifen, die er startet. */
 const RUNDGANG_MS = 30_000;
 
 /** Schlüssel -> Stopper der laufenden Schleife. */
 const laufend = new Map<string, () => void>();
-let rundgang: ReturnType<typeof setInterval> | null = null;
+let rundgang: (() => void) | null = null;
 
 function starte(ziel: FestigungsZiel): void {
 	const stopper =
@@ -79,20 +82,15 @@ async function rundgangEinmal(): Promise<void> {
  * Besitzer gerade gegangen ist.
  */
 export function starteHintergrundFestigung(): () => void {
-	if (rundgang === null) {
-		void rundgangEinmal();
-		rundgang = setInterval(() => void rundgangEinmal(), RUNDGANG_MS);
-	}
+	if (rundgang === null) rundgang = sichtbarerTakt(() => rundgangEinmal(), RUNDGANG_MS);
 	return stoppeHintergrundFestigung;
 }
 
 /** Nur über den Rückgabewert von `starteHintergrundFestigung` erreichbar —
  *  kein externer Aufrufer. */
 function stoppeHintergrundFestigung(): void {
-	if (rundgang !== null) {
-		clearInterval(rundgang);
-		rundgang = null;
-	}
+	rundgang?.();
+	rundgang = null;
 	for (const stopper of laufend.values()) stopper();
 	laufend.clear();
 }
