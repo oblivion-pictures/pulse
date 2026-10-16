@@ -20,7 +20,7 @@ import { CLOUD_HOSTNAME } from '$lib/api/servers.svelte';
 import { spracheDiagnose } from '$lib/platform/iosSpracheWache';
 import { isCapacitorIOS } from '$lib/platform/runtime';
 import { loadAll } from '$lib/stream/persistence';
-import type { BerichtSender } from './iosTonDiagnose';
+import { berichtKappen, type BerichtSender } from './iosTonDiagnose';
 
 async function darfSenden(): Promise<boolean> {
   if (!isCapacitorIOS()) return false;
@@ -50,22 +50,25 @@ export const iosTonBerichtSenden: BerichtSender = async ({ anlaesse, zeilen }) =
     huelle_jetzt: jetzt,
     erstellt: new Date().toISOString()
   };
-  const resp = await fetch(ziel(), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    keepalive: true,
-    body: JSON.stringify({
+  const body = berichtKappen(zeilen, (rest, verworfen) =>
+    JSON.stringify({
       reason: 'ios_ton_ausfall',
       role: 'app',
       system_info: { plattform: 'ios', user_agent: navigator.userAgent },
       report: {
         kopf,
-        bilanz: { zeilen: zeilen.length },
-        ereignisse: zeilen,
-        ereignisse_verworfen: 0,
+        bilanz: { zeilen: rest.length },
+        ereignisse: rest,
+        ereignisse_verworfen: verworfen,
         abschluss: { anlaesse }
       }
     })
+  );
+  const resp = await fetch(ziel(), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    keepalive: true,
+    body
   });
   return resp.ok;
 };

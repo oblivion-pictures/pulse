@@ -15,7 +15,9 @@
  * Unterbrechung endet nicht, die Mediendienste starteten neu, eine Aktivierung
  * scheiterte, ein Anruf-Zustand hing. Nie periodisch, nie beim normalen
  * Beitreten. Je Anlass EIN Bericht (was in den folgenden 30 s dazukommt, hängt
- * sich an), höchstens einer je 10 min und fünf je Tag. Opt-out wie am Desktop
+ * sich an), höchstens einer je 10 min und fünf je Tag — gezählt wird jeder
+ * VERSUCH, auch ein gescheiterter, sonst wäre die Drossel bei fehlendem Netz
+ * keine (Gegenprüfung T4). Höchstens 60 KiB; Opt-out wie am Desktop
  * (`uploadDiagnosticLogs`, Schalter in den Ton-Einstellungen der App).
  *
  * **Inhalt:** nur Zeilen dieses Bausteins (`ios_ton`) aus den zwei Minuten vor
@@ -53,6 +55,8 @@ export const SAMMEL_MS = 30_000;
 export const VORLAUF_MS = 120_000;
 export const ABSTAND_MS = 10 * 60_000;
 export const JE_TAG = 5;
+/** Unter der 64-KiB-Grenze für `fetch(…, {keepalive})` (WHATWG Fetch). */
+export const BERICHT_MAX_BYTES = 60 * 1024;
 const TAG_MS = 24 * 60 * 60_000;
 const GESENDET_KEY = 'pulse.diag.ios_ton_berichte';
 const LADE_KEY = 'pulse.diag.ladezaehler';
@@ -89,6 +93,28 @@ export function berichtZeilen(
     anzahl: e.anzahl,
     ...(e.kontext ? { werte: e.kontext } : {})
   }));
+}
+
+/**
+ * Den Bericht auf `max` Bytes kappen — die ÄLTESTEN Zeilen gehen zuerst, der
+ * Anlass steht am Ende. `koerper` baut den ganzen Versandtext aus den
+ * verbliebenen Zeilen und der Zahl der verworfenen.
+ */
+export function berichtKappen<T>(
+  zeilen: readonly T[],
+  koerper: (rest: T[], verworfen: number) => string,
+  max = BERICHT_MAX_BYTES
+): string {
+  const laenge = (t: string) => new TextEncoder().encode(t).length;
+  let rest = [...zeilen];
+  let text = koerper(rest, 0);
+  while (laenge(text) > max && rest.length > 0) {
+    // Grob vorspringen statt je Zeile neu zu serialisieren.
+    const weg = Math.max(1, Math.ceil(rest.length * (1 - max / laenge(text))));
+    rest = rest.slice(weg);
+    text = koerper(rest, zeilen.length - rest.length);
+  }
+  return text;
 }
 
 // --- Zustand der laufenden Seite -----------------------------------------
@@ -187,8 +213,9 @@ async function abschicken(): Promise<void> {
   const s = sender;
   if (!b || !s) return;
   const zeilen = berichtZeilen(leseRingpuffer(), b.start);
+  gesendetMerken(Date.now());
   try {
-    if (await s({ anlaesse: [...b.anlaesse], zeilen })) gesendetMerken(Date.now());
+    await s({ anlaesse: [...b.anlaesse], zeilen });
   } catch {
     /* Diagnose darf nie stören. */
   }

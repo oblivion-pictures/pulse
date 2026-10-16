@@ -85,6 +85,35 @@ test('Anlass: genau ein Bericht, der Rest hängt sich an; normaler Verlauf sende
   d.berichtSenderSetzen(null);
 });
 
+test('T4: der Bericht bleibt unter 60 KiB, die ältesten Zeilen gehen zuerst', () => {
+  const zeilen = Array.from({ length: 400 }, (_, i) => ({ i, f: 'x'.repeat(300) }));
+  const text = d.berichtKappen(zeilen, (rest, verworfen) => JSON.stringify({ rest, verworfen }));
+  assert.ok(new TextEncoder().encode(text).length <= d.BERICHT_MAX_BYTES);
+  const daten = JSON.parse(text) as { rest: { i: number }[]; verworfen: number };
+  assert.equal(daten.rest.at(-1)?.i, 399, 'die jüngste Zeile bleibt');
+  assert.equal(daten.verworfen + daten.rest.length, 400);
+  // Was passt, bleibt unverändert.
+  assert.equal(d.berichtKappen([1, 2], (r, v) => `${r.length}/${v}`), '2/0');
+});
+
+test('T4: auch ein gescheiterter Versand zählt für die Drossel', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 90_000_000_000 });
+  let versuche = 0;
+  d.berichtSenderSetzen(async () => {
+    versuche++;
+    throw new Error('kein Netz');
+  });
+  d.iosTonMelden('media_reset');
+  t.mock.timers.tick(d.SAMMEL_MS + 1);
+  await Promise.resolve();
+  t.mock.timers.tick(MIN);
+  d.iosTonMelden('media_reset');
+  t.mock.timers.tick(d.SAMMEL_MS + 1);
+  await Promise.resolve();
+  assert.equal(versuche, 1);
+  d.berichtSenderSetzen(null);
+});
+
 test('Web und Hülle sprechen dieselben Felder und Ereignisse', () => {
   const lesen = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
   const plugin = lesen('../../mobile/ios/App/App/SprachePlugin.swift');
