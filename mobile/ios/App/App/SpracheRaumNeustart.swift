@@ -93,28 +93,58 @@ extension SpracheRaum {
     ///
     /// Auf dem Hauptthread, wie die CallKit-Übergabe, und dort noch einmal
     /// gefragt, ob nicht inzwischen ein Anruf die Session übernommen hat.
+    ///
+    /// **Scheitert das Freigeben, bleibt es nicht bei `.none`** (Gegenprüfung
+    /// T1): zurück auf den Stand davor, und der Wächter versucht es bei der
+    /// nächsten erlaubten Prüfung erneut (`maschineFreigeben`). „Nur Ausgabe"
+    /// gibt es allein bei fehlender Mikrofon-Erlaubnis — sonst wäre ein
+    /// vorübergehender Fehlschlag ein dauerhaft taubes Mikrofon.
     func maschineNeu(grund: String) async {
         let fehler = await MainActor.run { () -> String? in
             let v = Anrufverwaltung.geteilt
-            guard !v.callkitAktiv, !v.ohneCallKit else { return "anruf" }
+            guard !v.callkitAktiv, !v.ohneCallKit else { return nil }
             let am = AudioManager.shared
-            var fehler: String?
+            let vorher = am.engineAvailability
             am.audioSession.isAutomaticConfigurationEnabled = false
-            do { try am.setEngineAvailability(.none) } catch { fehler = "none: \(error)" }
+            try? am.setEngineAvailability(.none)
             am.audioSession.isAutomaticConfigurationEnabled = true
-            do {
-                try am.setEngineAvailability(.default)
-            } catch {
-                // Ohne Mikrofon-Erlaubnis wirft `.default` — dann wenigstens
-                // hören (Doc-Kommentar des SDK an `setEngineAvailability`).
-                fehler = "default: \(error)"
-                try? am.setEngineAvailability(
-                    AudioEngineAvailability(isInputAvailable: false, isOutputAvailable: true))
+            if let fehler = Self.maschineFreigebenJetzt() {
+                try? am.setEngineAvailability(vorher)
+                return fehler
             }
-            return fehler
+            return nil
         }
+        wache.maschineStand(frei: fehler == nil)
         diagMelden(fehler == nil ? "maschine_neu" : "maschine_neu_fehler",
                    ["grund": grund, "fehler": fehler ?? ""])
+    }
+
+    /// Nachholen nach einem gescheiterten Freigeben (vom Wächter, sobald die
+    /// fremde Unterbrechung vorbei ist oder die App wieder vorn).
+    func maschineFreigeben() async {
+        let fehler = await MainActor.run { () -> String? in
+            let v = Anrufverwaltung.geteilt
+            guard !v.callkitAktiv, !v.ohneCallKit else { return nil }
+            AudioManager.shared.audioSession.isAutomaticConfigurationEnabled = true
+            return Self.maschineFreigebenJetzt()
+        }
+        wache.maschineStand(frei: fehler == nil)
+        diagMelden(fehler == nil ? "maschine_frei" : "maschine_neu_fehler",
+                   ["grund": "nachholen", "fehler": fehler ?? ""])
+    }
+
+    /// `.default`; ohne Mikrofon-Erlaubnis nur die Ausgabe (sonst wirft das
+    /// SDK `deviceAccessDenied` und man hörte nicht einmal). `nil` = frei.
+    @MainActor private static func maschineFreigebenJetzt() -> String? {
+        let ziel = Anrufverwaltung.mikrofonErlaubt()
+            ? AudioEngineAvailability.default
+            : AudioEngineAvailability(isInputAvailable: false, isOutputAvailable: true)
+        do {
+            try AudioManager.shared.setEngineAvailability(ziel)
+            return nil
+        } catch {
+            return "\(error)"
+        }
     }
 
     /// Stufe 3 des Wächters: die Mikrofonspur zurücknehmen und neu

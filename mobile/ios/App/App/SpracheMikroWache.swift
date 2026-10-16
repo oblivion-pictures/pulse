@@ -99,6 +99,27 @@ final class MikroPufferZaehler: NSObject, AudioRenderer, @unchecked Sendable {
 final class SpracheMikroWache: @unchecked Sendable {
     static let stilleGrenze: CFAbsoluteTime = 4
     static let takt: TimeInterval = 2
+    /// So lange gilt eine offene Unterbrechung als fremd und berechtigt (Siri,
+    /// Wecker, eine andere App). Danach, im Vordergrund und ohne fremden Ton,
+    /// ist es das Bild von K1: WebKit hat die Session genommen und gibt sie
+    /// nie mit „Ende" zurück. Gesetzt, nicht gemessen.
+    static let unterbrechungsGeduld: CFAbsoluteTime = 15
+
+    /// Dürfen die Stufen 2 und 3 die Audio-Kette anfassen?
+    ///
+    /// **Nicht gegen einen fremden Halter der Session** (Gegenprüfung T1). Die
+    /// Maschine neu freizugeben heisst für das SDK, die Session zu aktivieren —
+    /// und das lehnt iOS gegen eine laufende fremde Unterbrechung oder aus dem
+    /// Hintergrund ab (`cannotInterruptOthers`, `insufficientPriority`). Dann
+    /// stünde die Maschine auf `.none`, und auch nach dem Ende der Unterbrechung
+    /// liefe weder Mikrofon noch Wiedergabe. In diesen Lagen wartet der Wächter
+    /// und setzt beim Ende der Unterbrechung oder im Vordergrund neu an.
+    static func eingreifenErlaubt(vordergrund: Bool, fremdTon: Bool,
+                                  unterbrochenSeit: CFAbsoluteTime?, jetzt: CFAbsoluteTime) -> Bool {
+        guard vordergrund, !fremdTon else { return false }
+        guard let seit = unterbrochenSeit else { return true }
+        return jetzt - seit >= unterbrechungsGeduld
+    }
 
     private let faden = DispatchQueue(label: "com.howispulse.sprache.wache")
     private let zaehler = MikroPufferZaehler()
@@ -112,6 +133,13 @@ final class SpracheMikroWache: @unchecked Sendable {
     private var telefonatGemeldet = false
     private var letzteAnzahl: UInt64 = 0
     private var unterbrechungsUhr: DispatchWorkItem?
+    private var unterbrochenSeit: CFAbsoluteTime?
+    private var vordergrund = true
+    private var wartenGemeldet = false
+    /// Die Maschine steht nach einem gescheiterten Freigeben auf `.none` —
+    /// wird bei jeder Prüfung erneut versucht, auch nach Stufe 4: die
+    /// Wiedergabe muss zurückkommen, selbst wenn das Mikrofon tot bleibt.
+    private var maschineOffen = false
     /// Aufgegeben (Stufe 4)? Gelesen auch vom Zustand — ein `Bool`, das der
     /// Faden schreibt und andere lesen (wie die übrigen Felder des Raums).
     private(set) var tot = false
@@ -125,6 +153,7 @@ final class SpracheMikroWache: @unchecked Sendable {
             tot = false
             bereitGemeldet = false
             telefonatGemeldet = false
+            wartenGemeldet = false
             erwartetSeit = nil
             letzteAnzahl = zaehler.ablesen().anzahl
             zaehler.beimNaechsten { [weak self] in
@@ -139,6 +168,21 @@ final class SpracheMikroWache: @unchecked Sendable {
                 uhr = t
             }
             pruefen()
+        }
+    }
+
+    /// Ob das Freigeben der Maschine gelang (`SpracheRaum.maschineNeu`); wenn
+    /// nicht, holt die nächste erlaubte Prüfung es nach.
+    func maschineStand(frei: Bool) {
+        faden.async { [self] in maschineOffen = !frei }
+    }
+
+    /// Vordergrund oder Hintergrund (`SpracheRaumSession.swift`). Zurück im
+    /// Vordergrund wird sofort geprüft.
+    func vordergrund(_ an: Bool) {
+        faden.async { [self] in
+            vordergrund = an
+            if an { pruefen() }
         }
     }
 
@@ -183,6 +227,7 @@ final class SpracheMikroWache: @unchecked Sendable {
         faden.async { [self] in
             unterbrechungsUhr?.cancel()
             unterbrechungsUhr = nil
+            unterbrochenSeit = begonnen ? CFAbsoluteTimeGetCurrent() : nil
             guard uhr != nil else { return }
             guard begonnen else {
                 pruefen()
@@ -204,6 +249,11 @@ final class SpracheMikroWache: @unchecked Sendable {
         let stand = zaehler.ablesen()
         let neue = stand.anzahl &- letzteAnzahl
         letzteAnzahl = stand.anzahl
+        let erlaubt = eingreifenJetzt(jetzt)
+        if maschineOffen, erlaubt, sprache.raum != nil {
+            maschineOffen = false
+            Task { await self.sprache.maschineFreigeben() }
+        }
         guard sollLiefern() else {
             erwartetSeit = nil
             return
@@ -227,9 +277,27 @@ final class SpracheMikroWache: @unchecked Sendable {
         }
         telefonatGemeldet = false
         guard !tot, stufe == 0 || jetzt - stufeSeit >= Self.stilleGrenze else { return }
+        if stufe >= 1, !erlaubt {
+            if !wartenGemeldet {
+                wartenGemeldet = true
+                sprache.diagMelden("wache_wartet", [
+                    "vordergrund": vordergrund, "unterbrochen": unterbrochenSeit != nil
+                ])
+            }
+            return
+        }
+        wartenGemeldet = false
         stufe += 1
         stufeSeit = jetzt
         stufeAusfuehren(stufe, still: still, maschine: maschine)
+    }
+
+    private func eingreifenJetzt(_ jetzt: CFAbsoluteTime) -> Bool {
+        let s = AVAudioSession.sharedInstance()
+        return Self.eingreifenErlaubt(
+            vordergrund: vordergrund,
+            fremdTon: s.isOtherAudioPlaying || s.secondaryAudioShouldBeSilencedHint,
+            unterbrochenSeit: unterbrochenSeit, jetzt: jetzt)
     }
 
     /// Das Mikrofon liefert — einmal je Beitritt. Das Web spielt erst danach

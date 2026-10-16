@@ -84,7 +84,15 @@ extension SpracheRaum {
             forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil
         ) { [weak self] _ in
             guard let self, raum != nil else { return }
+            wache.vordergrund(true)
             wache.anstossen("vordergrund")
+        }
+        // Im Hintergrund greift der Wächter nicht in die Kette ein — iOS lehnt
+        // dort das Aktivieren gegen einen fremden Halter ab (Gegenprüfung T1).
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.wache.vordergrund(false)
         }
     }
 }
