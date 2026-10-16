@@ -29,6 +29,11 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "zustand", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "lautstaerken", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "erzwungen", returnType: CAPPluginReturnPromise),
+        // Kennzeichen dieses Baus: Mikrofon-Wächter, Diagnose, Tonqualität.
+        // Die Oberfläche fragt es EINZELN ab (`nativeWacheDa`), nicht über die
+        // Liste des nativen Wegs — ein älterer Bau bliebe sonst ganz beim
+        // Web-Weg, statt nur ohne Wächter.
+        CAPPluginMethod(name: "diagnose", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnCallback),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise)
     ]
@@ -91,6 +96,11 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
         let stumm = call.getBool("startStumm") ?? false
         let taub = call.getBool("startTaub") ?? false
         let (je, gesamt) = Self.hoerwunsch(call)
+        // Felder statt eigener Befehle: eine ältere Web-App schickt sie nicht,
+        // dann gilt die Vorgabe (Apples Verarbeitung, 48 kbps).
+        let ton = SpracheRaum.TonOptionen(
+            volle: call.getBool("volleTonqualitaet") ?? false,
+            bitrateKbps: call.getInt("bitrateKbps"))
         // In der Kette: ein Mikrofon-Befehl, der während des Aufbaus kommt,
         // wartet auf den Raum, statt auf dem alten oder keinem zu landen. Die
         // Brücken-Warteschlange allein hält das NICHT — der Aufbau läuft
@@ -99,7 +109,7 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
             try await SpracheRaum.geteilt.beitreten(
                 wsUrl: wsUrl, token: token, kanalId: kanalId, kanalName: kanalName,
                 communityName: communityName, stumm: stumm, taubStart: taub,
-                lautstaerken: je, gesamt: gesamt)
+                lautstaerken: je, gesamt: gesamt, ton: ton)
         }
     }
 
@@ -238,5 +248,12 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
     /// frische Oberfläche nichts davon.
     @objc func zustand(_ call: CAPPluginCall) {
         call.resolve(SpracheRaum.geteilt.zustand())
+    }
+
+    /// Die Diagnose-Felder jetzt (`SpracheRaumNeustart.swift`) — für den Bericht
+    /// nach einem Ton-Ausfall. Ihr Dasein ist zugleich das Kennzeichen des Baus
+    /// (s. `pluginMethods`).
+    @objc func diagnose(_ call: CAPPluginCall) {
+        call.resolve(SpracheRaum.geteilt.diagnoseFelder())
     }
 }

@@ -125,7 +125,9 @@ export interface NativerHoerwunsch {
 /** Ein Knopf der nativen Ansicht, dessen Regeln im Web liegen
  *  (`SpracheRaum.wunsch` in der Hülle). */
 export interface NativerWunsch {
-  aktion: 'mikrofon' | 'taub' | 'auflegen';
+  /** `neuVerbinden` kommt aus dem Band „Mikrofon ausgefallen" der nativen
+   *  Ansicht (`SpracheAnsicht.swift`). */
+  aktion: 'mikrofon' | 'taub' | 'auflegen' | 'neuVerbinden';
   an: boolean;
 }
 
@@ -152,6 +154,12 @@ export interface SprachePlugin {
      *  Kanal. Kein eigener Befehl: der hielte jeden älteren Bau ganz vom
      *  nativen Weg fern (`SPRACHE_METHODEN`). */
     communityName?: string;
+    /** „Volle Tonqualität" (Spracheinstellungen, nur iOS): WebRTCs eigene
+     *  Verarbeitung statt Apples Voice-Processing, dazu `bitrateKbps` (der
+     *  Server-Wert, wie am Desktop). Nur an einen Bau mit Wächter geschickt
+     *  (`nativeWacheDa`); ein älterer übergeht die Felder. */
+    volleTonqualitaet?: boolean;
+    bitrateKbps?: number;
   }): Promise<NativerZustand>;
   verlassen(o: { sitzung?: number }): Promise<void>;
   lautstaerken(o: {
@@ -192,6 +200,39 @@ export interface SprachePlugin {
   ): Promise<{ remove: () => void }>;
   addListener(name: 'wunsch', cb: (e: NativerWunsch) => void): Promise<{ remove: () => void }>;
 }
+
+/** Eine Diagnose-Zeile der Hülle (`SpracheRaumNeustart.swift::diagMelden`):
+ *  nur Zustände, nie Kennungen. */
+export interface NativeDiagnose {
+  art: string;
+  felder: Record<string, string | number | boolean>;
+}
+
+/**
+ * Was ein Bau MIT Mikrofon-Wächter zusätzlich kann (seit 2026-10-17).
+ *
+ * **Bewusst NICHT in `SprachePlugin` und damit nicht in `SPRACHE_METHODEN`.**
+ * Jede Methode dort ist Bedingung für den ganzen nativen Weg: ein Bau ohne sie
+ * — TestFlight 2.1 im Feld — fiele ganz auf den Web-Weg zurück, also auf
+ * WebKits eigene Aufnahme mit allen Fehlern, gegen die der native Weg gebaut
+ * wurde. Der Wächter ist ein Zusatz: fehlt er, läuft der Kanal wie bisher,
+ * nur ohne Wächter. Gefragt wird deshalb einzeln (`nativeWacheDa`), und alles,
+ * was daran hängt (Beitrittston erst nach dem Mikrofon, Tonqualität), gilt
+ * nur dann.
+ */
+export interface SpracheWachePlugin {
+  diagnose(): Promise<Record<string, string | number | boolean>>;
+  addListener(name: 'mikroBereit', cb: () => void): Promise<{ remove: () => void }>;
+  addListener(
+    name: 'mikroAusfall',
+    cb: (e: { stufe: number }) => void
+  ): Promise<{ remove: () => void }>;
+  addListener(name: 'mikroTot', cb: (e: { tot: boolean }) => void): Promise<{ remove: () => void }>;
+  addListener(name: 'diagnose', cb: (e: NativeDiagnose) => void): Promise<{ remove: () => void }>;
+}
+
+/** Das Kennzeichen eines Baus mit Wächter (s. `SpracheWachePlugin`). */
+export const SPRACHE_WACHE_METHODEN: readonly string[] = ['diagnose'];
 
 /**
  * Jede Methode, die die Oberfläche auf dem nativen Weg an der Hülle ruft — die

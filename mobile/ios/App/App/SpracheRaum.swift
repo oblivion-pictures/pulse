@@ -72,8 +72,9 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     /// Welche Kamera läuft. **Gemerkt statt abgefragt**, weil die Abfrage am
     /// Aufnehmer hängt (`CameraCapturer.position`) und der zwischen
     /// „aus" und „an" gar nicht existiert — ein Wunsch, der das Ausschalten
-    /// überlebt, ist das, was die Oberfläche braucht.
-    private(set) var kameraVorn = true
+    /// überlebt, ist das, was die Oberfläche braucht. Gesetzt nur in
+    /// `SpracheRaumKamera.swift` (`private(set)` gilt in Swift je Datei).
+    var kameraVorn = true
     /// Mithören aus. Setzt das Web bei JEDEM Beitritt ausdrücklich
     /// (`startTaub`); der Stand eines früheren Raums gilt nicht mit. Gesetzt
     /// nur hier und in `SpracheRaumStumm.swift` (`private(set)` gilt in Swift
@@ -110,10 +111,15 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
 
     /// Die Befehlskette, s. `nacheinander`.
     private let kette = Befehlskette()
+    /// Der Wächter über das Mikrofon (`SpracheMikroWache.swift`).
+    let wache = SpracheMikroWache()
 
     /// Knöpfe der nativen Ansicht, deren Regeln dem Web gehören.
     enum Wunsch: String {
         case mikrofon, taub, auflegen
+        /// Aus dem Band „Mikrofon ausgefallen" der Ansicht. Eine ältere Web-App
+        /// kennt die Aktion nicht und übergeht sie.
+        case neuVerbinden
     }
 
     enum Fehler: LocalizedError {
@@ -158,9 +164,14 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
 
     func beitreten(wsUrl: String, token: String, kanalId: String, kanalName: String,
                    communityName: String = "", stumm: Bool, taubStart: Bool,
-                   lautstaerken: [String: Double]? = nil, gesamt: Double? = nil) async throws {
+                   lautstaerken: [String: Double]? = nil, gesamt: Double? = nil,
+                   ton: TonOptionen = TonOptionen()) async throws {
         await verlassen()
         sessionBeobachtenFallsNoetig()
+        // **Jeder Beitritt beginnt bei einer sauberen Kette** — was ein
+        // früherer Raum oder Anruf prozessweit hinterliess, gilt nicht mit
+        // (`SpracheRaumNeustart.swift`).
+        await sitzungFrischHerstellen()
         // **Taub und Lautstärken ZUERST, nicht am Ende.** Bis zum 2026-10-11
         // stand `taub = taubStart` als letzte Zeile — dazwischen abonniert
         // LiveKit schon die vorhandenen Spuren und stellte sie nach dem ALTEN
@@ -169,7 +180,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // (Bughunt 2026-10-11, E1).
         taub = taubStart
         await hoerwunschSetzen(je: lautstaerken, gesamt: gesamt)
-        let r = Room(delegate: self)
+        let r = Room(delegate: self, roomOptions: Self.raumOptionen(ton))
         sitzung += 1
         raum = r
         self.kanalId = kanalId
@@ -218,6 +229,12 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
                   error.localizedDescription)
         }
         try await nochAktuell(r)
+        // Ohne Erlaubnis ist ein fehlendes Mikrofon die Wahl des Nutzers, kein
+        // Ausfall — nur der zweite Fall ist ein Anlass für den Bericht.
+        let art = mikrofonFehler == nil ? "beitritt"
+            : (Anrufverwaltung.mikrofonErlaubt() ? "beitritt_ohne_mikro" : "beitritt_ohne_erlaubnis")
+        diagMelden(art, ["volleTon": ton.volle, "stumm": stumm])
+        wache.beginnen()
         schickeTeilnehmer()
         schickeEigenen()
         await MainActor.run { SpracheBildImBild.geteilt.raumDa(r) }
@@ -240,6 +257,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     private func raumLoesen(_ r: Room) {
         guard raum === r else { return }
         raum = nil
+        wache.beenden()
         kanalId = nil
         kanalName = ""
         // Was die Moderation in DIESEM Kanal geschaltet hat, gilt im nächsten nicht.
@@ -262,6 +280,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
             return
         }
         raumLoesen(r)
+        diagMelden("verlassen", [:])
         // **Zuerst die Ansicht, dann die Trennung.** Die Ansicht hält den Raum
         // und zeichnet daraus; sie über einem gerade abgebauten Raum stehen zu
         // lassen, zeigt einen leeren Bildschirm ohne Ausweg. Ein Melden wäre
@@ -296,40 +315,6 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // Schliessen, damit die Oberfläche keinen Griff „zurück in den Kanal"
         // anbietet, wenn es keinen Kanal mehr gibt.
         Task { @MainActor in SpracheAnsichtHalter.geteilt.schliessen(melden: true) }
-    }
-
-    /// Kamera veröffentlichen oder zurücknehmen.
-    ///
-    /// **Ausschalten heisst ZURÜCKNEHMEN, nicht stummschalten** — der genaue
-    /// Gegensatz zum Mikrofon, aus zwei Gründen, die beide schon im Web-Weg
-    /// stehen (`eigeneKamera.ts::kameraSetzen`): ein nur gemutetes Video lässt
-    /// den `track_unpublished`-Webhook aus (das CAM-Zeichen bliebe bei allen
-    /// an), und die Kamera des Geräts liefe samt Leuchte weiter.
-    func kamera(_ an: Bool) async throws {
-        guard let r = raum else { return }
-        if an {
-            try await r.localParticipant.setCamera(
-                enabled: true, captureOptions: CameraCaptureOptions(
-                    position: kameraVorn ? .front : .back))
-        } else if let pub = r.localParticipant.firstCameraPublication as? LocalTrackPublication {
-            // `unpublish` stoppt die Spur mit (`stopLocalTrackOnUnpublish`,
-            // Vorgabe des SDK) — damit geht die Kamera-Leuchte aus.
-            try await r.localParticipant.unpublish(publication: pub)
-        }
-        schickeEigenen()
-        schickeTeilnehmer()
-    }
-
-    /// Front- oder Rückkamera. Läuft die Kamera, wird der AUFNEHMER umgestellt
-    /// statt neu veröffentlicht (die Gegenseite bemerkt keinen Abriss, wie
-    /// `restartTrack` im Web); sonst wird nur der Wunsch gemerkt.
-    func kameraSeite(front: Bool) async throws {
-        kameraVorn = front
-        if let spur = raum?.localParticipant.firstCameraPublication?.track as? LocalVideoTrack,
-           let aufnehmer = spur.capturer as? CameraCapturer {
-            _ = try await aufnehmer.set(cameraPosition: front ? .front : .back)
-        }
-        schickeEigenen()
     }
 
     /// Lautsprecher oder Hörmuschel — der Schalter, um den es beim ganzen

@@ -36,6 +36,11 @@ export interface NativerWirt {
   toggleMic(): void;
   toggleDeafen(): void;
   disconnect(opts: { reason?: 'user' }): Promise<void>;
+  connect(
+    channelId: string,
+    channelName: string,
+    opts: { startMuted?: boolean; startDeafened?: boolean }
+  ): Promise<void>;
 }
 
 /** Die privaten Haken des Voice-Stores, die der native Weg braucht. */

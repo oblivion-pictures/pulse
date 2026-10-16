@@ -33,4 +33,9 @@ export class TonHalter {
   get gehalten(): boolean {
     return this.#halter.size > 0;
   }
+
+  /** Wer gerade hält — nur für die Diagnose. */
+  get liste(): string[] {
+    return [...this.#halter].sort();
+  }
 }

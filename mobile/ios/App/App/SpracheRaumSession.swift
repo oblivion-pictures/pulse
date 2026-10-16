@@ -1,11 +1,13 @@
 import AVFoundation
 import LiveKit
+import UIKit
 
 /// Was die Audio-Session der Hülle tut, während der Raum steht — beobachtet,
 /// nicht gesteuert.
 ///
-/// **Warum eine eigene Datei.** Hier steht nichts, was etwas bewirkt: nur zwei
-/// Beobachter und ihre Begründungen. Zusammen mit der Steuerung lag
+/// **Warum eine eigene Datei.** Hier steht nichts, was etwas bewirkt: nur
+/// Beobachter und ihre Begründungen — was sie anstossen, entscheidet der
+/// Mikrofon-Wächter (`SpracheMikroWache.swift`). Zusammen mit der Steuerung lag
 /// `SpracheRaum.swift` über der Grössen-Policy (`PLAN.md` §12.1). Reine
 /// Verschiebung, Verhalten unverändert; `sessionBeobachter` liegt weiter am
 /// Typ, weil eine Erweiterung keine gespeicherte Eigenschaft tragen kann.
@@ -49,13 +51,40 @@ extension SpracheRaum {
             forName: AVAudioSession.interruptionNotification, object: nil, queue: nil
         ) { [weak self] n in
             guard let self, raum != nil else { return }
-            let roh = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt ?? 99
+            let info = n.userInfo ?? [:]
+            let roh = info[AVAudioSessionInterruptionTypeKey] as? UInt ?? 99
+            let optionen = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let weiter = AVAudioSession.InterruptionOptions(rawValue: optionen).contains(.shouldResume)
+            let grund = info[AVAudioSessionInterruptionReasonKey] as? UInt ?? 99
             NSLog("[PulseSprache] Unterbrechung art=%@ route=%@ engine=%@ eing=%@",
                   roh == 1 ? "begonnen" : (roh == 0 ? "beendet" : "\(roh)"),
                   routeJetzt(),
                   AudioManager.shared.isEngineRunning ? "laeuft" : "aus",
                   AVAudioSession.sharedInstance().currentRoute.inputs
                       .map { $0.portType.rawValue }.joined(separator: ","))
+            diagMelden(roh == 1 ? "unterbrechung_beginn" : "unterbrechung_ende",
+                       ["grund": grund, "shouldResume": weiter])
+            wache.unterbrechung(begonnen: roh == 1)
+        }
+        // **Die Mediendienste starten neu** (selten, aber dann ist ALLES weg:
+        // Session, Maschine, Routen). Die Wächter-Leiter heilt das wie jeden
+        // anderen Ausfall; gemeldet wird es eigens, weil es ein Anlass für den
+        // Diagnosebericht ist.
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            guard let self, raum != nil else { return }
+            diagMelden("media_reset", [:])
+            wache.anstossen("media_reset")
+        }
+        // Zurück im Vordergrund: sofort nachsehen, ob das Mikrofon noch liefert
+        // — der Nutzer schaut gerade hin, und ein toter Kanal soll nicht erst
+        // nach dem nächsten Takt auffallen.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            guard let self, raum != nil else { return }
+            wache.anstossen("vordergrund")
         }
     }
 }

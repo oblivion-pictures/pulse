@@ -25,6 +25,7 @@
   import { audioRouteState } from '$lib/platform/audioRouteState.svelte';
   import VoiceAusgabeMenue from './VoiceAusgabeMenue.svelte';
   import VoiceNativeAnsichtGriff from './VoiceNativeAnsichtGriff.svelte';
+  import VoiceMikroTotHinweis from './VoiceMikroTotHinweis.svelte';
 
   // Handy-Klasse? Wird vom Mount-Punkt hereingereicht (Geraete-Trennung):
   // Desktop leistet die Leiste im Sidebar-Fuss, Handy als Dock unter dem
@@ -143,6 +144,7 @@
       </span>
     {/if}
   </div>
+  <VoiceMikroTotHinweis />
 
   <!-- `flex-nowrap` + `nicht-handy:gap-0.5`: In der schmalen Seitenpalte (240px minus
        Rand) passten sechs 32px-Knoepfe mit 8px-Luecke nicht — der Auflegen-

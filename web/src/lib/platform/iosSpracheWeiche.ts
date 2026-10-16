@@ -12,7 +12,7 @@
  */
 
 import { huellenBefund } from './huelleKann.ts';
-import { SPRACHE_METHODEN } from './iosSpracheTypen.ts';
+import { SPRACHE_METHODEN, SPRACHE_WACHE_METHODEN } from './iosSpracheTypen.ts';
 import { isCapacitorIOS } from './runtime.ts';
 
 /**
@@ -70,4 +70,14 @@ export function nativerSprachwegBefund(): WeichenBefund {
 
 export function nativerSprachwegDa(): boolean {
   return nativerSprachwegBefund().nativ;
+}
+
+/**
+ * Trägt der Bau den Mikrofon-Wächter (seit 2026-10-17)? Nur auf dem nativen
+ * Weg sinnvoll, und einzeln gefragt — Begründung an `SpracheWachePlugin`
+ * (`iosSpracheTypen.ts`). An dieser Antwort hängen der Beitrittston nach dem
+ * Mikrofon, der Schalter „Volle Tonqualität" und der Diagnosebericht.
+ */
+export function nativeWacheDa(): boolean {
+  return nativerSprachwegDa() && huellenBefund('SprachePlugin', SPRACHE_WACHE_METHODEN).da;
 }

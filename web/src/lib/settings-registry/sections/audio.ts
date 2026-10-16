@@ -73,6 +73,18 @@ export type AudioSettings = {
    * „fertig und nur noch ungemessen", sondern nachweislich schädlich.
    */
   bluetoothHq: boolean;
+  /**
+   * „Volle Tonqualität" im nativen Sprachkanal der iOS-App — ein
+   * VERGLEICHSSCHALTER, Vorgabe aus. An: WebRTCs eigene Echo-, Pegel- und
+   * Rauschverarbeitung statt Apples Voice-Processing, das am eingebauten
+   * Mikrofon „dumpf wie am Telefon" klang, und die Sende-Bitrate des Servers
+   * wie am Desktop statt 48 kbps (`SpracheRaumNeustart.swift::raumOptionen`).
+   * Preis: WebRTCs Echo-Unterdrückung am iPhone-Lautsprecher ist schwächer als
+   * Apples — ob sie trägt, zeigt erst die Echo-Probe am Gerät. Wirkt beim
+   * nächsten Beitritt; nur an einen App-Bau mit Mikrofon-Wächter geschickt
+   * (`nativeWacheDa`), ein älterer bekäme es nicht mit.
+   */
+  iosVolleTonqualitaet: boolean;
   noiseGateThresholdDb: number;
   stereo: boolean;
   inputMakeupGain: number;
@@ -99,6 +111,7 @@ const DEFAULTS_AUDIO: AudioSettings = {
   echoCancellation: true,
   noiseSuppression: 'rnnoise_gated',
   bluetoothHq: false,
+  iosVolleTonqualitaet: false,
   noiseGateThresholdDb: NOISE_GATE_DB_DEFAULT,
   stereo: false,
   inputMakeupGain: INPUT_MAKEUP_DEFAULT,
@@ -142,6 +155,7 @@ export const AUDIO_SECTION: SectionConfig<AudioSettings> = {
       // (DFN3 was removed 2026-05-16). Any non-'off', non-current legacy value
       // indicates the user wanted *some* filter on — map to the gated mode.
       bluetoothHq: a.bluetoothHq === true,
+      iosVolleTonqualitaet: a.iosVolleTonqualitaet === true,
       noiseSuppression:
         a.noiseSuppression === 'off' || a.noiseSuppression === 'rnnoise_gated'
           ? a.noiseSuppression

@@ -8,6 +8,9 @@ import SwiftUI
 final class SpracheStand: ObservableObject {
     static let geteilt = SpracheStand()
     @Published var taub = false
+    /// Der Mikrofon-Wächter hat aufgegeben (`SpracheMikroWache.swift`) — die
+    /// Ansicht zeigt dann ein Band mit „Erneut verbinden".
+    @Published var mikroTot = false
     /// Nutzer-Ids, die die Moderation im Kanal stumm- beziehungsweise
     /// taubgeschaltet hat. **Nur Anzeige** (Schild, gesperrter Knopf): LiveKit
     /// kennt die Stummschaltung bloss als entzogenes Recht und die
@@ -242,6 +245,9 @@ extension SpracheRaum {
         case .mikrofon: try await nacheinander { try await self.mikrofon(an) }
         case .taub: try await nacheinander { await self.taubStellen(an) }
         case .auflegen: await selbstAuflegen()
+        // Neu verbinden braucht ein frisches Token, und das holt nur das Web.
+        // Hört es nicht zu, bleibt der Raum, wie er ist.
+        case .neuVerbinden: break
         }
     }
 
@@ -263,6 +269,7 @@ extension SpracheRaum {
             case .mikrofon: try await self.mikrofon(an)
             case .taub: await self.taubStellen(an)
             case .auflegen: await self.selbstAuflegen()
+            case .neuVerbinden: break
             }
         }, fertig: fertig)
     }

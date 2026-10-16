@@ -28,6 +28,7 @@
 import { settings } from '$lib/stores/settings.svelte';
 import { guildSounds } from '$lib/stores/guildSounds.svelte';
 import { isIosWebKit } from '$lib/platform/runtime';
+import { iosTonGespielt } from '$lib/diagnose/iosTonDiagnose';
 import { SOUNDS, type SoundId, type SoundCategory } from './registry';
 import { tonEndungen, tonWeg, type TonWeg } from './tonWeg';
 import { WebAudioTon } from './webAudioTon';
@@ -62,8 +63,8 @@ function bypassGain(category: SoundCategory): number {
   return clamp01(s.masterVolume) * clamp01(s[category].volume);
 }
 
-function defaultUrls(id: SoundId, weg: TonWeg = aktuellerWeg()): string[] {
-  return tonEndungen(weg).map((ext) => `${SOUND_DIR}/${SOUNDS[id].file}.${ext}`);
+function defaultUrls(id: SoundId): string[] {
+  return tonEndungen(aktuellerWeg()).map((ext) => `${SOUND_DIR}/${SOUNDS[id].file}.${ext}`);
 }
 
 /** Der Weg dieser Umgebung (`tonWeg.ts`). Je Aufruf gefragt statt einmal beim
@@ -126,6 +127,9 @@ class SoundEngine {
     if (gain <= 0) return;
     const url = this.#resolve(id, opts.guildId);
     if (url === null) return;
+    // iOS: jeder Ton mit WebKits Session-Stand in den Diagnose-Ring — der Ton
+    // war der Auslöser in Kette K1 (`diagnose/iosTonDiagnose.ts`).
+    if (weg === 'webaudio') iosTonGespielt(id);
     this.#emit(id, url, gain, weg);
   }
 

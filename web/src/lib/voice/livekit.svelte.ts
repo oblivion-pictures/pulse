@@ -128,6 +128,16 @@ class VoiceRoom {
   /** Steht die native Kanalansicht gerade über der Web-App? Solange sie
    *  liegt, ist die Web-Leiste verdeckt; fällt sie weg, bietet die Leiste den
    *  Griff zurück an, und der liest dieses Feld. */
+  /** Hat der Mikrofon-Wächter der Hülle aufgegeben (nur iOS-nativ)? */
+  get nativMikroTot(): boolean {
+    return this.#nativ.mikroTot;
+  }
+
+  /** „Erneut verbinden" nach einem toten Mikrofon (`nativerRaum.svelte.ts`). */
+  nativNeuVerbinden(): Promise<void> {
+    return this.#nativ.neuVerbinden();
+  }
+
   get nativeAnsichtOffen(): boolean {
     return this.#nativ.ansichtOffen;
   }

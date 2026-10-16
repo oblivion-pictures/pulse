@@ -125,11 +125,6 @@ export class WebAudioTon {
     this.#puffer.delete(url);
   }
 
-  /** Läuft der Kontext gerade? Für die Diagnose. */
-  get zustand(): string {
-    return this.#kontext?.state ?? 'keiner';
-  }
-
   #kontextHolen(): KontextArtig | null {
     if (!this.#kontext) {
       try {

@@ -115,6 +115,31 @@ test('Bau aus dem heutigen SprachePlugin.swift: nativer Weg', async () => {
   assert.deepEqual(nativerSprachwegBefund(), { nativ: true });
 });
 
+test('Wächter: ein Bau ohne `diagnose` bleibt nativ, nur ohne Wächter', async () => {
+  const { nativerSprachwegBefund, nativeWacheDa } = await import(
+    '../src/lib/platform/iosSpracheWeiche.ts'
+  );
+  const { SPRACHE_METHODEN } = await import('../src/lib/platform/iosSpracheTypen.ts');
+  // TestFlight 2.1: alle Methoden des nativen Wegs, kein Wächter.
+  sprachKopfSetzen(kopfWieDieHuelle('SprachePlugin', [...SPRACHE_METHODEN]));
+  assert.deepEqual(nativerSprachwegBefund(), { nativ: true });
+  assert.equal(nativeWacheDa(), false);
+  // Und der Wächter gehört NICHT in die Liste des nativen Wegs — sonst fiele
+  // genau dieser Bau ganz auf den Web-Weg zurück.
+  assert.ok(!SPRACHE_METHODEN.includes('diagnose'));
+});
+
+test('Wächter: der heutige Bau trägt ihn', async () => {
+  const { nativeWacheDa } = await import('../src/lib/platform/iosSpracheWeiche.ts');
+  const swift = readFileSync(
+    new URL('../../mobile/ios/App/App/SprachePlugin.swift', import.meta.url),
+    'utf8'
+  );
+  const methoden = [...swift.matchAll(/CAPPluginMethod\(name: "(\w+)"/g)].map((t) => t[1]);
+  sprachKopfSetzen(kopfWieDieHuelle('SprachePlugin', methoden));
+  assert.equal(nativeWacheDa(), true);
+});
+
 test('ausserhalb von iOS entscheidet die Plattform, nicht der Kopf', async () => {
   const { nativerSprachwegBefund } = await import('../src/lib/platform/iosSpracheWeiche.ts');
   Object.defineProperty(globalThis, 'navigator', {

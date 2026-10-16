@@ -30,10 +30,18 @@ import {
   type NutzerWahl
 } from './nativAbgleich';
 import { spracheVorhaltLoesen } from '$lib/platform/spracheVorhalt';
+import { berichtSenderSetzen } from '$lib/diagnose/iosTonDiagnose';
+import { iosTonBerichtSenden } from '$lib/diagnose/iosTonBerichtSenden';
+import { effectiveVoiceBitrateMaxKbps } from '$lib/stream/guildLimits';
 import { NativeBefehle, type NativeHaken, type NativerWirt } from './nativeBefehle';
+import { NativeWache } from './nativeWache';
 import type { VoiceResume } from './resume';
 import type { StartAbgleich } from './startBeitritt';
 import { voiceState } from './state.svelte';
+
+// Ton-Diagnose: der Versand hängt an diesem Modul, weil es nur der native Weg
+// braucht (der Sender prüft selbst, ob er in der iOS-Hülle läuft).
+berichtSenderSetzen(iosTonBerichtSenden);
 
 /**
  * Der native Weg auf iOS — die Hülle hält den Raum, der Voice-Store spiegelt
@@ -58,6 +66,10 @@ export class NativerRaum {
    *  ist die Web-Leiste der einzige Weg zurück — sie bietet dann den Griff
    *  an (`VoiceNativeAnsichtGriff.svelte`). */
   ansichtOffen = $state(false);
+  /** Der Wächter der Hülle hat aufgegeben: das Mikrofon liefert nichts mehr
+   *  (`SpracheMikroWache.swift`). Die Leiste bietet „Erneut verbinden" an
+   *  (`VoiceMikroTotHinweis.svelte`). */
+  mikroTot = $state(false);
 
   /** Mikrofon, Taub, Kamera, Lautstärken — `nativeBefehle.ts`. */
   readonly befehle: NativeBefehle;
@@ -72,6 +84,7 @@ export class NativerRaum {
   #sitzung: number | undefined;
   /** Hinter dem Getter `pausenWunsch` (B3). */
   #pause: NutzerWahl | null = null;
+  #wache = new NativeWache((tot) => (this.mikroTot = tot));
 
   constructor(wirt: NativerWirt, haken: NativeHaken) {
     this.#wirt = wirt;
@@ -96,7 +109,13 @@ export class NativerRaum {
       z = await spracheBeitreten(wsUrl, token, channelId, channelName, opts.stumm, opts.taub, {
         je: $state.snapshot(settings.voice.userVolumes),
         gesamt: settings.voice.outputVolume,
-        community: guilds.byId[guilds.guildIdForChannel(channelId) ?? '']?.name
+        community: guilds.byId[guilds.guildIdForChannel(channelId) ?? '']?.name,
+        // Vergleichsschalter (nur iOS, Vorgabe aus); die Bitrate ist dann die
+        // des Servers, wie am Desktop. Wirkt ab diesem Beitritt.
+        ton: {
+          volle: settings.audio.iosVolleTonqualitaet,
+          bitrateKbps: effectiveVoiceBitrateMaxKbps(channelId)
+        }
       });
     } catch (e) {
       if (!this.#haken.aktuell(gen)) return;
@@ -133,7 +152,27 @@ export class NativerRaum {
     if (typeof location !== 'undefined' && routeZeigtKanal(location.pathname, channelId)) {
       await this.ansichtOeffnen();
     }
+    // Erst, wenn das Mikrofon liefert (`nativeWache.ts`) — stumm oder ohne
+    // Mikrofon gibt es nichts abzuwarten.
+    if (!opts.stumm && !z.mikrofonFehler) await this.#wache.bereitAbwarten();
+    if (!this.#haken.aktuell(gen)) return;
     sounds.play('voice.self_join', { guildId: guilds.guildIdForChannel(channelId) });
+  }
+
+  /**
+   * Aus „Erneut verbinden" (Leiste oder native Ansicht), nachdem der Wächter
+   * aufgegeben hat: auflegen und denselben Kanal neu betreten, mit der WAHL
+   * des Nutzers für Mikrofon und Taub. Ein Neubeitritt stellt die Kette in der
+   * Hülle frisch her (`SpracheRaum.sitzungFrischHerstellen`).
+   */
+  async neuVerbinden(): Promise<void> {
+    const w = this.#wirt;
+    const kanal = w.channelId;
+    if (!this.aktiv || !kanal) return;
+    const name = w.channelName ?? '';
+    const wahl = this.#pause ?? { mikro: w.micEnabled, taub: w.deafened };
+    await w.disconnect({});
+    await w.connect(kanal, name, { startMuted: !wahl.mikro, startDeafened: wahl.taub });
   }
 
   /**
@@ -217,6 +256,8 @@ export class NativerRaum {
     this.#abmelden = null;
     this.aktiv = false;
     this.ansichtOffen = false;
+    this.mikroTot = false;
+    this.#wache.abmelden();
     this.#steht = false;
     this.#sitzung = undefined;
     this.#pause = null;
@@ -308,6 +349,8 @@ export class NativerRaum {
   #beobachten(): void {
     this.#abmelden?.();
     this.aktiv = true;
+    this.mikroTot = false;
+    this.#wache.beobachten();
     this.#steht = false;
     this.#abmelden = spracheBeobachten({
       verbindung: (e) => this.#verbindung(e),
@@ -379,6 +422,7 @@ export class NativerRaum {
     if (e.aktion === 'mikrofon' && e.an !== w.micEnabled) w.toggleMic();
     else if (e.aktion === 'taub' && e.an !== w.deafened) w.toggleDeafen();
     else if (e.aktion === 'auflegen') void w.disconnect({ reason: 'user' });
+    else if (e.aktion === 'neuVerbinden') void this.neuVerbinden();
   }
 
   #sprechen(identitaeten: string[]): void {

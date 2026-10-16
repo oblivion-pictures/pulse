@@ -22,6 +22,8 @@ import { tonNativerRaum } from './iosTon';
 import { TonHalter } from './nativeTonHalter';
 import { mikrofonBeiDerHuelleMelden } from './mikrofonBeiDerHuelle';
 import { mitFrist, SPRACHE_FRIST_KETTE_MS, SPRACHE_FRIST_SOFORT_MS } from './brueckenFrist';
+import { nativeWacheDa } from './iosSpracheWeiche';
+import { iosTonMelden, webkitSession } from '$lib/diagnose/iosTonDiagnose';
 import type {
   AnsichtThema,
   NativerEigenerZustand,
@@ -29,14 +31,15 @@ import type {
   NativerTeilnehmer,
   NativerWunsch,
   NativerZustand,
-  SprachePlugin
+  SprachePlugin,
+  SpracheWachePlugin
 } from './iosSpracheTypen';
 
 // Weitergereicht, damit die Aufrufer ihren Import nicht ändern müssen — die
 // Typen und die Weiche sind Teil DIESER Schnittstelle, sie liegen nur woanders
 // (die Weiche in `iosSpracheWeiche.ts`, Begründung dort).
 export type { NativerEigenerZustand, NativerTeilnehmer, NativerWunsch, NativerZustand };
-export { nativerSprachwegBefund, nativerSprachwegDa } from './iosSpracheWeiche';
+export { nativerSprachwegBefund, nativerSprachwegDa, nativeWacheDa } from './iosSpracheWeiche';
 
 /**
  * **Über `registerPlugin`, nicht über `window.Capacitor.Plugins` — und das ist
@@ -58,9 +61,11 @@ export { nativerSprachwegBefund, nativerSprachwegDa } from './iosSpracheWeiche';
  * Der Rest des Projekts macht es längst so (`schnellwahl.ts`, `appSperre`,
  * `iosWachhalten`, Anrufe).
  */
-const nativ = registerPlugin<SprachePlugin>('SprachePlugin');
+const nativ = registerPlugin<SprachePlugin & SpracheWachePlugin>('SprachePlugin');
 
-function plugin(): SprachePlugin | null {
+/** Das Plugin der Hülle, `null` ausserhalb — auch für `iosSpracheWache.ts`,
+ *  damit es genau EINMAL registriert wird. */
+export function huelle(): (SprachePlugin & SpracheWachePlugin) | null {
   // **Der Guard ist Pflicht, nicht Vorsicht.** Ausserhalb der Hülle ist das
   // ein Web-Stub, und dessen `addListener` WIRFT („not implemented on web") —
   // im Browser riss das schon einmal den ganzen Start mit (Befund 2026-09-09
@@ -72,9 +77,9 @@ function plugin(): SprachePlugin | null {
 function rufen<T>(
   befehl: string,
   frist: number,
-  ruf: (p: SprachePlugin) => Promise<T>
+  ruf: (p: SprachePlugin & SpracheWachePlugin) => Promise<T>
 ): Promise<T | null> {
-  const p = plugin();
+  const p = huelle();
   return p ? mitFrist(ruf(p), frist, befehl) : Promise.resolve(null);
 }
 
@@ -160,7 +165,32 @@ const halter = new TonHalter((gehalten) => {
   webSessionTyp(gehalten ? 'ambient' : 'auto');
   tonNativerRaum(gehalten);
   mikrofonBeiDerHuelleMelden(gehalten);
+  iosTonMelden('halter', { gehalten, wer: halter.liste.join(',') });
 });
+
+/**
+ * **WebKits Erklärung neu abgeben — ohne Merker, bei JEDEM Anlass.** Bis zum
+ * 2026-10-17 schrieb nur der Halter-Übergang (oben) `ambient`, also genau
+ * einmal je Raum. Verlor WebKit die Erklärung unterwegs (ein Neustart des
+ * Inhalts- oder GPU-Prozesses, vermutet in K1), glaubte das Web weiter an
+ * `ambient`, und der nächste Oberflächen-Ton nahm der Hülle die Session —
+ * auch nach einem Neubeitritt, weil der Halter dabei nicht über „leer" kam.
+ * Jetzt: bei jedem Beitritt, beim Sichtbarwerden und auf Ruf des Wächters.
+ */
+export function webkitNeuErklaeren(grund: string): void {
+  if (!halter.gehalten) return;
+  const vorher = webkitSession();
+  webSessionTyp('ambient');
+  iosTonMelden('webkit_neu', { grund, vorher_typ: String(vorher.webkit_typ) });
+}
+
+if (typeof document !== 'undefined' && isCapacitorIOS()) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    iosTonMelden('sichtbar', { gehalten: halter.gehalten });
+    webkitNeuErklaeren('sichtbar');
+  });
+}
 
 /** Einen nativen Raum anmelden oder abmelden. `'sprachkanal'` läuft über
  *  `raumBeginnt`/`raumEndet` unten; der Anruf meldet sich hier direkt
@@ -192,14 +222,22 @@ export async function spracheBeitreten(
   kanalName: string,
   startStumm: boolean,
   startTaub: boolean,
-  zusatz?: { je: Record<string, number>; gesamt: number; community?: string }
+  zusatz?: {
+    je: Record<string, number>;
+    gesamt: number;
+    community?: string;
+    /** Nur an einen Bau mit Wächter (`nativeWacheDa`). */
+    ton?: { volle: boolean; bitrateKbps: number };
+  }
 ): Promise<NativerZustand> {
-  const p = plugin();
+  const p = huelle();
   if (!p) throw new Error('SprachePlugin fehlt');
   // **Vor dem Beitritt, nicht danach.** Der Ton, der die Session übernimmt,
   // kommt unmittelbar nach dem gelungenen Beitritt — eine Erklärung, die
   // erst danach abgegeben wird, kommt zu spät.
   const gen = raumBeginnt();
+  webkitNeuErklaeren('beitritt');
+  const ton = zusatz?.ton && nativeWacheDa() ? zusatz.ton : undefined;
   try {
     return await p.beitreten({
       wsUrl,
@@ -210,7 +248,8 @@ export async function spracheBeitreten(
       startTaub,
       lautstaerken: zusatz?.je,
       gesamt: zusatz?.gesamt,
-      communityName: zusatz?.community
+      communityName: zusatz?.community,
+      ...(ton ? { volleTonqualitaet: ton.volle, bitrateKbps: ton.bitrateKbps } : {})
     });
   } catch (e) {
     raumEndet(gen);
@@ -336,7 +375,7 @@ export function spracheBeobachten(h: {
   /** Ein Knopf der nativen Ansicht, dessen Regeln hier liegen. */
   wunsch: (e: NativerWunsch) => void;
 }): () => void {
-  const p = plugin();
+  const p = huelle();
   if (!p) return () => undefined;
   const griffe = [
     p.addListener('verbindung', h.verbindung),

@@ -74,10 +74,14 @@ struct SpracheAnsicht: View {
     /// ist das der Normalfall (keine Kamera, kein Mikrofon), am Gerät die
     /// verweigerte Erlaubnis.
     @State private var fehler: String?
+    @ObservedObject private var stand = SpracheStand.geteilt
 
     var body: some View {
         VStack(spacing: 0) {
             kopf
+            if stand.mikroTot {
+                mikroTotBand
+            }
             if let fehler {
                 fehlerband(fehler)
             }
@@ -149,6 +153,26 @@ struct SpracheAnsicht: View {
             Spacer(minLength: 0)
             Button(NSLocalizedString("OK", comment: "Fehlerband")) { fehler = nil }
                 .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(SpracheFarben.schlecht)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    /// Das Mikrofon liefert nichts mehr, und der Wächter hat alles versucht.
+    /// Die Web-Leiste darunter zeigt dasselbe, ist aber verdeckt, solange
+    /// diese Ansicht steht.
+    private var mikroTotBand: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "mic.slash.fill")
+            Text(NSLocalizedString("Mikrofon ausgefallen", comment: "Sprachkanal"))
+                .font(.system(size: 13)).lineLimit(2)
+            Spacer(minLength: 0)
+            Button(NSLocalizedString("Erneut verbinden", comment: "Sprachkanal")) {
+                Task { try? await SpracheRaum.geteilt.wunsch(.neuVerbinden, an: true) }
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .accessibilityIdentifier("sprache.mikroTot.neu")
         }
         .foregroundStyle(SpracheFarben.schlecht)
         .padding(.horizontal, 16)
