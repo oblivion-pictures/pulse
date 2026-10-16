@@ -30,17 +30,27 @@ extension SpracheRaum {
         var bitrateKbps: Int?
     }
 
-    /// Die Raum-Optionen zu `TonOptionen`.
+    /// `adaptiveStream` und `dynacast` sind AN — wie im Web-Weg
+    /// (`livekit.svelte.ts::#roomOptions`). Ohne sie empfing das Telefon jede
+    /// fremde Kamera in voller Stufe, auch ungesehen, und sendete selbst alle
+    /// Simulcast-Ebenen (Akku-Befund 3). **Was „sichtbar" heisst, am SDK 2.17
+    /// gelesen:** eine `VideoView` zählt, sobald sie ausgelegt, nicht versteckt
+    /// und eingeschaltet ist (`VideoView.isAdaptiveStreamEnabled`), ein
+    /// Fenster fragt das SDK nicht ab. Kacheln der Ansicht und das
+    /// Bild-in-Bild-Fenster (`SpracheBildImBildInhalt`, eine `SwiftUIVideoView`)
+    /// melden sich also richtig an; ohne jede Ansicht pausiert das Video, und
+    /// beim Öffnen kommt es nach einem Takt des SDK und einem Vollbild zurück.
     static func raumOptionen(_ ton: TonOptionen) -> RoomOptions {
         guard ton.volle else {
-            return RoomOptions()
+            return RoomOptions(adaptiveStream: true, dynacast: true)
         }
         let aufnahme = AudioCaptureOptions(
             echoCancellationMode: .software, autoGainControlMode: .software,
             noiseSuppressionMode: .software)
         let kbps = ton.bitrateKbps.map { min(510, max(16, $0)) }
         let senden = AudioPublishOptions(encoding: kbps.map { AudioEncoding(maxBitrate: $0 * 1000) })
-        return RoomOptions(defaultAudioCaptureOptions: aufnahme, defaultAudioPublishOptions: senden)
+        return RoomOptions(defaultAudioCaptureOptions: aufnahme, defaultAudioPublishOptions: senden,
+                           adaptiveStream: true, dynacast: true)
     }
 
     // MARK: - Herstellen

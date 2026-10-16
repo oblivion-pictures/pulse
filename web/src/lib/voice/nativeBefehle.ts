@@ -50,7 +50,6 @@ export interface NativeHaken {
   melden(): void;
   /** Alles abräumen wie nach einem Abbruch (`#teardown`). */
   abbauen(): void;
-  wachHalten(): void;
   vorTaubSetzen(mikroVorher: boolean): void;
   /** Gehört dieser Beitritt noch dem Store (`gen === #connectGen`)? */
   aktuell(gen: number): boolean;

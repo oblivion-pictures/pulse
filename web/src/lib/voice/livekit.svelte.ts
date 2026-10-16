@@ -111,7 +111,6 @@ class VoiceRoom {
   #nativ = new NativerRaum(this, {
     melden: () => this.#publishSelfState(),
     abbauen: () => this.#teardown(),
-    wachHalten: () => this.#ensureWakeLock(),
     vorTaubSetzen: (an) => {
       this.#micEnabledBeforeDeafen = an;
     },

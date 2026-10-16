@@ -315,7 +315,10 @@ export class NativerRaum {
     // beim Wegnavigieren (Bughunt E2).
     voiceState.channelId = w.channelId;
     voiceState.connected = w.state === ConnectionState.Connected;
-    this.#haken.wachHalten();
+    // **Kein Wachhalten mehr** (seit 2026-10-17). Der Haken stammte vom
+    // Web-Weg, wo die Auto-Sperre die Aufnahme der WebView anhält. Der native
+    // Raum läuft gesperrt weiter (Hintergrund-Audio, Live Activity) — ein
+    // stundenlang erzwungen heller Bildschirm kostete nur Akku (Befund 1).
     // **Melden UND den Eintrag fürs Wiederaufnehmen schreiben** — der
     // Web-Weg tut das nach jedem Beitritt, der native tat es nie. Ohne den
     // Eintrag gab es nach einem Reload nichts, woran die Seite den Raum

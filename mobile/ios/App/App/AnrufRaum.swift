@@ -103,12 +103,18 @@ final class AnrufRaum: NSObject, @unchecked Sendable {
         if raum != nil, kennung == neu { return }
         await verlassen()
         beobachtenFallsNoetig()
-        var optionen = RoomOptions()
+        // `adaptiveStream` und `dynacast` wie im Sprachkanal — Begründung und
+        // was „sichtbar" fürs SDK heisst an `SpracheRaum.raumOptionen`. Der
+        // Anruf zeichnet heute KEIN fremdes Video (keine `VideoView` an diesem
+        // Raum); bisher wurde es trotzdem empfangen und dekodiert. Wer hier ein
+        // Bild ergänzt, nimmt eine `VideoView` — sonst bleibt es aus.
+        var optionen = RoomOptions(adaptiveStream: true, dynacast: true)
         if let schluessel {
             let anbieter = BaseKeyProvider(
                 options: KeyProviderOptions(sharedKey: true, keyDerivationAlgorithm: .hkdf))
             anbieter.setKey(keyData: schluessel)
-            optionen = RoomOptions(encryptionOptions: EncryptionOptions(keyProvider: anbieter))
+            optionen = RoomOptions(adaptiveStream: true, dynacast: true,
+                                   encryptionOptions: EncryptionOptions(keyProvider: anbieter))
         }
         let r = Room(delegate: self, roomOptions: optionen)
         raum = r
