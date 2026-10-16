@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-16.5",
+      "date": "2026-10-16",
+      "style": "Sachlich",
+      "title": "Einzelne Bildschirme bei der Fernsteuerung schließen",
+      "items": [
+        "Im Menü am Griff des Player-Fensters gibt es jetzt „Diesen Bildschirm schließen“. Der ferne Rechner hört dann auf, diesen Bildschirm zu übertragen; die übrigen Bildschirme und die Fernsteuerung laufen weiter."
+      ]
+    },
+    {
       "id": "2026-10-16.4",
       "date": "2026-10-16",
       "style": "Sachlich",
