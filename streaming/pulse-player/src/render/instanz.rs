@@ -34,16 +34,12 @@ use std::sync::OnceLock;
 static INSTANZ: OnceLock<wgpu::Instance> = OnceLock::new();
 
 /// Die Instanz des Prozesses — beim ersten Aufruf angelegt, danach dieselbe.
-/// `wgpu::Instance` ist intern referenzgezählt, die Kopie kostet nichts.
-pub fn gemeinsam(anzeige: &winit::event_loop::OwnedDisplayHandle) -> wgpu::Instance {
-    INSTANZ
-        .get_or_init(|| {
-            wgpu::Instance::new(wgpu::InstanceDescriptor {
-                backends: super::setup::backends(),
-                ..wgpu::InstanceDescriptor::new_with_display_handle_from_env(Box::new(
-                    anzeige.clone(),
-                ))
-            })
+/// `&'static`: sie liegt im `static` und fällt nie.
+pub fn gemeinsam(anzeige: &winit::event_loop::OwnedDisplayHandle) -> &'static wgpu::Instance {
+    INSTANZ.get_or_init(|| {
+        wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: super::setup::backends(),
+            ..wgpu::InstanceDescriptor::new_with_display_handle_from_env(Box::new(anzeige.clone()))
         })
-        .clone()
+    })
 }

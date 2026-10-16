@@ -127,8 +127,7 @@ impl Renderer {
         height: u32,
     ) -> Result<Self> {
         let hwnd = hdr_fenster::fensterkennung(&window);
-        let instanz = instanz::gemeinsam(anzeige);
-        let gpu = setup::create(&instanz, window, width, height).await?;
+        let gpu = setup::create(instanz::gemeinsam(anzeige), window, width, height).await?;
         let surface_format_name = format!("{:?}", gpu.config.format);
         // Vor dem Struktur-Ausdruck: dort wandert `gpu.device` in das Feld
         // `device`, und danach ist es nicht mehr auszuleihen.
