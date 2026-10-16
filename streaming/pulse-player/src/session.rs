@@ -1411,10 +1411,14 @@ pub async fn run(
     // Der Dekodier-Faden muss VOR allem Grafikseitigen beendet sein: Er
     // besitzt den Decoder samt Zero-Copy-Bruecke. Fiel der Griff bisher
     // einfach nur, raeumte der Faden asynchron weiter, waehrend die Sitzung
-    // schon abgebaut wurde — genau in diesem Fenster ist am 2026-09-22 das
-    // Schliessen in einem SIGSEGV geendet (Hauptfaden, libGLX_nvidia,
-    // Null-Aufruf). `take()`: hier beenden, nicht erst beim Fallenlassen
-    // der lokalen Variablen am Funktionsende.
+    // schon abgebaut wurde. `take()`: hier beenden, nicht erst beim
+    // Fallenlassen der lokalen Variablen am Funktionsende.
+    //
+    // **Hier stand bis 2026-10-16, diese Reihenfolge habe den SIGSEGV vom
+    // 2026-09-22 behoben** (Hauptfaden, NVIDIA, Null-Aufruf). Das traf nicht
+    // zu — der Absturz kam danach weiter, bei jedem Abbau eines von mehreren
+    // Fenstern. Die Ursache war die eigene wgpu-Instanz je Fenster, Nachweis
+    // und Fix in `render/instanz.rs`. Die Reihenfolge bleibt trotzdem richtig.
     if let Some(faden) = decoder.take() {
         faden.beenden_und_warten();
     }

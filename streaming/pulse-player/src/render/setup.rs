@@ -182,7 +182,7 @@ fn praesentationsart(angeboten: &[wgpu::PresentMode]) -> wgpu::PresentMode {
 /// schlechter faehrt — dieselbe Bauart wie `PULSE_PLAYER_SURFACE` und
 /// `PULSE_PLAYER_PRESENT_MODE` daneben: eine Frage, die sich sonst nur durch
 /// einen Neubau beantworten liesse.
-fn backends() -> wgpu::Backends {
+pub(super) fn backends() -> wgpu::Backends {
     match std::env::var("PULSE_PLAYER_BACKEND").as_deref().map(str::trim) {
         Ok("vulkan") => return wgpu::Backends::VULKAN,
         Ok("dx12") => return wgpu::Backends::DX12,
@@ -195,11 +195,14 @@ fn backends() -> wgpu::Backends {
     if cfg!(windows) { wgpu::Backends::DX12 } else { wgpu::Backends::all() }
 }
 
-pub async fn create(window: Arc<winit::window::Window>, width: u32, height: u32) -> Result<GpuSetup> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: backends(),
-        ..wgpu::InstanceDescriptor::new_with_display_handle_from_env(Box::new(window.clone()))
-    });
+/// `instance` ist die EINE des Prozesses (`super::instanz`) — je Fenster eine
+/// eigene liess den Player unter NVIDIA/Wayland abstürzen, Begründung dort.
+pub async fn create(
+    instance: &wgpu::Instance,
+    window: Arc<winit::window::Window>,
+    width: u32,
+    height: u32,
+) -> Result<GpuSetup> {
     let surface = instance
         .create_surface(window)
         .context("Oberflaeche liess sich nicht anlegen")?;

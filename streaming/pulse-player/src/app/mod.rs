@@ -596,8 +596,12 @@ impl App {
         }
 
         let size = window.inner_size();
-        let renderer =
-            pollster::block_on(render::Renderer::new(window.clone(), size.width, size.height))?;
+        let renderer = pollster::block_on(render::Renderer::new(
+            &event_loop.owned_display_handle(),
+            window.clone(),
+            size.width,
+            size.height,
+        ))?;
         // Overlay in DASSELBE Oberflaechenformat zeichnen wie das Bild.
         let overlay = match Overlay::new(
             renderer.device(),

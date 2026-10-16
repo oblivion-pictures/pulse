@@ -26,6 +26,7 @@ mod fremdbild;
 #[cfg(target_os = "linux")]
 mod fremdlinux;
 mod hdr_fenster;
+mod instanz;
 mod musterprobe;
 mod setup;
 mod uniforms;
@@ -120,12 +121,14 @@ pub struct Renderer {
 
 impl Renderer {
     pub async fn new(
+        anzeige: &winit::event_loop::OwnedDisplayHandle,
         window: Arc<winit::window::Window>,
         width: u32,
         height: u32,
     ) -> Result<Self> {
         let hwnd = hdr_fenster::fensterkennung(&window);
-        let gpu = setup::create(window, width, height).await?;
+        let instanz = instanz::gemeinsam(anzeige);
+        let gpu = setup::create(&instanz, window, width, height).await?;
         let surface_format_name = format!("{:?}", gpu.config.format);
         // Vor dem Struktur-Ausdruck: dort wandert `gpu.device` in das Feld
         // `device`, und danach ist es nicht mehr auszuleihen.
