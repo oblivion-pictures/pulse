@@ -263,7 +263,9 @@ export async function spracheBeitreten(
       lautstaerken: zusatz?.je,
       gesamt: zusatz?.gesamt,
       communityName: zusatz?.community,
-      ...(ton ? { volleTonqualitaet: ton.volle, bitrateKbps: ton.bitrateKbps } : {})
+      ...(ton
+        ? { volleTonqualitaet: ton.volle, bitrateKbps: ton.bitrateKbps, kannNeuVerbinden: true }
+        : {})
     });
   } catch (e) {
     raumEndet(gen);

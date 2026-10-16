@@ -78,6 +78,10 @@ export interface NativerZustand {
    *  sass man im Kanal, die eigene Oberfläche sagte „nicht verbunden", und es
    *  gab keinen Weg hinaus. */
   mikrofonFehler?: string | null;
+  /** Der Mikrofon-Wächter hat aufgegeben (`SpracheMikroWache.swift`). Nach
+   *  einem Reload die einzige Quelle für das Band; ein Bau ohne Wächter
+   *  schickt es nicht. */
+  mikroTot?: boolean;
   lautsprecher: boolean;
   /** Was die Session WIRKLICH ausgibt (`Speaker`, `Receiver`, …) — nicht, was
    *  gewünscht wurde. Genau dieser Unterschied war der Befund vom 2026-10-10. */
@@ -160,6 +164,9 @@ export interface SprachePlugin {
      *  (`nativeWacheDa`); ein älterer übergeht die Felder. */
     volleTonqualitaet?: boolean;
     bitrateKbps?: number;
+    /** Diese Web-App kennt die Aktion `neuVerbinden` der nativen Ansicht —
+     *  sonst zeigt deren Band statt des Knopfs „App neu starten". */
+    kannNeuVerbinden?: boolean;
   }): Promise<NativerZustand>;
   verlassen(o: { sitzung?: number }): Promise<void>;
   lautstaerken(o: {

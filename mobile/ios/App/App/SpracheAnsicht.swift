@@ -165,14 +165,21 @@ struct SpracheAnsicht: View {
     private var mikroTotBand: some View {
         HStack(spacing: 8) {
             Image(systemName: "mic.slash.fill")
-            Text(NSLocalizedString("Mikrofon ausgefallen", comment: "Sprachkanal"))
-                .font(.system(size: 13)).lineLimit(2)
-            Spacer(minLength: 0)
-            Button(NSLocalizedString("Erneut verbinden", comment: "Sprachkanal")) {
-                Task { try? await SpracheRaum.geteilt.wunsch(.neuVerbinden, an: true) }
+            if stand.neuVerbindenMoeglich {
+                Text(NSLocalizedString("Mikrofon ausgefallen", comment: "Sprachkanal"))
+                    .font(.system(size: 13)).lineLimit(2)
+                Spacer(minLength: 0)
+                Button(NSLocalizedString("Erneut verbinden", comment: "Sprachkanal")) {
+                    Task { try? await SpracheRaum.geteilt.wunsch(.neuVerbinden, an: true) }
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .accessibilityIdentifier("sprache.mikroTot.neu")
+            } else {
+                Text(NSLocalizedString(
+                    "Mikrofon ausgefallen – bitte die App neu starten", comment: "Sprachkanal"))
+                    .font(.system(size: 13)).lineLimit(2)
+                Spacer(minLength: 0)
             }
-            .font(.system(size: 13, weight: .semibold))
-            .accessibilityIdentifier("sprache.mikroTot.neu")
         }
         .foregroundStyle(SpracheFarben.schlecht)
         .padding(.horizontal, 16)

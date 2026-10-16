@@ -98,6 +98,8 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
         let (je, gesamt) = Self.hoerwunsch(call)
         // Felder statt eigener Befehle: eine ältere Web-App schickt sie nicht,
         // dann gilt die Vorgabe (Apples Verarbeitung, 48 kbps).
+        let kannNeu = call.getBool("kannNeuVerbinden") ?? false
+        DispatchQueue.main.async { SpracheStand.geteilt.neuVerbindenMoeglich = kannNeu }
         let ton = SpracheRaum.TonOptionen(
             volle: call.getBool("volleTonqualitaet") ?? false,
             bitrateKbps: call.getInt("bitrateKbps"))

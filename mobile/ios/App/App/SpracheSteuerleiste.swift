@@ -11,6 +11,10 @@ final class SpracheStand: ObservableObject {
     /// Der Mikrofon-Wächter hat aufgegeben (`SpracheMikroWache.swift`) — die
     /// Ansicht zeigt dann ein Band mit „Erneut verbinden".
     @Published var mikroTot = false
+    /// Kennt die Web-App „Erneut verbinden" aus der Ansicht? Eine ältere
+    /// übergeht die Aktion — dann zeigt das Band statt des Knopfs den Rat,
+    /// die App neu zu starten (Gegenprüfung T7). Gesetzt je Beitritt.
+    @Published var neuVerbindenMoeglich = false
     /// Nutzer-Ids, die die Moderation im Kanal stumm- beziehungsweise
     /// taubgeschaltet hat. **Nur Anzeige** (Schild, gesperrter Knopf): LiveKit
     /// kennt die Stummschaltung bloss als entzogenes Recht und die

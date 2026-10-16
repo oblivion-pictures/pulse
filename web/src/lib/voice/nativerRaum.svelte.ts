@@ -345,6 +345,9 @@ export class NativerRaum {
     w.isCameraOn = z.kamera ?? false;
     if (z.kameraVorn !== undefined) w.cameraFacing = z.kameraVorn ? 'user' : 'environment';
     w.deafened = z.taub ?? taubVorgabe;
+    // Nach einem Reload steht der Wächter der Hülle womöglich schon auf
+    // „tot" — er meldet nur Wechsel, also kommt es aus dem Vollbild.
+    if (z.mikroTot !== undefined) this.mikroTot = z.mikroTot;
     this.#pause = pausenWunsch(z);
     this.#teilnehmer(z.teilnehmer);
   }

@@ -38,6 +38,9 @@ extension SpracheRaum {
             // kein gescheiterter Beitritt (man kann zuhören) — aber er muss
             // sichtbar sein, sonst hält sich der Nutzer für zu hören.
             "mikrofonFehler": mikrofonFehler ?? NSNull(),
+            // Der Wächter hat aufgegeben — nach einem Reload der WebView die
+            // einzige Quelle für das Band „Mikrofon ausgefallen".
+            "mikroTot": wache.tot,
             "lautsprecher": AudioManager.shared.isSpeakerOutputPreferred,
             "route": routeJetzt(),
             // **Kategorie und Optionen gehören in den Zustand.** Am 2026-10-10
