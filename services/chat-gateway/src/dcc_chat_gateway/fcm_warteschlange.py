@@ -5,8 +5,9 @@ sondern wartet ``fcm_dm_push_verzoegerung_s`` (Vorgabe 5 s, Vorbild
 WhatsApp/Signal). Liest der Empfänger die Nachricht in dieser Zeit
 nachweislich an einem anderen Gerät, entfällt der Push — was „nachweislich"
 heisst, steht in :mod:`dcc_chat_gateway.fcm_gelesen`. Kommen im Fenster
-weitere Nachrichten desselben Kanals, wird daraus EIN Push: Absender und
-Anhang-Hinweis der neuesten, die Plakette zählt jede ungelesene. Web-Push
+weitere Nachrichten desselben Kanals, wird daraus EIN Push (bei mehreren
+neutral zusammengefasst, ``fcm_abarbeiten.buendel_mitteilung``), die
+Plakette zählt jede ungelesene. Web-Push
 (``push.py``) und Anruf-Pushes (``anruf_push.py``, VoIP) laufen an dieser
 Datei vorbei — ein Anruf verträgt keine Verzögerung.
 
@@ -291,15 +292,15 @@ __all__ = [
     "FAELLIG",
     "INARBEIT",
     "PACHT_S",
-    "TEILE_PRAEFIX",
     "RUECKOFF_S",
+    "TEILE_PRAEFIX",
     "abschliessen",
     "arbeitsliste",
     "erledigt_marke",
     "erneut_einplanen",
     "plakette_marke",
     "uebernehmen",
-    "zurueckgeben",
     "vormerken",
+    "zurueckgeben",
     "zurueckhalten_aktiv",
 ]

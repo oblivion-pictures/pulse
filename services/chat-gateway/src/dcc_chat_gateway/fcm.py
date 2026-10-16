@@ -76,6 +76,7 @@ def dm_body(hat_anhang: bool) -> str:
     dieselbe Nachricht je nach Gerät anders aus."""
     return DM_BODY_ANHANG if hat_anhang else DM_BODY
 
+
 #: Zeitgrenze je HTTP-Aufruf an Firebase. Ohne sie wartet firebase_admin
 #: 120 s (``_http_client.DEFAULT_TIMEOUT_SECONDS``) — in der Push-Warteschlange
 #: hielte ein hängender Aufruf so lange eine Versand-Aufgabe und ihre Pacht
@@ -321,14 +322,16 @@ async def dm_push_senden(
                 for uid in {r.user_id for r in rows}:
                     # Mit Marke (Warteschlange): einmal je Eintrag, auch wenn
                     # er mehrfach versucht wird (``erhoehen_einmal``).
-                    badges[uid] = (
-                        await badgezaehler.erhoehen_einmal(
-                            redis, uid, anzahl, plakette_marke,
+                    if plakette_marke:
+                        badges[uid] = await badgezaehler.erhoehen_einmal(
+                            redis,
+                            uid,
+                            anzahl,
+                            plakette_marke,
                             marke_haltbarkeit_s=PLAKETTE_MARKE_HALTBARKEIT_S,
                         )
-                        if plakette_marke
-                        else await badgezaehler.erhoehen(redis, uid, anzahl)
-                    )
+                    else:
+                        badges[uid] = await badgezaehler.erhoehen(redis, uid, anzahl)
             results = await asyncio.gather(
                 *(
                     asyncio.to_thread(

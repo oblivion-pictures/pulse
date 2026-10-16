@@ -229,21 +229,18 @@ async def postfach_quittung(
     # unter ihm. Eine nur quittierte, früher schon abgelegte Zustellung zählt
     # nicht mit (Gegenprüfung P3), ein älterer Klient ohne Liste auch nicht.
     if fcm_warteschlange.zurueckhalten_aktiv():
+        # Zustellungs-ID -> (Paar, gemeldeter Stand) der Meldung, die sie einrechnet.
         eingerechnet = {
-            zid: (z.channel_id, z.absender_user_id, z.zugestellt_bis)
+            zid: ((z.channel_id, z.absender_user_id), z.zugestellt_bis)
             for z in body.zustellstaende
             for zid in z.zustellung_ids or ()
         }
-        await belege_merken(
-            getattr(manager, "redis", None),
-            {
-                zid: eingerechnet[zid][2]
-                for zid, _nutzlast in geloescht
-                if zid in eingerechnet
-                and paar_je_zustellung.get(zid) == eingerechnet[zid][:2]
-                and eingerechnet[zid][1] != user.id
-            },
-        )
+        belege: dict[int, int] = {}
+        for zid, _nutzlast in geloescht:
+            paar, stand = eingerechnet.get(zid, (None, None))
+            if paar is not None and paar == paar_je_zustellung.get(zid) and paar[1] != user.id:
+                belege[zid] = stand
+        await belege_merken(getattr(manager, "redis", None), belege)
     if manager is not None:
         from dcc_shared.events import ZustellungBestaetigtEvent
 
