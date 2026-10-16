@@ -22,6 +22,7 @@ import { nativePlayerSessions } from '$lib/player/store.svelte';
 import { nativeWindowRequests } from '$lib/player/wuensche.svelte';
 import { openedTiles } from '$lib/stream/openedTiles.svelte';
 import { hqTileId } from '$lib/stream/hqTile';
+import { abbestellt } from '$lib/stream/abbestellt';
 import { remoteSession } from './session.svelte';
 import { SCHIRM_ZU } from './schirmZuRegel';
 
@@ -34,7 +35,11 @@ export function bildschirmSchliessen(fensterSitzung: number): void {
     return;
   }
   remoteSession.signal(SCHIRM_ZU, { slot: s.slot });
+  const kachel = hqTileId(s.userId, s.slot);
+  // Der Server führt den Strom noch bis zu 3 s als laufend — ohne Sperre
+  // öffnete die Automatik die Kachel sofort wieder (`stream/abbestellt.ts`).
+  abbestellt.abbestellen(s.channelId, kachel, Date.now());
   nativeWindowRequests.release(s.channelId, s.userId, s.slot);
-  openedTiles.close('hq', s.channelId, hqTileId(s.userId, s.slot));
+  openedTiles.close('hq', s.channelId, kachel);
   nativePlayerSessions.close(s.channelId, s.userId, s.slot);
 }

@@ -26,6 +26,7 @@ import { streamPresence } from '$lib/stores/streamPresence.svelte';
 import { stroemeVon, stromFuer } from './schirmZuordnung';
 import { openedTiles } from '$lib/stream/openedTiles.svelte';
 import { hqTileId } from '$lib/stream/hqTile';
+import { abbestellt } from '$lib/stream/abbestellt';
 import { nativeWindowRequests } from '$lib/player/wuensche.svelte';
 import { nativePlayerSessions } from '$lib/player/store.svelte';
 import { remoteSession } from '$lib/remote/session.svelte';
@@ -84,6 +85,9 @@ const WARTEN_MS = 25_000;
  * bis der nächste Weckruf kommt.
  */
 function fensterOeffnen(device: Device, slot: number, uebernahme = true): void {
+  // Ausdrücklich gewollt — eine Sperre vom Schließen gilt nicht mehr
+  // (`stream/abbestellt.ts`).
+  abbestellt.aufheben(device.channel_id, hqTileId(device.owner_user_id, slot));
   openedTiles.open('hq', device.channel_id, hqTileId(device.owner_user_id, slot));
   nativeWindowRequests.request(device.channel_id, device.owner_user_id, slot);
   // **Und nach vorne damit** (Bughunt 2026-08-16). Modulkopf und der Vertrag

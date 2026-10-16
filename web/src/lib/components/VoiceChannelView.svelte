@@ -21,6 +21,7 @@ import { errText } from '$lib/utils/errText';
   import { watchPartyPresence } from '$lib/stores/watchPartyPresence.svelte';
   import { openedTiles } from '$lib/stream/openedTiles.svelte';
   import { hqTileId } from '$lib/stream/hqTile';
+  import { abbestellt } from '$lib/stream/abbestellt';
   import { sichtbareStroeme } from '$lib/devices/darstellung';
   import { currentServerUserId } from '$lib/stores/currentServerUser';
   import { watchBackground } from '$lib/watch/watchBackground.svelte';
@@ -110,10 +111,14 @@ import { errText } from '$lib/utils/errText';
     );
     untrack(() => {
       const me = currentServerUserId();
+      // Selbst geschlossene Bildschirme bleiben zu, bis ihr Strom aus der
+      // Liste verschwunden ist (`stream/abbestellt.ts`).
+      abbestellt.abgleichen(cid, new Set(tiles.map((t) => hqTileId(t.user_id, t.slot))));
       for (const s of tiles) {
         if (s.user_id === me) continue;
         const id = hqTileId(s.user_id, s.slot);
         if (!erlaubt.has(id)) continue;
+        if (abbestellt.gesperrt(cid, id, Date.now())) continue;
         if (openedTiles.isOpen('hq', cid, id)) continue;
         const alreadyWatchingStreamer = tiles.some(
           (t) =>
