@@ -1,5 +1,6 @@
 import AVFoundation
 import LiveKit
+import UIKit
 
 /// Der native LiveKit-Raum für Sprachkanäle und Anrufe auf iOS.
 ///
@@ -234,7 +235,8 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         let art = mikrofonFehler == nil ? "beitritt"
             : (Anrufverwaltung.mikrofonErlaubt() ? "beitritt_ohne_mikro" : "beitritt_ohne_erlaubnis")
         diagMelden(art, ["volleTon": ton.volle, "stumm": stumm])
-        wache.beginnen()
+        let vorn = await MainActor.run { UIApplication.shared.applicationState != .background }
+        wache.beginnen(vordergrund: vorn)
         schickeTeilnehmer()
         schickeEigenen()
         await MainActor.run { SpracheBildImBild.geteilt.raumDa(r) }

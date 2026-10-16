@@ -147,8 +147,11 @@ final class SpracheMikroWache: @unchecked Sendable {
     private var sprache: SpracheRaum { SpracheRaum.geteilt }
 
     /// Nach dem Veröffentlichen der Spur (`SpracheRaum.beitreten`).
-    func beginnen() {
+    /// `vordergrund`: der Stand der App jetzt — ein Merker aus einem früheren
+    /// Raum gilt nicht mit (Gegenprüfung 2, U1).
+    func beginnen(vordergrund vorn: Bool) {
         faden.async { [self] in
+            vordergrund = vorn
             stufe = 0
             tot = false
             bereitGemeldet = false
@@ -177,12 +180,14 @@ final class SpracheMikroWache: @unchecked Sendable {
         faden.async { [self] in maschineOffen = !frei }
     }
 
-    /// Vordergrund oder Hintergrund (`SpracheRaumSession.swift`). Zurück im
+    /// Vordergrund oder Hintergrund (`SpracheRaumSession.swift`) — auch ohne
+    /// Raum gemeldet, damit der Merker nie hängen bleibt. Zurück im
     /// Vordergrund wird sofort geprüft.
     func vordergrund(_ an: Bool) {
         faden.async { [self] in
             vordergrund = an
-            if an { pruefen() }
+            guard an, uhr != nil else { return }
+            pruefen()
         }
     }
 

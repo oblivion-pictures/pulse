@@ -83,9 +83,11 @@ extension SpracheRaum {
         NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil
         ) { [weak self] _ in
-            guard let self, raum != nil else { return }
+            guard let self else { return }
+            // Der Merker IMMER, auch ohne Raum — sonst bliebe er nach einem
+            // Verlassen im Hintergrund auf „hinten" stehen (Gegenprüfung 2, U1).
             wache.vordergrund(true)
-            wache.anstossen("vordergrund")
+            if raum != nil { wache.anstossen("vordergrund") }
         }
         // Im Hintergrund greift der Wächter nicht in die Kette ein — iOS lehnt
         // dort das Aktivieren gegen einen fremden Halter ab (Gegenprüfung T1).
