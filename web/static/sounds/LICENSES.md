@@ -10,6 +10,9 @@ Attribution gefordert; im Juni 2026 von einem Community-Mitglied
 ausgesucht) und sind seit dem 2026-10-06 die gebündelten Standard-Klänge
 (als OGG Vorbis neu kodiert, normalisiert auf EBU R128 −23 LUFS).
 
+Die `.m4a`-Dateien sind dieselben Klänge, nur als AAC neu kodiert (für iOS,
+s. `SOURCES.md`) — gleiche Herkunft, gleiche Lizenz.
+
 ## Mapping (Pulse-ID → Kenney-Original)
 
 | Pulse-File                  | Kenney-Original            |

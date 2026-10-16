@@ -66,11 +66,19 @@ aber riesiger Pool.
 ## Codec / Format
 
 - Engine probiert pro Sound-ID eine **Fallback-Kette** in
-  `SOUND_EXTS = ['ogg', 'mp3']` (Reihenfolge in
-  `web/src/lib/sounds/engine.ts`). Erstes erfolgreiches Load gewinnt,
+  `['ogg', 'mp3']` (Reihenfolge in `tonEndungen`,
+  `web/src/lib/sounds/tonWeg.ts`). Erstes erfolgreiches Load gewinnt,
   der Rest bleibt 404-tolerant unangetastet. Du kannst also pro Sound
   **wahlweise** `.ogg` oder `.mp3` droppen — was auch immer Pixabay
   liefert.
+- **iOS (Hülle und Safari) nimmt eine eigene Kette, `.m4a` → `.ogg`**
+  (`tonEndungen` in `web/src/lib/sounds/tonWeg.ts`): dort spielt die Engine
+  über Web Audio statt über ein Media-Element, und ob iOS Ogg Vorbis per
+  `decodeAudioData` dekodiert, ist nicht belegt. Zu jedem `.ogg` liegt deshalb
+  ein `.m4a` (AAC, 48 kHz, 128 kbps, aus dem `.ogg` mit
+  `ffmpeg -i x.ogg -map_metadata -1 -ar 48000 -c:a aac_at -b:a 128k -movflags +faststart x.m4a`).
+  **Wer ein `.ogg` tauscht, erzeugt das `.m4a` neu** — sonst hört iOS den
+  alten Klang (`web/test/ios-ton-webaudio.test.ts` prüft nur, dass es da ist).
 - WAV ist nicht in der Chain — kein sinnvoller UI-Sound ist 5× größer
   als nötig. Per-Guild-Uploads bleiben davon unberührt (eigene
   Content-Type-Pin am MinIO-Upload in

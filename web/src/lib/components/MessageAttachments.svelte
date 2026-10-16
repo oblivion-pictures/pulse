@@ -52,6 +52,7 @@ import { Portal } from 'bits-ui';
   import { m } from '$lib/paraglide/messages.js';
   import { formatBytes } from '$lib/utils/formatBytes';
   import { istAnhangAbgelaufenFehler } from '$lib/krypto/anhangAbgelaufen';
+  import { isIosWebKit } from '$lib/platform/runtime';
 
   let { attachments }: { attachments: Attachment[] } = $props();
 
@@ -407,6 +408,18 @@ import { Portal } from 'bits-ui';
   }
 
   function schliesseVollbild(): void {
+    // iOS: ein Video mit Quelle bleibt bei WebKit als „Jetzt läuft" stehen —
+    // auch abgehängt und pausiert, mit Zeitleiste auf dem Sperrbildschirm.
+    // Erst ohne Quelle gibt WebKit die Anmeldung frei. Andere Plattformen
+    // behalten ihr Verhalten.
+    if (isIosWebKit()) {
+      for (const el of [spielerA, spielerB]) {
+        if (!el) continue;
+        el.pause();
+        el.removeAttribute('src');
+        el.load();
+      }
+    }
     vollbildUrl = null;
   }
 

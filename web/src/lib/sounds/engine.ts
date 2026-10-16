@@ -18,11 +18,19 @@
  * ``guildSounds.urlFor`` first, falls back to the bundled ``/sounds/<file>.ogg``
  * otherwise. Pools + missing-set are keyed by URL so guilds with custom
  * sounds don't fight over a SoundId slot.
+ *
+ * **iOS-WebKit spielt ohne Media-Element** (`tonWeg.ts`, `webAudioTon.ts`):
+ * dort läuft jeder Ton über Web Audio, damit WebKit keine „Jetzt läuft"-
+ * Anzeige anlegt und der Hülle nicht die Audio-Session nimmt. Debounce, Gain
+ * und die Auflösung der Gilden-Töne bleiben hier, für beide Wege gleich.
  */
 
 import { settings } from '$lib/stores/settings.svelte';
 import { guildSounds } from '$lib/stores/guildSounds.svelte';
+import { isIosWebKit } from '$lib/platform/runtime';
 import { SOUNDS, type SoundId, type SoundCategory } from './registry';
+import { tonEndungen, tonWeg, type TonWeg } from './tonWeg';
+import { WebAudioTon } from './webAudioTon';
 
 const SOUND_DIR = '/sounds';
 /** Browsers decode .ogg/.mp3 transparently — we try each in order at
@@ -30,9 +38,10 @@ const SOUND_DIR = '/sounds';
  *  Vorbis (smaller, matches the existing 13 bundled assets) and fall
  *  back to .mp3 if the .ogg slot is empty. Per-guild user uploads
  *  bypass this chain — the override URL is whatever the browser
- *  fetched, and the per-guild MinIO upload pins content-type. */
-const SOUND_EXTS = ['ogg', 'mp3'] as const;
+ *  fetched, and the per-guild MinIO upload pins content-type.
+ *  Die Kette hängt am Weg (`tonWeg.ts::tonEndungen`): iOS nimmt `.m4a` zuerst. */
 const DEBOUNCE_MS = 50;
+const GESTEN = ['pointerdown', 'keydown'] as const;
 const MAX_CONCURRENT_PER_URL = 3;
 
 function clamp01(v: number): number {
@@ -53,8 +62,18 @@ function bypassGain(category: SoundCategory): number {
   return clamp01(s.masterVolume) * clamp01(s[category].volume);
 }
 
-function defaultUrls(id: SoundId): string[] {
-  return SOUND_EXTS.map((ext) => `${SOUND_DIR}/${SOUNDS[id].file}.${ext}`);
+function defaultUrls(id: SoundId, weg: TonWeg = aktuellerWeg()): string[] {
+  return tonEndungen(weg).map((ext) => `${SOUND_DIR}/${SOUNDS[id].file}.${ext}`);
+}
+
+/** Der Weg dieser Umgebung (`tonWeg.ts`). Je Aufruf gefragt statt einmal beim
+ *  Import: im Node-Test und beim Vorrendern gibt es weder `navigator` noch
+ *  `AudioContext`, und die Antwort darf dort nicht festfrieren. */
+function aktuellerWeg(): TonWeg {
+  return tonWeg({
+    iosWebKit: isIosWebKit(),
+    audioContextDa: typeof AudioContext !== 'undefined'
+  });
 }
 
 type PlayOpts = {
@@ -64,6 +83,8 @@ type PlayOpts = {
 };
 
 class SoundEngine {
+  /** Nur auf iOS-WebKit benutzt — angelegt beim ersten Ton dort. */
+  #webAudio: WebAudioTon | null = null;
   #pool = new Map<string, HTMLAudioElement[]>();
   #lastPlay = new Map<string, number>();
   #missing = new Set<string>();
@@ -72,6 +93,18 @@ class SoundEngine {
    *  Signatur), refresh't der Store statt zu blacklisten — Bundled-URLs
    *  haben ihren Kette-Fallback, Overrides sonst keinen Ausweg. */
   #overrideGuild = new Map<string, string>();
+
+  constructor() {
+    // iOS: die erste Geste gibt den Kontext frei (iOS-Safari verlangt das;
+    // die Hülle erlaubt Wiedergabe ohne Geste, dort schadet es nicht). Einmal
+    // genügt — WebKit hebt die Sperre nach dem ersten gelungenen Start auf.
+    if (typeof document === 'undefined' || aktuellerWeg() !== 'webaudio') return;
+    const geste = () => {
+      for (const art of GESTEN) document.removeEventListener(art, geste, true);
+      this.entsperren();
+    };
+    for (const art of GESTEN) document.addEventListener(art, geste, true);
+  }
 
   /** Play if the relevant category-toggle is on. Silent no-op otherwise. */
   play(id: SoundId, opts: PlayOpts = {}): void {
@@ -87,11 +120,13 @@ class SoundEngine {
   /** Geteilter Weg von `play`/`test`: Gain berechnet der Aufrufer (mit oder
    *  ohne Kategorien-Schalter), hier folgen nur noch die No-op-Gates. */
   #spiele(id: SoundId, gain: number, opts: PlayOpts): void {
-    if (typeof Audio === 'undefined') return;
+    const weg = aktuellerWeg();
+    if (weg === 'still') return;
+    if (weg === 'element' && typeof Audio === 'undefined') return;
     if (gain <= 0) return;
     const url = this.#resolve(id, opts.guildId);
     if (url === null) return;
-    this.#emit(id, url, gain);
+    this.#emit(id, url, gain, weg);
   }
 
   /** Returns true if the *default* asset for ``id`` is missing. The
@@ -109,6 +144,7 @@ class SoundEngine {
    * HTMLAudioElement still points at the old (expired) presigned URL
    * and a re-play would silently fail. */
   invalidateUrl(url: string): void {
+    this.#webAudio?.vergessen(url);
     this.#pool.delete(url);
     this.#missing.delete(url);
     this.#lastPlay.delete(url);
@@ -138,12 +174,60 @@ class SoundEngine {
     return urls[idx + 1];
   }
 
-  #emit(id: SoundId, url: string, gain: number): void {
+  #emit(id: SoundId, url: string, gain: number, weg: TonWeg): void {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const last = this.#lastPlay.get(url) ?? 0;
     if (now - last < DEBOUNCE_MS) return;
     this.#lastPlay.set(url, now);
-    this.#start(id, url, gain, true);
+    if (weg === 'webaudio') void this.#starteWebAudio(id, url, gain, true);
+    else this.#start(id, url, gain, true);
+  }
+
+  /** Aus einer Nutzergeste (iOS): den Kontext freigeben, damit der erste Ton
+   *  danach nicht an WebKits Wiedergabe-Regel scheitert. */
+  entsperren(): void {
+    if (aktuellerWeg() === 'webaudio') this.#webAudioHolen().entsperren();
+  }
+
+  #webAudioHolen(): WebAudioTon {
+    this.#webAudio ??= new WebAudioTon({
+      neuerKontext: () => new AudioContext(),
+      // Gilden-Töne sind vorsignierte S3-URLs auf einem anderen Pfad, oft einem
+      // anderen Host: der Objektspeicher-Zweig im Proxy setzt dafür CORS `*`
+      // (`infra/prod/web-nginx.conf`, `Caddyfile.template`). Ohne Anmeldedaten —
+      // die Signatur ist die Berechtigung.
+      holen: (u) => fetch(u, { credentials: 'omit' })
+    });
+    return this.#webAudio;
+  }
+
+  /**
+   * Der iOS-Weg (`tonWeg.ts`). Dieselben Regeln wie `#start`, ohne Element:
+   * eine fehlende oder undekodierbare gebündelte Datei rückt in der Kette
+   * weiter, ein gescheiterter Gilden-Ton holt frische Signaturen und spielt
+   * DIESES Mal den gebündelten. Kein Rückfall aufs Element, nirgends.
+   * `darfAusweichen` begrenzt das Ausweichen eines Gilden-Tons auf einmal.
+   */
+  async #starteWebAudio(id: SoundId, url: string, gain: number, darfAusweichen: boolean) {
+    const ergebnis = await this.#webAudioHolen().spielen(url, gain);
+    if (ergebnis === 'gespielt' || ergebnis === 'still') return;
+    const gid = this.#overrideGuild.get(url);
+    if (gid !== undefined) {
+      if (!darfAusweichen) return;
+      // Abgelaufene Signatur: frisch holen. Ein Format, das iOS nicht
+      // dekodiert (Ogg-Upload), heilt eine neue Signatur nicht — dann nur
+      // ausweichen. In beiden Fällen klingt JETZT der gebündelte Ton.
+      if (ergebnis !== 'dekodierfehler') void guildSounds.refresh(gid);
+      const fallback = defaultUrls(id).find((u) => !this.#missing.has(u));
+      if (fallback) await this.#starteWebAudio(id, fallback, gain, false);
+      return;
+    }
+    // Gebündelte Datei: ein Netzfehler ist vorübergehend und rückt nicht
+    // weiter; fehlt sie oder dekodiert sie nicht, kommt die nächste Endung.
+    if (ergebnis === 'ladefehler') return;
+    this.#missing.add(url);
+    const next = this.#nextDefaultUrl(id, url);
+    if (next) await this.#starteWebAudio(id, next, gain, false);
   }
 
   /**
