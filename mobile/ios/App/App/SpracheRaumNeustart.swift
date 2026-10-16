@@ -60,14 +60,16 @@ extension SpracheRaum {
     /// Anruf der App läuft**. Läuft einer, gehört die Session ihm, und alles
     /// hier bliebe ihm fremd.
     func sitzungFrischHerstellen() async {
+        await rueckgabeAbwarten()
         let lage = await MainActor.run { () -> (frei: Bool, haengt: Bool) in
             let v = Anrufverwaltung.geteilt
             let anrufRaum = AnrufRaum.geteilt.raum != nil
             let fremd = CXCallObserver().calls.contains { !$0.hasEnded }
             // CallKit „führt", aber es gibt weder Eintrag noch Raum noch ein
-            // Gespräch: die Rückgabe ist ausgeblieben (K3).
+            // Gespräch, die Session ist nicht mehr aktiv, und keine Rückgabe
+            // steht aus: die Rückgabe ist ausgeblieben (K3).
             let haengt = v.callkitAktiv && v.kennungen.isEmpty && !v.ohneCallKit
-                && !anrufRaum && !fremd
+                && !anrufRaum && !fremd && !v.sessionAktiv && v.rueckgabeUhr == nil
             return (!v.callkitAktiv && !v.ohneCallKit && !anrufRaum, haengt)
         }
         if lage.haengt {
@@ -82,6 +84,23 @@ extension SpracheRaum {
             anrufPausiert = false
         }
         await maschineNeu(grund: "beitritt")
+    }
+
+    /// **Nach dem Auflegen gibt CallKit die Session erst mit `didDeactivate`
+    /// zurück** — bis zu 3 s (`letzterAnrufVorbei`). Ein Beitritt in diesem
+    /// Fenster wartet darauf, statt vorzeitig zurückzugeben: sonst richtete das
+    /// SDK die Session ein, und CallKit deaktivierte sie Augenblicke später
+    /// unter dem neuen Kanal weg (Kopf von `AnrufSitzung.swift`, Gegenprüfung T2).
+    private func rueckgabeAbwarten() async {
+        for _ in 0 ..< 40 {
+            let wartet = await MainActor.run { () -> Bool in
+                let v = Anrufverwaltung.geteilt
+                return v.callkitAktiv && v.kennungen.isEmpty && !v.ohneCallKit
+                    && (v.sessionAktiv || v.rueckgabeUhr != nil)
+            }
+            guard wartet else { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
     }
 
     /// Den Übergabeweg fahren, den die Hülle für CallKit schon kennt
