@@ -11,6 +11,7 @@ import { openedTiles } from './openedTiles.svelte';
 import { detachedStreams } from './detach.svelte';
 import { streamPresence } from '$lib/stores/streamPresence.svelte';
 import { streamPicker, type StreamPickEntry } from './streamPicker.svelte';
+import { sichtbareStroeme } from '$lib/devices/darstellung';
 
 /** The composite HQ tile id for one of a user's streams. */
 export const hqTileId = (userId: string, slot: number): string => `${userId}:${slot}`;
@@ -41,8 +42,22 @@ function openSlot(channelId: string, userId: string, slot: number): void {
  * watch-party `openParty`/`watchPartyPicker` flow — `streamPicker.choose` does
  * the 1-vs-many branching, so this just builds the entries.
  */
-export function chooseHqForUser(channelId: string, userId: string, title = 'Stream ansehen'): void {
-  const mine = streamPresence.streamsIn(channelId).filter((s) => s.user_id === userId);
+export function chooseHqForUser(
+  channelId: string,
+  userId: string,
+  title = 'Stream ansehen',
+  nurPlaetze?: readonly number[],
+): void {
+  const alle = streamPresence.streamsIn(channelId).filter((s) => s.user_id === userId);
+  // Ohne die Plätze seiner Remote-Rechner, denen der Betrachter gerade nicht
+  // zusehen darf (seit 2026-10-16, Regel in `devices/zugang.ts`) — der Server
+  // gäbe dafür kein Zuschauer-Token, die Kachel bliebe schwarz. `nurPlaetze`
+  // engt zusätzlich auf die Plätze EINES Geräts ein (LIVE an der Gerätezeile).
+  const sichtbar = sichtbareStroeme(channelId, userId);
+  const mine = nurPlaetze ? sichtbar.filter((s) => nurPlaetze.includes(s.slot)) : sichtbar;
+  // Alles weggefiltert, was die Präsenz kennt: nichts öffnen statt des
+  // Notbehelfs unten — der meinte „keine Platzangaben", nicht „nicht erlaubt".
+  if (mine.length === 0 && (alle.length > 0 || nurPlaetze)) return;
   // Fallback to a single slot-0 entry so a click always opens at least the
   // primary tile when no slot info is set.
   const streams = mine.length ? mine : [{ user_id: userId, slot: 0 }];

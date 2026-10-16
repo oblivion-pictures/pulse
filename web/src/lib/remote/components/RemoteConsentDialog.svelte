@@ -8,6 +8,14 @@
   Der Dialog nennt Anzeigenamen UND Nutzernamen und dazu den Ort (Community und
   Kanal). Begründung in `$lib/remote/gegenstelle.ts`; ohne das stand hier für
   jeden nicht zufällig zwischengespeicherten Anfragenden wörtlich „…".
+
+  **Nur noch für Personen** (seit 2026-10-16): ein Remote-Rechner zeigt keinen
+  Dialog mehr, er nimmt an oder lehnt ab (`geraeteanbindung.ts::
+  geraeteEntscheid`). Damit ist auch das Kästchen „Künftig ohne Rückfrage
+  erlauben" weg, das an dieser Stelle die Freigabeliste des Geräts wachsen
+  liess — eine Zeile dort heisst seither „darf diesen Rechner wecken und
+  steuern", und das gehört in die Freigabeliste selbst, nicht als Nebenwirkung
+  einer Zustimmung zu einer einzelnen Anfrage.
 -->
 <script lang="ts">
   import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -22,14 +30,9 @@
   import { gegenstelle, ort } from '$lib/remote/gegenstelle';
   import { userCache } from '$lib/stores/users.svelte';
   import { m } from '$lib/paraglide/messages.js';
-  import { isElectron } from '$lib/platform/runtime';
-  import Checkbox from '$lib/components/form/Checkbox.svelte';
-  import { geraeteAnmeldung } from '$lib/devices/anmeldung.svelte';
-  import { freigaben } from '$lib/devices/freigaben.svelte';
-  import { mitNeuem } from '$lib/devices/freigabenBearbeitung';
 
-  // Nicht bei selbsttätiger Zustimmung: die Dauerfreigabe des Standplatz-Geräts
-  // hat die Frage schon beantwortet (`$lib/remote/standplatz.svelte.ts`). Die
+  // Nicht bei selbsttätiger Zustimmung: ein Remote-Rechner entscheidet ohne
+  // Dialog (`geraeteanbindung.ts::geraeteEntscheid`). Die
   // Phase bleibt bis zum Server-Echo auf 'incoming' — ohne diese Bedingung
   // stünde der Dialog einen Umlauf lang da und verschwände von selbst wieder,
   // was aussieht wie ein Fehler und zum Klicken einlädt.
@@ -55,64 +58,11 @@
   let quittiert = $state<string | null>(null);
   let acted = $derived(quittiert !== null && quittiert === remoteSession.sessionId);
 
-  // „Künftig ohne Rückfrage" — der Weg, auf dem die Server-Freigabeliste DIESES
-  // Geräts wächst (`$lib/devices/freigaben.svelte.ts`). Bewusst HIER und nicht
-  // nur in den Einstellungen: dort müsste man Kennungen von Hand eintragen,
-  // hier steht der Betreffende samt Namen und Herkunft vor einem, und die
-  // Entscheidung fällt in dem Moment, in dem man sie ohnehin trifft.
-  //
-  // Nur sichtbar, wenn der Haken auch etwas bewirken kann: nur in der
-  // Desktop-App (nur dort gibt es den Geräte-Speicher) UND nur, wenn dieser
-  // Rechner auf dem gerade dispatchenden Server als Standplatz-Gerät
-  // eingetragen ist — sonst gäbe es keine Server-Liste, in die der Haken
-  // schreiben könnte.
-  const desktop = isElectron();
-  let eintragung = $derived(geraeteAnmeldung.fuerServer(remoteSession.serverId));
-  let zeigeMerken = $derived(desktop && eintragung !== null);
-  let merken = $state(false);
-
-  // Beim Wechsel der Anfrage zurücksetzen: das Kreuz gehört der Anfrage, vor
-  // der es gesetzt wurde, nicht der nächsten.
-  $effect(() => {
-    remoteSession.sessionId;
-    merken = false;
-  });
-
   function accept(): void {
     quittiert = remoteSession.sessionId;
-    // ERST merken, DANN zustimmen: `accept()` kann über `#reset` aufräumen
-    // (Senden fehlgeschlagen), und danach ist die Kennung des Anfragenden weg.
-    // Eine frische Freigabe gilt acht Stunden — dieselbe Spanne, die der
-    // Haken auch schon vor dem Umzug auf den Server versprach
-    // (`standplatz_consent_remember_hint`).
-    if (merken && zeigeMerken && eintragung && remoteSession.peerUserId) {
-      void ergaenzeMerkenGrant(eintragung, remoteSession.peerUserId);
-    }
     remoteSession.accept();
   }
 
-  /** Den zustimmenden Nutzer der Server-Freigabeliste DIESES Geräts
-   *  hinzufügen — vorhandene Liste laden, ergänzen, ganze Liste setzen
-   *  (`freigaben.setzen` ist PUT-Semantik). Ein Netzfehler kostet nur den
-   *  Haken, nicht die gerade erteilte Zustimmung — die läuft unabhängig
-   *  weiter. */
-  async function ergaenzeMerkenGrant(
-    ziel: { guildId: string; deviceId: string },
-    userId: string,
-  ): Promise<void> {
-    try {
-      await freigaben.laden(ziel.guildId, ziel.deviceId);
-      const naechste = mitNeuem(freigaben.fuer(ziel.deviceId), {
-        subject_type: 'user',
-        subject_id: userId,
-        expires_at: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-      });
-      await freigaben.setzen(ziel.guildId, ziel.deviceId, naechste);
-    } catch {
-      // Kein Netz oder Server lehnt ab: der Haken bewirkt dann nichts, die
-      // bereits gesendete Zustimmung für DIESE Anfrage bleibt unberührt.
-    }
-  }
   function deny(): void {
     quittiert = remoteSession.sessionId;
     remoteSession.deny();
@@ -178,23 +128,6 @@
       <ShieldCheckIcon class="mt-0.5 size-4 shrink-0 text-emerald-500" />
       <span>{m.remote_consent_safety()}</span>
     </div>
-
-    {#if zeigeMerken}
-      <label class="border-border flex items-start gap-3 rounded-lg border border-dashed p-3">
-        <Checkbox
-          class="mt-0.5 shrink-0"
-          bind:checked={merken}
-          disabled={acted}
-          data-testid="remote-consent-remember"
-        />
-        <span class="flex min-w-0 flex-1 flex-col gap-1">
-          <span class="text-text-bright text-sm font-medium">
-            {m.standplatz_consent_remember()}
-          </span>
-          <span class="text-text-muted text-xs">{m.standplatz_consent_remember_hint()}</span>
-        </span>
-      </label>
-    {/if}
 
     <Dialog.Footer>
       <Button variant="outline" onclick={deny} disabled={acted} data-testid="remote-consent-deny">

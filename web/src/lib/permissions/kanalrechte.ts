@@ -10,6 +10,11 @@
  * eine Konstante würde die Sprache beim Laden des Moduls einfrieren.
  *
  * Ein Bit gehört hierher, sobald der Server es kanalskopiert auflöst.
+ *
+ * **`sprachkanal`** (seit 2026-10-16): „Fernsteuerung anfragen" fällt in Text-
+ * und Ablage-Kanälen weg — gestreamt und damit angefragt wird nur im
+ * Sprachkanal, eine Zeile dort lud nur zum Missverständnis ein. Fehlt die
+ * Angabe, bleibt die Zeile (lieber eine Zeile zu viel als eine verschwundene).
  */
 
 import { m } from '$lib/paraglide/messages.js';
@@ -22,8 +27,8 @@ export type Kanalrecht = {
   satz: string;
 };
 
-export function kanalrechte(): Kanalrecht[] {
-  return [
+export function kanalrechte({ sprachkanal = true }: { sprachkanal?: boolean } = {}): Kanalrecht[] {
+  const alle: Kanalrecht[] = [
     {
       perm: Perm.VIEW_CHANNEL,
       name: m.channel_overrides_perm_view_channel(),
@@ -101,10 +106,17 @@ export function kanalrechte(): Kanalrecht[] {
     // oder entziehen — nur serverweit über die Rolle. (Das Bit ist seit
     // 2026-09-09 auch in DEFAULT_EVERYONE_PERMISSIONS — Eigentümer-Entscheid;
     // bestehende Communitys behalten dort ihren alten Stand.)
+    //
+    // **Seit 2026-10-16 nur noch für Personen**: einen Remote-Rechner im Kanal
+    // steuert, wen die Freigabeliste seines Besitzers deckt — dieses Bit zählt
+    // dort weder als nötig noch als hinreichend. Name und Satz sagen das, und
+    // die Kanalrechte-Seite nennt die Geräte des Kanals eigens
+    // (`permissions/ui/GeraeteHinweis.svelte`).
     {
       perm: Perm.REMOTE_CONTROL,
       name: m.channel_overrides_perm_remote_control(),
       satz: m.kanalrechte_satz_remote_control()
     }
   ];
+  return sprachkanal ? alle : alle.filter((r) => r.perm !== Perm.REMOTE_CONTROL);
 }

@@ -23,16 +23,36 @@
 import type { Device, DeviceMonitor } from '$lib/api/devices';
 import { geraetWecken } from './wecken';
 import { streamPresence } from '$lib/stores/streamPresence.svelte';
-import { zuordneStroeme, type Zuordnungslage } from '$lib/stream/quellenummer';
-import { schirmFuerFenster } from '$lib/stream/schirmFuerFenster';
+import { stroemeVon, stromFuer } from './schirmZuordnung';
 import { openedTiles } from '$lib/stream/openedTiles.svelte';
 import { hqTileId } from '$lib/stream/hqTile';
 import { nativeWindowRequests } from '$lib/player/wuensche.svelte';
 import { nativePlayerSessions } from '$lib/player/store.svelte';
 import { remoteSession } from '$lib/remote/session.svelte';
-import { darfFernsteuern } from '$lib/remote/darfSteuern';
+import { weckFehlerWacht, type Abbruch } from '$lib/remote/wachten';
+import { weckFehlerText } from '$lib/remote/fehlertexte';
+import { gatewayForServer } from '$lib/ws/connection';
 import { activeServer } from '$lib/stores/active-server.svelte';
+import { currentServerUserId } from '$lib/stores/currentServerUser';
+import { darfGeraetSteuern, darfGeraetZusehen } from './zugang';
+import { WECKFEHLER_FENSTER_MS } from '$lib/remote/fehlerCodes';
 import { m } from '$lib/paraglide/messages.js';
+
+// Bildschirmliste und Zuordnung stehen seit 2026-10-16 in `schirmZuordnung.ts`
+// (Grössen-Regel); die bisherigen Einfuhren aus dieser Datei bleiben gültig.
+export {
+  schirmeVon,
+  schirmeVonFuerFenster,
+  type SchirmStand,
+  type SchirmStandFuerFenster,
+} from './schirmZuordnung';
+
+/** Darf der angemeldete Nutzer dieses Gerät wecken und steuern? Seit
+ *  2026-10-16 entscheidet das die Freigabeliste (`Device.steuerbar`, vom
+ *  Server je Betrachter), nicht mehr `REMOTE_CONTROL` — Regel in `zugang.ts`. */
+function darfIch(device: Device): boolean {
+  return darfGeraetSteuern(device, currentServerUserId());
+}
 
 /**
  * Wie lange auf das erste Bild gewartet wird.
@@ -44,140 +64,6 @@ import { m } from '$lib/paraglide/messages.js';
  */
 const WARTEN_MS = 25_000;
 
-/** Ein Bildschirm samt der einen Angabe, die beide Oberflächen brauchen. */
-export interface SchirmStand extends DeviceMonitor {
-  /** Läuft er schon in einem Fenster? */
-  open: boolean;
-}
-
-/** Alle Ströme des Besitzers in diesem Standplatz — von Hand gestartete wie
- *  geweckte. */
-function stroemeVon(device: Device) {
-  return streamPresence
-    .streamsIn(device.channel_id)
-    .filter((s) => s.user_id === device.owner_user_id);
-}
-
-/** Ein einzelner Strom, wie `stroemeVon` ihn liefert. */
-type Strom = ReturnType<typeof stroemeVon>[number];
-
-/**
- * Die Bildschirme, die dieses Gerät hat.
- *
- * Meldet es keine (nie verbunden oder ältere Fassung), bleibt genau ein Eintrag
- * übrig: sein Hauptbildschirm. Das ist ehrlicher als eine erfundene Liste — und
- * der eine Knopf tut, was er immer getan hat.
- */
-function monitorListe(device: Device): DeviceMonitor[] {
-  if (device.monitors.length > 0) return device.monitors;
-  return [{ index: 0, name: m.device_view_screen_primary(), primary: true }];
-}
-
-/**
- * Was die Zuordnung ausser Strömen und Bildschirmen noch wissen muss: ob
- * [`monitorListe`] gerade eine ECHTE Liste geliefert hat oder ihren einen
- * erfundenen Ersatz-Eintrag.
- *
- * **Warum das nach unten durchgereicht werden muss:** der Ersatz-Eintrag trägt
- * `index: 0`, eine echte Bildschirm-Nummer (ab 1) kann darauf nie passen. Die
- * Regel dort schliesst nummerierte Ströme sonst vom Notbehelf aus — mit gutem
- * Grund, aber eben nur gegen eine echte Liste. Gegen die erfundene fiel ein
- * Gerät heraus, dessen `refreshMonitors()` beim Anmelden einmal fehlschlug
- * (`anmeldung.svelte.ts` fängt still, es gibt kein Nachmelden): sein Strom trug
- * `monitor_index: 1`, passte auf nichts, galt nicht als namenlos — der
- * Ersatz-Schirm blieb „frei", und ein Klick darauf lief ins Leere.
- */
-function lage(device: Device): Zuordnungslage {
-  return { listeGemeldet: device.monitors.length > 0 };
-}
-
-/**
- * Welcher Strom zeigt welchen Bildschirm — die **eine** Zuordnung, an der beide
- * Fragen hängen: „läuft der schon?" und „welchen Strom mache ich auf, wenn
- * jemand zusehen will?".
- *
- * Beide getrennt zu beantworten hiesse, dass ein Bildschirm als laufend gilt,
- * dessen Strom sich nicht finden lässt — dann steht ein Knopf da, der wortlos
- * nichts tut. Genau diese Sorte Fehler soll hier verschwinden.
- *
- * **Die eigentliche Regel sitzt in `stream/quellenummer.ts::zuordneStroeme`** —
- * diese Funktion zieht nur die Store-Daten (`stroemeVon`, `monitorListe`,
- * `device.stream_slots`, [`lage`]) zusammen und ruft sie auf. So kann Nodes
- * eingebauter Testläufer die Regel prüfen, obwohl diese Datei selbst für ihn
- * unerreichbar ist (Stores).
- *
- * **Der Hauptbildschirm bekommt zusätzlich einen Strom des Geräts zugeordnet,
- * dessen Name zu keinem Schirm passt** (Bughunt 2026-08-17, Notbehelf in
- * `zuordneStroeme`). Der Grund steht in `wecken.ts::quelleFuerMonitor`: der
- * Haupt-Knopf („Übernehmen") schickt **keine** Nummer mit, das Gerät nimmt
- * dann die Quelle seines Standplatz-Profils — und das ist per Vorgabe sein
- * Hauptbildschirm. Trägt dieser erste Strom einen Namen, der nicht trifft
- * (Profil auf eine andere Quelle gestellt, Bildschirmliste seit dem Start
- * verändert, allgemeiner Ersatzname), galt der Hauptbildschirm als frei und
- * wurde erneut angeboten. Ein Klick darauf lief dann ins Nichts: das Gerät
- * erkennt die schon laufende Quelle und verwirft den Ruf (`wecken.ts`), es
- * ging kein zweites Fenster auf, und für den Steuernden sah es aus, als sei
- * der Player verschwunden.
- *
- * **Nur Ströme des Geräts zählen dafür** (`device.stream_slots`, dieselbe
- * Quelle wie in `darstellung.ts::stromGehoertGeraet`): was der Besitzer von
- * Hand überträgt — ein Fenster, eine Anwendung — sagt nichts über seine
- * Bildschirme. Meldet ein Gerät seine Plätze nicht (ältere Fassung), bleibt es
- * beim reinen Namensvergleich.
- *
- * **Annahme, die falsch sein kann:** dass ein namenlos zugeordneter Gerätestrom
- * der Hauptbildschirm ist. Steht im Profil ausdrücklich ein anderer Schirm, ist
- * er es nicht — dann fehlt der Hauptbildschirm in der Auswahl, obwohl er zu
- * holen wäre. Das ist die harmlosere Hälfte: ein Eintrag zu wenig fällt auf,
- * ein Eintrag, der wortlos nichts tut, fällt nicht auf. Für die andere Hälfte
- * — dass dieser Eintrag NICHT sicher ist — s.
- * `quellenummer.ts::zuordnungIstEindeutig`, an der [`schirmeVonFuerFenster`]
- * über `schirmFuerFenster` hängt.
- */
-function zuordnung(device: Device): Map<number, Strom> {
-  const geraetePlaetze = new Set(device.stream_slots ?? []);
-  return zuordneStroeme(stroemeVon(device), monitorListe(device), geraetePlaetze, lage(device))
-    .karte;
-}
-
-/** Die Bildschirme eines Geräts, jeder mit „läuft schon". */
-export function schirmeVon(device: Device): SchirmStand[] {
-  const karte = zuordnung(device);
-  return monitorListe(device).map((mon) => ({ ...mon, open: karte.has(mon.index) }));
-}
-
-/** Ein Bildschirm aus Sicht EINES bestimmten Player-Fensters — zusätzlich
- *  markiert, ob er genau dieses Fenster ist. */
-export interface SchirmStandFuerFenster extends SchirmStand {
-  dieses_fenster: boolean;
-}
-
-/**
- * Die Bildschirmliste für GENAU EIN Fenster — anders als `schirmeVon` geht sie
- * nicht identisch an jedes Fenster desselben Geräts: `fensterSlot` ist der
- * Sende-Platz, den DIESES Fenster gerade zeigt, und nur der zugehörige
- * Bildschirm bekommt `dieses_fenster: true`.
- *
- * Reine Regel in `stream/schirmFuerFenster.ts` — auch hier fail-visible: ist
- * die Zuordnung nicht eindeutig, bleibt jeder Eintrag unmarkiert (Regel in
- * `quellenummer.ts::zuordnungIstEindeutig`).
- */
-export function schirmeVonFuerFenster(device: Device, fensterSlot: number): SchirmStandFuerFenster[] {
-  const geraetePlaetze = new Set(device.stream_slots ?? []);
-  const gemeint = schirmFuerFenster(
-    stroemeVon(device),
-    monitorListe(device),
-    geraetePlaetze,
-    fensterSlot,
-    lage(device),
-  );
-  return schirmeVon(device).map((s) => ({ ...s, dieses_fenster: s.index === gemeint }));
-}
-
-/** Der laufende Strom eines Bildschirms, oder `undefined`. */
-function stromFuer(device: Device, mon: DeviceMonitor) {
-  return zuordnung(device).get(mon.index);
-}
 
 /**
  * Das Fenster eines laufenden Stroms öffnen (oder nach vorne holen).
@@ -216,10 +102,11 @@ function fensterOeffnen(device: Device, slot: number, uebernahme = true): void {
  * **Warum das hier selbsttätig geschieht und nicht am Knopf des Zuschauers**
  * (Änderung 2026-08-16): bei einem Standplatz-Gerät heisst der eine Knopf
  * „Übernehmen", und genau das soll er tun. Die Zustimmung ist bei
- * diesen Geräten **vorverlegt** — sie steht als Dauerfreigabe, lange bevor
- * jemand klickt. Ein zweiter Knopf „Fernsteuerung anfragen" fragte also etwas,
- * das schon beantwortet ist, und liesse den Steuernden vor einem Bild sitzen,
- * das er nicht bedienen kann.
+ * diesen Geräten **vorverlegt** — sie steht in der Freigabeliste des
+ * Besitzers, lange bevor jemand klickt, und das Gerät zeigt seit 2026-10-16
+ * keinen Dialog mehr. Ein zweiter Knopf „Fernsteuerung anfragen" fragte also
+ * etwas, das schon beantwortet ist, und liesse den Steuernden vor einem Bild
+ * sitzen, das er nicht bedienen kann.
  *
  * **Nach dem Bild, nicht davor.** Der Grund aus `wecken.ts` bleibt unberührt:
  * eine Sitzungszusage darf nicht an einer Encoder-Initialisierung hängen.
@@ -230,15 +117,14 @@ function fensterOeffnen(device: Device, slot: number, uebernahme = true): void {
  * Zwei Fälle, die von selbst richtig laufen: ein **zweiter Bildschirm** fordert
  * nichts nach (`request()` springt bei laufender Sitzung früh zurück, und der
  * Drahtvertrag trägt die Platznummer in jeder Nachricht — eine Sitzung bedient
- * alle Schirme), und **ohne `REMOTE_CONTROL`** wird gar nicht erst gefragt: der
- * Gateway wiese es mit 4051 ab, der Besitzer sähe vorher noch einen
- * Zustimmungs-Dialog für nichts.
+ * alle Schirme), und **ohne Freigabe** wird gar nicht erst gefragt: der
+ * Gateway wiese es mit 4062 ab (seit 2026-10-16; vorher hing das an
+ * `REMOTE_CONTROL`).
  *
- * Der Knopf an der Kachel bleibt bestehen — er ist danach das „Beenden" und der
- * Weg zurück, wenn die Anfrage doch einmal ins Leere lief.
+ * Der Knopf an der Kachel bleibt bestehen — er ist danach das „Beenden".
  */
 function uebernehmen(device: Device, slot: number): void {
-  if (!darfFernsteuern(device.channel_id, device.owner_user_id)) return;
+  if (!darfIch(device)) return;
   // **Nicht dazwischenfunken** (2026-08-16): steuert schon jemand, ist der
   // Gateway ohnehin dagegen (4054, eine Sitzung je Gerät) — der Zuschauer bekäme
   // für einen Klick, mit dem er nur zusehen wollte, eine Fehlermeldung. Steuert
@@ -258,11 +144,11 @@ function uebernehmen(device: Device, slot: number): void {
  * warten könnte, denn der Server sieht diesen Stream nicht. Das Bild selbst
  * entsteht erst nach der Zusage in der Verhandlung (`$lib/remote/direktbild`).
  *
- * Dieselben Riegel wie [`uebernehmen`]: ohne `REMOTE_CONTROL` gar nicht erst
- * fragen (der Gateway wiese ab), bei „busy" nicht dazwischenfunken.
+ * Dieselben Riegel wie [`uebernehmen`]: ohne Freigabe gar nicht erst fragen
+ * (der Gateway wiese ab), bei „busy" nicht dazwischenfunken.
  */
 export function direktUebernehmen(device: Device): void {
-  if (!darfFernsteuern(device.channel_id, device.owner_user_id)) return;
+  if (!darfIch(device)) return;
   if (device.state === 'busy') return;
   // Der Weckruf und die Anfrage laufen über dieselbe Verbindung; ist sie zu,
   // schlägt auch die Anfrage fehl und setzt dieselbe lesbare Offline-Meldung.
@@ -276,11 +162,11 @@ export function direktUebernehmen(device: Device): void {
  * Einem laufenden Bildschirm **nur zusehen** — ohne Übernahme-Anfrage.
  *
  * Der zweite der beiden Wege, die es an einem Gerät gibt, und der leisere:
- * Zusehen braucht nur das Recht, den Kanal zu sehen, Übernehmen braucht
- * `REMOTE_CONTROL` und eine Zustimmung. Sie zu vermischen hiess, dass ein
- * Dritter mit dem Recht eine Sitzung anfragte, obwohl er bloss das Bild wollte
- * — und dass einer ohne das Recht gar nicht an das Bild kam, das im Kanal für
- * jeden offen liegt.
+ * Zusehen braucht die Sicht auf den Kanal und — seit 2026-10-16 — dass gerade
+ * jemand steuert (der Besitzer darf immer, `zugang.ts::darfGeraetZusehen`;
+ * der Server prüft es an `/whep`). Übernehmen braucht eine Freigabe. Sie zu
+ * vermischen hiess, dass ein Dritter eine Sitzung anfragte, obwohl er bloss
+ * das Bild wollte.
  *
  * Läuft der Bildschirm nicht, geschieht nichts: was niemand überträgt, kann
  * man nicht ansehen, und wecken darf hier bewusst nur, wer auch übernehmen darf.
@@ -329,6 +215,17 @@ class SchirmWarten {
    */
   readonly #vorher = new Map<string, Set<number>>();
   readonly #wecker = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Je Wunsch die Wacht auf eine Ablehnung des Weckrufs (`weckFehlerWacht`),
+   *  und welcher Wunsch zuletzt einen Ruf hinausschickte: die Fehler-Rahmen
+   *  tragen keine Gerätekennung, und ein gelungener Weckruf bekommt gar keine
+   *  Antwort — ein Fehler gilt deshalb dem jüngsten Ruf, und nur, solange
+   *  der höchstens [`WECKFEHLER_FENSTER_MS`] alt ist. **Bekannte Grenze:**
+   *  zwei Rufe an verschiedene Geräte innerhalb einer Laufzeit zum Server —
+   *  scheitert der erste, landet der Text beim zweiten. Das Fenster hält
+   *  dagegen eine spätere 4056 einer Personen-Anfrage fern. */
+  readonly #fehlerWacht = new Map<string, Abbruch>();
+  #juengster: string | null = null;
+  #juengsterUm = 0;
   /** Letzter Fehlschlag je Gerät, für die Anzeige. Bewusst nach Gerät und nicht
    *  nach Bildschirm: die Geräteansicht hat eine Fehlerzeile, keine je Knopf. */
   fehler = $state<Record<string, string>>({});
@@ -362,7 +259,19 @@ class SchirmWarten {
     delete this.fehler[device.id];
     const laufend = stromFuer(device, mon);
     if (laufend) {
+      // Auch hier die Regel aus `zugang.ts`: zusehen dürfen Besitzer, alle bei
+      // belegtem Gerät — und wer steuern darf (er ist dann der Wecker, dem der
+      // Server bis zum Sitzungsbeginn zusehen lässt). Sonst gäbe `/whep` 403.
+      if (!darfIch(device) && !darfGeraetZusehen(device, currentServerUserId())) {
+        this.fehler[device.id] = m.device_error_not_granted();
+        return;
+      }
       fensterOeffnen(device, laufend.slot);
+      return;
+    }
+    // Wecken nur mit Freigabe — der Server lehnte sonst mit 4062 ab.
+    if (!darfIch(device)) {
+      this.fehler[device.id] = m.device_error_not_granted();
       return;
     }
     // `index: 0` ist der Ersatz-Eintrag ohne Bildschirmliste — dann ebenfalls
@@ -378,6 +287,18 @@ class SchirmWarten {
     const k = schluessel(device.id, mon.index);
     this.offen[k] = mon;
     this.#vorher.set(k, new Set(stroemeVon(device).map((s) => s.slot)));
+    this.#fehlerWacht.get(k)?.();
+    this.#juengster = k;
+    this.#juengsterUm = Date.now();
+    const conn = activeServer.serverId ? gatewayForServer(activeServer.serverId) : null;
+    this.#fehlerWacht.set(
+      k,
+      weckFehlerWacht(conn, (code) => {
+        if (this.#juengster !== k || Date.now() - this.#juengsterUm > WECKFEHLER_FENSTER_MS) return;
+        this.#aufraeumen(k);
+        this.fehler[device.id] = weckFehlerText(code) ?? m.device_view_wake_failed();
+      }),
+    );
     const alt = this.#wecker.get(k);
     if (alt) clearTimeout(alt);
     this.#wecker.set(
@@ -441,6 +362,9 @@ class SchirmWarten {
   reset(): void {
     for (const w of this.#wecker.values()) clearTimeout(w);
     this.#wecker.clear();
+    for (const ab of this.#fehlerWacht.values()) ab();
+    this.#fehlerWacht.clear();
+    this.#juengster = null;
     this.#vorher.clear();
     this.offen = {};
     this.fehler = {};
@@ -450,6 +374,9 @@ class SchirmWarten {
     const w = this.#wecker.get(k);
     if (w) clearTimeout(w);
     this.#wecker.delete(k);
+    this.#fehlerWacht.get(k)?.();
+    this.#fehlerWacht.delete(k);
+    if (this.#juengster === k) this.#juengster = null;
     this.#vorher.delete(k);
     delete this.offen[k];
   }

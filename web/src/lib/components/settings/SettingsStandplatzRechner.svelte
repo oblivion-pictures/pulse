@@ -1,6 +1,12 @@
 <!--
   SettingsStandplatzRechner — die eine Karte für DIESEN Rechner: wo er
-  eingetragen ist, ob er sich steuern lässt, und wer das ohne Rückfrage darf.
+  eingetragen ist, ob er sich steuern lässt, und wer das darf.
+
+  **Der Schalter „Steuern erlauben" ist seit 2026-10-16 ein Notaus**
+  (Eigentümer-Entscheid 2, Regel in `remote/notausRegel.ts`): wer den Rechner
+  wecken und steuern darf, entscheidet allein die Freigabeliste darunter. Aus
+  heisst: niemand, auch Freigegebene nicht — der Rechner weckt sich nicht und
+  lehnt jede Anfrage ab. Die Liste bleibt dabei erhalten.
 
   **Warum eine Karte statt vier** (Umbau 2026-09-09): vorher standen Zustand,
   „Wie lange", die Verwaltung (Name, Community, Kanal) und die Freigabeliste
@@ -26,7 +32,7 @@
   import { restzeit } from '$lib/devices/restzeit';
   import { restText } from '$lib/devices/restanzeige';
   import { geraetOrtText } from '$lib/devices/ort';
-  import { punktKlasse } from '$lib/devices/darstellung';
+  import { punktKlasse, zeileFuer } from '$lib/devices/darstellung';
   import { formatTimestamp } from '$lib/utils/formatTimestamp';
   import { m } from '$lib/paraglide/messages.js';
   import type { Device } from '$lib/api/devices';
@@ -71,7 +77,7 @@
     <span class="flex min-w-0 flex-1 flex-col">
       <span class="text-text-bright truncate text-sm font-semibold">{device.name}</span>
       <span class="text-text-muted flex items-center gap-1.5 truncate text-xs">
-        <span class="size-2 shrink-0 rounded-full {punktKlasse(device.state)}" aria-hidden="true"></span>
+        <span class="size-2 shrink-0 rounded-full {punktKlasse(zeileFuer(device).punkt)}" aria-hidden="true"></span>
         {geraetOrtText(device)}
       </span>
     </span>
@@ -98,6 +104,7 @@
   <div class="border-border/60 flex items-center justify-between gap-3 border-t pt-4">
     <span class="flex min-w-0 flex-col">
       <span class="text-text-bright text-sm font-medium">{m.standplatz_rechner_erlauben()}</span>
+      <span class="text-text-muted text-xs">{m.standplatz_rechner_erlauben_hinweis()}</span>
       {#if ablaufText}
         <span class="text-text-muted text-xs">{ablaufText}</span>
       {/if}

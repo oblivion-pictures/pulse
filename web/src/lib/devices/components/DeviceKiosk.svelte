@@ -91,11 +91,12 @@
   });
 
   // Die eigene Gerätezeile vorladen. Sie ist der einzige Weg vom Rechner zu
-  // seinem Standplatz-KANAL — die Eintragung kennt nur die Community —, und an
-  // dem Kanal hängt die Dauerfreigabe „jeder" (`$lib/remote/standplatz.svelte.ts`).
-  // Ohne Vorladen käme die Auflösung erst, wenn jemand die Community ansieht;
-  // auf einem Standplatz-Gerät sieht sie niemand an, und die Freigabe fiele
-  // fail-closed auf den Dialog zurück, den dort niemand beantwortet.
+  // seinem Standplatz-KANAL — die Eintragung kennt nur die Community —, und
+  // auf einem Standplatz-Gerät sieht niemand die Community an, die sie sonst
+  // lädt. (Die frühere Begründung — die Dauerfreigabe „jeder" hänge am Kanal
+  // und fiele sonst auf den Dialog zurück — gilt nicht mehr: die Liste löst
+  // seit 2026-08-20 der Server auf, und seit 2026-10-16 zeigt ein Gerät
+  // keinen Dialog mehr.)
   $effect(() => {
     if (!desktop) return;
     for (const e of geraeteAnmeldung.eintragungen) void deviceStore.ensureLoaded(e.guildId);

@@ -34,14 +34,15 @@
   let {
     guildId,
     channelId,
-    kanalName
-  }: { guildId: string; channelId: string; kanalName: string } = $props();
+    kanalName,
+    sprachkanal = true
+  }: { guildId: string; channelId: string; kanalName: string; sprachkanal?: boolean } = $props();
 
   let mitglieder = $state<Member[]>([]);
   let rollenIdsJeMitglied = $state<Record<string, string[]>>({});
   let personId = $state('');
 
-  let rechte = $derived(kanalrechte());
+  let rechte = $derived(kanalrechte({ sprachkanal }));
   let alleRollen = $derived(rollenStore.byGuild[guildId] ?? []);
   let overwrites = $derived(channelPermissions.byChannel[channelId] ?? []);
   let besitzer = $derived(besitzerId(guildId));

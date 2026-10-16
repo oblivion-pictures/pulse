@@ -21,6 +21,7 @@ import { errText } from '$lib/utils/errText';
   import { watchPartyPresence } from '$lib/stores/watchPartyPresence.svelte';
   import { openedTiles } from '$lib/stream/openedTiles.svelte';
   import { hqTileId } from '$lib/stream/hqTile';
+  import { sichtbareStroeme } from '$lib/devices/darstellung';
   import { currentServerUserId } from '$lib/stores/currentServerUser';
   import { watchBackground } from '$lib/watch/watchBackground.svelte';
   import { shortcut, type ShortcutEventDetail } from '@svelte-put/shortcut';
@@ -96,14 +97,23 @@ import { errText } from '$lib/utils/errText';
   // nur, wenn schon eine andere Kachel desselben Streamers offen ist (sonst
   // bleibt es beim klick-zum-öffnen-Default). Reagiert auf `streamsIn`; die
   // openedTiles-Reads laufen in `untrack`, damit das Öffnen keine Schleife baut.
+  // Ströme von Remote-Rechnern, denen ich gerade nicht zusehen darf
+  // (`devices/zugang.ts`), öffnen sich nicht von selbst — getrackt, damit ein
+  // Gerät, das während des Zusehens belegt wird, nachzieht.
   $effect(() => {
     const cid = channel.id;
     const tiles = streamPresence.streamsIn(cid);
+    const erlaubt = new Set(
+      [...new Set(tiles.map((t) => t.user_id))].flatMap((uid) =>
+        sichtbareStroeme(cid, uid).map((t) => hqTileId(t.user_id, t.slot))
+      )
+    );
     untrack(() => {
       const me = currentServerUserId();
       for (const s of tiles) {
         if (s.user_id === me) continue;
         const id = hqTileId(s.user_id, s.slot);
+        if (!erlaubt.has(id)) continue;
         if (openedTiles.isOpen('hq', cid, id)) continue;
         const alreadyWatchingStreamer = tiles.some(
           (t) =>

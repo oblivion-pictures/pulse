@@ -8,6 +8,12 @@
   diesen Host: wartender Zustand mit Abbrechen; läuft sie, wird daraus das
   Beenden.
 
+  **Am Strom eines Remote-Rechners kein „anfragen"** (seit 2026-10-16):
+  Steuern geht dort nur über die Freigabeliste und die Geräteansicht
+  (`darfSteuern.ts::anfragbarAmStrom`). Abbrechen und Beenden bleiben — wer
+  einen Rechner übernommen hat, beendet hier auch, unabhängig von
+  `REMOTE_CONTROL`.
+
   **Nur das Icon** (2026-09-11, Nutzerwunsch): wie die Knöpfe der Bedienleiste
   im nativen Player (`controls.rs::action_button`) zeigt auch dieser Knopf kein
   sichtbares Etikett — die Beschreibung steht in `title`/`aria-label` für Hover
@@ -24,7 +30,8 @@
   import Loader2Icon from '@lucide/svelte/icons/loader-circle';
   import XIcon from '@lucide/svelte/icons/x';
   import { remoteSession } from '$lib/remote/session.svelte';
-  import { darfFernsteuern } from '$lib/remote/darfSteuern';
+  import { anfragbarAmStrom } from '$lib/remote/darfSteuern';
+  import { stromIstGeraetestrom } from '$lib/devices/darstellung';
   import { userCache } from '$lib/stores/users.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
@@ -34,9 +41,10 @@
     slot = 0
   }: { channelId: string; hostUserId: string; slot?: number } = $props();
 
-  // Nicht man selbst, und REMOTE_CONTROL im Kanal — dieselbe Vorprüfung, die
-  // das Standplatz-Gerät vor seiner selbsttätigen Übernahme macht (`darfSteuern.ts`).
-  let visible = $derived(darfFernsteuern(channelId, hostUserId));
+  // Nicht man selbst, REMOTE_CONTROL im Kanal und kein Remote-Rechner
+  // (`darfSteuern.ts`). Am Gerät nur Abbrechen/Beenden der eigenen Sitzung.
+  let anfragbar = $derived(anfragbarAmStrom(channelId, hostUserId, slot));
+  let geraet = $derived(stromIstGeraetestrom(channelId, hostUserId, slot));
 
   // Geht es gerade um genau diesen Host — meine Anfrage oder meine Sitzung?
   let meins = $derived(
@@ -48,7 +56,7 @@
   let hostName = $derived(userCache.displayName(hostUserId));
 </script>
 
-{#if visible}
+{#if anfragbar || (geraet && (running || pending))}
   {#if running}
     <Button
       size="sm"

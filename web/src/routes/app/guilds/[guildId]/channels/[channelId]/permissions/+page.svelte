@@ -21,6 +21,7 @@
   import { Perm } from '$lib/permissions/bitfield';
   import ChannelOverridesEditor from '$lib/components/settings/ChannelOverridesEditor.svelte';
   import PruefenAnsicht from '$lib/permissions/ui/PruefenAnsicht.svelte';
+  import GeraeteHinweis from '$lib/permissions/ui/GeraeteHinweis.svelte';
   import KanalDateiablageVerbinden from '$lib/components/ablage/KanalDateiablageVerbinden.svelte';
   import { ABLAGE_KANAL_ENABLED } from '$lib/featureFlags';
   import { m } from '$lib/paraglide/messages.js';
@@ -42,6 +43,9 @@
   // nur hinter dem Schalter — für einen gewöhnlichen Kanal gibt es kein
   // Laufwerk zu verbinden.
   let zeigeLaufwerkReiter = $derived(ABLAGE_KANAL_ENABLED && !!channel?.ablage);
+  // „Fernsteuerung anfragen" gibt es nur im Sprachkanal (`kanalrechte.ts`);
+  // dort nennt `GeraeteHinweis` zusätzlich die Remote-Rechner des Kanals.
+  let sprachkanal = $derived(channel?.type === 1);
 
   let reiter = $state<'rechte' | 'pruefen' | 'laufwerk'>('rechte');
   // Abgeleitet statt konstant: die Beschriftungen kommen aus Paraglide und
@@ -107,16 +111,18 @@
       </div>
 
       {#if reiter === 'rechte'}
+        <GeraeteHinweis {guildId} {channelId} {sprachkanal} />
         <ChannelOverridesEditor
           {channelId}
           {guildId}
           kanalName={channel.name}
           {editorPermissions}
+          {sprachkanal}
         />
       {:else if reiter === 'laufwerk' && zeigeLaufwerkReiter}
         <KanalDateiablageVerbinden kanalId={channelId} />
       {:else}
-        <PruefenAnsicht {guildId} {channelId} kanalName={channel.name} />
+        <PruefenAnsicht {guildId} {channelId} kanalName={channel.name} {sprachkanal} />
       {/if}
     {/if}
   </main>

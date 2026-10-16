@@ -266,7 +266,8 @@
       onSelect={onSelectDevice}
       onDragEnd={() => beenden(ziehen)}
       onWatch={(d) => {
-        chooseHqForUser(c.id, d.owner_user_id);
+        // Nur die Plätze DIESES Geräts — nicht jeden Strom des Besitzers.
+        chooseHqForUser(c.id, d.owner_user_id, undefined, d.stream_slots ?? []);
         onSelect(c);
       }}
     />

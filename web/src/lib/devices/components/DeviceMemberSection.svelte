@@ -16,12 +16,16 @@
 
   Ausserhalb der virtuellen Liste, weil es wenige sind und weil sie damit
   garantiert nicht zwischen die Menschen rutschen können.
+
+  Punkt, Text und Sperre folgen derselben Regel wie die Kanalliste
+  (`zugang.ts::zeilenZustand`, seit 2026-10-16): wer nicht freigegeben ist,
+  sieht „online" statt „bereit" und kommt nicht in die Geräteansicht.
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
   import MonitorIcon from '@lucide/svelte/icons/monitor';
   import { deviceStore } from '$lib/devices/store.svelte';
-  import { geraetPfad, punktKlasse, zustandsText } from '$lib/devices/darstellung';
+  import { geraetPfad, punktKlasse, zeileFuer, zustandsText } from '$lib/devices/darstellung';
   import type { Device } from '$lib/api/devices';
   import { gegenstelle } from '$lib/remote/gegenstelle';
   import { userCache } from '$lib/stores/users.svelte';
@@ -53,9 +57,15 @@
       {m.device_category_title()}
     </div>
     {#each geraete as d (d.id)}
+      {@const zeile = zeileFuer(d)}
       <button
-        class="hover:bg-bg-hover flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left"
-        onclick={() => oeffnen(d)}
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left
+          {zeile.klickbar ? 'hover:bg-bg-hover' : 'cursor-default opacity-70'}"
+        aria-disabled={!zeile.klickbar}
+        title={zeile.klickbar ? undefined : m.device_row_not_granted()}
+        onclick={() => {
+          if (zeile.klickbar) oeffnen(d);
+        }}
         data-testid={`device-member-${d.id}`}
       >
         <!-- Eckig statt rund: derselbe Unterschied wie in der Kanalliste, und
@@ -67,9 +77,9 @@
         </span>
         <span class="min-w-0 flex-1">
           <span class="text-text-base block truncate font-mono text-sm">{d.name}</span>
-          <span class="text-text-muted block truncate text-xs">{zustandsText(d.state, d.busy_with ? gegenstelle(d.busy_with).anzeige : null)}</span>
+          <span class="text-text-muted block truncate text-xs">{zustandsText(zeile.punkt, d.busy_with ? gegenstelle(d.busy_with).anzeige : null)}</span>
         </span>
-        <span class="size-2 shrink-0 rounded-full {punktKlasse(d.state)}" aria-hidden="true"></span>
+        <span class="size-2 shrink-0 rounded-full {punktKlasse(zeile.punkt)}" aria-hidden="true"></span>
       </button>
     {/each}
   </div>

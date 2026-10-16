@@ -20,6 +20,11 @@ class Freigaben {
     return this.#proGeraet[deviceId] ?? [];
   }
 
+  /** Schon einmal geladen? Vorher hiesse eine leere [`fuer`]-Liste nichts. */
+  geladen(deviceId: string): boolean {
+    return deviceId in this.#proGeraet;
+  }
+
   async laden(guildId: string, deviceId: string): Promise<void> {
     return dedupliziertLaden(this.#laufend, deviceId, async () => {
       this.#proGeraet[deviceId] = await grantsApi.list(guildId, deviceId);

@@ -15,6 +15,7 @@
 
 import type { GatewayConnection } from '$lib/ws/connection';
 import { CLIENT_GRACE_MS, Gnadenfrist } from './gnadenfrist';
+import { istAnfrageFehler, weckFehlerArt } from './fehlerCodes';
 
 /** Jede Wacht liefert die Funktion, die sie wieder abstellt. Zweimal gerufen
  *  ist folgenlos. */
@@ -228,8 +229,9 @@ export function anfrageFrist(ms: number, beiAblauf: () => void): Abbruch {
 }
 
 /**
- * Die Fernsteuerungs-Fehler (`op:'error'`, Codes 4050–4059) der übergebenen
- * Verbindung.
+ * Die Fernsteuerungs-Fehler (`op:'error'`, Codes 4050–4059 und seit
+ * 2026-10-16 4062 „Remote-Rechner nicht freigegeben") der übergebenen
+ * Verbindung — die Auswahl steht in `fehlerCodes.ts::istAnfrageFehler`.
  *
  * NUR dieser Bereich: ein beliebiger anderer `error`-Frame (fehlgeschlagener
  * Chat-Send, Rate-Limit) würde sonst im langen Warte-auf-Consent-Fenster die
@@ -240,9 +242,30 @@ export function fehlerWacht(
   beiFehler: (code: number, msg: string) => void,
 ): Abbruch {
   const ab = conn?.on((evt) => {
-    if (evt.op === 'error' && evt.code >= 4050 && evt.code <= 4059) {
+    if (evt.op === 'error' && istAnfrageFehler(evt.code)) {
       beiFehler(evt.code, evt.msg);
     }
+  });
+  return () => ab?.();
+}
+
+/**
+ * Die Ablehnung eines Weckrufs (`device_wake`) — 4060/4062 „nicht
+ * freigegeben", 4061 „offline", 4056 „zu schnell" (`fehlerCodes.ts::
+ * weckFehlerArt`).
+ *
+ * **Bis 2026-10-16 hörte niemand darauf**: der Gateway lehnte ab, und die
+ * Geräteansicht wartete ihre 25 s ab, um dann „hat nicht geantwortet" zu
+ * sagen — für einen Rechner, der nie gefragt worden war. Die Rahmen tragen
+ * keine Gerätekennung; wem der Fehler gilt, entscheidet der Aufrufer
+ * (`devices/schirme.svelte.ts`: dem zuletzt gesendeten Weckruf).
+ */
+export function weckFehlerWacht(
+  conn: GatewayConnection | null,
+  beiFehler: (code: number) => void,
+): Abbruch {
+  const ab = conn?.on((evt) => {
+    if (evt.op === 'error' && weckFehlerArt(evt.code) !== null) beiFehler(evt.code);
   });
   return () => ab?.();
 }

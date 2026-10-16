@@ -246,7 +246,8 @@
     // HQ-streaming or screen-sharing, open those tiles, then navigate. Parties
     // are handled separately by openMemberParty (its own badge).
     for (const c of guildChannels) {
-      const matchHq = streamPresence.streamersIn(c.id).includes(uid);
+      // Wie das Abzeichen oben: senden dort nur seine Remote-Rechner, ist es nicht dieser Kanal.
+      const matchHq = streamPresence.streamersIn(c.id).includes(uid) && !stromGehoertGeraet(c.id, uid);
       const matchScreen = voicePresence.streamingIn(c.id).includes(uid);
       if (!matchHq && !matchScreen) continue;
       if (matchHq) {

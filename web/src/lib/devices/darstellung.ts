@@ -9,20 +9,41 @@
  * übernehmen".
  */
 
-import type { Device, DeviceState } from '$lib/api/devices';
+import type { Device } from '$lib/api/devices';
 import { deviceStore } from '$lib/devices/store.svelte';
 import { streamPresence } from '$lib/stores/streamPresence.svelte';
+import { currentServerUserId } from '$lib/stores/currentServerUser';
 import { m } from '$lib/paraglide/messages.js';
+import {
+  istGeraetestrom,
+  ohneVerborgene,
+  verborgenePlaetze,
+  zeilenZustand,
+  type Punkt,
+  type ZeilenZustand,
+} from './zugang';
+
+/**
+ * Wie die Zeile dieses Geräts für den angemeldeten Nutzer aussieht — die
+ * Regel steht in `zugang.ts`, hier kommen nur die Store-Daten dazu (die
+ * eigene Kennung auf DIESEM Server und ob das Gerät gerade sendet).
+ */
+export function zeileFuer(device: Device): ZeilenZustand {
+  return zeilenZustand(device, currentServerUserId(), geraetSendet(device, device.channel_id));
+}
 
 /**
  * Farbe des Zustandspunkts.
  *
- * Bereit ist das einzige Grün — belegt ist kein Fehler, aber auch keine
- * Einladung, und offline ist schlicht still.
+ * Bereit ist das einzige Grün — und seit 2026-10-16 nur für den, der den
+ * Rechner auch steuern darf (oder ihn besitzt). Wer nicht freigegeben ist,
+ * sieht ein waches Gerät als neutralen Punkt (`online`). Belegt ist kein
+ * Fehler, aber auch keine Einladung, und offline ist schlicht still.
  */
-export function punktKlasse(state: DeviceState): string {
-  if (state === 'ready') return 'bg-emerald-500';
-  if (state === 'busy') return 'bg-amber-500';
+export function punktKlasse(punkt: Punkt): string {
+  if (punkt === 'bereit') return 'bg-emerald-500';
+  if (punkt === 'belegt') return 'bg-amber-500';
+  if (punkt === 'online') return 'bg-text-muted';
   return 'bg-text-muted/40';
 }
 
@@ -30,11 +51,13 @@ export function punktKlasse(state: DeviceState): string {
  * Zustand als Text. `wer` ist der Name des Steuernden, sofern bekannt — nur
  * die Mitgliederliste hat Platz dafür, die Kanalliste zeigt den kurzen Text.
  */
-export function zustandsText(state: DeviceState, wer?: string | null): string {
-  if (state === 'busy') {
+export function zustandsText(punkt: Punkt, wer?: string | null): string {
+  if (punkt === 'belegt') {
     return wer ? m.device_member_busy_with({ user: wer }) : m.device_state_busy();
   }
-  return state === 'ready' ? m.device_state_ready() : m.device_state_offline();
+  if (punkt === 'bereit') return m.device_state_ready();
+  if (punkt === 'online') return m.device_state_online();
+  return m.device_state_offline();
 }
 
 /**
@@ -115,4 +138,28 @@ export function geraetSendet(device: { owner_user_id: string; stream_slots?: num
   return streamPresence
     .streamsIn(channelId)
     .some((s) => s.user_id === device.owner_user_id && plaetze.has(s.slot));
+}
+
+/**
+ * Die Ströme von `userId` in diesem Kanal, die der angemeldete Nutzer öffnen
+ * darf — ohne die Plätze seiner Geräte, denen er gerade nicht zusehen darf
+ * (`zugang.ts::verborgenePlaetze`: Besitzer immer, sonst nur, solange jemand
+ * steuert). Der Server weist einen solchen Strom ohnehin ab (403 an `/whep`);
+ * ihn gar nicht erst anzubieten, erspart eine Kachel, die nie Bild bekommt.
+ *
+ * Alle Wege, die Ströme eines Menschen öffnen oder ein LIVE an ihm zeigen,
+ * gehen hierüber: `hqTile.ts::chooseHqForUser`, die Teilnehmer-Kachel, die
+ * Mitgliederliste, der Aktivitätskopf und das Selbst-Öffnen weiterer Plätze
+ * in `VoiceChannelView`.
+ */
+export function sichtbareStroeme(channelId: string, userId: string) {
+  const verborgen = verborgenePlaetze(deviceStore.alleImKanal(channelId, userId), currentServerUserId());
+  const eigene = streamPresence.streamsIn(channelId).filter((s) => s.user_id === userId);
+  return ohneVerborgene(eigene, verborgen);
+}
+
+/** Kommt der Strom von `userId` auf `slot` in diesem Kanal von einem seiner
+ *  Geräte? Für den Anfrage-Knopf im Player, der bei Geräten wegfällt. */
+export function stromIstGeraetestrom(channelId: string, userId: string, slot: number): boolean {
+  return istGeraetestrom(deviceStore.alleImKanal(channelId, userId), slot);
 }

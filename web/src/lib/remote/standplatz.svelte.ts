@@ -426,9 +426,10 @@ class StandplatzFreigabe {
   }
 
   /**
-   * Freigabe erteilen — der Hauptschalter. WER ohne Rückfrage darf, entscheidet
-   * seit 2026-08-20 der Server (`device_grants`); hier bleibt nur noch „ob
-   * überhaupt" und „wie lange".
+   * Den Schalter „Steuern erlauben" einschalten. WER wecken und steuern darf,
+   * entscheidet der Server über die Freigabeliste (`device_grants`, seit
+   * 2026-10-16 als einzige Erlaubnis); hier bleibt nur der Notaus — „ob
+   * überhaupt" und, für einen alten befristeten Stand, „wie lange".
    */
   async freigeben(opts: {
     geltung: Geltung;
@@ -465,27 +466,6 @@ class StandplatzFreigabe {
   /** Der Notaus: darf dieser Rechner gerade geweckt und gesteuert werden? */
   steuernErlaubt(): boolean {
     return steuernErlaubt(this, Date.now());
-  }
-
-  /** Wie lange die Freigabe noch gilt (ms), `null` = ohne Ablauf, `0` = nicht
-   *  aktiv. */
-  restMs(): number | null {
-    if (!this.aktiv) return 0;
-    if (this.gueltigBis === null) return null;
-    return Math.max(0, this.gueltigBis - Date.now());
-  }
-
-  /**
-   * Dasselbe in ganzen Stunden, `null` = ohne Ablauf oder nicht aktiv.
-   *
-   * Die Rundung gehört zum Wert und nicht in die Ansicht: sie beantwortet
-   * „reicht das noch für heute", nicht „wie viele Minuten". Eine minutengenaue
-   * Anzeige bräuchte einen Zeitgeber, und Chromium drosselt den in verdeckten
-   * Fenstern auf einen Lauf je Minute (dieselbe Falle wie in `wachten.ts`).
-   */
-  restStunden(): number | null {
-    const rest = this.restMs();
-    return rest === null || rest === 0 ? null : Math.max(1, Math.round(rest / 3_600_000));
   }
 
   #uebernehmen(stand: { aktiv: boolean; geltung: Geltung; gueltigBis: number | null }): void {

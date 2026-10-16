@@ -1,33 +1,27 @@
 <!--
-  DeviceFreigaben — die Freigabeliste eines Standplatz-Geräts.
+  DeviceFreigaben — die Freigabeliste eines Standplatz-Geräts („Wer diesen
+  Rechner steuern darf").
+
+  **Seit 2026-10-16 die einzige Erlaubnis** (Eigentümer-Entscheid): wecken und
+  steuern darf, wen eine nicht abgelaufene Zeile deckt UND wer den
+  Standplatz-Kanal sieht; `REMOTE_CONTROL` zählt dafür nicht mehr. Leere
+  Liste = niemand, „jeder" = jeder, der den Kanal sehen kann. Vorgeschlagen
+  wird nur, wer den Kanal sieht (`kanalSicht.ts`, geladen in
+  `freigabeAuswahl.ts` — eine Untergrenze, Instanz-Admins kennt der Client
+  nicht); vorhandene Einträge ohne Sicht tragen einen Hinweis.
 
   **Nur für den Besitzer** — nicht bloss ausgeblendet, sondern gar nicht erst
-  im DOM. Die Liste sagt, wer den Rechner ohne Rückfrage übernehmen darf, und
-  das geht niemanden sonst etwas an (DevTools sieht ausgeblendetes Markup).
-  Deshalb steht die Bedingung beim Aufrufer (`DeviceView.svelte`,
-  `SettingsStandplatzRechner.svelte`), nicht hier — dieselbe Form wie bei
-  `DeviceVerwaltung`.
+  im DOM (DevTools sieht ausgeblendetes Markup). Deshalb steht die Bedingung
+  beim Aufrufer (`SettingsStandplatzRechner`, `SettingsStandplatzGeraete`),
+  nicht hier — dieselbe Form wie bei `DeviceVerwaltung`.
 
-  **Drei Arten von Zeilen**: ein Nutzer (Name aus `userCache`), eine Rolle
-  (Name aus dem Rollen-Store der Community des Standplatzes) und „jeder, der
-  überhaupt anfragen darf" — keine Abkürzung an der Rechteprüfung vorbei, der
-  Server verlangt weiterhin `REMOTE_CONTROL` am Standplatz, deshalb der
-  erklärende Satz daneben. Seit 2026-09-09 ist „jeder" ein Schalter statt einer
-  Listenzeile und Nutzer und Rollen teilen sich EIN Auswahlfeld: zwei
-  Auswahlfelder, ein Knopf und eine Geltungs-Radiogruppe waren für die eine
-  Frage „wen noch?" dreimal so viel Oberfläche wie nötig.
-
-  **Jede Änderung schickt die GANZE Liste** (`freigaben.setzen`) — es gibt
-  bewusst keinen Weg, einen einzelnen Eintrag zu ändern, sonst entstünde ein
-  Zwischenzustand „scharf, aber für niemanden". Das Zusammenbauen der
-  nächsten Liste steckt in `freigabenBearbeitung.ts`, die Dauer-Stufen in
-  `freigabeDauer.ts` (beide importfrei, eigens testbar); diese Datei bleibt
-  reine Anzeige + Formular.
+  **Jede Änderung schickt die GANZE Liste** (`freigaben.setzen`, Bau in
+  `freigabenBearbeitung.ts`, Stufen in `freigabeDauer.ts`) — sonst entstünde
+  ein Zwischenzustand „scharf, aber für niemanden".
 -->
 <script lang="ts">
   import { errText } from '$lib/utils/errText';
-  import XIcon from '@lucide/svelte/icons/x';
-  import { Button } from '$lib/components/ui/button/index.js';
+  import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
   import Select from '$lib/components/form/Select.svelte';
   import Switch from '$lib/components/form/Switch.svelte';
   import { freigaben } from '$lib/devices/freigaben.svelte';
@@ -43,21 +37,29 @@
   } from '$lib/devices/freigabeDauer';
   import { userCache } from '$lib/stores/users.svelte';
   import { roles } from '$lib/stores/roles.svelte';
-  import { chatApi } from '$lib/api/chat';
+  import { guilds } from '$lib/stores/guilds.svelte';
+  import { freigabeAuswahlLaden, type FreigabeAuswahl } from '$lib/devices/freigabeAuswahl';
+  import { eintragWirkt } from '$lib/devices/kanalSicht';
+  import DeviceFreigabeZeilen from './DeviceFreigabeZeilen.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import type { Device, Grant } from '$lib/api/devices';
-  import type { Member } from '$lib/api/types';
 
   /** `eingebettet`: ohne eigenen Rahmen, weil die Karte darum herum schon
    *  einer ist (`SettingsStandplatzRechner`). In der Geräteansicht steht die
    *  Liste für sich und trägt den Rahmen selbst. */
   let { device, eingebettet = false }: { device: Device; eingebettet?: boolean } = $props();
 
+  // An den Kennungen, nicht am Objekt: jede Zustandsmeldung (`device_state`)
+  // legt ein neues `device` an, und jeder Lauf hier kostet Server-Abrufe.
+  const guildId = $derived(device.guild_id);
+  const deviceId = $derived(device.id);
+  const channelId = $derived(device.channel_id);
+
   $effect(() => {
-    void freigaben.laden(device.guild_id, device.id);
+    void freigaben.laden(guildId, deviceId);
   });
 
-  const liste = $derived(freigaben.fuer(device.id));
+  const liste = $derived(freigaben.fuer(deviceId));
   const einzelne = $derived(liste.filter((g) => g.subject_type !== 'everyone'));
   const jederGrant = $derived(liste.find((g) => g.subject_type === 'everyone') ?? null);
 
@@ -75,30 +77,37 @@
     return () => clearInterval(t);
   });
 
-  let mitglieder = $state<Member[]>([]);
+  let auswahl = $state<FreigabeAuswahl>({ mitglieder: [], rollen: [], sicht: null });
   $effect(() => {
-    void chatApi
-      .listMembers(device.guild_id)
-      .then((liste_) => {
-        mitglieder = liste_;
-        for (const mm of liste_) userCache.queue(mm.user_id);
-      })
-      .catch(() => {
-        mitglieder = [];
-      });
+    let veraltet = false; // eine späte Antwort für ein anderes Gerät verwerfen
+    void freigabeAuswahlLaden(guildId, channelId).then((a) => !veraltet && (auswahl = a));
+    void guilds.ensureChannels(guildId);
+    return () => (veraltet = true);
   });
+  const kanalName = $derived(
+    (guilds.channelsByGuild[guildId] ?? []).find((c) => c.id === channelId)?.name ?? '…',
+  );
 
-  const rollenListe = $derived((roles.byGuild[device.guild_id] ?? []).filter((r) => !r.is_everyone));
+  // Rollen aus der Route; scheiterte sie, bleibt der Rollen-Store als Rückfall.
+  const rollenListe = $derived(
+    auswahl.rollen.length > 0
+      ? auswahl.rollen
+      : (roles.byGuild[guildId] ?? []).filter((r) => !r.is_everyone),
+  );
   const vergeben = $derived(new Set(einzelne.map((g) => `${g.subject_type}:${g.subject_id}`)));
+  const wirkt = (g: Pick<Grant, 'subject_type' | 'subject_id'>): boolean =>
+    eintragWirkt(auswahl.sicht, g);
+  const unwirksam = $derived(einzelne.some((g) => !wirkt(g)));
 
   // Ein Feld für beides: Nutzer zuerst, dann Rollen mit Zusatz. Der Wert trägt
-  // die Art als Präfix, damit `hinzufuegen` sie nicht raten muss.
+  // die Art als Präfix, damit `hinzufuegen` sie nicht raten muss. Nur wer den
+  // Kanal sieht — ein Eintrag ohne Sicht wirkte nicht.
   const kandidaten = $derived([
-    ...mitglieder
-      .filter((mm) => !vergeben.has(`user:${mm.user_id}`))
-      .map((mm) => ({ value: `user:${mm.user_id}`, label: userCache.displayName(mm.user_id) })),
+    ...auswahl.mitglieder
+      .filter((id) => !vergeben.has(`user:${id}`) && wirkt({ subject_type: 'user', subject_id: id }))
+      .map((id) => ({ value: `user:${id}`, label: userCache.displayName(id) })),
     ...rollenListe
-      .filter((r) => !vergeben.has(`role:${r.id}`))
+      .filter((r) => !vergeben.has(`role:${r.id}`) && wirkt({ subject_type: 'role', subject_id: r.id }))
       .map((r) => ({ value: `role:${r.id}`, label: `${r.name} · ${m.device_grants_role_suffix()}` })),
   ]);
 
@@ -117,7 +126,7 @@
   async function speichern(naechste: ReturnType<typeof mitNeuem>): Promise<void> {
     fehler = null;
     try {
-      await freigaben.setzen(device.guild_id, device.id, naechste);
+      await freigaben.setzen(guildId, deviceId, naechste);
     } catch (e) {
       fehler = errText(e);
     }
@@ -184,34 +193,22 @@
 >
   <span class="text-text-bright text-sm font-medium">{m.device_grants_title()}</span>
 
-  {#if einzelne.length === 0}
-    <p class="text-text-muted text-xs">{m.device_grants_empty()}</p>
-  {:else}
-    <ul class="flex flex-col gap-1.5">
-      {#each einzelne as grant (grant.id)}
-        <li class="border-border/60 flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5">
-          <div class="flex min-w-0 flex-col">
-            <span class="text-text-bright truncate text-sm">
-              {zeilenName(grant)}
-              {#if grant.subject_type === 'role'}
-                <span class="text-text-muted text-xs">· {m.device_grants_role_suffix()}</span>
-              {/if}
-            </span>
-            <span class="text-text-muted text-xs">{geltungText(grant)}</span>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            class="size-6 shrink-0"
-            onclick={() => entfernen(grant)}
-            data-testid="device-grant-remove"
-            aria-label={m.device_grants_remove_aria()}
-          >
-            <XIcon class="size-3.5" />
-          </Button>
-        </li>
-      {/each}
-    </ul>
+  {#if liste.length === 0}
+    <p class="text-text-muted text-xs" data-testid="device-grants-empty">{m.device_grants_empty()}</p>
+  {:else if einzelne.length > 0}
+    <DeviceFreigabeZeilen
+      eintraege={einzelne}
+      name={zeilenName}
+      geltung={geltungText}
+      {wirkt}
+      onEntfernen={entfernen}
+    />
+    {#if unwirksam}
+      <p class="flex items-start gap-1.5 text-xs text-amber-500" data-testid="device-grants-unwirksam">
+        <TriangleAlertIcon class="mt-0.5 size-3.5 shrink-0" />
+        {m.device_grants_wirkt_nicht()}
+      </p>
+    {/if}
   {/if}
 
   <div class="flex items-center gap-2">
@@ -235,15 +232,15 @@
 
   <div class="flex items-center justify-between gap-3 pt-1">
     <div class="flex min-w-0 flex-col">
-      <span class="text-text-bright text-sm">{m.device_grants_everyone_label()}</span>
+      <span class="text-text-bright text-sm">{m.device_grants_everyone_label({ kanal: kanalName })}</span>
       <span class="text-text-muted text-xs">
-        {jederGrant ? geltungText(jederGrant) : m.device_grants_everyone_hint()}
+        {m.device_grants_everyone_hint()}{jederGrant ? ` · ${geltungText(jederGrant)}` : ''}
       </span>
     </div>
     <Switch
       checked={jederGrant !== null}
       onCheckedChange={jederSetzen}
-      aria-label={m.device_grants_everyone_label()}
+      aria-label={m.device_grants_everyone_label({ kanal: kanalName })}
       data-testid="device-grant-everyone"
     />
   </div>

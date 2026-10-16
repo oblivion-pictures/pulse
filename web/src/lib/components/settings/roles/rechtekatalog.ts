@@ -100,6 +100,10 @@ export function rechtekatalog(): Rechtebereich[] {
       // „Mikrofon stummschalten" und „Kamerabild senden" zu stellen wuerde
       // seine Tragweite verwischen. Der Gesteuerte stimmt jeder Sitzung
       // zusaetzlich zu; dieses Bit ist die Vorabhuerde, nicht die Erlaubnis.
+      // Seit 2026-10-16 gilt es nur noch fuer streamende Personen: einen
+      // Remote-Rechner steuert, wen die Freigabeliste seines Besitzers deckt
+      // (`docs/standplatz-geraete.md`) — der Kurztext sagt das ausdruecklich,
+      // derselbe Wortlaut wie im Kanal-Editor (`kanalrechte.ts`).
       titel: m.rechte_bereich_fernsteuerung(),
       zeilen: [
         z(Perm.REMOTE_CONTROL, m.rechte_label_remote_control(), m.rechte_kurz_remote_control(), 'weitreichend')

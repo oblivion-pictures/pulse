@@ -7,12 +7,12 @@
   import { userCache } from '$lib/stores/users.svelte';
   import { safeAvatarUrl } from '$lib/avatar';
   import { nameColor, nameStyle, avatarFallbackStyle } from '$lib/utils/nameColor';
-  import { streamPresence } from '$lib/stores/streamPresence.svelte';
   import { voicePresence, istGastKennung } from '$lib/stores/voicePresence.svelte';
   import { watchPartyPresence } from '$lib/stores/watchPartyPresence.svelte';
   import { voice } from '$lib/voice/livekit.svelte';
   import { openedTiles } from '$lib/stream/openedTiles.svelte';
   import { chooseHqForUser } from '$lib/stream/hqTile';
+  import { sichtbareStroeme } from '$lib/devices/darstellung';
   import { watchPartyPicker, openPartyTile } from '$lib/watch/openParty.svelte';
   import UserProfilePopover from './UserProfilePopover.svelte';
   import { startUserDrag } from '$lib/voice/userDrag';
@@ -78,9 +78,10 @@
   // Activity flags — drive the LIVE/PARTY/CAM badges. HQ + screen-share are
   // both server-tracked; cam is local-only (we only know about cameras whose
   // LiveKit track we've subscribed to in the connected channel).
-  let isHqStreaming = $derived(
-    !!p.userId && streamPresence.streamersIn(channelId).includes(p.userId)
-  );
+  // Ohne die Ströme seiner Remote-Rechner, denen der Betrachter gerade nicht
+  // zusehen darf (`devices/zugang.ts`) — sonst leuchtete LIVE an einem Besitzer,
+  // dessen Rechner nur geweckt ist, und der Klick öffnete nichts.
+  let isHqStreaming = $derived(!!p.userId && sichtbareStroeme(channelId, p.userId).length > 0);
   let isScreenSharing = $derived(
     !!p.userId && voicePresence.streamingIn(channelId).includes(p.userId)
   );

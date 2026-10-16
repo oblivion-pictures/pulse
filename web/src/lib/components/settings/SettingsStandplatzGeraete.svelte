@@ -13,6 +13,12 @@
   ist damit der einzige Ort, den man für diese Geräte braucht. Der eigene
   Rechner ist markiert statt doppelt aufgeführt.
 
+  **Je Gerät auch seine Freigabeliste** (seit 2026-10-16): seit die Liste
+  allein entscheidet, wer einen Rechner wecken und steuern darf, muss der
+  Besitzer sie für JEDEN seiner Rechner pflegen können — nicht nur für den,
+  an dem er gerade sitzt (`SettingsStandplatzRechner`). Beim eigenen Rechner
+  steht sie damit zweimal im Panel; beide lesen denselben Speicher.
+
   **Läuft über alle geladenen Communitys** (`deviceStore.eigene`), lädt sie
   aber selbst nach: ohne den Effect unten wüsste der Store nur von der
   Community, in der man gerade eine Kanalliste geöffnet hatte.
@@ -21,12 +27,13 @@
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
   import { deviceStore } from '$lib/devices/store.svelte';
   import { geraeteAnmeldung } from '$lib/devices/anmeldung.svelte';
-  import { punktKlasse } from '$lib/devices/darstellung';
+  import { punktKlasse, zeileFuer } from '$lib/devices/darstellung';
   import { geraetOrtText } from '$lib/devices/ort';
   import { guilds } from '$lib/stores/guilds.svelte';
   import { activeServer } from '$lib/stores/active-server.svelte';
   import { currentServerUserId } from '$lib/stores/currentServerUser';
   import DeviceVerwaltung from '$lib/devices/components/DeviceVerwaltung.svelte';
+  import DeviceFreigaben from '$lib/devices/components/DeviceFreigaben.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
   $effect(() => {
@@ -70,7 +77,7 @@
                 {/if}
               </span>
               <span class="text-text-muted flex min-w-0 items-center gap-1.5 truncate text-xs">
-                <span class="size-2 shrink-0 rounded-full {punktKlasse(d.state)}" aria-hidden="true"></span>
+                <span class="size-2 shrink-0 rounded-full {punktKlasse(zeileFuer(d).punkt)}" aria-hidden="true"></span>
                 {geraetOrtText(d)}
               </span>
             </span>
@@ -81,6 +88,9 @@
           {#if offenId === d.id}
             <div class="border-border/60 mt-1 border-t pt-2 pl-1">
               <DeviceVerwaltung device={d} />
+              <div class="border-border/60 mt-3 border-t pt-3">
+                <DeviceFreigaben device={d} eingebettet />
+              </div>
             </div>
           {/if}
         </li>

@@ -30,6 +30,19 @@
   bloss zuschauen wollte, eine Fernsteuer-Anfrage aus — womöglich während schon
   jemand steuert.
 
+  **Wer nicht freigegeben ist, kommt nicht hinein** (seit 2026-10-16): die
+  Zeile ist dann gesperrt (`aria-disabled`, Tooltip „Nicht für dich
+  freigegeben"), und der Punkt eines wachen Geräts ist neutral statt grün —
+  Grün hiesse „kannst du übernehmen". Bewusst `aria-disabled` statt
+  `disabled`: ein abgeschalteter Knopf schluckt auch die Klicks seiner Kinder,
+  und LIVE muss klickbar bleiben, solange jemand steuert. Die Regel für
+  Klick, Punkt und LIVE steht in `zugang.ts::zeilenZustand`.
+
+  **LIVE nur, solange jemand steuert** (für den Besitzer immer): ein bloss
+  geweckter Rechner zeigt seinen unbewachten Desktop niemandem, und der
+  Server gäbe dafür ohnehin kein Zuschauer-Token heraus. Der Klick öffnet nur
+  die Plätze DIESES Geräts (`stream_slots`), nicht jeden Strom des Besitzers.
+
   **Warum LIVE hier hängt und nicht beim Besitzer:** der Strom läuft technisch
   unter dessen Konto, aber gesendet hat der Rechner. Beim Besitzer stand das
   Abzeichen an einem Menschen, der im Kanal gar nicht anwesend sein muss — und
@@ -40,10 +53,11 @@
 <script lang="ts">
   import MonitorIcon from '@lucide/svelte/icons/monitor';
   import { deviceStore } from '$lib/devices/store.svelte';
-  import { geraetSendet, punktKlasse, zustandsText } from '$lib/devices/darstellung';
+  import { punktKlasse, zeileFuer, zustandsText } from '$lib/devices/darstellung';
   import { startGeraetZug } from '$lib/devices/geraetZug';
   import { currentServerUserId } from '$lib/stores/currentServerUser';
   import type { Device } from '$lib/api/devices';
+  import { m } from '$lib/paraglide/messages.js';
 
   let {
     guildId,
@@ -57,7 +71,7 @@
     channelId: string;
     activeDeviceId?: string | null;
     onSelect: (device: Device) => void;
-    /** Klick auf LIVE: nur zusehen. */
+    /** Klick auf LIVE: nur zusehen — nur die Plätze dieses Geräts. */
     onWatch: (device: Device) => void;
     /** Der Zug ist vorbei (abgelegt oder abgebrochen). Die Kanalliste räumt
      *  damit ihre Hervorhebung weg — die Zielzeile gehört ihr, nicht uns. */
@@ -75,9 +89,9 @@
   const geraete = $derived(deviceStore.forGuild(guildId).filter((d) => d.channel_id === channelId));
 
   // Überträgt dieses Gerät gerade? Die Bedingung liegt in `darstellung.ts`
-  // direkt neben ihrem Gegenstück für die Menschen-Zeile — die beiden müssen
-  // sich ergänzen, und getrennt gepflegt sind sie schon einmal auseinander-
-  // gelaufen (Doppel-Abzeichen, 2026-08-18).
+  // (`geraetSendet`, über `zeileFuer`) direkt neben ihrem Gegenstück für die
+  // Menschen-Zeile — die beiden müssen sich ergänzen, und getrennt gepflegt
+  // sind sie schon einmal auseinandergelaufen (Doppel-Abzeichen, 2026-08-18).
 
   // Die Kennung auf DIESEM Server, nicht die des Kontos: `owner_user_id` ist
   // serverlokal, und auf einem Self-Host ist die Cloud-Kennung eine andere —
@@ -86,19 +100,24 @@
 </script>
 
 {#each geraete as d (d.id)}
-  {@const live = geraetSendet(d, channelId)}
+  {@const zeile = zeileFuer(d)}
+  {@const live = zeile.live}
   {@const meins = d.owner_user_id === meine}
   <div class="ml-4 flex flex-col" data-testid="device-channel-rows" data-channel-id={channelId}>
     <button
       class="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left
-        hover:bg-bg-hover data-[active=true]:bg-bg-hover"
+        data-[active=true]:bg-bg-hover {zeile.klickbar ? 'hover:bg-bg-hover' : 'cursor-default opacity-70'}"
       data-active={activeDeviceId === d.id}
-      onclick={() => onSelect(d)}
+      aria-disabled={!zeile.klickbar}
+      data-gesperrt={!zeile.klickbar}
+      onclick={() => {
+        if (zeile.klickbar) onSelect(d);
+      }}
       draggable={meins}
       ondragstart={(e) => startGeraetZug(e, d.id)}
       ondragend={onDragEnd}
       data-testid={`device-${d.id}`}
-      title={zustandsText(d.state)}
+      title={zeile.klickbar ? zustandsText(zeile.punkt) : m.device_row_not_granted()}
     >
       <!-- Eckig, nicht rund: das ist der Unterschied, der vor dem Lesen wirkt. -->
       <span
@@ -131,7 +150,7 @@
         >
       {:else}
         <span
-          class="ml-auto size-2 shrink-0 rounded-full {punktKlasse(d.state)}"
+          class="ml-auto size-2 shrink-0 rounded-full {punktKlasse(zeile.punkt)}"
           aria-hidden="true"
         ></span>
       {/if}

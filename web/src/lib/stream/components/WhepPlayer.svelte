@@ -30,7 +30,7 @@
   import RemoteRequestButton from '$lib/remote/components/RemoteRequestButton.svelte';
 	import { isElectron, isLinux } from '$lib/platform/runtime';
   import { remoteSession } from '$lib/remote/session.svelte';
-  import { darfFernsteuern } from '$lib/remote/darfSteuern';
+  import { anfragbarAmStrom } from '$lib/remote/darfSteuern';
   import { detachedStreams } from '../detach.svelte';
   import { openedTiles } from '../openedTiles.svelte';
   import { hqTileId } from '../hqTile';
@@ -166,15 +166,16 @@
   // **Von hier und nicht aus dem Fenster-Store**: die Antwort braucht drei
   // Dinge, die genau hier zusammenkommen — ob der Streamer überhaupt
   // fernsteuerbar ist (aus der WHEP-Antwort), ob dieser Zuschauer darf
-  // (Rechte im Kanal), und ob gerade schon eine Sitzung läuft. Das Fenster
-  // rechnet daraus NICHTS: es zeigt den Knopf oder nicht.
+  // (Rechte im Kanal; am Strom eines Remote-Rechners nie, s. `darfSteuern.ts`),
+  // und ob gerade schon eine Sitzung läuft. Das Fenster rechnet daraus NICHTS:
+  // es zeigt den Knopf oder nicht.
   $effect(() => {
     const fenster = native.session?.fensterSitzung;
     if (typeof fenster !== 'number') return;
     const moeglich =
       fernsteuerbarGesehen &&
       remoteSession.phase === 'idle' &&
-      darfFernsteuern(channelId, userId);
+      anfragbarAmStrom(channelId, userId, streamSlot);
     void window.pulse?.player?.anfragbar?.(fenster, moeglich);
   });
 

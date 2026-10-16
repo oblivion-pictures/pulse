@@ -38,7 +38,7 @@ import { remoteZeigerform } from './zeigerform';
 import * as geraet from './geraeteanbindung';
 import { fensterZurSitzung } from './fenster';
 import { fremdeSitzungBeenden, herkunftsVerbindung, sendenAuf } from './draht';
-import { KEINE_ANTWORT, remoteErrorMessage } from './fehlertexte';
+import { keineAntwort, remoteErrorMessage } from './fehlertexte';
 import { WachtSchalter, anfrageFrist, fehlerWacht, verbindungsWachtMitGnadenfrist } from './wachten';
 import { nachReclaimBehaupten } from './wiederaufnahme';
 import { VerworfeneAnfragen } from './verworfeneAnfragen';
@@ -67,21 +67,6 @@ class RemoteSessionStore {
   /** Gegenüber: beim Controller der Host, beim Host der Controller. */
   peerUserId = $state<string | null>(null);
   channelId = $state<string | null>(null);
-  /**
-   * Der Server, auf dem DIESE Sitzung läuft — festgehalten, nicht nachgefragt.
-   *
-   * Wer ihn später braucht (der Zustimmungsdialog beim Merken einer
-   * Dauerfreigabe), darf nicht `dispatchenderServer()` rufen: das ist ein
-   * Modul-Global, das JEDER hereinkommende Rahmen umsetzt und das nie
-   * zurückgesetzt wird. Im Dispatch stimmt es, im Klick-Handler Sekunden später
-   * zeigt es auf die zuletzt zustellende Verbindung — nach einem
-   * `presence_update` etwa auf die Cloud-Hintergrundverbindung. Gespeichert
-   * wurde dann `{serverId: <Cloud>, userId: <Self-Host-Kennung>}`: entweder
-   * wirkungslos oder auf dem anderen Server einem ANDEREN Menschen zugeordnet
-   * — genau das, wogegen `Freigegebener.serverId` gebaut wurde (Bughunt
-   * 2026-08-16). Gesetzt in [`#setConn`], wie `#conn` selbst.
-   */
-  serverId = $state<string | null>(null);
   /** Der Stream, an dem die Anfrage gestellt wurde. Nur beim Steuernden. */
   targetSlot = $state(0);
   /** Zuletzt bedienter Platz. Beim Nachziehen nach einem Vorrang zählt der
@@ -95,7 +80,7 @@ class RemoteSessionStore {
    * vor dem Mount des Toasts entsteht, noch ankommt.
    */
   error = $state<string | null>(null);
-  /** Hat die Dauerfreigabe des Geräts geantwortet? Folgen: `geraeteanbindung.ts`. */
+  /** Hat das Gerät selbst angenommen (ohne Dialog, seit 2026-10-16 bei jedem Gerät)? Folgen: `geraeteanbindung.ts`. */
   selbsttaetig = $state(false);
   /**
    * **P2P-Wunsch dieser Sitzung** — das Bild geht direkt zum Steuernden, nicht
@@ -512,7 +497,7 @@ class RemoteSessionStore {
     // Anfrage an jemand anderen nicht abräumen. Seit `remote_pending` kennt der
     // Steuernde sie auch im Wartezustand — deshalb kein `null`-Sonderweg mehr.
     if (this.sessionId === null || sessionId !== this.sessionId) return;
-    if (this.phase === 'requesting' && reason === 'timeout') this.error = KEINE_ANTWORT;
+    if (this.phase === 'requesting' && reason === 'timeout') this.error = keineAntwort();
     this.#reset();
   }
 
@@ -545,7 +530,6 @@ class RemoteSessionStore {
    *  mehr an. */
   #setConn(conn: GatewayConnection | null): void {
     this.#conn = conn;
-    this.serverId = conn?.serverId ?? null;
     setRemoteSessionConnection(conn);
   }
 
@@ -626,7 +610,7 @@ class RemoteSessionStore {
 
   /** Frist für eine unbeantwortete Anfrage (s. [`ANFRAGE_FRIST_MS`]) — beide
    *  Seiten, je mit ihrer Meldung. */
-  #watchFrist(meldung = KEINE_ANTWORT): void {
+  #watchFrist(meldung = keineAntwort()): void {
     this.#frist.an(() =>
       anfrageFrist(ANFRAGE_FRIST_MS, () => {
         if (this.phase !== 'requesting' && this.phase !== 'incoming') return;

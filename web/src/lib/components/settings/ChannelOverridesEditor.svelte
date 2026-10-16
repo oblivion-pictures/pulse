@@ -47,9 +47,16 @@
     channelId,
     guildId,
     kanalName,
-    editorPermissions
-  }: { channelId: string; guildId: string; kanalName: string; editorPermissions: string } =
-    $props();
+    editorPermissions,
+    sprachkanal = true
+  }: {
+    channelId: string;
+    guildId: string;
+    kanalName: string;
+    editorPermissions: string;
+    /** Ohne Sprachkanal fällt „Fernsteuerung anfragen" weg (`kanalrechte.ts`). */
+    sprachkanal?: boolean;
+  } = $props();
 
   const entwurf = new KanalEntwurf(() => channelId);
 
@@ -58,7 +65,7 @@
   let ausgewaehlt = $state<string | null>(null);
   let loescht = $state(false);
 
-  let rechte = $derived(kanalrechte());
+  let rechte = $derived(kanalrechte({ sprachkanal }));
   let perms = $derived(rechte.map((r) => r.perm));
   let alleRollen = $derived(rollenStore.byGuild[guildId] ?? []);
   let overwrites = $derived(channelPermissions.byChannel[channelId] ?? []);

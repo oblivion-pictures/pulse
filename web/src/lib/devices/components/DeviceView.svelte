@@ -19,16 +19,23 @@
   wecken → warten, bis das Bild da ist → eigenes Player-Fenster → Fernsteuerung
   anfordern. Die Reihenfolge bleibt getrennt (die Anfrage geht erst nach dem
   Bild hinaus, s. `schirme.svelte.ts::uebernehmen`), aber sie kostet keinen
-  zweiten Klick mehr: bei einem Standplatz-Gerät ist die Zustimmung als
-  Dauerfreigabe längst erteilt, ein „Fernsteuerung anfragen" fragte also etwas
-  bereits Beantwortetes. Der Knopf an der Kachel bleibt als „Beenden" und als
-  Rückweg, wenn die Anfrage doch einmal ins Leere lief.
+  zweiten Klick mehr: wer den Knopf sieht, steht auf der Freigabeliste des
+  Besitzers, und das Gerät zeigt seit 2026-10-16 keinen Dialog mehr — ein
+  „Fernsteuerung anfragen" fragte also etwas bereits Beantwortetes. Der Knopf
+  an der Kachel bleibt als „Beenden", solange eine Sitzung läuft.
+
+  **Ohne Freigabe** (`Device.steuerbar`, vom Server je Betrachter) gibt es
+  weder Übernehmen noch eine Bildschirmliste, nur den Grund und den Hinweis,
+  wie man zusehen kann: über LIVE in der Kanalliste, sobald jemand steuert.
+  Die Kanalliste lässt so jemanden gar nicht erst hinein; hierher kommt er nur
+  über einen Link.
 -->
 <script lang="ts">
   import MonitorIcon from '@lucide/svelte/icons/monitor';
   import PlayIcon from '@lucide/svelte/icons/play';
   import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
   import WaypointsIcon from '@lucide/svelte/icons/waypoints';
+  import LockIcon from '@lucide/svelte/icons/lock';
   import { Button } from '$lib/components/ui/button/index.js';
   import type { Device } from '$lib/api/devices';
   import { schirmWarten, schirmeVon, direktUebernehmen } from '$lib/devices/schirme.svelte';
@@ -36,7 +43,7 @@
   import { gegenstelle } from '$lib/remote/gegenstelle';
   import { userCache } from '$lib/stores/users.svelte';
   import { currentServerUserId } from '$lib/stores/currentServerUser';
-  import { darfFernsteuern } from '$lib/remote/darfSteuern';
+  import { darfGeraetSteuern, darfGeraetZusehen } from '$lib/devices/zugang';
   import { m } from '$lib/paraglide/messages.js';
 
   // Kein `darfVerwalten` mehr (2026-08-26): es trug allein die Verwaltungskarte,
@@ -72,21 +79,22 @@
   // Rechner übertrug. Verglichen wird gegen die Kennung auf DIESEM Server, denn
   // `owner_user_id` ist eine serverlokale (auf einem Self-Host ist die
   // Cloud-Kennung eine andere).
-  const eigenes = $derived(currentServerUserId() === device.owner_user_id);
-  // Und ohne `REMOTE_CONTROL` ebenfalls kein Weckruf: die Anfrage danach spränge
-  // still zurück, der Rechner bliebe aber wach und übertrüge — genau die Lage,
-  // gegen die es die Nachlauf-Wache in `wecken.ts` braucht. Zweimal geprüft ist
-  // hier billiger als einmal zu spät.
-  const steuerbar = $derived(darfFernsteuern(device.channel_id, device.owner_user_id));
+  const ich = $derived(currentServerUserId());
+  const eigenes = $derived(ich === device.owner_user_id);
+  // Ohne Freigabe kein Weckruf (seit 2026-10-16 die Freigabeliste, vorher
+  // `REMOTE_CONTROL`): der Server lehnt ihn mit 4062 ab. Die Prüfung hier
+  // bietet den Weg nur gar nicht erst an.
+  const steuerbar = $derived(darfGeraetSteuern(device, ich));
   /**
-   * Für DIESEN Betrachter bleibt nur Zusehen.
+   * Für DIESEN Betrachter bleibt höchstens Zusehen.
    *
-   * Drei verschiedene Gründe, eine Folge: der eigene Rechner (man kann sein
-   * eigenes Konto nicht fernsteuern), kein `REMOTE_CONTROL`, oder ein anderer
-   * steuert bereits. In allen dreien darf das Bild trotzdem offenstehen — es
-   * liegt ohnehin für jeden im Kanal.
+   * Drei verschiedene Gründe: der eigene Rechner (man kann sein eigenes Konto
+   * nicht fernsteuern), keine Freigabe, oder ein anderer steuert bereits.
+   * Zusehen selbst hat eigene Regeln (`zugang.ts::darfGeraetZusehen`): der
+   * Besitzer immer, alle anderen nur, solange jemand steuert.
    */
   const nurZusehen = $derived(eigenes || !steuerbar || device.state === 'busy');
+  const zusehbar = $derived(darfGeraetZusehen(device, ich));
 
   // Sobald das erwartete Bild da ist: Fenster öffnen und hinwechseln. Die
   // Entscheidung selbst liegt im gemeinsamen Modul — sie muss auch dann
@@ -144,14 +152,12 @@
     </p>
   {/if}
 
-  <!-- **Zusehen ist der leisere der beiden Wege** und hat eigene Regeln: es
-       braucht nur das Recht, den Kanal zu sehen. Deshalb steht die Liste der
-       LAUFENDEN Bildschirme hier oben, vor allen Fällen, in denen Übernehmen
-       ausfällt — beim eigenen Gerät (man sitzt davor, will es aber vom Laptop
-       aus im Blick haben), ohne `REMOTE_CONTROL`, und während ein anderer
-       steuert. Bis 2026-08-16 zeigte die Ansicht in genau diesen drei Fällen
-       gar nichts, obwohl das Bild im Kanal für jeden offen lag. -->
-  {#if nurZusehen && laeuft}
+  <!-- **Zusehen ist der leisere der beiden Wege** und hat eigene Regeln:
+       der Besitzer immer (man sitzt davor, will es aber vom Laptop aus im
+       Blick haben), alle anderen mit Sicht auf den Kanal nur, solange jemand
+       steuert (seit 2026-10-16 — vorher genügte die Sicht allein, und ein
+       bloss geweckter Rechner zeigte jedem seinen unbewachten Desktop). -->
+  {#if nurZusehen && zusehbar && laeuft}
     <DeviceScreenList {device} {schirme} modus="watch" />
   {/if}
 
@@ -161,9 +167,13 @@
     <!-- Der eigene Rechner: kein Knopf. Absichtlich ohne Meldung — „dir fehlt
          das Recht" wäre gelogen, und dass man vor dem Ding sitzt, sieht man. -->
   {:else if !steuerbar}
-    <p class="text-text-muted max-w-sm text-center text-sm" data-testid="device-view-denied">
-      {m.device_view_no_permission()}
-    </p>
+    <div class="flex max-w-sm flex-col items-center gap-2 text-center" data-testid="device-view-denied">
+      <p class="text-text-base flex items-center gap-1.5 text-sm">
+        <LockIcon class="size-4 shrink-0" />
+        {m.device_view_no_permission()}
+      </p>
+      <p class="text-text-muted text-xs">{m.device_view_watch_hint()}</p>
+    </div>
   {:else if !laeuft}
     <!-- Noch nichts läuft: ein Knopf, und der holt den Bildschirm, den das
          Gerät selbst dafür vorsieht — deshalb `ausdruecklich: false`. -->
@@ -218,8 +228,8 @@
     <p class="text-sm text-red-500" data-testid="device-view-error">{fehler}</p>
   {/if}
 
-  <!-- Die Karten „Verwalten" (Name, Community, Kanal, Entfernen) und „Wer
-       ohne Rückfrage übernehmen darf" stehen hier seit dem 2026-09-09 NICHT
+  <!-- Die Karten „Verwalten" (Name, Community, Kanal, Entfernen) und die
+       Freigabeliste stehen hier seit dem 2026-09-09 NICHT
        mehr — sie sind in das Standplatz-Panel gewandert
        (`StandplatzRailButton`: „Eintragung ändern", die Zeilen unter „Meine
        Remote-Rechner" und die Freigaben unter dem Schalter), damit es EINEN

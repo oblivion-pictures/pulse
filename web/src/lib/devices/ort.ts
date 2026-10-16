@@ -9,7 +9,7 @@
  */
 import type { Device } from '$lib/api/devices';
 import { guilds } from '$lib/stores/guilds.svelte';
-import { zustandsText } from '$lib/devices/darstellung';
+import { zeileFuer, zustandsText } from '$lib/devices/darstellung';
 import { m } from '$lib/paraglide/messages.js';
 
 export function geraetOrtText(device: Device): string {
@@ -17,5 +17,5 @@ export function geraetOrtText(device: Device): string {
   const channel =
     (guilds.channelsByGuild[device.guild_id] ?? []).find((c) => c.id === device.channel_id)?.name ??
     device.channel_id;
-  return m.device_settings_my_devices_meta({ guild, channel, state: zustandsText(device.state) });
+  return m.device_settings_my_devices_meta({ guild, channel, state: zustandsText(zeileFuer(device).punkt) });
 }

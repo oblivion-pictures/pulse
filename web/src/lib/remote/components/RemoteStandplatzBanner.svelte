@@ -28,6 +28,10 @@
   import { geraeteAnmeldung } from '$lib/devices/anmeldung.svelte';
   import { freigaben } from '$lib/devices/freigaben.svelte';
   import { freigabenUmfang } from '$lib/devices/freigabenUmfang';
+  import { restzeit } from '$lib/devices/restzeit';
+  import { restText } from '$lib/devices/restanzeige';
+  import { deviceStore } from '$lib/devices/store.svelte';
+  import { guilds } from '$lib/stores/guilds.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
   const desktop = isElectron();
@@ -40,9 +44,47 @@
   $effect(() => {
     if (eintragung) void freigaben.laden(eintragung.guildId, eintragung.deviceId);
   });
+  // Halbminütlich: Chromium drosselt Zeitgeber in verdeckten Fenstern.
+  let jetzt = $state(Date.now());
+  $effect(() => {
+    const t = setInterval(() => (jetzt = Date.now()), 30_000);
+    return () => clearInterval(t);
+  });
+  // Abgelaufene Freigaben zählen nicht (`freigabenUmfang.ts`).
   const umfang = $derived(
-    freigabenUmfang(eintragung ? freigaben.fuer(eintragung.deviceId) : []),
+    freigabenUmfang(eintragung ? freigaben.fuer(eintragung.deviceId) : [], jetzt),
   );
+  const kanalName = $derived.by(() => {
+    if (!eintragung) return '…';
+    const d = deviceStore.byId(eintragung.guildId, eintragung.deviceId);
+    const c = (guilds.channelsByGuild[eintragung.guildId] ?? []).find((k) => k.id === d?.channel_id);
+    return c?.name ?? '…';
+  });
+  const umfangText = $derived(
+    umfang.jeder
+      ? m.standplatz_banner_scope_everyone({ kanal: kanalName })
+      : umfang.anzahl === 0
+        ? m.standplatz_banner_scope_none()
+        : umfang.anzahl === 1
+          ? m.standplatz_banner_scope_users_one()
+          : m.standplatz_banner_scope_users({ count: umfang.anzahl }),
+  );
+  /**
+   * Wie lange noch jemand steuern kann: das Ende der letzten gültigen
+   * Freigabe — und früher, falls ein alter, befristeter Stand des lokalen
+   * Schalters vorher abläuft. Bis 2026-10-16 stand hier allein der Schalter,
+   * der seit 2026-09-09 immer dauerhaft gesetzt wird: „ohne Ablauf", während
+   * die einzige Freigabe in einer Stunde endete.
+   */
+  const ablaufText = $derived.by(() => {
+    const lokal = standplatz.aktiv ? standplatz.gueltigBis : null;
+    let ende = umfang.ende;
+    if (ende !== null && lokal !== null) ende = ende === 'dauerhaft' ? lokal : Math.min(ende, lokal);
+    if (ende === null) return null;
+    if (ende === 'dauerhaft') return m.standplatz_banner_permanent();
+    const rest = restzeit(new Date(ende).toISOString(), jetzt);
+    return rest === null ? m.standplatz_banner_permanent() : rest === 'abgelaufen' ? null : restText(rest);
+  });
 
   /**
    * **Der lokale Notaus — sticht immer.** (Entscheidung zu Prüfbefund W-1,
@@ -51,7 +93,9 @@
    * ruflich und ohne Rückfrage, und mit derselben Beschriftung wie der Knopf
    * in den Einstellungen, der genau das NICHT tut. Der Hauptschalter darf
    * keine kontoweiten Daten vernichten; wer die Liste ändern will, tut das in
-   * der Freigabe-Oberfläche.
+   * der Freigabe-Oberfläche. Seit 2026-10-16 heisst der Knopf „Steuern
+   * ausschalten" — er legt den Notaus um (`remote/notausRegel.ts`), die Liste
+   * bleibt.
    */
   /**
    * Überträgt dieser Rechner gerade, weil ihn jemand geweckt hat?
@@ -75,7 +119,6 @@
 </script>
 
 {#if show}
-  {@const restStunden = standplatz.restStunden()}
   <div
     class="border-border bg-bg-input/90 fixed left-1/2 top-3 z-[55] flex -translate-x-1/2
       items-center gap-3 rounded-xl border px-4 py-2 shadow-lg backdrop-blur"
@@ -89,15 +132,12 @@
       <span class="text-text-bright block truncate text-sm font-medium">
         {geweckt > 0 ? m.standplatz_banner_streaming() : m.standplatz_banner_title()}
       </span>
-      <span class="text-text-muted block truncate text-xs">
-        {umfang.jeder
-          ? m.standplatz_banner_scope_everyone()
-          : m.standplatz_banner_scope_users({ count: umfang.anzahl })}
-        ·
-        {restStunden === null
-          ? m.standplatz_banner_permanent()
-          : m.standplatz_banner_until_hours({ hours: restStunden })}
-      </span>
+      <!-- Erst nach dem Laden: vorher stünde kurz „Niemand freigegeben". -->
+      {#if eintragung && freigaben.geladen(eintragung.deviceId)}
+        <span class="text-text-muted block truncate text-xs" data-testid="remote-standplatz-banner-umfang">
+          {umfangText}{ablaufText ? ` · ${ablaufText}` : ''}
+        </span>
+      {/if}
     </span>
     {#if geweckt > 0}
       <Button
