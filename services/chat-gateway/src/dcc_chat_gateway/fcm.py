@@ -262,6 +262,7 @@ async def dm_push_senden(
     hat_anhang: bool = False,
     anzahl: int = 1,
     plakette_marke: str | None = None,
+    text: str | None = None,
 ) -> Versand:
     """Inhaltsfreien FCM-Push an die DM-Empfänger ausliefern — SOFORT.
 
@@ -292,7 +293,8 @@ async def dm_push_senden(
     payload = {
         "type": "dm",
         "title": author_name or "Pulse",
-        "body": dm_body(hat_anhang),
+        # ``text`` setzt nur die Warteschlange, für ein Bündel (inhaltsfrei).
+        "body": text or dm_body(hat_anhang),
         "channel_id": str(channel_id),
     }
 

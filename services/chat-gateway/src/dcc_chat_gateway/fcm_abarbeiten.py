@@ -42,6 +42,31 @@ STOERUNG_PAUSE_S = 5.0
 ABBRUCH_FRIST_S = 3.0
 
 
+def _namen(autoren: list[str]) -> str:
+    if len(autoren) == 1:
+        return autoren[0]
+    if len(autoren) <= 3:
+        return f"{', '.join(autoren[:-1])} und {autoren[-1]}"
+    return f"{autoren[0]}, {autoren[1]} und {len(autoren) - 2} weitere"
+
+
+def buendel_mitteilung(offen: list[dict[str, Any]]) -> tuple[str, str | None, bool]:
+    """Titel, Text (``None`` = der übliche Einzeltext) und Anhang-Hinweis für
+    die EINE Mitteilung eines Bündels.
+
+    Eine einzelne Nachricht bleibt, wie sie war. Mehrere werden neutral
+    zusammengefasst (Gegenprüfung P6): vorher trugen Titel und Anhang-Hinweis
+    allein die neueste — schrieb Bob in einer Gruppe ein Foto und Alice 2 s
+    später „ok", stand nur „Alice: Neue Nachricht" da, von Bob und dem Foto
+    nichts. Jetzt nennt der Titel alle Absender und der Text die Zahl; einen
+    Anhang behauptet er nicht, weil „3 neue Nachrichten" nicht sagt, welche
+    ihn trug. Nur Namen und Zahlen — nie Inhalt."""
+    autoren = list(dict.fromkeys(t.get("autor") or "Pulse" for t in offen))
+    if len(offen) == 1:
+        return autoren[0], None, bool(offen[0].get("anhang"))
+    return _namen(autoren), f"{len(offen)} neue Nachrichten", False
+
+
 async def abarbeiten(manager: Any, arbeit: str) -> None:
     """Einen übernommenen Eintrag senden oder verwerfen, danach löschen.
 
@@ -73,19 +98,20 @@ async def abarbeiten(manager: Any, arbeit: str) -> None:
     if not offen:
         await ablage.abschliessen(redis, arbeit)
         return
-    neuester = offen[-1]
+    titel, text, hat_anhang = buendel_mitteilung(offen)
     # Der Versand läuft abgeschirmt: ``asyncio.to_thread`` lässt sich nicht
     # abbrechen, der Push ginge beim Herunterfahren also trotzdem hinaus —
     # und der nächste Prozess sendete ihn ein zweites Mal (Gegenprüfung P5).
     versand_aufgabe = asyncio.ensure_future(
         fcm.dm_push_senden(
             recipient_ids={uid},
-            author_name=neuester.get("autor") or "",
+            author_name=titel,
             channel_id=kanal,
             manager=manager,
-            hat_anhang=bool(neuester.get("anhang")),
+            hat_anhang=hat_anhang,
             anzahl=len(offen),
             plakette_marke=ablage.plakette_marke(arbeit),
+            text=text,
         )
     )
     try:
@@ -167,4 +193,4 @@ async def abarbeiter_loop(manager: Any) -> None:
         await asyncio.gather(*laufend.values(), return_exceptions=True)
 
 
-__all__ = ["GLEICHZEITIG", "abarbeiten", "abarbeiter_loop"]
+__all__ = ["GLEICHZEITIG", "abarbeiten", "abarbeiter_loop", "buendel_mitteilung"]

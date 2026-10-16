@@ -606,3 +606,32 @@ async def test_erledigt_marke_verhindert_zweiten_versand(
     assert sender == []
     assert await _leer(schlange)
     assert not await schlange.exists(ws.erledigt_marke(arbeit))
+
+
+def test_buendel_nennt_alle_absender_und_behauptet_keinen_anhang():
+    """P6: Titel und Anhang-Hinweis kamen allein von der neuesten Nachricht."""
+    bob_foto = {"autor": "Bob", "anhang": True}
+    alice = {"autor": "Alice", "anhang": False}
+    assert ab.buendel_mitteilung([bob_foto]) == ("Bob", None, True)
+    assert ab.buendel_mitteilung([bob_foto, alice]) == (
+        "Bob und Alice", "2 neue Nachrichten", False
+    )
+    assert ab.buendel_mitteilung([alice, alice, alice]) == ("Alice", "3 neue Nachrichten", False)
+    viele = [{"autor": n} for n in ("A", "B", "C", "D", "E")]
+    assert ab.buendel_mitteilung(viele) == ("A, B und 3 weitere", "5 neue Nachrichten", False)
+    assert ab.buendel_mitteilung([{"autor": "A"}, {"autor": "B"}, {"autor": "C"}])[0] == (
+        "A, B und C"
+    )
+
+
+@pytest.mark.asyncio
+async def test_salve_traegt_die_zahl_im_text(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange
+):
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    for _ in range(3):
+        await _senden(client, sz)
+    await _abarbeiten(app.state.connection_manager)
+    [(_t, payload, _b)] = sender
+    assert payload["title"] == f"u{sz['uid_a']}"
+    assert payload["body"] == "3 neue Nachrichten"
