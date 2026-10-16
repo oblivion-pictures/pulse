@@ -88,8 +88,11 @@ def empfangende_geraete(
     unterdrückt DM-Mitteilungen, solange die App vorn ist
     (``MitteilungImVordergrund.swift``) — die Oberfläche meldet die Nachricht
     dort selbst. **Folge, die mitgedacht sein muss:** auch wer gerade am
-    Rechner liest, bekommt den Banner am iPhone, und die Plakette zählt mit
-    (der wache Klient korrigiert sie, ``badgeMelden.ts``).
+    Rechner liest, bekäme den Banner am iPhone. Seit dem 2026-10-17 hält
+    ``fcm_warteschlange.py`` den Push deshalb einige Sekunden zurück und
+    verwirft ihn, wenn die Nachricht in der Zeit nachweislich gelesen wurde
+    (``fcm_gelesen.py``); ohne diesen Beleg kommt der Banner weiter, und die
+    Plakette zählt mit (der wache Klient korrigiert sie, ``badgeMelden.ts``).
 
     Android bleibt beim alten Riegel, bewusst unverändert. Ob dort dieselbe
     Lücke klafft (Doze statt eingefrorener WebView), ist nicht untersucht.
