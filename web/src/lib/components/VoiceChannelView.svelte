@@ -113,7 +113,8 @@ import { errText } from '$lib/utils/errText';
       const me = currentServerUserId();
       // Selbst geschlossene Bildschirme bleiben zu, bis ihr Strom aus der
       // Liste verschwunden ist (`stream/abbestellt.ts`).
-      abbestellt.abgleichen(cid, new Set(tiles.map((t) => hqTileId(t.user_id, t.slot))));
+      const gelistet = new Set(tiles.map((t) => hqTileId(t.user_id, t.slot)));
+      abbestellt.abgleichen(cid, gelistet);
       for (const s of tiles) {
         if (s.user_id === me) continue;
         const id = hqTileId(s.user_id, s.slot);

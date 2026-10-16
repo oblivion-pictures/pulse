@@ -53,7 +53,8 @@ export class Abbestellungen {
   abgleichen(kanal: string, gelistet: ReadonlySet<string>): void {
     const praefix = `${kanal}::`;
     for (const k of [...this.#bis.keys()]) {
-      if (k.startsWith(praefix) && !gelistet.has(k.slice(praefix.length))) this.#bis.delete(k);
+      if (!k.startsWith(praefix)) continue;
+      if (!gelistet.has(k.slice(praefix.length))) this.#bis.delete(k);
     }
   }
 }

@@ -87,8 +87,9 @@ const WARTEN_MS = 25_000;
 function fensterOeffnen(device: Device, slot: number, uebernahme = true): void {
   // Ausdrücklich gewollt — eine Sperre vom Schließen gilt nicht mehr
   // (`stream/abbestellt.ts`).
-  abbestellt.aufheben(device.channel_id, hqTileId(device.owner_user_id, slot));
-  openedTiles.open('hq', device.channel_id, hqTileId(device.owner_user_id, slot));
+  const kachel = hqTileId(device.owner_user_id, slot);
+  abbestellt.aufheben(device.channel_id, kachel);
+  openedTiles.open('hq', device.channel_id, kachel);
   nativeWindowRequests.request(device.channel_id, device.owner_user_id, slot);
   // **Und nach vorne damit** (Bughunt 2026-08-16). Modulkopf und der Vertrag
   // im Player (`overlay/typen.rs`) versprechen beides — „hol sein Fenster nach
