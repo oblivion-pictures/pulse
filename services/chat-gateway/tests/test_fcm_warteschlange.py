@@ -99,19 +99,23 @@ async def _senden(client, sz: dict) -> None:
     assert r.status_code == 200, r.text
 
 
-async def _quittieren(client, sz: dict, bis: int) -> None:
-    """B's Rechner holt ab und quittiert mit dem Zustellstand ``bis``."""
+async def _quittieren(client, sz: dict, bis: int, *, eingerechnet: bool | None = True) -> None:
+    """B's Rechner holt ab und quittiert mit dem Zustellstand ``bis``.
+
+    ``eingerechnet``: ``True`` = die Zustellungen stehen in ``zustellung_ids``
+    (heutiger Klient), ``False`` = leere Liste (nur quittiert, nicht
+    eingerechnet), ``None`` = Feld fehlt (älterer Klient)."""
     abgeholt = (await _abholen(client, token=sz["t_b"], pubkey=sz["pub_b"])).json()
     assert abgeholt
+    stand = {"channel_id": sz["dm"], "absender_user_id": str(sz["uid_a"]), "zugestellt_bis": str(bis)}
+    if eingerechnet is not None:
+        stand["zustellung_ids"] = [z["id"] for z in abgeholt] if eingerechnet else []
     r = await client.post(
         "/postfach/quittung",
         json={
             "device_pubkey": sz["pub_b"],
             "zustellung_ids": [z["id"] for z in abgeholt],
-            "zustellstaende": [
-                {"channel_id": sz["dm"], "absender_user_id": str(sz["uid_a"]),
-                 "zugestellt_bis": str(bis)}
-            ],
+            "zustellstaende": [stand],
         },
         headers=make_auth_header(sz["t_b"]),
     )
@@ -697,5 +701,24 @@ async def test_gruppe_verwirft_nur_bei_aktivem_lesen(
         headers=make_auth_header(t_b),
     )
     assert r.status_code == 204, r.text
+    await _abarbeiten(app.state.connection_manager)
+    assert len(sender) == erwartet
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("eingerechnet", "erwartet"), [(True, 0), (False, 1), (None, 1)])
+async def test_beleg_nur_fuer_eingerechnete_zustellungen(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange,
+    eingerechnet, erwartet,
+):
+    """P3: eine nur quittierte, früher schon abgelegte Zustellung erbte den
+    Stand der anderen Nachrichten ihres Paares — der kann unter ihrer eigenen
+    ID liegen. Beleg nur für die Zustellungen, die der Klient eingerechnet hat;
+    ein älterer Klient ohne Liste bekommt keinen."""
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    await _senden(client, sz)
+    await _quittieren(client, sz, X, eingerechnet=eingerechnet)
+    await _lesestand(client, sz, X)
     await _abarbeiten(app.state.connection_manager)
     assert len(sender) == erwartet

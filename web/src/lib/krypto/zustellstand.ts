@@ -16,6 +16,12 @@ export interface ZustellstandMeldung {
   channel_id: string;
   absender_user_id: string;
   zugestellt_bis: string;
+  /** Die Zustellungen, deren Nachrichten in `zugestellt_bis` eingerechnet
+   *  sind. Nur für sie legt der Server einen Lesebeleg an, gegen den er einen
+   *  zurückgehaltenen Handy-Push verwirft (`fcm_gelesen.py`). Ohne die Liste
+   *  erbte auch eine nur noch quittierte, früher schon abgelegte Zustellung
+   *  den Stand der ANDEREN — und der kann unter ihrer eigenen ID liegen. */
+  zustellung_ids: string[];
 }
 
 interface Abgelegt {
@@ -39,13 +45,17 @@ export function zustellstaendeAus(
     const anker = lesestandAnker(n);
     const schluessel = `${n.channel_id}:${n.author_id}`;
     const bisher = jePaar.get(schluessel);
-    if (!bisher || compareSnowflakeId(anker, bisher.zugestellt_bis) > 0) {
+    if (!bisher) {
       jePaar.set(schluessel, {
         channel_id: n.channel_id,
         absender_user_id: n.author_id,
-        zugestellt_bis: anker
+        zugestellt_bis: anker,
+        zustellung_ids: [n.id]
       });
+      continue;
     }
+    bisher.zustellung_ids.push(n.id);
+    if (compareSnowflakeId(anker, bisher.zugestellt_bis) > 0) bisher.zugestellt_bis = anker;
   }
   return [...jePaar.values()];
 }

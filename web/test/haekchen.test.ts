@@ -127,8 +127,8 @@ test('Zustellstand: je (Kanal, Absender) die jüngste kanonische ID, nur Quittie
   assert.deepEqual(
     meldungen.sort((x, y) => (x.absender_user_id < y.absender_user_id ? -1 : 1)),
     [
-      { channel_id: 'k1', absender_user_id: 'a', zugestellt_bis: SPAET },
-      { channel_id: 'k1', absender_user_id: 'b', zugestellt_bis: ANKER }
+      { channel_id: 'k1', absender_user_id: 'a', zugestellt_bis: SPAET, zustellung_ids: ['z1', 'z2'] },
+      { channel_id: 'k1', absender_user_id: 'b', zugestellt_bis: ANKER, zustellung_ids: ['z3'] }
     ]
   );
 });
@@ -139,5 +139,7 @@ test('Zustellstand: ohne krypto_id gilt die eigene ID (Klartext-Altbestand)', ()
     new Set([FRUEH]),
     null
   );
-  assert.deepEqual(meldungen, [{ channel_id: 'k', absender_user_id: 'a', zugestellt_bis: FRUEH }]);
+  assert.deepEqual(meldungen, [
+    { channel_id: 'k', absender_user_id: 'a', zugestellt_bis: FRUEH, zustellung_ids: [FRUEH] }
+  ]);
 });

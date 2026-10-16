@@ -1700,6 +1700,10 @@ class ZustellstandIn(BaseModel):
     channel_id: SnowflakeId
     absender_user_id: SnowflakeId
     zugestellt_bis: SnowflakeId
+    # Die Zustellungen, die in ``zugestellt_bis`` eingerechnet sind — nur für
+    # sie legt die Quittung einen Lesebeleg an (``fcm_gelesen.py``). Fehlt die
+    # Liste (älterer Klient), entsteht kein Beleg und der Push geht hinaus.
+    zustellung_ids: list[SnowflakeId] | None = Field(default=None, max_length=500)
 
 
 class PostfachQuittungRequest(BaseModel):

@@ -224,19 +224,24 @@ async def postfach_quittung(
     await session.commit()
     manager = getattr(request.app.state, "connection_manager", None)
     # Lesebeleg für zurückgehaltene Handy-Pushes (``fcm_gelesen.py``): jede
-    # gerade gelöschte Zustellung trägt die ID, die der Klient für ihr Paar
-    # gemeldet hat — ihre Nachricht liegt bei oder unter ihr.
+    # gerade gelöschte Zustellung, die der Klient in den Stand ihres Paares
+    # EINGERECHNET hat (``zustellung_ids``) — ihre Nachricht liegt bei oder
+    # unter ihm. Eine nur quittierte, früher schon abgelegte Zustellung zählt
+    # nicht mit (Gegenprüfung P3), ein älterer Klient ohne Liste auch nicht.
     if fcm_warteschlange.zurueckhalten_aktiv():
-        gemeldet = {
-            (z.channel_id, z.absender_user_id): z.zugestellt_bis for z in body.zustellstaende
+        eingerechnet = {
+            zid: (z.channel_id, z.absender_user_id, z.zugestellt_bis)
+            for z in body.zustellstaende
+            for zid in z.zustellung_ids or ()
         }
         await belege_merken(
             getattr(manager, "redis", None),
             {
-                zid: gemeldet[paar_je_zustellung[zid]]
+                zid: eingerechnet[zid][2]
                 for zid, _nutzlast in geloescht
-                if paar_je_zustellung.get(zid) in gemeldet
-                and paar_je_zustellung[zid][1] != user.id
+                if zid in eingerechnet
+                and paar_je_zustellung.get(zid) == eingerechnet[zid][:2]
+                and eingerechnet[zid][1] != user.id
             },
         )
     if manager is not None:
