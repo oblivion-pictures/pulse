@@ -183,6 +183,10 @@ def _build_dm_message(
                     # die Absicht, s. Docstring.
                     badge=badge,
                     category=DM_KATEGORIE,
+                    # Eine Gruppe je Kanal in der Mitteilungszentrale: eine
+                    # Salve aus derselben Unterhaltung stapelt sich, statt den
+                    # Sperrbildschirm mit Einzelkarten zu füllen.
+                    thread_id=payload["channel_id"],
                     custom_data={"interruption-level": "time-sensitive"},
                 )
             ),
@@ -228,8 +232,14 @@ async def fan_out_fcm_dm_push(
     channel_id: int,
     manager: Any | None = None,
     hat_anhang: bool = False,
+    anzahl: int = 1,
 ) -> int:
-    """Inhaltsfreien FCM-Push an die DM-Empfänger ausliefern.
+    """Inhaltsfreien FCM-Push an die DM-Empfänger ausliefern — SOFORT.
+
+    Der Normalweg geht nicht hierher, sondern über die Warteschlange
+    (:func:`dcc_chat_gateway.fcm_warteschlange.vormerken`), die erst nach der
+    Wartezeit hierher ruft. ``anzahl`` ist die Zahl der Nachrichten, für die
+    diese eine Mitteilung steht (gebündelt), und zählt so oft die Plakette hoch.
 
     Wer einen bekommt, entscheidet :func:`empfangende_geraete`: iOS-Geräte
     immer, Android-Geräte nur ohne offene WebSocket des Kontos — wer dort
@@ -277,7 +287,7 @@ async def fan_out_fcm_dm_push(
             badges: dict[int, int | None] = {}
             if redis is not None:
                 for uid in {r.user_id for r in rows}:
-                    badges[uid] = await badgezaehler.erhoehen(redis, uid)
+                    badges[uid] = await badgezaehler.erhoehen(redis, uid, anzahl)
             results = await asyncio.gather(
                 *(
                     asyncio.to_thread(

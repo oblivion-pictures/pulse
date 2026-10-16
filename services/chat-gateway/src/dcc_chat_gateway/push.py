@@ -27,9 +27,9 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dcc_chat_gateway import fcm_warteschlange
 from dcc_chat_gateway.config import get_settings
 from dcc_chat_gateway.models import WebPushSubscription
-from dcc_chat_gateway.fcm import fan_out_fcm_dm_push
 from dcc_chat_gateway.vapid import (
     VapidKeys,
     ensure_vapid,
@@ -388,11 +388,13 @@ async def fan_out_dm_push(
         "icon": None,
     }
     await _fan_out_payload({recipient_id}, payload)
-    await fan_out_fcm_dm_push(
+    # Das Handy-Bein wartet (``fcm_warteschlange.py``); der Web-Push oben nicht.
+    await fcm_warteschlange.vormerken(
         recipient_ids={recipient_id},
         author_name=author_name,
         channel_id=channel_id,
         manager=manager,
+        message_id=message_id,
     )
 
 
@@ -403,6 +405,8 @@ async def fan_out_dm_push_encrypted(
     channel_id: int,
     manager=None,
     hat_anhang: bool = False,
+    art: str = "dm",
+    zustellungen: dict[int, dict[str, list[int]]] | None = None,
 ) -> None:
     """Push eine geschlossene-Browser-Benachrichtigung fuer eine ende-zu-
     ende-verschluesselte DM aus.
@@ -415,7 +419,10 @@ async def fan_out_dm_push_encrypted(
     Katalog: "Neue Direktnachricht"), ``message_id`` bleibt ``null``. Absender
     und Kanal duerfen genannt werden — das tut der Klartext-Weg auch.
 
-    ``manager`` gated das FCM-Bein wie in ``fan_out_dm_push``.
+    ``manager`` gated das FCM-Bein wie in ``fan_out_dm_push``. ``art``
+    (``dm``/``gruppe``) und ``zustellungen`` (je Empfaenger die Zustellungs-IDs
+    je Geraet) braucht die Warteschlange des Handy-Beins fuer die Frage, ob
+    die Nachricht inzwischen woanders gelesen wurde (``fcm_gelesen.py``).
     """
     payload = {
         "type": "dm",
@@ -432,12 +439,14 @@ async def fan_out_dm_push_encrypted(
     # Sperrbildschirm, wo er den Unterschied macht. Der Web-Push oben bleibt
     # wie er war — er erscheint im Browser, wo die App meist ohnehin offen
     # ist, und sein Text weicht seit jeher ab ("Neue Direktnachricht").
-    await fan_out_fcm_dm_push(
+    await fcm_warteschlange.vormerken(
         recipient_ids=recipient_ids,
         author_name=author_name,
         channel_id=channel_id,
         manager=manager,
         hat_anhang=hat_anhang,
+        art=art,
+        zustellungen=zustellungen,
     )
 
 

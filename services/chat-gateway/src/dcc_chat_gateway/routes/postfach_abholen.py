@@ -32,7 +32,9 @@ from fastapi import APIRouter, Request, Response, status
 from sqlalchemy import delete, exists, select
 
 import dcc_chat_gateway.config as chat_config
+from dcc_chat_gateway import fcm_warteschlange
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.fcm_gelesen import belege_merken
 from dcc_chat_gateway.haekchen import zustellstaende_speichern
 from dcc_chat_gateway.models import DmNutzlast, DmZustellung
 from dcc_chat_gateway.schemas import (
@@ -154,22 +156,25 @@ async def postfach_quittung(
     # GRAUER Haken = angekommen): vor dem Löschen die (Kanal, Absender)-Paare
     # der Quittungen einsammeln — nur für diese Paare nimmt die Route unten
     # einen gemeldeten Zustellstand an.
-    absender_kreise = (
-        (
+    # Je Zustellung ihr Paar — auch für die Lesebelege der Push-Warteschlange
+    # unten, die je Zustellung gelten.
+    paar_je_zustellung = {
+        zid: (kanal, absender)
+        for zid, kanal, absender in (
             await session.execute(
-                select(DmNutzlast.channel_id, DmNutzlast.absender_user_id)
+                select(DmZustellung.id, DmNutzlast.channel_id, DmNutzlast.absender_user_id)
                 .join(DmZustellung, DmZustellung.nutzlast_id == DmNutzlast.id)
                 .where(
                     DmZustellung.id.in_(ids),
                     DmZustellung.empfaenger_device_pubkey == geraet,
                     DmZustellung.empfaenger_user_id == user.id,
                 )
-                .distinct()
             )
         ).all()
-    )
+    }
+    absender_kreise = set(paar_je_zustellung.values())
 
-    betroffene_nutzlasten = (
+    geloescht = (
         await session.execute(
             delete(DmZustellung)
             .where(
@@ -177,9 +182,10 @@ async def postfach_quittung(
                 DmZustellung.empfaenger_device_pubkey == geraet,
                 DmZustellung.empfaenger_user_id == user.id,
             )
-            .returning(DmZustellung.nutzlast_id)
+            .returning(DmZustellung.id, DmZustellung.nutzlast_id)
         )
-    ).scalars().all()
+    ).all()
+    betroffene_nutzlasten = [nutzlast_id for _zid, nutzlast_id in geloescht]
 
     # Eine Nutzlast, die niemand mehr abholen kann, ist Muell — bei einer
     # Gruppe faellt sie erst mit der LETZTEN Zustellung. Entschieden wird
@@ -217,6 +223,22 @@ async def postfach_quittung(
     )
     await session.commit()
     manager = getattr(request.app.state, "connection_manager", None)
+    # Lesebeleg für zurückgehaltene Handy-Pushes (``fcm_gelesen.py``): jede
+    # gerade gelöschte Zustellung trägt die ID, die der Klient für ihr Paar
+    # gemeldet hat — ihre Nachricht liegt bei oder unter ihr.
+    if fcm_warteschlange.zurueckhalten_aktiv():
+        gemeldet = {
+            (z.channel_id, z.absender_user_id): z.zugestellt_bis for z in body.zustellstaende
+        }
+        await belege_merken(
+            getattr(manager, "redis", None),
+            {
+                zid: gemeldet[paar_je_zustellung[zid]]
+                for zid, _nutzlast in geloescht
+                if paar_je_zustellung.get(zid) in gemeldet
+                and paar_je_zustellung[zid][1] != user.id
+            },
+        )
     if manager is not None:
         from dcc_shared.events import ZustellungBestaetigtEvent
 

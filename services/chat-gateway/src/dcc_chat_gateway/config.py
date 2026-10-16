@@ -280,6 +280,13 @@ class Settings(BaseSettings):
     # Token-Routen laufen weiter, nur der Versand fällt stillschweigend aus.
     # Siehe ``fcm.ensure_fcm``.
     firebase_service_account_key: str | None = None
+    # DM-Pushes ans Handy (FCM) so lange zurückhalten (Eigentümer-Entscheid
+    # 2026-10-17, Vorbild WhatsApp/Signal): liest der Empfänger die Nachricht
+    # in dieser Zeit nachweislich an einem anderen Gerät, entfällt der Push;
+    # mehrere Nachrichten desselben Kanals im Fenster werden EIN Push.
+    # 0 = sofort wie bisher. Web-Push und Anruf-Pushes (VoIP) sind nie
+    # betroffen. Mechanik und Grenzen: ``fcm_warteschlange.py``.
+    fcm_dm_push_verzoegerung_s: float = 5.0
 
     # ── APNs direkt, nur für VoIP-Pushes (iOS-Liste Punkt 40) ──────────────
     # Jeder andere Push läuft über Firebase. Ein VoIP-Push kann Firebase

@@ -41,6 +41,8 @@ def test_dm_message_encodiert_mit_ios_payload(payload):
     assert d["token"] == "testtoken"
     assert d["android"]["notification"]["channel_id"] == "messages"
     assert d["android"]["data"]["channel_id"] == "100905606516318208"
+    # Eine Gruppe je Kanal in der Mitteilungszentrale (Push-Bündelung 2026-10-17).
+    assert aps["thread-id"] == "100905606516318208"
 
 
 def _kodiere(msg):

@@ -181,6 +181,10 @@ async def postfach_einliefern(
     # Push in Schritt 6 (dedupliziert: mehrere Nutzlasten an denselben
     # Empfaenger loesen nur EINEN Push aus).
     push_empfaenger: set[int] = set()
+    # Je fremdem Empfaenger: Zustellungs-IDs je Geraet. Daran haengt die
+    # Pruefung, ob die Nachricht waehrend der Push-Wartezeit schon an einem
+    # anderen Geraet gelesen wurde (``fcm_gelesen.py``).
+    push_zustellungen: dict[int, dict[str, list[int]]] = {}
     # Alle Konten mit einer Zustellung, den Absender eingeschlossen — fuer
     # den Weckruf je Konto (Schritt 5), nicht fuer den Push.
     weck_konten: set[int] = set()
@@ -333,9 +337,10 @@ async def postfach_einliefern(
         # ist (``postfach_pflege.py``).
         await bezuege_anlegen(session, nutzlast_id=nutzlast_id, anhang_ids=anhang_ids)
         for pubkey, empf_user_id in empfaenger_zeilen:
+            zustellung_id = next_id()
             session.add(
                 DmZustellung(
-                    id=next_id(),
+                    id=zustellung_id,
                     nutzlast_id=nutzlast_id,
                     empfaenger_device_pubkey=pubkey,
                     empfaenger_user_id=empf_user_id,
@@ -348,6 +353,9 @@ async def postfach_einliefern(
             # (``messages.py``/``ws_op_send.py``): nur der jeweils andere.
             if empf_user_id != user.id:
                 push_empfaenger.add(empf_user_id)
+                push_zustellungen.setdefault(empf_user_id, {}).setdefault(pubkey, []).append(
+                    zustellung_id
+                )
             weck_konten.add(empf_user_id)
         gesamt_zustellungen += len(empfaenger_zeilen)
 
@@ -410,6 +418,8 @@ async def postfach_einliefern(
             # Klient oben mitgeschickt und sie sind gegen den Kanal geprüft) —
             # nie, was drin ist. Genau diese Grenze trägt der Mitteilungstext.
             hat_anhang=bool(anhang_ids),
+            art="dm" if zugriff.ist_dm else "gruppe",
+            zustellungen=push_zustellungen,
         )
 
     return PostfachEinliefernResponse(

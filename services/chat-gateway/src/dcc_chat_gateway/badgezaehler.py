@@ -54,15 +54,18 @@ def begrenzen(anzahl: int) -> int:
     return min(anzahl, OBERGRENZE)
 
 
-async def erhoehen(redis: Any, user_id: int) -> int | None:
-    """Um eins hochzählen und den neuen Stand liefern.
+async def erhoehen(redis: Any, user_id: int, um: int = 1) -> int | None:
+    """Um ``um`` (Vorgabe eins) hochzählen und den neuen Stand liefern.
+
+    ``um`` > 1 trägt ein gebündelter Push (``fcm_warteschlange.py``): EINE
+    Mitteilung für mehrere ungelesene Nachrichten, die Plakette zählt jede.
 
     ``None`` heisst „unbekannt" (Redis antwortet nicht) — der Aufrufer lässt
     das ``badge`` im Push dann WEG, statt eine Zahl zu behaupten.
     """
     key = schluessel(user_id)
     try:
-        wert = await redis.incr(key)
+        wert = await redis.incr(key, max(1, um))
         await redis.expire(key, HALTBARKEIT_S)
         return begrenzen(int(wert))
     except Exception:  # noqa: BLE001 — Push ist best-effort, s. Modulkopf
