@@ -352,6 +352,13 @@ impl AudioPipeline {
         self.stream_origin_qpc = origin_qpc;
     }
 
+    /// Fester A/V-Trim in Samples (>0 = Ton später). Die Messzeile im
+    /// Sendeweg zieht ihn ab: er verschiebt den Zeitstempel, nicht die
+    /// Aufnahme (s. `senke_writer::Zeitbezug`).
+    pub fn trim_samples(&self) -> i64 {
+        self.trim_samples
+    }
+
     /// Abtastrate der Tonspur. Der Sendeweg braucht sie als pts-Skala, um die
     /// Paketdauer aus dem PTS-Sprung zu rechnen (s. `senke_writer`).
     pub fn sample_rate(&self) -> u32 {

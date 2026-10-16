@@ -391,6 +391,15 @@ impl FfmpegHwEncoder {
         if let Some(audio) = self.audio.as_mut() {
             audio.set_stream_origin(origin, origin_qpc);
         }
+        // Derselbe Ursprung trägt die Messzeile `[sync]` des Sendewegs. Mit QPC
+        // exakt aus dem Zähler: `origin` liegt um die Rüstzeit nach dem ersten
+        // Bild — für die Differenz Ton−Bild egal, für die Einzelwerte nicht.
+        if let Ausgabe::Extern(w) = &self.ausgabe {
+            w.setze_zeitbezug(super::senke_writer::Zeitbezug {
+                ursprung: origin_qpc.map_or(origin, crate::syncprobe::qpc_als_instant),
+                trim_samples: self.audio.as_ref().map_or(0, AudioPipeline::trim_samples),
+            });
+        }
     }
 
     /// Schickt einen Pool-Frame in den Encoder. `pts` ist die wall-clock-

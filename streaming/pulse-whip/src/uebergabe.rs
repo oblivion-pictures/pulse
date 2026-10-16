@@ -47,6 +47,17 @@ pub fn kennzahlen(werte: &mut [f64]) -> Option<Kennzahlen> {
     Some(Kennzahlen { min: werte[0], p50: rang(0.5), p95: rang(0.95), n })
 }
 
+/// Alter eines Pakets bei der Übergabe in ms: `jetzt` minus Aufnahmezeit
+/// (`ursprung` + `takte` / `takt_hz`). Negativ, wenn der Zeitstempel vor der
+/// Uhr liegt — bei duplizierten Bildern kommt er aus einem Zähler.
+pub fn alter_ms(ursprung: Instant, takte: i64, takt_hz: u32, jetzt: Instant) -> f64 {
+    let seit_ursprung = match jetzt.checked_duration_since(ursprung) {
+        Some(d) => d.as_secs_f64(),
+        None => -ursprung.duration_since(jetzt).as_secs_f64(),
+    };
+    (seit_ursprung - takte as f64 / f64::from(takt_hz)) * 1000.0
+}
+
 /// Sammelt Übergabe-Latenzen beider Spuren und gibt je Fenster eine Zeile aus.
 pub struct Uebergabefenster {
     laenge: Duration,

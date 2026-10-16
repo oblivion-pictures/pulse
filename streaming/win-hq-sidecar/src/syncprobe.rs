@@ -87,6 +87,19 @@ pub fn qpc_now() -> i64 {
     if f == 0 { 0 } else { (c as i128 * 10_000_000 / f as i128) as i64 }
 }
 
+/// Der `Instant`, zu dem der Leistungszähler `qpc` (100ns) zeigte.
+///
+/// `Instant` liegt unter Windows selbst auf QPC, gibt den Wert aber nicht
+/// heraus — deshalb über den Abstand zu einem jetzt genommenen Paar. Gebraucht
+/// für den Ursprung der Messzeile `[sync]`: der Bild-pts zählt ab dem QPC des
+/// ersten Bildes, nicht ab dem Moment, in dem die Pipeline es abgeholt hat.
+pub fn qpc_als_instant(qpc: i64) -> std::time::Instant {
+    let jetzt = std::time::Instant::now();
+    let abstand = qpc_now() - qpc;
+    let d = std::time::Duration::from_nanos(abstand.unsigned_abs().saturating_mul(100));
+    if abstand >= 0 { jetzt.checked_sub(d).unwrap_or(jetzt) } else { jetzt + d }
+}
+
 /// Meldet, wie weit ein WGC-Bildzeitstempel beim Eintreffen in der Vergangenheit
 /// liegt. Gegenstück zur selben Messung am Ton (`ts_check`).
 pub fn video_frame_age(frame_qpc: i64) {

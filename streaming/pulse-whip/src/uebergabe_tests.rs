@@ -78,3 +78,17 @@ fn ton_luecken_werden_gezaehlt() {
     let zeile = f.faellig(t0 + Duration::from_secs(10)).unwrap();
     assert!(zeile.contains("Ton-Luecken 2 (530 ms)"), "{zeile}");
 }
+
+/// Alter eines Pakets bei der Übergabe: Ursprung + Zeitstempel ist die
+/// Aufnahmezeit, `jetzt` minus die das Alter. Vorzeichenbehaftet, denn ein
+/// duplizierter Bildzeitstempel kommt aus einem Zähler und kann vor der Uhr
+/// liegen — das muss als negativer Wert sichtbar sein, nicht als 0.
+#[test]
+fn alter_aus_ursprung_und_zeitstempel() {
+    let ursprung = Instant::now();
+    let jetzt = ursprung + Duration::from_millis(1_050);
+    // 1 s in der 90-kHz-Bilduhr → 50 ms alt.
+    assert!((super::alter_ms(ursprung, 90_000, 90_000, jetzt) - 50.0).abs() < 1e-6);
+    // 48-kHz-Tonuhr, 1,1 s → 50 ms in der Zukunft.
+    assert!((super::alter_ms(ursprung, 52_800, 48_000, jetzt) + 50.0).abs() < 1e-6);
+}

@@ -19,9 +19,9 @@
 //! sich `data()`.
 
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use ffmpeg_next::Packet;
@@ -53,6 +53,19 @@ enum Sendung {
 }
 unsafe impl Send for Sendung {}
 
+/// Zeitbezug der Messzeile `[sync]` (s. [`pulse_whip::uebergabe`]): wann
+/// pts 0 beider Spuren aufgenommen wurde, und um wie viele Samples der
+/// A/V-Trim die Tonspur verschiebt (der Trim ist keine Aufnahmezeit).
+#[derive(Clone, Copy)]
+pub struct Zeitbezug {
+    pub ursprung: Instant,
+    pub trim_samples: i64,
+}
+
+/// Fensterlänge der Messzeile. 10 s: lang genug für einen stabilen Median,
+/// kurz genug, dass ein Umschalten (8 → 10 bit) in der nächsten Zeile steht.
+const MESSFENSTER: Duration = Duration::from_secs(10);
+
 /// Nimmt fertige Pakete entgegen und gibt sie auf einem eigenen Faden ab.
 pub struct SenkenWriter {
     tx: Option<SyncSender<Sendung>>,
@@ -63,6 +76,9 @@ pub struct SenkenWriter {
     /// Verbindungsabriss „Faden ist weg" statt der Ursache. Gleiche Konstruktion
     /// wie in `mux_writer`, aus demselben Grund.
     fail_msg: Arc<Mutex<Option<String>>>,
+    /// Gesetzt, sobald der Ursprung feststeht (`set_audio_origin`, also nach
+    /// dem Start des Fadens) — bis dahin misst der Faden nicht.
+    zeitbezug: Arc<OnceLock<Zeitbezug>>,
 }
 
 impl SenkenWriter {
@@ -79,11 +95,19 @@ impl SenkenWriter {
         let (tx, rx) = sync_channel::<Sendung>(QUEUE_CAPACITY);
         let fail_msg: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let fail_slot = Arc::clone(&fail_msg);
+        let zeitbezug: Arc<OnceLock<Zeitbezug>> = Arc::new(OnceLock::new());
+        let bezug = Arc::clone(&zeitbezug);
         let worker = thread::Builder::new()
             .name("senken-writer".into())
             .spawn(move || -> Result<()> {
-                let ergebnis =
-                    sende_schleife(rx, senke.as_mut(), ton_dauer, ton_rate, &fail_slot);
+                let ergebnis = sende_schleife(
+                    rx,
+                    senke.as_mut(),
+                    ton_dauer,
+                    ton_rate,
+                    &fail_slot,
+                    &bezug,
+                );
                 // Abbauen, auch wenn die Schleife an einem Sendefehler endet —
                 // sonst bliebe die Sitzung beim Server stehen, bis ein
                 // Zeitablauf sie aufräumt.
@@ -99,7 +123,13 @@ impl SenkenWriter {
                 ergebnis
             })
             .map_err(|e| anyhow!("senken-writer-Faden starten: {e}"))?;
-        Ok(Self { tx: Some(tx), worker: Some(worker), fail_msg })
+        Ok(Self { tx: Some(tx), worker: Some(worker), fail_msg, zeitbezug })
+    }
+
+    /// Den Zeitbezug der Messzeile setzen. Einmal; ein zweiter Aufruf bleibt
+    /// folgenlos (der Ursprung eines Stroms wandert nicht).
+    pub fn setze_zeitbezug(&self, bezug: Zeitbezug) {
+        let _ = self.zeitbezug.set(bezug);
     }
 
     /// Ein Videopaket einreihen. Blockiert nur, wenn die Warteschlange voll ist
@@ -144,22 +174,54 @@ fn sende_schleife(
     ton_dauer: Duration,
     ton_rate: u32,
     fail_slot: &Mutex<Option<String>>,
+    zeitbezug: &OnceLock<Zeitbezug>,
 ) -> Result<()> {
     // pts des letzten abgegebenen Tonpakets — Bezug fuer den Dauer-Sprung.
     let mut letzte_ton_pts: Option<i64> = None;
+    let mut fenster = pulse_whip::uebergabe::Uebergabefenster::neu(MESSFENSTER);
     for s in rx {
+        // Gemessen wird beim Übergeben an den Sendeweg: alles davor — Warten
+        // auf den Takt, Kodieren, die Warteschlange hier — gehört zur Latenz
+        // der Spur, alles danach (Paketieren, Netz) ist für beide gleich.
+        let jetzt = Instant::now();
         let ergebnis = match &s {
             // Der `pts` wird MIT durchgereicht, nicht neu erfunden: er steht
             // hier noch in der Encoder-Zeitbasis (der Extern-Weg rescaled
             // nicht, s. `encoder_hw::drain_video`), und genau die erwartet der
             // AV1-Paketierer.
-            Sendung::Video(p) => p.data().map(|d| senke.video(d, p.pts())),
+            Sendung::Video(p) => {
+                if let (Some(b), Some(pts)) = (zeitbezug.get(), p.pts()) {
+                    let ms = pulse_whip::uebergabe::alter_ms(
+                        b.ursprung,
+                        pts,
+                        crate::zeitbasis::VIDEO_HZ,
+                        jetzt,
+                    );
+                    fenster.bild(ms, jetzt);
+                }
+                p.data().map(|d| senke.video(d, p.pts()))
+            }
             Sendung::Ton(p) => p.data().map(|d| {
                 let dauer =
                     ton_dauer_aus_pts(p.pts(), &mut letzte_ton_pts, ton_dauer, ton_rate);
+                if let (Some(b), Some(pts)) = (zeitbezug.get(), p.pts()) {
+                    let ms = pulse_whip::uebergabe::alter_ms(
+                        b.ursprung,
+                        pts - b.trim_samples,
+                        ton_rate,
+                        jetzt,
+                    );
+                    fenster.ton(ms, jetzt);
+                    if dauer > ton_dauer + Duration::from_millis(1) {
+                        fenster.ton_luecke((dauer - ton_dauer).as_millis() as u64);
+                    }
+                }
                 senke.audio(d, dauer)
             }),
         };
+        if let Some(zeile) = fenster.faellig(jetzt) {
+            eprintln!("{zeile}");
+        }
         // Ein Paket ohne Nutzlast ist nichts zu senden, aber auch kein Fehler.
         let Some(Err(e)) = ergebnis else { continue };
         eprintln!("[senken-writer] Senden fehlgeschlagen: {e:#}");
