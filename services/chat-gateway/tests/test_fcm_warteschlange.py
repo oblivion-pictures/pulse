@@ -15,6 +15,7 @@ import random
 
 import pytest
 from dcc_chat_gateway import badgezaehler, fcm
+from dcc_chat_gateway import fcm_abarbeiten as ab
 from dcc_chat_gateway import fcm_warteschlange as ws
 from dcc_chat_gateway.fcm_gelesen import ist_gelesen
 from dcc_chat_gateway.models import FcmToken
@@ -128,7 +129,7 @@ async def _lesestand(client, sz: dict, bis: int) -> None:
 async def _abarbeiten(manager, jetzt: int = SPAETER) -> int:
     arbeiten = await ws.uebernehmen(manager.redis, jetzt_ms=jetzt)
     for arbeit in arbeiten:
-        await ws.abarbeiten(manager, arbeit)
+        await ab.abarbeiten(manager, arbeit)
     return len(arbeiten)
 
 
@@ -236,7 +237,7 @@ async def test_neustart_sendet_liegengebliebenes_sofort(
     await _senden(client, sz)
     # Wie nach einem Deploy: der Eintrag ist längst überfällig.
     await schlange.zadd(ws.FAELLIG, {f"{sz['uid_b']}:{sz['dm']}": 0})
-    aufgabe = asyncio.create_task(ws.abarbeiter_loop(app.state.connection_manager))
+    aufgabe = asyncio.create_task(ab.abarbeiter_loop(app.state.connection_manager))
     try:
         for _ in range(40):
             if sender:
@@ -268,7 +269,7 @@ async def test_absturz_mitten_in_der_arbeit_verliert_nichts(
     wieder = await ws.uebernehmen(schlange, jetzt_ms=nach_pacht + ws.PACHT_S * 1000)
     assert arbeit in wieder
     for a in wieder:
-        await ws.abarbeiten(manager, a)
+        await ab.abarbeiten(manager, a)
     assert len(sender) == 2  # die übernommene Arbeit und die neue Nachricht
     assert await _leer(schlange)
 
@@ -287,7 +288,7 @@ async def test_herunterfahren_gibt_die_pacht_sofort_zurueck(
         await asyncio.sleep(3600)
 
     monkeypatch.setattr(fcm, "fan_out_fcm_dm_push", _haengt)
-    aufgabe = asyncio.create_task(ws._einer(app.state.connection_manager, arbeit))
+    aufgabe = asyncio.create_task(ab._einer(app.state.connection_manager, arbeit))
     await asyncio.wait_for(angehalten.wait(), 2)
     aufgabe.cancel()
     await asyncio.gather(aufgabe, return_exceptions=True)
@@ -314,8 +315,8 @@ async def test_zwei_abarbeiter_senden_nie_doppelt(
         await _senden(client, sz)
         await schlange.zadd(ws.FAELLIG, {f"{sz['uid_b']}:{sz['dm']}": 0})
         aufgaben = [
-            asyncio.create_task(ws.abarbeiter_loop(_Manager(schlange))),
-            asyncio.create_task(ws.abarbeiter_loop(_Manager(zweiter))),
+            asyncio.create_task(ab.abarbeiter_loop(_Manager(schlange))),
+            asyncio.create_task(ab.abarbeiter_loop(_Manager(zweiter))),
         ]
         await asyncio.sleep(1.2)
         for t in aufgaben:
@@ -410,4 +411,72 @@ def test_regel_gruppe_braucht_alle_zustellungen_eines_geraets():
 @pytest.mark.asyncio
 async def test_ohne_fcm_schluessel_endet_der_abarbeiter_sofort(schlange):
     """Ohne Schlüssel entsteht nie ein Eintrag — kein Takt gegen Redis."""
-    await asyncio.wait_for(ws.abarbeiter_loop(_Manager(schlange)), 1)
+    await asyncio.wait_for(ab.abarbeiter_loop(_Manager(schlange)), 1)
+
+
+# MARK: - Gegenprüfung 2026-10-17
+
+
+@pytest.mark.asyncio
+async def test_ein_haengender_versand_haelt_die_anderen_nicht_auf(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange, monkeypatch
+):
+    """P2: jeder Eintrag läuft als eigene Aufgabe. Vorher wartete die Schleife
+    den ganzen Stapel ab — ein hängender FCM-Aufruf hielt alle anderen an."""
+    haengt = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    flott = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    await _senden(client, haengt)
+    await _senden(client, flott)
+    # Der hängende ist sofort fällig, der flotte erst kurz danach — also erst,
+    # wenn der erste schon läuft (genau das Muster der Probe).
+    await schlange.zadd(ws.FAELLIG, {f"{haengt['uid_b']}:{haengt['dm']}": 0})
+    await schlange.zadd(
+        ws.FAELLIG, {f"{flott['uid_b']}:{flott['dm']}": ws._jetzt_ms() + 300}
+    )
+    los = asyncio.Event()
+    echt = fcm.fan_out_fcm_dm_push
+    erreicht: list[int] = []
+
+    async def _versand(**kw):
+        (uid,) = kw["recipient_ids"]
+        if uid == haengt["uid_b"]:
+            await los.wait()
+        erreicht.append(uid)
+        return await echt(**kw)
+
+    monkeypatch.setattr(fcm, "fan_out_fcm_dm_push", _versand)
+    aufgabe = asyncio.create_task(ab.abarbeiter_loop(app.state.connection_manager))
+    try:
+        for _ in range(40):
+            if flott["uid_b"] in erreicht:
+                break
+            await asyncio.sleep(0.05)
+        assert erreicht == [flott["uid_b"]]
+        los.set()
+        for _ in range(40):
+            if len(erreicht) == 2:
+                break
+            await asyncio.sleep(0.05)
+        assert sorted(erreicht) == sorted([haengt["uid_b"], flott["uid_b"]])
+    finally:
+        aufgabe.cancel()
+        await asyncio.gather(aufgabe, return_exceptions=True)
+
+
+def test_firebase_bekommt_eine_knappe_zeitgrenze(monkeypatch, _isolate_chat_settings):
+    """P2: ohne ``httpTimeout`` wartet firebase_admin 120 s je Aufruf."""
+    import firebase_admin
+    from firebase_admin import credentials
+
+    gesehen: dict = {}
+    monkeypatch.setattr(_isolate_chat_settings, "firebase_service_account_key", "/nicht/da.json")
+    monkeypatch.setattr(credentials, "Certificate", lambda _pfad: object())
+    monkeypatch.setattr(
+        firebase_admin, "initialize_app", lambda _c, options=None: gesehen.update(options or {}) or "app"
+    )
+    monkeypatch.setattr(fcm, "_FCM_APP", None)
+    # ``fcm`` bindet ``get_settings`` beim Import, an der Test-Umlenkung vorbei.
+    monkeypatch.setattr(fcm, "get_settings", lambda: _isolate_chat_settings)
+    assert fcm.ensure_fcm() == "app"
+    assert gesehen["httpTimeout"] == fcm.FCM_HTTP_TIMEOUT_S
+    assert ws.PACHT_S > 6 * fcm.FCM_HTTP_TIMEOUT_S

@@ -75,6 +75,12 @@ def dm_body(hat_anhang: bool) -> str:
     dieselbe Nachricht je nach Gerät anders aus."""
     return DM_BODY_ANHANG if hat_anhang else DM_BODY
 
+#: Zeitgrenze je HTTP-Aufruf an Firebase. Ohne sie wartet firebase_admin
+#: 120 s (``_http_client.DEFAULT_TIMEOUT_SECONDS``) — in der Push-Warteschlange
+#: hielte ein hängender Aufruf so lange eine Versand-Aufgabe und ihre Pacht
+#: (``fcm_warteschlange.PACHT_S`` ist auf diesen Wert abgestimmt).
+FCM_HTTP_TIMEOUT_S = 10
+
 #: Initialisierte ``firebase_admin.App`` — Prozess-Singleton, erster Aufruf
 #: gewinnt. ``None`` heisst: nicht konfiguriert oder fehlgeschlagen (kein Push).
 _FCM_APP: Any | None = None
@@ -101,7 +107,8 @@ def ensure_fcm() -> Any | None:
         return None
     try:
         _FCM_APP = firebase_admin.initialize_app(
-            credentials.Certificate(settings.firebase_service_account_key)
+            credentials.Certificate(settings.firebase_service_account_key),
+            options={"httpTimeout": FCM_HTTP_TIMEOUT_S},
         )
     except Exception:  # noqa: BLE001 — schlechter Key darf nie den Versandpfad sprengen
         log.exception(

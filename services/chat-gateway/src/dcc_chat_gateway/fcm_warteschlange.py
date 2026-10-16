@@ -32,7 +32,8 @@ wartet, wäre dabei endgültig weg. Deshalb:
   schlimmstenfalls ein doppelter Push, nie ein verlorener. Beim geordneten
   Herunterfahren gibt der Abarbeiter seine Pacht sofort zurück (Wert 0), der
   nächste Start sendet ohne weitere Wartezeit — wie alles, was beim Start
-  schon fällig ist.
+  schon fällig ist. Wer was wann sendet, steht in ``fcm_abarbeiten.py``;
+  diese Datei ist nur die Ablage.
 
 **Fail-open Richtung Zustellung.** Wartezeit 0, kein Redis, oder Redis wirft
 beim Vormerken: der Push geht sofort hinaus, wie vor der Änderung.
@@ -47,7 +48,6 @@ dem die Sockets hängen.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import time
@@ -68,16 +68,15 @@ IN_ARBEIT = "inarbeit:"
 #: Eine Liste, die niemand abholt (kein Abarbeiter läuft), verschwindet
 #: spätestens dann — ein Push nach einem Tag wäre keiner mehr.
 TEILE_HALTBARKEIT_S = 24 * 60 * 60
-#: So lange gehört ein übernommener Eintrag seinem Abarbeiter. Ein Versand
-#: dauert Sekundenbruchteile; die Pacht ist nur die Frist, nach der ein
-#: abgestürzter Abarbeiter als tot gilt.
-PACHT_S = 60
-#: Höchstzahl Einträge je Übernahme (je Art: neu fällig und Pacht abgelaufen).
+#: So lange gehört ein übernommener Eintrag seinem Abarbeiter — die Frist,
+#: nach der ein abgestürzter Abarbeiter als tot gilt. Sie muss über dem
+#: schlimmsten Versand liegen, sonst übernimmt ein zweiter einen Eintrag, der
+#: noch läuft: ``fcm.FCM_HTTP_TIMEOUT_S`` (10 s) je Versuch, und firebase_admin
+#: wiederholt selbst (``DEFAULT_RETRY_CONFIG`` in 7.5.0: je 1× Verbindung und
+#: Lesen, 4× bei 500/503 mit 0,5er-Rückoff) — zusammen gut eine Minute.
+PACHT_S = 180
+#: Höchstzahl Einträge je Übernahme (beide Arten zusammen).
 STAPEL = 50
-#: Abstand der Abfragen, solange nichts fällig ist.
-TAKT_S = 0.5
-#: Pause nach einer Redis-Störung im Abarbeiter.
-STOERUNG_PAUSE_S = 5.0
 
 # KEYS[1]=faellig, KEYS[2]=inarbeit; ARGV: jetzt, pacht_bis, grenze, marke,
 # Präfix der Teile-Listen, Präfix der Listen in Arbeit. Liefert die
@@ -94,7 +93,11 @@ for _, a in ipairs(redis.call('ZRANGEBYSCORE', KEYS[2], '-inf', jetzt, 'LIMIT', 
   redis.call('ZADD', KEYS[2], pacht, a)
   out[#out + 1] = a
 end
-for i, m in ipairs(redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', jetzt, 'LIMIT', 0, grenze)) do
+local rest = grenze - #out
+if rest <= 0 then
+  return out
+end
+for i, m in ipairs(redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', jetzt, 'LIMIT', 0, rest)) do
   redis.call('ZREM', KEYS[1], m)
   local quelle = teile .. m
   if redis.call('EXISTS', quelle) == 1 then
@@ -116,7 +119,7 @@ def _mitglied(user_id: int, channel_id: int) -> str:
     return f"{user_id}:{channel_id}"
 
 
-def _arbeitsliste(arbeit: str) -> str:
+def arbeitsliste(arbeit: str) -> str:
     return f"{TEILE_PRAEFIX}{IN_ARBEIT}{arbeit}"
 
 
@@ -216,8 +219,11 @@ async def vormerken(
         await _sofort(set(recipient_ids), **weiter)
 
 
-async def uebernehmen(redis: Any, *, jetzt_ms: int | None = None) -> list[str]:
-    """Fällige Einträge (und solche mit abgelaufener Pacht) atomar übernehmen."""
+async def uebernehmen(
+    redis: Any, *, grenze: int = STAPEL, jetzt_ms: int | None = None
+) -> list[str]:
+    """Fällige Einträge (zuerst solche mit abgelaufener Pacht) atomar
+    übernehmen, höchstens ``grenze`` Stück."""
     jetzt = _jetzt_ms() if jetzt_ms is None else jetzt_ms
     skript = redis.register_script(_UEBERNEHMEN)
     roh = await skript(
@@ -225,7 +231,7 @@ async def uebernehmen(redis: Any, *, jetzt_ms: int | None = None) -> list[str]:
         args=[
             jetzt,
             jetzt + PACHT_S * 1000,
-            STAPEL,
+            grenze,
             uuid.uuid4().hex,
             TEILE_PRAEFIX,
             TEILE_PRAEFIX + IN_ARBEIT,
@@ -234,14 +240,14 @@ async def uebernehmen(redis: Any, *, jetzt_ms: int | None = None) -> list[str]:
     return [_text(a) for a in roh]
 
 
-async def _abschliessen(redis: Any, arbeit: str) -> None:
+async def abschliessen(redis: Any, arbeit: str) -> None:
     pipe = redis.pipeline(transaction=True)
-    pipe.delete(_arbeitsliste(arbeit))
+    pipe.delete(arbeitsliste(arbeit))
     pipe.zrem(INARBEIT, arbeit)
     await pipe.execute()
 
 
-async def _zurueckgeben(redis: Any, arbeit: str) -> None:
+async def zurueckgeben(redis: Any, arbeit: str) -> None:
     """Pacht sofort freigeben — der nächste Abarbeiter (auch nach dem
     Neustart) übernimmt den Eintrag ohne zu warten."""
     try:
@@ -250,89 +256,15 @@ async def _zurueckgeben(redis: Any, arbeit: str) -> None:
         log.warning("fcm_warteschlange_rueckgabe_fehlgeschlagen")
 
 
-async def abarbeiten(manager: Any, arbeit: str) -> None:
-    """Einen übernommenen Eintrag senden oder verwerfen, danach löschen.
-
-    Wirft nur bei einer Redis-Störung; der Eintrag bleibt dann in Pacht und
-    wird nach ihrem Ablauf neu versucht."""
-    redis = manager.redis
-    try:
-        mitglied = arbeit.partition("|")[0]
-        uid_text, _, kanal_text = mitglied.partition(":")
-        uid, kanal = int(uid_text), int(kanal_text)
-    except ValueError:
-        log.warning("fcm_warteschlange_eintrag_unlesbar")
-        await _abschliessen(redis, arbeit)
-        return
-    teile: list[dict[str, Any]] = []
-    for roh in await redis.lrange(_arbeitsliste(arbeit), 0, -1):
-        try:
-            teile.append(json.loads(roh))
-        except (TypeError, ValueError):
-            log.warning("fcm_warteschlange_teil_unlesbar")
-    offen = await fcm_gelesen.ungelesene(
-        redis, fcm.SessionLocal, user_id=uid, channel_id=kanal, teile=teile
-    )
-    if offen:
-        neuester = offen[-1]
-        await fcm.fan_out_fcm_dm_push(
-            recipient_ids={uid},
-            author_name=neuester.get("autor") or "",
-            channel_id=kanal,
-            manager=manager,
-            hat_anhang=bool(neuester.get("anhang")),
-            anzahl=len(offen),
-        )
-    await _abschliessen(redis, arbeit)
-
-
-async def _einer(manager: Any, arbeit: str) -> None:
-    try:
-        await abarbeiten(manager, arbeit)
-    except asyncio.CancelledError:
-        await _zurueckgeben(manager.redis, arbeit)
-        raise
-    except Exception:  # noqa: BLE001 — Pacht läuft ab, dann neuer Versuch
-        log.warning("fcm_warteschlange_eintrag_fehlgeschlagen")
-
-
-async def abarbeiter_loop(manager: Any) -> None:
-    """Hintergrundaufgabe im Lifespan: holt fällige Einträge und arbeitet sie
-    ab. Läuft in jeder Instanz; die Übernahme ist exklusiv.
-
-    Ohne FCM-Schlüssel kann nie ein Eintrag entstehen (``vormerken`` kehrt
-    vorher um) — dann endet die Aufgabe sofort, statt Redis im Takt zu
-    befragen. Die Wartezeit spielt hier bewusst KEINE Rolle: wer sie auf 0
-    stellt und neu startet, dessen alte Einträge müssen trotzdem hinaus."""
-    if not chat_config.get_settings().firebase_service_account_key:
-        return
-    gestoert = False
-    while True:
-        try:
-            arbeiten = await uebernehmen(manager.redis)
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001
-            if not gestoert:
-                log.warning("fcm_warteschlange_redis_gestoert")
-                gestoert = True
-            await asyncio.sleep(STOERUNG_PAUSE_S)
-            continue
-        gestoert = False
-        if arbeiten:
-            await asyncio.gather(*(_einer(manager, a) for a in arbeiten))
-        if len(arbeiten) < STAPEL:
-            await asyncio.sleep(TAKT_S)
-
-
 __all__ = [
     "FAELLIG",
     "INARBEIT",
     "PACHT_S",
     "TEILE_PRAEFIX",
-    "abarbeiten",
-    "abarbeiter_loop",
+    "abschliessen",
+    "arbeitsliste",
     "uebernehmen",
+    "zurueckgeben",
     "vormerken",
     "zurueckhalten_aktiv",
 ]
