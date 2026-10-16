@@ -77,6 +77,7 @@ on:
       - 'packaging/com.howispulse.Pulse.yml'
       - 'packaging/launcher.sh'
       - 'packaging/com.howispulse.Pulse.desktop'
+      - 'packaging/com.howispulse.Pulse.Player.desktop'
       - 'packaging/com.howispulse.Pulse.metainfo.xml'
       - 'packaging/com.howispulse.Pulse.svg'
       - 'packaging/pulse-app.package.json'

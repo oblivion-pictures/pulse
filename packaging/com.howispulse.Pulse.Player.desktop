@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Pulse Player
+Comment=Native HQ stream player of Pulse
+Exec=pulse
+Icon=com.howispulse.Pulse
+Terminal=false
+NoDisplay=true
+StartupWMClass=com.howispulse.Pulse.Player

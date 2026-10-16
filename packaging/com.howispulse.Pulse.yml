@@ -577,6 +577,11 @@ modules:
       # Launcher + desktop integration
       - install -Dm755 packaging/launcher.sh /app/bin/pulse
       - install -Dm644 packaging/com.howispulse.Pulse.desktop /app/share/applications/com.howispulse.Pulse.desktop
+      # Nur für die Taskleiste: der native Player meldet sich mit eigener
+      # Kennung (`streaming/pulse-player/src/app/fensterkennung.rs`), und über
+      # diese Datei findet die Leiste das Pulse-Symbol dazu. `NoDisplay`, also
+      # kein zweiter Eintrag im Startmenü.
+      - install -Dm644 packaging/com.howispulse.Pulse.Player.desktop /app/share/applications/com.howispulse.Pulse.Player.desktop
       - install -Dm644 packaging/com.howispulse.Pulse.svg /app/share/icons/hicolor/scalable/apps/com.howispulse.Pulse.svg
       # Also install the PNG icon at a hicolor size — appstreamcli compose on
       # older Ubuntu (24.04: appstream 0.16.x) raises file-read-error when only
@@ -608,6 +613,9 @@ modules:
         dest: packaging
       - type: file
         path: com.howispulse.Pulse.desktop
+        dest: packaging
+      - type: file
+        path: com.howispulse.Pulse.Player.desktop
         dest: packaging
       - type: file
         path: com.howispulse.Pulse.svg

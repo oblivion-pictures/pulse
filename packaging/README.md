@@ -188,6 +188,7 @@ ever touch the `pulse` module's `archive` source, keep it at `0`.
 - `com.howispulse.Pulse.yml` — the manifest
 - `launcher.sh` — `/app/bin/pulse`: passes `--ozone-platform-hint=auto` (override: `PULSE_OZONE=x11`/`wayland`), then `exec zypak-wrapper /app/electron/electron --class=com.howispulse.Pulse /app/pulse`
 - `com.howispulse.Pulse.desktop` / `.metainfo.xml` / `.svg` — desktop integration (the `.svg` is `web/static/pulse-mark.svg`)
+- `com.howispulse.Pulse.Player.desktop` — hidden (`NoDisplay`) entry for the native player window: it reports its own app id `com.howispulse.Pulse.Player`, and taskbars find the Pulse icon through this file
 - `build.fish` — local build + `--user --install` (dev box). **Replaces the installed app and repoints its origin at the local cache** — see the warning above; for a build-only check use `--repo=` into a throwaway directory.
 - `gen-signing-key.fish` — one-time: create the repo signing key in `packaging/.gpg/`
 - `publish.fish` — build into the signed OSTree repo + push it to the VPS (release flow)

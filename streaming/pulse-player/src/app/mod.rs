@@ -16,6 +16,7 @@ pub(crate) mod anordnen;
 pub(crate) mod ablage;
 pub mod diagnose;
 mod eingabe;
+mod fensterkennung;
 mod requests;
 mod takt;
 mod wayland_zug;
@@ -582,7 +583,7 @@ impl App {
         let vorhalt_ms = options.ausgabetakt_ms.unwrap_or(0);
 
         let title = req.title.clone().unwrap_or_else(|| "Pulse — HQ-Stream".into());
-        let attrs = Window::default_attributes()
+        let attrs = fensterkennung::mit_kennung(Window::default_attributes())
             .with_title(title.clone())
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
             // NICHT aktivieren: das Fenster soll den Tastatur-Fokus nicht
