@@ -244,6 +244,11 @@ struct Session {
     /// Wann das letzte Bild eintraf. Entscheidet, ob Eingaben einen eigenen
     /// Durchgang brauchen (s. [`FRAME_FLOW_WINDOW`]).
     last_frame_at: Option<std::time::Instant>,
+    /// RTP-Marke des zuletzt zur Anzeige gestellten Bildes, und wann — eine
+    /// Seite der Zeile „Bild/Ton" (s. [`crate::bildton`]).
+    gezeigt: Option<(u32, std::time::Instant)>,
+    /// Proben der Zeile „Bild/Ton", eine je Statistik-Takt.
+    bildton: crate::bildton::Versatzfenster,
     /// Bezugspunkt der Statistik-Zeile (s. `App::stats_log`).
     last_log: Option<std::time::Instant>,
     presented_at_last_log: u64,
@@ -759,6 +764,8 @@ impl App {
                 frames_never_drawn: 0,
                 phases: PhaseTimes::default(),
                 last_frame_at: None,
+                gezeigt: None,
+                bildton: Default::default(),
                 last_log: None,
                 presented_at_last_log: 0,
                 buendel_takt: Default::default(),
@@ -1187,6 +1194,11 @@ impl App {
         if let Some(z) = session.buendel_takt.melden(now, st.buendel_bild, st.buendel_ton, false) {
             eprintln!("pulse-player: Sitzung {id}: {z}");
         }
+        // 40 Proben = rund 10 s bei 250 ms Statistik-Takt: eine Zeile je
+        // Sekunde waere Reichweite, die dem Diagnose-Upload fehlt.
+        if let Some(z) = session.bildton.zeile(40) {
+            eprintln!("pulse-player: Sitzung {id}: {z}");
+        }
         session.last_log = Some(now);
         session.presented_at_last_log = presented;
         // Zuletzt, weil sie die Sitzung erneut ausleiht.
@@ -1470,6 +1482,15 @@ impl App {
                 self.abliefern(id, jetzt);
             }
             SessionEvent::Stats(stats) => {
+                // Eine Probe fuer die Zeile „Bild/Ton": gezeigtes Bild gegen
+                // klingenden Ton, beide in der Uhr der Sender Reports.
+                if let (Some(b), Some(t), Some((rb, tb)), Some((rt, tt))) =
+                    (stats.sr.bild, stats.sr.ton, session.gezeigt, stats.media.ton_klingt)
+                {
+                    if let Some(v) = crate::bildton::versatz_ms(b, rb, tb, t, rt, tt) {
+                        session.bildton.probe(v);
+                    }
+                }
                 session.stats = stats;
                 self.log_stats_if_due(id);
                 let Some(session) = self.sessions.get_mut(&id) else { return };
@@ -1556,7 +1577,11 @@ impl App {
             }
         }
         let Some(session) = self.sessions.get_mut(&id) else { return };
-        session.last_frame_at = Some(std::time::Instant::now());
+        let jetzt = std::time::Instant::now();
+        session.last_frame_at = Some(jetzt);
+        if let Some(rtp) = frame.rtp_ts {
+            session.gezeigt = Some((rtp, jetzt));
+        }
         session.full_range = frame.full_range;
         session.farbe = frame.farbe;
         session.pending = Some(frame);

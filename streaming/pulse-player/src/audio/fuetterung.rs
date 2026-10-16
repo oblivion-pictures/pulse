@@ -152,6 +152,12 @@ pub(super) fn pump_commands(
                     });
                     uhr.paket(ts, fuellstand, angehaengt, ausgabe, jetzt);
                     let fehler = uhr.fehler_ms(ausgabe, sample_rate, channels, jetzt);
+                    // Fuer die Zeile „Bild/Ton" (`crate::bildton`): welche
+                    // RTP-Marke JETZT klingt. Die verlaengerte Marke beginnt
+                    // bei der rohen ersten, `as u32` ergibt also wieder die
+                    // rohe 32-Bit-Marke der Leitung.
+                    let klingt = uhr.position(ausgabe, sample_rate, channels).round() as i64 as u32;
+                    s.klingt = Some((klingt, jetzt));
                     // Gemeldet wird der rohe Fehler (so weit liegt der Ton
                     // wirklich daneben), geregelt der ohne Ringabweichung.
                     s.letzte_fehler_ms = fehler;

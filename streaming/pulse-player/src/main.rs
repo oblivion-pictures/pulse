@@ -33,6 +33,7 @@ mod abriss;
 mod app;
 mod audio;
 mod bildmarke;
+mod bildton;
 mod buendel;
 mod decode;
 mod decodefaden;

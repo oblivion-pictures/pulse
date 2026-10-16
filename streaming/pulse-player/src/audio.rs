@@ -125,6 +125,9 @@ struct Shared {
     ausgabe: u64,
     /// Vermessung gegen die Ton-RTP-Uhr (s. [`lippen`]), ab dem ersten Paket.
     tonuhr: Option<lippen::Tonuhr>,
+    /// Zuletzt vermessen: welche Ton-RTP-Marke klang, und wann
+    /// (s. [`crate::bildton`]).
+    klingt: Option<(u32, Instant)>,
     /// Nutz-Trim `av_offset_ms` — positively = Ton spaeter (s. `OffsetMs`).
     trim_ms: i32,
     /// Regel-Eingriff der Lippen-Synchronisation auf den Ring-Sollwert. Als
@@ -279,6 +282,8 @@ pub struct AudioCounters {
     /// Zuletzt gemessener Lippenfehler in ms (positiv = Ton haengt hinterher,
     /// s. `audio::lippen`). 0 solange keine Vermessung laeuft.
     pub lippen_ms: f32,
+    /// Welche Ton-RTP-Marke zuletzt klang, und wann (s. [`crate::bildton`]).
+    pub klingt: Option<(u32, Instant)>,
     /// Regel-Eingriff der Lippen-Synchronisation auf den Ring-Sollwert in ms.
     pub sync_versatz_ms: i32,
     /// Verdeckte Verluste (s. `audio::verdeckung`).
@@ -357,6 +362,7 @@ impl AudioOutput {
             alive: true,
             geraetefehler: false,
             ausgabe: 0,
+            klingt: None,
             tonuhr: None,
             trim_ms: 0,
             sync_ms: 0.0,
@@ -461,6 +467,7 @@ impl AudioOutput {
                 alive: s.alive,
                 geraetefehler: s.geraetefehler,
                 lippen_ms: s.letzte_fehler_ms as f32,
+                klingt: s.klingt,
                 sync_versatz_ms: s.sync_ms.round() as i32,
                 verdeckung: s.verdeckung.zaehler,
             })

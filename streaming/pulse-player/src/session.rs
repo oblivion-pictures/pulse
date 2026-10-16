@@ -252,6 +252,9 @@ pub struct SessionStats {
     /// versagte, und trug damit die falsche Aussage „XOR scheitert nie".
     pub fec_mehrfach_loch: u64,
     pub fec_zu_spaet: u64,
+    /// Letzter Sender Report je Spur (s. [`crate::bildton`]).
+    #[serde(skip)]
+    pub sr: crate::bildton::SrStand,
     /// Vom NACK-Erzeuger gemessene Antwortzeit auf eigene Nachforderungen,
     /// in Millisekunden (s. [`crate::nachforderung`]) — KEINE ICE-Umlaufzeit.
     /// Steuert die Puffergeduld der Fernsteuerung ([`fern_jitter_ziel`]) und,
@@ -395,6 +398,13 @@ impl Strom {
         match self {
             Strom::Whep(s) => s.fec_zaehler(),
             Strom::Direkt(s) => s.fec_zaehler(),
+        }
+    }
+
+    fn sr(&self) -> crate::bildton::SrStand {
+        match self {
+            Strom::Whep(s) => s.sr().stand(),
+            Strom::Direkt(s) => s.sr().stand(),
         }
     }
 
@@ -1380,6 +1390,7 @@ pub async fn run(
             // Audio-Ringpuffers, auf die auch der Geraete-Callback wartet.
             // Bei jedem Durchlauf waere das ueber 1000-mal pro Sekunde.
             stats.media = media.stats();
+            stats.sr = strom.sr();
             stats.arrival_gap_max_us = arrival_gap_max;
             stats.arrival_gaps_over_5ms = arrival_gaps_over_5ms;
             arrival_gap_max = 0;

@@ -158,6 +158,8 @@ pub struct WhepSession {
     /// Die Zellen des NACK-Erzeugers: gemessene Antwortzeit, Zahl der
     /// Messungen, Hoechstalter (s. [`crate::nachforderung`]).
     nack: crate::nachforderung::NackZellen,
+    /// Letzter Sender Report je Spur (s. [`crate::bildton`]).
+    sr: crate::bildton::SrZellen,
     /// Die ausgehandelte Nummer der Bildmarke; 0 = nicht ausgehandelt.
     ///
     /// Steht schon beim Bau fest — sie kommt aus der SDP-Antwort, nicht aus
@@ -212,6 +214,11 @@ impl WhepSession {
     /// Paritaet — fuer die Statistik.
     pub fn fec_zaehler(&self) -> (u64, u64, u64, u64, u64) {
         self.fec.lesen()
+    }
+
+    /// Letzter Sender Report je Spur — fuer die Zeile „Bild/Ton".
+    pub fn sr(&self) -> &crate::bildton::SrZellen {
+        &self.sr
     }
 
     /// Baut die Sitzung ab. Idempotent — mehrfaches Aufrufen ist harmlos.
@@ -491,6 +498,7 @@ fn interceptors_mit_zuegigem_nack(
 pub(crate) struct EmpfaengerBau {
     pub pc: Arc<RTCPeerConnection>,
     pub fec: Arc<crate::fec::Zaehler>,
+    pub sr: crate::bildton::SrZellen,
 }
 
 /// Baut die EMPFAENGERSEITE einer WebRTC-Sitzung — MediaEngine, Interceptors,
@@ -598,10 +606,13 @@ pub(crate) async fn baue_empfaenger_pc(
     // Je Verbindung, nicht je Programm: s. `fec::Sammlersperre`.
     let fec_sperre = Arc::new(crate::fec::Sammlersperre::default());
     let tx_fuer_track = tx.clone();
+    let sr = crate::bildton::SrZellen::default();
+    let sr_fuer_track = sr.clone();
     pc.on_track(Box::new(move |track, receiver, _transceiver| {
         let tx = tx_fuer_track.clone();
         let fec_zaehler = fec_fuer_track.clone();
         let fec_sperre = fec_sperre.clone();
+        let sr = sr_fuer_track.clone();
         Box::pin(async move {
             // Nur am VIDEO-Track: dort liegt der geschuetzte Strom, und nur
             // dort sind Codec und Taktrate bekannt, die ein repariertes Paket
@@ -619,11 +630,20 @@ pub(crate) async fn baue_empfaenger_pc(
                 }
                 _ => None,
             };
+            if let Some(codec) = Codec::from_mime(&capability.mime_type) {
+                tokio::spawn(lies_sender_reports(
+                    receiver.clone(),
+                    track.ssrc(),
+                    codec.is_video(),
+                    capability.clock_rate,
+                    sr,
+                ));
+            }
             tokio::spawn(pump_track(track, tx, medien_tx));
         })
     }));
 
-    Ok(EmpfaengerBau { pc, fec: fec_zaehler })
+    Ok(EmpfaengerBau { pc, fec: fec_zaehler, sr })
 }
 
 /// Baut eine recvonly-WHEP-Sitzung her und schiebt fertige Frames in `tx`.
@@ -637,7 +657,7 @@ pub async fn connect(
     tx: mpsc::Sender<RtpArrival>,
 ) -> Result<WhepSession> {
     let nack = crate::nachforderung::NackZellen::default();
-    let EmpfaengerBau { pc, fec: fec_zaehler, .. } =
+    let EmpfaengerBau { pc, fec: fec_zaehler, sr } =
         baue_empfaenger_pc(&tx, &nack, extra_ice, |_| {}).await?;
     // Vor dem Aushandeln: sonst fehlen genau die Wechsel des Aufbaus.
     crate::abriss::zustaende_melden(&pc);
@@ -654,6 +674,7 @@ pub async fn connect(
             http,
             fec: fec_zaehler,
             nack,
+            sr,
             marken_id,
         }),
         Err(e) => {
@@ -872,6 +893,32 @@ fn resolve_resource_url(whep_url: &str, location: &str) -> Option<String> {
         && resolved.host_str() == base.host_str()
         && resolved.port_or_known_default() == base.port_or_known_default();
     same_origin.then(|| resolved.to_string())
+}
+
+/// Liest die RTCP-Pakete einer Spur und legt ihren letzten Sender Report ab
+/// (s. [`crate::bildton`]). Bis 2026-10-16 las der Player gar kein RTCP.
+///
+/// Nur Reports DIESER Spur (`ssrc`): ein Report einer anderen Quelle — etwa
+/// des Paritaetsstroms — haette eine fremde RTP-Uhr. Das Lesen selbst laesst
+/// die Interceptor-Kette laufen; der Empfaengerbericht traegt danach den
+/// Bezug auf den letzten Report (LSR/DLSR) statt Nullen.
+async fn lies_sender_reports(
+    receiver: Arc<webrtc::rtp_transceiver::rtp_receiver::RTCRtpReceiver>,
+    ssrc: u32,
+    ist_bild: bool,
+    takt_hz: u32,
+    sr: crate::bildton::SrZellen,
+) {
+    use webrtc::rtcp::sender_report::SenderReport;
+    while let Ok((pakete, _)) = receiver.read_rtcp().await {
+        for p in pakete {
+            if let Some(b) = p.as_any().downcast_ref::<SenderReport>() {
+                if b.ssrc == ssrc {
+                    sr.bericht(ist_bild, b.ntp_time, b.rtp_time, takt_hz);
+                }
+            }
+        }
+    }
 }
 
 /// Liest RTP von einem Track und schiebt die Pakete unveraendert weiter.

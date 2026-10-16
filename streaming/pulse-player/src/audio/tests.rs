@@ -23,6 +23,7 @@ pub(super) fn shared_mit(target_fill: usize) -> Mutex<Shared> {
         geraetefehler: false,
         ausgabe: 0,
         tonuhr: None,
+        klingt: None,
         trim_ms: 0,
         sync_ms: 0.0,
         letzte_fehler_ms: 0.0,

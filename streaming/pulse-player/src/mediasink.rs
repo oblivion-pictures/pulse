@@ -47,6 +47,9 @@ pub struct MediaStats {
     /// Zuletzt gemessener Lippenfehler in ms (positiv = Ton haengt hinterher,
     /// s. `audio::lippen`). 0 ohne laufende Vermessung.
     pub audio_lippen_ms: f32,
+    /// Welche Ton-RTP-Marke zuletzt klang, und wann (s. [`crate::bildton`]).
+    #[serde(skip)]
+    pub ton_klingt: Option<(u32, std::time::Instant)>,
     /// Regel-Eingriff der Lippen-Synchronisation auf den Ring-Sollwert in ms.
     pub audio_sync_versatz_ms: i32,
     /// Ob ueberhaupt eine Tonausgabe zustande kam.
@@ -212,6 +215,7 @@ impl MediaSink {
             audio_abgleich_ppm: ton.abgleich_ppm,
             audio_geraetefehler: ton.geraetefehler,
             audio_lippen_ms: ton.lippen_ms,
+            ton_klingt: ton.klingt,
             audio_sync_versatz_ms: ton.sync_versatz_ms,
             audio_resyncs: ton.resyncs,
             // Nicht `is_some()`: der Griff bleibt bestehen, auch wenn der

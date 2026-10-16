@@ -108,6 +108,8 @@ fn zustand_als_text(zustand: RTCPeerConnectionState) -> &'static str {
 pub struct DirektSitzung {
     pc: Option<Arc<RTCPeerConnection>>,
     fec: Arc<crate::fec::Zaehler>,
+    /// Letzter Sender Report je Spur (s. [`crate::bildton`]).
+    sr: crate::bildton::SrZellen,
     /// Zellen des NACK-Erzeugers; schon vor dem Aufbau da, damit die
     /// Sitzung das Hoechstalter jederzeit eintragen kann.
     nack: crate::nachforderung::NackZellen,
@@ -132,6 +134,7 @@ impl DirektSitzung {
         Self {
             pc: None,
             fec: Arc::default(),
+            sr: Default::default(),
             nack: crate::nachforderung::NackZellen::default(),
             marken_id: 0,
             aushandelt: None,
@@ -156,7 +159,7 @@ impl DirektSitzung {
         // Fernsteuerung verdoppeln. Der Schnittstellen-Filter hält Loopback-
         // und virtuelle Adapter aus dem Gathering heraus (Begruendung am
         // doc-Kommentar von `schnittstelle_ok`).
-        let EmpfaengerBau { pc, fec, .. } =
+        let EmpfaengerBau { pc, fec, sr } =
             baue_empfaenger_pc(&tx, &self.nack, &[], |setting: &mut SettingEngine| {
                 setting.set_interface_filter(Box::new(schnittstelle_ok));
             })
@@ -177,6 +180,7 @@ impl DirektSitzung {
         }
         self.pc = Some(pc);
         self.fec = fec;
+        self.sr = sr;
         self.melde("connecting");
         Ok(sdp)
     }
@@ -231,6 +235,11 @@ impl DirektSitzung {
     /// Paritaet — fuer die Statistik. Vor dem Aufbau durchgehend null.
     pub fn fec_zaehler(&self) -> (u64, u64, u64, u64, u64) {
         self.fec.lesen()
+    }
+
+    /// Letzter Sender Report je Spur — fuer die Zeile „Bild/Ton".
+    pub fn sr(&self) -> &crate::bildton::SrZellen {
+        &self.sr
     }
 
     /// Seit wann ist die Aushandlung durch? `None`, solange die Sitzung auf
