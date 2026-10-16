@@ -4,6 +4,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { E2E_DB } from './_db';
+import { speicherAdapter } from '../../src/lib/ablage/adapter.ts';
+import { verschluesselnderAdapter } from '../../src/lib/ablage/kryptoBehaelter.ts';
+import { leseVerlauf } from '../../src/lib/ablage/leser.ts';
+import { leseNachricht, type AblageNachricht } from '../../src/lib/ablage/nutzlast.ts';
 
 /**
  * Der Nachweis fuer Aufgabe 6 aus
@@ -263,6 +267,85 @@ async function nutzlastDatenBisVorhanden(
   return [];
 }
 
+/**
+ * Das Kanal-Laufwerk als Speicher in DIESEM Testprozess. Das Besitzer-Geraet
+ * schreibt, liest und listet ausschliesslich ueber die drei
+ * `/channels/<id>/ablage/*`-Routen (`ablageUeberPulse.ts`); genau die werden
+ * hier abgefangen. Eine echte WebDAV-Gegenstelle laesst sich lokal nicht
+ * anhaengen: die Weiterreich-Route sperrt private Netze (`ablage_ssrf.py`),
+ * der Nachweis gegen eine echte Nextcloud steht in `e2e-ablage-hetzner.spec.ts`.
+ * Was hier ankommt, ist schon der verschluesselte Behaelter — der Klient
+ * verschluesselt aussen, der Pulse-Umweg sitzt innen (`kanalFestigung.ts`).
+ */
+async function laufwerkVorspielen(ctx: BrowserContext, kanalId: string) {
+  const laufwerk = speicherAdapter();
+  let listenAbrufe = 0;
+  await ctx.route(`**/api/chat/channels/${kanalId}/ablage/**`, async (route) => {
+    const url = new URL(route.request().url());
+    const pfad = url.searchParams.get('pfad') ?? '';
+    if (url.pathname.endsWith('/ablage/liste')) {
+      listenAbrufe++;
+      return route.fulfill({ json: await laufwerk.liste() });
+    }
+    if (url.pathname.endsWith('/ablage/abruf')) {
+      const inhalt = await laufwerk.lese(pfad);
+      if (inhalt === null) return route.fulfill({ status: 404, json: { detail: 'fehlt' } });
+      return route.fulfill({ status: 200, body: Buffer.from(inhalt) });
+    }
+    if (url.pathname.endsWith('/ablage/schreiben') && route.request().method() === 'PUT') {
+      await laufwerk.schreibe(pfad, new Uint8Array(route.request().postDataBuffer() ?? []));
+      return route.fulfill({ status: 204 });
+    }
+    return route.fallback();
+  });
+  return { laufwerk, listenAbrufe: () => listenAbrufe };
+}
+
+/** Macht das Geraet hinter `page` zum Besitzer-Geraet des Kanal-Laufwerks —
+ *  derselbe lokale Zustand, den `KanalDateiablageVerbinden.svelte` nach einem
+ *  erfolgreichen Verbinden hinterlaesst (Verbindung mit `fuerKanal`, plus
+ *  Hauptschluessel und Freigabe-Adresse). Ueber die Module der laufenden App
+ *  (Vite liefert sie unter `/src/...` aus), nicht nachgebaut. */
+async function alsBesitzerGeraetVerbinden(
+  page: Page,
+  kanalId: string,
+  kontoId: string,
+  hauptschluesselB64: string
+): Promise<void> {
+  await page.evaluate(
+    async ({ kanalId, kontoId, hauptschluesselB64 }) => {
+      const verbindungenPfad = '/src/lib/ablage/verbindungen.svelte.ts';
+      const schluesselPfad = '/src/lib/ablage/kanalLaufwerkSchluessel.ts';
+      const { ablageVerbindungen } = await import(/* @vite-ignore */ verbindungenPfad);
+      const { kanalLaufwerkSchluesselSichern } = await import(/* @vite-ignore */ schluesselPfad);
+      const basis = 'https://laufwerk.e2e.invalid/public.php/webdav/';
+      if (!ablageVerbindungen.geladen) await ablageVerbindungen.laden();
+      await ablageVerbindungen.hinzufügen({
+        id: `e2e-kanal-${kanalId}`,
+        anbieter: 'nextcloud',
+        name: 'E2E-Laufwerk',
+        konfiguration: { basis, ordner: '', benutzer: '', passwort: '' },
+        hauptschlüsselB64: hauptschluesselB64,
+        verbundenAm: new Date().toISOString(),
+        kontoId,
+        fuerKanal: kanalId
+      });
+      await kanalLaufwerkSchluesselSichern(kanalId, hauptschluesselB64, basis);
+    },
+    { kanalId, kontoId, hauptschluesselB64 }
+  );
+}
+
+/** Liest das vorgespielte Laufwerk mit dem echten Leser und dem echten
+ *  Behaelter — entschluesselt, wie ein Mitglied es lesen wuerde. */
+async function laufwerkNachrichten(
+  laufwerk: ReturnType<typeof speicherAdapter>,
+  hauptschluessel: Uint8Array
+): Promise<AblageNachricht[]> {
+  const verlauf = await leseVerlauf(verschluesselnderAdapter(laufwerk, hauptschluessel));
+  return verlauf.rahmen.map((r) => leseNachricht(r.nutzlast));
+}
+
 test.describe.serial('E2E-verschluesselter Ablage-Kanal (Etappe E6, Nachweis Aufgabe 6)', () => {
   let aliceCtx: BrowserContext;
   let alicePage: Page;
@@ -394,5 +477,71 @@ test.describe.serial('E2E-verschluesselter Ablage-Kanal (Etappe E6, Nachweis Auf
 
     // Und in der Datenbank ist trotz des Versuchs nichts gelandet.
     expect(anzahlKlartextNachrichten(kanalId)).toBe(0);
+  });
+
+  test('eine empfangene Nachricht landet im Laufwerk des Besitzers — genau einmal', async () => {
+    // Die Festigung laeuft alle 30 s und nimmt nur auf, was mindestens eine
+    // Minute alt ist (`verlaufQuelle.ts`, „Reifezeit") — der Test wartet
+    // deshalb gut zwei Minuten und danach noch eine volle Runde.
+    test.setTimeout(240_000);
+
+    // **Warum es diesen Schritt gibt.** Bis hierher prueft die Datei nur den
+    // Krypto-Weg; ob eine Nachricht je im LAUFWERK ankommt, prueft sie nicht.
+    // Genau dort lag der Fehler vom 2026-10-17: der Empfangsweg quittiert
+    // jede Zustellung, sobald sie lokal liegt (`krypto/empfangen.ts`), und
+    // die Festigung las bis dahin NUR den noch offenen Postfach-Bestand
+    // (`postfachQuelle.ts`) — sie fand den Kanal leer, das Laufwerk blieb es.
+    //
+    // Bob schreibt, Alice besitzt das Laufwerk: das ist der Weg, den die
+    // Festigung tragen muss (was DIESES Geraet selbst schreibt, erreicht sein
+    // Postfach nie, s. `gruppengeraete.ts::gruppengeraeteBerechnen`).
+    const aliceUserId = await currentUserId(alicePage);
+    const hauptschluessel = new Uint8Array(32).map((_, i) => (i * 7 + 3) % 256);
+    const hauptschluesselB64 = Buffer.from(hauptschluessel).toString('base64');
+    const { laufwerk, listenAbrufe } = await laufwerkVorspielen(aliceCtx, kanalId);
+    await alsBesitzerGeraetVerbinden(alicePage, kanalId, aliceUserId, hauptschluesselB64);
+
+    // Neu laden, damit der Hintergrund-Laeufer (`hintergrundFestigung.ts`)
+    // die Verbindung beim App-Start sicher sieht, statt erst beim naechsten
+    // Rundgang.
+    await alicePage.goto(`/app/guilds/${guildId}/channels/${kanalId}`);
+    await expect(alicePage.getByTestId('message-input')).toBeVisible({ timeout: 20_000 });
+    // Die erste Runde laeuft sofort an und legt das Manifest an.
+    await expect.poll(() => laufwerk.inhalte.has('manifest.puls'), { timeout: 20_000 }).toBe(true);
+
+    const KLARTEXT = `fuer das laufwerk ${ts}`;
+    await bobPage.goto(`/app/guilds/${guildId}/channels/${kanalId}`);
+    await bobPage.getByTestId('message-input').click();
+    await bobPage.getByTestId('message-input').fill(KLARTEXT);
+    await bobPage.getByTestId('message-input').press('Enter');
+
+    await expect(
+      alicePage.locator('[data-testid="message-content"]', { hasText: KLARTEXT })
+    ).toBeVisible({ timeout: 15_000 });
+    // Alice hat quittiert: im Postfach liegt fuer diesen Kanal nichts mehr.
+    // Genau das ist der Zustand, den die Festigung vorfindet.
+    await expect.poll(() => anzahlOffenerZustellungen(kanalId), { timeout: 10_000 }).toBe(0);
+
+    const imLaufwerk = async () =>
+      (await laufwerkNachrichten(laufwerk, hauptschluessel)).filter((n) => n.inhalt === KLARTEXT)
+        .length;
+    await expect
+      .poll(imLaufwerk, {
+        timeout: 130_000,
+        message: 'die empfangene Nachricht ist nicht im Laufwerk des Besitzers angekommen'
+      })
+      .toBe(1);
+
+    // Genau einmal: eine weitere VOLLE Festigungs-Runde schreibt sie nicht
+    // erneut. Jede Runde beginnt mit einer Bestandsaufnahme, also einem
+    // `liste`-Abruf — erst der zweite danach zeigt, dass die Runde dazwischen
+    // ganz durchgelaufen ist (der erste kaeme vor ihrem Schreiben).
+    const abrufeVorher = listenAbrufe();
+    await expect.poll(listenAbrufe, { timeout: 75_000 }).toBeGreaterThanOrEqual(abrufeVorher + 2);
+    expect(await imLaufwerk()).toBe(1);
+
+    // Und das Laufwerk traegt keinen Klartext.
+    const roh = Buffer.concat([...laufwerk.inhalte.values()].map((b) => Buffer.from(b)));
+    expect(roh.includes(KLARTEXT)).toBe(false);
   });
 });

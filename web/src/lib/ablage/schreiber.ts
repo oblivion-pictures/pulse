@@ -5,7 +5,7 @@
  * (nachzug.ts) die verwaiste Segmentdatei beim nächsten Start.
  *
  * Phase 1 füttert der Aufrufer von außen (der Krypto-Nachzug tauscht die
- * Quelle: Postfach statt `GET /channels/{id}/messages`). Der Schreiber
+ * Quelle: lokaler Verlauf statt `GET /channels/{id}/messages`). Der Schreiber
  * selbst kennt weder REST noch Krypto — Nutzlasten sind opake Bytes.
  */
 

@@ -243,13 +243,14 @@ test.describe('Ablage-Kanal auf echter Nextcloud (Hetzner)', () => {
     const KLARTEXT = `nextcloud-nachweis ${TAG}`;
 
     // **Es schreibt dev2, nicht der Besitzer — und das ist kein Detail.**
-    // Das Archiv wird aus dem Postfach gespeist, und ein Absender beliefert
-    // sein eigenes AKTUELLES Geraet nicht (`empfaengerGeraete.ts`: „es hat
-    // den Klartext schon"). Eine Nachricht, die der Besitzer selbst
-    // schreibt, kommt deshalb nie in seinem eigenen Postfach an und wird
-    // nie gefestigt. Dieser Nachweis prueft den Weg, der heute traegt:
-    // Mitglied schreibt, Besitzer-Geraet festigt. Die Luecke fuer eigene
-    // Nachrichten ist getrennt vermerkt und noch offen.
+    // Das Archiv wird aus dem lokalen Verlauf des Besitzer-Geraets
+    // gespeist, aber nur mit EMPFANGENEM (`ablage/verlaufQuelle.ts`, seit
+    // 2026-10-17; davor aus dem Postfach). Ein Absender beliefert sein
+    // eigenes Geraet nicht (`gruppengeraete.ts::gruppengeraeteBerechnen`),
+    // seine eigene Nachricht liegt deshalb unter einer lokalen Id, und die
+    // haelt die Festigung aus dem Log heraus. Dieser Nachweis prueft den Weg,
+    // der heute traegt: Mitglied schreibt, Besitzer-Geraet festigt. Die
+    // Luecke fuer eigene Nachrichten ist getrennt vermerkt und noch offen.
     await devPage.goto(`/app/guilds/${guildId}/channels/${kanalId}`);
     await expect(devPage.getByTestId('message-input')).toBeVisible({ timeout: 20_000 });
 

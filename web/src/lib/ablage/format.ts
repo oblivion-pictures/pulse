@@ -29,7 +29,7 @@ export const TYP_KLARTEXT_JSON = 1;
  * Nutzlast Megolm-Geheimtext — **reserviert und absichtlich ungenutzt.**
  *
  * Der Krypto-Nachzug legt seit dem 2026-09-01 den ENTSCHLÜSSELTEN Text ab
- * (`postfachQuelle.ts`, Begründung dort): eine Megolm-Sitzung rotiert bei
+ * (heute `verlaufQuelle.ts`, Begründung dort): eine Megolm-Sitzung rotiert bei
  * jedem Mitgliederwechsel, und ein Archiv, das Jahre überleben soll, kann
  * nicht an Schlüsseln hängen, die es dann längst nicht mehr gibt. Der
  * Geheimtext im Archiv wäre ohne genau diese rotierten Sitzungen wertlos.

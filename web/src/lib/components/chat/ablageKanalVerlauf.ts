@@ -47,7 +47,7 @@ function ausAblageNachricht(kanalId: string, n: AblageNachricht): Message {
     verschluesselt: true,
     // Die geraeteuebergreifende Identitaet — das Laufwerk-Log fuehrt eine
     // Nachricht unter der Zustellungs-ID des Geraets, das sie abgeholt hat
-    // (`ablage/postfachQuelle.ts`); ohne `krypto_id` stuende sie neben einer
+    // (`ablage/verlaufQuelle.ts`); ohne `krypto_id` stuende sie neben einer
     // lokalen Kopie unter anderer ID doppelt.
     ...(n.kryptoId ? { krypto_id: n.kryptoId } : {}),
     attachments: n.anhaenge.map((a) => ({

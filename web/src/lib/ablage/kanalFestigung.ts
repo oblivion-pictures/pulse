@@ -1,10 +1,14 @@
 /**
  * Die Festigung eines Ablage-Kanals — der Antrieb, den `nachzieher.ts`,
- * `schreiber.ts`, `postfachQuelle.ts` und `kryptoBehaelter.ts` bislang
- * vermissten: alles fertig gebaut, aber niemand rief es produktiv. Läuft auf
- * dem Gerät des Kanal-Erstellers: liest das Postfach über
- * `postfachQuelleFuerKanal` (`postfachQuelleVerdrahtung.ts`), schreibt neue
- * Rahmen in die verschlüsselte Ablage (`AblageSchreiber` + `kryptoBehaelter.ts`).
+ * `schreiber.ts` und `kryptoBehaelter.ts` brauchen. Läuft auf dem Gerät des
+ * Kanal-Erstellers: liest den lokalen Verlauf über `verlaufQuelleFuerKanal`
+ * (`verlaufQuelleVerdrahtung.ts`), schreibt neue Rahmen in die verschlüsselte
+ * Ablage (`AblageSchreiber` + `kryptoBehaelter.ts`).
+ *
+ * **Bis zum 2026-10-17 las sie das Postfach statt des Verlaufs** — und fand
+ * es leer, weil der Empfangsweg jede Zustellung gleich nach dem Ablegen
+ * quittiert. Das Laufwerk blieb leer; warum der Verlauf die richtige Quelle
+ * ist und das Zurückhalten der Quittung nicht, steht in `verlaufQuelle.ts`.
  *
  * **Nur das Besitzer-Gerät ruft das auf** — dieselbe Erkennung wie bei der
  * Community-Festigung (`festigung.ts`, Modulkopf), nur je Kanal statt je
@@ -14,25 +18,22 @@
  * (`KanalDateiablageVerbinden.svelte`). Ohne diese Markierung ist der Aufruf
  * ein sofortiger No-Op — kein Netzaufruf, kein Postfach-Zugriff.
  *
- * **Quittiert wird hier NICHT.** `postfachQuelle.ts` (Modulkopf) liest das
- * Postfach rein additiv; die Quittung bleibt beim normalen Empfangsweg
- * (`krypto/empfangen.ts`). Diese Datei rührt das nicht an.
- *
- * **Die Konto-Sperre kommt aus `postfachQuelleFuerKanal` mit** — sie öffnet
- * jede Gruppennachricht bereits unter `mitKontosperre` (s. dort). Diese Datei
- * baut keine eigene Sperre und keinen eigenen Postfach-/Krypto-Zugriff.
+ * **Quittiert wird hier NICHT, und geöffnet auch nicht.** Die Quittung bleibt
+ * beim normalen Empfangsweg (`krypto/empfangen.ts`); die Festigung liest nur,
+ * was er schon abgelegt hat, und den offenen Bestand als Haltegrenze. Sie
+ * dreht an keiner Megolm-Sitzung und braucht deshalb keine Konto-Sperre.
  *
  * **Backoff mit Deckel statt Wasserzeichen-Warteschlange**: es gibt hier
  * keine Warteschlange einzelner Einträge, die getrennt scheitern oder gelingen
  * könnten — ein Kanal hat genau EIN Ziel (sein Laufwerk), und `nachziehen()`
- * arbeitet den gesamten offenen Postfach-Bestand dieses Kanals in einem
- * Rutsch ab. Ein Fehlschlag betrifft deshalb den ganzen Durchlauf, nicht
+ * arbeitet alles hinter dem Wasserzeichen des Laufwerks bis zur Halte-
+ * grenze in einem Durchlauf ab (höchstens 20 Runden à 200, `nachzieher.ts`). Ein Fehlschlag betrifft deshalb den ganzen Durchlauf, nicht
  * einen einzelnen Rahmen; der Deckel-Backoff (Muster aus `festigung.ts`)
  * verhindert, dass ein totes Laufwerk bei jedem Timer-Tick erneut angefragt
  * wird.
  *
  * **Ein totes Laufwerk hält den Chat nicht an.** Jeder Fehlschlag (Netz,
- * Laufwerk weg, kaputte Zustellung) landet im Rückgabewert
+ * Laufwerk weg, Verlauf nicht lesbar) landet im Rückgabewert
  * (`KanalFestigungsErgebnis.fehler`), nie als geworfene Ausnahme beim
  * Aufrufer der Schleife.
  */
@@ -42,7 +43,7 @@ import { nachziehen } from './nachzieher.ts';
 import { verschluesselnderAdapter } from './kryptoBehaelter.ts';
 import { ablageVerbindungen, adapterFür } from './verbindungen.svelte.ts';
 import { ueberPulse } from './ablageUeberPulse.ts';
-import { postfachQuelleFuerKanal } from './postfachQuelleVerdrahtung';
+import { verlaufQuelleFuerKanal } from './verlaufQuelleVerdrahtung';
 import { base64ZuBytes } from './syncOrdnerSchluessel.ts';
 import { backoffDeckel } from './backoffDeckel.ts';
 import { sichtbarerTakt } from '../utils/sichtbarerTakt.ts';
@@ -92,12 +93,12 @@ async function festigeKanalEinmal(kanalId: string): Promise<KanalFestigungsErgeb
 
 		const schreiber = new AblageSchreiber(adapter, kanalId);
 		// Den echten Stand laden, BEVOR nachgezogen wird — sonst hielte
-		// `nachziehen()` den Kanal für leer und läse das Postfach von vorn,
+		// `nachziehen()` den Kanal für leer und läse den Verlauf von vorn,
 		// obwohl das Manifest längst weiter ist (`nachzieher.ts` fragt
 		// `schreiber.stand()` ab, das ohne diesen Aufruf `null` bliebe).
 		await schreiber.bestandAufnehmen();
 
-		const quelle = postfachQuelleFuerKanal(kanalId);
+		const quelle = verlaufQuelleFuerKanal(kanalId);
 		const bericht = await nachziehen(schreiber, quelle);
 
 		deckel.vermerkeErfolg(kanalId);

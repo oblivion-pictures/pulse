@@ -7,7 +7,7 @@
  * (der laufende Betrieb schreibt über `verlaufPutSaetze` ohnehin laufend
  * nach). Kein Vollsweep pro Start.
  *
- * **Importfrei, injizierter Abruf** (Muster `ablage/postfachQuelle.ts`):
+ * **Importfrei, injizierter Abruf** (Muster `ablage/verlaufQuelle.ts`):
  * Netz, IndexedDB und Konto kommen als Parameter herein, damit der
  * Node-Testläufer die Schleife ohne Krypto-WASM und ohne `fetch` prüft.
  * Produktiv verdrahtet das `MedienArchivSheet.svelte` mit

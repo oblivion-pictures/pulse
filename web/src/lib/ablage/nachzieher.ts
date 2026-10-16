@@ -4,8 +4,9 @@
  * Quelle liefert aufsteigende Einträge hinter einem Wasserzeichen, der
  * Schreiber kennt weder REST noch Krypto.
  *
- * Der Krypto-Nachzug tauscht allein die Quelle (Postfach statt
- * `GET /channels/{id}/messages`) — diese Schleife bleibt stehen.
+ * Der Krypto-Nachzug tauscht allein die Quelle (seit 2026-10-17 der lokale
+ * Verlauf, `verlaufQuelle.ts`, statt `GET /channels/{id}/messages`) — diese
+ * Schleife bleibt stehen.
  *
  * Ein Durchlauf läuft leer oder bis zum Rundenzähl; der Dauerpoller ist
  * Sache des Aufrufers. Liefert die Quelle Ids hinter dem Wasserzeichen,
