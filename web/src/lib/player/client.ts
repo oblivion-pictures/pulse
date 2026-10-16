@@ -179,7 +179,13 @@ export function onDirectState(cb: (zustand: DirectZustand) => void): () => void 
  */
 export function onPlayerWindowRequest(
   cb: (
-    kind: 'close' | 'chat' | 'remote-disconnect' | 'remote-screen' | 'remote-request',
+    kind:
+      | 'close'
+      | 'chat'
+      | 'remote-disconnect'
+      | 'remote-screen'
+      | 'remote-screen-close'
+      | 'remote-request',
     session: number,
     /** Nur bei `remote-screen`: die Nummer des gewaehlten Bildschirms. */
     monitor?: number,
@@ -201,6 +207,9 @@ export function onPlayerWindowRequest(
     // Anfrage-Knopf aus der Bedienleiste. Das Fenster fragt nicht selbst an —
     // Rechte, Host und Serververbindung kennt allein die App.
     else if (ev.ev === 'player:remoteRequest') cb('remote-request', ev.session);
+    // „Diesen Bildschirm schließen" aus dem Menü am Griff — welcher Platz das
+    // ist, löst die App aus der Fenster-Nummer auf (`$lib/remote/schirmZu.ts`).
+    else if (ev.ev === 'player:remoteScreenClose') cb('remote-screen-close', ev.session);
     // Bildschirm-Wunsch aus dem Menue am Griff. Das Fenster schaltet nichts
     // selbst — es kennt weder Geraet noch Sitzung; angefordert wird in der App
     // (`$lib/devices/schirme.svelte.ts`).

@@ -20,6 +20,8 @@ import { remoteAblage } from '$lib/remote/ablage';
 import { eingabeEinspielen } from '$lib/remote/sidecarInput';
 import { userCache } from '$lib/stores/users.svelte';
 import { direktbild } from '$lib/remote/direktbild.svelte';
+import { schirmAbschiede } from '$lib/devices/abschiede';
+import { schirmZuEmpfangen } from '$lib/devices/schirmZu';
 
 /**
  * Eingabe-Frames einspielen — aber nur, wenn für genau diese Sitzung wirklich
@@ -38,6 +40,10 @@ async function eingabe(evt: {
   if (remoteSession.phase !== 'active' || remoteSession.role !== 'host') return;
   if (!evt.session_id || evt.session_id !== remoteSession.sessionId) return;
   if (!Array.isArray(evt.frames) || evt.frames.length === 0) return;
+  // Ein Platz, den der Steuernde gerade geschlossen hat: sein Sidecar endet,
+  // und was noch unterwegs war, ist bedeutungslos — kein Grund, die Sitzung
+  // der übrigen Bildschirme zu beenden (`$lib/remote/schirmZuRegel.ts`).
+  if (schirmAbschiede.verwirft(evt.slot, Date.now())) return;
   // Der Vorrang des Hosts gilt maschinenweit, nicht je Stream-Platz: die Wache
   // sitzt in jedem Sidecar-Prozess einzeln, und nur hier ist bekannt, ob
   // IRGENDEINER gerade meldet (Begruendung in `$lib/remote/vorrang.ts`).
@@ -118,6 +124,11 @@ export function register(): void {
       if (typeof sdp === 'string') {
         void direktbild.steuerndAnswer(direktbild.steuerndSitzung(), sdp);
       }
+    }
+    // „Diesen Bildschirm schließen" — nur das Gerät handelt danach
+    // (`$lib/devices/schirmZu.ts`).
+    else if (evt.kind === 'schirm_zu' && remoteSession.role === 'host') {
+      schirmZuEmpfangen(evt.data);
     }
     else remoteP2P.signal(evt.kind, evt.data);
   });

@@ -41,7 +41,10 @@ export type RemoteSignalKind =
   // Sidecars des Hosts. Der Server sieht nur die zwei SDP-Texte — die
   // RTP-Pakete gehen an jedem Gateway vorbei.
   | 'bild_offer'
-  | 'bild_answer';
+  | 'bild_answer'
+  // „Diesen Bildschirm schließen" — vom Steuernden zum Gerät, Nutzlast
+  // `{ slot }` (`$lib/remote/schirmZuRegel.ts`).
+  | 'schirm_zu';
 
 export type ChannelPayload = {
   id: string;

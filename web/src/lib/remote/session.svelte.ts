@@ -27,6 +27,7 @@
 
 import { activeGatewayConnection } from '$lib/ws/connection';
 import type { GatewayConnection } from '$lib/ws/connection';
+import type { RemoteSignalKind } from '$lib/ws/handlers/types';
 import { setRemoteSessionConnection } from '$lib/ws/dispatch-rules';
 import { m } from '$lib/paraglide/messages.js';
 import { eingabeFreigeben, eingabeMoeglich } from './sidecarInput';
@@ -531,6 +532,15 @@ class RemoteSessionStore {
   // ── intern ────────────────────────────────────────────────────────────────
 
   /** Senden über die Verbindung DIESER Sitzung (`draht.ts::sendenAuf`). */
+  /** Ein Signal an das Gegenüber der laufenden Sitzung. Heute nur für
+   *  `schirm_zu` (`$lib/remote/schirmZu.ts`) — die übrigen Arten bekommen
+   *  ihren Sender beim Sitzungsbeginn mitgegeben. */
+  signal(kind: RemoteSignalKind, data: unknown): boolean {
+    const id = this.sessionId;
+    if (this.phase !== 'active' || !id) return false;
+    return this.#senden((c) => c.sendRemoteSignal(id, kind, data));
+  }
+
   #senden(fn: (c: GatewayConnection) => boolean): boolean {
     return sendenAuf(this.#conn, fn);
   }

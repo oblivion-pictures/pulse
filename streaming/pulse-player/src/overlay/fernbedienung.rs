@@ -280,6 +280,25 @@ impl Overlay {
                         // sich samt Abstand selbst, weil er auf Plattformen
                         // ohne Umsetzung ganz entfaellt.
                         self.ablage_schalter(ui, actions);
+                        // „Diesen Bildschirm schliessen" direkt ueber dem
+                        // Trennen: er beendet etwas, aber nur einen Teil —
+                        // deshalb in derselben Gruppe, nur ohne die Sitzung.
+                        if schliessbar(&self.fern_schirme)
+                            && ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new("Diesen Bildschirm schließen")
+                                            .font(theme::font_xs())
+                                            .color(theme::TEXT),
+                                    )
+                                    .fill(theme::GRUPPE_BG)
+                                    .corner_radius(theme::RADIUS_MD),
+                                )
+                                .clicked()
+                        {
+                            self.fern_menue_offen = false;
+                            actions.push(OverlayAction::RemoteScreenClose);
+                        }
                         // Trennen steht unten und allein — es beendet die
                         // Fernsteuerung, nicht den Stream. Wer danach nur
                         // zusieht, hat wieder die gewohnte Leiste.
@@ -343,5 +362,60 @@ impl Overlay {
                 actions.push(OverlayAction::RemoteScreen(schirm.index));
             }
         }
+    }
+}
+
+/// Darf dieses Fenster seinen Bildschirm einzeln schliessen?
+///
+/// Nur wenn ausser ihm noch ein weiterer laeuft — den letzten zu schliessen
+/// hiesse die Fernsteuerung beenden, dafuer steht der eigene Knopf darunter —
+/// und nur, wenn die App DIESES Fenster eindeutig einem Bildschirm zugeordnet
+/// hat (`Schirm::dieses_fenster`, fail-visible): ohne Zuordnung koennte der
+/// Knopf den falschen treffen.
+fn schliessbar(schirme: &[super::Schirm]) -> bool {
+    schirme.iter().filter(|s| s.open).count() > 1 && schirme.iter().any(|s| s.dieses_fenster)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::schliessbar;
+    use crate::overlay::Schirm;
+
+    fn schirm(index: u32, open: bool, dieses_fenster: bool) -> Schirm {
+        Schirm {
+            index,
+            name: format!("Monitor {index}"),
+            open,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            dieses_fenster,
+        }
+    }
+
+    /// Der Normalfall: zwei laufende Bildschirme, dieses Fenster zeigt einen
+    /// davon — dann darf es seinen schliessen.
+    #[test]
+    fn mit_zwei_laufenden_und_eigener_zuordnung_schliessbar() {
+        assert!(schliessbar(&[schirm(1, true, true), schirm(2, true, false)]));
+    }
+
+    /// Der letzte laufende Bildschirm ist kein Fall fuer diesen Knopf: ihn zu
+    /// schliessen hiesse die Fernsteuerung beenden, und dafuer gibt es den
+    /// eigenen Knopf darunter. Zwei gleichwertige Wege fuer dasselbe
+    /// verwirren nur.
+    #[test]
+    fn der_letzte_laufende_ist_nicht_schliessbar() {
+        assert!(!schliessbar(&[schirm(1, true, true), schirm(2, false, false)]));
+    }
+
+    /// Ohne eindeutige Zuordnung (die App markiert dann KEINEN Eintrag,
+    /// fail-visible) wuesste niemand, welcher Bildschirm gemeint ist — dann
+    /// lieber kein Knopf als einer, der den falschen schliesst.
+    #[test]
+    fn ohne_markierung_kein_knopf() {
+        assert!(!schliessbar(&[schirm(1, true, false), schirm(2, true, false)]));
+        assert!(!schliessbar(&[]));
     }
 }

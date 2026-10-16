@@ -52,6 +52,7 @@ import { gegenstelle } from '$lib/remote/gegenstelle';
 import { remoteProtokoll } from '$lib/remote/protokoll.svelte';
 import { remoteSession } from '$lib/remote/session.svelte';
 import { standplatz } from '$lib/remote/standplatz.svelte';
+import { schirmAbschiede } from './abschiede';
 
 /**
  * Welcher Platz welchen Bildschirm überträgt — nur auf dem GERÄT geführt.
@@ -175,6 +176,26 @@ function laeuftSchon(quelle: string): boolean {
 export function geraeteSlots(): number[] {
   const laufend = new Set(runningStreamSlots());
   return [...platzFuerQuelle.keys()].filter((slot) => laufend.has(slot)).sort();
+}
+
+/**
+ * Einen einzelnen, selbst geweckten Platz abgeben — für „Diesen Bildschirm
+ * schließen" (`schirmZu.ts`). `false`, wenn er nicht vom Gerät stammt (der
+ * Besitzer überträgt selbst) oder der Direktplatz ist (der IST die Sitzung);
+ * dann bleibt alles, wie es ist.
+ *
+ * Räumt dieselben drei Einträge ab wie [`wiederEinschlafen`], nur für einen
+ * Platz: ohne das hielte [`laeuftSchon`] den Bildschirm für laufend, und ein
+ * späterer Weckruf für ihn ginge ins Leere. Den Stopp selbst macht der
+ * Aufrufer.
+ */
+export function platzAbgeben(slot: number): boolean {
+  if (!platzFuerQuelle.has(slot) || slot === direktPlatz) return false;
+  platzFuerQuelle.delete(slot);
+  const vorgang = vorgangFuerPlatz.get(slot);
+  vorgangFuerPlatz.delete(slot);
+  if (vorgang) void remoteProtokoll.beenden(vorgang);
+  return true;
 }
 
 /**
@@ -361,6 +382,9 @@ export async function weckrufBehandeln(
   const slot = naechsterPlatz();
   if (slot < 0) return;
   reserviert.add(slot);
+  // Ein eben geschlossener Platz kann sofort neu vergeben werden — dann gelten
+  // seine Eingaben wieder (`abschiede.ts`).
+  schirmAbschiede.aufheben(slot);
   platzFuerQuelle.set(slot, quelle);
   // Notbremse für einen Sidecar-Ruf, der nie zurückkommt (s. VERGABE_FRIST_MS).
   const vergabeFrist = setTimeout(() => reserviert.delete(slot), VERGABE_FRIST_MS);

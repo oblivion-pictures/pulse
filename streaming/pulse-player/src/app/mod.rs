@@ -1359,6 +1359,14 @@ impl App {
                     serde_json::json!({ "session": id }),
                 ));
             }
+            // Den Bildschirm dieses Fensters schliessen — Geraet benachrichtigen
+            // und Fenster zumachen tut die App (`$lib/remote/schirmZu.ts`).
+            OverlayAction::RemoteScreenClose => {
+                self.stdout.send(&Event::new(
+                    "player:remoteScreenClose",
+                    serde_json::json!({ "session": id }),
+                ));
+            }
             // Bildschirm-Wunsch aus dem Menue am Griff. Auch hier schaltet das
             // Fenster NICHTS selbst: es kennt weder das Geraet noch die Sitzung
             // beim Server. Die App weckt den Bildschirm und oeffnet sein

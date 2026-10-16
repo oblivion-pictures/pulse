@@ -34,6 +34,7 @@
   import { schirmWarten, schirmeVon, schirmeVonFuerFenster } from '$lib/devices/schirme.svelte';
   import { remoteZeigerform } from '$lib/remote/zeigerform';
   import { onPlayerWindowRequest } from '$lib/player/client';
+  import { bildschirmSchliessen } from '$lib/remote/schirmZu';
 
   const steuernd = $derived(
     remoteSession.phase === 'active' && remoteSession.role === 'controller'
@@ -205,6 +206,10 @@
       // Bildschirm aus dem Menü am Griff: dieselbe Entscheidung wie in der
       // Geräteansicht (`schirme.svelte.ts`) — läuft er schon, kommt sein
       // Fenster nach vorne; sonst wird er geweckt.
+      if (kind === 'remote-screen-close') {
+        bildschirmSchliessen(session);
+        return;
+      }
       if (kind === 'remote-screen') {
         const channelId = remoteSession.channelId;
         const hostId = remoteSession.peerUserId;

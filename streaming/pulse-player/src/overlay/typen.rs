@@ -78,6 +78,13 @@ pub enum OverlayAction {
     /// die Sitzung beim Server; anfordern kann nur die App. Dasselbe Muster wie
     /// bei [`OverlayAction::Chat`] und [`OverlayAction::RemoteDisconnect`].
     RemoteScreen(u32),
+    /// Den Bildschirm DIESES Fensters schliessen: das Geraet hoert auf, ihn zu
+    /// uebertragen, und das Fenster geht zu — die Fernsteuerung der uebrigen
+    /// Bildschirme laeuft weiter. Ohne Nummer: welcher Platz gemeint ist,
+    /// rechnet die App aus der Fenster-Sitzung (`nativePlayerSessions.
+    /// nachFenster`), so wie bei [`OverlayAction::RemoteRequest`]. Das Fenster
+    /// selbst schliesst und meldet nichts beim Server.
+    RemoteScreenClose,
     /// Ein Kaestchen der Bildschirm-Karte antippen, das schon offen ist — aber
     /// in einem ANDEREN Fenster als diesem. Anders als
     /// [`OverlayAction::RemoteScreen`] wird hier nichts neu angefordert: das

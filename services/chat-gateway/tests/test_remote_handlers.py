@@ -930,6 +930,38 @@ async def test_ablage_signal_reaches_the_controller(ws_app, _auth_signer):
 
 
 @pytest.mark.asyncio
+async def test_schirm_zu_signal_reaches_the_host(ws_app, _auth_signer):
+    """„Diesen Bildschirm schliessen" (Standplatz-Geraete): der Steuernde bittet
+    das Geraet, EINEN Bildschirm nicht mehr zu uebertragen. Derselbe
+    Weiterleiter wie Zwischenablage und Vorrang — damit kann es nur, wer per
+    Consent in genau dieser Sitzung steht, und es braucht keine eigene
+    Rechte-Regel. Fehlte die Art in der Pruefliste, holte sich der Sender ein
+    4050 ab und das Geraet uebertruege weiter."""
+
+    def _run():
+        with TestClient(ws_app) as tc:
+            owner_token, _, member_token, member_uid, _, cid = _setup_remote(
+                tc, _auth_signer
+            )
+            with tc.websocket_connect(f"/ws?token={owner_token}") as ctrl_ws, \
+                 tc.websocket_connect(f"/ws?token={member_token}") as host_ws:
+                skip_init_frames(ctrl_ws)
+                skip_init_frames(host_ws)
+                sid = _open_session(ctrl_ws, host_ws, cid, member_uid)
+                ctrl_ws.send_json({
+                    "op": "remote_signal",
+                    "session_id": sid,
+                    "kind": "schirm_zu",
+                    "data": {"slot": 1},
+                })
+                sig = _drain_for(host_ws, "remote_signal")
+                assert sig["kind"] == "schirm_zu"
+                assert sig["data"] == {"slot": 1}
+
+    await asyncio.to_thread(_run)
+
+
+@pytest.mark.asyncio
 async def test_ablage_signal_over_the_limit_is_rejected(ws_app, _auth_signer):
     """Der Deckel (8 KiB, gemessen als kompaktes JSON) gilt fuer ``ablage`` wie
     fuer jede andere Art — sonst waere sie ein Loch in einer Grenze, die fuer

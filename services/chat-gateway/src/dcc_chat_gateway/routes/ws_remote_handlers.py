@@ -146,6 +146,13 @@ _SIGNAL_KINDS = (
     # nur diese zwei SDP-Texte; die RTP-Pakete gehen an jedem Gateway vorbei.
     "bild_offer",
     "bild_answer",
+    # **„Diesen Bildschirm schliessen"** (Standplatz-Geraete, seit 2026-10-16):
+    # der Steuernde bittet das Geraet, EINEN Platz nicht mehr zu uebertragen.
+    # Ueber diesen Weiterleiter, weil er nur zwischen den beiden Parteien der
+    # bestaetigten Sitzung weiterreicht — eine eigene Rechte-Regel braucht es
+    # dann nicht. Das Geraet prueft selbst, ob der Platz einer ist, den ER
+    # geweckt hat (`web/src/lib/devices/schirmZu.ts`).
+    "schirm_zu",
 )
 
 
