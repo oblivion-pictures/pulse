@@ -115,9 +115,14 @@ export const gruppenApi = {
  *  Leseweg — ein Fehlschlag kostet nur den blauen Haken, nie die Nachricht.
  *  Cloud-Route wie jede Gruppen-Anfrage: ohne sie ging die Meldung bei
  *  aktivem Self-Host an den Self-Host und verschwand dort im 404. */
-export async function gruppenLesestandSetzen(gruppeId: string, lastReadMessageId: string): Promise<void> {
+export async function gruppenLesestandSetzen(
+  gruppeId: string,
+  lastReadMessageId: string,
+  aktiv = false
+): Promise<void> {
   await request<void>(
-    `/gruppen/${encodeURIComponent(gruppeId)}/lesestand`,
+    // `aktiv`: s. `api/lesestand.ts` (Abfrage-Parameter, ein älterer Server übergeht ihn).
+    `/gruppen/${encodeURIComponent(gruppeId)}/lesestand${aktiv ? '?aktiv=1' : ''}`,
     { method: 'PUT', body: { last_read_message_id: lastReadMessageId } },
     cloudRoute()
   );

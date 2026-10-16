@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.dm_vorschau import Letzte, letzte_nachrichten
+from dcc_chat_gateway.fcm_gelesen import aktives_lesen_merken
 from dcc_chat_gateway.haekchen import DmStaende, dm_lesestand_empfaenger, dm_staende
 from dcc_chat_gateway.friend_helpers import (
     block_exists_either_way,
@@ -233,6 +234,9 @@ async def set_dm_lesestand(
     session: SessionDep,
     current: CurrentUser,
     request: Request,
+    # Abfrage-Parameter statt Rumpffeld: ein älterer Server übergeht ihn
+    # still (``fcm_gelesen.py``, Regel 3).
+    aktiv: Annotated[bool, Query()] = False,
 ) -> None:
     """Serverseitiger Lesefortschritt des Aufrufers in dieser DM (P0.2).
 
@@ -293,6 +297,10 @@ async def set_dm_lesestand(
         last_read_message_id=str(gespeichert),
     )
     manager = getattr(request.app.state, "connection_manager", None)
+    await aktives_lesen_merken(
+        getattr(manager, "redis", None), user_id=current.id, channel_id=dm.id,
+        bis=payload.last_read_message_id, aktiv=aktiv,
+    )
     if manager is not None:
         for konto in empfaenger:
             try:

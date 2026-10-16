@@ -56,6 +56,7 @@ from typing import Any
 
 import dcc_chat_gateway.config as chat_config
 from dcc_chat_gateway import fcm, fcm_gelesen
+from dcc_chat_gateway.fcm_gelesen import zurueckhalten_aktiv
 
 log = logging.getLogger(__name__)
 
@@ -136,13 +137,6 @@ def arbeitsliste(arbeit: str) -> str:
 
 def _text(wert: Any) -> str:
     return wert.decode() if isinstance(wert, bytes) else str(wert)
-
-
-def zurueckhalten_aktiv() -> bool:
-    """Ob Pushes überhaupt warten: FCM eingerichtet und Wartezeit > 0. Ohne
-    das braucht auch niemand Lesebelege (``routes/postfach_abholen.py``)."""
-    settings = chat_config.get_settings()
-    return bool(settings.firebase_service_account_key) and settings.fcm_dm_push_verzoegerung_s > 0
 
 
 async def _sofort(

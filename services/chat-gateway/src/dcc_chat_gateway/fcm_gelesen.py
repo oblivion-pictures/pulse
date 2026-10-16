@@ -28,8 +28,19 @@ Die Regel in :func:`ist_gelesen`, alles nur IDs, keine Uhrzeit:
    verschiedener Geräte, und ein Lesestand, der wegen einer vorgehenden Uhr
    schon vorher über der neuen ID lag, belegt nichts über diese Nachricht.
 
+3. Der Lesestand kam von einem AKTIVEN Nutzer (Gegenprüfung 2026-10-17,
+   P1): „sichtbar und fokussiert" allein (``hinschauen.ts``) gilt auch für
+   ein Fenster, vor dem niemand sitzt — Pulse steht am Rechner offen, der
+   Nutzer ist mit dem Handy weg, und ohne diese Regel verschwände der Banner
+   genau dann, wenn er gebraucht wird. Der Klient hängt ``?aktiv=1`` an die
+   Lesestand-Meldung, wenn in den letzten 60 s eine echte Eingabe auf der
+   Seite war (``web/src/lib/nachrichten/aktivitaet.ts``); der Server merkt
+   sich den höchsten so gemeldeten Stand (:func:`aktives_lesen_merken`), und
+   verglichen wird mit dem kleineren der beiden Stände. Ein Klient ohne das
+   Flag gilt als nicht aktiv — dann geht der Push hinaus.
+
 Im Klartext-Weg kennt der Server die ID (Snowflake) und vergleicht direkt;
-Regel 2 gilt dort genauso.
+Regel 2 und 3 gelten dort genauso.
 """
 
 from __future__ import annotations
@@ -40,6 +51,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+import dcc_chat_gateway.config as chat_config
 from dcc_chat_gateway.models import DmLesestand, GruppenLesestand
 
 log = logging.getLogger(__name__)
@@ -52,8 +64,54 @@ BELEG_PRAEFIX = "push:dm:beleg:"
 BELEG_HALTBARKEIT_S = 15 * 60
 
 
+#: Je (Konto, Kanal): der höchste Lesestand, den ein AKTIVER Nutzer meldete.
+AKTIV_PRAEFIX = "push:dm:aktiv:"
+
+# KEYS[1]; ARGV: Stand, Haltbarkeit. Monotones Maximum — als Text verglichen
+# (erst Länge, dann Zeichen): Lua-Zahlen sind Doubles und runden 19-stellige
+# IDs, zwei nahe IDs wären sonst gleich.
+_AKTIV_MAX = """
+local alt = redis.call('GET', KEYS[1])
+local neu = ARGV[1]
+if (not alt) or #alt < #neu or (#alt == #neu and alt < neu) then
+  redis.call('SET', KEYS[1], neu, 'EX', ARGV[2])
+else
+  redis.call('EXPIRE', KEYS[1], ARGV[2])
+end
+return 1
+"""
+
+
+def zurueckhalten_aktiv() -> bool:
+    """Ob Pushes überhaupt warten: FCM eingerichtet und Wartezeit > 0. Ohne
+    das braucht auch niemand Lesebelege (``routes/postfach_abholen.py``) oder
+    Aktiv-Marken (die Lesestand-Routen)."""
+    settings = chat_config.get_settings()
+    return bool(settings.firebase_service_account_key) and settings.fcm_dm_push_verzoegerung_s > 0
+
+
 def _beleg_schluessel(zustellung_id: int | str) -> str:
     return f"{BELEG_PRAEFIX}{zustellung_id}"
+
+
+def _aktiv_schluessel(user_id: int, channel_id: int) -> str:
+    return f"{AKTIV_PRAEFIX}{user_id}:{channel_id}"
+
+
+async def aktives_lesen_merken(
+    redis: Any, *, user_id: int, channel_id: int, bis: int, aktiv: bool
+) -> None:
+    """Für die Lesestand-Routen (DM und Gruppe): einen Stand, den der Klient
+    als AKTIV gelesen meldete, festhalten (Regel 3). Löst nie aus."""
+    if not aktiv or redis is None or not zurueckhalten_aktiv():
+        return
+    try:
+        skript = redis.register_script(_AKTIV_MAX)
+        await skript(
+            keys=[_aktiv_schluessel(user_id, channel_id)], args=[str(bis), BELEG_HALTBARKEIT_S]
+        )
+    except Exception:  # noqa: BLE001 — fehlt die Marke, geht der Push hinaus
+        log.warning("fcm_aktiv_merken_fehlgeschlagen")
 
 
 async def belege_merken(redis: Any, belege: Mapping[int, int]) -> None:
@@ -131,6 +189,15 @@ async def ungelesene(
         return list(teile)
     if stand is None:
         return list(teile)
+    try:
+        aktiv_roh = await redis.get(_aktiv_schluessel(user_id, channel_id))
+        aktiv_bis = None if aktiv_roh is None else int(aktiv_roh)
+    except Exception:  # noqa: BLE001
+        log.warning("fcm_aktiv_lesen_fehlgeschlagen")
+        return list(teile)
+    if aktiv_bis is None:
+        return list(teile)  # Regel 3: niemand hat aktiv gelesen.
+    stand = min(stand, aktiv_bis)
     zids = sorted(
         {str(z) for t in teile for liste in (t.get("geraete") or {}).values() for z in liste}
     )
@@ -152,10 +219,13 @@ async def ungelesene(
 
 
 __all__ = [
+    "AKTIV_PRAEFIX",
     "BELEG_HALTBARKEIT_S",
     "BELEG_PRAEFIX",
+    "aktives_lesen_merken",
     "belege_merken",
     "ist_gelesen",
     "lesestaende",
     "ungelesene",
+    "zurueckhalten_aktiv",
 ]

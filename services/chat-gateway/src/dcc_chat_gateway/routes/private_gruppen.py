@@ -36,8 +36,9 @@ Hinzufuegen NICHT gegen eine Blockierung geprueft werden kann.
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -46,6 +47,7 @@ from sqlalchemy.exc import IntegrityError
 
 import dcc_chat_gateway.config as chat_config
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.fcm_gelesen import aktives_lesen_merken
 from dcc_chat_gateway.friend_helpers import block_exists_either_way
 from dcc_chat_gateway.haekchen import MitgliedStaende, gruppen_staende
 from dcc_chat_gateway.haekchen import mitglied_loeschen as haekchen_mitglied_loeschen
@@ -416,6 +418,9 @@ async def gruppen_lesestand_setzen(
     session: SessionDep,
     user: CurrentUser,
     request: Request,
+    # Abfrage-Parameter, kein Rumpffeld (``extra="forbid"`` oben): ein älterer
+    # Server übergeht ihn still (``fcm_gelesen.py``, Regel 3).
+    aktiv: Annotated[bool, Query()] = False,
 ) -> None:
     """Serverseitiger Lesefortschritt des Aufrufers in dieser Gruppe
     (Übergabe 05.10. — Gruppen-Lesebestätigung „Haken wenn alle gelesen").
@@ -451,6 +456,10 @@ async def gruppen_lesestand_setzen(
 
     mitglieder = await _mitglieder_laden(session, gruppe_id)
     manager = getattr(request.app.state, "connection_manager", None)
+    await aktives_lesen_merken(
+        getattr(manager, "redis", None), user_id=user.id, channel_id=gruppe_id,
+        bis=body.last_read_message_id, aktiv=aktiv,
+    )
     if manager is None or gespeichert is None:
         return
     for mitglied in mitglieder:

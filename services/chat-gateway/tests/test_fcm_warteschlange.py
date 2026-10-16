@@ -23,6 +23,7 @@ from redis.asyncio import Redis
 
 from .conftest import make_auth_header
 from .test_anruf_push import _anrufen, _dm, _gesendet, _iphone, _konto, apple  # noqa: F401
+from .test_haekchen import _gruppe_mit, gruppen_an  # noqa: F401
 from .test_postfach import _abholen, _bundel_seeden_geraet, _dm_erstellen, _einliefern
 
 pytestmark = pytest.mark.usefixtures("cloud_mode")
@@ -117,9 +118,10 @@ async def _quittieren(client, sz: dict, bis: int) -> None:
     assert r.status_code == 204, r.text
 
 
-async def _lesestand(client, sz: dict, bis: int) -> None:
+async def _lesestand(client, sz: dict, bis: int, *, aktiv: bool = True) -> None:
+    """B meldet seinen Lesestand — als aktiver Nutzer, wenn ``aktiv``."""
     r = await client.put(
-        f"/dm-channels/{sz['dm']}/lesestand",
+        f"/dm-channels/{sz['dm']}/lesestand" + ("?aktiv=1" if aktiv else ""),
         json={"last_read_message_id": str(bis)},
         headers=make_auth_header(sz["t_b"]),
     )
@@ -635,3 +637,65 @@ async def test_salve_traegt_die_zahl_im_text(
     [(_t, payload, _b)] = sender
     assert payload["title"] == f"u{sz['uid_a']}"
     assert payload["body"] == "3 neue Nachrichten"
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("aktiv", "erwartet"), [(True, 0), (False, 1)])
+async def test_nur_aktives_lesen_verwirft(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange, aktiv, erwartet
+):
+    """P1: ein fokussiertes Fenster, vor dem niemand sitzt, meldet den Lesestand
+    genauso — ohne Aktiv-Flag (auch: älterer Klient) geht der Push hinaus."""
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    await _senden(client, sz)
+    await _quittieren(client, sz, X)
+    await _lesestand(client, sz, X, aktiv=aktiv)
+    await _abarbeiten(app.state.connection_manager)
+    assert len(sender) == erwartet
+
+
+@pytest.mark.asyncio
+async def test_aktiv_zaehlt_nur_bis_zum_aktiv_gemeldeten_stand(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange
+):
+    """Aktiv bis X-1 gelesen, danach unbeaufsichtigt bis X: nicht verwerfen.
+    Der Vergleich als Text hält 19-stellige IDs auseinander, die ein Double
+    zusammenrunden würde."""
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    await _lesestand(client, sz, X - 100, aktiv=False)
+    await _senden(client, sz)
+    await _quittieren(client, sz, X)
+    await _lesestand(client, sz, X - 1, aktiv=True)
+    await _lesestand(client, sz, X, aktiv=False)
+    await _lesestand(client, sz, X - 2, aktiv=True)  # schiebt die Marke nicht zurück
+    assert int(await schlange.get(f"push:dm:aktiv:{sz['uid_b']}:{sz['dm']}")) == X - 1
+    await _abarbeiten(app.state.connection_manager)
+    assert len(sender) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("aktiv", "erwartet"), [(True, 0), (False, 1)])
+async def test_gruppe_verwirft_nur_bei_aktivem_lesen(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange, gruppen_an,  # noqa: F811
+    aktiv, erwartet,
+):
+    t_a, uid_a = _konto_b(_auth_signer)
+    t_b, uid_b = _konto_b(_auth_signer)
+    await friend_pair(uid_a, uid_b)
+    gruppe = await _gruppe_mit(client, t_a, uid_b)
+    pub_b = await _bundel_seeden_geraet(session_factory, user_id=uid_b)
+    async with session_factory() as s:
+        s.add(FcmToken(user_id=uid_b, geraet_id="handy", token=f"tok-{uid_b}"))
+        await s.commit()
+    sz = {"t_a": t_a, "uid_a": uid_a, "t_b": t_b, "uid_b": uid_b, "dm": gruppe, "pub_b": pub_b}
+    await _senden(client, sz)
+    await _quittieren(client, sz, X)
+    r = await client.put(
+        f"/gruppen/{gruppe}/lesestand" + ("?aktiv=1" if aktiv else ""),
+        json={"last_read_message_id": str(X)},
+        headers=make_auth_header(t_b),
+    )
+    assert r.status_code == 204, r.text
+    await _abarbeiten(app.state.connection_manager)
+    assert len(sender) == erwartet

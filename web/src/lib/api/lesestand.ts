@@ -25,15 +25,27 @@ import { gruppenLesestandSetzen } from './gruppen';
 import { readState } from '$lib/stores/readState.svelte';
 import { directMessages } from '$lib/stores/directMessages.svelte';
 import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
+import { aktivitaetsUhr, beobachten } from '$lib/nachrichten/aktivitaet';
 
 const NACHLAUF_MS = 1500;
 
+/** Gab es eben eine echte Eingabe? Nur dann darf der Server einen
+ *  zurückgehaltenen Handy-Push für das Gelesene verwerfen
+ *  (`nachrichten/aktivitaet.ts`). Lesestand, Häkchen und Zähler bleiben davon
+ *  unberührt. */
+const anwesenheit = aktivitaetsUhr();
+if (typeof window !== 'undefined') beobachten(window, anwesenheit);
+
 const schwebend = new Map<string, ReturnType<typeof setTimeout>>();
 
-function senden(channelId: string, messageId: string): Promise<void> {
-  if (privateGruppen.istGruppe(channelId)) return gruppenLesestandSetzen(channelId, messageId);
+function senden(channelId: string, messageId: string, aktiv: boolean): Promise<void> {
+  if (privateGruppen.istGruppe(channelId)) {
+    return gruppenLesestandSetzen(channelId, messageId, aktiv);
+  }
+  // `aktiv` als Abfrage-Parameter, nicht im Rumpf: ein älterer Server
+  // übergeht ihn still, statt die Meldung abzuweisen.
   return request<void>(
-    `/dm-channels/${encodeURIComponent(channelId)}/lesestand`,
+    `/dm-channels/${encodeURIComponent(channelId)}/lesestand${aktiv ? '?aktiv=1' : ''}`,
     // Bewusst als STRING: 19-stellige lokale E2EE-IDs sprengen den
     // sicheren Number-Bereich, Number() würde still runden (P0.2-Bug).
     { method: 'PUT', body: { last_read_message_id: messageId } },
@@ -45,13 +57,15 @@ function senden(channelId: string, messageId: string): Promise<void> {
 
 function melden(channelId: string, messageId: string): void {
   if (!directMessages.byId[channelId] && !privateGruppen.istGruppe(channelId)) return;
+  // Beim Lesen gefragt, nicht erst nach dem Nachlauf.
+  const aktiv = anwesenheit.istAktiv();
   const bestehend = schwebend.get(channelId);
   if (bestehend) clearTimeout(bestehend);
   schwebend.set(
     channelId,
     setTimeout(() => {
       schwebend.delete(channelId);
-      void senden(channelId, messageId).catch(() => {
+      void senden(channelId, messageId, aktiv).catch(() => {
         // Netz-/Auth-Fehler: still verwerfen — der nächste markRead bzw. das
         // nächste Öffnen (`lesestandErneutMelden`) versucht es erneut; der
         // lokale Stand bleibt unangetastet korrekt.
