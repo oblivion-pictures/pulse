@@ -20,6 +20,7 @@ import { ordnerAdapter, ordnerZugriffOk } from './ordner.ts';
 import { archivUeberPulse } from '../ablage/archivAdapter.ts';
 import { flachAdapter } from './flachPfad.ts';
 import { TokenVorrat } from './tokenVorrat.ts';
+import { sicherungGeaendert } from './zustandSignal.ts';
 import { m } from '$lib/paraglide/messages.js';
 
 const DB_NAME = 'pulse-sicherung';
@@ -172,7 +173,7 @@ export async function zieleLesen(): Promise<SicherungZiele> {
 		// lassen — der Nutzer richtet das fehlende Ziel neu ein.
 		const sauber = sanitisiereZiele(neu);
 		if (Object.keys(sauber).length !== Object.keys(neu).length) {
-			await zieleSchreiben(sauber);
+			await zieleAblegen(sauber);
 		}
 		return sauber;
 	}
@@ -197,11 +198,22 @@ export async function zieleLesen(): Promise<SicherungZiele> {
 	} else if (alt.verzeichnis !== undefined && alt.verzeichnis !== null) {
 		migriert.ordner = { verzeichnis: alt.verzeichnis as AblageVerzeichnis };
 	}
-	await zieleSchreiben(migriert);
+	await zieleAblegen(migriert);
 	return migriert;
 }
 
+/**
+ * Ziele speichern und den Stand melden (`zustandSignal.ts`). Die Sanierung
+ * und Migration IN `zieleLesen` gehen an der Meldung vorbei über
+ * `zieleAblegen`: ein Leser, der auf die Meldung hin liest, löste sonst
+ * selbst die nächste aus.
+ */
 export async function zieleSchreiben(z: SicherungZiele): Promise<void> {
+	await zieleAblegen(z);
+	sicherungGeaendert();
+}
+
+async function zieleAblegen(z: SicherungZiele): Promise<void> {
 	// FELD-FÜR-FELD-Kopie an der IDB-Grenze: der $state-Proxy der Sektion
 	// wrappt auch verschachtelte Objekte (ordner/gdrive), und ein solcher
 	// Proxy ist nicht strukturell klonbar ("could not be cloned"). Der
@@ -247,6 +259,7 @@ export async function zieleLeeren(): Promise<void> {
 		tx.oncomplete = () => resolve();
 		tx.onerror = () => reject(tx.error);
 	});
+	sicherungGeaendert();
 }
 
 /** Ein einzelnes Ziel entfernen — die anderen bleiben Spiegelziele. */

@@ -28,6 +28,7 @@
   import { SICHERUNG_ENABLED } from '$lib/krypto/schalter';
   import { zieleLesen, zieleBesetzt } from '$lib/sicherung/ziele';
   import { dekAusZwischenlager } from '$lib/sicherung/geraete';
+  import { beiSicherungAenderung } from '$lib/sicherung/zustandSignal';
   import SicherungHinweis from '$lib/components/settings/SicherungHinweis.svelte';
   import DmBrowserWarnhinweis from '$lib/components/dm/DmBrowserWarnhinweis.svelte';
   import { dmBrowserWarnung } from '$lib/krypto/dmBrowserWarnung.svelte';
@@ -81,8 +82,11 @@
 
   // Frischgerät-Erkennung: läuft die Sicherung auf DIESEM Gerät noch nicht,
   // liegt der Verlauf noch im Cloud-Archiv — Hinweis mit Direktsprung in die
-  // Sicherungs-Einstellungen zeigen. Prüft beim Laden und periodisch nach,
-  // damit der Hinweis verschwindet, sobald die Sicherung aktiv ist.
+  // Sicherungs-Einstellungen zeigen. Prüft beim Laden, wenn die Schreibstellen
+  // eine Änderung melden (`sicherung/zustandSignal.ts`, auch aus anderen Tabs)
+  // und beim Sichtbarwerden der Seite — damit der Hinweis verschwindet,
+  // sobald die Sicherung aktiv ist. Bis 2026-10-17 lief dafür ein 10-s-Takt,
+  // endlos für jeden, der die Sicherung nie einschaltet.
   //
   // Zeigt der Browser-Warnhinweis oben (reines Browser-Konto ohne Sicherung),
   // unterbleibt das Feld: Der Banner trägt dieselbe Aussage samt Knopf —
@@ -91,20 +95,26 @@
   let browserWarnung = $derived(dmBrowserWarnung.zeigt());
   $effect(() => {
     if (!SICHERUNG_ENABLED || !auth.user) return;
-    let timer: ReturnType<typeof setInterval> | undefined;
+    // Laufnummer: überholt eine jüngere Prüfung eine ältere, gewinnt die
+    // jüngere — die ältere hat womöglich vor der Änderung gelesen.
+    let lauf = 0;
+    let aus = false;
     const pruefe = async (): Promise<void> => {
+      const meine = ++lauf;
       const aktiv =
         zieleBesetzt(await zieleLesen()) && (await dekAusZwischenlager()) !== null;
-      sicherungHinweis = !aktiv;
-      if (!sicherungHinweis && timer) {
-        clearInterval(timer);
-        timer = undefined;
-      }
+      if (!aus && meine === lauf) sicherungHinweis = !aktiv;
+    };
+    const beiSicht = (): void => {
+      if (!document.hidden) void pruefe();
     };
     void pruefe();
-    timer = setInterval(() => void pruefe(), 10_000);
+    const abmelden = beiSicherungAenderung(() => void pruefe());
+    document.addEventListener('visibilitychange', beiSicht);
     return () => {
-      if (timer) clearInterval(timer);
+      aus = true;
+      abmelden();
+      document.removeEventListener('visibilitychange', beiSicht);
     };
   });
 

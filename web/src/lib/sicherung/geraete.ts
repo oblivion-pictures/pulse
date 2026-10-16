@@ -34,6 +34,7 @@ import { pufferSchluessel } from './spiegel.ts';
 import type { AblageNachricht } from '../ablage/nutzlast.ts';
 import type { SicherungLeseStand } from './wiederherstellen.ts';
 import { öffneDb, STORE_PUFFER, STORE_LESESTAND } from './ziele.ts';
+import { sicherungGeaendert } from './zustandSignal.ts';
 
 
 const DB_NAME = 'pulse-sicherung';
@@ -71,6 +72,7 @@ export async function dekZwischenlagern(dek: Uint8Array, kuerzel: string): Promi
 	const db = await identityDb();
 	await idbPutIdentity(db, IDB_KEY_SICHERUNG_DEK, bytesZuB64(dek));
 	await idbPutIdentity(db, IDB_KEY_SICHERUNG_KUERZEL, kuerzel);
+	sicherungGeaendert();
 }
 
 export async function dekAusZwischenlager(): Promise<{ dek: Uint8Array; kuerzel: string } | null> {
@@ -85,6 +87,7 @@ export async function dekZwischenlagerWischen(): Promise<void> {
 	const db = await identityDb();
 	await idbDeleteIdentity(db, IDB_KEY_SICHERUNG_DEK);
 	await idbDeleteIdentity(db, IDB_KEY_SICHERUNG_KUERZEL);
+	sicherungGeaendert();
 }
 
 // ---------------------------------------------------------------------------
