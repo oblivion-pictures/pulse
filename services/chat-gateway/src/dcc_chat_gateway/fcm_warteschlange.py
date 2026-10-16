@@ -84,6 +84,10 @@ STAPEL = 50
 RUECKOFF_S = (30, 60, 120, 180, 240)
 #: Hash Arbeitskennung → Zahl der Wiederholungen.
 VERSUCHE = "push:dm:versuche"
+#: Präfix der Marken je Eintrag (Plakette gezählt, Versand erledigt).
+MARKE_PRAEFIX = "push:dm:marke:"
+#: Haltbarkeit der Erledigt-Marke.
+MARKE_HALTBARKEIT_S = 24 * 60 * 60
 
 # KEYS[1]=faellig, KEYS[2]=inarbeit; ARGV: jetzt, pacht_bis, grenze, marke,
 # Präfix der Teile-Listen, Präfix der Listen in Arbeit. Liefert die
@@ -252,7 +256,19 @@ async def abschliessen(redis: Any, arbeit: str) -> None:
     pipe.delete(arbeitsliste(arbeit))
     pipe.zrem(INARBEIT, arbeit)
     pipe.hdel(VERSUCHE, arbeit)
+    pipe.delete(plakette_marke(arbeit), erledigt_marke(arbeit))
     await pipe.execute()
+
+
+def plakette_marke(arbeit: str) -> str:
+    """Marke, unter der die Plakette eines Eintrags einmal gezählt wird."""
+    return f"{MARKE_PRAEFIX}plakette:{arbeit}"
+
+
+def erledigt_marke(arbeit: str) -> str:
+    """Gesetzt nach einem gelungenen Versand, VOR dem Abschliessen: scheitert
+    das Abschliessen, sendet die Wiederaufnahme nicht ein zweites Mal."""
+    return f"{MARKE_PRAEFIX}erledigt:{arbeit}"
 
 
 async def erneut_einplanen(redis: Any, arbeit: str, *, jetzt_ms: int | None = None) -> bool:
@@ -285,7 +301,9 @@ __all__ = [
     "RUECKOFF_S",
     "abschliessen",
     "arbeitsliste",
+    "erledigt_marke",
     "erneut_einplanen",
+    "plakette_marke",
     "uebernehmen",
     "zurueckgeben",
     "vormerken",

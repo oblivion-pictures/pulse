@@ -82,6 +82,10 @@ def dm_body(hat_anhang: bool) -> str:
 #: (``fcm_warteschlange.PACHT_S`` ist auf diesen Wert abgestimmt).
 FCM_HTTP_TIMEOUT_S = 10
 
+#: Wie lange die Plaketten-Marke eines Warteschlangen-Eintrags hält — länger
+#: als alle Wiederholungen zusammen (``fcm_warteschlange.RUECKOFF_S``).
+PLAKETTE_MARKE_HALTBARKEIT_S = 24 * 60 * 60
+
 #: Initialisierte ``firebase_admin.App`` — Prozess-Singleton, erster Aufruf
 #: gewinnt. ``None`` heisst: nicht konfiguriert oder fehlgeschlagen (kein Push).
 _FCM_APP: Any | None = None
@@ -257,6 +261,7 @@ async def dm_push_senden(
     manager: Any | None = None,
     hat_anhang: bool = False,
     anzahl: int = 1,
+    plakette_marke: str | None = None,
 ) -> Versand:
     """Inhaltsfreien FCM-Push an die DM-Empfänger ausliefern — SOFORT.
 
@@ -312,7 +317,16 @@ async def dm_push_senden(
             badges: dict[int, int | None] = {}
             if redis is not None:
                 for uid in {r.user_id for r in rows}:
-                    badges[uid] = await badgezaehler.erhoehen(redis, uid, anzahl)
+                    # Mit Marke (Warteschlange): einmal je Eintrag, auch wenn
+                    # er mehrfach versucht wird (``erhoehen_einmal``).
+                    badges[uid] = (
+                        await badgezaehler.erhoehen_einmal(
+                            redis, uid, anzahl, plakette_marke,
+                            marke_haltbarkeit_s=PLAKETTE_MARKE_HALTBARKEIT_S,
+                        )
+                        if plakette_marke
+                        else await badgezaehler.erhoehen(redis, uid, anzahl)
+                    )
             results = await asyncio.gather(
                 *(
                     asyncio.to_thread(

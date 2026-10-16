@@ -73,6 +73,41 @@ async def erhoehen(redis: Any, user_id: int, um: int = 1) -> int | None:
         return None
 
 
+# KEYS[1]=Zähler, KEYS[2]=Marke; ARGV: um, Haltbarkeit Zähler, Haltbarkeit Marke.
+_EINMAL = """
+local alt = redis.call('GET', KEYS[2])
+if alt then
+  return alt
+end
+local neu = redis.call('INCRBY', KEYS[1], ARGV[1])
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+redis.call('SET', KEYS[2], neu, 'EX', ARGV[3])
+return neu
+"""
+
+
+async def erhoehen_einmal(
+    redis: Any, user_id: int, um: int, marke: str, *, marke_haltbarkeit_s: int
+) -> int | None:
+    """Wie :func:`erhoehen`, aber höchstens EINMAL je ``marke`` (atomar).
+
+    Für die Push-Warteschlange: ein Eintrag kann mehrfach versucht werden
+    (Rückoff nach einer Störung, Wiederaufnahme nach einem Abbruch beim
+    Herunterfahren). Jeder Versuch bekäme sonst eine neue, höhere Zahl —
+    für dieselben Nachrichten. Mit der Marke liefert jeder weitere Versuch
+    den Stand des ersten."""
+    try:
+        skript = redis.register_script(_EINMAL)
+        wert = await skript(
+            keys=[schluessel(user_id), marke],
+            args=[max(1, um), HALTBARKEIT_S, marke_haltbarkeit_s],
+        )
+        return begrenzen(int(wert))
+    except Exception:  # noqa: BLE001 — Push ist best-effort, s. Modulkopf
+        log.warning("badge_erhoehen_fehlgeschlagen user=%s", user_id)
+        return None
+
+
 async def lesen(redis: Any, user_id: int) -> int:
     """Aktuellen Stand lesen; 0 für unbekannte Konten und bei Störung."""
     try:
@@ -105,6 +140,7 @@ __all__ = [
     "OBERGRENZE",
     "begrenzen",
     "erhoehen",
+    "erhoehen_einmal",
     "lesen",
     "schluessel",
     "setzen",

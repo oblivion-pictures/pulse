@@ -36,6 +36,10 @@ GLEICHZEITIG = 20
 TAKT_S = 0.5
 #: Pause nach einer Redis-Störung.
 STOERUNG_PAUSE_S = 5.0
+#: So lange wartet ein abgebrochener Eintrag auf seinen schon laufenden
+#: Versand, bevor er die Pacht zurückgibt — unter den 5 s, die der Lifespan
+#: einer Hintergrundaufgabe beim Herunterfahren lässt (``app.py``).
+ABBRUCH_FRIST_S = 3.0
 
 
 async def abarbeiten(manager: Any, arbeit: str) -> None:
@@ -53,6 +57,10 @@ async def abarbeiten(manager: Any, arbeit: str) -> None:
         log.warning("fcm_warteschlange_eintrag_unlesbar")
         await ablage.abschliessen(redis, arbeit)
         return
+    if await redis.exists(ablage.erledigt_marke(arbeit)):
+        # Schon gesendet, nur das Abschliessen fehlte (Absturz, Redis-Störung).
+        await ablage.abschliessen(redis, arbeit)
+        return
     teile: list[dict[str, Any]] = []
     for roh in await redis.lrange(ablage.arbeitsliste(arbeit), 0, -1):
         try:
@@ -62,22 +70,44 @@ async def abarbeiten(manager: Any, arbeit: str) -> None:
     offen = await fcm_gelesen.ungelesene(
         redis, fcm.SessionLocal, user_id=uid, channel_id=kanal, teile=teile
     )
-    if offen:
-        neuester = offen[-1]
-        versand = await fcm.dm_push_senden(
+    if not offen:
+        await ablage.abschliessen(redis, arbeit)
+        return
+    neuester = offen[-1]
+    # Der Versand läuft abgeschirmt: ``asyncio.to_thread`` lässt sich nicht
+    # abbrechen, der Push ginge beim Herunterfahren also trotzdem hinaus —
+    # und der nächste Prozess sendete ihn ein zweites Mal (Gegenprüfung P5).
+    versand_aufgabe = asyncio.ensure_future(
+        fcm.dm_push_senden(
             recipient_ids={uid},
             author_name=neuester.get("autor") or "",
             channel_id=kanal,
             manager=manager,
             hat_anhang=bool(neuester.get("anhang")),
             anzahl=len(offen),
+            plakette_marke=ablage.plakette_marke(arbeit),
         )
-        if versand.stoerung:
-            # Nicht als erledigt löschen (Gegenprüfung P4): die Warteschlange
-            # hat alles für einen neuen Versuch. Er prüft auch das Lesen neu.
-            if await ablage.erneut_einplanen(redis, arbeit):
-                return
-            log.warning("fcm_push_nach_stoerungen_aufgegeben")
+    )
+    try:
+        versand = await asyncio.shield(versand_aufgabe)
+    except asyncio.CancelledError:
+        fertig, _ = await asyncio.wait({versand_aufgabe}, timeout=ABBRUCH_FRIST_S)
+        if fertig and not versand_aufgabe.cancelled():
+            await _nach_versand(redis, arbeit, versand_aufgabe.result())
+        raise
+    await _nach_versand(redis, arbeit, versand)
+
+
+async def _nach_versand(redis: Any, arbeit: str, versand: fcm.Versand) -> None:
+    if versand.stoerung:
+        # Nicht als erledigt löschen (Gegenprüfung P4): die Warteschlange hat
+        # alles für einen neuen Versuch. Er prüft auch das Lesen neu, und die
+        # Plakette zählt er dank der Marke nicht noch einmal.
+        if await ablage.erneut_einplanen(redis, arbeit):
+            return
+        log.warning("fcm_push_nach_stoerungen_aufgegeben")
+    else:
+        await redis.set(ablage.erledigt_marke(arbeit), b"1", ex=ablage.MARKE_HALTBARKEIT_S)
     await ablage.abschliessen(redis, arbeit)
 
 

@@ -288,6 +288,7 @@ async def test_herunterfahren_gibt_die_pacht_sofort_zurueck(
         await asyncio.sleep(3600)
 
     monkeypatch.setattr(fcm, "dm_push_senden", _haengt)
+    monkeypatch.setattr(ab, "ABBRUCH_FRIST_S", 0.1)
     aufgabe = asyncio.create_task(ab._einer(app.state.connection_manager, arbeit))
     await asyncio.wait_for(angehalten.wait(), 2)
     aufgabe.cancel()
@@ -532,3 +533,76 @@ async def test_nach_allen_versuchen_wird_aufgegeben_und_gewarnt(
     assert len(versuche) == len(ws.RUECKOFF_S) + 1
     assert await _leer(schlange)
     assert "fcm_push_nach_stoerungen_aufgegeben" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_wiederholung_zaehlt_die_plakette_nicht_noch_einmal(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange, monkeypatch
+):
+    """P5: jeder Versuch eines Eintrags zählte die Plakette erneut hoch."""
+    manager = app.state.connection_manager
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    await _senden(client, sz)
+    ausgaenge = ["warn", "ok"]
+
+    def _send(*, token, payload, badge=None):
+        sender.append((token, payload, badge))
+        return ausgaenge.pop(0)
+
+    monkeypatch.setattr(fcm, "_send_one", _send)
+    [arbeit] = await ws.uebernehmen(schlange, jetzt_ms=SPAETER)
+    await ab.abarbeiten(manager, arbeit)
+    pacht = await schlange.zscore(ws.INARBEIT, arbeit)
+    await ws.uebernehmen(schlange, jetzt_ms=int(pacht) + 1)
+    await ab.abarbeiten(manager, arbeit)
+    assert [b for _t, _p, b in sender] == [1, 1]
+    assert await badgezaehler.lesen(schlange, sz["uid_b"]) == 1
+    assert await _leer(schlange)
+
+
+@pytest.mark.asyncio
+async def test_abbruch_waehrend_des_sendens_sendet_nicht_doppelt(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange, monkeypatch
+):
+    """P5: ``to_thread`` lässt sich nicht abbrechen — der Push ging beim
+    Herunterfahren hinaus, der nächste Prozess sendete ihn noch einmal."""
+    import threading
+    import time
+
+    manager = app.state.connection_manager
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    await _senden(client, sz)
+    begonnen = threading.Event()
+
+    def _langsam(*, token, payload, badge=None):
+        begonnen.set()
+        time.sleep(0.3)
+        sender.append((token, payload, badge))
+        return "ok"
+
+    monkeypatch.setattr(fcm, "_send_one", _langsam)
+    [arbeit] = await ws.uebernehmen(schlange, jetzt_ms=SPAETER)
+    aufgabe = asyncio.create_task(ab._einer(manager, arbeit))
+    await asyncio.to_thread(begonnen.wait, 2)
+    aufgabe.cancel()
+    await asyncio.gather(aufgabe, return_exceptions=True)
+    assert len(sender) == 1
+    # Abgeschlossen statt zurückgegeben: der nächste Start findet nichts.
+    assert await ws.uebernehmen(schlange, jetzt_ms=SPAETER * 2) == []
+    assert await badgezaehler.lesen(schlange, sz["uid_b"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_erledigt_marke_verhindert_zweiten_versand(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange
+):
+    """Gesendet, aber das Abschliessen scheiterte: die Wiederaufnahme schliesst
+    nur noch ab."""
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    await _senden(client, sz)
+    [arbeit] = await ws.uebernehmen(schlange, jetzt_ms=SPAETER)
+    await schlange.set(ws.erledigt_marke(arbeit), b"1")
+    await ab.abarbeiten(app.state.connection_manager, arbeit)
+    assert sender == []
+    assert await _leer(schlange)
+    assert not await schlange.exists(ws.erledigt_marke(arbeit))
