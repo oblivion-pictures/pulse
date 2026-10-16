@@ -62,6 +62,11 @@ function lage(device: Device): Zuordnungslage {
   return { listeGemeldet: device.monitors.length > 0 };
 }
 
+/** Die Plätze, auf denen das Gerät selbst sendet (leer, wenn es sie nicht meldet). */
+function geraetePlaetze(device: Device): Set<number> {
+  return new Set(device.stream_slots ?? []);
+}
+
 /**
  * Welcher Strom zeigt welchen Bildschirm — die **eine** Zuordnung, an der beide
  * Fragen hängen: „läuft der schon?" und „welchen Strom mache ich auf, wenn
@@ -106,8 +111,7 @@ function lage(device: Device): Zuordnungslage {
  * über `schirmFuerFenster` hängt.
  */
 function zuordnung(device: Device): Map<number, Strom> {
-  const geraetePlaetze = new Set(device.stream_slots ?? []);
-  return zuordneStroeme(stroemeVon(device), monitorListe(device), geraetePlaetze, lage(device))
+  return zuordneStroeme(stroemeVon(device), monitorListe(device), geraetePlaetze(device), lage(device))
     .karte;
 }
 
@@ -134,11 +138,10 @@ export interface SchirmStandFuerFenster extends SchirmStand {
  * `quellenummer.ts::zuordnungIstEindeutig`).
  */
 export function schirmeVonFuerFenster(device: Device, fensterSlot: number): SchirmStandFuerFenster[] {
-  const geraetePlaetze = new Set(device.stream_slots ?? []);
   const gemeint = schirmFuerFenster(
     stroemeVon(device),
     monitorListe(device),
-    geraetePlaetze,
+    geraetePlaetze(device),
     fensterSlot,
     lage(device),
   );

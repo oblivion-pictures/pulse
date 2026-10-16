@@ -64,9 +64,9 @@ async def geraet_anfrage_fehler(
 
     Reihenfolge = Verrat-Schutz: erst der Standplatz (falscher Kanal oder
     unbekannte Kennung → 4051, wie „kein Zugriff" — bis 2026-10-16 die eigene
-    Funktion ``standplatz_stimmt``), dann die Sicht (4051),
-    erst danach die Freigabe (4062). Ein Unberechtigter kann so aus der Antwort
-    nicht ablesen, welche Gerätekennungen es gibt.
+    Funktion ``standplatz_stimmt``), dann die Sicht (4051), erst danach die
+    Freigabe (4062). Ein Unberechtigter kann so aus der Antwort nicht ablesen,
+    welche Gerätekennungen es gibt.
     """
     device = await session.get(Device, device_id)
     if device is None or device.channel_id != channel_id:

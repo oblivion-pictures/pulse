@@ -2,6 +2,18 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-16.2",
+      "date": "2026-10-16",
+      "style": "Sachlich",
+      "title": "Remote-Rechner: Freigabe entscheidet",
+      "items": [
+        "Einen Remote-Rechner wecken und steuern kann nur noch, wer in seiner Freigabeliste steht. „Jeder“ bedeutet dort: jeder, der den Kanal sehen kann. Ist die Liste leer, kann niemand den Rechner nutzen.",
+        "Zuschauen geht nur, solange jemand den Rechner steuert. Dann erscheint in der Kanalliste das LIVE-Symbol.",
+        "Die Freigabeliste lässt sich jetzt für jeden eigenen Remote-Rechner bearbeiten, nicht nur für den, an dem man gerade sitzt.",
+        "Das Kanal- und Rollenrecht heißt jetzt „Fernsteuerung anfragen“ und gilt nur für Personen, die ihren Bildschirm teilen."
+      ]
+    },
+    {
       "id": "2026-10-16",
       "date": "2026-10-16",
       "style": "Sachlich",

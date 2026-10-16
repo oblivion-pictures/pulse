@@ -26,7 +26,10 @@ export interface FreigabeAuswahl {
   sicht: KanalSicht | null;
 }
 
-export async function freigabeAuswahlLaden(guildId: string, channelId: string): Promise<FreigabeAuswahl> {
+export async function freigabeAuswahlLaden(
+  guildId: string,
+  channelId: string,
+): Promise<FreigabeAuswahl> {
   let mitglieder: string[] = [];
   try {
     mitglieder = (await chatApi.listMembers(guildId)).map((mm) => mm.user_id);
