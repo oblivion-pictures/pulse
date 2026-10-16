@@ -14,6 +14,7 @@
     nachScroll,
     type Klebezustand
   } from '$lib/nachrichten/klebezustand';
+  import { wacheAnListe } from '$lib/nachrichten/wachstumsWache';
   import type { Channel, Message } from '$lib/api/types';
   import { auth } from '$lib/stores/auth.svelte';
   import { viewport } from '$lib/stores/viewport.svelte';
@@ -108,6 +109,10 @@
   // Wrapper um <VList> — Viewport-Resize (Fenster/Mobile/Memberlist-Toggle)
   // und async Content-Load (Bilder/Embeds) werden hierüber beobachtet.
   let wrapperEl = $state<HTMLDivElement | null>(null);
+  // Meldet dem Messungs-Wächter einen Wachstums-Anlass (s. unten,
+  // `nachrichten/wachstumsWache.ts`). Bewusst kein $state: Aufrufer in
+  // Effekten sollen davon nicht abhängen.
+  let wachAnstoss: () => void = () => {};
   let lastCount = $state(0);
   // ID der letzten bekannten Nachricht — erkennt den Echo-Swap (tmp → echte
   // ID bei GLEICHER Länge), der nur über die Länge unsichtbar bliebe.
@@ -179,6 +184,7 @@
 
   function handleVirtuaScroll(offset: number) {
     if (!vlist) return;
+    wachAnstoss();
     const size = vlist.getScrollSize();
     // Vor dem ersten echten Inhalt ist die Größe 0 → nicht auswerten.
     if (size === 0) return;
@@ -374,6 +380,7 @@
       const zuwachs = count - lastCount; // vor dem Ueberschreiben sichern (Zaehler-Bug 03.10.)
       lastCount = count;
       lastSeenId = lastId;
+      wachAnstoss();
       if (shouldScroll) pinToEndWhenMeasured(isInitialLoad);
       // Erstladung: etwas Inhalt kam NACH dem Notfall-Timer (langsames Netz,
       // >1,2 s) — dann ist die Sperre schon auf, ohne dass gepinnt wurde:
@@ -404,34 +411,26 @@
   $effect(() => {
     const el = wrapperEl;
     if (!el) return;
-    const onGrow = () => { if (klebe.klebt) pinToEnd(true); };
-    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onGrow);
-    ro?.observe(el);
-    el.addEventListener('load', onGrow, true);
     // Messungs-Wachstum: virtua misst Items erst beim Rendern nach — der
     // Inhalt wächst also UNTER einem unten klebenden Nutzer (48er-Schätzung
     // vs. reale Medienhöhen) und er scrollt „ins Nichts". Der Wächter hält
-    // den Pin, solange der Nutzer unten klebt.
-    let letzteGemessene = 0;
-    const wache = setInterval(() => {
-      if (!vlist || items.length === 0) {
-        letzteGemessene = 0;
-        return;
-      }
-      const groesse = vlist.getScrollSize();
-      // Lueckenlos solange unten geklebt: jedes Messungs-Nachziehen oberhalb
-      // vergroessert den Inhalt und drueckt das Listenende nach unten — ohne
-      // Neu-Pin driftet die Ansicht vom Ende weg (Scrollbar-Dezentliness).
-      // Bewusst unpinnte Nutzer (weiter oben lesen) werden nicht gestoert.
-      if (!klebe.klebt) {
-        letzteGemessene = groesse;
-        return;
-      }
-      if (Math.abs(groesse - letzteGemessene) > 10) {
-        letzteGemessene = groesse;
-        pinToEnd();
-      }
-    }, 250);
+    // den Pin, solange der Nutzer unten klebt; bewusst unpinnte Nutzer
+    // (weiter oben lesen) werden nicht gestört. Er tickt nur nach einem
+    // Wachstums-Anlass — Rechnung, Takt, Anlässe und warum das nichts
+    // auslässt: `nachrichten/wachstumsWache.ts`.
+    const wache = wacheAnListe(el, {
+      groesse: () => (vlist && items.length > 0 ? vlist.getScrollSize() : null),
+      klebt: () => klebe.klebt,
+      nachziehen: () => pinToEnd()
+    });
+    wachAnstoss = wache.anlass;
+    const onGrow = () => {
+      wache.anlass();
+      if (klebe.klebt) pinToEnd(true);
+    };
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onGrow);
+    ro?.observe(el);
+    el.addEventListener('load', onGrow, true);
     // Scroll-Absicht des Users schlägt das automatische Ans-Ende-Ziehen — und
     // zwar SOFORT, nicht erst wenn das daraus folgende scroll-Event den
     // Zustand neu berechnet. Ohne das kann ein Bild, das genau in diesem
@@ -484,7 +483,8 @@
       el.removeEventListener('touchmove', onTouchMove, true);
       el.removeEventListener('keydown', onKey, true);
       el.removeEventListener('mousedown', onMouseDown, true);
-      clearInterval(wache);
+      wachAnstoss = () => {};
+      wache.stop();
     };
   });
 
@@ -831,6 +831,7 @@
         data={items}
         {getKey}
         bind:this={vlist}
+        class="nachrichten-scroller"
         onscroll={handleVirtuaScroll}
         shift={prependShift}
         itemSize={48}
