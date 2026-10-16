@@ -69,6 +69,13 @@ pub trait BildEncoder {
     /// [`send_audio`](Self::send_audio) — sonst driften die Spuren.
     fn set_audio_origin(&mut self, origin: std::time::Instant, origin_qpc: Option<i64>);
 
+    /// Den Ton an einen eigenen Faden abgeben (`super::tonfaden`), statt ihn
+    /// über [`send_audio`](Self::send_audio) im Bildtakt zu kodieren. `None`
+    /// heisst: dieser Encode-Weg kann das nicht, der Takt kodiert weiter.
+    fn ton_abzweigen(&mut self) -> Option<super::tonfaden::TonAbzweig> {
+        None
+    }
+
     /// Dauer des letzten Einschiebens in µs (Diagnose, `tick_monitor`).
     fn last_send_us(&self) -> u64;
 
@@ -394,6 +401,9 @@ impl BildEncoder for super::encoder_hw::FfmpegHwEncoder {
     }
     fn set_audio_origin(&mut self, origin: std::time::Instant, origin_qpc: Option<i64>) {
         Self::set_audio_origin(self, origin, origin_qpc)
+    }
+    fn ton_abzweigen(&mut self) -> Option<super::tonfaden::TonAbzweig> {
+        Self::ton_abzweigen(self)
     }
     fn last_send_us(&self) -> u64 {
         Self::last_send_us(self)

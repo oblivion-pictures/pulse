@@ -371,6 +371,15 @@ impl FfmpegHwEncoder {
         Ok(())
     }
 
+    /// Den Ton an einen eigenen Faden abgeben (`super::tonfaden`) — nur auf
+    /// dem Sendeweg ohne Container. Danach ist `send_audio` folgenlos und
+    /// `finish` gibt keinen Ton mehr ab; beides übernimmt der Faden.
+    pub fn ton_abzweigen(&mut self) -> Option<super::tonfaden::TonAbzweig> {
+        let Ausgabe::Extern(w) = &self.ausgabe else { return None };
+        let ausgang = w.ton_ausgang()?;
+        Some(super::tonfaden::TonAbzweig { audio: self.audio.take()?, ausgang })
+    }
+
     /// Ein fertiges Opus-Paket ans Ziel. Auf dem fremden Weg zählt nur der
     /// rohe Inhalt plus die Paketlänge — der Zeitstempel des Muxers hilft dort
     /// nicht, die Zeit kommt aus der RTP-Uhr.

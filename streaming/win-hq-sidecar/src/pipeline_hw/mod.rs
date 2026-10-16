@@ -278,7 +278,7 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
     // `_hw`: wird ab hier nicht mehr gelesen, muss aber gebunden bleiben —
     // der Pool trägt die Frames, die noch durch den Loop laufen.
     let _hw = std::mem::ManuallyDrop::new(hw);
-    let audio_capture = std::mem::ManuallyDrop::new(audio_capture);
+    let mut audio_capture = std::mem::ManuallyDrop::new(audio_capture);
     let mut scaler = std::mem::ManuallyDrop::new(scaler);
     let mut encoder = std::mem::ManuallyDrop::new(encoder);
 
@@ -307,6 +307,10 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
         if qpc_sync { origin_instant } else { started },
         if qpc_sync { Some(origin_qpc) } else { None },
     );
+    // Ton auf eigenem Faden statt einmal je Takt — nur WHIP/Direktweg;
+    // Begründung und Vergleichsschalter in `encode::tonfaden`. Erst NACH dem
+    // Verankern: der Faden kodiert ab dem ersten Stück.
+    let mut ton_faden = crate::encode::tonfaden::abzweigen(&mut **encoder, &mut audio_capture)?;
     let mut last_frame: Option<OwnedHwFrame> = Some(first);
     let mut last_pts: i64 = -1;
     let mut audio_dead = false;
@@ -344,7 +348,11 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
 
         // Audio non-blocking nachziehen.
         let t_audio = Instant::now();
-        if let Some(ac) = audio_capture.as_ref() {
+        if let Some(f) = ton_faden.as_ref() {
+            if let Some(e) = f.fehler() {
+                return Err(e);
+            }
+        } else if let Some(ac) = audio_capture.as_ref() {
             loop {
                 match ac.samples.try_recv() {
                     // Audio-Fehler NICHT verschlucken (#3): bricht die Audio-Spur
@@ -501,6 +509,11 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
     // wird hier vom Teardown ausgenommen. Das zuletzt GEWANDELTE Bild braucht
     // keine eigene Zeile: es liegt in der Vorstufe, und die ist `ManuallyDrop`.
     std::mem::forget(last_frame);
+    // Vor `finish`: solange der Ton-Faden seinen Ausgang hält, endet der
+    // Abgabe-Faden nicht (`SenkenWriter::ton_ausgang`).
+    if let Some(f) = ton_faden.as_mut() {
+        f.anhalten();
+    }
     encoder.finish()?;
     Ok(())
 }

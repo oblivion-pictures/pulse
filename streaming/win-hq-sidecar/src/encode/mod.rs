@@ -43,6 +43,7 @@ pub mod opts;
 pub mod output;
 pub mod senke;
 pub mod senke_writer;
+pub mod tonfaden;
 pub mod zehnbit;
 
 /// **`rc_buffer_size` (VBV) wurde probiert und wirkt auf keinem AMD-Zweig** —

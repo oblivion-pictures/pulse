@@ -143,13 +143,18 @@ impl SenkenWriter {
         self.reihe_ein(Sendung::Ton(packet))
     }
 
+    /// Ein zweiter Eingang für den Ton, der auf einem eigenen Faden kodiert
+    /// wird (`super::tonfaden`). Dieselbe Warteschlange, nur ein weiterer
+    /// Erzeuger. **Solange er lebt, endet [`finish`](Self::finish) nicht** —
+    /// der Abgabe-Faden läuft, bis ALLE Erzeuger weg sind.
+    pub fn ton_ausgang(&self) -> Option<TonAusgang> {
+        let tx = self.tx.clone()?;
+        Some(TonAusgang { tx, fail_msg: Arc::clone(&self.fail_msg) })
+    }
+
     fn reihe_ein(&self, s: Sendung) -> Result<()> {
         match &self.tx {
-            Some(tx) => tx.send(s).map_err(|_| {
-                let grund =
-                    super::fail_slot::lies(&self.fail_msg, "Faden beendet ohne hinterlegten Grund");
-                anyhow!("senken-writer gescheitert: {grund}")
-            }),
+            Some(tx) => einreihen(tx, &self.fail_msg, s),
             None => Err(anyhow!("senken-writer bereits beendet")),
         }
     }
@@ -166,6 +171,30 @@ impl SenkenWriter {
             None => Ok(()),
         }
     }
+}
+
+/// Eingang des Ton-Fadens in die Warteschlange (s. [`SenkenWriter::ton_ausgang`]).
+pub struct TonAusgang {
+    tx: SyncSender<Sendung>,
+    fail_msg: Arc<Mutex<Option<String>>>,
+}
+
+impl TonAusgang {
+    pub fn audio(&self, packet: Packet) -> Result<()> {
+        einreihen(&self.tx, &self.fail_msg, Sendung::Ton(packet))
+    }
+}
+
+/// Einreihen mit dem Grund des Fadens statt „Kanal zu" — für beide Erzeuger.
+fn einreihen(
+    tx: &SyncSender<Sendung>,
+    fail_msg: &Mutex<Option<String>>,
+    s: Sendung,
+) -> Result<()> {
+    tx.send(s).map_err(|_| {
+        let grund = super::fail_slot::lies(fail_msg, "Faden beendet ohne hinterlegten Grund");
+        anyhow!("senken-writer gescheitert: {grund}")
+    })
 }
 
 fn sende_schleife(
