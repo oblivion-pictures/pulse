@@ -3141,6 +3141,7 @@
   "settings_audio_ios_diagnose_hint": "If your microphone stops working in a voice channel, the app sends a short report about the audio state to Pulse – without messages, names or IDs.",
   "voice_mikro_tot_text": "Microphone stopped working",
   "voice_mikro_tot_neu": "Reconnect",
+  "stream_ios_lautlos_hinweis": "In silent mode, the stream's audio is muted",
   "voice_bar_undeafen": "Undeafen",
   "voice_uebernommen_toast": "Voice channel taken over by your other device — the connection continues there.",
   "voice_channel_full": "This voice channel is full.",

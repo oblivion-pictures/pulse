@@ -27,6 +27,7 @@
   import StreamReactions from './StreamReactions.svelte';
   import StreamChatPanel from './StreamChatPanel.svelte';
   import TileShell from './TileShell.svelte';
+  import IosLautlosHinweis from './IosLautlosHinweis.svelte';
   import RemoteRequestButton from '$lib/remote/components/RemoteRequestButton.svelte';
 	import { isElectron, isLinux } from '$lib/platform/runtime';
   import { remoteSession } from '$lib/remote/session.svelte';
@@ -466,6 +467,7 @@
            lebenden Stream (die Platzhalter-Flaechen oben haben damit nichts
            zu tun). -->
       <StreamReactions {channelId} leisteAn={reaktionenAn} />
+      <IosLautlosHinweis stream={useNative ? null : (mgr?.stream ?? null)} />
     {/if}
   {/snippet}
   {#snippet controlsExtra()}
