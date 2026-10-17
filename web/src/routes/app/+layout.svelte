@@ -70,6 +70,7 @@
   import MobileTabBar from '$lib/components/mobile/MobileTabBar.svelte';
   import TabletNavRail from '$lib/components/mobile/TabletNavRail.svelte';
   import { layoutLage } from '$lib/navigation/layoutLage.svelte';
+  import { isCapacitorIOS } from '$lib/platform/runtime';
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { registriereZurueckTaste } from '$lib/platform/zurueckTaste';
@@ -482,7 +483,11 @@
   // Welche Leisten stehen (Bereichs-Leiste, Voice-Dock, Spalte links) und die
   // Hüllen-Lage (Querformat mit Stream, Orientierungs-Sperre): die Regeln samt
   // Begründungen stehen in `navigation/layoutLage.svelte.ts`.
-  const lage = layoutLage(() => hydrated);
+  const lage = layoutLage({
+    hydrated: () => hydrated,
+    handy: () => viewport.isMobile,
+    tablet: () => viewport.isTablet
+  });
 
   // Räume-Bereich-Gedächtnis: jede Navigation, die im Räume-Bereich landet
   // (Räume, Raum-Ansicht, Kanal, Entdecken), wird als letzter Stand gemerkt
@@ -574,7 +579,13 @@
       <TabletNavRail />
     {/if}
     {#if !hydrated}
-      <LoadingState density="page" label={m.feedback_loading()} class="flex-1" />
+      <!-- Neuer Platzhalter nur in der iOS-Hülle; Desktop/Browser/Android
+           zeigen unverändert den alten. -->
+      {#if isCapacitorIOS()}
+        <LoadingState density="page" label={m.feedback_loading()} class="flex-1" />
+      {:else}
+        <div class="text-text-muted flex flex-1 items-center justify-center text-sm">loading…</div>
+      {/if}
     {:else}
       <!-- Server-Picker ist in die GuildRail unten integriert (s. dort). -->
       {@render children?.()}

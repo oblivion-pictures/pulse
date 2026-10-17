@@ -105,15 +105,25 @@ test('E6: ausserhalb der iOS-Hülle bleibt der Web-Anruf, nie „veraltet"', asy
   }
 });
 
-test('E6: der Anruf-Store lehnt in der veralteten Hülle ab statt zu klingeln', () => {
+test('E6: der Anruf-Store ignoriert in der veralteten Hülle, ohne am Server abzulehnen', () => {
   const src = readFileSync(
     new URL('../src/lib/anrufe/anruf.svelte.ts', import.meta.url),
     'utf8'
   );
-  const guards = [...src.matchAll(/if \(anrufwegVeraltet\(\)\) \{([\s\S]*?)\n    \}/g)].map((x) => x[1]);
-  assert.equal(guards.length, 2, 'starten() und eingehend() prüfen');
-  for (const g of guards) assert.match(g, /toast\.error\(m\.anruf_ios_app_veraltet\(\)\)/);
-  // Eingehend: Gegenseite erfährt es, es klingelt nichts.
-  assert.match(guards[1], /anrufAblehnen\(evt\.call_id\)/);
-  assert.ok(src.indexOf('anrufwegVeraltet()') < src.indexOf('this.medienWaehlen()'));
+  const huelle = readFileSync(
+    new URL('../src/lib/anrufe/anrufHuelle.ts', import.meta.url),
+    'utf8'
+  );
+  assert.match(src, /if \(veralteteHuelleMelden\(\)\) return;/);
+  // Eingehend: nur lokal ignorieren (CallKit aufräumen), KEIN Server-Ablehnen —
+  // das beendete den Anruf für alle Geräte des Kontos.
+  const eingehend = src.match(/if \(veralteteHuelleMelden\(evt\.call_id\)\) return;/);
+  assert.ok(eingehend, 'eingehend() prüft mit der Anruf-Kennung');
+  const fn = huelle.match(/export function veralteteHuelleMelden[\s\S]*?\n\}/)![0];
+  assert.match(fn, /toast\.error\(m\.anruf_ios_app_veraltet\(\)\)/);
+  assert.match(fn, /nativBeenden\('fehler', eingehendeId\)/);
+  assert.doesNotMatch(fn, /anrufAblehnen/);
+  const pruefung = src.indexOf('veralteteHuelleMelden(evt');
+  assert.ok(pruefung > 0 && pruefung < src.indexOf('this.medienWaehlen()', pruefung));
+  assert.ok(src.indexOf('veralteteHuelleMelden()') < src.indexOf('this.schluessel.neu('));
 });

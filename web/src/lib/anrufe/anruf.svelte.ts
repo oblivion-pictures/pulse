@@ -28,8 +28,7 @@ import { AnrufSystemzeilen, type ZeilenZiel } from './systemzeileKern';
 import type { LaufenderAnruf } from './anrufMedien';
 import { AnrufMedienZustand, fehlerMelden } from './anrufMedienZustand.svelte';
 import { e2eeFaehig } from './anrufSchluesselweg';
-import { anrufwegVeraltet } from '$lib/platform/anrufNativWeiche';
-import { nativAnbinden, nativAnkommen, nativBeenden } from './anrufHuelle';
+import { nativAnbinden, nativAnkommen, nativBeenden, veralteteHuelleMelden } from './anrufHuelle';
 import type { AnrufEndgrund } from '$lib/platform/anrufNativ';
 
 const KLINGEL_TIMEOUT_MS = 45_000;
@@ -59,10 +58,7 @@ export class AnrufStore extends AnrufMedienZustand {
   async starten(art: AnrufArt, channelId: string, gegenstelle: string): Promise<void> {
     if (this.aktiv) return;
     // iOS-Hülle ohne nativen Anruf-Raum: kein Rückfall auf die WebView.
-    if (anrufwegVeraltet()) {
-      toast.error(m.anruf_ios_app_veraltet());
-      return;
-    }
+    if (veralteteHuelleMelden()) return;
     const schluessel = this.schluessel.neu(art);
     // Sync-Platzhalter schließt das Doppelklick-Fenster vor dem await.
     const platzhalter: LaufenderAnruf = {
@@ -131,14 +127,10 @@ export class AnrufStore extends AnrufMedienZustand {
     // sonst lehnt der Client sich selbst weg und der Anruf stirbt nach
     // der Annahme (Feldbefund 2026-09-08).
     if (this.aktiv?.id === evt.call_id) return;
-    // iOS-Hülle ohne nativen Anruf-Raum: nicht still verschlucken und nicht
-    // ins Leere klingeln lassen — ablehnen (die Gegenseite erfährt es) und
-    // sagen, was zu tun ist.
-    if (anrufwegVeraltet()) {
-      toast.error(m.anruf_ios_app_veraltet());
-      void anrufAblehnen(evt.call_id).catch(() => {});
-      return;
-    }
+    // iOS-Hülle ohne nativen Anruf-Raum: nicht still verschlucken, sagen was
+    // zu tun ist — aber NICHT ablehnen: das beendete den DM-Anruf serverseitig
+    // für ALLE Geräte des Kontos (routes/anrufe.py). Lokal ignorieren.
+    if (veralteteHuelleMelden(evt.call_id)) return;
     if (this.aktiv) {
       // Wirklich ein anderer Anruf → lehne automatisch ab, statt zu stapeln.
       void anrufAblehnen(evt.call_id).catch(() => {});
@@ -270,14 +262,9 @@ export class AnrufStore extends AnrufMedienZustand {
   zweitgeraetAngenommen(callId: string): void {
     if (this.#annahmeLaeuftFuer === callId) return; // dieses Gerät selbst nimmt an
     const anruf = this.aktiv;
-    if (
-      !anruf ||
-      anruf.id !== callId ||
-      anruf.rolle !== 'eingehend' ||
-      anruf.zustand !== 'klingelt'
-    ) {
-      return;
-    }
+    const klingeltHier =
+      anruf?.id === callId && anruf.rolle === 'eingehend' && anruf.zustand === 'klingelt';
+    if (!klingeltHier) return;
     toast.info(m.anruf_anderes_geraet_angenommen());
     this.aufräumen('anderswo-angenommen');
     void anrufEndeGesehen(callId).catch(() => {});

@@ -7,7 +7,6 @@
  */
 import { page } from '$app/state';
 import { guilds } from '$lib/stores/guilds.svelte';
-import { viewport } from '$lib/stores/viewport.svelte';
 import { voice } from '$lib/voice/livekit.svelte';
 import { openedTiles } from '$lib/stream/openedTiles.svelte';
 import { huellenLage } from '$lib/platform/huellenLage.svelte';
@@ -16,7 +15,14 @@ import { isCapacitorIOS } from '$lib/platform/runtime';
 import { istDetailScreen } from './tabs';
 import { kanalAusPfad, istAktiverSprachKanal } from './kanalBildschirm';
 
-export function layoutLage(hydrated: () => boolean) {
+/** Die Geräte-Frage beantwortet die Route (`scripts/geraete-trennung.sh`) und
+ *  reicht sie als Getter herein. */
+export function layoutLage(frage: {
+  hydrated: () => boolean;
+  handy: () => boolean;
+  tablet: () => boolean;
+}) {
+  const { hydrated, handy, tablet } = frage;
   // Die eine Regel, die entscheidet, wer auf welcher Bildschirmgroesse
   // navigiert. Steht bewusst NUR hier: die Leisten rendern sich nicht selbst
   // weg, sonst gaebe es zwei Stellen mit derselben Bedingung.
@@ -67,20 +73,20 @@ export function layoutLage(hydrated: () => boolean) {
   // Voice-Dock und Kopfzeile weichen.
   const istIosHuelle = isCapacitorIOS();
   let kanalQuerStream = $derived(
-    istIosHuelle && viewport.istHandy && huellenLage.quer && streamAngedockt
+    istIosHuelle && handy() && huellenLage.quer && streamAngedockt
   );
   let zeigeDockUnten = $derived(
-    viewport.istHandy && !kanalQuerStream && (voice.connected || voice.connecting)
+    handy() && !kanalQuerStream && (voice.connected || voice.connecting)
   );
   let zeigeLeisteUnten = $derived(
     hydrated() &&
-      viewport.istHandy &&
+      handy() &&
       !kanalQuerStream &&
       (!istDetailScreen(page.url.pathname) || istSprachBildschirm)
   );
   // Nur die Tablet-Klasse traegt die linke Navigations-Spalte — die Partition
   // im Store schliesst handy wie desktop bereits aus, keine zweite Bedingung.
-  let zeigeSpalteLinks = $derived(hydrated() && viewport.isTablet);
+  let zeigeSpalteLinks = $derived(hydrated() && tablet());
 
   // Mobil-Hüllen (Android und iOS): Querformat nur mit ANGEDOCKTEM Stream. Ein
   // Stream im Popup-Eckfenster (Corner-Mode: man hat den Kanal verlassen) lockt
