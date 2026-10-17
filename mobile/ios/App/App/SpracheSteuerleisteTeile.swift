@@ -234,3 +234,39 @@ struct SpracheMeldung: Equatable {
         }
     }
 }
+
+/// Was die Ansicht beobachten muss, das kein `ObservableObject` des SDK
+/// trägt: `taub` lebt in der Hülle (`SpracheRaum.taub`), die
+/// Admin-Stummschaltung im Web (`SprachePlugin.erzwungen`). Geschrieben nur auf
+/// dem Hauptthread.
+final class SpracheStand: ObservableObject {
+    static let geteilt = SpracheStand()
+    @Published var taub = false
+    /// Der Mikrofon-Wächter hat aufgegeben (`SpracheMikroWache.swift`) — die
+    /// Ansicht zeigt dann ein Band mit „Erneut verbinden".
+    @Published var mikroTot = false
+    /// Kennt die Web-App „Erneut verbinden" aus der Ansicht? Eine ältere
+    /// übergeht die Aktion — dann zeigt das Band statt des Knopfs den Rat,
+    /// die App neu zu starten (Gegenprüfung T7). Gesetzt je Beitritt.
+    @Published var neuVerbindenMoeglich = false
+    /// Nutzer-Ids, die die Moderation im Kanal stumm- beziehungsweise
+    /// taubgeschaltet hat. **Nur Anzeige** (Schild, gesperrter Knopf): LiveKit
+    /// kennt die Stummschaltung bloss als entzogenes Recht und die
+    /// Taubschaltung gar nicht — die Wahrheit hat das Web
+    /// (`web/src/lib/voice/erzwungen.ts`).
+    @Published private(set) var erzwungenStumm: Set<String> = []
+    @Published private(set) var erzwungenTaub: Set<String> = []
+
+    func erzwungenSetzen(stumm: Set<String>, taub: Set<String>) {
+        if erzwungenStumm != stumm { erzwungenStumm = stumm }
+        if erzwungenTaub != taub { erzwungenTaub = taub }
+    }
+
+    /// Stumm- und Taubschaltung durch die Moderation für einen Teilnehmer.
+    func erzwungen(fuer p: Participant) -> (stumm: Bool, taub: Bool) {
+        guard let nutzer = SpracheRaum.nutzerId(aus: p.identity?.stringValue ?? "") else {
+            return (false, false)
+        }
+        return (erzwungenStumm.contains(nutzer), erzwungenTaub.contains(nutzer))
+    }
+}
