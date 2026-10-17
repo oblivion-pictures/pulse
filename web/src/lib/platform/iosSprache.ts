@@ -118,16 +118,15 @@ function rufen<T>(
  * Richtige ist. Deshalb gilt der Wert nur SOLANGE der native Raum steht und
  * wird beim Verlassen auf `auto` zurückgenommen.
  *
- * **OFFEN, und vom Eigentümer zu entscheiden — nicht von dieser Datei:**
- * `ambient` gilt für die GANZE WebView, also auch für den Ton einer
- * HQ-Übertragung (WHEP), die man im Sprachkanal ansieht. Der folgt damit,
- * solange der native Raum steht, ebenfalls dem Klingel-Schalter und endet
- * beim Sperren des Bildschirms — und er ist dort nicht Beiwerk, sondern der
- * Inhalt (Bughunt 2026-10-11, K2). Die Alternative `auto` kostet die
- * Hörmuschel (Messung oben). Beides zugleich gibt die W3C-Schnittstelle nicht
- * her; eine Lösung bräuchte eine Unterscheidung, die es heute nicht gibt
- * (etwa den Stream-Ton ebenfalls nativ). Bis zur Entscheidung bleibt es bei
- * `ambient` — die Hörmuschel ist der Grund für den ganzen Umbau.
+ * **`ambient` gilt für die GANZE WebView**, also auch für den Ton einer
+ * HQ-Übertragung (WHEP), die man im Sprachkanal ansieht: der folgt dem
+ * Klingel-Schalter und endet beim Sperren (Bughunt 2026-10-11, K2). Die
+ * Alternative `auto` kostet die Hörmuschel (Messung oben); beides zugleich
+ * gibt die W3C-Schnittstelle nicht her. **Gelöst seit dem 2026-10-17, mit
+ * neuem Bau:** der Stream-Ton spielt in der Hülle nativ
+ * (`stream/nativerStreamTon.ts`) und ist damit gar kein WebView-Ton mehr. Für
+ * ältere Bauten ohne `StreamTonPlugin` gilt der Satz oben weiter — dort zeigt
+ * die Kachel den Lautlos-Hinweis.
  *
  * **Zweite Schreibstelle derselben Eigenschaft** ist `webAudioSession` in
  * `platform/iosTon.ts`; die ist abgeschaltet (`WEB_AUDIO_SESSION_AN`) und
@@ -160,14 +159,23 @@ function webSessionTyp(typ: 'ambient' | 'auto'): void {
  * **Halter sind der Sprachkanal und der Anruf** (Etappe 4) — als Menge
  * (`nativeTonHalter.ts`), damit das Auflegen dem Kanal nichts wegnimmt —,
  * dazu nach einem Neuladen der Vorhalt bis zum Abgleich (`spracheVorhalt.ts`,
- * Bughunt 2, B4).
+ * Bughunt 2, B4), und der native Stream-Ton (`streamton`, ohne Mikrofon,
+ * s. `mikroHalter`).
  */
 const halter = new TonHalter((gehalten) => {
   webSessionTyp(gehalten ? 'ambient' : 'auto');
   tonNativerRaum(gehalten);
-  mikrofonBeiDerHuelleMelden(gehalten);
   iosTonMelden('halter', { gehalten, wer: halter.liste.join(',') });
 });
+
+/**
+ * **Das Mikrofon hält nur ein Raum, nicht der native Stream-Ton.** Der Halter
+ * `streamton` (`stream/nativerStreamTon.ts`) braucht WebKits `ambient` und ein
+ * schweigendes `iosTon` genauso wie ein Raum — er nimmt aber nicht auf, und die
+ * WebView darf neben ihm ein Mikrofon öffnen (der Mikrofon-Test unterbricht
+ * dann den Stream-Ton, bis er fortgesetzt wird; das Gespräch gibt es nicht).
+ */
+const mikroHalter = new TonHalter(mikrofonBeiDerHuelleMelden);
 
 /**
  * **WebKits Erklärung neu abgeben — ohne Merker, bei JEDEM Anlass.** Bis zum
@@ -200,7 +208,10 @@ if (typeof document !== 'undefined' && isCapacitorIOS()) {
 /** Einen nativen Raum anmelden oder abmelden. `'sprachkanal'` läuft über
  *  `raumBeginnt`/`raumEndet` unten; der Anruf meldet sich hier direkt
  *  (`anrufe/nativerAnrufRaum.ts`), `'vorhalt'` aus `spracheVorhalt.ts`. */
-export function nativerTonHalten(wer: 'sprachkanal' | 'anruf' | 'vorhalt', an: boolean): void {
+export function nativerTonHalten(
+  wer: 'sprachkanal' | 'anruf' | 'vorhalt' | 'streamton',
+  an: boolean
+): void {
   // **Vor jedem Hinweiston, solange ein nativer Raum steht** (Gegenprüfung
   // T6): ohne Erklärung wählt WebKit für Web Audio `PlayAndRecord`/
   // `VideoChat`, sobald die geteilte Session schon in `PlayAndRecord` steht —
@@ -211,6 +222,7 @@ export function nativerTonHalten(wer: 'sprachkanal' | 'anruf' | 'vorhalt', an: b
   // es nicht an der Reihenfolge, in der die Module ausgewertet werden.
   if (an) sounds.vorWebAudioTon ??= () => webkitNeuErklaeren('ton');
   halter.setzen(wer, an);
+  if (wer !== 'streamton') mikroHalter.setzen(wer, an);
 }
 
 /** Hält beim Kanal die Fälle auseinander, in denen ein überholter Beitritt

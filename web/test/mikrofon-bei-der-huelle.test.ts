@@ -40,16 +40,22 @@ test('ein Hörer, der sich beim Melden abmeldet, hält die übrigen nicht auf', 
 });
 
 // `iosSprache.ts` lässt sich unter Node nicht laden (erweiterungslose Importe,
-// s. CLAUDE.md) — geprüft wird deshalb am Quelltext, dass die Meldung an der
-// EINEN Stelle hängt, an der auch WebKits `ambient` kippt: dem Halter, der
-// Sprachkanal UND Anruf zählt. Hinge sie am Kanal allein, öffnete der Test
-// während eines nativen Anrufs ein Mikrofon.
-test('gemeldet wird im Rückruf des Halters, neben WebKits Session-Typ', () => {
+// s. CLAUDE.md) — geprüft wird deshalb am Quelltext, dass die Meldung an einem
+// Halter hängt, der Sprachkanal UND Anruf zählt (und den Vorhalt). Hinge sie
+// am Kanal allein, öffnete der Test während eines nativen Anrufs ein Mikrofon.
+//
+// Seit dem 2026-10-17 ist es ein EIGENER Halter neben dem für WebKits
+// `ambient`: der native Stream-Ton (`streamton`) braucht `ambient`, nimmt aber
+// nicht auf — er darf das Mikrofon der WebView nicht sperren.
+test('gemeldet von einem Halter aller Räume, ohne den Stream-Ton', () => {
   const quelle = readFileSync(
     new URL('../src/lib/platform/iosSprache.ts', import.meta.url),
     'utf8'
   );
   const rueckruf = /new TonHalter\(\(gehalten\) => \{([\s\S]*?)\n\}\);/.exec(quelle)?.[1] ?? '';
   assert.match(rueckruf, /webSessionTyp\(/);
-  assert.match(rueckruf, /mikrofonBeiDerHuelleMelden\(gehalten\)/);
+  assert.match(quelle, /const mikroHalter = new TonHalter\(mikrofonBeiDerHuelleMelden\)/);
+  const halten = /export function nativerTonHalten\([\s\S]*?\n\}/.exec(quelle)?.[0] ?? '';
+  assert.match(halten, /halter\.setzen\(wer, an\)/);
+  assert.match(halten, /if \(wer !== 'streamton'\) mikroHalter\.setzen\(wer, an\)/);
 });
