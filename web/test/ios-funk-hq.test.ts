@@ -78,3 +78,10 @@ test('B4: nur die aktuelle Route, Bluetooth-Eingang und Sprechprofil verlangt', 
     /return haelt \|\| \(lage\.ausgangSprech && lage\.eingangFunk && lage\.hqKann == true\)/
   );
 });
+
+test('B5: nach den Heilwegen des Wächters gleicht der Bluetooth-Weg nach', () => {
+  const n = swift('SpracheRaumNeustart.swift');
+  for (const g of ['maschine_neu', 'maschine_frei', 'spur_neu']) {
+    assert.match(n, new RegExp(`funkHqAnstossen\\("${g}"\\)`), g);
+  }
+});

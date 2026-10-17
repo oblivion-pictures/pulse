@@ -205,6 +205,10 @@ extension SpracheRaum {
         }
         diagMelden(fehler == nil ? "maschine_neu" : "maschine_neu_fehler",
                    ["grund": grund, "fehler": fehler ?? ""])
+        // Der Heilweg hat die Automatik zurückgestellt — hielt der Kanal die
+        // Session für Bluetooth-HQ, übernimmt der Abgleich sie neu (B5).
+        // Beim Beitritt steht noch kein Raum, dort tut das nichts.
+        funkHqAnstossen("maschine_neu")
     }
 
     /// Nachholen, wenn der Wächter die Maschine gesperrt vorfindet. `true` =
@@ -224,6 +228,7 @@ extension SpracheRaum {
             diagMelden(fehler == nil ? "maschine_frei" : "maschine_neu_fehler",
                        ["grund": "nachholen", "fehler": fehler ?? ""])
         }
+        if fehler == nil { funkHqAnstossen("maschine_frei") }
         return fehler == nil
     }
 
@@ -258,6 +263,9 @@ extension SpracheRaum {
                 schickeTeilnehmer()
             }
             diagMelden("spur_neu", [:])
+            // Die neue Spur kommt mit den Vorgaben des Raums (VPIO) — für
+            // Bluetooth-HQ zieht der Abgleich die Verarbeitung nach (B5).
+            funkHqAnstossen("spur_neu")
         } catch {
             diagMelden("spur_neu_fehler", ["fehler": error.localizedDescription])
         }
