@@ -23,6 +23,7 @@
   import { m } from '$lib/paraglide/messages.js';
   import { eigenesVollbildNoetig, toggleFullscreen } from '../fullscreen';
   import { statsVisible } from '../statsVisible.svelte';
+  import { querKacheln, querVollbildBeobachten } from '../querVollbildWache';
   import TileDock from './TileDock.svelte';
   import TileMobilSteuerung from '$lib/components/mobile/TileMobilSteuerung.svelte';
   import type { TileShellProps } from './tileShellProps';
@@ -201,6 +202,26 @@
   // Verlassen wird es über `toggleFs` — am Telefon der Pfeil oben links, den
   // `TileMobilSteuerung` im Vollbild immer zeigt (`zeigeVollbildAus`).
 
+  // iOS-Hülle: HQ-Kachel quer → Vollbild, hoch → verlassen (`querVollbild.ts`).
+  // Immer das SELBST GEBAUTE: die Hülle hat zwar `requestFullscreen`
+  // (Capacitor schaltet Element-Vollbild ein), das verlangt aber eine Geste,
+  // und Drehen ist keine. Liest `isFullscreen` nur im Ereignis, nicht im Effekt.
+  const querId = `kachel-${Math.random().toString(36).slice(2)}`;
+  $effect(() => {
+    if (kind !== 'hq') return;
+    return querVollbildBeobachten(querId, {
+      imVollbild: () => isFullscreen,
+      betreten: () => {
+        eigenesVollbild = true;
+        vollbildBetreten();
+      },
+      verlassen: () => {
+        if (docVollbild) document.exitFullscreen?.().catch(() => {});
+        eigenesVollbild = false;
+      }
+    });
+  });
+
   // Rahmen fällt im Vollbild weg; das selbst gebaute Vollbild muss sich die
   // Fläche zusätzlich selbst nehmen (`fixed inset-0`) — s. `eigenesVollbild`.
   //
@@ -286,7 +307,12 @@
   data-eigenes-vollbild={eigenesVollbild ? '' : undefined}
 >
   <div bind:this={leftColEl} class="flex min-w-0 flex-1 flex-col">
-    <div class="relative flex min-h-0 flex-1 flex-col" onmousemove={pokeHud} role="presentation">
+    <div
+      class="relative flex min-h-0 flex-1 flex-col"
+      onmousemove={pokeHud}
+      onpointerdown={() => querKacheln.angetippt(querId)}
+      role="presentation"
+    >
       {@render media()}
       {@render overlay?.()}
 
