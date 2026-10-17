@@ -21,7 +21,7 @@
   import VideoIcon from '@lucide/svelte/icons/video';
   import ClapperboardIcon from '@lucide/svelte/icons/clapperboard';
   import { m } from '$lib/paraglide/messages.js';
-  import { eigenesVollbildNoetig, toggleFullscreen } from '../fullscreen';
+  import { aufVollbildWechsel, eigenesVollbildNoetig, toggleFullscreen } from '../fullscreen';
   import { statsVisible } from '../statsVisible.svelte';
   import { querKacheln, querVollbildBeobachten } from '../querVollbildWache';
   import TileDock from './TileDock.svelte';
@@ -202,23 +202,19 @@
   // Verlassen wird es über `toggleFs` — am Telefon der Pfeil oben links, den
   // `TileMobilSteuerung` im Vollbild immer zeigt (`zeigeVollbildAus`).
 
-  // iOS-Hülle: HQ-Kachel quer → Vollbild, hoch → verlassen (`querVollbild.ts`).
-  // Immer das SELBST GEBAUTE: die Hülle hat zwar `requestFullscreen`
-  // (Capacitor schaltet Element-Vollbild ein), das verlangt aber eine Geste,
-  // und Drehen ist keine. Liest `isFullscreen` nur im Ereignis, nicht im Effekt.
+  // iOS-Hülle: HQ-Kachel quer → Vollbild, hoch → verlassen (`querVollbild.ts`,
+  // welche Quelle wann: `querVollbildWache.ts`). Liest `isFullscreen` nur im
+  // Ereignis, nicht im Effekt.
   const querId = `kachel-${Math.random().toString(36).slice(2)}`;
   $effect(() => {
     if (kind !== 'hq') return;
     return querVollbildBeobachten(querId, {
-      imVollbild: () => isFullscreen,
-      betreten: () => {
-        eigenesVollbild = true;
-        vollbildBetreten();
+      eigenes: (an) => {
+        eigenesVollbild = an;
+        if (an) vollbildBetreten();
       },
-      verlassen: () => {
-        if (docVollbild) document.exitFullscreen?.().catch(() => {});
-        eigenesVollbild = false;
-      }
+      imEigenen: () => eigenesVollbild,
+      echt: (an) => (docVollbild = an)
     });
   });
 
@@ -273,8 +269,8 @@
   });
 
   onMount(() => {
-    function onFsChange() {
-      docVollbild = !!document.fullscreenElement;
+    function onFsChange(an: boolean) {
+      docVollbild = an;
       if (isFullscreen) {
         vollbildBetreten();
       } else {
@@ -282,7 +278,7 @@
         if (hideTimer) clearTimeout(hideTimer);
       }
     }
-    document.addEventListener('fullscreenchange', onFsChange);
+    const abVollbild = aufVollbildWechsel(onFsChange);
 
     let ro: ResizeObserver | null = null;
     if (leftColEl) {
@@ -294,7 +290,7 @@
     }
 
     return () => {
-      document.removeEventListener('fullscreenchange', onFsChange);
+      abVollbild();
       ro?.disconnect();
       if (hideTimer) clearTimeout(hideTimer);
     };

@@ -44,14 +44,56 @@ export function querVollbildAktion(l: QuerLage): QuerAktion {
   return null;
 }
 
+/** Was `istQuer` über die Lage weiss (Werte in CSS-Pixeln). */
+export interface LageMasse {
+  /** Breite des Layout-Viewports (`documentElement.clientWidth`). */
+  breite: number;
+  /** Kürzere Bildschirmseite (`min(screen.width, screen.height)`), 0 = unbekannt. */
+  kurzeSeite: number;
+  /** `screen.orientation.type` — fehlt in älteren WebKits. */
+  typ?: string;
+  /** Fenster breiter als hoch (`(orientation: landscape)`). */
+  fensterQuer: boolean;
+}
+
 /**
- * Quer oder hoch — nach der Lage des BILDSCHIRMS (`screen.orientation.type`),
- * nicht nach dem Seitenverhältnis des Fensters: das kippt auch, wenn nur die
- * Tastatur aufgeht. Fehlt die Angabe (ältere WebKits), zählt das Fenster.
+ * Quer oder hoch — zuerst nach der BREITE gegen die kurze Bildschirmseite:
+ * quer ist das Fenster breiter, als der Bildschirm hochkant überhaupt ist.
+ * Die offene Tastatur nimmt nur Höhe weg und kippt das nicht (am blossen
+ * Seitenverhältnis des Fensters schon). `screen.orientation.type` ist erst der
+ * Rückfall: in einer WKWebView mit Element-Vollbild ist er nicht verlässlich
+ * (WebKit-Bug 280757, von Dritten gemessen: `requestFullscreen` löst dort
+ * falsche Lage-Ereignisse aus) — und die Hülle hat Element-Vollbild.
+ * Nebenfolge am iPad: ein schmales Split-View-Fenster zählt als hoch.
  */
-export function istQuer(orientierungsTyp: string | undefined, fensterQuer: boolean): boolean {
-  if (orientierungsTyp) return orientierungsTyp.startsWith('landscape');
-  return fensterQuer;
+export function istQuer(m: LageMasse): boolean {
+  if (m.breite > 0 && m.kurzeSeite > 0) return m.breite > m.kurzeSeite;
+  if (m.typ) return m.typ.startsWith('landscape');
+  return m.fensterQuer;
+}
+
+/**
+ * Das Übergangs-Gedächtnis einer Kachel (`warQuer`). `schritt` bei jedem
+ * Lage-Ereignis; `abgleichen` nach einem Wechsel des echten Vollbilds, ohne
+ * etwas auszulösen — damit eine Lesung mitten im Vollbild-Wechsel den nächsten
+ * echten Übergang nicht verschluckt.
+ */
+export class QuerVerlauf {
+  #warQuer: boolean;
+
+  constructor(quer: boolean) {
+    this.#warQuer = quer;
+  }
+
+  schritt(l: Omit<QuerLage, 'warQuer'>): QuerAktion {
+    const aktion = querVollbildAktion({ ...l, warQuer: this.#warQuer });
+    this.#warQuer = l.quer;
+    return aktion;
+  }
+
+  abgleichen(quer: boolean): void {
+    this.#warQuer = quer;
+  }
 }
 
 /** Ist dieses Element ein Eingabefeld (Text, Textbereich, editierbar)? */

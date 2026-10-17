@@ -28,6 +28,47 @@ type WebKitVideo = HTMLVideoElement & {
   webkitEnterFullscreen?: () => void;
   webkitSupportsFullscreen?: boolean;
 };
+type WebKitDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+};
+
+/**
+ * Das Element im echten Vollbild — über BEIDE Schreibweisen gelesen. In
+ * Chromium/Electron sind beide gleich; für die WKWebView der iOS-Hülle ist
+ * nicht am Gerät gemessen, dass die unpräfixierte allein stimmt, und ein
+ * hängender Vollbild-Stand verhinderte dort das nächste Quer-Vollbild.
+ */
+export function vollbildElement(): Element | null {
+  const d = document as WebKitDocument;
+  return d.fullscreenElement ?? d.webkitFullscreenElement ?? null;
+}
+
+/** Echtes Vollbild verlassen, falls eins läuft. Wirft nie; den Stand liest
+ *  der Aufrufer danach selbst neu (`vollbildElement`). */
+export async function vollbildVerlassen(): Promise<void> {
+  if (!vollbildElement()) return;
+  const d = document as WebKitDocument;
+  try {
+    await (d.exitFullscreen ? d.exitFullscreen() : d.webkitExitFullscreen?.());
+  } catch {
+    // schon draußen oder abgelehnt
+  }
+}
+
+const WECHSEL = ['fullscreenchange', 'webkitfullscreenchange'] as const;
+
+/** Auf Vollbild-Wechsel hören, unter beiden Ereignisnamen (aus demselben
+ *  Grund wie `vollbildElement`); `fn` bekommt den frisch gelesenen Stand.
+ *  Feuern beide, kommt derselbe Stand zweimal — `fn` darf deshalb nicht
+ *  umschalten. Rückgabe baut ab. */
+export function aufVollbildWechsel(fn: (an: boolean) => void): () => void {
+  const melden = () => fn(!!vollbildElement());
+  for (const name of WECHSEL) document.addEventListener(name, melden);
+  return () => {
+    for (const name of WECHSEL) document.removeEventListener(name, melden);
+  };
+}
 
 /**
  * `true`, wenn dieser Container kein echtes Element-Vollbild kann und die
@@ -53,8 +94,8 @@ export function toggleFullscreen(
   video: HTMLVideoElement | null
 ): void {
   // Exit fullscreen if we are already in it (any element).
-  if (document.fullscreenElement) {
-    document.exitFullscreen?.().catch(() => {});
+  if (vollbildElement()) {
+    void vollbildVerlassen();
     return;
   }
 
