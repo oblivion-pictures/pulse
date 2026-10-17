@@ -1,8 +1,11 @@
 import UIKit
 
 /// Die Teilen-Erweiterung (Punkt 41 der iOS-Liste): nimmt Text, eine
-/// Web-Adresse oder ein Bild aus einer anderen App entgegen, legt es in den
-/// gemeinsamen Container (`TeilenAblage`) und bestätigt kurz. Abgeholt wird
+/// Web-Adresse oder bis zu zehn Bilder, Videos und Dateien aus einer anderen
+/// App entgegen, legt sie in den gemeinsamen Container (`TeilenAblage`) und
+/// bestätigt — **bis der Nutzer „OK“ tippt**, nicht mehr nach ein paar
+/// Sekunden: die Karte nennt, wie viel bereitliegt und was nicht übernommen
+/// wurde, und das soll man lesen können. Abgeholt wird
 /// das Paket von der App (`ShareReceiverPlugin`), sobald sie das nächste Mal
 /// startet oder in den Vordergrund kommt; den Chat wählt der Nutzer dort —
 /// wie auf Android.
@@ -32,7 +35,7 @@ final class ShareViewController: UIViewController {
     /// So lange darf das Einsammeln dauern (iOS-Bughunt 2, D3). **Gesetzt,
     /// nicht gemessen** — grosszügig, weil ein Foto aus iCloud erst geladen
     /// werden muss; wer nicht warten will, hat den Knopf „Abbrechen“.
-    private static let frist: TimeInterval = 60
+    private static let frist: TimeInterval = 120
 
     /// Die Markenfarbe der App (`SpracheFarben.marke`), hier nachgestellt:
     /// die Erweiterung ist ein eigenes Programm und sieht den App-Code nicht.
@@ -67,30 +70,45 @@ final class ShareViewController: UIViewController {
     }
 
     private func uebergeben() async {
-        let ausgang = await TeilenEinsammeln.einsammelnUndAblegen(
+        let ergebnis = await TeilenEinsammeln.einsammelnUndAblegen(
             extensionContext?.inputItems ?? [], wettlauf: wettlauf)
+        let ausgang = ergebnis.ausgang
         switch ausgang {
         case .abgelegt:
+            // Bleibt stehen, bis „OK“ getippt wird (`knopfGetippt`).
             zeigen(symbol: "checkmark.circle.fill", farbe: Self.marke,
-                   titel: NSLocalizedString("An Pulse übergeben", comment: "Teilen"),
-                   hinweis: NSLocalizedString("Öffne Pulse und wähle den Chat, in den es soll.", comment: "Teilen"),
+                   titel: String.localizedStringWithFormat(
+                       NSLocalizedString("%lld Elemente bereit", comment: "Teilen"), ergebnis.elemente),
+                   hinweis: Self.hinweis(
+                       NSLocalizedString("Öffne Pulse und wähle den Chat.", comment: "Teilen"),
+                       uebersprungen: ergebnis.uebersprungen),
                    knopf: NSLocalizedString("OK", comment: "Teilen"))
-            // Kurz stehen lassen, damit der Hinweis gelesen werden kann; wer
-            // ihn kennt, tippt „OK“ und ist sofort zurück.
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
-            beenden()
         case .nichtsBrauchbares, .fehlgeschlagen:
             zeigen(symbol: "exclamationmark.triangle.fill", farbe: .systemOrange,
                    titel: ausgang == .nichtsBrauchbares
                        ? NSLocalizedString("Nichts zum Übergeben gefunden", comment: "Teilen")
                        : NSLocalizedString("Konnte nicht an Pulse übergeben werden", comment: "Teilen"),
-                   hinweis: NSLocalizedString("Pulse nimmt Text, Links und ein Bild entgegen.", comment: "Teilen"),
+                   hinweis: Self.hinweis(
+                       NSLocalizedString(
+                           "Pulse nimmt Text, Links, Fotos, Videos und Dateien entgegen.", comment: "Teilen"),
+                       uebersprungen: ergebnis.uebersprungen),
                    knopf: NSLocalizedString("Schließen", comment: "Teilen"))
         case .ueberholt:
             // Frist oder Abbruch waren schneller: die Frist steht schon auf
             // der Karte, ein Abbruch hat sie geschlossen.
             break
         }
+    }
+
+    /// Die Zeile, die sagt, was NICHT mitkam — mit den Grenzen, damit man weiss,
+    /// woran es lag.
+    private static func hinweis(_ grundzeile: String, uebersprungen: Int) -> String {
+        guard uebersprungen > 0 else { return grundzeile }
+        let grenzen = String.localizedStringWithFormat(
+            NSLocalizedString("%lld nicht übernommen: Dateien bis %lld MB, höchstens %lld Elemente.",
+                              comment: "Teilen"),
+            uebersprungen, TeilenGrenzen.dateiBytes / (1024 * 1024), TeilenGrenzen.hoechstensElemente)
+        return grundzeile + "\n" + grenzen
     }
 
     /// **Abbruch und Frist** (iOS-Bughunt 2, D3). Bis dahin zeigte die Karte

@@ -1,0 +1,180 @@
+{
+  "sourceLanguage": "de",
+  "version": "1.0",
+  "strings": {
+    "%lld Elemente bereit": {
+      "comment": "Teilen-Erweiterung: Anzahl abgelegter Elemente",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Element bereit"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Elemente bereit"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld item ready"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld items ready"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld nicht übernommen: Dateien bis %lld MB, höchstens %lld Elemente.": {
+      "comment": "Teilen-Erweiterung: Hinweis auf Grenzen",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld not included: files up to %lld MB, at most %lld items."
+          }
+        }
+      }
+    },
+    "Abbrechen": {
+      "comment": "Teilen-Erweiterung",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "An Pulse übergeben": {
+      "comment": "Teilen-Erweiterung",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handed over to Pulse"
+          }
+        }
+      }
+    },
+    "Das Laden hat zu lange gedauert. Versuche es noch einmal.": {
+      "comment": "Teilen-Erweiterung",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading took too long. Please try again."
+          }
+        }
+      }
+    },
+    "Konnte nicht an Pulse übergeben werden": {
+      "comment": "Teilen-Erweiterung",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't hand over to Pulse"
+          }
+        }
+      }
+    },
+    "Nichts zum Übergeben gefunden": {
+      "comment": "Teilen-Erweiterung",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing to hand over"
+          }
+        }
+      }
+    },
+    "OK": {
+      "comment": "Teilen-Erweiterung",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
+    "Pulse nimmt Text, Links, Fotos, Videos und Dateien entgegen.": {
+      "comment": "Teilen-Erweiterung",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pulse accepts text, links, photos, videos and files."
+          }
+        }
+      }
+    },
+    "Schließen": {
+      "comment": "Teilen-Erweiterung",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        }
+      }
+    },
+    "Wird an Pulse übergeben …": {
+      "comment": "Teilen-Erweiterung",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handing over to Pulse …"
+          }
+        }
+      }
+    },
+    "Öffne Pulse und wähle den Chat.": {
+      "comment": "Teilen-Erweiterung",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Pulse and choose the chat."
+          }
+        }
+      }
+    }
+  }
+}

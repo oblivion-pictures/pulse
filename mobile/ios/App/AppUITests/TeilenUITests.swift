@@ -4,7 +4,7 @@ import XCTest
 /// bis in die Bestätigung der Erweiterung.
 ///
 /// **Was der Test belegt.** Die Erweiterung erscheint im Teilen-Blatt einer
-/// fremden App, startet, und meldet „An Pulse übergeben“ — und das meldet
+/// fremden App, startet, und meldet „1 Element bereit“ (die Adresse) — und das meldet
 /// sie NUR, wenn das Paket im gemeinsamen Container liegt
 /// (`TeilenEinsammeln.einsammelnUndAblegen` → `.abgelegt`). Die andere Hälfte,
 /// das Abholen über die Brücke, belegt der Prüfpfad `-PulseTeilenProbe`
@@ -46,12 +46,15 @@ final class TeilenUITests: XCTestCase {
         }
         pulse.tap()
 
-        let bestaetigung = safari.staticTexts["An Pulse übergeben"]
+        // Die Karte bleibt stehen, bis „OK“ getippt wird. Deutsch, wie die
+        // Systemsprache des Testgeräts; englisch zur Sicherheit mit.
+        let bestaetigung = safari.staticTexts.matching(NSPredicate(
+            format: "label BEGINSWITH '1 Element bereit' OR label BEGINSWITH '1 item ready'")).firstMatch
         if !bestaetigung.waitForExistence(timeout: 15) {
             print("=== BAUM/ERWEITERUNG ===\n\(safari.debugDescription)\n=== /BAUM ===")
             XCTFail("Bestätigung der Erweiterung nicht erschienen")
         }
-        // „OK“ schliesst sofort, ohne die 2,5 s abzuwarten.
+        // „OK“ schliesst die Karte.
         safari.buttons["OK"].tap()
         let weg = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: bestaetigung)
         wait(for: [weg], timeout: 10)

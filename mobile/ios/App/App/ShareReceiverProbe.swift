@@ -80,8 +80,14 @@ import WebKit
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 erwartet = "Pulse-Teilen-Probe \(UUID().uuidString.prefix(8))"
                 do {
+                    let ziel = try TeilenAblage.neuerPaketOrdner()
+                    let id = UUID().uuidString
+                    let bild = pruefbild() ?? Data()
+                    try bild.write(to: ziel.ordner.appendingPathComponent(id))
                     try TeilenAblage.ablegen(GeteiltesPaket(
-                        text: erwartet, bild: pruefbild(), bildMime: "image/jpeg", abgelegt: Date()))
+                        paketId: ziel.id, text: erwartet,
+                        dateien: [GeteilteDatei(id: id, name: "pruefbild.jpg", mime: "image/jpeg", groesse: bild.count)],
+                        uebersprungen: 0, abgelegt: Date()))
                     NSLog("[PulseTeilen] Probe: Prüfpaket abgelegt")
                 } catch {
                     soll("Prüfpaket ablegen (\(error))", false)
