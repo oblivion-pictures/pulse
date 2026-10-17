@@ -31,6 +31,7 @@ import {
   streamTonStatistik,
   streamTonStoppen,
   streamTonVerzoegerung,
+  streamTonAufraeumen,
   streamTonNativDa,
   type StreamTonPhase,
   type StreamTonZustand
@@ -69,6 +70,8 @@ const lage = new StreamTonLage((an) => nativerTonHalten('streamton', an));
 // Jede Aufnahme der WebView lässt den Halter fallen (S1, `webAufnahme.ts`).
 // Beim Laden des Moduls: eine Aufnahme, die vor der ersten Kachel begann,
 // soll genauso zählen. Nur in der Hülle mit nativem Stream-Ton.
+// Dazu einmal aufräumen, was eine frühere Seite nativ gestartet hat (S2).
+void streamTonAufraeumen();
 if (typeof navigator !== 'undefined' && navigator.mediaDevices && streamTonNativDa()) {
   new WebAufnahme((a) => lage.setzen({ aufnahme: a })).einhaengen(
     navigator.mediaDevices as unknown as Parameters<WebAufnahme['einhaengen']>[0]

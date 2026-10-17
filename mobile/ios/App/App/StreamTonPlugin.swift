@@ -25,9 +25,16 @@ public class StreamTonPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "verzoegerung", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "fortsetzen", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "statistik", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "alleStoppen", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnCallback),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise)
     ]
+
+    /// **Starten und Stoppen in EINER Kette, in der Reihenfolge der Rufe**
+    /// (Muster `Befehlskette`, Bughunt 2 B5). Jeder Ruf liefe sonst in einem
+    /// eigenen `Task` — ein „stoppen" direkt nach einem „starten" fände den
+    /// Empfänger noch nicht in der Liste, und der Ton spielte ohne Kachel.
+    private let kette = Befehlskette()
 
     public override func load() {
         StreamTonVerwaltung.geteilt.melde = { [weak self] daten in
@@ -44,12 +51,14 @@ public class StreamTonPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let lautstaerke = call.getDouble("lautstaerke") ?? 1
         let echo = call.getDouble("echoFaktor")
-        Task {
-            do {
-                try await StreamTonVerwaltung.geteilt.starten(
-                    kennung: kennung, url: url, lautstaerke: lautstaerke, echoFaktor: echo)
+        kette.einreihen({
+            try await StreamTonVerwaltung.geteilt.starten(
+                kennung: kennung, url: url, lautstaerke: lautstaerke, echoFaktor: echo)
+        }) { ergebnis in
+            switch ergebnis {
+            case .success:
                 call.resolve(StreamTonVerwaltung.geteilt.zustand(kennung))
-            } catch {
+            case .failure(let error):
                 let status = (error as? StreamTonWhep.Fehler)?.status ?? 0
                 call.reject(error.localizedDescription, "streamton_\(status)", error, ["status": status])
             }
@@ -58,8 +67,19 @@ public class StreamTonPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func stoppen(_ call: CAPPluginCall) {
         let kennung = call.getString("kennung") ?? ""
-        Task {
-            await StreamTonVerwaltung.geteilt.stoppen(kennung: kennung)
+        kette.einreihen({ await StreamTonVerwaltung.geteilt.stoppen(kennung: kennung) }) { _ in
+            call.resolve()
+        }
+    }
+
+    /// **Alles beenden, was eine frühere Seite gestartet hat** (Gegenprüfung
+    /// S2). Die Empfänger leben prozessweit; ein Neuladen der WebView (Deploy,
+    /// Absturz des Inhaltsprozesses, Navigation) räumt nur Capacitors Hörer
+    /// ab. Ohne diesen Ruf spielte der Ton danach ohne Kachel und ohne
+    /// Bedienung weiter und hielte die Session-Anforderung. Die Seite ruft ihn
+    /// einmal beim Laden (`iosStreamTonNativ.ts`).
+    @objc func alleStoppen(_ call: CAPPluginCall) {
+        kette.einreihen({ await StreamTonVerwaltung.geteilt.alleStoppen() }) { _ in
             call.resolve()
         }
     }
@@ -129,6 +149,15 @@ final class StreamTonVerwaltung: @unchecked Sendable {
             diag("streamton_start_fehler", ["fehler": error.localizedDescription])
             throw error
         }
+    }
+
+    func alleStoppen() async {
+        let alle = sperre.withLock { () -> [StreamTonEmpfaenger] in
+            defer { liste.removeAll() }
+            return Array(liste.values)
+        }
+        if !alle.isEmpty { diag("streamton_alle_gestoppt", ["anzahl": alle.count]) }
+        for e in alle { await e.stoppen() }
     }
 
     func stoppen(kennung: String) async {

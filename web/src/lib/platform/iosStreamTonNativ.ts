@@ -28,7 +28,8 @@ export const STREAM_TON_METHODEN = [
   'lautstaerke',
   'verzoegerung',
   'fortsetzen',
-  'statistik'
+  'statistik',
+  'alleStoppen'
 ] as const;
 
 export type StreamTonPhase = 'verbinde' | 'spielt' | 'unterbrochen' | 'beendet' | 'fehler';
@@ -67,6 +68,7 @@ interface StreamTonPlugin {
   verzoegerung(o: { kennung: string; ms: number }): Promise<void>;
   fortsetzen(): Promise<void>;
   statistik(o: { kennung: string }): Promise<StreamTonStatistik>;
+  alleStoppen(): Promise<void>;
   addListener(
     e: 'zustand',
     cb: (z: StreamTonZustand) => void
@@ -74,6 +76,20 @@ interface StreamTonPlugin {
 }
 
 const nativ = registerPlugin<StreamTonPlugin>('StreamTonPlugin');
+
+/**
+ * **Einmal beim Laden der Seite: was eine frühere Seite nativ gestartet hat,
+ * beenden** (Gegenprüfung S2). Die Empfänger der Hülle überleben ein Neuladen
+ * der WebView; ohne Kachel gäbe es niemanden mehr, der sie stoppt. Die Hülle
+ * reiht den Ruf VOR jedes spätere `starten` (eine Kette, `StreamTonPlugin`).
+ */
+let aufgeraeumt: Promise<void> | null = null;
+export function streamTonAufraeumen(): Promise<void> {
+  aufgeraeumt ??= streamTonNativDa()
+    ? mitFrist(nativ.alleStoppen(), SOFORT_FRIST_MS, 'streamton.alleStoppen').catch(() => undefined)
+    : Promise.resolve();
+  return aufgeraeumt;
+}
 
 /** Ein WHEP-Handshake dauert über eine echte Leitung 0,5–2 s (ICE-Sammeln
  *  allein bis 2 s); mit Reserve für einen langsamen Server. */

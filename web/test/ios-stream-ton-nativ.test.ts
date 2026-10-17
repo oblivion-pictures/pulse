@@ -125,3 +125,12 @@ test('ausserhalb von iOS: nie nativ', async () => {
   });
   assert.equal(streamTonNativDa(), false);
 });
+
+test('S2: die Seite räumt beim Laden ab, was eine frühere nativ gestartet hat', () => {
+  const src = readFileSync(new URL('../src/lib/stream/nativerStreamTon.ts', import.meta.url), 'utf8');
+  // Auf Modulebene, nicht erst in einer Kachel — sonst spielte der Ton einer
+  // früheren Seite weiter, bis zufällig dieselbe Kachel wieder aufgeht.
+  assert.match(src, /^void streamTonAufraeumen\(\);$/m);
+  const swift = quelle('StreamTonPlugin.swift');
+  assert.match(swift, /kette\.einreihen\(\{ await StreamTonVerwaltung\.geteilt\.alleStoppen\(\) \}\)/);
+});
