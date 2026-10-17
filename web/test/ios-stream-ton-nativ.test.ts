@@ -192,7 +192,7 @@ test('S9: Echo-Absenkung folgt dem Mikrofon auf Ereignis, der Takt ist nur Netz'
 test('V1: nach dem letzten Stream-Ton deaktiviert die Hülle die Session (ohne Raum/Anruf)', () => {
   const src = quelle('StreamTonSitzung.swift');
   assert.match(src, /if los != nil \{ nachDemLetzten\(\) \}/);
-  const nach = /private func nachDemLetzten[\s\S]*?\n    \}\n/.exec(src)?.[0] ?? '';
+  const nach = /func nachDemLetzten\(\) \{[\s\S]*?\n    \}\n/.exec(src)?.[0] ?? '';
   assert.match(nach, /SpracheRaum\.geteilt\.raum == nil, AnrufRaum\.geteilt\.raum == nil/);
   assert.match(nach, /!v\.callkitAktiv, !v\.ohneCallKit/);
   assert.match(nach, /let gehoertIosTon = s\.category == \.playback && !s\.categoryOptions\.contains\(\.mixWithOthers\)/);
