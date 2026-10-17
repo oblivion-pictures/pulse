@@ -8,28 +8,31 @@ import { test } from 'node:test';
 const swift = (f: string) =>
   readFileSync(new URL(`../../mobile/ios/App/App/${f}`, import.meta.url), 'utf8');
 
-test('L2: nach der Anruf-Pause gilt „Volle Tonqualität" wieder', () => {
-  assert.match(swift('SpracheRaumStumm.swift'), /if !an, ton\.volle, let r = raum \{ volleTonZurueck\(in: r\) \}/);
+test('L2: der native „Volle Tonqualität"-Weg ist entfernt, die Software-Verarbeitung bleibt für Bluetooth-HQ', () => {
+  const alle = ['SpracheRaum.swift', 'SpracheRaumNeustart.swift', 'SpracheRaumStumm.swift', 'SprachePlugin.swift',
+    'SpracheFunkHq.swift', 'SpracheFunkHqAbgleich.swift', 'SpracheRaumSession.swift']
+    .map(swift)
+    .join('\n');
+  assert.doesNotMatch(alle, /TonOptionen|volleTonZurueck|volleVerarbeitung|kbpsBegrenzt|ton\.volle/);
   const neustart = swift('SpracheRaumNeustart.swift');
-  assert.match(neustart, /try spur\.setAudioProcessingOptions\(Self\.volleVerarbeitung\)/);
   assert.match(
     neustart,
-    /static let volleVerarbeitung = AudioProcessingOptions\(\s*echoCancellationMode: \.software, autoGainControlMode: \.software,\s*noiseSuppressionMode: \.software\)/
+    /static let softwareVerarbeitung = AudioProcessingOptions\(\s*echoCancellationMode: \.software, autoGainControlMode: \.software,\s*noiseSuppressionMode: \.software\)/
   );
-  assert.match(swift('SpracheRaum.swift'), /self\.ton = ton\n\s*let r = Room\(delegate: self, roomOptions: Self\.raumOptionen\(ton\)\)/);
+  assert.match(swift('SpracheFunkHqAbgleich.swift'), /try spur\.setAudioProcessingOptions\(software \? Self\.softwareVerarbeitung : AudioProcessingOptions\(\)\)/);
+  assert.match(swift('SpracheRaum.swift'), /let r = Room\(delegate: self, roomOptions: Self\.raumOptionen\(\)\)/);
 });
 
 test('L3: Beitritt meldet vpio, aec und kbps', () => {
   const neustart = swift('SpracheRaumNeustart.swift');
   assert.match(neustart, /"vpio": am\.platformVoiceProcessingState\.voiceProcessingEnabled\.isActive/);
   assert.match(neustart, /"aec": AudioManager\.shared\.audioProcessingState\.echoCancellation\.effective\.description/);
-  assert.match(neustart, /"kbps": ton\.volle \? \(Self\.kbpsBegrenzt\(ton\) \?\? vorgabe\) : vorgabe/);
-  assert.match(swift('SpracheRaum.swift'), /diagMelden\(art, tonBeleg\(ton\)\.merging/);
+  assert.match(neustart, /"kbps": AudioEncoding\.presetMusic\.maxBitrate \/ 1000/);
+  assert.match(swift('SpracheRaum.swift'), /diagMelden\(art, tonBeleg\(\)\.merging/);
 });
 
-// Eigentümer-Entscheid 2026-10-17: „Volle Tonqualität" wird vorerst nicht
-// angeboten — es gilt Apples Sprachverarbeitung (VPIO). Der native Weg bleibt
-// (L2/L3 oben), nur unerreichbar.
+// Eigentümer-Entscheid 2026-10-17: „Volle Tonqualität" wird nicht angeboten —
+// es gilt Apples Sprachverarbeitung (VPIO). Der native Weg ist entfernt (L2).
 test('Entscheid: Schalter ausgeblendet, ein gespeichertes „an" greift nicht', async () => {
   const { VOLLE_TONQUALITAET_ANGEBOTEN, volleTonqualitaetWirksam } = await import(
     '../src/lib/platform/iosVolleTon.ts'

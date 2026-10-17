@@ -62,9 +62,9 @@ test('B1: „springt nicht an" wird erst im verzögerten Abgleich gewertet', () 
 
 test('B3: Kopfhörer raus → sofort im Beobachter zurück und stumm, bis VPIO läuft', () => {
   const sitzung = swift('SpracheRaumSession.swift');
-  assert.match(sitzung, /SpracheFunkHq\.geteilt\.kopfhoererWeg\(volle: ton\.volle\)\n\s*schickeEigenen\(\)\n\s*funkHqAnstossen\("route"\)/);
+  assert.match(sitzung, /SpracheFunkHq\.geteilt\.kopfhoererWeg\(\)\n\s*schickeEigenen\(\)\n\s*funkHqAnstossen\("route"\)/);
   const q = swift('SpracheFunkHq.swift');
-  assert.match(q, /guard haelt, !haltenErlaubt\(FunkLage\.lesen\(\)\) else \{ return \}\n\s*if !volle \{ daempfen\(\) \}\n\s*loslassen\(\)/);
+  assert.match(q, /guard haelt, !haltenErlaubt\(FunkLage\.lesen\(\)\) else \{ return \}\n\s*daempfen\(\)\n\s*loslassen\(\)/);
   const d = swift('SpracheFunkHqDaempfung.swift');
   assert.match(d, /mixer\.outputVolume = 0/);
   assert.match(d, /voiceProcessingEnabled\.isActive/);
@@ -128,7 +128,7 @@ test('C4: „verloren" beim Einrichten ist kein Fehlschlag für den ganzen Raum'
 
 test('C5: Rückgabe erst Kategorie, dann Verarbeitung, zuletzt die Automatik; Neubauten gezählt', () => {
   const q = swift('SpracheFunkHqAbgleich.swift');
-  const a = q.indexOf('f.sdkKategorieSetzen(software: bleibtSoftware, gehalten: true)');
+  const a = q.indexOf('f.sdkKategorieSetzen(software: false, gehalten: true)');
   const b = q.indexOf('verarbeitungSetzen(spur, software: false)');
   const c = q.indexOf('if f.loslassen() || hielt');
   assert.ok(a > 0 && a < b && b < c, 'Reihenfolge');

@@ -120,7 +120,7 @@ test('Web und Hülle sprechen dieselben Felder und Ereignisse', () => {
   const wache = lesen('../../mobile/ios/App/App/SpracheMikroWache.swift');
   const web = lesen('../src/lib/platform/iosSprache.ts');
   const webWache = lesen('../src/lib/platform/iosSpracheWache.ts');
-  for (const feld of ['volleTonqualitaet', 'bitrateKbps']) {
+  for (const feld of ['kannNeuVerbinden']) {
     assert.match(web, new RegExp(`${feld}:`), `Web schickt ${feld} nicht`);
     assert.match(plugin, new RegExp(`call\\.get\\w+\\("${feld}"\\)`), `Hülle liest ${feld} nicht`);
   }
