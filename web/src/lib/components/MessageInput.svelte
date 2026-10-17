@@ -291,8 +291,8 @@
 
   /** Zwei Dinge hängen am erfolgreichen Senden, und beide entscheiden selbst,
    *  ob sie dran sind: der Zähler für die Bewertungsfrage (ab 20 Nachrichten,
-   *  `bewertungRegel.ts`) und die Frage nach der Mitteilungs-Erlaubnis (ab 3,
-   *  mit Vorerklärung — `berechtigungRegel.ts`).
+   *  `bewertungRegel.ts`) und die Frage nach der Mitteilungs-Erlaubnis (schon ab der
+   *  ersten Nachricht, mit Vorerklärung — `berechtigungRegel.ts`).
    *
    *  **Warum ausgerechnet hier.** Die Mitteilungs-Erlaubnis wurde vorher beim
    *  START abgefragt, und der iOS-Dialog erscheint genau EINMAL: ein „nein"

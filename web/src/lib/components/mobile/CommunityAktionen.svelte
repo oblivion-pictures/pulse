@@ -62,10 +62,6 @@
       mitglieder: () => {
         mitgliederZiel = g.id;
         mitgliederOffen = true;
-      },
-      benachrichtigung: {
-        modus: server.notification_mode,
-        setzen: (modus) => serversStore.update(server.id, { notification_mode: modus })
       }
     });
   });

@@ -9,11 +9,11 @@
  * Reihenfolge, Rechte und `data-testid` des Rechner-Menüs sind unverändert.
  * Am Handy fallen Symbol ändern/entfernen und Community löschen weg
  * (die Rückrufe fehlen: Dateiauswahl und Löschen gehören dort nicht ans
- * Blatt); es kommen Mitglieder und die Benachrichtigungsstufe dazu.
+ * Blatt); es kommen die Mitglieder dazu.
  *
- * **Die Benachrichtigungsstufe gehört dem SERVER, nicht der Community**
- * (`ServerEntry.notification_mode`, wie im Server-Menü der Leiste). Das Blatt
- * setzt sie für den ganzen Server der Kachel.
+ * Bewusst keine Benachrichtigungsstufe: sie gehört dem SERVER
+ * (`ServerEntry.notification_mode`), nicht der Community, und stünde im
+ * Community-Blatt irreführend als Einstellung der Community da.
  */
 import SettingsIcon from '@lucide/svelte/icons/settings';
 import PencilIcon from '@lucide/svelte/icons/pencil';
@@ -22,7 +22,6 @@ import ImageOffIcon from '@lucide/svelte/icons/image-off';
 import Trash2Icon from '@lucide/svelte/icons/trash-2';
 import LogOutIcon from '@lucide/svelte/icons/log-out';
 import UsersIcon from '@lucide/svelte/icons/users';
-import BellIcon from '@lucide/svelte/icons/bell';
 import type { ZeilenAktion } from '$lib/components/menu/zeilenAktionen';
 import { roles } from '$lib/stores/roles.svelte';
 import { auth } from '$lib/stores/auth.svelte';
@@ -78,11 +77,6 @@ export interface GuildAktionenTun {
   loeschen?: () => void;
   /** Nur Handy. */
   mitglieder?: () => void;
-  /** Nur Handy: aktuelle Stufe und Setzen für den Server der Community. */
-  benachrichtigung?: {
-    modus: ServerEntry['notification_mode'];
-    setzen: (modus: ServerEntry['notification_mode']) => void;
-  };
 }
 
 export function guildAktionen(g: Guild, r: GuildRechte, tun: GuildAktionenTun): ZeilenAktion[] {
@@ -133,25 +127,6 @@ export function guildAktionen(g: Guild, r: GuildRechte, tun: GuildAktionenTun): 
       icon: UsersIcon,
       onSelect: tun.mitglieder,
       testid: 'guild-members'
-    });
-  }
-  if (tun.benachrichtigung) {
-    const { modus, setzen } = tun.benachrichtigung;
-    const stufen = [
-      ['all', m.guild_rail_notif_all()],
-      ['mentions', m.guild_rail_notif_mentions()],
-      ['none', m.guild_rail_notif_mute()]
-    ] as const;
-    stufen.forEach(([stufe, name], i) => {
-      liste.push({
-        id: `benachrichtigung-${stufe}`,
-        label: `${m.guild_rail_notifications()}: ${name}`,
-        icon: i === 0 ? BellIcon : undefined,
-        onSelect: () => setzen(stufe),
-        testid: `guild-notif-${stufe}`,
-        haken: modus === stufe,
-        trenner: i === 0
-      });
     });
   }
   if (tun.loeschen && (r.isOwner || r.isServerAdmin)) {
