@@ -126,7 +126,7 @@ async def revoke_session(db: AsyncSession, session_id: uuid.UUID) -> bool:
 
     Sets both ``expires_at`` (kills the sliding window) and ``revoked_at`` (marks
     it as an explicit security revocation, so ``/session/renew`` won't inherit
-    its acr/amr — see ``routes._strongest_session_context``).
+    its acr/amr — see ``session_renew.geerbter_kontext``).
     """
     row = await db.get(UserSession, str(session_id))
     if row is None:

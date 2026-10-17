@@ -23,27 +23,42 @@ import { AUTH_BASE, getCloudBearer, parseResponse, sitzungTotRaeumen } from './c
 import { loadTokens } from './storage';
 import { safeParse, extractDetail } from './parse';
 import { mitCloudSitzung } from './sitzungsFrische';
+import {
+  ERNEUERUNGS_KOPF,
+  darfErneuern,
+  nachErneuerung,
+  neuerErneuerungsStand
+} from './cookieErneuerung';
 
 /** Wann das Cookie zuletzt (wieder) geprägt wurde — Grundlage für
  *  `mitCloudCookie`. Das Cookie läuft 30 Minuten nach DIESEM Zeitpunkt ab,
  *  nicht nach der letzten Benutzung (`sitzungsFrische.ts`). */
 let _cookieGepraegtAm: number | null = null;
 
+/** Ob der Browser die nachgereichten Cookies behält (`cookieErneuerung.ts`). */
+const _erneuerung = neuerErneuerungsStand();
+
 /** Abmelden/Konto weg: der Zeitstempel gehörte dem Cookie von eben. */
 export function cloudSitzungVergessen(): void {
   _cookieGepraegtAm = null;
+  Object.assign(_erneuerung, neuerErneuerungsStand());
 }
 
 /**
  * Etabliert den `pulse_session`-Cookie neu aus einem gültigen Login.
  * `/session/renew` akzeptiert den Bearer und setzt einen frischen Cookie.
  * Concurrent-Aufrufe teilen sich einen Inflight.
+ *
+ * `true` heisst: ein Cookie, das der Browser hält. Reicht der Server mehrmals
+ * hintereinander dieselbe Sitzung nach, behält der Browser sie nicht — dann
+ * `false` und eine wachsende Pause ohne Anfrage (`cookieErneuerung.ts`).
  */
 let _renewInflight: Promise<boolean> | null = null;
 export async function renewSession(): Promise<boolean> {
   if (_renewInflight) return _renewInflight;
   _renewInflight = (async () => {
     try {
+      if (!darfErneuern(_erneuerung, Date.now())) return false;
       const bearer = await getCloudBearer();
       if (!bearer) return false;
       const resp = await fetch(`${AUTH_BASE}/session/renew`, {
@@ -63,8 +78,14 @@ export async function renewSession(): Promise<boolean> {
           sessionStorage.setItem('pulse.session_expired', '1');
         }
       }
-      if (resp.ok) _cookieGepraegtAm = Date.now();
-      return resp.ok;
+      if (!resp.ok) return false;
+      const jetzt = Date.now();
+      if (!nachErneuerung(_erneuerung, resp.headers.get(ERNEUERUNGS_KOPF), jetzt).haelt) {
+        console.warn('[session] Cookie wird nicht gehalten — Erneuern pausiert');
+        return false;
+      }
+      _cookieGepraegtAm = jetzt;
+      return true;
     } catch {
       return false;
     } finally {

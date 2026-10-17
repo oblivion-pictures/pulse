@@ -596,6 +596,16 @@ class UserSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Die Sitzung, die diese beim Erneuern abgelöst hat (Migration 0058,
+    # ``session_renew.py``). Kommt das alte Cookie danach noch einmal, ist das
+    # Set-Cookie der Ablösung nicht angekommen; der Nachfolger wird dann
+    # nachgereicht, statt eine zweite Sitzung anzulegen. Ohne Fremdschlüssel
+    # wie ``refresh_tokens.replaced_by``: der Sweeper löscht abgelaufene
+    # Zeilen, und ein ins Leere zeigender Verweis heisst nur „kein Nachfolger“.
+    replaced_by: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True).with_variant(_sqlite.TEXT(), "sqlite"),
+        nullable=True,
+    )
     # Auth-method references: ["pwd"], ["pwd","otp"], ["webauthn"], etc.
     amr: Mapped[list] = mapped_column(
         _JsonbOrJson,

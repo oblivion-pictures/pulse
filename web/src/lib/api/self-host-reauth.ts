@@ -31,6 +31,7 @@ import { instancesApi } from './instances';
 import type { ServerEntry } from './servers.svelte';
 import { merkeGrund, vergissGrund } from './anmelde-fehler';
 import { melde } from '$lib/diagnose/app-diagnose';
+import { backoffDeckel } from '$lib/ablage/backoffDeckel';
 
 // Pro App-Session einmal die Cloud-Membership backfillen — deckt Server ab, die
 // schon vor dem Membership-Sync (oder als Nicht-Owner-Invite) lokal hinzugefügt
@@ -43,6 +44,14 @@ const membershipSynced = new Set<string>();
 // parallele 401-Aufrufer denselben Promise abwarten und dasselbe Retry
 // machen können.
 const inflight = new Map<string, Promise<boolean>>();
+
+// Gescheiterte Anmeldung je Server: der nächste Versuch erst nach 2, 4, 8 …
+// bis 60 s. Ausgelöst wird `reauth` von jedem REST-401 und jedem WS-Neuaufbau;
+// ohne Bremse holte die iOS-Hülle am 2026-10-17 bei totem Cloud-Cookie 100
+// Tickets in acht Minuten, jedes davon mit einem eigenen Cookie-Erneuern.
+// Ein Erfolg hebt die Sperre auf. Beitreten und Server-Hinzufügen holen ihr
+// Ticket selbst und laufen nicht hier durch.
+const ticketBremse = backoffDeckel(60_000);
 
 /**
  * Nach erfolgreicher Anmeldung: Cloud-Mitgliedschaft nachtragen und die
@@ -128,13 +137,19 @@ async function ueberTicket(serverId: string, server: ServerEntry): Promise<strin
 async function reauth(serverId: string): Promise<boolean> {
   const server = serversStore.find(serverId);
   if (!server || server.isCloud) return false;
+  // Vor dem Räumen: ein gebremster Versuch lässt den Token, wie er ist.
+  if (!ticketBremse.istFaellig(serverId)) return false;
 
   // Stale Token aus dem Map kicken, damit `request()` nicht weiter den
   // abgelaufenen Bearer verwendet während die Re-Auth läuft.
   sessionTokens.clear(serverId);
 
   const token = await ueberTicket(serverId, server);
-  if (!token) return false;
+  if (!token) {
+    ticketBremse.vermerkeFehlschlag(serverId);
+    return false;
+  }
+  ticketBremse.vermerkeErfolg(serverId);
   await nachAnmeldung(serverId, server, server.instance_id ?? null, token);
   return true;
 }

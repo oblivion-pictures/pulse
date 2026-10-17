@@ -179,6 +179,8 @@ describe('Verdrahtung: kein nackter Cookie-Fetch auf das Telefonbuch', () => {
 
   test('renewSession merkt sich den Zeitpunkt nur bei Erfolg', () => {
     const quelle = lies('src/lib/api/cookie-client.ts');
-    assert.match(quelle, /if \(resp\.ok\) _cookieGepraegtAm = Date\.now\(\)/);
+    // Seit 2026-10-17 zählt nur ein Cookie, das der Browser auch hält
+    // (`cookieErneuerung.ts`, Reihenfolge geprüft in cookie-erneuerung.test.ts).
+    assert.match(quelle, /if \(!resp\.ok\) return false;[\s\S]*?_cookieGepraegtAm = jetzt;/);
   });
 });

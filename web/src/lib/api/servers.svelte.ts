@@ -25,6 +25,7 @@ import { neueUuid } from '$lib/utils/uuid';
 import { anzeigeName, istSichtbar, nameVomServer } from '$lib/servers/anzeige';
 import { instanzNachzug } from '$lib/servers/instanzNachzug';
 import { standAnwenden } from '$lib/servers/instanzStatus';
+import { abgleichWiederholung, browserWiederholUmgebung } from '$lib/servers/abgleichWiederholung';
 import type { PulseStoreApi } from '$lib/platform/pulse';
 
 export type ServerEntry = {
@@ -374,28 +375,20 @@ class ServersStore {
    *  Re-Hydrate-Pfad wären sie nach Logout+Login weg, obwohl die Membership
    *  in `auth.user_instance_memberships` weiter existiert.
    *  Fire-and-forget; ein FETCH-Fehler (Cloud kurz down, z.B. 30-s-Deploy-
-   *  Fenster) wird mit Backoff wiederholt statt bis zum nächsten Login zu
-   *  schweigen — sonst bleibt die Liste auf diesem Gerät leer/veraltet
-   *  (Vorfall 2026-07-14). Merge-Fehler dagegen retry't erst der nächste
-   *  Login (Daten-, kein Netzproblem). */
+   *  Fenster, totes Cloud-Cookie) wird mit Backoff wiederholt statt bis zum
+   *  nächsten Login zu schweigen — sonst bleibt die Liste auf diesem Gerät
+   *  leer/veraltet (Vorfall 2026-07-14); nach der letzten Stufe beim nächsten
+   *  Sichtbarwerden/Online (`servers/abgleichWiederholung.ts`). Merge-Fehler
+   *  dagegen retry't erst der nächste Login (Daten-, kein Netzproblem). */
   async hydrateFromBackend(attempt = 0): Promise<void> {
     // Frischer Aufruf (Login/Session-Restore) ersetzt eine laufende
     // Retry-Kette — nie zwei parallele Ketten.
-    if (this._hydrateRetryTimer !== null) {
-      clearTimeout(this._hydrateRetryTimer);
-      this._hydrateRetryTimer = null;
-    }
+    this._hydrateWiederholung.abbrechen();
     let instances;
     try {
       instances = await instancesApi.listMyInstances();
     } catch {
-      const delay = HYDRATE_RETRY_DELAYS_MS[attempt];
-      if (delay !== undefined) {
-        this._hydrateRetryTimer = setTimeout(() => {
-          this._hydrateRetryTimer = null;
-          void this.hydrateFromBackend(attempt + 1);
-        }, delay);
-      }
+      this._hydrateWiederholung.planen(attempt, (n) => void this.hydrateFromBackend(n));
       return;
     }
     try {
@@ -482,10 +475,7 @@ class ServersStore {
     }
   }
 
-  private _hydrateRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private _hydrateWiederholung = abgleichWiederholung(browserWiederholUmgebung());
 }
-
-/** Backoff-Stufen für den Listen-Abgleich; danach übernimmt der nächste Login. */
-const HYDRATE_RETRY_DELAYS_MS = [10_000, 30_000, 90_000];
 
 export const serversStore = new ServersStore();

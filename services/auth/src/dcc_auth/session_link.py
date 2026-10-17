@@ -79,6 +79,7 @@ async def revoke_sessions(
     *,
     user_id: int | None = None,
     now: datetime | None = None,
+    replaced_by: str | None = None,
 ) -> int:
     """Die genannten Cookie-Zeilen entwerten. Committet nicht.
 
@@ -97,6 +98,11 @@ async def revoke_sessions(
     davon ab, dass das so bleibt. Wo die Kennungen aus einer bereits auf das
     Konto gefilterten Abfrage stammen (``revoke_sessions_of_tokens``), ändert
     sie nichts.
+
+    ``replaced_by`` vermerkt die ablösende Sitzung (nur ``/session/renew``).
+    Der Rückgabewert zählt nur Zeilen, die bis eben noch NICHT widerrufen
+    waren — ``session_renew`` entscheidet daran, wer ein Rennen zweier
+    Erneuerungen gewonnen hat.
     """
     ids = [s for s in session_ids if s]
     if not ids:
@@ -107,7 +113,10 @@ async def revoke_sessions(
     )
     if user_id is not None:
         stmt = stmt.where(UserSession.user_id == user_id)
-    result = await db.execute(stmt.values(expires_at=at, revoked_at=at))
+    werte: dict[str, object] = {"expires_at": at, "revoked_at": at}
+    if replaced_by is not None:
+        werte["replaced_by"] = replaced_by
+    result = await db.execute(stmt.values(**werte))
     return result.rowcount or 0
 
 

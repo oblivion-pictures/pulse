@@ -70,11 +70,10 @@ from dcc_auth.security import (
 )
 from dcc_auth.session_link import (
     as_sid,
-    parse_sid,
-    relink_to_new_session,
-    revoke_sessions,
     revoke_sessions_of_tokens,
 )
+from dcc_auth.session_renew import KOPF as RENEW_KOPF
+from dcc_auth.session_renew import erneuere_cookie
 from dcc_auth.snowflake import next_id
 from dcc_auth.username_suggestions import suggest_usernames as _suggest_usernames
 
@@ -631,6 +630,7 @@ async def renew_session(
     response: Response,
     session: SessionDep,
     current: User = Depends(_get_current_user),
+    authorization: str | None = Header(default=None),
     user_agent: str | None = Header(default=None, alias="User-Agent"),
 ) -> None:
     """Re-establish the ``pulse_session`` browser cookie from a valid auth.
@@ -640,106 +640,31 @@ async def renew_session(
     login) is never re-established on app restart — so every cookie-authenticated
     endpoint (profile, credentials, backups) breaks even though the user is fully
     signed in. ``_get_current_user`` accepts the Bearer token (or a still-valid
-    cookie); on success we mint a fresh browser session and attach the cookie, so
-    the client can transparently recover without a full re-login.
+    cookie); on success the browser gets a working cookie back, so the client
+    can transparently recover without a full re-login.
 
-    The renewed session inherits the strongest provable auth context (acr/amr)
-    of the user's existing sessions — minting a fresh ``acr="0"`` session here
-    would silently downgrade an MFA user (acr="1") whose short-lived cookie
-    expired, locking them out of the ``mfa_step_up_required`` gate
-    (``/credentials/issue``) until a full re-login. We never *force* a downgrade:
-    if no MFA evidence is found, the previous ``acr="0"`` default stands.
-
-    Die Refresh-Token des Geräts werden auf das neue Cookie umgehängt und das
-    abgelöste Cookie entwertet. Ohne das zeigte die Verknüpfung danach auf eine
-    tote Zeile, und „Sitzung beenden“ liefe für genau die Geräte ins Leere, die
-    am häufigsten erneuern — die Desktop-App tut es bei jedem Start
-    (``session_link.relink_to_new_session``).
+    Welches Cookie das ist — abgelöst, nachgereicht oder neu —, wie der
+    Anmeldekontext (acr/amr) vererbt wird und warum zwei gleichzeitige Aufrufe
+    keine zweite Sitzung anlegen: ``session_renew.py``. Jede 204 setzt ein
+    Cookie; der Kopf ``X-Pulse-Sitzung`` sagt, ob es neu oder nachgereicht ist.
+    Die Refresh-Token des Geräts hängen danach am neuen Cookie
+    (``session_link.relink_to_new_session``), sonst liefe „Sitzung beenden“
+    für genau die Geräte ins Leere, die am häufigsten erneuern.
     """
-    amr, acr = await _strongest_session_context(request, session, current.id)
-    old_sid = parse_sid(request.cookies.get(COOKIE_NAME))
-    sid = await create_session(
+    mit_bearer = bool(authorization and authorization.lower().startswith("bearer "))
+    ergebnis = await erneuere_cookie(
         session,
         user_id=current.id,
-        amr=amr,
-        acr=acr,
+        cookie=request.cookies.get(COOKIE_NAME),
+        mit_bearer=mit_bearer,
         user_agent=user_agent,
         ip=_client_ip(request),
     )
-    moved = await relink_to_new_session(
-        session,
-        user_id=current.id,
-        old_sid=old_sid,
-        new_sid=str(sid),
-        user_agent=user_agent,
-    )
-    if old_sid is not None:
-        # Das abgelöste Cookie ist beim Client bereits ersetzt; es weiter
-        # gelten zu lassen hiesse nur, eine zweite lebende Sitzung zu führen,
-        # die niemand mehr sieht.
-        await revoke_sessions(session, [old_sid], user_id=current.id)
-    # Bughunt Runde 33: Relink-Ergebnis auswerten — aber NUR im Cookie-Pfad
-    # (old_sid gesetzt). Zwei parallele /session/renew-Rufe mit demselben
-    # Cookie (mehrere Tabs beim Start) hingen sonst beide Refresh-Ketten um,
-    # revokten sich gegenseitig, und der Browser behielt das Cookie des
-    # Verlierers — eine lebende, in /sessions unsichtbare Sitzung. Ohne
-    # Cookie (Bearer-Pfad, Desktop) bleibt das alte Verhalten: Cookie wird
-    # gesetzt, Relink-Ausgang egal.
-    if old_sid is None or moved > 0:
-        await session.commit()
-        set_session_cookie(response, sid)
+    if ergebnis is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="session revoked")
+    set_session_cookie(response, uuid.UUID(ergebnis.sid))
+    response.headers[RENEW_KOPF] = ergebnis.art
     return None
-
-
-async def _strongest_session_context(
-    request: Request,
-    session: SessionDep,
-    user_id: int,
-) -> tuple[list[str], str]:
-    """Return the (amr, acr) to carry into a renewed browser session.
-
-    The access token carries no acr/amr claim (see ``JwtSigner.issue_access``),
-    so the only auth-strength evidence lives in ``user_sessions`` rows. We only
-    trust the session the *current request itself proves*: the row referenced by
-    this browser's ``pulse_session`` cookie. That row may be DB-expired — it is
-    still this user's own session in this very browser, so its acr/amr is a
-    legitimate record of the original auth strength here, and inheriting it lets
-    an MFA user (acr="1") whose short-lived cookie expired keep their step-up.
-
-    We deliberately do NOT scan the user's other sessions: a row created on a
-    different device (or an expired one) is not proven by this request. A
-    bearer-only request (e.g. a stolen XSS access token) carries no cookie, so
-    it gets the plain-password default — it can never *inherit* acr="1" from a
-    foreign/expired session and slip past the ``/credentials/issue`` MFA gate.
-
-    A row killed by an explicit security event (Logout-Everywhere /
-    password-change / suspend — ``revoked_at`` set) is also refused: that is a
-    deliberate teardown of the step-up, semantically different from a natural
-    TTL expiry (``revoked_at`` is None). Only naturally-expired-or-live own
-    cookies inherit acr. Falls back to the default otherwise — so we never
-    *force* a downgrade, only raise to provable, non-revoked strength.
-    """
-    default: tuple[list[str], str] = (["pwd"], "0")
-
-    raw = request.cookies.get(COOKIE_NAME)
-    if not raw:
-        return default
-    try:
-        sid = uuid.UUID(raw)
-    except ValueError:
-        return default
-
-    # Load exactly the cookie-referenced row (DB-expired is fine — it's this
-    # browser's own session). Reject a cross-user cookie and an explicitly
-    # revoked one: the proven row must belong to the authenticated user and not
-    # have been torn down by a security event.
-    row = await session.get(UserSession, str(sid))
-    if row is None or row.user_id != user_id or row.revoked_at is not None:
-        return default
-
-    acr = row.acr or "0"
-    amr = list(row.amr) if row.amr else ["pwd"]
-    return amr, acr
 
 
 def _refresh_cookie_loeschen_401(detail: str) -> HTTPException:
