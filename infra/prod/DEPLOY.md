@@ -195,6 +195,14 @@ livekit) pick the new limits up on their next restart.
   ssh $PULSE_PROD_HOST 'cd ~/pulse/infra/prod && docker compose up -d auth'
   ```
 
+- **Phone push secrets:** `FIREBASE_SERVICE_ACCOUNT_KEY` (service-account
+  JSON) and the `APNS_*` values (see "Handy-Pushes und VoIP" in `.env.example`)
+  point at files under `~/pulse/infra/prod/secrets/` (`chmod 0644`, uid 10001
+  must read them). If they are missing, no phone gets a push and nothing
+  fails visibly — the chat-gateway only logs a `warning` at startup
+  (`fcm_nicht_konfiguriert` / `apns_voip_nicht_konfiguriert`), so check
+  `docker compose logs chat-gateway` after a fresh deploy.
+
 - **Migrations** run automatically — `pulse_migrate_auth` / `pulse_migrate_chat`
   (the auth/chat images with `alembic upgrade head`) run before the services on
   every `up`.
