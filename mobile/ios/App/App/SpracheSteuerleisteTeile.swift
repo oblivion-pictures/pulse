@@ -33,6 +33,66 @@ enum SpracheHaptik {
     }
 }
 
+// MARK: - Runder Knopf
+
+/// Ein runder Knopf der Leiste. **Rund, weil Anruf-Steuerungen rund sind** —
+/// dieselbe Begründung wie in `VoiceControlBar.svelte`, und 56 pt ist dort das
+/// Mass fürs Telefon (48 pt wäre die Untergrenze der Trefferflächen-Regel).
+///
+/// **Wächst mit der Schriftgrösse** (`ScaledMetric`), aber nur bis zu einer
+/// Obergrenze: ohne sie passten bei den grössten Stufen nicht einmal drei
+/// Knöpfe in eine Zeile. Die Leiste weicht vorher auf zwei Zeilen aus.
+struct SpracheRundKnopf: View {
+    let symbol: String
+    let an: Bool
+    let warnend: Bool
+    var gesperrt = false
+    let beschriftung: String
+    /// Was das Tippen bewirkt — VoiceOver liest es nach der Beschriftung.
+    var hinweis = ""
+    let kennung: String
+    var haptik: SpracheHaptik = .leicht
+    let tun: () -> Void
+
+    @ScaledMetric(relativeTo: .title3) private var flaeche: CGFloat = 56
+    @ScaledMetric(relativeTo: .title3) private var zeichen: CGFloat = 22
+    @ScaledMetric(relativeTo: .caption) private var schild: CGFloat = 15
+
+    var body: some View {
+        let seite = min(flaeche, 84)
+        Button {
+            haptik.ausloesen()
+            tun()
+        } label: {
+            // Auf Rot und Blau weiss, in Ruhe in der Schriftfarbe des Themas —
+            // die dunkle Schrift des hellen Satzes wäre auf Blau unlesbar.
+            Image(systemName: symbol)
+                .font(.system(size: min(zeichen, 34), weight: .medium))
+                .foregroundStyle(warnend || an ? Color.white : SpracheFarben.text)
+                .frame(width: seite, height: seite)
+                .background(hintergrund, in: Circle())
+                .overlay(alignment: .bottomTrailing) {
+                    if gesperrt {
+                        Image(systemName: "shield.fill")
+                            .font(.system(size: min(schild, 24), weight: .bold))
+                            .foregroundStyle(SpracheFarben.schild)
+                    }
+                }
+        }
+        .disabled(gesperrt)
+        .accessibilityLabel(beschriftung)
+        .accessibilityHint(hinweis)
+        // Für die XCUITests (`AppUITests/UITests.swift`): die Beschriftung
+        // ist übersetzt und wechselt mit dem Zustand, die Kennung nicht.
+        .accessibilityIdentifier(kennung)
+    }
+
+    private var hintergrund: Color {
+        if warnend { return SpracheFarben.schlecht }
+        return an ? SpracheFarben.marke : SpracheFarben.knopf
+    }
+}
+
 // MARK: - Ausgabe-Route
 
 /// Wohin der Ton WIRKLICH läuft (`AVAudioSession.currentRoute`), nicht was der

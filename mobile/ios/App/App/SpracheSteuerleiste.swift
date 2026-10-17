@@ -53,8 +53,9 @@ final class SpracheStand: ObservableObject {
 /// fehlen muss, sondern dass er das Web bittet. Kamera und Ausgabe schalten
 /// direkt: an ihnen hängt keine Regel des Webs.
 ///
-/// **Fünf Knöpfe, einzeilig.** Der Kamera-Wechsel sitzt deshalb auf der
-/// eigenen Kachel (wie im Web, `CLAUDE.md`: „der Front/Rück-Wechsel auf der
+/// **Fünf Knöpfe, einzeilig — bei grosser Schrift zweizeilig.** Der
+/// Kamera-Wechsel sitzt deshalb auf der eigenen Kachel (wie im Web,
+/// `CLAUDE.md`: „der Front/Rück-Wechsel auf der
 /// eigenen Kamerakachel"): sechs runde 56-pt-Knöpfe passen auf ein schmales
 /// Telefon nicht nebeneinander.
 struct SpracheSteuerleiste: View {
@@ -86,52 +87,27 @@ struct SpracheSteuerleiste: View {
         // (`toggleMic`), sagt es aber niemandem. Die Web-Leiste sperrt ihn
         // genauso (`VoiceControlBar.svelte`).
         let zwang = stand.erzwungen(fuer: raum.localParticipant)
-        let mikroOffen = mikroAn && !zwang.stumm
-        return HStack(spacing: 14) {
-            knopf(
-                symbol: mikroOffen ? "mic.fill" : "mic.slash.fill",
-                an: mikroOffen, warnend: !mikroOffen, gesperrt: zwang.stumm,
-                beschriftung: mikroBeschriftung(erzwungen: zwang.stumm), kennung: "sprache.mikrofon"
-            ) {
-                SpracheRaum.geteilt.wunschEinreihen(.mikrofon, an: !mikroAn, fertig: gemeldet("mikrofon"))
+        // **Eine Zeile, wenn sie passt, sonst zwei.** Bei grosser Schrift
+        // wachsen die Knöpfe mit (`SpracheRundKnopf`), und fünf nebeneinander
+        // liefen über den Rand; `ViewThatFits` nimmt die erste Fassung, die
+        // in die Breite passt.
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                mikroKnopf(zwang: zwang.stumm)
+                taubKnopf(zwang: zwang.taub)
+                kameraKnopf
+                ausgabeKnopf
+                auflegenKnopf
             }
-            knopf(
-                symbol: stand.taub ? "speaker.slash.fill" : "headphones",
-                an: false, warnend: stand.taub, gesperrt: zwang.taub,
-                beschriftung: taubBeschriftung(erzwungen: zwang.taub), kennung: "sprache.taub"
-            ) {
-                SpracheRaum.geteilt.wunschEinreihen(.taub, an: !stand.taub, fertig: gemeldet("taub"))
-            }
-            knopf(
-                symbol: kameraAn ? "video.fill" : "video.slash.fill",
-                an: kameraAn, warnend: false,
-                beschriftung: kameraAn
-                    ? NSLocalizedString("Kamera ausschalten", comment: "Sprachkanal")
-                    : NSLocalizedString("Kamera einschalten", comment: "Sprachkanal"),
-                kennung: "sprache.kamera"
-            ) {
-                // Der Stand wird erst in der Kette gelesen: zwei schnelle
-                // Tipps schalten so an und wieder aus, nicht zweimal an.
-                SpracheRaum.geteilt.einreihen({
-                    try await SpracheRaum.geteilt.kamera(!kameraAn)
-                }, fertig: gemeldet("kamera"))
-            }
-            ausgabeKnopf
-            knopf(
-                symbol: "phone.down.fill", an: false, warnend: true,
-                beschriftung: NSLocalizedString("Auflegen", comment: "Sprachkanal"),
-                kennung: "sprache.auflegen", haptik: .auflegen
-            ) {
-                // **Auflegen bleibt ausserhalb der Kette**, wie `verlassen`:
-                // es darf nicht hinter einem hängenden Befehl warten
-                // (`SpracheRaum.nacheinander`). Ein eigener Task ist hier also
-                // Absicht, keine Reihenfolge-Lücke.
-                Task {
-                    do {
-                        try await SpracheRaum.geteilt.wunsch(.auflegen, an: true)
-                    } catch {
-                        gemeldet("auflegen")(.failure(error))
-                    }
+            VStack(spacing: 14) {
+                HStack(spacing: 14) {
+                    mikroKnopf(zwang: zwang.stumm)
+                    taubKnopf(zwang: zwang.taub)
+                    kameraKnopf
+                }
+                HStack(spacing: 14) {
+                    ausgabeKnopf
+                    auflegenKnopf
                 }
             }
         }
@@ -149,6 +125,72 @@ struct SpracheSteuerleiste: View {
         ) { _ in route = SpracheAusgabe.aktuell() }
     }
 
+    // MARK: - Die Knöpfe
+
+    private func mikroKnopf(zwang: Bool) -> some View {
+        let mikroOffen = mikroAn && !zwang
+        return SpracheRundKnopf(
+            symbol: mikroOffen ? "mic.fill" : "mic.slash.fill",
+            an: mikroOffen, warnend: !mikroOffen, gesperrt: zwang,
+            beschriftung: mikroBeschriftung(erzwungen: zwang),
+            hinweis: NSLocalizedString("Schaltet dein Mikrofon im Kanal ein oder aus.", comment: "Sprachkanal"),
+            kennung: "sprache.mikrofon"
+        ) {
+            SpracheRaum.geteilt.wunschEinreihen(.mikrofon, an: !mikroAn, fertig: gemeldet("mikrofon"))
+        }
+    }
+
+    private func taubKnopf(zwang: Bool) -> some View {
+        SpracheRundKnopf(
+            symbol: stand.taub ? "speaker.slash.fill" : "headphones",
+            an: false, warnend: stand.taub, gesperrt: zwang,
+            beschriftung: taubBeschriftung(erzwungen: zwang),
+            hinweis: NSLocalizedString("Schaltet ein oder aus, ob du die anderen im Kanal hörst.", comment: "Sprachkanal"),
+            kennung: "sprache.taub"
+        ) {
+            SpracheRaum.geteilt.wunschEinreihen(.taub, an: !stand.taub, fertig: gemeldet("taub"))
+        }
+    }
+
+    private var kameraKnopf: some View {
+        SpracheRundKnopf(
+            symbol: kameraAn ? "video.fill" : "video.slash.fill",
+            an: kameraAn, warnend: false,
+            beschriftung: kameraAn
+                ? NSLocalizedString("Kamera ausschalten", comment: "Sprachkanal")
+                : NSLocalizedString("Kamera einschalten", comment: "Sprachkanal"),
+            hinweis: NSLocalizedString("Schaltet deine Kamera im Kanal ein oder aus.", comment: "Sprachkanal"),
+            kennung: "sprache.kamera"
+        ) {
+            // Der Stand wird erst in der Kette gelesen: zwei schnelle
+            // Tipps schalten so an und wieder aus, nicht zweimal an.
+            SpracheRaum.geteilt.einreihen({
+                try await SpracheRaum.geteilt.kamera(!kameraAn)
+            }, fertig: gemeldet("kamera"))
+        }
+    }
+
+    private var auflegenKnopf: some View {
+        SpracheRundKnopf(
+            symbol: "phone.down.fill", an: false, warnend: true,
+            beschriftung: NSLocalizedString("Auflegen", comment: "Sprachkanal"),
+            hinweis: NSLocalizedString("Verlässt den Sprachkanal.", comment: "Sprachkanal"),
+            kennung: "sprache.auflegen", haptik: .auflegen
+        ) {
+            // **Auflegen bleibt ausserhalb der Kette**, wie `verlassen`:
+            // es darf nicht hinter einem hängenden Befehl warten
+            // (`SpracheRaum.nacheinander`). Ein eigener Task ist hier also
+            // Absicht, keine Reihenfolge-Lücke.
+            Task {
+                do {
+                    try await SpracheRaum.geteilt.wunsch(.auflegen, an: true)
+                } catch {
+                    gemeldet("auflegen")(.failure(error))
+                }
+            }
+        }
+    }
+
     /// Läuft der Ton über Bluetooth, Kopfhörer oder eine andere externe Route,
     /// zeigt der Knopf DIESE und öffnet beim Tippen den System-Routenwähler —
     /// das Umschalten Hörmuschel/Lautsprecher bliebe dort ohne Wirkung. Ohne
@@ -156,19 +198,22 @@ struct SpracheSteuerleiste: View {
     @ViewBuilder
     private var ausgabeKnopf: some View {
         if let symbol = route.symbol {
-            knopf(
+            SpracheRundKnopf(
                 symbol: symbol, an: true, warnend: false,
-                beschriftung: route.beschriftung, kennung: "sprache.ausgabe"
+                beschriftung: route.beschriftung,
+                hinweis: NSLocalizedString("Öffnet die Auswahl der Tonausgabe.", comment: "Sprachkanal"),
+                kennung: "sprache.ausgabe"
             ) {
                 waehlerAusloeser += 1
             }
         } else {
-            knopf(
+            SpracheRundKnopf(
                 symbol: lautsprecher ? "speaker.wave.2.fill" : "ear",
                 an: !lautsprecher, warnend: false,
                 beschriftung: lautsprecher
                     ? NSLocalizedString("Auf Hörmuschel umschalten", comment: "Sprachkanal")
                     : NSLocalizedString("Auf Lautsprecher umschalten", comment: "Sprachkanal"),
+                hinweis: NSLocalizedString("Wechselt zwischen Lautsprecher und Hörmuschel.", comment: "Sprachkanal"),
                 kennung: "sprache.ausgabe"
             ) {
                 let neu = !lautsprecher
@@ -176,45 +221,6 @@ struct SpracheSteuerleiste: View {
                 lautsprecher = neu
             }
         }
-    }
-
-    /// Ein runder Knopf. **Rund, weil Anruf-Steuerungen rund sind** — dieselbe
-    /// Begründung wie in `VoiceControlBar.svelte`, und 56 pt ist dort das Mass
-    /// fürs Telefon (48 pt wäre die Untergrenze der Trefferflächen-Regel).
-    private func knopf(
-        symbol: String,
-        an: Bool,
-        warnend: Bool,
-        gesperrt: Bool = false,
-        beschriftung: String,
-        kennung: String,
-        haptik: SpracheHaptik = .leicht,
-        tun: @escaping () -> Void
-    ) -> some View {
-        Button {
-            haptik.ausloesen()
-            tun()
-        } label: {
-            // Auf Rot und Blau weiss, in Ruhe in der Schriftfarbe des Themas —
-            // die dunkle Schrift des hellen Satzes wäre auf Blau unlesbar.
-            Image(systemName: symbol)
-                .font(.system(size: 22, weight: .medium))
-                .foregroundStyle(warnend || an ? Color.white : SpracheFarben.text)
-                .frame(width: 56, height: 56)
-                .background(hintergrund(an: an, warnend: warnend), in: Circle())
-                .overlay(alignment: .bottomTrailing) {
-                    if gesperrt {
-                        Image(systemName: "shield.fill")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(SpracheFarben.schild)
-                    }
-                }
-        }
-        .disabled(gesperrt)
-        .accessibilityLabel(beschriftung)
-        // Für die XCUITests (`AppUITests/UITests.swift`): die Beschriftung
-        // ist übersetzt und wechselt mit dem Zustand, die Kennung nicht.
-        .accessibilityIdentifier(kennung)
     }
 
     /// Das Ende eines Knopfdrucks, der Arbeit anstösst. **Jeder Fehlschlag wird
@@ -228,8 +234,9 @@ struct SpracheSteuerleiste: View {
     /// `Task` — zwei solche Tasks starten in keiner zugesagten Reihenfolge.
     /// Auflegen bleibt bewusst ausserhalb (Begründung am Knopf).
     ///
-    /// Das Band zeigt verständliches Deutsch (`SpracheMeldung`), die Rohfassung
-    /// steht im Log. Gelingt eine Aktion, geht ein stehendes Band weg.
+    /// Das Band zeigt verständlichen Text in der Sprache des Geräts
+    /// (`SpracheMeldung`), die Rohfassung steht im Log. Gelingt eine Aktion,
+    /// geht ein stehendes Band weg.
     private func gemeldet(_ knopf: String) -> (Result<Void, Error>) -> Void {
         let fehlerMelden = fehlerMelden
         let fehlerAufheben = fehlerAufheben
@@ -243,11 +250,6 @@ struct SpracheSteuerleiste: View {
                 DispatchQueue.main.async { fehlerMelden(meldung) }
             }
         }
-    }
-
-    private func hintergrund(an: Bool, warnend: Bool) -> Color {
-        if warnend { return SpracheFarben.schlecht }
-        return an ? SpracheFarben.marke : SpracheFarben.knopf
     }
 
     /// Von der Moderation geschaltet geht vor — dann sagt der Knopf, warum er

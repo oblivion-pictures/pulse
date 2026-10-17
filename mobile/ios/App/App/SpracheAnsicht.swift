@@ -78,6 +78,8 @@ struct SpracheAnsicht: View {
     @State private var fehler: SpracheMeldung?
     private static let bandDauer: UInt64 = 6_000_000_000
     @ObservedObject private var stand = SpracheStand.geteilt
+    /// Trefferfläche des Schliessen-Pfeils; wächst mit der Schriftgrösse.
+    @ScaledMetric(relativeTo: .headline) private var pfeilFlaeche: CGFloat = 44
 
     var body: some View {
         VStack(spacing: 0) {
@@ -109,23 +111,26 @@ struct SpracheAnsicht: View {
         HStack(spacing: 12) {
             Button(action: schliessen) {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(SpracheFarben.text)
-                    .frame(width: 44, height: 44)
+                    .frame(width: min(pfeilFlaeche, 64), height: min(pfeilFlaeche, 64))
             }
             .accessibilityLabel(
-                NSLocalizedString("Kanalansicht schliessen", comment: "Sprachkanal"))
+                NSLocalizedString("Kanalansicht schließen", comment: "Sprachkanal"))
+            .accessibilityHint(
+                NSLocalizedString("Der Kanal bleibt verbunden.", comment: "Sprachkanal"))
             .accessibilityIdentifier("sprache.schliessen")
             VStack(alignment: .leading, spacing: 1) {
                 Text(kanalName.isEmpty
                     ? NSLocalizedString("Sprachkanal", comment: "Sprachkanal") : kanalName)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(SpracheFarben.text)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .accessibilityAddTraits(.isHeader)
                 Text(zustandsZeile)
-                    .font(.system(size: 13))
+                    .font(.footnote)
                     .foregroundStyle(SpracheFarben.textMatt)
-                    .lineLimit(1)
+                    .lineLimit(2)
                     // Der Zustand des NATIVEN Raums, wie ihn die XCUITests lesen.
                     .accessibilityIdentifier("sprache.zustand")
             }
@@ -161,7 +166,8 @@ struct SpracheAnsicht: View {
     private func fehlerband(_ meldung: SpracheMeldung) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-            Text(meldung.text).font(.system(size: 13)).lineLimit(4)
+                .accessibilityHidden(true)
+            Text(meldung.text).font(.footnote).lineLimit(6)
             Spacer(minLength: 0)
             if meldung.einstellungen {
                 Button(NSLocalizedString("Einstellungen öffnen", comment: "Fehlerband")) {
@@ -169,11 +175,11 @@ struct SpracheAnsicht: View {
                         UIApplication.shared.open(ziel)
                     }
                 }
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
                 .accessibilityIdentifier("sprache.fehler.einstellungen")
             }
             Button(NSLocalizedString("OK", comment: "Fehlerband")) { fehler = nil }
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
         }
         .foregroundStyle(SpracheFarben.schlecht)
         .padding(.horizontal, 16)
@@ -186,17 +192,18 @@ struct SpracheAnsicht: View {
     private var mikroTotBand: some View {
         HStack(spacing: 8) {
             Image(systemName: "mic.slash.fill")
+                .accessibilityHidden(true)
             Text(stand.neuVerbindenMoeglich
                 ? NSLocalizedString("Mikrofon ausgefallen", comment: "Sprachkanal")
                 : NSLocalizedString(
                     "Mikrofon ausgefallen – bitte die App neu starten", comment: "Sprachkanal"))
-                .font(.system(size: 13)).lineLimit(2)
+                .font(.footnote).lineLimit(4)
             Spacer(minLength: 0)
             if stand.neuVerbindenMoeglich {
                 Button(NSLocalizedString("Erneut verbinden", comment: "Sprachkanal")) {
                     Task { try? await SpracheRaum.geteilt.wunsch(.neuVerbinden, an: true) }
                 }
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
                 .accessibilityIdentifier("sprache.mikroTot.neu")
             }
         }
