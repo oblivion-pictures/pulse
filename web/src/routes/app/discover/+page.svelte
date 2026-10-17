@@ -137,7 +137,7 @@
     </div>
   </header>
 
-  <div class="flex-1 overflow-y-auto px-3 pb-4 pt-3">
+  <div class="flex-1 overflow-y-auto px-3 pb-4 pt-3 ios:handy:pb-[max(1.5rem,var(--safe-bottom))]">
     <!-- Suche -->
     <div class="relative mb-3">
       <SearchIcon

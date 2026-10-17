@@ -73,6 +73,10 @@
   import { kanalAusPfad, istAktiverSprachKanal } from '$lib/navigation/kanalBildschirm';
   import { openedTiles } from '$lib/stream/openedTiles.svelte';
   import { orientierungSperren } from '$lib/platform/orientation';
+  import { huellenLage } from '$lib/platform/huellenLage.svelte';
+  import { isCapacitorIOS } from '$lib/platform/runtime';
+  import LoadingState from '$lib/components/feedback/LoadingState.svelte';
+  import { m } from '$lib/paraglide/messages.js';
   import { registriereZurueckTaste } from '$lib/platform/zurueckTaste';
   import { istRaumBereich, merkeRaumPfad, raumPfadNachAuflegen } from '$lib/navigation/letzterRaumBereich.svelte';
   import { untrack } from 'svelte';
@@ -522,8 +526,19 @@
       istAktiverSprachKanal(page.url.pathname, voice.channelId) &&
       openedTiles.hasAny(voice.channelId!)
   );
+  // **Nur iOS-Hülle.** Der alte Ausdruck `istHandy && !isMobile` verglich seit
+  // der Geräteklassen-Vereinheitlichung (2026-09-04) dieselbe Klasse mit ihrer
+  // eigenen Negation und war immer falsch; Android bleibt dabei. `quer` rechnet
+  // wie die Querformat-Wache der HQ-Kachel (`istQuer`) — nach der
+  // BILDSCHIRMGRÖSSE, nicht nach der Fensterbreite (die Geräteklasse bleibt im
+  // Querformat `handy`). Quer bekommt der Stream die Fläche: Tab-Leiste,
+  // Voice-Dock und Kopfzeile weichen.
+  const istIosHuelle = isCapacitorIOS();
   let kanalQuerStream = $derived(
-    viewport.istHandy && !viewport.isMobile && streamAngedockt
+    istIosHuelle && viewport.istHandy && huellenLage.quer && streamAngedockt
+  );
+  let zeigeDockUnten = $derived(
+    viewport.istHandy && !kanalQuerStream && (voice.connected || voice.connecting)
   );
   let zeigeLeisteUnten = $derived(
     hydrated &&
@@ -593,6 +608,15 @@
     void orientierungSperren(!streamAngedockt);
   });
 
+  // iOS-Hülle: Quer-/Tastatur-Lage beobachten (`huellenLage`), und die Kopfzeile
+  // des Kanals weicht dem Stream, solange er quer die Fläche bekommt.
+  $effect(() => huellenLage.starten());
+  $effect(() => {
+    const wurzel = document.documentElement;
+    wurzel.toggleAttribute('data-quer-stream', kanalQuerStream);
+    return () => wurzel.removeAttribute('data-quer-stream');
+  });
+
   // Ablehnungen des Servers zur Watch-Party sichtbar machen. Einmal je
   // Fenster — Begruendung in `watch/fehlerwacht.svelte.ts`.
   watchFehlerWacht();
@@ -601,8 +625,13 @@
 <!-- `w-full` statt `w-screen`: 100vw ist auf iOS Safari breiter als der
      sichtbare Bereich (Safe-Areas/Rundungen) — Inhalte wirkten abgeschnitten.
      100% des Bodys bleibt exakt in der Viewport-Breite. -->
+<!-- iOS-Hülle am Handy: die Aussparung gehört genau EINMAL der Shell — oben
+     (`--safe-top`) und im Querformat seitlich. Bis hierher saß `--safe-top` erst
+     an der Panel-Zeile, und die Banner darüber (Update, Self-Host, Neu laden)
+     lagen unter der Dynamic Island; trug ein Banner sein eigenes `--safe-top`,
+     stand der Abstand doppelt. Android/Browser/Tablet behalten ihre Zeile. -->
 <div
-  class="text-text-base flex h-dvh w-full flex-col overflow-hidden"
+  class="text-text-base flex h-dvh w-full flex-col overflow-hidden ios:handy:pt-[var(--safe-top)] ios:handy:pr-[var(--safe-right)] ios:handy:pl-[var(--safe-left)]"
   data-testid="app-shell"
 >
   <!-- KEIN eigener Hintergrund hier: Die App trägt den Standard-Seitengrund
@@ -623,12 +652,17 @@
   <!-- pt-[var(--safe-top)]: clears the iOS notch / status bar in the installed
        PWA and the Android APK (no-op as a browser tab). md restores the
        regular padding. -->
-  <div class="flex flex-1 gap-0 p-0 pt-[var(--safe-top)] nicht-handy:gap-3 nicht-handy:p-3 nicht-handy:pt-3 min-h-0">
+  <!-- `--safe-bottom: 0` IN der Zeile, wenn unter ihr Dock oder Leiste steht:
+       die tragen den Home-Balken, ein Composer darüber (`MessageInput`) hätte
+       ihn sonst ein zweites Mal als Leerraum. Nur iOS-Hülle am Handy. -->
+  <div
+    class="flex flex-1 gap-0 p-0 pt-[var(--safe-top)] ios:handy:pt-0 nicht-handy:gap-3 nicht-handy:p-3 nicht-handy:pt-3 min-h-0 {zeigeDockUnten || zeigeLeisteUnten ? 'ios:handy:[--safe-bottom:0px]' : ''}"
+  >
     {#if zeigeSpalteLinks}
       <TabletNavRail />
     {/if}
     {#if !hydrated}
-      <div class="text-text-muted flex flex-1 items-center justify-center text-sm">loading…</div>
+      <LoadingState density="page" label={m.feedback_loading()} class="flex-1" />
     {:else}
       <!-- Server-Picker ist in die GuildRail unten integriert (s. dort). -->
       {@render children?.()}
@@ -638,7 +672,7 @@
        Eigene Flex-Zeile → der Drawer (absolute in der Panel-Zeile) kann sie
        nicht überdecken; Auflegen ist immer erreichbar. Desktop: Controls
        leben im Sidebar-Footer (s. SidebarFooter). -->
-  {#if viewport.istHandy && !kanalQuerStream && (voice.connected || voice.connecting)}
+  {#if zeigeDockUnten}
     <!-- `mb-2`, wenn die Bereichs-Leiste darunter steht: Abstand statt
          Kleben — das Dock sitzt damit spürbar über der Navigation. -->
     <div class="shrink-0 {zeigeLeisteUnten ? 'mb-2' : 'pb-[var(--safe-bottom)]'}">
