@@ -99,3 +99,22 @@ test('nur eigene Pulse-Hosts, nur https (http nur lokal)', () => {
   assert.ok(whepHostErlaubt('http://127.0.0.1:8889/p/whep', ['http://127.0.0.1:8889']));
   assert.ok(!whepHostErlaubt('http://127.0.0.1:8889/p/whep', ['http://127.0.0.1:5173']));
 });
+
+test('B12: der Fehlschlag-Zähler bleibt bei derselben Adresse, bis der Ton wirklich spielt', async () => {
+  const { fehlschlaegeNachPhase, fehlschlaegeNachVerbinden } = await import(
+    '../src/lib/stream/tonVersatz.ts'
+  );
+  // Die Kachel ruft `verbinden` mit derselben Adresse nach jedem Fehlschlag
+  // erneut: der Zähler darf davon nicht auf null gehen.
+  let z = 2;
+  z = fehlschlaegeNachVerbinden(z, '/live/abc/whep', '/live/abc/whep');
+  assert.equal(z, 2);
+  // Ein anderer Stream beginnt von vorn.
+  assert.equal(fehlschlaegeNachVerbinden(2, '/live/abc/whep', '/live/xyz/whep'), 0);
+  assert.equal(fehlschlaegeNachVerbinden(2, null, '/live/xyz/whep'), 0);
+  // Nur `spielt` löscht den Zähler.
+  for (const phase of ['verbinde', 'fehler', 'beendet', 'unterbrochen']) {
+    assert.equal(fehlschlaegeNachPhase(2, phase), 2, phase);
+  }
+  assert.equal(fehlschlaegeNachPhase(2, 'spielt'), 0);
+});

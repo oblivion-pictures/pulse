@@ -48,6 +48,8 @@ import { StreamTonLage, type Lage, type Teilnehmer } from './streamTonLage';
 import { StummerKontext, type KontextArt } from './stummerKontext';
 import { melde } from '$lib/diagnose/app-diagnose';
 import {
+  fehlschlaegeNachPhase,
+  fehlschlaegeNachVerbinden,
   fensterMs,
   versatzEntscheiden,
   videoZaehler,
@@ -135,6 +137,9 @@ export class NativerStreamTon implements Teilnehmer {
   readonly #stand: (s: NativStand) => void;
   readonly #rueckfall: (grund: string) => void;
   #pfad: string | null = null;
+  /** Der Pfad des letzten Startversuchs — überlebt einen Fehlschlag, der
+   *  `#pfad` leert (Zähler-Regel: `fehlschlaegeNachVerbinden`). */
+  #letzterPfad: string | null = null;
   #lautstaerke = 1;
   #fehlschlaege = 0;
   #gen = 0;
@@ -204,7 +209,9 @@ export class NativerStreamTon implements Teilnehmer {
     this.#lautstaerke = lautstaerke;
     const pfad = whepPfad(url);
     if (pfad === this.#pfad) return;
-    this.#fehlschlaege = 0;
+    // NICHT einfach null: bei derselben Adresse nach einem Fehlschlag gehört
+    // der Zähler weiter dem scheiternden Ton (Review B12).
+    this.#fehlschlaege = fehlschlaegeNachVerbinden(this.#fehlschlaege, this.#letzterPfad, pfad);
     if (lage.lage === 'pause') {
       this.#pausiert = true;
       return;
@@ -256,6 +263,7 @@ export class NativerStreamTon implements Teilnehmer {
     const gen = ++this.#gen;
     clearTimeout(this.#retry);
     this.#pfad = pfad;
+    this.#letzterPfad = pfad;
     this.#verzoegerung = 0;
     this.#video = null;
     this.#ton = null;
@@ -267,6 +275,7 @@ export class NativerStreamTon implements Teilnehmer {
       const z = await streamTonStarten(this.#kennung, url, this.#lautstaerke, ECHO_FAKTOR);
       if (gen !== this.#gen) return;
       this.#melden(z);
+      this.#fehlschlaege = fehlschlaegeNachPhase(this.#fehlschlaege, z.phase);
     } catch (e) {
       if (gen !== this.#gen) return;
       const status = (e as { data?: { status?: number } })?.data?.status ?? 0;
@@ -279,7 +288,7 @@ export class NativerStreamTon implements Teilnehmer {
     // Rückfall an — es darf den WebView-Ton nicht wieder als nativ ausgeben.
     if (!this.zustaendig) return;
     this.#melden(z);
-    if (z.phase === 'spielt') this.#fehlschlaege = 0;
+    this.#fehlschlaege = fehlschlaegeNachPhase(this.#fehlschlaege, z.phase);
     if (z.phase === 'fehler' && this.#pfad) this.#fehlschlag(z.grund ?? 'fehler');
   }
 

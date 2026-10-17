@@ -41,7 +41,12 @@ import type {
 // Typen und die Weiche sind Teil DIESER Schnittstelle, sie liegen nur woanders
 // (die Weiche in `iosSpracheWeiche.ts`, Begründung dort).
 export type { NativerEigenerZustand, NativerTeilnehmer, NativerWunsch, NativerZustand };
-export { nativerSprachwegBefund, nativerSprachwegDa, nativeWacheDa } from './iosSpracheWeiche';
+export {
+  nativerSprachwegBefund,
+  nativerSprachwegDa,
+  nativeWacheDa,
+  sprachwegVeraltet
+} from './iosSpracheWeiche';
 
 /** Alles, was die Hülle unter dem Namen `SprachePlugin` anbietet — je nach Bau
  *  nicht vollständig (s. `iosSpracheWeiche.ts`). */
@@ -133,9 +138,10 @@ function rufen<T>(
  * ältere Bauten ohne `StreamTonPlugin` gilt der Satz oben weiter — dort zeigt
  * die Kachel den Lautlos-Hinweis.
  *
- * **Zweite Schreibstelle derselben Eigenschaft** ist `webAudioSession` in
- * `platform/iosTon.ts`; die ist abgeschaltet (`WEB_AUDIO_SESSION_AN`) und
- * schweigt zusätzlich, solange der native Raum steht.
+ * **Dies ist die einzige Schreibstelle** von `navigator.audioSession`: die
+ * zweite in `platform/iosTon.ts` (`webAudioSession`) war abgeschaltet und ist
+ * entfernt, ihre Messung steht in der Git-Historie von
+ * `platform/iosTonWebkit.ts`.
  */
 function webSessionTyp(typ: 'ambient' | 'auto'): void {
   if (!isCapacitorIOS()) return;
@@ -259,7 +265,7 @@ export async function spracheBeitreten(
     gesamt: number;
     community?: string;
     /** Nur an einen Bau mit Wächter (`nativeWacheDa`). */
-    ton?: { volle: boolean; bitrateKbps: number };
+    ton?: { bitrateKbps: number };
   }
 ): Promise<NativerZustand> {
   const p = huelle();
@@ -281,9 +287,7 @@ export async function spracheBeitreten(
       lautstaerken: zusatz?.je,
       gesamt: zusatz?.gesamt,
       communityName: zusatz?.community,
-      ...(ton
-        ? { volleTonqualitaet: ton.volle, bitrateKbps: ton.bitrateKbps, kannNeuVerbinden: true }
-        : {})
+      ...(ton ? { bitrateKbps: ton.bitrateKbps, kannNeuVerbinden: true } : {})
     });
   } catch (e) {
     raumEndet(gen);
@@ -343,7 +347,7 @@ export async function spracheTaub(an: boolean): Promise<NativerZustand | null> {
  * `lautstaerken` in `SprachePlugin.swift`) —, dazu der Begrenzer am Ende der
  * Wiedergabe als Feld, das eine ältere Hülle übergeht. Eine Hülle, die den
  * Befehl nicht kennt, erreicht diese Stelle nicht mehr: die Weiche lässt sie
- * beim Web-Weg (`SPRACHE_METHODEN`).
+ * nicht beitreten (`SPRACHE_METHODEN`).
  */
 export async function spracheLautstaerken(w: NativerHoerwunsch): Promise<void> {
   await rufen('lautstaerken', SPRACHE_FRIST_KETTE_MS, (p) =>

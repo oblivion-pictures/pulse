@@ -126,7 +126,7 @@ export interface AnrufNativPlugin {
 /**
  * Jede Methode, die der native Anrufweg an der Hülle ruft — die Liste, gegen
  * die `anrufNativWeiche.ts` den installierten Bau prüft. Der Bau muss ALLE
- * kennen, sonst läuft der Anruf über den Web-Weg (Begründung an
+ * kennen, sonst gilt der Bau als veraltet (`anrufwegVeraltet`, Begründung an
  * `SPRACHE_METHODEN`, `iosSpracheTypen.ts`).
  *
  * **Vom Typ erzwungen vollständig**: die Schlüssel sind die von

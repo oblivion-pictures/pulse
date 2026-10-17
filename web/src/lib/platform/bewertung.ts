@@ -1,6 +1,6 @@
 import { huelleKennt } from './huelleKann';
 import { isCapacitorIOS } from './runtime';
-import { sollFragen } from './bewertungRegel';
+import { alsGefragtWerten, frageMoment, sollFragen } from './bewertungRegel';
 import { sendungZaehlen } from './eigeneSendungen';
 
 /**
@@ -20,17 +20,29 @@ import { sendungZaehlen } from './eigeneSendungen';
  * Bewertungsfrage kommt also einmalig später. Bewusst kein Umzug für eine
  * Zahl, deren Verlust nur die harmlose Richtung kennt.
  *
- * **Die Antwort ist nicht auslesbar.** `requestReview` sagt nie, ob die Frage
- * erschienen ist oder was der Nutzer getan hat. Deshalb wird „bereits
- * gefragt" gesetzt, sobald wir es VERSUCHT haben — die Alternative wäre,
- * es unbegrenzt zu wiederholen.
+ * **Die Antwort des Nutzers ist nicht auslesbar.** `requestReview` sagt nie,
+ * ob die Frage erschienen ist oder was der Nutzer getan hat. Deshalb wird
+ * „bereits gefragt" gesetzt, sobald wir es VERSUCHT haben — die Alternative
+ * wäre, es unbegrenzt zu wiederholen. **Ausnahme (Review B13):** meldet die
+ * Hülle ausdrücklich `angezeigt: false` (keine aktive Szene), war es kein
+ * Versuch, und die Frage bleibt für die nächste Nachricht offen. Ältere Bauten
+ * ohne das Feld zählen wie bisher.
+ *
+ * **Nicht bei offener Tastatur:** die Frage kommt erst, wenn kein Eingabefeld
+ * mehr den Fokus hat (`frageMoment`), sonst legt sie sich direkt nach dem
+ * Senden mitten in die Unterhaltung.
  */
 
 interface ReviewPlugin {
-  anfragen(): Promise<void>;
+  /** Neuere Bauten melden, ob die Frage wirklich gestellt wurde; ältere
+   *  antworten ohne Wert (`alsGefragtWerten`). */
+  anfragen(): Promise<{ angezeigt?: boolean } | void>;
 }
 
 const SCHLUESSEL = 'pulse.bewertung';
+
+/** Wartet gerade eine Frage auf einen ruhigen Moment? Gegen eine zweite daneben. */
+let wartet = false;
 
 function plugin(): ReviewPlugin | null {
   if (typeof window === 'undefined') return null;
@@ -73,8 +85,38 @@ export function sendungGezaehlt(): void {
   // ohne Plugin die einzige Frage (F8, s. `bewertungRegel.ts`).
   const pluginDa = huelleKennt('ReviewPlugin', 'anfragen');
   if (!sollFragen({ gesendet, bereitsGefragt: bereitsGefragt(), pluginDa })) return;
-  // Erst merken, dann fragen: bricht der Aufruf ab, soll er trotzdem nicht
-  // bei der nächsten Nachricht wieder kommen.
-  merkeGefragt();
-  void plugin()?.anfragen().catch(() => undefined);
+  if (!wartet) fragenSobaldRuhig();
+}
+
+/** Ein Eingabefeld mit Fokus heisst auf dem Telefon: die Tastatur steht. */
+function tastaturOffen(): boolean {
+  const el = document.activeElement as HTMLElement | null;
+  if (!el) return false;
+  return el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable;
+}
+
+function fragenSobaldRuhig(): void {
+  wartet = true;
+  const start = Date.now();
+  const takt = setInterval(() => {
+    const moment = frageMoment({ tastaturOffen: tastaturOffen(), seitSendenMs: Date.now() - start });
+    if (moment === 'warten') return;
+    clearInterval(takt);
+    if (moment === 'verwerfen') {
+      wartet = false;
+      return;
+    }
+    void jetztFragen();
+  }, 500);
+}
+
+async function jetztFragen(): Promise<void> {
+  try {
+    // Eine Ablehnung des Aufrufs gilt wie bisher als Versuch: er soll bei der
+    // nächsten Nachricht nicht wieder kommen.
+    const antwort = await plugin()?.anfragen().catch(() => undefined);
+    if (alsGefragtWerten(antwort)) merkeGefragt();
+  } finally {
+    wartet = false;
+  }
 }

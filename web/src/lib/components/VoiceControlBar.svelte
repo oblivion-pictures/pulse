@@ -22,6 +22,7 @@
   import StreamStatusBar from '$lib/stream/components/StreamStatusBar.svelte';
   import { onMount } from 'svelte';
   import { isCapacitorAndroid, isCapacitorIOS } from '$lib/platform/runtime';
+  import { haptikTicken } from '$lib/platform/haptik';
   import { audioRouteState } from '$lib/platform/audioRouteState.svelte';
   import VoiceAusgabeMenue from './VoiceAusgabeMenue.svelte';
   import VoiceNativeAnsichtGriff from './VoiceNativeAnsichtGriff.svelte';
@@ -161,7 +162,10 @@
               variant={voice.micEnabled && !selfForceMuted ? 'secondary' : 'destructive'}
               size="icon-sm"
               class="{btnCls} relative"
-              onclick={() => voice.toggleMic()}
+              onclick={() => {
+                haptikTicken(); // iOS-Hülle: kurzer Tick; sonst No-op
+                voice.toggleMic();
+              }}
               disabled={selfForceMuted}
               data-testid="voice-mic-toggle"
               aria-label={selfForceMuted
@@ -197,7 +201,10 @@
               variant={voice.deafened ? 'destructive' : 'secondary'}
               size="icon-sm"
               class="{btnCls} relative"
-              onclick={() => voice.toggleDeafen()}
+              onclick={() => {
+                haptikTicken();
+                voice.toggleDeafen();
+              }}
               disabled={selfForceDeafened}
               data-testid="voice-deafen-toggle"
               aria-label={selfForceDeafened
@@ -299,7 +306,10 @@
               variant="destructive"
               size="icon-sm"
               class={btnCls}
-              onclick={() => voice.disconnect({ reason: 'user' })}
+              onclick={() => {
+                haptikTicken();
+                void voice.disconnect({ reason: 'user' });
+              }}
               data-testid="voice-disconnect"
               aria-label={m.voice_bar_leave()}
             >

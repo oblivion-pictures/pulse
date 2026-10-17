@@ -3,13 +3,15 @@ import { abmelder, type HoererGriff } from './hoererAbmelden';
 import { isCapacitorIOS } from './runtime';
 
 /**
- * iOS-Audio-Session-Steuerung (Hülle) — natives Gegenstück zu
- * `setVoiceActive` auf Android (audioRoute.ts).
+ * iOS-Audio-Session-Steuerung (Hülle) — natives Gegenstück zu `audioRoute.ts`
+ * auf Android. Heute für den Ton der WebView (Playback-Modus, Session aus),
+ * die Ausgabewege und die Sperrbildschirm-Anzeige; Sprachkanal und Anrufe
+ * halten ihre Session selbst (Eigentümer-Entscheide E6, 2026-10-18).
  *
- * WARUM: iOS killt die Audio-Session beim Sperren des Displays, und der
- * `voiceChat`-Modus (iOS-eigenes Echo-Auslösen + Bluetooth-Mikrofon) wird
- * vom Browser-Stack nicht gesetzt. Das native Plugin (App/AudioSession-
- * Plugin.swift, im App-Target auto-registriert) steuert die Prozess-Session.
+ * WARUM: iOS killt die Audio-Session beim Sperren des Displays und der
+ * Browser-Stack richtet die Prozess-Session nicht passend ein. Das native
+ * Plugin (App/AudioSessionPlugin.swift, im App-Target auto-registriert)
+ * steuert die Prozess-Session.
  *
  * Browser und Electron: No-op.
  */
@@ -34,8 +36,7 @@ export interface TonWege {
 /**
  * Ein gemeldeter Wechsel des Ausgabewegs.
  *
- * `weg` ist die Einteilung der Huelle (`eingebaut`/`kabel`/`funk`) — und der
- * einzige Teil, an dem haengt, ob die Session neu eingerichtet werden muss.
+ * `weg` ist die Einteilung der Huelle (`eingebaut`/`kabel`/`funk`).
  * `aktuell` ist der genaue Porttyp und nur fuer die Anzeige gedacht: ein
  * Wechsel von Lautsprecher auf Hoermuschel aendert ihn, den Tonweg nicht.
  */
@@ -58,7 +59,6 @@ interface AudioSessionPlugin {
   ): Promise<{ modus: string; weg: string }>;
   setPlaybackMode(): Promise<void>;
   routen(): Promise<TonWege>;
-  routeSetzen(options: { id: string }): Promise<void>;
   jetztLaeuft(options: { titel: string; zeile2: string }): Promise<void>;
   jetztLaeuftAus(): Promise<void>;
   airplayWaehler(): Promise<void>;
@@ -79,9 +79,9 @@ interface AudioSessionPlugin {
  * Antwort immer `null`, und jede Funktion hier fällt auf ihre Rückfall-Antwort.
  *
  * **Das rohe `Capacitor.Plugins`-Objekt hat genau die Methoden SEINES Baus.**
- * Fünf kamen erst zwei Tage nach dem Plugin (`routen`, `routeSetzen`,
- * `jetztLaeuft`, `jetztLaeuftAus`, `airplayWaehler`, alle 2026-10-08; das
- * Plugin selbst 2026-10-06). Auf einem Bau dazwischen sind sie `undefined`,
+ * Vier kamen erst zwei Tage nach dem Plugin (`routen`, `jetztLaeuft`,
+ * `jetztLaeuftAus`, `airplayWaehler`, alle 2026-10-08; das Plugin selbst
+ * 2026-10-06; `routeSetzen` ist hier nicht mehr eingebunden). Auf einem Bau dazwischen sind sie `undefined`,
  * und ihr Aufruf wäre ein `TypeError` statt der Rückfall-Antwort, die jede
  * Funktion hier verspricht (`null`, `false`, nichts). Hängen kann dabei
  * nichts (`huelleKann.ts`); gefragt wird trotzdem an derselben Stelle wie
@@ -96,47 +96,29 @@ function plugin(methode: keyof AudioSessionPlugin): AudioSessionPlugin | null {
 }
 
 /**
- * Voice-Modus an/aus. Liefert den Modus, den die Hülle gewählt hat.
+ * Die Session deaktivieren (nach der letzten WebView-Wiedergabe). `false`,
+ * wenn die Hülle nicht antwortet oder scheitert — der Aufrufer merkt sich die
+ * Betriebsart dann nicht als angewandt (Bughunt 2026-10-11, G2).
  *
- * **Der Rückgabewert trägt die halbe Entscheidung über die Tonqualität.**
- * `voiceChat` heisst: Apple filtert schon (Echo, Rauschen, Pegel) — dann darf
- * RNNoise NICHT zusätzlich laufen. `default` heisst: Apple filtert nicht
- * (Hochqualitäts-Route über Bluetooth) — dann ist RNNoise der einzige Filter.
- * Die Rechnung dazu steht geprüft in `voice/filterwahl.ts`.
- *
- * `unbekannt`, wenn die Hülle nicht antwortet (älterer Bau ohne das Feld):
- * dann bleibt es beim Wunsch des Nutzers, also beim bisherigen Verhalten.
- *
- * `ok`: hat die Hülle eingerichtet? Ohne das merkte sich `iosTon` eine
- * Betriebsart, die nie angewandt war, und versuchte sie nie wieder
- * (Bughunt 2026-10-11, G2).
+ * Früher hiess das `iosVoiceAktiv(aktiv, hqFunk)` und richtete auch den
+ * Sprach-Modus ein; den braucht keiner mehr: Sprachkanal und Anrufe laufen
+ * in der Hülle nativ (Eigentümer-Entscheide E6, 2026-10-18).
  */
-export async function iosVoiceAktiv(
-  aktiv: boolean,
-  hqFunk = false
-): Promise<{ modus: string; weg: string | null; ok: boolean }> {
+export async function iosSessionAus(): Promise<boolean> {
   const p = plugin('setVoiceActive');
-  if (!p) return { modus: 'unbekannt', weg: null, ok: false };
-  const antwort = await p.setVoiceActive({ aktiv, hqFunk }).catch((e: unknown) => {
-    // **Nicht stillschweigend verschlucken.** Scheitert das Einrichten, ist
-    // die Session nicht aktiv — der Sprachkanal steht dann verbunden da und
-    // ist stumm. Am 2026-10-10 am Geraet gesehen; der Fehlschlag war in der
-    // Oberflaeche an nichts erkennbar. Der Rueckfall bleibt derselbe, aber er
-    // ist jetzt sichtbar.
+  if (!p) return false;
+  const antwort = await p.setVoiceActive({ aktiv: false, hqFunk: false }).catch((e: unknown) => {
+    // Nicht stillschweigend verschlucken: der Fehlschlag war am 2026-10-10 in
+    // der Oberfläche an nichts erkennbar. Der Rückfall bleibt derselbe, aber
+    // er ist jetzt sichtbar.
     console.error('[Ton] setVoiceActive fehlgeschlagen', e);
     return undefined;
   });
-  // `weg: null` heisst „nicht erfahren", nicht „kein Weg" — der Aufrufer darf
-  // daraus keinen Wegwechsel ableiten.
-  return {
-    modus: antwort?.modus ?? 'unbekannt',
-    weg: antwort?.weg ?? null,
-    ok: antwort !== undefined
-  };
+  return antwort !== undefined;
 }
 
 /** Playback-Modus (Watch-/Stream-Ton ohne Mikro). `false` = nicht
- *  eingerichtet (s. `ok` an `iosVoiceAktiv`). */
+ *  eingerichtet (s. `iosSessionAus`). */
 export async function iosPlaybackModus(): Promise<boolean> {
   const p = plugin('setPlaybackMode');
   if (!p) return false;
@@ -164,33 +146,14 @@ export async function iosTonWege(): Promise<TonWege | null> {
   return p.routen().catch(() => null);
 }
 
-/** Einen Ausgabeweg erzwingen. `false`, wenn er nicht (mehr) da ist. */
-export async function iosTonWegSetzen(id: string): Promise<boolean> {
-  const p = plugin('routeSetzen');
-  if (!p) return false;
-  return p
-    .routeSetzen({ id })
-    .then(() => true)
-    .catch(() => false);
-}
-
-/**
- * Unterbrechungen melden (Telefonanruf, Siri, Wecker). Rueckgabe = Abriss.
- *
- * **Ohne Hoerer seit dem 2026-10-10 — und das ist Absicht.**
- *
- * Der Binder bleibt, der Aufrufer ist weg: wer auf eine beendete
- * Unterbrechung hin die eigene Session wieder aktiviert, unterbricht damit
- * WebKit und raeumt dessen laufende Aufnahme ab (Messung an der Stelle in
- * `iosTon.ts`, wo der Hoerer sass). Die Huelle meldet weiter und schreibt es
- * ins Geraetelog; wer hier wieder zuhoert, braucht vorher eine Messung, dass
- * ueberhaupt etwas kaputtgeht.
- */
-export function iosUnterbrechungen(cb: (e: Unterbrechung) => void): () => void {
-  const p = plugin('addListener');
-  if (!p) return () => undefined;
-  return abmelder(p.addListener('unterbrechung', cb));
-}
+// **Unterbrechungen (Telefonanruf, Siri, Wecker) hören wir hier bewusst nicht
+// ab** (Entscheid 2026-10-10; der Binder `iosUnterbrechungen` ist entfernt,
+// er hatte keinen Aufrufer mehr): wer auf eine beendete Unterbrechung hin die
+// eigene Session wieder aktiviert, unterbricht damit WebKit und räumt dessen
+// laufende Aufnahme ab. Die Hülle meldet weiter und schreibt es ins
+// Gerätelog; wer hier wieder zuhört, braucht vorher eine Messung, dass
+// überhaupt etwas kaputtgeht. Das Plugin-Ereignis `unterbrechung` bleibt in
+// `AudioSessionPlugin` (`addListener` unten) deklariert.
 
 /** Wegwechsel melden (Headset rein/raus, AirPods verbunden). */
 export function iosWegWechsel(cb: (e: WegWechsel) => void): () => void {
@@ -198,8 +161,8 @@ export function iosWegWechsel(cb: (e: WegWechsel) => void): () => void {
   if (!p) return () => undefined;
   // **Die Nutzlast wird durchgereicht, nicht verworfen.** Sie war von Anfang
   // an da (`routeGewechselt` in `AudioSessionPlugin.swift`); dass dieser
-  // Binder sie wegwarf, hat `iosTon.ts` monatelang zu einer Zeitfrist
-  // gezwungen, wo ein Vergleich genuegt.
+  // Binder sie wegwarf, hat den früheren Aufrufer (`iosTon.ts`) monatelang zu
+  // einer Zeitfrist gezwungen, wo ein Vergleich genügt hätte.
   return abmelder(p.addListener('routeGewechselt', cb));
 }
 

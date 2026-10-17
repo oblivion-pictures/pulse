@@ -6,7 +6,8 @@
  * er einmal je Anruf und spricht danach nur noch diese Schnittstelle:
  *
  * - **Web** (`webAnrufRaum.ts`): `livekit-client` in der WebView — Browser,
- *   Electron, Android und iOS-Bauten ohne nativen Raum.
+ *   Electron und Android (in der iOS-Hülle seit E6 nicht mehr; ein Bau ohne
+ *   nativen Raum meldet die nötige Aktualisierung).
  * - **Nativ** (`nativerAnrufRaum.ts`): der Raum der iOS-Hülle unter CallKit
  *   (Etappe 4, Entwurf `docs/superpowers/specs/2026-10-10-ios-nativer-
  *   sprachweg-design.md`).

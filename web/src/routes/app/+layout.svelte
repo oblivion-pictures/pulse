@@ -37,8 +37,8 @@
   import { schriftGroesseVerfolgen } from '$lib/platform/schriftGroesse';
   import { voipTokenVerfolgen } from '$lib/platform/voipToken';
   import { schnellwahlSetzen, schnellwahlVerfolgen } from '$lib/platform/schnellwahl';
-  import { tonHqFunkSetzen } from '$lib/platform/iosTon';
   import { funkHqSetzen } from '$lib/platform/iosFunkHq';
+  import { bluetoothHqEinmalUebernehmen } from '$lib/platform/iosBluetoothHqUebernahme';
   import { settings } from '$lib/stores/settings.svelte';
   import { schnellwahlEintraege } from '$lib/platform/schnellwahlAuswahl';
   import VerbindungsHinweis from '$lib/components/VerbindungsHinweis.svelte';
@@ -316,11 +316,11 @@
     // Schnellwahl am App-Symbol: auf einen Tipp aus dem Symbol reagieren
     // (Punkt 44). Die EINTRÄGE setzt der Effekt weiter oben.
     schnellwahlVerfolgen();
-    // Hochqualitäts-Route über Bluetooth aus der Einstellung übernehmen —
-    // nicht erst beim Umlegen des Schalters, sonst gilt sie nach einem
-    // Neustart nicht (die Session wird beim Beitritt eingerichtet).
-    tonHqFunkSetzen(settings.audio.bluetoothHq);
-    // Dasselbe für den nativen Sprachkanal (`platform/iosFunkHq.ts`).
+    // Hochqualitäts-Route über Bluetooth im nativen Sprachkanal aus der
+    // Einstellung übernehmen — nicht erst beim Umlegen des Schalters, sonst
+    // gilt sie nach einem Neustart nicht. Zuvor: ein früher gespeichertes „an"
+    // des alten Web-Schalters einmal übernehmen (`platform/iosBluetoothHq.ts`).
+    bluetoothHqEinmalUebernehmen();
     funkHqSetzen(settings.audio.iosFunkHq);
 
     // Vom Betreiber gelöschte Self-Host-Server aus der lokalen Liste räumen

@@ -21,7 +21,6 @@ import {
   type NativerWunsch,
   type NativerZustand
 } from '$lib/platform/iosSprache';
-import { volleTonqualitaetWirksam } from '$lib/platform/iosVolleTon';
 import {
   abgleichEntscheiden,
   pausenWunsch,
@@ -115,16 +114,11 @@ export class NativerRaum {
         je: $state.snapshot(settings.voice.userVolumes),
         gesamt: settings.voice.outputVolume,
         community: guilds.byId[guilds.guildIdForChannel(channelId) ?? '']?.name,
-        // „Volle Tonqualität" wird vorerst nicht angeboten (Entscheid
-        // 2026-10-17, `platform/iosVolleTon.ts`): ein früher gespeichertes „an"
-        // greift nicht mehr. `bitrateKbps` geht weiter mit, wirkt aber nur
-        // zusammen mit `volle` — ohne gilt nativ die SDK-Vorgabe (48 kbps,
-        // `SpracheRaum.raumOptionen`). Weggelassen änderte es nichts; mit ihm
-        // braucht ein Wiederanbieten nur die eine Zeile.
-        ton: {
-          volle: volleTonqualitaetWirksam(settings.audio.iosVolleTonqualitaet),
-          bitrateKbps: effectiveVoiceBitrateMaxKbps(channelId)
-        }
+        // Es gilt Apples Sprachverarbeitung (VPIO); „Volle Tonqualität" gibt es
+        // nicht mehr (Eigentümer-Entscheid 2026-10-17). `bitrateKbps` geht
+        // weiter mit — die Hülle wertet es nur zusammen mit ihrem alten
+        // Software-Weg aus, sonst gilt die SDK-Vorgabe (48 kbps).
+        ton: { bitrateKbps: effectiveVoiceBitrateMaxKbps(channelId) }
       });
     } catch (e) {
       if (!this.#haken.aktuell(gen)) return;

@@ -1,6 +1,7 @@
 <script lang="ts">
 import { errText } from '$lib/utils/errText';
   import { m } from '$lib/paraglide/messages.js';
+  import { haptikTicken } from '$lib/platform/haptik';
   import { Button } from '$lib/components/ui/button/index.js';
   import StreamGrid from './StreamGrid.svelte';
   import VoiceParticipantTile from './VoiceParticipantTile.svelte';
@@ -155,6 +156,7 @@ import { errText } from '$lib/utils/errText';
   // gesture. On mobile the channel-list tap IS the gesture — der gegardete
   // Auto-Join-Effekt der Kanal-Seite (+page) nutzt diese Aktivierung.
   async function joinChannel() {
+    haptikTicken(); // Beitritt per Tipp — iOS-Hülle: Tick, sonst No-op
     try {
       await voice.connect(channel.id, channel.name);
     } catch (e) {
@@ -304,7 +306,10 @@ import { errText } from '$lib/utils/errText';
              weg, der Client hing im Connecting). Verlassen ist immer da. -->        {#if handy}
           <Button
             variant="secondary"
-            onclick={() => void voice.disconnect().catch(() => undefined)}
+            onclick={() => {
+              haptikTicken();
+              void voice.disconnect().catch(() => undefined);
+            }}
             data-testid="voice-leave-mobile"
           >
             {m.voice_bar_leave()}

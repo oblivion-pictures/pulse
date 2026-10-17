@@ -23,10 +23,11 @@
  * Ursache wäre drei Texte für eine Handlung.
  */
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { qrAntwortDeuten, type QrAntwort, type QrErgebnis } from './qrAntwort';
 import { isCapacitorIOS } from './runtime';
 
 interface QrScanPlugin {
-  scannen(): Promise<{ code: string | null }>;
+  scannen(): Promise<QrAntwort>;
 }
 
 const plugin = registerPlugin<QrScanPlugin>('QrScan');
@@ -38,14 +39,19 @@ export function qrScanMoeglich(): boolean {
   return isCapacitorIOS() && Capacitor.isPluginAvailable('QrScan');
 }
 
-/** Öffnet den Scanner und liefert den Inhalt, oder `null`. */
-export async function qrScannen(): Promise<string | null> {
-  if (!isCapacitorIOS()) return null;
+/** Öffnet den Scanner und liefert Inhalt UND Grund eines Fehlschlags — für die
+ *  Stelle, die bei verweigerter Kamera zum Eintippen führen will (V6). */
+export async function qrScannenErgebnis(): Promise<QrErgebnis> {
+  if (!isCapacitorIOS()) return { code: null, kameraVerweigert: false };
   try {
-    const { code } = await plugin.scannen();
-    return code ?? null;
+    return qrAntwortDeuten(await plugin.scannen());
   } catch (e) {
     console.warn('[qrScan] nativer Scanner nicht erreichbar', e);
-    return null;
+    return { code: null, kameraVerweigert: false };
   }
+}
+
+/** Öffnet den Scanner und liefert den Inhalt, oder `null`. */
+export async function qrScannen(): Promise<string | null> {
+  return (await qrScannenErgebnis()).code;
 }
