@@ -9,6 +9,8 @@
     (`settings-registry/sections/audio.ts`).
   - Volle Tonqualität: ein Vergleichsschalter (Vorgabe aus), nur, wenn der
     App-Bau ihn trägt (`nativeWacheDa`), Begründung an `iosVolleTonqualitaet`.
+    **Vorerst ausgeblendet** (Eigentümer-Entscheid 2026-10-17: es gilt Apples
+    Sprachverarbeitung, `platform/iosVolleTon.ts`).
   - Diagnose bei Tonausfall: der Opt-out für den automatischen Bericht
     (`diagnose/iosTonDiagnose.ts`) — derselbe Schlüssel wie am Desktop
     (`uploadDiagnosticLogs`, Vorgabe an), dort im Reiter „Experimental", den es
@@ -19,13 +21,14 @@
   import Switch from '$lib/components/form/Switch.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { nativeWacheDa } from '$lib/platform/iosSpracheWeiche';
+  import { VOLLE_TONQUALITAET_ANGEBOTEN } from '$lib/platform/iosVolleTon';
   import { tonHqFunkSetzen } from '$lib/platform/iosTon';
   import { isCapacitorIOS } from '$lib/platform/runtime';
   import { settings } from '$lib/stores/settings.svelte';
   import { loadAll, saveAll } from '$lib/stream/persistence';
 
   const ios = isCapacitorIOS();
-  const wache = ios && nativeWacheDa();
+  const volleTonAnbieten = ios && VOLLE_TONQUALITAET_ANGEBOTEN && nativeWacheDa();
   let diagnoseSenden = $state(true);
 
   onMount(async () => {
@@ -61,7 +64,7 @@
       tonHqFunkSetzen(v);
     }
   )}
-  {#if wache}
+  {#if volleTonAnbieten}
     {@render schalter(
       'settings-ios-volle-tonqualitaet',
       m.settings_audio_ios_volle_ton_label(),

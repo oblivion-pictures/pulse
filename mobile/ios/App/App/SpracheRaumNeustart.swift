@@ -24,6 +24,12 @@ extension SpracheRaum {
         /// Akte vom 2026-10-17). **Ein Vergleichsschalter, Vorgabe AUS** —
         /// WebRTCs Echo-Unterdrückung am iPhone-Lautsprecher ist schwächer als
         /// Apples; ob sie trägt, entscheidet die Echo-Probe am Gerät.
+        ///
+        /// **Seit dem 2026-10-17 unerreichbar** (Eigentümer-Entscheid): die
+        /// Oberfläche bietet den Schalter nicht an und schickt immer `false`
+        /// (`web/src/lib/platform/iosVolleTon.ts`); es gilt Apples VPIO. Der
+        /// Weg hier bleibt bestehen, damit ein Wiederanbieten nur die Web-Seite
+        /// braucht.
         var volle = false
         /// Sende-Bitrate in kbps (der Server-Wert, wie am Desktop). Nur mit
         /// `volle`; sonst bleibt die Vorgabe des SDK (48 kbps).

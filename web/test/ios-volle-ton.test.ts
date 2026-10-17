@@ -26,3 +26,22 @@ test('L3: Beitritt meldet vpio, aec und kbps', () => {
   assert.match(neustart, /"kbps": ton\.volle \? \(Self\.kbpsBegrenzt\(ton\) \?\? vorgabe\) : vorgabe/);
   assert.match(swift('SpracheRaum.swift'), /diagMelden\(art, tonBeleg\(ton\)\.merging/);
 });
+
+// Eigentümer-Entscheid 2026-10-17: „Volle Tonqualität" wird vorerst nicht
+// angeboten — es gilt Apples Sprachverarbeitung (VPIO). Der native Weg bleibt
+// (L2/L3 oben), nur unerreichbar.
+test('Entscheid: Schalter ausgeblendet, ein gespeichertes „an" greift nicht', async () => {
+  const { VOLLE_TONQUALITAET_ANGEBOTEN, volleTonqualitaetWirksam } = await import(
+    '../src/lib/platform/iosVolleTon.ts'
+  );
+  assert.equal(VOLLE_TONQUALITAET_ANGEBOTEN, false);
+  assert.equal(volleTonqualitaetWirksam(true), false);
+  const web = (p: string) => readFileSync(new URL(`../src/lib/${p}`, import.meta.url), 'utf8');
+  assert.match(
+    web('voice/nativerRaum.svelte.ts'),
+    /volle: volleTonqualitaetWirksam\(settings\.audio\.iosVolleTonqualitaet\)/
+  );
+  const ui = web('components/settings/IosTonEinstellungen.svelte');
+  assert.match(ui, /const volleTonAnbieten = ios && VOLLE_TONQUALITAET_ANGEBOTEN && nativeWacheDa\(\);/);
+  assert.match(ui, /\{#if volleTonAnbieten\}\s*\{@render schalter\(\s*'settings-ios-volle-tonqualitaet'/);
+});

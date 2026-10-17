@@ -1,3 +1,4 @@
+import { volleTonqualitaetWirksam } from '$lib/platform/iosVolleTon';
 import { ConnectionState } from 'livekit-client';
 import { toast } from 'svelte-sonner';
 
@@ -114,10 +115,14 @@ export class NativerRaum {
         je: $state.snapshot(settings.voice.userVolumes),
         gesamt: settings.voice.outputVolume,
         community: guilds.byId[guilds.guildIdForChannel(channelId) ?? '']?.name,
-        // Vergleichsschalter (nur iOS, Vorgabe aus); die Bitrate ist dann die
-        // des Servers, wie am Desktop. Wirkt ab diesem Beitritt.
+        // „Volle Tonqualität" wird vorerst nicht angeboten (Entscheid
+        // 2026-10-17, `platform/iosVolleTon.ts`): ein früher gespeichertes „an"
+        // greift nicht mehr. `bitrateKbps` geht weiter mit, wirkt aber nur
+        // zusammen mit `volle` — ohne gilt nativ die SDK-Vorgabe (48 kbps,
+        // `SpracheRaum.raumOptionen`). Weggelassen änderte es nichts; mit ihm
+        // braucht ein Wiederanbieten nur die eine Zeile.
         ton: {
-          volle: settings.audio.iosVolleTonqualitaet,
+          volle: volleTonqualitaetWirksam(settings.audio.iosVolleTonqualitaet),
           bitrateKbps: effectiveVoiceBitrateMaxKbps(channelId)
         }
       });
