@@ -45,13 +45,23 @@ const membershipSynced = new Set<string>();
 // machen können.
 const inflight = new Map<string, Promise<boolean>>();
 
-// Gescheiterte Anmeldung je Server: der nächste Versuch erst nach 2, 4, 8 …
+// Abgelehnte Anmeldung je Server: der nächste Versuch erst nach 2, 4, 8 …
 // bis 60 s. Ausgelöst wird `reauth` von jedem REST-401 und jedem WS-Neuaufbau;
 // ohne Bremse holte die iOS-Hülle am 2026-10-17 bei totem Cloud-Cookie 100
 // Tickets in acht Minuten, jedes davon mit einem eigenen Cookie-Erneuern.
+// Gebremst wird nur eine Ablehnung (Cloud 401/403 beim Ticket, Self-Host lehnt
+// das Ticket ab) — ein Netzfehler oder ein gerade nicht erreichbarer Server
+// nicht: dann soll die Anmeldung kommen, sobald er wieder da ist (`bremstNach`).
 // Ein Erfolg hebt die Sperre auf. Beitreten und Server-Hinzufügen holen ihr
 // Ticket selbst und laufen nicht hier durch.
 const ticketBremse = backoffDeckel(60_000);
+
+function bremstNach(err: unknown): boolean {
+  if (err instanceof TicketFehler) return err.code !== 'network';
+  if (err instanceof DirectUnavailableError) return false;
+  const status = (err as { status?: number } | null)?.status;
+  return status === 401 || status === 403;
+}
 
 /**
  * Nach erfolgreicher Anmeldung: Cloud-Mitgliedschaft nachtragen und die
@@ -130,6 +140,7 @@ async function ueberTicket(serverId: string, server: ServerEntry): Promise<strin
     } else {
       console.warn(`[self-host-reauth] ${serverId}: unexpected`, err);
     }
+    if (bremstNach(err)) ticketBremse.vermerkeFehlschlag(serverId);
     return null;
   }
 }
@@ -145,10 +156,7 @@ async function reauth(serverId: string): Promise<boolean> {
   sessionTokens.clear(serverId);
 
   const token = await ueberTicket(serverId, server);
-  if (!token) {
-    ticketBremse.vermerkeFehlschlag(serverId);
-    return false;
-  }
+  if (!token) return false;
   ticketBremse.vermerkeErfolg(serverId);
   await nachAnmeldung(serverId, server, server.instance_id ?? null, token);
   return true;

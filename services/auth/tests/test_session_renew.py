@@ -229,3 +229,174 @@ async def test_lebendes_cookie_wird_weiter_abgeloest(client, session_factory):
     async with session_factory() as db:
         alt = await db.get(UserSession, a)
         assert alt is not None and str(alt.replaced_by) == b
+
+
+# ---- Grenzen des Nachreichens (Gegenprüfung 2026-10-17) -----------------
+#
+# Ein abgelöstes Cookie ist nicht wertlos, nur weil es widerrufen ist: Weg 2
+# reicht eine bestehende Sitzung samt ``acr`` heraus, und das ``acr`` reist ins
+# Self-Host-Ticket. Deshalb nur ein Glied, nur zehn Minuten, nur ein lebender
+# Nachfolger desselben Kontos — sonst Weg 3 (frisch, ``acr="0"``) bzw. 401.
+
+
+async def _setze_mfa(session_factory, sid: str) -> None:
+    async with session_factory() as db:
+        row = await db.get(UserSession, sid)
+        assert row is not None
+        row.acr = "1"
+        row.amr = ["pwd", "otp"]
+        await db.commit()
+
+
+async def _frisch_ohne_mfa(session_factory, r, *nicht: str) -> str:
+    """Die Antwort hat eine NEUE Sitzung mit Passwort-Standard gesetzt."""
+    assert r.status_code == 204, r.text
+    assert r.headers["X-Pulse-Sitzung"] == "neu"
+    sid = r.cookies["pulse_session"]
+    assert sid not in nicht
+    async with session_factory() as db:
+        row = await db.get(UserSession, sid)
+        assert row is not None and row.acr == "0" and list(row.amr) == ["pwd"]
+    return sid
+
+
+@pytest.mark.asyncio
+async def test_fremder_bearer_bekommt_den_nachfolger_nicht(client, session_factory):
+    """(a) Bearer von Konto V + abgelöstes Cookie von U → nie U's Sitzung."""
+    a, access_u, uid = await _anmelden(client)
+    b = (await _erneuern(client, cookie=a, bearer=access_u)).cookies["pulse_session"]
+
+    v = await client.post(
+        "/register",
+        json={
+            "username": "renew_fremd",
+            "email": "renew-fremd@dcc-test.example.com",
+            "password": "correct horse battery staple",
+            "display_name": "Fremd",
+        },
+    )
+    assert v.status_code == 201, v.text
+    r = await _erneuern(client, cookie=a, bearer=v.json()["access_token"])
+    c = await _frisch_ohne_mfa(session_factory, r, a, b)
+    async with session_factory() as db:
+        assert (await db.get(UserSession, c)).user_id != uid
+    assert await _lebt(client, b), "U's Sitzung bleibt unberührt"
+
+
+@pytest.mark.asyncio
+async def test_zwei_glieder_kein_nachreichen(client, session_factory):
+    """(b) A → B → C: wer A vorlegt, bekommt nicht C, sondern frisch ``acr="0"``."""
+    a, access, _uid = await _anmelden(client)
+    await _setze_mfa(session_factory, a)
+    b = (await _erneuern(client, cookie=a, bearer=access)).cookies["pulse_session"]
+    c = (await _erneuern(client, cookie=b, bearer=access)).cookies["pulse_session"]
+    assert await _lebt(client, c)
+
+    r = await _erneuern(client, cookie=a, bearer=access)
+    await _frisch_ohne_mfa(session_factory, r, a, b, c)
+
+
+@pytest.mark.asyncio
+async def test_nachfolger_aelter_als_zehn_minuten_kein_nachreichen(client, session_factory):
+    """(c) Außerhalb des Fensters fällt der Aufruf auf Weg 3."""
+    a, access, _uid = await _anmelden(client)
+    await _setze_mfa(session_factory, a)
+    b = (await _erneuern(client, cookie=a, bearer=access)).cookies["pulse_session"]
+    async with session_factory() as db:
+        row = await db.get(UserSession, b)
+        row.created_at = datetime.now(UTC) - session_renew.NACHREICH_FENSTER - timedelta(seconds=1)
+        await db.commit()
+
+    r = await _erneuern(client, cookie=a, bearer=access)
+    await _frisch_ohne_mfa(session_factory, r, a, b)
+
+
+@pytest.mark.asyncio
+async def test_widerrufener_nachfolger_kein_nachreichen_und_keine_verlaengerung(
+    client, session_factory
+):
+    """(d) Nachfolger selbst widerrufen → kein Nachreichen; und Nachreichen
+    schreibt nichts (``expires_at`` unverändert)."""
+    a, access, uid = await _anmelden(client)
+    b = (await _erneuern(client, cookie=a, bearer=access)).cookies["pulse_session"]
+    async with session_factory() as db:
+        vorher = (await db.get(UserSession, b)).expires_at
+    nachgereicht = await _erneuern(client, cookie=a, bearer=access)
+    assert nachgereicht.headers["X-Pulse-Sitzung"] == "nachgereicht"
+    async with session_factory() as db:
+        assert (await db.get(UserSession, b)).expires_at == vorher, "Nachreichen verlängert"
+        assert await revoke_sessions(db, [b], user_id=uid) == 1
+        await db.commit()
+
+    r = await _erneuern(client, cookie=a, bearer=access)
+    await _frisch_ohne_mfa(session_factory, r, a, b)
+
+
+@pytest.mark.asyncio
+async def test_lebendes_cookie_ohne_bearer_verliert_gegen_widerruf_401(
+    client, session_factory, monkeypatch
+):
+    """(e) Kein Weg greift und kein Bearer: das Cookie lebte beim Prüfen noch,
+    wurde währenddessen aber überall abgemeldet → 401, keine Sitzung."""
+    a, _access, uid = await _anmelden(client)
+    echt = session_renew.create_session
+
+    async def abmelden_kommt_dazwischen(db, **kwargs):
+        async with session_factory() as fremd:
+            await revoke_all_for_user(fremd, uid)
+            await fremd.commit()
+        return await echt(db, **kwargs)
+
+    monkeypatch.setattr(session_renew, "create_session", abmelden_kommt_dazwischen)
+    vorher = await _anzahl_sitzungen(session_factory, uid)
+    r = await _erneuern(client, cookie=a, bearer=None)
+    assert r.status_code == 401, r.text
+    assert "pulse_session" not in r.cookies
+    assert await _anzahl_sitzungen(session_factory, uid) == vorher
+
+
+@pytest.mark.asyncio
+async def test_sitzung_beenden_ueber_die_route_beendet_das_nachreichen(client, session_factory):
+    """(f) „Sitzung beenden“ (``DELETE /sessions/{id}``) von einem zweiten Gerät
+    trifft das Cookie, an dem die Token jetzt hängen — den Nachfolger."""
+    a, access, _uid = await _anmelden(client)
+    await _setze_mfa(session_factory, a)
+    b = (await _erneuern(client, cookie=a, bearer=access)).cookies["pulse_session"]
+
+    zweites = await client.post(
+        "/login",
+        json={"email_or_username": _REG["email"], "password": _REG["password"]},
+        headers={"User-Agent": "Geraet/2"},
+    )
+    assert zweites.status_code == 200, zweites.text
+    access2 = zweites.json()["access_token"]
+    zeilen = (await client.get("/sessions", headers={"Authorization": f"Bearer {access2}"})).json()
+    erstes = [z["id"] for z in zeilen if z["user_agent"] != "Geraet/2"]
+    assert len(erstes) == 1, zeilen
+    beendet = await client.delete(
+        f"/sessions/{erstes[0]}", headers={"Authorization": f"Bearer {access2}"}
+    )
+    assert beendet.status_code == 204, beendet.text
+    assert not await _lebt(client, b)
+
+    r = await _erneuern(client, cookie=a, bearer=access)
+    await _frisch_ohne_mfa(session_factory, r, a, b)
+
+
+@pytest.mark.asyncio
+async def test_passwortwechsel_ueber_die_route_beendet_das_nachreichen(client, session_factory):
+    """(f) ``POST /me/password`` meldet alle Sitzungen ab, den Nachfolger mit."""
+    a, access, _uid = await _anmelden(client)
+    await _setze_mfa(session_factory, a)
+    b = (await _erneuern(client, cookie=a, bearer=access)).cookies["pulse_session"]
+
+    gewechselt = await client.post(
+        "/me/password",
+        json={"current_password": _REG["password"], "new_password": "ein ganz neues Passwort 42"},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+    assert gewechselt.status_code == 200, gewechselt.text
+    assert not await _lebt(client, b)
+
+    r = await _erneuern(client, cookie=a, bearer=access)
+    await _frisch_ohne_mfa(session_factory, r, a, b, gewechselt.cookies["pulse_session"])

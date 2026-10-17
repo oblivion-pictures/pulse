@@ -7,13 +7,14 @@ Zeile, auf die das Cookie zeigt:
 1. **Cookie gehört dem Konto und ist nicht widerrufen** (lebend oder nur
    abgelaufen): ablösen. Neue Sitzung anlegen, die alte mit ``replaced_by``
    widerrufen, die Refresh-Token genau umhängen.
-2. **Cookie ist widerrufen und hat einen lebenden Nachfolger**: den Nachfolger
-   **nachreichen** — keine neue Sitzung. Das ist der Fall, in dem das
-   Set-Cookie einer früheren Ablösung nie im Browser ankam (2026-10-17 in der
-   iOS-Hülle gemessen: Neuladen drei Sekunden nach dem Erneuern; danach über
-   30 Erneuerungen mit 204 ohne Cookie und 100 Ticket-Abrufe mit 401 in acht
-   Minuten) — UND der Verlierer zweier gleichzeitiger Erneuerungen.
-3. **Sonst** (unbekannt, fremdes Konto, widerrufen ohne lebenden Nachfolger,
+2. **Cookie wurde durch genau eine noch lebende, höchstens zehn Minuten alte
+   Sitzung abgelöst**: diesen Nachfolger **nachreichen** — keine neue Sitzung,
+   nichts verlängert. Das ist der Fall, in dem das Set-Cookie einer früheren
+   Ablösung nie im Browser ankam (2026-10-17 in der iOS-Hülle gemessen: Neuladen
+   drei Sekunden nach dem Erneuern; danach über 30 Erneuerungen mit 204 ohne
+   Cookie und 100 Ticket-Abrufe mit 401 in acht Minuten) — UND der Verlierer
+   zweier gleichzeitiger Erneuerungen.
+3. **Sonst** (unbekannt, fremdes Konto, widerrufen ohne passenden Nachfolger,
    unlesbar): wie ganz ohne Cookie — neue Sitzung aus der Bearer-Anmeldung,
    verwaiste Token umhängen.
 
@@ -31,29 +32,41 @@ Nachfolger des Gewinners nach — beide Antworten setzen dasselbe Cookie, egal
 in welcher Reihenfolge sie ankommen. Kommt der zweite Aufruf erst nach dem
 Gewinner an, findet er das Cookie schon widerrufen: Weg 2, dasselbe Ergebnis.
 
-**Warum das Nachreichen nichts wiederbelebt.** Eine widerrufene Zeile wird nie
-zurückgeholt, und jeder Weg setzt eine gültige Anmeldung voraus: ein totes
-Cookie allein lässt ``_get_current_user`` gar nicht durch (→ 401). Ohne Bearer
+**Was Weg 2 herausgibt, und warum es so eng ist.** Eine widerrufene Zeile wird
+nie zurückgeholt, und jeder Weg setzt eine gültige Anmeldung voraus: ein totes
+Cookie allein lässt ``_get_current_user`` nicht durch (→ 401). Ohne Bearer
 kommt hier nur ein Cookie an, das beim Prüfen noch lebte; wird es währenddessen
-von einem parallelen Aufruf abgelöst, bekommt es auf Weg 2 genau das Cookie,
-das der Gewinner diesem Browser gerade setzt — verliert es gegen einen
-Sicherheits-Widerruf, bleibt nichts, woraus eine Sitzung entstehen dürfte
-(``None``, die Route antwortet 401; Weg 3 nur mit Bearer). Weg 3 gibt einem
-Bearer nicht mehr, als er ganz ohne Cookie bekäme.
+von einem parallelen Aufruf abgelöst, bekommt es auf Weg 2 das Cookie des
+Gewinners — verliert es gegen einen Widerruf ohne Nachfolger, gibt es ``None``
+(Route: 401), denn Weg 3 läuft nur mit Bearer. Weg 3 gibt einem Bearer nicht
+mehr, als er ganz ohne Cookie bekäme, und erbt nie ``acr="1"``.
 
-Weg 2 reicht eine Sitzung mit womöglich ``acr="1"`` heraus, aber nur über eine
-Kette aus ``replaced_by``-Verweisen, die am vorgelegten Cookie beginnt, und nur
-an dasselbe Konto. Das Cookie ist ``HttpOnly``: wer seinen Wert vorlegt, ist
-dieser Browser, und der hielt den Nachfolger schon (bzw. hätte ihn halten
-sollen). Ein Bearer allein — etwa aus einem XSS-Diebstahl, von woanders
-vorgelegt — erbt dagegen weiter nie MFA (Weg 3, Regel aus
-``geerbter_kontext``). Ein Sicherheits-Widerruf (überall abmelden,
-Passwortwechsel, „Sitzung beenden“) trifft den Nachfolger mit, denn er ist
-die Sitzung, an der jetzt die Token hängen — danach gibt es nichts
-nachzureichen. Ein Kontingent wie beim Nachreichen von Refresh-Token
-(``refresh_kette.NACHREICH_LIMIT``) braucht es nicht: dort verlängert jedes
-Nachreichen den Zugang, hier setzt jedes eine gültige Anmeldung voraus und
-verlängert nichts, was die Anfrage nicht ohnehin hätte.
+Weg 2 dagegen reicht eine bestehende Sitzung samt ihrem ``acr`` heraus — und
+das ``acr`` reist ins Self-Host-Ticket (``routes_server_ticket.py``). Ein
+abgelöstes Cookie ist nicht wertlos geworden, nur weil es widerrufen ist: wer
+einen alten Wert und einen Bearer desselben Kontos hat, bekäme sonst die
+aktuelle Sitzung des Browsers. Deshalb drei Grenzen, alle in
+``_nachreichbarer_nachfolger``:
+
+* **Genau ein Glied.** Nur ``alt.replaced_by`` selbst, die Kette wird nicht
+  weiterverfolgt. Das deckt beide Fälle, für die es Weg 2 gibt (verlorenes
+  Set-Cookie, verlorenes Rennen); ein Cookie, das schon zwei Ablösungen hinter
+  sich hat, gehört zu keinem davon.
+* **Zehn Minuten** ab ``created_at`` des Nachfolgers (``NACHREICH_FENSTER``).
+  Im iOS-Fall kam das alte Cookie Sekunden nach der Ablösung wieder, im Rennen
+  sind es Millisekunden. Danach fällt der Aufruf auf Weg 3: frische Sitzung
+  mit ``acr="0"`` — der Nutzer verliert höchstens den Step-up, nicht die
+  Anmeldung.
+* **Nachfolger lebt**: nicht widerrufen, nicht abgelaufen, dasselbe Konto. Ein
+  Widerruf nach der Ablösung — überall abmelden, Passwortwechsel, „Sitzung
+  beenden“ (das trifft das Cookie, an dem die Token jetzt hängen, also den
+  Nachfolger) — beendet damit auch das Nachreichen.
+
+Nachreichen verlängert nichts: die Zeile behält ihr ``expires_at``. Läuft sie
+vor dem 30-Minuten-Cookie ab, kommt der nächste Aufruf mit 401 zurück, und das
+folgende Erneuern löst sie auf Weg 1 regulär ab. Ein Kontingent wie beim
+Nachreichen von Refresh-Token (``refresh_kette.NACHREICH_LIMIT``) braucht es
+deshalb nicht — dort verlängert jedes Nachreichen den Zugang.
 """
 
 from __future__ import annotations
@@ -64,7 +77,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dcc_auth.browser_sessions import _DEFAULT_TTL, create_session
+from dcc_auth.browser_sessions import create_session
 from dcc_auth.models import UserSession
 from dcc_auth.session_link import as_sid, parse_sid, relink_to_new_session, revoke_sessions
 
@@ -77,9 +90,9 @@ NEU = "neu"
 #: das mehrmals hintereinander, behält der Browser das Cookie nicht.
 NACHGEREICHT = "nachgereicht"
 
-# Mehr Glieder hat eine echte Kette nicht: jedes Glied braucht eine Anfrage,
-# die das vorige Cookie vorlegte, und der Browser hat nur ein Cookie-Fach.
-_MAX_GLIEDER = 5
+#: Wie lange nach einer Ablösung das abgelöste Cookie den Nachfolger noch
+#: bekommt (Modulkopf: „Was Weg 2 herausgibt“).
+NACHREICH_FENSTER = timedelta(minutes=10)
 
 _OHNE_NACHWEIS: tuple[list[str], str] = (["pwd"], "0")
 
@@ -90,10 +103,6 @@ class Erneuert:
 
     sid: str
     art: str
-
-
-def _aware(ts: datetime) -> datetime:
-    return ts if ts.tzinfo else ts.replace(tzinfo=UTC)
 
 
 async def _frisch(db: AsyncSession, sid: str | None) -> UserSession | None:
@@ -117,29 +126,39 @@ def geerbter_kontext(row: UserSession) -> tuple[list[str], str]:
     Anmeldestärke ist die Zeile, die DIESE Anfrage selbst beweist — die ihres
     eigenen Cookies. Sie darf abgelaufen sein (dann ist es immer noch die
     eigene Sitzung in diesem Browser, und ein MFA-Nutzer behält seinen
-    Step-up), aber nicht widerrufen: ein Widerruf ist ein bewusster Abbau
-    (überall abmelden, Passwortwechsel, Sperre). Gerufen wird das nur auf
-    Weg 1, wo beides schon geprüft ist. Andere Sitzungen des Kontos werden
-    bewusst NICHT durchsucht: eine Zeile eines anderen Geräts beweist diese
-    Anfrage nicht, und ein Bearer ohne Cookie bekommt den Passwort-Standard —
-    nie ``acr="1"`` am MFA-Tor von ``/credentials/issue`` vorbei.
+    Step-up), aber nicht widerrufen (abgelöst, abgemeldet, Passwortwechsel,
+    Sperre). Gerufen wird das nur auf Weg 1, wo beides schon geprüft ist.
+    Andere Sitzungen des Kontos werden bewusst NICHT durchsucht: eine Zeile
+    eines anderen Geräts beweist diese Anfrage nicht, und ein Bearer ohne
+    Cookie bekommt den Passwort-Standard — nie ``acr="1"``, das sonst ins
+    Self-Host-Ticket reiste (``routes_server_ticket.py``).
     """
     return (list(row.amr) if row.amr else ["pwd"]), (row.acr or "0")
 
 
-async def _lebender_nachfolger(
-    db: AsyncSession, row: UserSession, user_id: int, now: datetime
+async def _nachreichbarer_nachfolger(
+    db: AsyncSession, alt: UserSession, user_id: int, now: datetime
 ) -> UserSession | None:
-    """Der lebende Nachfolger über die ``replaced_by``-Kette, sonst ``None``."""
-    glied = row
-    for _ in range(_MAX_GLIEDER):
-        naechstes = await _frisch(db, as_sid(glied.replaced_by))
-        if naechstes is None or naechstes.user_id != user_id:
-            return None
-        if naechstes.revoked_at is None:
-            return naechstes if _aware(naechstes.expires_at) > now else None
-        glied = naechstes
-    return None
+    """``alt.replaced_by``, wenn er nachgereicht werden darf, sonst ``None``.
+
+    Die drei Grenzen und ihre Begründung: Modulkopf, „Was Weg 2 herausgibt“.
+    Die Prüfung auf ``revoked_at IS NULL`` steht in der Abfrage selbst.
+    """
+    sid = as_sid(alt.replaced_by)
+    if sid is None:
+        return None
+    stmt = (
+        select(UserSession)
+        .where(
+            UserSession.session_id == sid,
+            UserSession.user_id == user_id,
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > now,
+            UserSession.created_at >= now - NACHREICH_FENSTER,
+        )
+        .execution_options(populate_existing=True)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 
 async def erneuere_cookie(
@@ -183,13 +202,9 @@ async def erneuere_cookie(
         alt = await _frisch(db, alt_sid)
 
     if alt is not None:
-        nachfolger = await _lebender_nachfolger(db, alt, user_id, now)
+        nachfolger = await _nachreichbarer_nachfolger(db, alt, user_id, now)
         if nachfolger is not None:
-            # Das Cookie bekommt gleich wieder volle 30 Minuten — die Zeile auch,
-            # sonst liefe sie vor dem Cookie ab.
-            nachfolger.last_seen_at = now
-            nachfolger.expires_at = now + timedelta(seconds=_DEFAULT_TTL)
-            await db.commit()
+            # Nur lesen, nichts schreiben — Nachreichen verlängert nichts.
             return Erneuert(as_sid(nachfolger.session_id) or "", NACHGEREICHT)
 
     if not mit_bearer:

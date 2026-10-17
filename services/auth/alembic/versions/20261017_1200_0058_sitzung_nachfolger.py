@@ -9,9 +9,10 @@ Sitzung keine Refresh-Token mehr hingen — der Klient hielt das für Erfolg, un
 jeder cookie-pflichtige Aufruf scheiterte dauerhaft.
 
 ``replaced_by`` hält fest, wohin die Sitzung abgelöst wurde. Damit kann
-``/session/renew`` den noch lebenden Nachfolger nachreichen, statt entweder zu
-schweigen oder eine zweite Sitzung anzulegen (das Rennen aus Bughunt Runde 33,
-s. ``session_renew.py``).
+``/session/renew`` den noch lebenden Nachfolger nachreichen (nur das eine
+Glied, nur zehn Minuten lang — Grenzen in ``session_renew.py``), statt entweder
+zu schweigen oder eine zweite Sitzung anzulegen (das Rennen aus Bughunt
+Runde 33, s. ``session_renew.py``).
 
 Ohne Fremdschlüssel (wie ``refresh_tokens.replaced_by``): der Sweeper löscht
 abgelaufene Zeilen. Ohne Index: gelesen wird nur die Spalte einer schon per
