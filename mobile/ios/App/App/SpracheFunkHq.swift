@@ -208,7 +208,7 @@ final class SpracheFunkHq: @unchecked Sendable {
     /// Software-Verarbeitung setzt (`playAndRecord…Media`, Modus `.default`),
     /// plus HQ. `nil` = eingerichtet, sonst der Grund.
     @MainActor func hqEinrichten() -> String? {
-        guard haelt, !Anrufverwaltung.geteilt.callkitAktiv else { return "verloren" }
+        guard haelt, !Anrufverwaltung.geteilt.callkitAktiv else { return Self.verlorenGrund }
         guard #available(iOS 26.0, *) else { return "ios" }
         var optionen = Self.sdkOptionen()
         optionen.insert(.bluetoothHighQualityRecording)
@@ -241,6 +241,10 @@ final class SpracheFunkHq: @unchecked Sendable {
         try? AVAudioSession.sharedInstance().setCategory(
             .playAndRecord, mode: modus, options: Self.sdkOptionen())
     }
+
+    /// Zwischen Nehmen und Einrichten hat ein Anruf oder `kopfhoererWeg` die
+    /// Session schon wieder genommen — kein Fehler des Kopfhörers.
+    static let verlorenGrund = "verloren"
 
     /// Die Optionen der `playAndRecord`-Vorgaben des SDK 2.17.
     @MainActor static func sdkOptionen() -> AVAudioSession.CategoryOptions {

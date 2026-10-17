@@ -168,8 +168,13 @@ extension SpracheRaum {
         if !istSoftware { verarbeitungSetzen(spur, software: true) }
         guard !schonGehalten || !optionDa else { return }
         if let fehler = await MainActor.run(body: { f.hqEinrichten() }) {
-            f.gescheitert = true
-            diagMelden("funk_hq_fehler", ["grund": grund, "fehler": fehler])
+            // „verloren": dazwischen kam ein Anruf oder der Kopfhörer ging
+            // (C4). Kein Fehlschlag des Kopfhörers — nicht für den ganzen Raum
+            // aufgeben; das Ende des Anrufs bzw. die nächste Route versucht neu.
+            let abgebrochen = fehler == SpracheFunkHq.verlorenGrund
+            if !abgebrochen { f.gescheitert = true }
+            diagMelden(abgebrochen ? "funk_hq_abgebrochen" : "funk_hq_fehler",
+                       ["grund": grund, "fehler": fehler])
             await funkHqZurueck(spur, hielt: f.loslassen(), istSoftware: true, optionDa: true,
                                 grund: "fehler")
             return

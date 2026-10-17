@@ -119,3 +119,9 @@ test('C3: ein Abriss während HQ deaktiviert die Session wie nach dem letzten St
   assert.match(swift('SpracheFunkHq.swift'), /guard !laeuft else \{ return \}\n\s*StreamTonSitzung\.geteilt\.nachDemLetzten\(\)/);
   assert.match(swift('StreamTonSitzung.swift'), /\n    func nachDemLetzten\(\) \{/);
 });
+
+test('C4: „verloren" beim Einrichten ist kein Fehlschlag für den ganzen Raum', () => {
+  const q = swift('SpracheFunkHqAbgleich.swift');
+  assert.match(q, /let abgebrochen = fehler == SpracheFunkHq\.verlorenGrund\n\s*if !abgebrochen \{ f\.gescheitert = true \}/);
+  assert.match(q, /"funk_hq_abgebrochen"/);
+});
