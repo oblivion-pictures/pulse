@@ -10,6 +10,26 @@ import Foundation
 /// darf diese zweite Lesesitzung dieselbe URL nehmen wie die WebView). Sie
 /// steht deshalb nie im Log; gemeldet wird höchstens der Statuscode.
 enum StreamTonWhep {
+    /// **Ohne Weiterleitungen** (Gegenprüfung 2, V6). `URLSession` folgt einer
+    /// 307/308 von selbst und schickte denselben POST — samt SDP-Angebot mit
+    /// den ICE-Kandidaten des Telefons — an ein beliebiges https-Ziel; die
+    /// Host-Prüfung der Seite (`whepHostErlaubt`) sähe davon nichts. Für den
+    /// WHEP-Weg ist keine Weiterleitung vorgesehen; kommt doch eine, endet der
+    /// Start mit ihrem Status (kein 2xx), und die Kachel fällt nach ihren
+    /// Versuchen auf den WebView-Ton zurück. Flüchtig: nichts hier braucht
+    /// Cookies oder einen Cache.
+    private static let sitzung = URLSession(
+        configuration: .ephemeral, delegate: KeineWeiterleitung(), delegateQueue: nil)
+
+    private final class KeineWeiterleitung: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+        func urlSession(_ session: URLSession, task: URLSessionTask,
+                        willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest,
+                        completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
+    }
+
     struct Fehler: LocalizedError {
         let status: Int
         let text: String
@@ -61,7 +81,7 @@ enum StreamTonWhep {
         anfrage.httpBody = Data(sdp.utf8)
         let (daten, antwort): (Data, URLResponse)
         do {
-            (daten, antwort) = try await URLSession.shared.data(for: anfrage)
+            (daten, antwort) = try await sitzung.data(for: anfrage)
         } catch {
             throw Fehler(status: 0, text: "whep_netz")
         }
@@ -87,6 +107,6 @@ enum StreamTonWhep {
         guard let ressource else { return }
         var anfrage = URLRequest(url: ressource, timeoutInterval: 3)
         anfrage.httpMethod = "DELETE"
-        URLSession.shared.dataTask(with: anfrage).resume()
+        sitzung.dataTask(with: anfrage).resume()
     }
 }

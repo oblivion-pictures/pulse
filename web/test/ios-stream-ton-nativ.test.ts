@@ -219,3 +219,9 @@ test('V5: ein Aussetzer hält nur an, erst `.failed` schliesst', () => {
   assert.match(src, /case \.connected:[\s\S]{0,200}geraet\.fortsetzen\(grund: "netz_zurueck"\)/);
   assert.doesNotMatch(src, /verbindungTot\("verbindung_weg"\)/);
 });
+
+test('V6: WHEP-POST und -DELETE folgen keiner Weiterleitung', () => {
+  const src = quelle('StreamTonWhep.swift');
+  assert.match(src, /willPerformHTTPRedirection[\s\S]{0,200}completionHandler\(nil\)/);
+  assert.doesNotMatch(src, /URLSession\.shared/);
+});
