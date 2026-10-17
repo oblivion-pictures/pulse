@@ -2,7 +2,9 @@
   „Bild starten" auf der Übertragungs-Kachel — nur, wenn WebKit das Bild ohne
   Geste verweigert (`bildStart.ts`: Stromsparmodus oder Wärmedrosselung, und
   die WebView spielt keinen eigenen Ton, weil er in der iOS-Hülle nativ läuft).
-  Jede Berührung der Seite startet das Bild ohnehin (`aufGesteAbspielen`); der
+  **Nur der letzte Rückfall:** der Hauptweg ist der unhörbare Kontext
+  (`stummerKontext.ts`), mit dem das Bild ohne Geste startet. Scheitert auch
+  er, startet jede Berührung der Seite das Bild (`aufGesteAbspielen`); der
   Knopf sagt, dass eine fehlt. Ohne nativen Ton ist `gesperrt` nie gesetzt.
 -->
 <script lang="ts">

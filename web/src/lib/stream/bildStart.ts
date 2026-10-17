@@ -25,11 +25,14 @@
  * gelingt. Ohne Stromsparmodus läuft das Bild — deshalb fiel es vor dem Bau
  * nicht auf.
  *
- * **Der Weg heraus ist eine Geste**, nichts anderes: die Ausnahme über einen
- * WebView-Ton wiederherzustellen, hiesse, die Session-Regeln des nativen Wegs
- * zu brechen (`streamTonLage.ts`). Deshalb: sofort versuchen, bei
- * Verweigerung bei der nächsten Berührung irgendwo auf der Seite erneut — und
- * die Kachel zeigt einen Knopf, damit der Nutzer weiß, dass er tippen muss.
+ * **Der Weg heraus ist die Ausnahme selbst:** solange eine native Kachel
+ * spielt, hält die Seite einen unhörbaren AudioContext (`stummerKontext.ts`),
+ * und zwar nur unter WebKits `ambient` (Halter `streamton`), sodass er die
+ * Session-Regeln des nativen Wegs nicht bricht. Verweigert WebKit trotzdem,
+ * wartet {@link bildAnlaufen} auf den Kontext und versucht es erneut — ohne
+ * Geste (Eigentümer-Entscheid: keine Knöpfe zum Antippen). Erst wenn auch das
+ * scheitert, zeigt die Kachel den Knopf und jede Berührung startet erneut —
+ * der letzte Rückfall.
  */
 
 /** Was beim Start herauskam — für die Diagnose und die Kachel. */
@@ -54,6 +57,40 @@ export interface Abspielbar {
   readonly readyState: number;
   readonly videoWidth: number;
   readonly videoHeight: number;
+}
+
+/** Abstände der Wiederholungen, nachdem der unhörbare Kontext läuft: WebKit
+ *  meldet den Ton des Dokuments erst, wenn der Kontext gerendert hat. Gemessen
+ *  ist nur, dass es nach 1,5 s Laufzeit jedes Mal gelang (Simulator, 5 Läufe);
+ *  die kürzeren Stufen sind Annahme und kosten nur einen weiteren Versuch. */
+export const NACH_KONTEXT_MS = [150, 350, 700, 1500] as const;
+
+/**
+ * `play()` versuchen; verweigert WebKit (`gesperrt`), auf den unhörbaren
+ * Kontext warten (`stummerKontext.ts`) und in {@link NACH_KONTEXT_MS} erneut.
+ * Der erste Versuch läuft SYNCHRON an — aus einem Knopf heraus zählt er als
+ * Geste. `noch()` = gilt der Versuch noch (Kachel offen, dasselbe Element)?
+ */
+export async function bildAnlaufen(
+  el: Abspielbar,
+  kontextBereit: () => Promise<boolean>,
+  warten: (ms: number) => Promise<void>,
+  noch: () => boolean
+): Promise<BildErgebnis> {
+  const versuch = (): Promise<BildErgebnis> =>
+    el.play().then(
+      () => 'spielt' as const,
+      (e: unknown) => bildErgebnis(e)
+    );
+  let ergebnis = await versuch();
+  if (ergebnis !== 'gesperrt' || !(await kontextBereit())) return ergebnis;
+  for (const ms of NACH_KONTEXT_MS) {
+    await warten(ms);
+    if (!noch()) return ergebnis;
+    ergebnis = await versuch();
+    if (ergebnis !== 'gesperrt') return ergebnis;
+  }
+  return ergebnis;
 }
 
 /** Was die Rechnung vom Strom braucht. */

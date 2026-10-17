@@ -2,7 +2,9 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import {
+  NACH_KONTEXT_MS,
   aufGesteAbspielen,
+  bildAnlaufen,
   bildDiagnose,
   bildErgebnis,
   type Abspielbar
@@ -117,4 +119,46 @@ test('läuft das Bild schon (anderer Weg), meldet die Geste nur noch Erfolg', as
   await ruhe();
   assert.equal(v.rufe, 0);
   assert.deepEqual(gemeldet, [true]);
+});
+
+test('verweigert: auf den Kontext warten und erneut — ohne Geste', async () => {
+  const v = video();
+  const gewartet: number[] = [];
+  const ergebnis = await bildAnlaufen(
+    v.el,
+    async () => true,
+    async (ms) => {
+      gewartet.push(ms);
+      if (gewartet.length === 2) v.erlauben();
+    },
+    () => true
+  );
+  assert.equal(ergebnis, 'spielt');
+  assert.deepEqual(gewartet, NACH_KONTEXT_MS.slice(0, 2));
+  assert.equal(v.rufe, 3);
+});
+
+test('ohne laufenden Kontext kein Wiederholen; Kachel zu bricht ab', async () => {
+  const v = video();
+  assert.equal(await bildAnlaufen(v.el, async () => false, async () => undefined, () => true), 'gesperrt');
+  assert.equal(v.rufe, 1);
+  const w = video();
+  assert.equal(await bildAnlaufen(w.el, async () => true, async () => undefined, () => false), 'gesperrt');
+  assert.equal(w.rufe, 1);
+});
+
+test('bleibt es verweigert, kommt nach allen Versuchen „gesperrt“ zurück', async () => {
+  const v = video();
+  const r = await bildAnlaufen(v.el, async () => true, async () => undefined, () => true);
+  assert.equal(r, 'gesperrt');
+  assert.equal(v.rufe, 1 + NACH_KONTEXT_MS.length);
+});
+
+test('läuft sofort: kein Warten auf den Kontext', async () => {
+  const v = video();
+  v.erlauben();
+  let gefragt = false;
+  const r = await bildAnlaufen(v.el, async () => ((gefragt = true), true), async () => undefined, () => true);
+  assert.equal(r, 'spielt');
+  assert.equal(gefragt, false);
 });

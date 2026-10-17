@@ -33,8 +33,13 @@ import { melde } from '$lib/diagnose/app-diagnose';
 import { VolumeBoost } from './volumeBoost';
 import { fernStummEinmalHeilen, getStreamVolume, setStreamVolume } from './streamVolume';
 import { ohneGesteFortsetzen } from './iosStreamTon';
-import { NativerStreamTon, webViewTonAbschalten, type NativStand } from './nativerStreamTon';
-import { aufGesteAbspielen, bildDiagnose, bildErgebnis } from './bildStart';
+import {
+  NativerStreamTon,
+  stummerKontextBereit,
+  webViewTonAbschalten,
+  type NativStand
+} from './nativerStreamTon';
+import { aufGesteAbspielen, bildAnlaufen, bildDiagnose } from './bildStart';
 import { streamTonNativDa } from '$lib/platform/iosStreamTonNativ';
 import { FreezeRecycler, FREEZE_RECYCLE_MAX } from './freezeRecycle';
 import { chatApi } from '$lib/api/chat';
@@ -58,6 +63,10 @@ const CONNECT_TIMEOUT_MS = 7000;
 const STALL_RECONNECT_MS = 3500;
 
 export type StreamPhase = 'connecting' | 'playing' | 'retrying' | 'error';
+
+function warte(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 export class ManagedHqStream {
   readonly channelId: string;
@@ -208,8 +217,10 @@ export class ManagedHqStream {
   /**
    * `play()` am Video. Ohne nativen Ton wie immer (best effort). Mit nativem
    * Ton spielt die WebView keinen Ton, und WebKit verweigert das Bild im
-   * Stromsparmodus ohne Geste (`bildStart.ts`): dann melden, Knopf zeigen und
-   * bei der nächsten Berührung erneut.
+   * Stromsparmodus ohne Geste (`bildStart.ts`). Der Hauptweg ist der
+   * unhörbare Kontext (`stummerKontext.ts`): auf ihn warten, erneut starten.
+   * Erst wenn auch das scheitert, Knopf zeigen und bei der nächsten Berührung
+   * erneut — der letzte Rückfall.
    */
   #bildAbspielen(el: HTMLVideoElement): void {
     if (!this.#nativ) {
@@ -217,23 +228,18 @@ export class ManagedHqStream {
       return;
     }
     this.#gesteLoesen();
-    el.play().then(
-      () => {
+    const noch = () => !this.#disposed && this.#videoEl === el;
+    void bildAnlaufen(el, stummerKontextBereit, warte, noch).then((ergebnis) => {
+      melde('stream', 'stream_bild_start', `Bild: ${ergebnis}`, bildDiagnose(el, this.stream, ergebnis));
+      if (ergebnis === 'spielt') this.bildGesperrt = false;
+      if (ergebnis !== 'gesperrt' || !noch()) return;
+      this.bildGesperrt = true;
+      this.#gesteAbbauen = aufGesteAbspielen(el, document, () => {
+        this.#gesteAbbauen = null;
         this.bildGesperrt = false;
-        melde('stream', 'stream_bild_start', 'Bild läuft', bildDiagnose(el, this.stream, 'spielt'));
-      },
-      (e: unknown) => {
-        const ergebnis = bildErgebnis(e);
-        melde('stream', 'stream_bild_start', `Bild: ${ergebnis}`, bildDiagnose(el, this.stream, ergebnis));
-        if (ergebnis !== 'gesperrt' || this.#disposed || this.#videoEl !== el) return;
-        this.bildGesperrt = true;
-        this.#gesteAbbauen = aufGesteAbspielen(el, document, () => {
-          this.#gesteAbbauen = null;
-          this.bildGesperrt = false;
-          melde('stream', 'stream_bild_start', 'Bild nach Geste', bildDiagnose(el, this.stream, 'spielt'));
-        });
-      }
-    );
+        melde('stream', 'stream_bild_start', 'Bild nach Geste', bildDiagnose(el, this.stream, 'spielt'));
+      });
+    });
   }
 
   /** Den Geste-Zuhörer von `aufGesteAbspielen` abbauen, falls einer hängt. */

@@ -45,6 +45,7 @@ import {
   mikrofonBeiDerHuelleBeobachten
 } from '$lib/platform/mikrofonBeiDerHuelle';
 import { StreamTonLage, type Lage, type Teilnehmer } from './streamTonLage';
+import { StummerKontext, type KontextArt } from './stummerKontext';
 import { melde } from '$lib/diagnose/app-diagnose';
 import {
   fensterMs,
@@ -72,8 +73,27 @@ const RUECKZUG_MS = [1000, 3000, 5000];
 /** Höchstens alle 5 s abgleichen — die Fenster brauchen Inhalt. */
 const ABGLEICH_MS = 5000;
 
+/**
+ * Der unhörbare Kontext, an dem das Bild der Kacheln hängt (`stummerKontext.ts`).
+ * Er läuft genau, solange der Halter `streamton` WebKit auf `ambient` hält:
+ * beim Halten erst `ambient`, dann der Kontext; beim Loslassen umgekehrt.
+ */
+const stumm = new StummerKontext(() =>
+  typeof AudioContext === 'undefined' ? null : (new AudioContext() as unknown as KontextArt)
+);
+
 /** Halter und Lage für alle Kacheln (`streamTonLage.ts`). */
-const lage = new StreamTonLage((an) => nativerTonHalten('streamton', an));
+const lage = new StreamTonLage((an) => {
+  if (!an) stumm.setzen({ gewollt: false });
+  nativerTonHalten('streamton', an);
+  if (an) stumm.setzen({ gewollt: true });
+});
+
+/** Läuft der unhörbare Kontext? Die Kachel wartet darauf, bevor sie ein
+ *  verweigertes Bild erneut startet. */
+export function stummerKontextBereit(): Promise<boolean> {
+  return stumm.bereit();
+}
 
 // Beim Laden des Moduls einmal aufräumen, was eine frühere Seite nativ
 // gestartet hat (S2).
@@ -93,6 +113,13 @@ if (streamTonNativDa()) {
   lage.setzen({ raum: mikrofonBeiDerHuelle() });
   mikrofonBeiDerHuelleBeobachten((raum) => lage.setzen({ raum }));
   tonWiedergabenBeobachten((webWiedergabe) => lage.setzen({ webWiedergabe }));
+  // Im Hintergrund schliessen (Akku), vorn wieder anlegen.
+  if (typeof document !== 'undefined') {
+    const sichtbarMelden = (): void =>
+      stumm.setzen({ sichtbar: document.visibilityState === 'visible' });
+    sichtbarMelden();
+    document.addEventListener('visibilitychange', sichtbarMelden);
+  }
 }
 
 export interface NativStand {
