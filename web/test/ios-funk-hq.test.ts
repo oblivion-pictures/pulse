@@ -52,3 +52,10 @@ test('der Brückenschalter existiert in der Hülle', () => {
   assert.match(swift('SprachePlugin.swift'), /CAPPluginMethod\(name: "funkHq"/);
   assert.match(swift('SprachePlugin.swift'), /SpracheFunkHq\.geteilt\.wunsch = call\.getBool\("an"\) \?\? true/);
 });
+
+test('B1: „springt nicht an" wird erst im verzögerten Abgleich gewertet', () => {
+  const q = swift('SpracheFunkHqAbgleich.swift');
+  assert.match(q, /if grund == Self\.funkPruefGrund, !f\.gescheitert,/);
+  assert.match(q, /static let funkPruefFrist: TimeInterval = 3/);
+  assert.match(q, /asyncAfter\(deadline: \.now\(\) \+ Self\.funkPruefFrist\)/);
+});

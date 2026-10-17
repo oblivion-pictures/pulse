@@ -103,7 +103,13 @@ extension SpracheRaum {
         }
         if !haelt, !automatik { return }   // jemand anderes hält sie gerade
         let lage = FunkLage.lesen()
-        if !f.gescheitert, FunkHqRegeln.gescheitert(lage: lage, haelt: haelt) {
+        // **Nur im eigenen, verzögerten Abgleich** (Gegenprüfung B1): jedes
+        // Umschalten löst selbst Routenwechsel aus, und der Abgleich, den sie
+        // einreihen, läuft Millisekunden später — dann ist der Kopfhörer
+        // vermutlich noch mitten im Wechsel HFP → HQ, und `isEnabled` stünde
+        // fälschlich auf false.
+        if grund == Self.funkPruefGrund, !f.gescheitert,
+           FunkHqRegeln.gescheitert(lage: lage, haelt: haelt) {
             f.gescheitert = true
             diagMelden("funk_hq_gescheitert", ["grund": grund])
         }
@@ -151,7 +157,18 @@ extension SpracheRaum {
             return
         }
         diagMelden("funk_hq_an", ["grund": grund])
+        let gemeint = sitzung
+        DispatchQueue.global().asyncAfter(deadline: .now() + Self.funkPruefFrist) { [weak self] in
+            guard let self, sitzung == gemeint else { return }
+            funkHqAnstossen(Self.funkPruefGrund)
+        }
     }
+
+    /// Wie lange der Kopfhörer für den Wechsel auf HQ Zeit bekommt, bevor
+    /// „springt nicht an" gilt. Geschätzt, nicht gemessen — der Abstand
+    /// `funk_hq_an` → `funk_hq_gescheitert` im Bericht zeigt, ob er reicht.
+    static let funkPruefFrist: TimeInterval = 3
+    static let funkPruefGrund = "hq_pruefen"
 
     /// Zurück an das SDK. Wechselt die Verarbeitung zurück auf `.automatic`,
     /// richtet das SDK seine Kategorie dabei selbst neu ein
