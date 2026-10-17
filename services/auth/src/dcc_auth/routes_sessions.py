@@ -37,6 +37,7 @@ from dcc_auth.session_link import (
     revoke_session_of_token_fallback,
     revoke_sessions_of_tokens,
 )
+from dcc_auth.widerruf import konto_sperren
 
 router = APIRouter()
 
@@ -134,6 +135,7 @@ async def revoke_session(
     except ValueError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="session not found") from exc
 
+    await konto_sperren(session, current.id)  # vor jedem Widerruf, ``widerruf.py``
     rt = await session.get(RefreshToken, jti)
     if rt is None or rt.user_id != current.id or rt.revoked_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="session not found")
@@ -166,9 +168,12 @@ async def revoke_all_sessions(
     "Current" is the same heuristic the list endpoint uses (IP-hash +
     UA). If nothing matches — e.g. the caller is on a brand-new device
     whose refresh-token row hasn't been written yet for some reason — we
-    sweep them all; the caller's *access* token stays valid until it
-    expires (≤15 min), so they don't get locked out mid-request.
+    sweep them all. Dann ist auch die Kette des Aufrufers zu Ende: sein
+    Zugriffstoken gilt am auth-svc nicht mehr (``widerruf.py``), nur noch
+    bei chat-gateway & Co. bis zum Ablauf (≤ 15 min) — die laufende Anfrage
+    beendet das nicht, die nächste am auth-svc meldet ihn ab.
     """
+    await konto_sperren(session, current.id)  # vor jedem Widerruf, ``widerruf.py``
     now = datetime.now(tz=UTC)
     current_ip_hash = _hash_ip(request)
     incoming_ua = (user_agent[:1000] if user_agent else None) or None

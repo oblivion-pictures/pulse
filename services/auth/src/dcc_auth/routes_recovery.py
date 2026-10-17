@@ -57,6 +57,7 @@ from dcc_auth.schemas import (
     PasswordResetIn,
 )
 from dcc_auth.security import hash_password
+from dcc_auth.widerruf import konto_sperren
 
 log = logging.getLogger(__name__)
 
@@ -192,6 +193,8 @@ async def password_reset(
 
     user.password_hash = await asyncio.to_thread(hash_password, payload.new_password)
 
+    # Vor jedem Widerruf das Konto sperren (``widerruf.py``, „Das Rennen“).
+    await konto_sperren(session, user.id)
     # Kill every active refresh token — the user must re-auth on each device.
     await session.execute(
         update(RefreshToken)
@@ -201,9 +204,10 @@ async def password_reset(
     # Browser sessions must die with them. A reset is what a user does *because*
     # they think they're compromised, so a stolen ``pulse_session`` cookie has to
     # stop working here — otherwise it outlives the reset indefinitely, since
-    # ``validate_session`` slides ``expires_at`` forward on every request. This
-    # also raises the ``revoke_until`` watermark that gates ``/credentials/issue``
-    # (see ``revoke_all_for_user``), so the session can't still mint a device cert.
+    # ``validate_session`` slides ``expires_at`` forward on every request. Mit
+    # den widerrufenen Refresh-Token oben sind auch alle Anmelde-Ketten tot:
+    # ein noch gültiges Zugriffstoken holt sich am auth-svc weder Cookie noch
+    # Ticket mehr (``widerruf.py``).
     await revoke_all_for_user(session, user.id)
 
     # Archiv-Re-Wrap (Übergabe 2026-10-04 §5): der E-Mail-Reset darf NICHTS

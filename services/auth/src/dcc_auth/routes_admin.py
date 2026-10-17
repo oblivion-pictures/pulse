@@ -48,6 +48,7 @@ from dcc_auth.schemas import (
     UserAdminPatch,
 )
 from dcc_auth.snowflake import next_id
+from dcc_auth.widerruf import konto_sperren
 
 router = APIRouter(prefix="/admin")
 
@@ -189,6 +190,7 @@ async def patch_user(
         user.disabled = payload.disabled
         if payload.disabled:
             gesperrt = True
+            await konto_sperren(session, user_id)  # vor jedem Widerruf, ``widerruf.py``
             now = datetime.now(UTC)
             await session.execute(
                 update(RefreshToken)

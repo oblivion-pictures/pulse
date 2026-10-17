@@ -5,7 +5,7 @@ Coverage:
   * Cookie-based /me auth works
   * Expired session -> 401 from dependency
   * revoke_session -> immediate 401
-  * Logout-Everywhere (revoke_all_for_user) revokes all sessions
+  * revoke_all_for_user (Passwortwechsel/-Reset) revokes all sessions
   * SameSite + HttpOnly + Secure flags present in Set-Cookie header
   * Cookie-only /logout clears cookie + revokes session
   * Cleanup: purge_expired_sessions deletes expired rows

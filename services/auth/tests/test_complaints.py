@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from dcc_auth.models import User
+import uuid
+from datetime import UTC, datetime, timedelta
+
+from dcc_auth.models import RefreshToken, User
 from dcc_auth.snowflake import next_id
 
 
@@ -29,7 +32,20 @@ async def _seed_user(session_factory, *, is_admin: bool = False) -> tuple[User, 
         await s.commit()
         await s.refresh(u)
 
-    token = get_signer().issue_access(uid, u.username, is_admin=is_admin)
+    # Der auth-svc nimmt ein Zugriffstoken nur mit lebender Anmelde-Kette an
+    # (``dcc_auth/widerruf.py``) — also eine Refresh-Zeile dazu anlegen.
+    kette = uuid.uuid4()
+    async with session_factory() as s:
+        s.add(
+            RefreshToken(
+                jti=kette,
+                user_id=uid,
+                expires_at=datetime.now(UTC) + timedelta(days=1),
+                family_id=kette,
+            )
+        )
+        await s.commit()
+    token = get_signer().issue_access(uid, u.username, is_admin=is_admin, kette=kette)
     return u, token
 
 

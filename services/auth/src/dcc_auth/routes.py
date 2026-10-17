@@ -18,6 +18,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 
+from dcc_shared.anmeldeketten import CLAIM as ANMELDEKETTE_CLAIM
 from dcc_shared.snowflake import INT64_MAX, INT64_MIN
 
 from dcc_auth import ketten_ende
@@ -76,6 +77,7 @@ from dcc_auth.session_renew import KOPF as RENEW_KOPF
 from dcc_auth.session_renew import erneuere_cookie
 from dcc_auth.snowflake import next_id
 from dcc_auth.username_suggestions import suggest_usernames as _suggest_usernames
+from dcc_auth.widerruf import bearer_kette, kette_lebt, konto_sperren, merke_bearer_kette
 
 router = APIRouter()
 log = structlog.get_logger(__name__)
@@ -302,10 +304,16 @@ async def _get_current_user(
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="user not found")
         if user.disabled or user.is_suspended:
             # Existing access tokens of disabled/suspended users remain technically
-            # valid (no global revocation), but every protected route must reject
-            # them — otherwise a disabled/suspended admin keeps full access until
-            # the ≤15 min TTL.
+            # valid (other services check JWKS only), but every protected route here
+            # must reject them — otherwise a disabled/suspended admin keeps full
+            # access until the ≤15 min TTL.
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="account disabled")
+        # Widerrufen (abgemeldet, Sitzung beendet, Passwort geändert): die Kette
+        # des Tokens hat keine lebende Zeile mehr (``widerruf.py``).
+        kette = payload.get(ANMELDEKETTE_CLAIM)
+        if not await kette_lebt(session, user_id=user.id, kette=kette):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="token revoked")
+        merke_bearer_kette(request, kette)
         return user
 
     # --- Cookie path ---
@@ -630,7 +638,6 @@ async def renew_session(
     response: Response,
     session: SessionDep,
     current: User = Depends(_get_current_user),
-    authorization: str | None = Header(default=None),
     user_agent: str | None = Header(default=None, alias="User-Agent"),
 ) -> None:
     """Re-establish the ``pulse_session`` browser cookie from a valid auth.
@@ -651,12 +658,11 @@ async def renew_session(
     (``session_link.relink_to_new_session``), sonst liefe „Sitzung beenden“
     für genau die Geräte ins Leere, die am häufigsten erneuern.
     """
-    mit_bearer = bool(authorization and authorization.lower().startswith("bearer "))
     ergebnis = await erneuere_cookie(
         session,
         user_id=current.id,
         cookie=request.cookies.get(COOKIE_NAME),
-        mit_bearer=mit_bearer,
+        bearer_kette=bearer_kette(request),
         user_agent=user_agent,
         ip=_client_ip(request),
     )
@@ -720,6 +726,10 @@ async def refresh(
     except (KeyError, ValueError) as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid token payload") from exc
 
+    # Erst das Konto, dann die Zeile: sonst überlebt eine Rotation, die mit
+    # einem Passwortwechsel oder Widerruf zusammenfällt, als neue Zeile, die
+    # dessen DELETE/UPDATE nie gesehen hat (``widerruf.py``, „Das Rennen“).
+    await konto_sperren(session, user_id)
     # Lock the row so two concurrent refreshes with the same token can't both
     # pass the checks and fork the token tree. On Postgres this is a real row
     # lock; on the SQLite test backend it's a no-op (single-writer anyway).
@@ -893,6 +903,7 @@ async def logout(
             jti = None
             user_id = None
         if jti is not None:
+            await konto_sperren(session, user_id)  # vor jedem Widerruf, ``widerruf.py``
             rt = await session.get(RefreshToken, jti)
             if rt is not None and rt.user_id == user_id and rt.revoked_at is None:
                 rt.revoked_at = datetime.now(tz=UTC)

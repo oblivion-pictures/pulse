@@ -47,6 +47,7 @@ from dcc_auth.schemas import (
 )
 from dcc_auth.security import JwtSigner, hash_password, verify_password
 from dcc_auth.session_link import parse_sid
+from dcc_auth.widerruf import konto_sperren
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +100,8 @@ async def change_password(
     # reicht nur noch ueber die Anmelde-Kette, und das frische Paar beginnt eine
     # eigene (s. ``refresh_kette``). Der Satz bleibt trotzdem stehen, damit
     # niemand den heutigen Grund fuer den alten haelt.
+    # Vor jedem Widerruf das Konto sperren (``widerruf.py``, „Das Rennen“).
+    await konto_sperren(session, current.id)
     ketten = await _ketten_des_kontos(session, current.id)
     eigene = await _eigene_ketten(request, session, signer)
     await session.execute(

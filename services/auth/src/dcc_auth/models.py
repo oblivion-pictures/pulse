@@ -67,7 +67,8 @@ class User(Base):
         Boolean, nullable=False, server_default=text("false"), default=False
     )
     # Disabled accounts can't log in and can't refresh. Existing access tokens
-    # stay valid until they expire (≤15 min) — no global revocation yet.
+    # stay valid at chat-gateway & co. until they expire (≤15 min) — those check
+    # JWKS only; the auth-svc rejects them (``routes._get_current_user``).
     disabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false"), default=False
     )
@@ -88,9 +89,12 @@ class User(Base):
     pairwise_salt: Mapped[bytes] = mapped_column(
         LargeBinary(), nullable=False, default=lambda: secrets.token_bytes(32)
     )
-    # TIMESTAMPTZ watermark for Logout-Everywhere / Admin-Suspend race protection
-    # (DE 11 A.11, Review #4 point 18+19).  ``POST /credentials/issue`` blocks
-    # when ``now() < revoke_until + 5 min``.  Cleared on next successful MFA-Login.
+    # Zeitpunkt des letzten ``revoke_all_for_user`` (Passwortwechsel, -Reset).
+    # Gedacht als Riegel an ``/credentials/issue`` (Migration 0012: fünf Minuten
+    # nach dem Widerruf keine Ausstellung); der fiel mit den Geräte-
+    # Zertifikaten (2026-08-28). Seitdem liest den Wert kein Code, er wird nie
+    # zurückgesetzt. Was ein vor dem Widerruf ausgestelltes Zugriffstoken heute
+    # aufhält, ist seine Anmelde-Kette (``widerruf.py``).
     revoke_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

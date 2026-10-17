@@ -66,9 +66,10 @@ async def test_list_sessions_requires_auth(client):
 async def test_list_sessions_returns_active_only(client):
     # Register seeds one refresh token; two follow-up logins add two more.
     tokens = await _register(client)
-    access = tokens["access_token"]
     await _login(client)
-    await _login(client)
+    # Die Kette des /register-Tokens endet gleich mit /logout — danach nimmt
+    # der auth-svc dessen Zugriffstoken nicht mehr an (``widerruf.py``).
+    access = (await _login(client))["access_token"]
 
     # Revoke one of the three via /logout (uses one of the refresh tokens
     # we still hold). We hold the very first one from /register.

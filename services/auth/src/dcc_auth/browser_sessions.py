@@ -8,7 +8,7 @@ API summary
 * ``create_session``         -- write new row, return session_id UUID
 * ``validate_session``       -- lookup + expiry check + bump last_seen_at
 * ``revoke_session``         -- soft-delete one session (sets expires_at = now)
-* ``revoke_all_for_user``    -- bulk-revoke for Logout-Everywhere (DE 11 A.11)
+* ``revoke_all_for_user``    -- bulk-revoke every cookie (password change/reset)
 * ``set_session_cookie``     -- attach HttpOnly Set-Cookie to a Response
 * ``clear_session_cookie``   -- overwrite with Max-Age=0 to delete
 * ``purge_expired_sessions`` -- one-shot async helper for the cleanup loop
@@ -138,21 +138,30 @@ async def revoke_session(db: AsyncSession, session_id: uuid.UUID) -> bool:
 
 
 async def revoke_all_for_user(db: AsyncSession, user_id: int) -> int:
-    """Revoke all of a user's sessions (Logout-Everywhere).
+    """Alle Browser-Sitzungen des Kontos widerrufen (Passwortwechsel, -Reset).
 
-    Stamps both ``expires_at`` and ``revoked_at`` on every not-yet-revoked row,
-    and raises the user-level ``revoke_until`` watermark so the
-    MFA-race gate actually fires.
-    Returns the number of session rows touched.
+    Setzt ``expires_at`` und ``revoked_at`` auf jeder noch nicht widerrufenen
+    Zeile. Die Refresh-Token räumen die Aufrufer selbst (Wechsel löscht, Reset
+    widerruft) — erst damit sterben auch die Zugriffstoken am auth-svc
+    (``widerruf.py``).
+
+    Zuerst die Konto-Zeile: ``revoke_until`` setzen sperrt sie, und ein
+    gleichzeitiges ``/session/renew`` wartet darauf, statt eine Sitzung
+    anzulegen, die das UPDATE unten nicht sieht (``widerruf.py``, „Das
+    Rennen“). Wer vorher schon Token-Zeilen schreibt, sperrt selbst früher
+    (beide Aufrufer tun das). ``revoke_until`` selbst liest heute niemand
+    (``models.User``).
+
+    Gibt die Zahl der betroffenen Sitzungszeilen zurück.
     """
     now = datetime.now(tz=UTC)
+    await db.execute(
+        sa_update(User).where(User.id == user_id).values(revoke_until=now)
+    )
     result = await db.execute(
         sa_update(UserSession)
         .where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
         .values(expires_at=now, revoked_at=now)
-    )
-    await db.execute(
-        sa_update(User).where(User.id == user_id).values(revoke_until=now)
     )
     return result.rowcount or 0
 

@@ -146,8 +146,9 @@ async def test_password_reset_kills_browser_sessions(
 
     A stolen ``pulse_session`` cookie would otherwise outlive the reset
     indefinitely — ``validate_session`` slides ``expires_at`` forward on every
-    request — and could still mint a device cert via ``/credentials/issue``
-    unless ``revoke_until`` is raised. See ``routes_recovery.password_reset``.
+    request. Und ein noch gültiges Zugriffstoken darf sich danach kein neues
+    Cookie holen (``dcc_auth/widerruf.py``). ``revoke_until`` bleibt als Spur
+    gesetzt. See ``routes_recovery.password_reset``.
     """
 
     await _register(client)
@@ -156,6 +157,7 @@ async def test_password_reset_kills_browser_sessions(
     )
     assert login_r.status_code == 200, login_r.text
     sid = login_r.cookies["pulse_session"]
+    access = login_r.json()["access_token"]
     # The stolen cookie works before the reset.
     assert (
         await client.get("/me", headers={"Cookie": f"pulse_session={sid}"})
@@ -168,6 +170,11 @@ async def test_password_reset_kills_browser_sessions(
     assert (
         await client.get("/me", headers={"Cookie": f"pulse_session={sid}"})
     ).status_code == 401, "session cookie survived a password reset"
+    bearer = {"Authorization": f"Bearer {access}"}
+    assert (await client.get("/me", headers=bearer)).status_code == 401
+    erneuert = await client.post("/session/renew", headers=bearer)
+    assert erneuert.status_code == 401, "old access token re-minted a session cookie"
+    assert "pulse_session" not in erneuert.cookies
 
     async with session_factory() as s:
         user = (await s.execute(select(User))).scalar_one()

@@ -21,7 +21,7 @@ from dcc_auth import session_renew
 from dcc_auth.browser_sessions import revoke_all_for_user
 from dcc_auth.models import RefreshToken, UserSession
 from dcc_auth.session_link import relink_to_new_session, revoke_sessions
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 _REG = {
     "username": "renew_user",
@@ -149,30 +149,78 @@ async def test_totes_cookie_allein_belebt_nichts(client):
 
 
 @pytest.mark.asyncio
-async def test_nach_sicherheitswiderruf_kein_geerbter_mfa_kontext(client, session_factory):
-    """Überall abmelden widerruft auch den Nachfolger. Ein danach noch gültiger
-    Bearer bekommt, was er ohne Cookie bekäme: eine Sitzung mit ``acr="0"`` —
-    nie den Step-up der abgebauten Sitzung."""
+async def test_nach_sicherheitswiderruf_holt_altes_token_keine_sitzung(client, session_factory):
+    """„Überall sonst abmelden“ von Gerät 2: Gerät 1 hält weiter ein gültiges
+    Zugriffstoken (15 Minuten). Bis 2026-10-17 holte es sich damit über Weg 3
+    eine frische Sitzung — und mit ihr Self-Host-Tickets. Heute endet mit der
+    Anmelde-Kette auch das Token am auth-svc (``widerruf.py``): 401, kein
+    Cookie, keine Zeile. Gerät 2, dessen Token genauso alt ist, erneuert
+    weiter — der Widerruf trifft Ketten, nicht das Konto."""
     a, access, uid = await _anmelden(client)
-    async with session_factory() as db:
-        row = await db.get(UserSession, a)
-        assert row is not None
-        row.acr = "1"
-        row.amr = ["pwd", "otp"]
-        await db.commit()
+    await _setze_mfa(session_factory, a)
     b = (await _erneuern(client, cookie=a, bearer=access)).cookies["pulse_session"]
-    async with session_factory() as db:
-        assert (await db.get(UserSession, b)).acr == "1"  # Ablösung erbt
-        await revoke_all_for_user(db, uid)
-        await db.commit()
 
-    r = await _erneuern(client, cookie=a, bearer=access)
-    assert r.status_code == 204, r.text
-    c = r.cookies["pulse_session"]
-    assert c not in (a, b)
-    async with session_factory() as db:
-        neu = await db.get(UserSession, c)
-        assert neu is not None and neu.acr == "0" and list(neu.amr) == ["pwd"]
+    zweites = await client.post(
+        "/login",
+        json={"email_or_username": _REG["email"], "password": _REG["password"]},
+        headers={"User-Agent": "Geraet/2"},
+    )
+    assert zweites.status_code == 200, zweites.text
+    access2 = zweites.json()["access_token"]
+    weg = await client.delete(
+        "/sessions", headers={"Authorization": f"Bearer {access2}", "User-Agent": "Geraet/2"}
+    )
+    assert weg.status_code == 200 and weg.json()["revoked_count"] == 1, weg.text
+    assert not await _lebt(client, b)
+
+    vorher = await _anzahl_sitzungen(session_factory, uid)
+    for cookie in (a, b, None):
+        await _abgewiesen(client, await _erneuern(client, cookie=cookie, bearer=access))
+    me = await client.get("/me", headers={"Authorization": f"Bearer {access}"})
+    assert me.status_code == 401
+    assert await _anzahl_sitzungen(session_factory, uid) == vorher
+
+    eigenes = await _erneuern(client, cookie=None, bearer=access2)
+    assert eigenes.status_code == 204, eigenes.text
+    assert await _lebt(client, eigenes.cookies["pulse_session"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mit_cookie", [False, True])
+async def test_widerruf_waehrend_der_kontosperre_zaehlt(
+    client, session_factory, monkeypatch, mit_cookie
+):
+    """Das Rennen aus der Gegenprüfung 2026-10-17: Erneuern und Widerruf
+    gleichzeitig. Auf Postgres wartet das Erneuern an der Kontosperre, bis der
+    Widerruf festgeschrieben ist (``widerruf.konto_sperren``); SQLite sperrt
+    nichts, deshalb wird das Warten hier nachgestellt — der Widerruf
+    committet IN der Sperre. Danach darf nichts mehr entstehen: die Kette
+    wird nach der Sperre noch einmal geprüft, das Cookie frisch gelesen.
+    (Der Nachweis gegen echtes Postgres steht nicht hier, er braucht zwei
+    echte Verbindungen.)"""
+    a, access, uid = await _anmelden(client)
+    echt = session_renew.konto_sperren
+    gewartet: list[int] = []
+
+    async def widerruf_kommt_in_der_sperre_an(db, user_id):
+        if not gewartet:
+            gewartet.append(user_id)
+            async with session_factory() as fremd:
+                await fremd.execute(
+                    update(RefreshToken)
+                    .where(RefreshToken.user_id == uid)
+                    .values(revoked_at=datetime.now(UTC))
+                )
+                await revoke_all_for_user(fremd, uid)
+                await fremd.commit()
+        await echt(db, user_id)
+
+    monkeypatch.setattr(session_renew, "konto_sperren", widerruf_kommt_in_der_sperre_an)
+    vorher = await _anzahl_sitzungen(session_factory, uid)
+    r = await _erneuern(client, cookie=a if mit_cookie else None, bearer=access)
+    assert gewartet == [uid]
+    await _abgewiesen(client, r)
+    assert await _anzahl_sitzungen(session_factory, uid) == vorher
 
 
 @pytest.mark.asyncio
@@ -246,6 +294,12 @@ async def _setze_mfa(session_factory, sid: str) -> None:
         row.acr = "1"
         row.amr = ["pwd", "otp"]
         await db.commit()
+
+
+async def _abgewiesen(client, r) -> None:
+    """401 und kein Cookie: das Token wurde vor einem Widerruf ausgestellt."""
+    assert r.status_code == 401, r.text
+    assert "pulse_session" not in r.cookies
 
 
 async def _frisch_ohne_mfa(session_factory, r, *nicht: str) -> str:
@@ -379,8 +433,8 @@ async def test_sitzung_beenden_ueber_die_route_beendet_das_nachreichen(client, s
     assert beendet.status_code == 204, beendet.text
     assert not await _lebt(client, b)
 
-    r = await _erneuern(client, cookie=a, bearer=access)
-    await _frisch_ohne_mfa(session_factory, r, a, b)
+    # Mit der Kette von Gerät 1 endet auch dessen Zugriffstoken (``widerruf.py``).
+    await _abgewiesen(client, await _erneuern(client, cookie=a, bearer=access))
 
 
 @pytest.mark.asyncio
@@ -398,5 +452,8 @@ async def test_passwortwechsel_ueber_die_route_beendet_das_nachreichen(client, s
     assert gewechselt.status_code == 200, gewechselt.text
     assert not await _lebt(client, b)
 
-    r = await _erneuern(client, cookie=a, bearer=access)
+    # Das alte Zugriffstoken ist mit seiner Kette tot; das frisch ausgestellte
+    # erneuert ohne geerbten Step-up.
+    await _abgewiesen(client, await _erneuern(client, cookie=a, bearer=access))
+    r = await _erneuern(client, cookie=a, bearer=gewechselt.json()["access_token"])
     await _frisch_ohne_mfa(session_factory, r, a, b, gewechselt.cookies["pulse_session"])

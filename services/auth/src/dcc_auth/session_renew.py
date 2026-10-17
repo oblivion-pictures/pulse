@@ -16,7 +16,11 @@ Zeile, auf die das Cookie zeigt:
    zweier gleichzeitiger Erneuerungen.
 3. **Sonst** (unbekannt, fremdes Konto, widerrufen ohne passenden Nachfolger,
    unlesbar): wie ganz ohne Cookie — neue Sitzung aus der Bearer-Anmeldung,
-   verwaiste Token umhängen.
+   verwaiste Token umhängen. Nur mit Bearer, und nur, solange dessen
+   Anmelde-Kette lebt: ein Zugriffstoken, das vor „Sitzung beenden“, „überall
+   sonst abmelden“ oder einem Passwortwechsel ausgestellt wurde, kommt schon an
+   ``_get_current_user`` nicht vorbei (``widerruf.py``). Bis 2026-10-17 holte
+   es hier eine frische Sitzung.
 
 **Bughunt Runde 33 (zwei parallele Erneuerungen mit demselben Cookie, etwa
 mehrere Tabs beim Start).** Früher hingen beide die Refresh-Kette um und
@@ -25,12 +29,21 @@ eine lebende, in ``/sessions`` unsichtbare Sitzung. Der damalige Riegel („0
 umgehängte Token → kein Cookie“) unterschied den Verlierer nicht vom toten
 Cookie, und genau dort blieb die iOS-Hülle hängen. Heute entscheidet das
 Widerrufen selbst: ``revoke_sessions`` trifft nur Zeilen, die noch nicht
-widerrufen sind, also kann genau EIN Aufruf die alte Zeile ablösen (auf
-Postgres wartet der zweite UPDATE auf die Zeilensperre des ersten und findet
-danach nichts mehr). Der Verlierer rollt seine Sitzung zurück und reicht den
-Nachfolger des Gewinners nach — beide Antworten setzen dasselbe Cookie, egal
-in welcher Reihenfolge sie ankommen. Kommt der zweite Aufruf erst nach dem
-Gewinner an, findet er das Cookie schon widerrufen: Weg 2, dasselbe Ergebnis.
+widerrufen sind, also kann genau EIN Aufruf die alte Zeile ablösen. Seit der
+Kontosperre (unten) warten zwei Erneuerungen desselben Kontos auf Postgres
+schon am Anfang aufeinander; der zweite findet das Cookie widerrufen: Weg 2,
+dasselbe Cookie wie der Gewinner. Der Zweig, in dem der Verlierer seine
+Sitzung zurückrollt und den Nachfolger des Gewinners nachreicht, bleibt für
+Widerrufe ohne Kontosperre (Abmelden nur mit Cookie) und für SQLite, wo
+``FOR UPDATE`` nichts sperrt — auch dort setzen beide Antworten dasselbe
+Cookie.
+
+**Gegen einen gleichzeitigen Widerruf.** Jeder Aufruf sperrt zuerst die
+Konto-Zeile (``widerruf.konto_sperren``) und prüft danach die Bearer-Kette
+noch einmal; ein Rollback gibt die Sperre frei, danach also dasselbe noch
+einmal. Die Widerrufswege sperren dieselbe Zeile, bevor sie schreiben. Ohne
+das sah ein gleichzeitiges „überall abmelden“ die noch nicht festgeschriebene
+neue Sitzung nicht, und sie überlebte (Begründung: ``widerruf.py``).
 
 **Was Weg 2 herausgibt, und warum es so eng ist.** Eine widerrufene Zeile wird
 nie zurückgeholt, und jeder Weg setzt eine gültige Anmeldung voraus: ein totes
@@ -80,6 +93,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dcc_auth.browser_sessions import create_session
 from dcc_auth.models import UserSession
 from dcc_auth.session_link import as_sid, parse_sid, relink_to_new_session, revoke_sessions
+from dcc_auth.widerruf import kette_lebt, konto_sperren
 
 #: Antwortkopf, der dem Klienten sagt, welcher Weg genommen wurde. Gelesen von
 #: ``web/src/lib/api/cookie-client.ts`` (``renewSession``) — synchron halten.
@@ -161,12 +175,22 @@ async def _nachreichbarer_nachfolger(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+async def _gesperrt_und_gueltig(
+    db: AsyncSession, user_id: int, bearer_kette: str | None
+) -> bool:
+    """Konto sperren, dann die Bearer-Anmeldung nachprüfen (Modulkopf, „Gegen
+    einen gleichzeitigen Widerruf“). Ohne Bearer gibt es nichts nachzuprüfen:
+    das Cookie wird danach ohnehin frisch gelesen."""
+    await konto_sperren(db, user_id)
+    return bearer_kette is None or await kette_lebt(db, user_id=user_id, kette=bearer_kette)
+
+
 async def erneuere_cookie(
     db: AsyncSession,
     *,
     user_id: int,
     cookie: str | None,
-    mit_bearer: bool,
+    bearer_kette: str | None,
     user_agent: str | None,
     ip: str | None,
 ) -> Erneuert | None:
@@ -174,9 +198,12 @@ async def erneuere_cookie(
 
     ``user_id`` kommt aus der geprüften Anmeldung, nicht aus dem Cookie — und
     muss vorab gelesen sein: nach dem Rollback eines verlorenen Rennens ist das
-    ``User``-Objekt der Route abgelaufen. ``mit_bearer``: die Anmeldung kam
-    über ein gültiges Zugriffstoken (nur dann ist Weg 3 erlaubt).
+    ``User``-Objekt der Route abgelaufen. ``bearer_kette``: die Anmeldung kam
+    über ein gültiges Zugriffstoken dieser Anmelde-Kette (nur dann ist Weg 3
+    erlaubt), ``None`` = über das Cookie.
     """
+    if not await _gesperrt_und_gueltig(db, user_id, bearer_kette):
+        return None
     now = datetime.now(UTC)
     alt_sid = parse_sid(cookie)
     alt = await _frisch(db, alt_sid)
@@ -197,8 +224,11 @@ async def erneuere_cookie(
             )
             await db.commit()
             return Erneuert(sid, NEU)
-        # Ein paralleler Aufruf hat dieselbe Zeile eben abgelöst.
+        # Ein paralleler Aufruf hat dieselbe Zeile eben abgelöst. Der Rollback
+        # gibt die Kontosperre frei — deshalb neu sperren und nachprüfen.
         await db.rollback()
+        if not await _gesperrt_und_gueltig(db, user_id, bearer_kette):
+            return None
         alt = await _frisch(db, alt_sid)
 
     if alt is not None:
@@ -207,7 +237,7 @@ async def erneuere_cookie(
             # Nur lesen, nichts schreiben — Nachreichen verlängert nichts.
             return Erneuert(as_sid(nachfolger.session_id) or "", NACHGEREICHT)
 
-    if not mit_bearer:
+    if bearer_kette is None:
         return None
     amr, acr = _OHNE_NACHWEIS
     sid = str(
