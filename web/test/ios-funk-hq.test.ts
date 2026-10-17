@@ -25,7 +25,7 @@ test('B2: Pendelbremse — mehr als 3 Übernahmen in 30 s, dann VPIO', () => {
   const q = swift('SpracheFunkHq.swift');
   assert.match(q, /static let pendelGrenze = 3/);
   assert.match(q, /static let pendelFenster: CFAbsoluteTime = 30/);
-  assert.match(swift('SpracheFunkHqAbgleich.swift'), /diagMelden\("funk_hq_pendelt"/);
+  assert.match(swift('SpracheFunkHqAbgleich.swift'), /funkHqAufgeben\("funk_hq_pendelt", grund\)/);
 });
 
 test('jeder Anruf nimmt dem Kanal die Session sofort wieder ab', () => {
@@ -55,9 +55,9 @@ test('der Brückenschalter existiert in der Hülle', () => {
 
 test('B1: „springt nicht an" wird erst im verzögerten Abgleich gewertet', () => {
   const q = swift('SpracheFunkHqAbgleich.swift');
-  assert.match(q, /if grund == Self\.funkPruefGrund, !f\.gescheitert,/);
+  assert.match(q, /if grund == Self\.funkPruefGrund, !f\.gescheitert, f\.ruhig\(seit: Self\.funkPruefFrist\),/);
   assert.match(q, /static let funkPruefFrist: TimeInterval = 3/);
-  assert.match(q, /asyncAfter\(deadline: \.now\(\) \+ Self\.funkPruefFrist\)/);
+  assert.match(q, /funkHqSpaeter\(Self\.funkPruefGrund, nach: Self\.funkPruefFrist\)/);
 });
 
 test('B3: Kopfhörer raus → sofort im Beobachter zurück und stumm, bis VPIO läuft', () => {
@@ -122,7 +122,7 @@ test('C3: ein Abriss während HQ deaktiviert die Session wie nach dem letzten St
 
 test('C4: „verloren" beim Einrichten ist kein Fehlschlag für den ganzen Raum', () => {
   const q = swift('SpracheFunkHqAbgleich.swift');
-  assert.match(q, /let abgebrochen = fehler == SpracheFunkHq\.verlorenGrund\n\s*if !abgebrochen \{ f\.gescheitert = true \}/);
+  assert.match(q, /if fehler == SpracheFunkHq\.verlorenGrund \{\n\s*diagMelden\("funk_hq_abgebrochen"/);
   assert.match(q, /"funk_hq_abgebrochen"/);
 });
 
@@ -134,4 +134,15 @@ test('C5: Rückgabe erst Kategorie, dann Verarbeitung, zuletzt die Automatik; Ne
   assert.ok(a > 0 && a < b && b < c, 'Reihenfolge');
   assert.match(q, /"konfigWechsel":/);
   assert.match(swift('SpracheFunkHq.swift'), /forName: \.AVAudioEngineConfigurationChange, object: nil/);
+});
+
+test('C6: Erholung nach ruhiger Route, Prüfung nach jedem Routenwechsel während HQ', () => {
+  const h = swift('SpracheFunkHq.swift');
+  assert.match(h, /static let erholungNach: CFAbsoluteTime = 120/);
+  assert.match(h, /guard _gescheitert, jetzt - max\(gescheitertSeit, letzteRoute\) >= Self\.erholungNach/);
+  const q = swift('SpracheFunkHqAbgleich.swift');
+  assert.match(q, /if f\.erholen\(\) \{ diagMelden\("funk_hq_erholt"/);
+  assert.match(q, /if f\.haelt \{ funkHqSpaeter\(Self\.funkPruefGrund, nach: Self\.funkPruefFrist\) \}/);
+  assert.match(q, /f\.ruhig\(seit: Self\.funkPruefFrist\)/);
+  assert.match(swift('SpracheRaumSession.swift'), /funkHqAnstossen\("route"\)\n\s*funkHqNachRoute\(\)/);
 });

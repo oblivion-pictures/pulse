@@ -123,17 +123,21 @@ extension SpracheRaum {
         // einreihen, läuft Millisekunden später — dann ist der Kopfhörer
         // vermutlich noch mitten im Wechsel HFP → HQ, und `isEnabled` stünde
         // fälschlich auf false.
-        if grund == Self.funkPruefGrund, !f.gescheitert,
+        //
+        // Seit C6 auch nach jedem Routenwechsel, solange wir halten — so fällt
+        // auf, wenn HQ später abfällt; gewertet nur bei seither ruhiger Route.
+        if f.erholen() { diagMelden("funk_hq_erholt", ["grund": grund]) }
+        if grund == Self.funkPruefGrund, !f.gescheitert, f.ruhig(seit: Self.funkPruefFrist),
            FunkHqRegeln.gescheitert(lage: lage, haelt: haelt) {
-            f.gescheitert = true
-            diagMelden("funk_hq_gescheitert", ["grund": grund])
+            funkHqAufgeben("funk_hq_gescheitert", grund)
+        } else if grund == Self.funkErholGrund, f.gescheitert {
+            funkHqSpaeter(Self.funkErholGrund, nach: 30)
         }
         var ziel = FunkHqRegeln.ziel(wunsch: f.wunsch, lage: lage, gescheitert: f.gescheitert,
                                      haelt: haelt, haltenOk: f.haltenErlaubt(lage))
         if ziel, !haelt, f.uebernahmeZaehlen() {
-            f.gescheitert = true
             ziel = false
-            diagMelden("funk_hq_pendelt", ["grund": grund])
+            funkHqAufgeben("funk_hq_pendelt", grund)
         }
         let spur = r.localParticipant.audioTracks
             .first(where: { $0.source == .microphone })?.track as? LocalAudioTrack
@@ -171,20 +175,42 @@ extension SpracheRaum {
             // „verloren": dazwischen kam ein Anruf oder der Kopfhörer ging
             // (C4). Kein Fehlschlag des Kopfhörers — nicht für den ganzen Raum
             // aufgeben; das Ende des Anrufs bzw. die nächste Route versucht neu.
-            let abgebrochen = fehler == SpracheFunkHq.verlorenGrund
-            if !abgebrochen { f.gescheitert = true }
-            diagMelden(abgebrochen ? "funk_hq_abgebrochen" : "funk_hq_fehler",
-                       ["grund": grund, "fehler": fehler])
+            if fehler == SpracheFunkHq.verlorenGrund {
+                diagMelden("funk_hq_abgebrochen", ["grund": grund, "fehler": fehler])
+            } else {
+                funkHqAufgeben("funk_hq_fehler", grund, ["fehler": fehler])
+            }
             await funkHqZurueck(spur, istSoftware: true, optionDa: true,
                                 grund: "fehler")
             return
         }
         diagMelden("funk_hq_an", ["grund": grund])
+        funkHqSpaeter(Self.funkPruefGrund, nach: Self.funkPruefFrist)
+    }
+
+    /// Für diesen Raum aufgeben — mit Diagnose-Zeile und dem Termin, an dem
+    /// die Erholung nachsieht (C6).
+    private func funkHqAufgeben(_ art: String, _ grund: String, _ extra: [String: Any] = [:]) {
+        SpracheFunkHq.geteilt.gescheitert = true
+        diagMelden(art, extra.merging(["grund": grund]) { $1 })
+        funkHqSpaeter(Self.funkErholGrund, nach: SpracheFunkHq.erholungNach)
+    }
+
+    /// Einen Abgleich später einreihen — nur für dieselbe Sitzung.
+    func funkHqSpaeter(_ grund: String, nach: TimeInterval) {
         let gemeint = sitzung
-        DispatchQueue.global().asyncAfter(deadline: .now() + Self.funkPruefFrist) { [weak self] in
+        DispatchQueue.global().asyncAfter(deadline: .now() + nach) { [weak self] in
             guard let self, sitzung == gemeint else { return }
-            funkHqAnstossen(Self.funkPruefGrund)
+            funkHqAnstossen(grund)
         }
+    }
+
+    /// Aus dem Routen-Beobachter: die Route merken (Erholung, Ruhe vor der
+    /// Prüfung) und, solange wir halten, nachsehen, ob HQ danach noch läuft.
+    func funkHqNachRoute() {
+        let f = SpracheFunkHq.geteilt
+        f.routeGesehen()
+        if f.haelt { funkHqSpaeter(Self.funkPruefGrund, nach: Self.funkPruefFrist) }
     }
 
     /// Wie lange der Kopfhörer für den Wechsel auf HQ Zeit bekommt, bevor
@@ -192,6 +218,7 @@ extension SpracheRaum {
     /// `funk_hq_an` → `funk_hq_gescheitert` im Bericht zeigt, ob er reicht.
     static let funkPruefFrist: TimeInterval = 3
     static let funkPruefGrund = "hq_pruefen"
+    static let funkErholGrund = "erholung"
 
     /// Zurück an das SDK.
     ///

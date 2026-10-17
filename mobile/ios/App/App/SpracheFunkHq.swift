@@ -54,6 +54,8 @@ final class SpracheFunkHq: @unchecked Sendable {
     private var _haelt = false
     private var uebernahmen: [CFAbsoluteTime] = []
     private var _gescheitert = false
+    private var gescheitertSeit: CFAbsoluteTime = 0
+    private var letzteRoute: CFAbsoluteTime = 0
     private var letzteArt = ""
     /// Das Gerät, für das wir halten (`uid` des Bluetooth-Ausgangs bei der
     /// Übernahme), und seit wann — Gegenprüfung C1.
@@ -92,7 +94,40 @@ final class SpracheFunkHq: @unchecked Sendable {
     /// Für diesen Raum aufgegeben (HQ springt nicht an, oder es pendelt).
     var gescheitert: Bool {
         get { sperre.withLock { _gescheitert } }
-        set { sperre.withLock { _gescheitert = newValue } }
+        set {
+            sperre.withLock {
+                if newValue, !_gescheitert { gescheitertSeit = CFAbsoluteTimeGetCurrent() }
+                _gescheitert = newValue
+            }
+        }
+    }
+
+    // MARK: - Erholung (Gegenprüfung C6)
+
+    /// Nach so langer ruhiger Route (kein Routenwechsel, seit aufgegeben) darf
+    /// HQ im selben Raum wieder versucht werden. Sonst verlor, wer in 30 s
+    /// zweimal die AirPods herausnahm, HQ für den ganzen Raum.
+    static let erholungNach: CFAbsoluteTime = 120
+
+    func routeGesehen() { sperre.withLock { letzteRoute = CFAbsoluteTimeGetCurrent() } }
+
+    /// Ist die Route seit `frist` ruhig — auch seit der eigenen Übernahme?
+    /// Für die Prüfung „läuft HQ noch?": ein Routenwechsel kurz davor heisst,
+    /// der Kopfhörer schaltet vielleicht gerade.
+    func ruhig(seit frist: CFAbsoluteTime, jetzt: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()) -> Bool {
+        sperre.withLock { jetzt - max(letzteRoute, haltSeit) >= frist - 0.05 }
+    }
+
+    /// `true`, wenn aufgegeben war und die Route lange genug ruhig ist —
+    /// dann gilt der Raum wieder als offen (auch die Pendelbremse).
+    func erholen(_ jetzt: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()) -> Bool {
+        sperre.withLock {
+            guard _gescheitert, jetzt - max(gescheitertSeit, letzteRoute) >= Self.erholungNach
+            else { return false }
+            _gescheitert = false
+            uebernahmen = []
+            return true
+        }
     }
 
     /// `true`, wenn sich die gemeldete Route geändert hat — eine

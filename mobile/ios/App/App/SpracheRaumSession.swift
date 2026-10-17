@@ -43,6 +43,7 @@ extension SpracheRaum {
                 SpracheFunkHq.geteilt.kopfhoererWeg(volle: ton.volle)
                 schickeEigenen()
                 funkHqAnstossen("route")
+                funkHqNachRoute()
             }
         }
         // **Eine Unterbrechung heisst: jemand anderes hat die Session.** Das
