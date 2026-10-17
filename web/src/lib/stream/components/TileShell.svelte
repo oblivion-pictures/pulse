@@ -222,8 +222,10 @@
     });
   });
 
-  // Rahmen fällt im Vollbild weg; das selbst gebaute Vollbild muss sich die
-  // Fläche zusätzlich selbst nehmen (`fixed inset-0`) — s. `eigenesVollbild`.
+  // Rahmen fällt im Vollbild weg; das selbst gebaute nimmt sich die Fläche
+  // selbst (`fixed inset-0`) und ist schwarz wie das echte — sonst schien quer
+  // neben dem 16:9-Bild der Seitengrund durch (`bg-bg-chat` ist dunkel fast
+  // durchsichtig, das <video> hat am Handy keinen eigenen Grund).
   //
   // `data-eigenes-vollbild` ist der Haken für das Eckfenster: navigiert der
   // Nutzer aus dem Kanal, während das selbst gebaute Vollbild an ist, wird die
@@ -233,11 +235,11 @@
   // selbst erfährt nie, ob sie angedockt ist).
   const containerClass = $derived(
     [
-      'bg-bg-chat flex h-full overflow-hidden',
+      'flex h-full overflow-hidden',
       isFullscreen
         ? 'rounded-none border-0'
         : 'rounded-2xl border border-border handy:rounded-none handy:border-0',
-      eigenesVollbild ? 'fixed inset-0 z-40' : ''
+      eigenesVollbild ? 'fixed inset-0 z-40 bg-black' : 'bg-bg-chat'
     ].join(' ')
   );
 
