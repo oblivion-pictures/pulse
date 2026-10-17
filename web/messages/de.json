@@ -3136,6 +3136,8 @@
   "appsperre_einstellung_text": "Beim Start der App wird Face ID oder dein Geräte-Code verlangt. Läuft Pulse im Hintergrund weiter, wird nicht erneut gefragt.",
   "settings_audio_bluetooth_hq_label": "Beste Tonqualität über Bluetooth",
   "settings_audio_bluetooth_hq_hint": "Braucht iOS 26 und passende AirPods. Die Wiedergabe wird stereo in 48 kHz statt Telefonqualität. Dafür übernimmt nicht mehr Apple die Echo-Unterdrückung, sondern Pulse — mit Kopfhörern im Ohr ist das der bessere Tausch, am Lautsprecher nicht (dort bleibt alles wie bisher).",
+  "settings_audio_ios_funk_hq_label": "Bluetooth-Kopfhörer in hoher Qualität",
+  "settings_audio_ios_funk_hq_hint": "Mit passenden Kopfhörern (zum Beispiel AirPods Pro 2) und iOS 26 hörst und sprichst du im Kanal klarer statt in Telefonqualität. Schalte das aus, wenn deine Stimme bei den anderen verzögert ankommt.",
   "settings_audio_ios_volle_ton_label": "Volle Tonqualität (Vergleich)",
   "settings_audio_ios_volle_ton_hint": "Schaltet Apples Sprachverarbeitung ab und sendet in der Tonqualität des Servers. Klingt voller, kann am Lautsprecher aber eher hallen. Gilt ab dem nächsten Beitritt.",
   "settings_audio_ios_diagnose_label": "Diagnose bei Tonausfall senden",

@@ -242,6 +242,18 @@ export interface SpracheWachePlugin {
 export const SPRACHE_WACHE_METHODEN: readonly string[] = ['diagnose'];
 
 /**
+ * Bluetooth-Kopfhörer in hoher Qualität (iOS 26, `SpracheFunkHq.swift`) —
+ * Schalter und Kennzeichen zugleich, aus demselben Grund wie der Wächter
+ * NICHT in `SPRACHE_METHODEN`: ein älterer Bau bliebe sonst ganz beim
+ * Web-Weg, statt nur ohne diesen Schalter.
+ */
+export interface SpracheFunkHqPlugin {
+  funkHq(o: { an: boolean }): Promise<void>;
+}
+
+export const SPRACHE_FUNK_HQ_METHODEN: readonly string[] = ['funkHq'];
+
+/**
  * Jede Methode, die die Oberfläche auf dem nativen Weg an der Hülle ruft — die
  * Liste, gegen die die Weiche den installierten Bau prüft
  * (`iosSpracheWeiche.ts`). Der Bau muss ALLE kennen, sonst bleibt es beim

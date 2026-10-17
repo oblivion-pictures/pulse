@@ -6,7 +6,9 @@
   iOS-Hülle nichts.
 
   - Bluetooth-HQ: Begründung samt Abwägung an der Einstellung `bluetoothHq`
-    (`settings-registry/sections/audio.ts`).
+    (`settings-registry/sections/audio.ts`). Der Schalter wirkt nur auf dem
+    Web-Weg und steht deshalb nur dort. Auf dem nativen Weg steht an seiner
+    Stelle `iosFunkHq` — nur, wenn der Bau ihn trägt (`nativeFunkHqDa`).
   - Volle Tonqualität: ein Vergleichsschalter (Vorgabe aus), nur, wenn der
     App-Bau ihn trägt (`nativeWacheDa`), Begründung an `iosVolleTonqualitaet`.
     **Vorerst ausgeblendet** (Eigentümer-Entscheid 2026-10-17: es gilt Apples
@@ -20,7 +22,12 @@
   import { onMount } from 'svelte';
   import Switch from '$lib/components/form/Switch.svelte';
   import { m } from '$lib/paraglide/messages.js';
-  import { nativeWacheDa } from '$lib/platform/iosSpracheWeiche';
+  import { funkHqSetzen } from '$lib/platform/iosFunkHq';
+  import {
+    nativeFunkHqDa,
+    nativeWacheDa,
+    nativerSprachwegDa
+  } from '$lib/platform/iosSpracheWeiche';
   import { VOLLE_TONQUALITAET_ANGEBOTEN } from '$lib/platform/iosVolleTon';
   import { tonHqFunkSetzen } from '$lib/platform/iosTon';
   import { isCapacitorIOS } from '$lib/platform/runtime';
@@ -29,6 +36,8 @@
 
   const ios = isCapacitorIOS();
   const volleTonAnbieten = ios && VOLLE_TONQUALITAET_ANGEBOTEN && nativeWacheDa();
+  const webHqAnbieten = ios && !nativerSprachwegDa();
+  const funkHqAnbieten = ios && nativeFunkHqDa();
   let diagnoseSenden = $state(true);
 
   onMount(async () => {
@@ -54,16 +63,30 @@
 {/snippet}
 
 {#if ios}
-  {@render schalter(
-    'settings-bluetooth-hq',
-    m.settings_audio_bluetooth_hq_label(),
-    m.settings_audio_bluetooth_hq_hint(),
-    settings.audio.bluetoothHq,
-    (v) => {
-      settings.setBluetoothHq(v);
-      tonHqFunkSetzen(v);
-    }
-  )}
+  {#if webHqAnbieten}
+    {@render schalter(
+      'settings-bluetooth-hq',
+      m.settings_audio_bluetooth_hq_label(),
+      m.settings_audio_bluetooth_hq_hint(),
+      settings.audio.bluetoothHq,
+      (v) => {
+        settings.setBluetoothHq(v);
+        tonHqFunkSetzen(v);
+      }
+    )}
+  {/if}
+  {#if funkHqAnbieten}
+    {@render schalter(
+      'settings-ios-funk-hq',
+      m.settings_audio_ios_funk_hq_label(),
+      m.settings_audio_ios_funk_hq_hint(),
+      settings.audio.iosFunkHq,
+      (v) => {
+        settings.setIosFunkHq(v);
+        funkHqSetzen(v);
+      }
+    )}
+  {/if}
   {#if volleTonAnbieten}
     {@render schalter(
       'settings-ios-volle-tonqualitaet',

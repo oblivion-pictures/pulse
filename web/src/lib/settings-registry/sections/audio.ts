@@ -74,6 +74,19 @@ export type AudioSettings = {
    */
   bluetoothHq: boolean;
   /**
+   * Bluetooth-Kopfhörer in hoher Qualität im NATIVEN Sprachkanal der iOS-App
+   * (iOS 26, Kopfhörer wie AirPods Pro 2) — **Vorgabe an**. Nicht dasselbe
+   * wie `bluetoothHq`: der wirkt nur auf dem Web-Weg, und dort ist er aus den
+   * oben genannten Gründen schädlich; auf dem nativen Weg gehört die Session
+   * LiveKit, und `bluetoothHq` erreichte sie nie.
+   *
+   * An heisst nur „erlaubt": die Hülle schaltet den Weg allein, wenn iOS und
+   * Kopfhörer ihn tragen, und nur mit Bluetooth-Ausgabe; sonst bleibt es bei
+   * Apples Sprachverarbeitung (`SpracheFunkHq.swift`). Aus ist der Rückweg,
+   * falls die höhere Mikrofon-Latenz stört, vor der Apple selbst warnt.
+   */
+  iosFunkHq: boolean;
+  /**
    * „Volle Tonqualität" im nativen Sprachkanal der iOS-App — ein
    * VERGLEICHSSCHALTER, Vorgabe aus. An: WebRTCs eigene Echo-, Pegel- und
    * Rauschverarbeitung statt Apples Voice-Processing, das am eingebauten
@@ -111,6 +124,7 @@ const DEFAULTS_AUDIO: AudioSettings = {
   echoCancellation: true,
   noiseSuppression: 'rnnoise_gated',
   bluetoothHq: false,
+  iosFunkHq: true,
   iosVolleTonqualitaet: false,
   noiseGateThresholdDb: NOISE_GATE_DB_DEFAULT,
   stereo: false,
@@ -152,6 +166,7 @@ export const AUDIO_SECTION: SectionConfig<AudioSettings> = {
       outputDeviceLabel: str(a.outputDeviceLabel, d.outputDeviceLabel),
       echoCancellation: bool(a.echoCancellation, d.echoCancellation),
       bluetoothHq: a.bluetoothHq === true,
+      iosFunkHq: a.iosFunkHq !== false,
       iosVolleTonqualitaet: a.iosVolleTonqualitaet === true,
       // Migration: pre-binary configs may carry 'browser'/'rnnoise'/'deepfilternet'
       // (DFN3 was removed 2026-05-16). Any non-'off', non-current legacy value

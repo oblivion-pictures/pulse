@@ -38,6 +38,7 @@
   import { voipTokenVerfolgen } from '$lib/platform/voipToken';
   import { schnellwahlSetzen, schnellwahlVerfolgen } from '$lib/platform/schnellwahl';
   import { tonHqFunkSetzen } from '$lib/platform/iosTon';
+  import { funkHqSetzen } from '$lib/platform/iosFunkHq';
   import { settings } from '$lib/stores/settings.svelte';
   import { schnellwahlEintraege } from '$lib/platform/schnellwahlAuswahl';
   import VerbindungsHinweis from '$lib/components/VerbindungsHinweis.svelte';
@@ -319,6 +320,8 @@
     // nicht erst beim Umlegen des Schalters, sonst gilt sie nach einem
     // Neustart nicht (die Session wird beim Beitritt eingerichtet).
     tonHqFunkSetzen(settings.audio.bluetoothHq);
+    // Dasselbe für den nativen Sprachkanal (`platform/iosFunkHq.ts`).
+    funkHqSetzen(settings.audio.iosFunkHq);
 
     // Vom Betreiber gelöschte Self-Host-Server aus der lokalen Liste räumen
     // (öffentliche Suspend-Liste der Cloud, anonymer Abgleich). Fire-and-forget.

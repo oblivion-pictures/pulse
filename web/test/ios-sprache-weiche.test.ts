@@ -140,6 +140,29 @@ test('Wächter: der heutige Bau trägt ihn', async () => {
   assert.equal(nativeWacheDa(), true);
 });
 
+test('Bluetooth-HQ: ein Bau ohne `funkHq` bleibt nativ, nur ohne den Schalter', async () => {
+  const { nativerSprachwegBefund, nativeFunkHqDa } = await import(
+    '../src/lib/platform/iosSpracheWeiche.ts'
+  );
+  const { SPRACHE_METHODEN } = await import('../src/lib/platform/iosSpracheTypen.ts');
+  // TestFlight 8.1: nativer Weg samt Wächter, aber ohne Bluetooth-HQ.
+  sprachKopfSetzen(kopfWieDieHuelle('SprachePlugin', [...SPRACHE_METHODEN, 'diagnose']));
+  assert.deepEqual(nativerSprachwegBefund(), { nativ: true });
+  assert.equal(nativeFunkHqDa(), false);
+  assert.ok(!SPRACHE_METHODEN.includes('funkHq'));
+});
+
+test('Bluetooth-HQ: der heutige Bau trägt ihn', async () => {
+  const { nativeFunkHqDa } = await import('../src/lib/platform/iosSpracheWeiche.ts');
+  const swift = readFileSync(
+    new URL('../../mobile/ios/App/App/SprachePlugin.swift', import.meta.url),
+    'utf8'
+  );
+  const methoden = [...swift.matchAll(/CAPPluginMethod\(name: "(\w+)"/g)].map((t) => t[1]);
+  sprachKopfSetzen(kopfWieDieHuelle('SprachePlugin', methoden));
+  assert.equal(nativeFunkHqDa(), true);
+});
+
 test('ausserhalb von iOS entscheidet die Plattform, nicht der Kopf', async () => {
   const { nativerSprachwegBefund } = await import('../src/lib/platform/iosSpracheWeiche.ts');
   Object.defineProperty(globalThis, 'navigator', {

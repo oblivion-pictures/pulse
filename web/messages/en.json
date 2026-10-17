@@ -3136,6 +3136,8 @@
   "appsperre_einstellung_text": "Face ID or your device passcode is required when the app starts. While Pulse keeps running in the background, it will not ask again.",
   "settings_audio_bluetooth_hq_label": "Best audio quality over Bluetooth",
   "settings_audio_bluetooth_hq_hint": "Requires iOS 26 and supported AirPods. Playback becomes 48 kHz stereo instead of phone quality. In exchange, echo cancellation comes from Pulse rather than Apple — with earbuds that is the better trade, with the speaker it is not (there nothing changes).",
+  "settings_audio_ios_funk_hq_label": "Bluetooth headphones in high quality",
+  "settings_audio_ios_funk_hq_hint": "With supported headphones (for example AirPods Pro 2) and iOS 26, you hear and speak more clearly in the channel instead of phone quality. Turn this off if others hear your voice with a delay.",
   "settings_audio_ios_volle_ton_label": "Full audio quality (comparison)",
   "settings_audio_ios_volle_ton_hint": "Turns off Apple's voice processing and sends at the server's audio quality. Sounds fuller, but may echo more on the speaker. Applies from the next time you join.",
   "settings_audio_ios_diagnose_label": "Send diagnostics when audio fails",

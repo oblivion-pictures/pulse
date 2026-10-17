@@ -32,6 +32,7 @@ import type {
   NativerTeilnehmer,
   NativerWunsch,
   NativerZustand,
+  SpracheFunkHqPlugin,
   SprachePlugin,
   SpracheWachePlugin
 } from './iosSpracheTypen';
@@ -62,11 +63,11 @@ export { nativerSprachwegBefund, nativerSprachwegDa, nativeWacheDa } from './ios
  * Der Rest des Projekts macht es längst so (`schnellwahl.ts`, `appSperre`,
  * `iosWachhalten`, Anrufe).
  */
-const nativ = registerPlugin<SprachePlugin & SpracheWachePlugin>('SprachePlugin');
+const nativ = registerPlugin<SprachePlugin & SpracheWachePlugin & SpracheFunkHqPlugin>('SprachePlugin');
 
 /** Das Plugin der Hülle, `null` ausserhalb — auch für `iosSpracheWache.ts`,
  *  damit es genau EINMAL registriert wird. */
-export function huelle(): (SprachePlugin & SpracheWachePlugin) | null {
+export function huelle(): (SprachePlugin & SpracheWachePlugin & SpracheFunkHqPlugin) | null {
   // **Der Guard ist Pflicht, nicht Vorsicht.** Ausserhalb der Hülle ist das
   // ein Web-Stub, und dessen `addListener` WIRFT („not implemented on web") —
   // im Browser riss das schon einmal den ganzen Start mit (Befund 2026-09-09
@@ -78,7 +79,7 @@ export function huelle(): (SprachePlugin & SpracheWachePlugin) | null {
 function rufen<T>(
   befehl: string,
   frist: number,
-  ruf: (p: SprachePlugin & SpracheWachePlugin) => Promise<T>
+  ruf: (p: SprachePlugin & SpracheWachePlugin & SpracheFunkHqPlugin) => Promise<T>
 ): Promise<T | null> {
   const p = huelle();
   return p ? mitFrist(ruf(p), frist, befehl) : Promise.resolve(null);

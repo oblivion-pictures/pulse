@@ -22,6 +22,9 @@ test('der gespeicherte Wert übersteht das Neuladen (parse)', () => {
   assert.equal(geladen.iosVolleTonqualitaet, true);
   assert.equal(geladen.bluetoothHq, true);
   assert.equal(parse({}).iosVolleTonqualitaet, false);
+  // Bluetooth-HQ im nativen Kanal: Vorgabe an, ein gespeichertes „aus" bleibt.
+  assert.equal(parse({}).iosFunkHq, true);
+  assert.equal(parse({ iosFunkHq: false }).iosFunkHq, false);
 });
 
 test('die Schalter gehen über die Setter der Registry', () => {
@@ -31,6 +34,8 @@ test('die Schalter gehen über die Setter der Registry', () => {
   const ui = lesen('../src/lib/components/settings/IosTonEinstellungen.svelte');
   assert.match(ui, /settings\.setIosVolleTonqualitaet\(v\)/);
   assert.match(ui, /settings\.setBluetoothHq\(v\)/);
+  assert.match(store, /setIosFunkHq\(v: boolean\): void \{\s*this\.#audio\.set\('iosFunkHq', v\);/);
+  assert.match(ui, /settings\.setIosFunkHq\(v\)/);
 });
 
 function dateien(dir: string): string[] {

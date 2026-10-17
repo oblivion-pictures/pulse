@@ -243,6 +243,9 @@ class SettingsStore {
   setIosVolleTonqualitaet(v: boolean): void {
     this.#audio.set('iosVolleTonqualitaet', v);
   }
+  setIosFunkHq(v: boolean): void {
+    this.#audio.set('iosFunkHq', v);
+  }
 
   // --- voice / PTT setters ---
   setPttMode(v: boolean): void {

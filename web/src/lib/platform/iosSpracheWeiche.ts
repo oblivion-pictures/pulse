@@ -12,7 +12,11 @@
  */
 
 import { huellenBefund } from './huelleKann.ts';
-import { SPRACHE_METHODEN, SPRACHE_WACHE_METHODEN } from './iosSpracheTypen.ts';
+import {
+  SPRACHE_FUNK_HQ_METHODEN,
+  SPRACHE_METHODEN,
+  SPRACHE_WACHE_METHODEN
+} from './iosSpracheTypen.ts';
 import { isCapacitorIOS } from './runtime.ts';
 
 /**
@@ -80,4 +84,13 @@ export function nativerSprachwegDa(): boolean {
  */
 export function nativeWacheDa(): boolean {
   return nativerSprachwegDa() && huellenBefund('SprachePlugin', SPRACHE_WACHE_METHODEN).da;
+}
+
+/**
+ * Trägt der Bau den Bluetooth-HQ-Weg im nativen Sprachkanal (seit TestFlight
+ * nach 8.1)? Nur dann gibt es den Schalter dafür — und nur dann ist der alte
+ * Schalter `bluetoothHq` überflüssig, der allein auf dem Web-Weg wirkt.
+ */
+export function nativeFunkHqDa(): boolean {
+  return nativerSprachwegDa() && huellenBefund('SprachePlugin', SPRACHE_FUNK_HQ_METHODEN).da;
 }
