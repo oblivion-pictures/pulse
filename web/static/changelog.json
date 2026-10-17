@@ -2,6 +2,17 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-17.4",
+      "date": "2026-10-17",
+      "style": "Sachlich",
+      "title": "Übertragungen auf dem iPhone",
+      "items": [
+        "Der Ton von Übertragungen ist auf dem iPhone auch im Lautlos-Modus und bei gesperrtem Bildschirm zu hören, in Stereo, wo das Gerät es kann.",
+        "Im Sprachkanal wird der Übertragungs-Ton am Lautsprecher leiser, solange dein Mikrofon offen ist.",
+        "Die Einstellung „Volle Tonqualität“ entfällt vorerst; das iPhone nutzt seine eigene Sprachverarbeitung."
+      ]
+    },
+    {
       "id": "2026-10-17.3",
       "date": "2026-10-17",
       "style": "Sachlich",
