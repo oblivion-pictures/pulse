@@ -14,7 +14,6 @@
   import DMChannelList from '$lib/components/DMChannelList.svelte';
   import { guilds } from '$lib/stores/guilds.svelte';
   import { currentServerUserId } from '$lib/stores/currentServerUser';
-  import { navDrawer } from '$lib/stores/navDrawer.svelte';
   import { selectGuild, selectDM } from '$lib/navigation/railNavi';
   import { viewport } from '$lib/stores/viewport.svelte';
   import { friendRequests } from '$lib/stores/friendRequests.svelte';
@@ -97,10 +96,7 @@
   onSelect={selectGuild}
   onCreateClick={() => goto('/app?add=create')}
   onJoinClick={() => goto('/app?add=join')}
-  onHomeClick={async () => {
-    navDrawer.open = !navDrawer.open;
-    await goto('/app/friends');
-  }}
+  onHomeClick={() => goto('/app/friends')}
 />
 
 <!-- Die DM-Spalte gehoert ab `md` neben die Freunde; auf dem Handy sind

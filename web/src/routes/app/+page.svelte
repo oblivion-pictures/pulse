@@ -16,7 +16,6 @@
   import { serverState } from '$lib/ws/server-state.svelte';
   import { joinGuildByInvite } from '$lib/guilds/joinByInvite';
   import { erstelleCommunity } from '$lib/guilds/erstellen';
-  import { navDrawer } from '$lib/stores/navDrawer.svelte';
   import { voiceAutoConnect } from '$lib/voice/autoconnect.svelte';
   import { weiterleiten } from '$lib/navigation/navigationsHerkunft';
   import DMChannelList from '$lib/components/DMChannelList.svelte';
@@ -87,7 +86,6 @@
     // beitritt (schon auf einem anderen Gerät im Kanal, Tab im Hintergrund).
     const auto = voiceAutoConnect.validTarget();
     if (auto?.guildId && guilds.list.some((g) => g.id === auto.guildId)) {
-      navDrawer.open = true;
       void weiterleiten(`/app/guilds/${auto.guildId}/channels/${auto.channelId}`, {
         replaceState: true
       });
@@ -113,9 +111,8 @@
   currentUserId={currentServerUserId()}
   homeActive={true}
   onSelect={(g) => {
-    // Wie auf den anderen Seiten: Community-Tap öffnet zuerst die Kanal-Liste
-    // (mobiler Drawer), nicht direkt den Chat des ersten Textkanals.
-    navDrawer.open = true;
+    // Wie auf den anderen Seiten: Community-Tap öffnet zuerst die Kanal-Liste,
+    // nicht direkt den Chat des ersten Textkanals.
     goto(`/app/guilds/${g.id}/channels/_`);
   }}
   onCreateClick={() => { createMode = 'create'; creating = true; }}
