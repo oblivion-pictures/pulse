@@ -73,6 +73,7 @@
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { registriereZurueckTaste } from '$lib/platform/zurueckTaste';
+  import { registriereZurueckWischen } from '$lib/platform/zurueckWischen';
   import { istRaumBereich, merkeRaumPfad, raumPfadNachAuflegen } from '$lib/navigation/letzterRaumBereich.svelte';
   import { untrack } from 'svelte';
   import { installiereLesestandSync } from '$lib/api/lesestand';
@@ -213,6 +214,8 @@
     viewport.init();
     // Android-Hülle: Zurück-Taste navigiert in der App hoch statt zu schließen.
     registriereZurueckTaste();
+    // iOS-Hülle: Zurück per Wischen vom linken Rand, dieselbe Eltern-Tabelle.
+    registriereZurueckWischen();
     // Externe Links (_blank) in der Hülle ins System-Browser-Blatt lenken.
     externeLinksAbriss = installiereExterneLinks();
     tiefenlinkAbriss = installiereUniversalLinks();

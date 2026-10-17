@@ -16,26 +16,7 @@ import { goto } from '$app/navigation';
 import { page } from '$app/state';
 import { isCapacitorAndroid } from './runtime';
 import { BEREICHE } from '$lib/navigation/tabs';
-
-/** Pfad → übergeordnete Route. Erster Treffer gewinnt. */
-const ELTERN: { test: RegExp; ziel: (m: RegExpMatchArray) => string }[] = [
-  // Kanal-Bildschirm (Chat wie Voice) → Kanalliste des Raums — dasselbe Ziel
-  // wie der Zurück-Pfeil in ChatView/VoiceChannelView.
-  {
-    test: /^\/app\/guilds\/([^/]+)\/channels\/[^/]+$/,
-    ziel: (m) => `/app/rooms/${m[1]}`
-  },
-  // Raum-Ansicht → Räume-Übersicht.
-  { test: /^\/app\/rooms\/[^/]+$/, ziel: () => '/app/rooms' },
-  // Entdecken ist der Ausgang aus der Räume-Leere → zurück in die Räume.
-  { test: /^\/app\/discover$/, ziel: () => '/app/rooms' },
-  // DM-Chat → Chats-Liste.
-  { test: /^\/app\/@me\/[^/]+$/, ziel: () => '/app/@me' },
-  // Einstellungs-Unterseite → Du-Bereich. Fehlte, und ohne Regel fiel die
-  // Taste dort auf `history.back()` durch: was davor kam, entschied dann der
-  // Zufall statt der Bildschirm-Aufbau.
-  { test: /^\/app\/me\/[^/]+$/, ziel: () => '/app/me' }
-];
+import { elterVon } from '$lib/navigation/elternRoute';
 
 /**
  * Die Bereichs-Wurzeln — hier beendet Zurück die Navigation.
@@ -46,14 +27,6 @@ const ELTERN: { test: RegExp; ziel: (m: RegExpMatchArray) => string }[] = [
  * mitpflegt.
  */
 const WURZELN = new Set(BEREICHE.map((b) => b.href));
-
-function elterVon(pfad: string): string | null {
-  for (const regel of ELTERN) {
-    const m = pfad.match(regel.test);
-    if (m) return regel.ziel(m);
-  }
-  return null;
-}
 
 let registriert = false;
 
