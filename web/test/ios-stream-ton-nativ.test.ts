@@ -146,3 +146,11 @@ test('S3: beim Beitritt holt der Stream-Ton seine Anforderung erst nach dem Beit
     /let streamTonZurueck = await sitzungFrischHerstellen\(\)[\s\S]{0,300}defer \{ if streamTonZurueck \{ StreamTonSitzung\.geteilt\.automatikAn\(grund: "beitritt"\) \} \}/
   );
 });
+
+test('S4: das Loslassen kann nicht an einem Deaktivieren scheitern', () => {
+  const src = quelle('StreamTonSitzung.swift');
+  const los = /private func loslassen[\s\S]*?\n    \}\n/.exec(src)?.[0] ?? '';
+  assert.match(los, /isAutomaticDeactivationEnabled = false/);
+  assert.ok(los.indexOf('= false') < los.indexOf('h.release()'), 'erst ausschalten, dann loslassen');
+  assert.match(los, /defer \{ beobachter\.isAutomaticDeactivationEnabled = vorher \}/);
+});

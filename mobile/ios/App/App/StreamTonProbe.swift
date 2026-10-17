@@ -19,7 +19,8 @@ import UIKit
     /// Handshake, Stereo (`codecKanaele`, `fmtp`, Pegel L/R getrennt), dass
     /// LiveKit die Session ohne Sprachraum auf `.playback` stellt, Lautstärke,
     /// Verzögerung, die Übergabe `automatikAus`/`automatikAn` ohne Abbruch,
-    /// und dass die Session nach dem Ende wieder frei ist.
+    /// und dass nach dem Ende keine Anforderung mehr steht (Session bleibt
+    /// aktiv, s. `StreamTonSitzung.loslassen`).
     enum StreamTonProbe {
         static func ausStartargumenten() {
             guard let roh = UserDefaults.standard.string(forKey: "PulseStreamTonProbe") else { return }

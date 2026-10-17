@@ -60,7 +60,8 @@ final class StreamTonSitzung: @unchecked Sendable {
         return true
     }
 
-    /// Ein Gerät steht (seine Maschine ist schon angehalten).
+    /// Ein Gerät steht (seine Maschine ist schon angehalten). Deaktiviert die
+    /// Session nicht (`loslassen`).
     func abmelden() {
         sperre.lock()
         nutzer = max(0, nutzer - 1)
@@ -98,11 +99,25 @@ final class StreamTonSitzung: @unchecked Sendable {
         if laeuft { wiederanlauf?(grund) }
     }
 
-    /// Scheitert das Loslassen (LiveKit konnte nicht deaktivieren), hält die
-    /// Buchführung die Anforderung weiter — die Session bleibt dann aktiv, was
-    /// harmlos ist; gemeldet wird es trotzdem.
+    /// **Loslassen deaktiviert nie** (Gegenprüfung S4). Ohne Kanal hiesse das
+    /// Loslassen der letzten Anforderung sonst `setActive(false)` — und wirft
+    /// das (etwa „busy", 560030580), stellt LiveKit seinen alten Stand wieder
+    /// her (`updateRequirements`), während das Handle schon verbraucht ist:
+    /// unsere Anforderung bliebe für immer in seiner Buchführung, LiveKit sähe
+    /// bis zum Prozessende nie wieder „nichts aktiv", weder zum Aktivieren beim
+    /// Beitritt noch zum Deaktivieren — die Klasse K2, nur dauerhaft. Deshalb
+    /// ist `isAutomaticDeactivationEnabled` für die Dauer des Loslassens aus.
+    /// Die Session bleibt danach aktiv, ohne Ein- und Ausgabe; sie ist dann
+    /// mischbar (`.playback` mit `.mixWithOthers`) und stört niemanden, und der
+    /// nächste Nutzer (Kanal, Stream, `iosTon`) richtet sie ohnehin neu ein.
+    /// Verlässt der Kanal in genau diesem Augenblick, entfällt auch sein
+    /// Deaktivieren — aus demselben Grund harmlos.
     private func loslassen(_ h: SessionRequirementHandle?) {
         guard let h else { return }
+        let beobachter = AudioManager.shared.audioSession
+        let vorher = beobachter.isAutomaticDeactivationEnabled
+        beobachter.isAutomaticDeactivationEnabled = false
+        defer { beobachter.isAutomaticDeactivationEnabled = vorher }
         do {
             try h.release()
         } catch {
