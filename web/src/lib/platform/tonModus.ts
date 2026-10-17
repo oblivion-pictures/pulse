@@ -2,60 +2,24 @@
  * Welche Audio-Betriebsart die App gerade braucht — die reine Entscheidung.
  *
  * **Warum es überhaupt eine Entscheidung gibt:** Auf iOS gibt es EINE
- * Audio-Session je Prozess, aber zwei Verbraucher — ein Sprachkanal
- * (Mikrofon, Echo-Auslösen, Bluetooth) und der Ton eines angesehenen Streams
- * oder einer Watch-Party (nur Wiedergabe). Wer beide unabhängig voneinander
- * an- und abschaltet, baut genau den Fehler, den der Review am 2026-10-08
- * gefunden hat: Das Verlassen eines Sprachkanals rief `setActive(false)` und
- * riss damit den laufenden Stream-Ton mit, weil die Session prozessweit gilt.
- *
- * **Voice gewinnt**, und zwar nicht aus Vorliebe: `playAndRecord`+`voiceChat`
- * kann Wiedergabe mit, `playback` aber kein Mikrofon. Die stärkere Betriebsart
- * ist die, die beides trägt.
+ * Audio-Session je Prozess. Den Sprachkanal und die Anrufe hält in der Hülle
+ * der native Raum (Eigentümer-Entscheide E6, 2026-10-18: kein Web-Weg mehr);
+ * hier bleibt der Ton einer angesehenen Stream-Kachel oder Watch-Party in der
+ * WebView (nur Wiedergabe). Der Fehler, den der Review am 2026-10-08 fand —
+ * das Verlassen eines Sprachkanals rief `setActive(false)` und riss damit den
+ * laufenden Stream-Ton mit, weil die Session prozessweit gilt —, lebt heute in
+ * der Regel `nativerRaum` weiter: solange die Hülle einen Raum hält, wird die
+ * Session hier nicht angefasst (`tonSchritt`).
  *
  * Importfrei, damit Nodes Testläufer die Entscheidung prüfen kann (s.
  * `pnpm test:unit`-Falle im CLAUDE.md); die Verdrahtung ans Plugin steht
  * daneben in `iosTon.ts`.
  */
 
-export type TonModus = 'voice' | 'wiedergabe' | 'aus';
+export type TonModus = 'wiedergabe' | 'aus';
 
-export function zielModus(voiceAktiv: boolean, anzahlWiedergaben: number): TonModus {
-  if (voiceAktiv) return 'voice';
-  if (anzahlWiedergaben > 0) return 'wiedergabe';
-  return 'aus';
-}
-
-/** Was auf einen gemeldeten Wegwechsel zu tun ist. */
-export type WegAntwort = 'ignorieren' | 'uebernehmen' | 'neu-einrichten';
-
-/**
- * Entscheidet, ob ein gemeldeter Wegwechsel eine neue Einrichtung braucht.
- *
- * **Warum das eine eigene Funktion ist.** Bis zum 2026-10-10 beantwortete
- * `iosTon.ts` dieselbe Frage mit einer Zeitfrist („ein Wechsel kurz nach dem
- * eigenen Einrichten ist dessen Folge"), weil der Binder die Nutzlast des
- * Ereignisses wegwarf. Das verlangsamte die Rueckkopplung, statt sie zu
- * beenden: am Geraet nachgemessen blieb eine Einrichtung alle 2,4–2,9 s
- * uebrig, mitten in den Beitritt hinein. Mit dem Tonweg im Ereignis ist es
- * ein Vergleich — und ein Vergleich laesst sich pruefen, eine Frist nicht.
- *
- * - `voiceAktiv === false`: ohne Mikrofon richtet sich die Session nicht nach
- *   dem Weg. Nur mitschreiben (`uebernehmen`), damit der naechste Beitritt
- *   nicht grundlos neu einrichtet.
- * - `angewandt === null`: der Ausgangszustand ist unbekannt. Ein unbekannter
- *   Zustand ist kein Wechsel — uebernehmen, nicht einrichten.
- * - gleicher Weg: Folge der eigenen Einrichtung. `setCategory`/`setActive`
- *   loesen selbst Routenwechsel aus; die duerfen keine weitere ausloesen.
- */
-export function wegAntwort(
-  voiceAktiv: boolean,
-  gemeldet: string,
-  angewandt: string | null
-): WegAntwort {
-  if (!voiceAktiv) return 'uebernehmen';
-  if (angewandt === null) return 'uebernehmen';
-  return gemeldet === angewandt ? 'ignorieren' : 'neu-einrichten';
+export function zielModus(anzahlWiedergaben: number): TonModus {
+  return anzahlWiedergaben > 0 ? 'wiedergabe' : 'aus';
 }
 
 /** Darf `iosTon` die Session jetzt einrichten? */
@@ -72,18 +36,14 @@ export type TonSchritt = 'nichts' | 'anwenden';
  *   bei einer Änderung SEINER Anforderungen neu ein, also blieb es so
  *   (Bughunt 2026-10-11, K2, am SDK-Quelltext nachgelesen). Dasselbe galt für
  *   einen Direktanruf neben dem nativen Kanal.
- * - `erzwingen`: der Weg oder die Bluetooth-Wahl hat sich geändert — gleiches
- *   Ziel, aber eine andere Einrichtung dahinter.
  * - sonst nur, wenn das Ziel nicht schon angewandt ist.
  */
 export function tonSchritt(z: {
   ziel: TonModus;
   angewandt: TonModus;
   nativerRaum: boolean;
-  erzwingen: boolean;
 }): TonSchritt {
   if (z.nativerRaum) return 'nichts';
-  if (z.erzwingen) return 'anwenden';
   return z.ziel === z.angewandt ? 'nichts' : 'anwenden';
 }
 

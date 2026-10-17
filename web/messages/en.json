@@ -3135,6 +3135,7 @@
   "appsperre_abmelden": "Sign out",
   "appsperre_kein_code_hinweis": "This iPhone no longer has a passcode, so the app lock cannot be verified. Sign out and sign in again to continue.",
   "voice_ios_app_veraltet": "Please update the app via TestFlight to use voice channels.",
+  "anruf_ios_app_veraltet": "Please update the app via TestFlight to use calls.",
   "datei_speichern_fehler": "The file could not be saved.",
   "datei_speichern_bereit": "The file is ready.",
   "datei_speichern_teilen": "Save",

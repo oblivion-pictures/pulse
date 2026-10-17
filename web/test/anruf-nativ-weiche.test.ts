@@ -57,7 +57,7 @@ test('heutiger Bau (Sprache + Anruf aus den Swift-Quellen): nativer Anrufweg', a
   assert.equal(nativerAnrufwegDa(), true);
 });
 
-test('Bau mit dem alten Anruf-Plugin (ankommen, beenden, voipToken): Web-Weg', async () => {
+test('Bau mit dem alten Anruf-Plugin (ankommen, beenden, voipToken): kein nativer Weg', async () => {
   const { nativerAnrufwegDa } = await import('../src/lib/platform/anrufNativWeiche.ts');
   köpfeSetzen(sprache(), kopf('Anruf', ['ankommen', 'beenden', 'voipToken']));
   assert.equal(nativerAnrufwegDa(), false);
@@ -74,4 +74,46 @@ test('jede Methode, die das Web ruft, steht in pluginMethods der Hülle', async 
   const inDerHülle = new Set(swiftMethoden('AnrufPlugin.swift'));
   const fehlen = ANRUF_RAUM_METHODEN.filter((m) => !inDerHülle.has(m));
   assert.deepEqual(fehlen, []);
+});
+
+test('E6: in der iOS-Hülle ist ein Bau ohne nativen Anrufweg „veraltet" — kein Web-Anruf', async () => {
+  const { anrufwegVeraltet } = await import('../src/lib/platform/anrufNativWeiche.ts');
+  // Heutiger Bau: nativ, nicht veraltet.
+  köpfeSetzen(sprache(), anrufHeute());
+  assert.equal(anrufwegVeraltet(), false);
+  // Altes Anruf-Plugin, fehlendes Anruf-Plugin, fehlender Sprachweg: veraltet.
+  köpfeSetzen(sprache(), kopf('Anruf', ['ankommen', 'beenden', 'voipToken']));
+  assert.equal(anrufwegVeraltet(), true);
+  köpfeSetzen(sprache());
+  assert.equal(anrufwegVeraltet(), true);
+  köpfeSetzen(anrufHeute());
+  assert.equal(anrufwegVeraltet(), true);
+});
+
+test('E6: ausserhalb der iOS-Hülle bleibt der Web-Anruf, nie „veraltet"', async () => {
+  const { anrufwegVeraltet } = await import('../src/lib/platform/anrufNativWeiche.ts');
+  const vorher = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { userAgent: 'Mozilla/5.0 (Linux; Android 15)', maxTouchPoints: 5 },
+    configurable: true
+  });
+  try {
+    köpfeSetzen();
+    assert.equal(anrufwegVeraltet(), false);
+  } finally {
+    if (vorher) Object.defineProperty(globalThis, 'navigator', vorher);
+  }
+});
+
+test('E6: der Anruf-Store lehnt in der veralteten Hülle ab statt zu klingeln', () => {
+  const src = readFileSync(
+    new URL('../src/lib/anrufe/anruf.svelte.ts', import.meta.url),
+    'utf8'
+  );
+  const guards = [...src.matchAll(/if \(anrufwegVeraltet\(\)\) \{([\s\S]*?)\n    \}/g)].map((x) => x[1]);
+  assert.equal(guards.length, 2, 'starten() und eingehend() prüfen');
+  for (const g of guards) assert.match(g, /toast\.error\(m\.anruf_ios_app_veraltet\(\)\)/);
+  // Eingehend: Gegenseite erfährt es, es klingelt nichts.
+  assert.match(guards[1], /anrufAblehnen\(evt\.call_id\)/);
+  assert.ok(src.indexOf('anrufwegVeraltet()') < src.indexOf('this.medienWaehlen()'));
 });

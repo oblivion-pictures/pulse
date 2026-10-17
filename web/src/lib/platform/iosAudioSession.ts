@@ -3,13 +3,15 @@ import { abmelder, type HoererGriff } from './hoererAbmelden';
 import { isCapacitorIOS } from './runtime';
 
 /**
- * iOS-Audio-Session-Steuerung (Hülle) — natives Gegenstück zu
- * `setVoiceActive` auf Android (audioRoute.ts).
+ * iOS-Audio-Session-Steuerung (Hülle) — natives Gegenstück zu `audioRoute.ts`
+ * auf Android. Heute für den Ton der WebView (Playback-Modus, Session aus),
+ * die Ausgabewege und die Sperrbildschirm-Anzeige; Sprachkanal und Anrufe
+ * halten ihre Session selbst (Eigentümer-Entscheide E6, 2026-10-18).
  *
- * WARUM: iOS killt die Audio-Session beim Sperren des Displays, und der
- * `voiceChat`-Modus (iOS-eigenes Echo-Auslösen + Bluetooth-Mikrofon) wird
- * vom Browser-Stack nicht gesetzt. Das native Plugin (App/AudioSession-
- * Plugin.swift, im App-Target auto-registriert) steuert die Prozess-Session.
+ * WARUM: iOS killt die Audio-Session beim Sperren des Displays und der
+ * Browser-Stack richtet die Prozess-Session nicht passend ein. Das native
+ * Plugin (App/AudioSessionPlugin.swift, im App-Target auto-registriert)
+ * steuert die Prozess-Session.
  *
  * Browser und Electron: No-op.
  */
@@ -34,8 +36,7 @@ export interface TonWege {
 /**
  * Ein gemeldeter Wechsel des Ausgabewegs.
  *
- * `weg` ist die Einteilung der Huelle (`eingebaut`/`kabel`/`funk`) — und der
- * einzige Teil, an dem haengt, ob die Session neu eingerichtet werden muss.
+ * `weg` ist die Einteilung der Huelle (`eingebaut`/`kabel`/`funk`).
  * `aktuell` ist der genaue Porttyp und nur fuer die Anzeige gedacht: ein
  * Wechsel von Lautsprecher auf Hoermuschel aendert ihn, den Tonweg nicht.
  */
@@ -95,44 +96,29 @@ function plugin(methode: keyof AudioSessionPlugin): AudioSessionPlugin | null {
 }
 
 /**
- * Voice-Modus an/aus. Liefert den Modus, den die Hülle gewählt hat.
+ * Die Session deaktivieren (nach der letzten WebView-Wiedergabe). `false`,
+ * wenn die Hülle nicht antwortet oder scheitert — der Aufrufer merkt sich die
+ * Betriebsart dann nicht als angewandt (Bughunt 2026-10-11, G2).
  *
- * Heute nur noch für den Web-Anruf der Hülle (`anrufe/webAnrufRaum.ts`, Bauten
- * ohne nativen Anruf-Raum): der Sprachkanal läuft nativ, und die Hülle wählt
- * dort Modus und Bluetooth-HQ selbst. Die Bluetooth-HQ-Route des früheren
- * Web-Sprachwegs (`hqFunk`) wird deshalb nicht mehr angefordert.
- *
- * `modus` ist `unbekannt`, wenn die Hülle ihn nicht nennt (älterer Bau).
- *
- * `ok`: hat die Hülle eingerichtet? Ohne das merkte sich `iosTon` eine
- * Betriebsart, die nie angewandt war, und versuchte sie nie wieder
- * (Bughunt 2026-10-11, G2).
+ * Früher hiess das `iosVoiceAktiv(aktiv, hqFunk)` und richtete auch den
+ * Sprach-Modus ein; den braucht keiner mehr: Sprachkanal und Anrufe laufen
+ * in der Hülle nativ (Eigentümer-Entscheide E6, 2026-10-18).
  */
-export async function iosVoiceAktiv(
-  aktiv: boolean
-): Promise<{ modus: string; weg: string | null; ok: boolean }> {
+export async function iosSessionAus(): Promise<boolean> {
   const p = plugin('setVoiceActive');
-  if (!p) return { modus: 'unbekannt', weg: null, ok: false };
-  const antwort = await p.setVoiceActive({ aktiv, hqFunk: false }).catch((e: unknown) => {
-    // **Nicht stillschweigend verschlucken.** Scheitert das Einrichten, ist
-    // die Session nicht aktiv — der Sprachkanal steht dann verbunden da und
-    // ist stumm. Am 2026-10-10 am Geraet gesehen; der Fehlschlag war in der
-    // Oberflaeche an nichts erkennbar. Der Rueckfall bleibt derselbe, aber er
-    // ist jetzt sichtbar.
+  if (!p) return false;
+  const antwort = await p.setVoiceActive({ aktiv: false, hqFunk: false }).catch((e: unknown) => {
+    // Nicht stillschweigend verschlucken: der Fehlschlag war am 2026-10-10 in
+    // der Oberfläche an nichts erkennbar. Der Rückfall bleibt derselbe, aber
+    // er ist jetzt sichtbar.
     console.error('[Ton] setVoiceActive fehlgeschlagen', e);
     return undefined;
   });
-  // `weg: null` heisst „nicht erfahren", nicht „kein Weg" — der Aufrufer darf
-  // daraus keinen Wegwechsel ableiten.
-  return {
-    modus: antwort?.modus ?? 'unbekannt',
-    weg: antwort?.weg ?? null,
-    ok: antwort !== undefined
-  };
+  return antwort !== undefined;
 }
 
 /** Playback-Modus (Watch-/Stream-Ton ohne Mikro). `false` = nicht
- *  eingerichtet (s. `ok` an `iosVoiceAktiv`). */
+ *  eingerichtet (s. `iosSessionAus`). */
 export async function iosPlaybackModus(): Promise<boolean> {
   const p = plugin('setPlaybackMode');
   if (!p) return false;
@@ -175,8 +161,8 @@ export function iosWegWechsel(cb: (e: WegWechsel) => void): () => void {
   if (!p) return () => undefined;
   // **Die Nutzlast wird durchgereicht, nicht verworfen.** Sie war von Anfang
   // an da (`routeGewechselt` in `AudioSessionPlugin.swift`); dass dieser
-  // Binder sie wegwarf, hat `iosTon.ts` monatelang zu einer Zeitfrist
-  // gezwungen, wo ein Vergleich genuegt.
+  // Binder sie wegwarf, hat den früheren Aufrufer (`iosTon.ts`) monatelang zu
+  // einer Zeitfrist gezwungen, wo ein Vergleich genügt hätte.
   return abmelder(p.addListener('routeGewechselt', cb));
 }
 

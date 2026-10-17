@@ -28,6 +28,7 @@ import { AnrufSystemzeilen, type ZeilenZiel } from './systemzeileKern';
 import type { LaufenderAnruf } from './anrufMedien';
 import { AnrufMedienZustand, fehlerMelden } from './anrufMedienZustand.svelte';
 import { e2eeFaehig } from './anrufSchluesselweg';
+import { anrufwegVeraltet } from '$lib/platform/anrufNativWeiche';
 import { nativAnbinden, nativAnkommen, nativBeenden } from './anrufHuelle';
 import type { AnrufEndgrund } from '$lib/platform/anrufNativ';
 
@@ -57,6 +58,11 @@ export class AnrufStore extends AnrufMedienZustand {
 
   async starten(art: AnrufArt, channelId: string, gegenstelle: string): Promise<void> {
     if (this.aktiv) return;
+    // iOS-Hülle ohne nativen Anruf-Raum: kein Rückfall auf die WebView.
+    if (anrufwegVeraltet()) {
+      toast.error(m.anruf_ios_app_veraltet());
+      return;
+    }
     const schluessel = this.schluessel.neu(art);
     // Sync-Platzhalter schließt das Doppelklick-Fenster vor dem await.
     const platzhalter: LaufenderAnruf = {
@@ -125,6 +131,14 @@ export class AnrufStore extends AnrufMedienZustand {
     // sonst lehnt der Client sich selbst weg und der Anruf stirbt nach
     // der Annahme (Feldbefund 2026-09-08).
     if (this.aktiv?.id === evt.call_id) return;
+    // iOS-Hülle ohne nativen Anruf-Raum: nicht still verschlucken und nicht
+    // ins Leere klingeln lassen — ablehnen (die Gegenseite erfährt es) und
+    // sagen, was zu tun ist.
+    if (anrufwegVeraltet()) {
+      toast.error(m.anruf_ios_app_veraltet());
+      void anrufAblehnen(evt.call_id).catch(() => {});
+      return;
+    }
     if (this.aktiv) {
       // Wirklich ein anderer Anruf → lehne automatisch ab, statt zu stapeln.
       void anrufAblehnen(evt.call_id).catch(() => {});
@@ -169,9 +183,10 @@ export class AnrufStore extends AnrufMedienZustand {
         // Die Hülle nimmt dort mit an und übernimmt die Session.
         await medien.vorbereitenAnnahme(this.aktiv ?? anruf);
       } else {
-        // **Web-Weg: die Klingel-Anzeige ZUERST weg** (Bughunt E4). Bis zum
-        // 2026-10-11 kam das erst nach dem Verbinden — die iOS-Hülle hielt
-        // die Session solange für CallKits und übersprang das Aktivieren.
+        // **Web-Weg (Android-Hülle, Browser): die Klingel-Anzeige ZUERST weg**
+        // (Bughunt E4). Bis zum 2026-10-11 kam das erst nach dem Verbinden —
+        // damals hielt die iOS-Hülle die Session solange für CallKits; den
+        // Web-Weg gibt es dort seit E6 nicht mehr.
         await nativBeenden('anderswo-angenommen', anruf.id);
       }
       if (!nochDa()) return;
