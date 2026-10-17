@@ -1,6 +1,12 @@
 <!--
   Status-Picker Dropdown.
 
+  Am Handy (CSS-Klasse der Geräteklasse, keine Viewport-Abfrage — die Geräte-
+  Frage fällt nicht in dieser geteilten Komponente) öffnet derselbe Knopf ein
+  Blatt von unten (`mobile/StatusBlatt`); der Rechner behält das Dropdown. Beide
+  Fassungen stehen im DOM, nur eine ist sichtbar; die Handy-Fassung trägt
+  `status-picker-trigger-handy`, damit der Rechner-Testid eindeutig bleibt.
+
   Zeigt den aktuellen eigenen Status (aus ``presence.myStatus``) als farbigen
   Dot und öffnet ein Dropdown mit 4 Optionen. Wechsel = REST-Call +
   sofortiger lokaler Store-Update (Server-WS-Echo folgt und ist idempotent).
@@ -14,6 +20,7 @@
   import { toast } from 'svelte-sonner';
   import { m } from '$lib/paraglide/messages.js';
   import { Button } from '$lib/components/ui/button';
+  import StatusBlatt from './mobile/StatusBlatt.svelte';
 
   type StatusOption = {
     value: OwnPresenceStatus;
@@ -29,6 +36,7 @@
   ];
 
   let busy = $state(false);
+  let blattOffen = $state(false);
 
   async function setStatus(next: OwnPresenceStatus) {
     if (busy || next === presence.myStatus) return;
@@ -58,6 +66,7 @@
   );
 </script>
 
+<div class="contents handy:hidden">
 <DropdownMenu.Root>
   <DropdownMenu.Trigger>
     {#snippet child({ props })}
@@ -95,3 +104,27 @@
     {/each}
   </DropdownMenu.Content>
 </DropdownMenu.Root>
+</div>
+
+<div class="hidden handy:contents">
+  <Button
+    variant="ghost"
+    size="sm"
+    class="min-h-12"
+    disabled={busy}
+    title={m.status_picker_change_title()}
+    aria-haspopup="dialog"
+    onclick={() => (blattOffen = true)}
+    data-testid="status-picker-trigger-handy"
+    aria-label={m.status_picker_aria_label({ currentLabel })}
+  >
+    <StatusDot status={presence.myStatus} class="size-3" />
+    <span class="text-text-muted text-xs">{currentLabel}</span>
+  </Button>
+  <StatusBlatt
+    bind:open={blattOffen}
+    optionen={OPTIONS}
+    aktuell={presence.myStatus}
+    onWaehlen={(s) => void setStatus(s)}
+  />
+</div>
