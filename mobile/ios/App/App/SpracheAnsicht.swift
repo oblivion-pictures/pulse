@@ -72,8 +72,11 @@ struct SpracheAnsicht: View {
 
     /// Fehlschläge der Steuerung — sichtbar, nicht verschluckt. Im Simulator
     /// ist das der Normalfall (keine Kamera, kein Mikrofon), am Gerät die
-    /// verweigerte Erlaubnis.
-    @State private var fehler: String?
+    /// verweigerte Erlaubnis. **Das Band geht von selbst weg:** bei der
+    /// nächsten gelungenen Aktion, sonst nach `bandDauer` — ausser bei
+    /// verweigerter Erlaubnis, die bleibt bis zum nächsten Erfolg oder „OK".
+    @State private var fehler: SpracheMeldung?
+    private static let bandDauer: UInt64 = 6_000_000_000
     @ObservedObject private var stand = SpracheStand.geteilt
 
     var body: some View {
@@ -86,9 +89,18 @@ struct SpracheAnsicht: View {
                 fehlerband(fehler)
             }
             kacheln
-            SpracheSteuerleiste(raum: raum, fehlerMelden: { self.fehler = $0 })
+            SpracheSteuerleiste(
+                raum: raum, fehlerMelden: { self.fehler = $0 },
+                fehlerAufheben: { self.fehler = nil })
         }
         .background(SpracheFarben.grund.ignoresSafeArea())
+        // Läuft neu an, sobald eine neue Meldung kommt (`id`), und endet mit
+        // dem Verschwinden der Ansicht oder des Bands.
+        .task(id: fehler) {
+            guard let meldung = fehler, !meldung.einstellungen else { return }
+            try? await Task.sleep(nanoseconds: Self.bandDauer)
+            if !Task.isCancelled, fehler == meldung { fehler = nil }
+        }
     }
 
     // MARK: - Kopfzeile
@@ -119,7 +131,7 @@ struct SpracheAnsicht: View {
             }
             Spacer(minLength: 0)
             // System-Bild-in-Bild (Punkt 29) — nur, wo das Gerät es kann.
-            SpracheBildImBildKnopf(fehlerMelden: { self.fehler = $0 })
+            SpracheBildImBildKnopf(fehlerMelden: { self.fehler = SpracheMeldung(text: $0) })
         }
         .padding(.trailing, 16)
         .padding(.top, 4)
@@ -146,11 +158,20 @@ struct SpracheAnsicht: View {
                 anzahl)
     }
 
-    private func fehlerband(_ text: String) -> some View {
+    private func fehlerband(_ meldung: SpracheMeldung) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-            Text(text).font(.system(size: 13)).lineLimit(3)
+            Text(meldung.text).font(.system(size: 13)).lineLimit(4)
             Spacer(minLength: 0)
+            if meldung.einstellungen {
+                Button(NSLocalizedString("Einstellungen öffnen", comment: "Fehlerband")) {
+                    if let ziel = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(ziel)
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .accessibilityIdentifier("sprache.fehler.einstellungen")
+            }
             Button(NSLocalizedString("OK", comment: "Fehlerband")) { fehler = nil }
                 .font(.system(size: 13, weight: .semibold))
         }
@@ -235,8 +256,15 @@ struct SpracheAnsicht: View {
         sprache.einreihen({
             try await sprache.kameraSeite(front: !sprache.kameraVorn)
         }, fertig: { ergebnis in
-            guard case .failure(let fehlschlag) = ergebnis else { return }
-            DispatchQueue.main.async { fehler = fehlschlag.localizedDescription }
+            DispatchQueue.main.async {
+                switch ergebnis {
+                case .success: fehler = nil
+                case .failure(let fehlschlag):
+                    NSLog("[PulseSprache] Kamerawechsel fehlgeschlagen: %@",
+                          fehlschlag.localizedDescription)
+                    fehler = SpracheMeldung.aus(fehlschlag, knopf: "kameraSeite")
+                }
+            }
         })
     }
 

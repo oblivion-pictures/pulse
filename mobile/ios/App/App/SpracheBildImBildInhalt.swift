@@ -153,6 +153,7 @@ struct SpracheBildImBildKnopf: View {
                     .foregroundStyle(SpracheFarben.text)
                     .frame(width: 44, height: 44)
             } primaryAction: {
+                SpracheHaptik.leicht.ausloesen()
                 bild.umschalten()
             }
             .accessibilityLabel(bild.aktiv

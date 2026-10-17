@@ -1,3 +1,4 @@
+import AVFoundation
 import LiveKit
 import SwiftUI
 
@@ -59,7 +60,9 @@ final class SpracheStand: ObservableObject {
 struct SpracheSteuerleiste: View {
     @ObservedObject var raum: Room
     @ObservedObject private var stand = SpracheStand.geteilt
-    let fehlerMelden: (String) -> Void
+    let fehlerMelden: (SpracheMeldung) -> Void
+    /// Eine Aktion ist gelungen: ein stehendes Band ist damit erledigt.
+    let fehlerAufheben: () -> Void
 
     /// Spiegel der Vorgabe des SDK (`isSpeakerOutputPreferred`). Sie ist keine
     /// beobachtbare Eigenschaft, deshalb ein eigener Stand, beim Erscheinen
@@ -67,6 +70,11 @@ struct SpracheSteuerleiste: View {
     /// meldet `eigenerZustand` (sie wechselt asynchron, 8–17 ms, am Gerät
     /// gemessen). Bluetooth und AirPlay bleiben Sache des Systems.
     @State private var lautsprecher = true
+    /// Die wirkliche Route (`SpracheAusgabe`); bei Bluetooth, Kopfhörer und
+    /// Co. öffnet der Ausgabe-Knopf den System-Routenwähler statt zwischen
+    /// Hörmuschel und Lautsprecher zu schalten.
+    @State private var route = SpracheAusgabe.aktuell()
+    @State private var waehlerAusloeser = 0
 
     private var mikroAn: Bool { raum.localParticipant.isMicrophoneEnabled() }
     private var kameraAn: Bool { raum.localParticipant.isCameraEnabled() }
@@ -108,22 +116,11 @@ struct SpracheSteuerleiste: View {
                     try await SpracheRaum.geteilt.kamera(!kameraAn)
                 }, fertig: gemeldet("kamera"))
             }
-            knopf(
-                symbol: lautsprecher ? "speaker.wave.2.fill" : "ear",
-                an: !lautsprecher, warnend: false,
-                beschriftung: lautsprecher
-                    ? NSLocalizedString("Auf Hörmuschel umschalten", comment: "Sprachkanal")
-                    : NSLocalizedString("Auf Lautsprecher umschalten", comment: "Sprachkanal"),
-                kennung: "sprache.ausgabe"
-            ) {
-                let neu = !lautsprecher
-                SpracheRaum.geteilt.ausgabe(neu ? "lautsprecher" : "hoermuschel")
-                lautsprecher = neu
-            }
+            ausgabeKnopf
             knopf(
                 symbol: "phone.down.fill", an: false, warnend: true,
                 beschriftung: NSLocalizedString("Auflegen", comment: "Sprachkanal"),
-                kennung: "sprache.auflegen"
+                kennung: "sprache.auflegen", haptik: .auflegen
             ) {
                 // **Auflegen bleibt ausserhalb der Kette**, wie `verlassen`:
                 // es darf nicht hinter einem hängenden Befehl warten
@@ -141,7 +138,44 @@ struct SpracheSteuerleiste: View {
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 6)
-        .onAppear { lautsprecher = AudioManager.shared.isSpeakerOutputPreferred }
+        .background(SpracheRoutenWaehler(ausloeser: waehlerAusloeser).frame(width: 1, height: 1))
+        .onAppear {
+            lautsprecher = AudioManager.shared.isSpeakerOutputPreferred
+            route = SpracheAusgabe.aktuell()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)
+                .receive(on: DispatchQueue.main)
+        ) { _ in route = SpracheAusgabe.aktuell() }
+    }
+
+    /// Läuft der Ton über Bluetooth, Kopfhörer oder eine andere externe Route,
+    /// zeigt der Knopf DIESE und öffnet beim Tippen den System-Routenwähler —
+    /// das Umschalten Hörmuschel/Lautsprecher bliebe dort ohne Wirkung. Ohne
+    /// externes Gerät wie bisher.
+    @ViewBuilder
+    private var ausgabeKnopf: some View {
+        if let symbol = route.symbol {
+            knopf(
+                symbol: symbol, an: true, warnend: false,
+                beschriftung: route.beschriftung, kennung: "sprache.ausgabe"
+            ) {
+                waehlerAusloeser += 1
+            }
+        } else {
+            knopf(
+                symbol: lautsprecher ? "speaker.wave.2.fill" : "ear",
+                an: !lautsprecher, warnend: false,
+                beschriftung: lautsprecher
+                    ? NSLocalizedString("Auf Hörmuschel umschalten", comment: "Sprachkanal")
+                    : NSLocalizedString("Auf Lautsprecher umschalten", comment: "Sprachkanal"),
+                kennung: "sprache.ausgabe"
+            ) {
+                let neu = !lautsprecher
+                SpracheRaum.geteilt.ausgabe(neu ? "lautsprecher" : "hoermuschel")
+                lautsprecher = neu
+            }
+        }
     }
 
     /// Ein runder Knopf. **Rund, weil Anruf-Steuerungen rund sind** — dieselbe
@@ -154,9 +188,13 @@ struct SpracheSteuerleiste: View {
         gesperrt: Bool = false,
         beschriftung: String,
         kennung: String,
+        haptik: SpracheHaptik = .leicht,
         tun: @escaping () -> Void
     ) -> some View {
-        Button(action: tun) {
+        Button {
+            haptik.ausloesen()
+            tun()
+        } label: {
             // Auf Rot und Blau weiss, in Ruhe in der Schriftfarbe des Themas —
             // die dunkle Schrift des hellen Satzes wäre auf Blau unlesbar.
             Image(systemName: symbol)
@@ -189,12 +227,21 @@ struct SpracheSteuerleiste: View {
     /// `SpracheRaum.einreihen` in die Befehlskette, nicht aus je einem eigenen
     /// `Task` — zwei solche Tasks starten in keiner zugesagten Reihenfolge.
     /// Auflegen bleibt bewusst ausserhalb (Begründung am Knopf).
+    ///
+    /// Das Band zeigt verständliches Deutsch (`SpracheMeldung`), die Rohfassung
+    /// steht im Log. Gelingt eine Aktion, geht ein stehendes Band weg.
     private func gemeldet(_ knopf: String) -> (Result<Void, Error>) -> Void {
         let fehlerMelden = fehlerMelden
+        let fehlerAufheben = fehlerAufheben
         return { ergebnis in
-            guard case .failure(let fehler) = ergebnis else { return }
-            NSLog("[PulseSprache] Knopf '%@' fehlgeschlagen: %@", knopf, fehler.localizedDescription)
-            DispatchQueue.main.async { fehlerMelden(fehler.localizedDescription) }
+            switch ergebnis {
+            case .success:
+                DispatchQueue.main.async { fehlerAufheben() }
+            case .failure(let fehler):
+                NSLog("[PulseSprache] Knopf '%@' fehlgeschlagen: %@", knopf, fehler.localizedDescription)
+                let meldung = SpracheMeldung.aus(fehler, knopf: knopf)
+                DispatchQueue.main.async { fehlerMelden(meldung) }
+            }
         }
     }
 
