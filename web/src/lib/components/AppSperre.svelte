@@ -36,11 +36,16 @@
   import { Button } from '$lib/components/ui/button';
   import { m } from '$lib/paraglide/messages.js';
   import { appSperre } from '$lib/platform/appSperre.svelte';
-  import { auth } from '$lib/stores/auth.svelte';
+  import { abmelden } from '$lib/auth/abmelden';
   import { restlicheAppSperren } from '$lib/remote/sichtschutz';
 
   onMount(() => {
     void appSperre.entsperren(m.appsperre_text());
+    const sichtbar = () => {
+      if (document.visibilityState === 'visible') void appSperre.codeNeuPruefen();
+    };
+    document.addEventListener('visibilitychange', sichtbar);
+    return () => document.removeEventListener('visibilitychange', sichtbar);
   });
 
   let wurzel = $state<HTMLElement | null>(null);
@@ -105,7 +110,7 @@
          entsperrt werden kann; bei fehlendem Code der einzige Weg. -->
     <button
       class="{appSperre.keinCode ? 'text-text-bright text-sm font-semibold' : 'text-text-muted text-xs'} min-h-11 px-4 underline underline-offset-2"
-      onclick={() => appSperre.abmeldenUndAufheben(() => auth.signOut())}
+      onclick={() => void appSperre.abmeldenUndAufheben(abmelden)}
       data-testid="app-sperre-abmelden"
     >
       {m.appsperre_abmelden()}

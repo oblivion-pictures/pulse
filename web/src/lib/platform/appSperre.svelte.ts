@@ -104,11 +104,29 @@ class AppSperre {
     return this.#entsperrt;
   }
 
-  /** Ausweg von der Sperrfläche: abmelden und die Sperre aufheben. */
-  abmeldenUndAufheben(abmelden: () => void): void {
-    sperreSetzen(false);
-    abmelden();
-    this.#aufheben();
+  /** Ausweg von der Sperrfläche: abmelden und die Sperre aufheben — erst NACH
+   *  dem vollständigen Abmelden (Server-Widerruf, Verbindungen, Speicher),
+   *  sonst stünde die App entsperrt über einer halb abgebauten Sitzung. */
+  async abmeldenUndAufheben(abmelden: () => Promise<void>): Promise<void> {
+    try {
+      await abmelden();
+    } finally {
+      sperreSetzen(false);
+      this.#aufheben();
+    }
+  }
+
+  /** Beim Zurückkehren in den Vordergrund: wer in den Einstellungen wieder
+   *  einen Geräte-Code gesetzt hat, soll die Abfrage erneut anstoßen können —
+   *  `keinCode` steht sonst bis zum nächsten Kaltstart und lässt nur das
+   *  Abmelden übrig. */
+  async codeNeuPruefen(): Promise<void> {
+    if (!this.gesperrt || !this.keinCode) return;
+    try {
+      if ((await plugin.verfuegbar()).verfuegbar) this.keinCode = false;
+    } catch {
+      /* nicht erreichbar: der Stand bleibt */
+    }
   }
 
   #aufheben(): void {

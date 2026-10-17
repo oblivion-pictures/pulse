@@ -3,13 +3,9 @@
   import { anfangsBuchstabe } from '$lib/utils/anfangsBuchstabe';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
   import { goto } from '$app/navigation';
+  import { abmelden } from '$lib/auth/abmelden';
   import { auth } from '$lib/stores/auth.svelte';
   import { nameStyle } from '$lib/utils/nameColor';
-  import { guilds } from '$lib/stores/guilds.svelte';
-  import { messages } from '$lib/stores/messages.svelte';
-  import { gateway } from '$lib/ws/connection';
-  import { logout } from '$lib/api/auth';
-  import { loadTokens } from '$lib/api/storage';
   import { safeAvatarUrl } from '$lib/avatar';
   import { uiOverlays } from '$lib/stores/uiOverlays.svelte';
   import { m } from '$lib/paraglide/messages.js';
@@ -48,19 +44,6 @@
   // Server-Liste des Kontos, nicht vom aktiven Server — Begründung in
   // `selfhost/eigeneServer.ts`.
   let meineServer = $derived(!serverKnopf && hatEigeneServer(serversStore.servers));
-
-  async function onSignOut() {
-    const t = loadTokens();
-    if (t) {
-      try { await logout(t.refresh_token); } catch { /* ignore */ }
-    }
-    auth.signOut();
-    gateway.disconnect();
-    void import('$lib/voice/livekit.svelte').then(({ voice }) => voice.disconnect());
-    guilds.clear();
-    messages.clear();
-    await goto('/login', { replaceState: true });
-  }
 </script>
 
 <SettingsDialog bind:open={uiOverlays.settingsOpen} initialTab={uiOverlays.settingsInitialTab} />
@@ -102,7 +85,7 @@
     {m.diagnose_melden()}
   </DropdownMenu.Item>
   <DropdownMenu.Separator />
-  <DropdownMenu.Item onclick={onSignOut} data-testid="sign-out">
+  <DropdownMenu.Item onclick={abmelden} data-testid="sign-out">
     <LogOutIcon class="size-4" />
     {m.user_footer_sign_out()}
   </DropdownMenu.Item>
