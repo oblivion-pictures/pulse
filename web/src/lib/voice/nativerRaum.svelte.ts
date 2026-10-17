@@ -33,6 +33,7 @@ import { spracheVorhaltLoesen } from '$lib/platform/spracheVorhalt';
 import { berichtSenderSetzen } from '$lib/diagnose/iosTonDiagnose';
 import { iosTonBerichtSenden } from '$lib/diagnose/iosTonBerichtSenden';
 import { effectiveVoiceBitrateMaxKbps } from '$lib/stream/guildLimits';
+import { kamerasAbgleichen } from './kameraAnsicht';
 import { NativeBefehle, type NativeHaken, type NativerWirt } from './nativeBefehle';
 import { NativeWache } from './nativeWache';
 import type { VoiceResume } from './resume';
@@ -85,6 +86,9 @@ export class NativerRaum {
   /** Hinter dem Getter `pausenWunsch` (B3). */
   #pause: NutzerWahl | null = null;
   #wache = new NativeWache((tot) => (this.mikroTot = tot));
+  /** Die Kameras, für die die Ansicht schon von selbst aufging
+   *  (`kameraAnsicht.ts`) — damit sie nach dem Wegwischen zu bleibt. */
+  #kameras = new Set<string>();
 
   constructor(wirt: NativerWirt, haken: NativeHaken) {
     this.#wirt = wirt;
@@ -147,11 +151,10 @@ export class NativerRaum {
     w.audioBlocked = false;
     w.audioBlockGrund = '';
     this.#angekommen();
-    // **Erst nach dem Beitritt, und nur, wenn der Nutzer auf den Kanal
-    // schaut** (M3) — die Hülle weiss das nicht, das Web schon.
-    if (typeof location !== 'undefined' && routeZeigtKanal(location.pathname, channelId)) {
-      await this.ansichtOeffnen();
-    }
+    // **Nur, wenn schon eine Kamera läuft** (Eigentümer-Entscheid
+    // 2026-10-17, `kameraAnsicht.ts`) — sonst bleibt die Kachelansicht im
+    // Web stehen, und ihr Knopf öffnet die native Ansicht.
+    if (z.teilnehmer.some((t) => t.cameraOn)) await this.#vonSelbstOeffnen();
     // Erst, wenn das Mikrofon liefert (`nativeWache.ts`) — stumm oder ohne
     // Mikrofon gibt es nichts abzuwarten.
     if (!opts.stumm && !z.mikrofonFehler) await this.#wache.bereitAbwarten();
@@ -261,6 +264,7 @@ export class NativerRaum {
     this.#steht = false;
     this.#sitzung = undefined;
     this.#pause = null;
+    this.#kameras = new Set();
     this.befehle.erzwungenVergessen();
   }
 
@@ -272,8 +276,8 @@ export class NativerRaum {
     return this.#pause;
   }
 
-  /** Die native Kanalansicht zeigen — vom Griff in der Leiste und nach einem
-   *  Beitritt auf die Kanal-Route. */
+  /** Die native Kanalansicht zeigen — vom Griff in der Leiste, vom Knopf in
+   *  der Kachelansicht und von selbst bei einer Kamera (`#vonSelbstOeffnen`). */
   async ansichtOeffnen(): Promise<void> {
     if (!this.aktiv) return;
     const z = await spracheAnsichtOeffnen(settings.appearance.theme).catch((e: unknown) => {
@@ -281,6 +285,15 @@ export class NativerRaum {
       return null;
     });
     this.ansichtOffen = z?.ansichtOffen ?? false;
+  }
+
+  /** Die Ansicht von selbst zeigen (Beitritt mit Kamera, Kamera geht an).
+   *  **Erst nach dem Beitritt, und nur, wenn der Nutzer auf den Kanal
+   *  schaut** (M3) — die Hülle weiss das nicht, das Web schon. */
+  async #vonSelbstOeffnen(): Promise<void> {
+    const kanal = this.#wirt.channelId;
+    if (!this.#steht || this.ansichtOffen || !kanal || typeof location === 'undefined') return;
+    if (routeZeigtKanal(location.pathname, kanal)) await this.ansichtOeffnen();
   }
 
   /** Lautstärken und Begrenzer an die Hülle — nach jedem Ankommen und wenn
@@ -360,7 +373,7 @@ export class NativerRaum {
     this.#steht = false;
     this.#abmelden = spracheBeobachten({
       verbindung: (e) => this.#verbindung(e),
-      teilnehmer: (liste) => this.#teilnehmer(liste),
+      teilnehmer: (liste) => this.#teilnehmer(liste, true),
       sprechen: (identitaeten) => this.#sprechen(identitaeten),
       eigenerZustand: (e) => this.#eigenerZustand(e),
       // Der Nutzer hat die Ansicht verlassen, nicht den Raum — die Leiste
@@ -438,7 +451,14 @@ export class NativerRaum {
     w.localSpeaking = w.participants.some((p) => p.isLocal && p.isSpeaking);
   }
 
-  #teilnehmer(liste: NativerTeilnehmer[]): void {
+  /** `kameraOeffnen`: nur aus dem Ereignis der Hülle. Das Vollbild beim
+   *  Beitritt (und bei der Übernahme nach einem Reload) merkt die Kameras
+   *  nur vor — beim Beitritt entscheidet `verbinden` selbst, nach einem
+   *  Reload öffnet nichts von selbst. */
+  #teilnehmer(liste: NativerTeilnehmer[], kameraOeffnen = false): void {
     this.#wirt.participants = liste.map(teilnehmerAusHuelle);
+    const k = kamerasAbgleichen(this.#kameras, liste);
+    this.#kameras = k.gesehen;
+    if (k.neu && kameraOeffnen) void this.#vonSelbstOeffnen();
   }
 }

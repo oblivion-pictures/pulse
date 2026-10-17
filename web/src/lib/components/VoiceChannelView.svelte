@@ -4,6 +4,7 @@ import { errText } from '$lib/utils/errText';
   import { Button } from '$lib/components/ui/button/index.js';
   import StreamGrid from './StreamGrid.svelte';
   import VoiceParticipantTile from './VoiceParticipantTile.svelte';
+  import VoiceNativeAnsichtKnopf from './VoiceNativeAnsichtKnopf.svelte';
   import MemberList from './MemberList.svelte';
   import ChannelHeading from './ChannelHeading.svelte';
   import { gateway } from '$lib/ws/connection';
@@ -319,6 +320,7 @@ import { errText } from '$lib/utils/errText';
               <VoiceParticipantTile {p} channelId={channel.id} guildId={channel.guild_id} {handy} />
             {/each}
           </div>
+          <VoiceNativeAnsichtKnopf />
         </div>
       {/if}
     {:else}

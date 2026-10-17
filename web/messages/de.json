@@ -3100,6 +3100,7 @@
   "voice_bar_label": "Sprache",
   "voice_bar_leave": "Sprachkanal verlassen",
   "voice_bar_native_view_open": "Zurück in den Kanal",
+  "voice_native_view_open_btn": "Kanalansicht öffnen",
   "voice_bar_mic_mute": "Mikrofon stummschalten",
   "voice_bar_mic_state_muted": "Mikrofon stumm",
   "voice_bar_mic_state_on": "Mikrofon an",
