@@ -18,7 +18,7 @@ import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
 import { mitFrist } from './brueckenFrist.ts';
 import { huellenBefund } from './huelleKann.ts';
-import { isCapacitorIOS } from './runtime.ts';
+import { nativerSprachwegDa } from './iosSpracheWeiche.ts';
 
 /** Die Fähigkeitsliste — muss mit `pluginMethods` in `StreamTonPlugin.swift`
  *  übereinstimmen (der Test liest beide). */
@@ -80,9 +80,20 @@ const nativ = registerPlugin<StreamTonPlugin>('StreamTonPlugin');
 const START_FRIST_MS = 15_000;
 const SOFORT_FRIST_MS = 3_000;
 
-/** Trägt dieser Bau den nativen Stream-Ton — vollständig? */
+/**
+ * Trägt dieser Bau den nativen Stream-Ton — vollständig?
+ *
+ * **Nur zusammen mit dem nativen Sprachweg** (Gegenprüfung 2026-10-17, S1).
+ * Der Stream-Ton erklärt WebKit `ambient`, und unter `ambient` hat eine
+ * Aufnahme der WebView keinen Eingang — WebKit nimmt die Übersteuerung VOR
+ * der Aufnahme-Regel (`MediaSessionManagerCocoa.mm`). Läuft die Sprache über
+ * den Web-Weg (Notschalter `NATIVER_SPRACHWEG_AN`, unvollständiger Bau),
+ * nähme schon das Öffnen einer Kachel dem Kanal das Mikrofon — ausgerechnet
+ * auf dem Rückweg, den der Notschalter sichern soll. `nativerSprachwegDa`
+ * prüft auch die Plattform.
+ */
 export function streamTonNativDa(): boolean {
-  if (!isCapacitorIOS()) return false;
+  if (!nativerSprachwegDa()) return false;
   return huellenBefund('StreamTonPlugin', STREAM_TON_METHODEN).da;
 }
 

@@ -12,7 +12,7 @@ type Kopf = { name: string; methods: { name: string; rtype: string | null }[] };
 const g = globalThis as Record<string, unknown>;
 
 g.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
-g.Capacitor = { PluginHeaders: [{ name: 'SprachePlugin', methods: [] }] };
+g.Capacitor = { PluginHeaders: [] as Kopf[] };
 g.window = globalThis;
 Object.defineProperty(globalThis, 'navigator', {
   value: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)', maxTouchPoints: 5 },
@@ -37,11 +37,14 @@ function kopf(name: string, methoden: string[]): Kopf {
   };
 }
 
-function streamKopfSetzen(k: Kopf | null): void {
+function kopfSetzen(name: string, k: Kopf | null): void {
   const liste = (g.Capacitor as { PluginHeaders: Kopf[] }).PluginHeaders;
-  const rest = liste.filter((x) => x.name !== 'StreamTonPlugin');
+  const rest = liste.filter((x) => x.name !== name);
   liste.splice(0, liste.length, ...rest, ...(k ? [k] : []));
 }
+const streamKopfSetzen = (k: Kopf | null) => kopfSetzen('StreamTonPlugin', k);
+// Der heutige Sprachweg aus der Swift-Quelle — Voraussetzung des Stream-Tons.
+kopfSetzen('SprachePlugin', kopf('SprachePlugin', swiftMethoden('SprachePlugin.swift')));
 
 test('älterer Bau ohne StreamTonPlugin: WebView-Ton', async () => {
   const { registerPlugin } = await import('@capacitor/core');
@@ -64,6 +67,19 @@ test('Bau aus dem heutigen StreamTonPlugin.swift: nativer Ton', async () => {
   assert.deepEqual([...ohneHoerer].sort(), [...STREAM_TON_METHODEN].sort());
   streamKopfSetzen(kopf('StreamTonPlugin', methoden));
   assert.equal(streamTonNativDa(), true);
+});
+
+test('S1a: ohne nativen Sprachweg kein nativer Stream-Ton, auch mit vollem Plugin', async () => {
+  const { streamTonNativDa } = await import('../src/lib/platform/iosStreamTonNativ.ts');
+  streamKopfSetzen(kopf('StreamTonPlugin', swiftMethoden('StreamTonPlugin.swift')));
+  assert.equal(streamTonNativDa(), true);
+  // Sprache über den Web-Weg (hier: Bau ohne SprachePlugin; der Notschalter
+  // `NATIVER_SPRACHWEG_AN` führt in denselben Zweig der Weiche).
+  kopfSetzen('SprachePlugin', null);
+  assert.equal(streamTonNativDa(), false);
+  kopfSetzen('SprachePlugin', kopf('SprachePlugin', swiftMethoden('SprachePlugin.swift')));
+  const src = readFileSync(new URL('../src/lib/platform/iosStreamTonNativ.ts', import.meta.url), 'utf8');
+  assert.match(src, /if \(!nativerSprachwegDa\(\)\) return false;/);
 });
 
 test('halber Kopf (eine Methode fehlt): WebView-Ton, kein halber Weg', async () => {

@@ -31,9 +31,12 @@ import {
   streamTonStatistik,
   streamTonStoppen,
   streamTonVerzoegerung,
+  streamTonNativDa,
   type StreamTonPhase,
   type StreamTonZustand
 } from '$lib/platform/iosStreamTonNativ';
+import { WebAufnahme } from '$lib/platform/webAufnahme';
+import { StreamTonLage, type Lage, type Teilnehmer } from './streamTonLage';
 import { melde } from '$lib/diagnose/app-diagnose';
 import {
   fensterMs,
@@ -60,12 +63,16 @@ const RUECKZUG_MS = [1000, 3000, 5000];
 /** Höchstens alle 5 s abgleichen — die Fenster brauchen Inhalt. */
 const ABGLEICH_MS = 5000;
 
-const aktiv = new Set<string>();
-function halterSetzen(kennung: string, an: boolean): void {
-  const vorher = aktiv.size > 0;
-  if (an) aktiv.add(kennung);
-  else aktiv.delete(kennung);
-  if (vorher !== aktiv.size > 0) nativerTonHalten('streamton', aktiv.size > 0);
+/** Halter und Lage für alle Kacheln (`streamTonLage.ts`). */
+const lage = new StreamTonLage((an) => nativerTonHalten('streamton', an));
+
+// Jede Aufnahme der WebView lässt den Halter fallen (S1, `webAufnahme.ts`).
+// Beim Laden des Moduls: eine Aufnahme, die vor der ersten Kachel begann,
+// soll genauso zählen. Nur in der Hülle mit nativem Stream-Ton.
+if (typeof navigator !== 'undefined' && navigator.mediaDevices && streamTonNativDa()) {
+  new WebAufnahme((a) => lage.setzen({ aufnahme: a })).einhaengen(
+    navigator.mediaDevices as unknown as Parameters<WebAufnahme['einhaengen']>[0]
+  );
 }
 
 export interface NativStand {
@@ -75,7 +82,7 @@ export interface NativStand {
   hardwareKanaele: number;
 }
 
-export class NativerStreamTon {
+export class NativerStreamTon implements Teilnehmer {
   readonly #kennung: string;
   readonly #neueUrl: () => Promise<string | null>;
   readonly #stand: (s: NativStand) => void;
@@ -87,6 +94,9 @@ export class NativerStreamTon {
   #beendet = false;
   #aufgegeben = false;
   #retry: ReturnType<typeof setTimeout> | undefined;
+  /** Ausgesetzt, solange die Lage es verlangt (Aufnahme der WebView); läuft
+   *  danach mit frischer URL wieder an. */
+  #pausiert = false;
   #abhoeren: (() => void) | null = null;
   // A/V-Ausgleich
   #letzterAbgleich = 0;
@@ -108,6 +118,25 @@ export class NativerStreamTon {
     this.#neueUrl = o.neueUrl;
     this.#stand = o.stand;
     this.#rueckfall = o.rueckfall;
+    lage.anmelden(this);
+  }
+
+  lageSetzen(l: Lage): void {
+    if (!this.zustaendig) return;
+    if (l === 'pause') {
+      if (this.#pfad === null && this.#retry === undefined) return;
+      this.#pausiert = true;
+      this.#gen++;
+      clearTimeout(this.#retry);
+      this.#retry = undefined;
+      this.#pfad = null;
+      lage.wollen(this, false);
+      this.#stand({ phase: 'verbinde', echoGedaempft: false, hardwareKanaele: 0 });
+      void streamTonStoppen(this.#kennung).catch(() => undefined);
+    } else if (l === 'nativ' && this.#pausiert) {
+      this.#pausiert = false;
+      void this.#mitFrischerUrl(++this.#gen);
+    }
   }
 
   /** Spielt der native Weg (oder versucht es noch)? `false` nach dem Aufgeben. */
@@ -121,6 +150,10 @@ export class NativerStreamTon {
     const pfad = whepPfad(url);
     if (pfad === this.#pfad) return;
     this.#fehlschlaege = 0;
+    if (lage.lage === 'pause') {
+      this.#pausiert = true;
+      return;
+    }
     void this.#starten(url, pfad);
   }
 
@@ -138,6 +171,7 @@ export class NativerStreamTon {
   async beenden(): Promise<void> {
     this.#beendet = true;
     await this.#halt();
+    lage.abmelden(this);
   }
 
   async #halt(): Promise<void> {
@@ -151,7 +185,7 @@ export class NativerStreamTon {
     } catch {
       /* Frist — die Hülle räumt beim nächsten Start derselben Kennung ab */
     }
-    halterSetzen(this.#kennung, false);
+    lage.wollen(this, false);
   }
 
   async #starten(url: string, pfad: string): Promise<void> {
@@ -163,7 +197,7 @@ export class NativerStreamTon {
     this.#ton = null;
     // ERST halten, dann starten: `iosTon` fasst die Session ab hier nicht
     // mehr an, und WebKit erklärt sich `ambient`.
-    halterSetzen(this.#kennung, true);
+    lage.wollen(this, true);
     this.#abhoeren ??= streamTonHoeren(this.#kennung, (z) => this.#ereignis(z));
     try {
       const z = await streamTonStarten(this.#kennung, url, this.#lautstaerke, ECHO_FAKTOR);
@@ -206,12 +240,18 @@ export class NativerStreamTon {
       return;
     }
     const warten = RUECKZUG_MS[Math.min(this.#fehlschlaege - 1, RUECKZUG_MS.length - 1)];
-    this.#retry = setTimeout(async () => {
-      if (gen !== this.#gen || !this.zustaendig) return;
-      const url = await this.#neueUrl();
-      if (gen !== this.#gen || !this.zustaendig || !url) return;
-      void this.#starten(url, whepPfad(url));
+    this.#retry = setTimeout(() => {
+      this.#retry = undefined;
+      void this.#mitFrischerUrl(gen);
     }, warten);
+  }
+
+  async #mitFrischerUrl(gen: number): Promise<void> {
+    if (gen !== this.#gen || !this.zustaendig) return;
+    const url = await this.#neueUrl();
+    if (gen !== this.#gen || !this.zustaendig || this.#pausiert) return;
+    if (!url) return;
+    void this.#starten(url, whepPfad(url));
   }
 
   /**

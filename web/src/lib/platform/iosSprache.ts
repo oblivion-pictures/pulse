@@ -172,8 +172,9 @@ const halter = new TonHalter((gehalten) => {
  * **Das Mikrofon hält nur ein Raum, nicht der native Stream-Ton.** Der Halter
  * `streamton` (`stream/nativerStreamTon.ts`) braucht WebKits `ambient` und ein
  * schweigendes `iosTon` genauso wie ein Raum — er nimmt aber nicht auf, und die
- * WebView darf neben ihm ein Mikrofon öffnen (der Mikrofon-Test unterbricht
- * dann den Stream-Ton, bis er fortgesetzt wird; das Gespräch gibt es nicht).
+ * WebView darf neben ihm ein Mikrofon öffnen. Dafür fällt er für die Dauer
+ * jeder WebView-Aufnahme (`stream/streamTonLage.ts`, `platform/webAufnahme.ts`):
+ * unter `ambient` hätte die Aufnahme keinen Eingang (Gegenprüfung S1).
  */
 const mikroHalter = new TonHalter(mikrofonBeiDerHuelleMelden);
 
