@@ -54,33 +54,22 @@ struct FunkLage {
 
 /// Die Entscheidung, ohne Seiteneffekt.
 enum FunkHqRegeln {
-    /// Soll der Kanal auf den HQ-Weg (Software-Verarbeitung + Option)?
-    /// `bisher`: steht er schon dort — bei unbekannter Fähigkeit bleibt es so.
-    static func ziel(wunsch: Bool, lage: FunkLage, gescheitert: Bool, bisher: Bool) -> Bool {
+    /// Soll der Kanal auf dem HQ-Weg stehen? `haelt`: steht er schon dort —
+    /// dann bleibt er, bis der Kopfhörer weg ist (ein Zwischenstand der Route
+    /// während des eigenen Umschaltens soll ihn nicht zurückwerfen).
+    static func ziel(wunsch: Bool, lage: FunkLage, gescheitert: Bool, haelt: Bool) -> Bool {
         guard wunsch, lage.ios26, lage.ausgangFunk, !gescheitert else { return false }
-        return lage.hqKann ?? bisher
+        return haelt || lage.hqKann == true
     }
 
-    /// HQ wurde angefordert und gesetzt, das Bluetooth-Mikrofon läuft trotzdem
+    /// Wir halten die Session mit HQ, das Bluetooth-Mikrofon läuft trotzdem
     /// nicht darin: der Kopfhörer meldet es, trägt es aber nicht.
-    static func gescheitert(lage: FunkLage, aufHq: Bool) -> Bool {
-        aufHq && lage.optionDa && lage.eingangFunk && !lage.hqAn
+    static func gescheitert(lage: FunkLage, haelt: Bool) -> Bool {
+        haelt && lage.eingangFunk && !lage.hqAn
     }
 }
 
 extension SpracheRaum {
-    /// Vor dem Bauen des Raums: startet er gleich auf dem HQ-Weg? Bekannt ist
-    /// das nur, wenn die Session schon Eingänge führt (etwa nach einem
-    /// Kanalwechsel); sonst startet er mit VPIO und der Abgleich nach dem
-    /// Beitritt schaltet um.
-    func funkHqVorBeitritt(_ ton: TonOptionen) -> Bool {
-        let f = SpracheFunkHq.geteilt
-        f.raumWeg()
-        let start = FunkHqRegeln.ziel(wunsch: f.wunsch, lage: .lesen(), gescheitert: false, bisher: false)
-        f.optionGewollt = f.wunsch && (start || ton.volle)
-        return start
-    }
-
     /// Von aussen (Routenwechsel, Schalter) — in die Befehlskette, weil
     /// `setAudioProcessingOptions` blockiert und kein Mikrofon-Befehl
     /// dazwischenfahren soll.
@@ -89,49 +78,101 @@ extension SpracheRaum {
         einreihen({ [self] in await funkHqAbgleichen(grund) }, fertig: { _ in })
     }
 
-    /// Verarbeitung und Option an die Route anpassen. **Nur in der Kette.**
+    /// Verarbeitung und Session an die Route anpassen. **Nur in der Kette.**
     ///
     /// Die Wahrheit über die Verarbeitung ist die zuletzt ANGEFORDERTE des
     /// SDK (`audioProcessingState`, prozessweit), kein eigener Merker: ein
     /// Anruf startet seine Spur mit `.automatic`, ein Neuveröffentlichen der
-    /// Spur (Wächter, Stufe 3) mit den Vorgaben des Raums — beides stellte
-    /// einen Merker still auf falsch.
+    /// Spur (Wächter, Stufe 3) mit den Vorgaben des Raums.
     func funkHqAbgleichen(_ grund: String) async {
         let f = SpracheFunkHq.geteilt
-        guard let r = raum, !anrufPausiert else {
-            f.optionGewollt = false
-            return
-        }
+        guard let r = raum, !anrufPausiert else { return }
         let frei = await MainActor.run {
             !Anrufverwaltung.geteilt.callkitAktiv && !Anrufverwaltung.geteilt.ohneCallKit
                 && AnrufRaum.geteilt.raum == nil
         }
-        guard frei, AudioManager.shared.audioSession.isAutomaticConfigurationEnabled else { return }
-        let istSoftware = AudioManager.shared.audioProcessingState
-            .echoCancellation.requested?.mode == .software
-        var lage = FunkLage.lesen()
-        let aufHq = istSoftware && !ton.volle
-        if !f.gescheitert, FunkHqRegeln.gescheitert(lage: lage, aufHq: aufHq) {
+        guard frei else { return }
+        var haelt = f.haelt
+        let automatik = AudioManager.shared.audioSession.isAutomaticConfigurationEnabled
+        if haelt, automatik {
+            // Ein Heilweg (`maschineNeu`) hat sie zurückgestellt; das SDK hat
+            // seither wieder eingerichtet.
+            f.verloren()
+            haelt = false
+            diagMelden("funk_hq_verloren", ["grund": grund])
+        }
+        if !haelt, !automatik { return }   // jemand anderes hält sie gerade
+        let lage = FunkLage.lesen()
+        if !f.gescheitert, FunkHqRegeln.gescheitert(lage: lage, haelt: haelt) {
             f.gescheitert = true
             diagMelden("funk_hq_gescheitert", ["grund": grund])
         }
-        let ziel = FunkHqRegeln.ziel(wunsch: f.wunsch, lage: lage, gescheitert: f.gescheitert, bisher: aufHq)
-        let soll = ziel || ton.volle
-        if soll != istSoftware, let spur = r.localParticipant.audioTracks
-            .first(where: { $0.source == .microphone })?.track as? LocalAudioTrack {
-            do {
-                try spur.setAudioProcessingOptions(soll ? Self.volleVerarbeitung : AudioProcessingOptions())
-            } catch {
-                diagMelden("funk_hq_verarbeitung_fehler", ["fehler": error.localizedDescription])
-            }
+        var ziel = FunkHqRegeln.ziel(wunsch: f.wunsch, lage: lage, gescheitert: f.gescheitert, haelt: haelt)
+        if ziel, !haelt, f.uebernahmeZaehlen() {
+            f.gescheitert = true
+            ziel = false
+            diagMelden("funk_hq_pendelt", ["grund": grund])
         }
-        f.optionGewollt = f.wunsch && soll
-        SpracheFunkHq.optionDurchsetzen(grund)
-        lage = FunkLage.lesen()
-        let kurz = "\(lage.art)/\(ziel ? "ziel-hq" : "ziel-apple")"
+        let spur = r.localParticipant.audioTracks
+            .first(where: { $0.source == .microphone })?.track as? LocalAudioTrack
+        let istSoftware = AudioManager.shared.audioProcessingState
+            .echoCancellation.requested?.mode == .software
+        if ziel {
+            await funkHqHalten(spur, schonGehalten: haelt, optionDa: lage.optionDa,
+                               istSoftware: istSoftware, grund: grund)
+        } else {
+            await funkHqZurueck(spur, hielt: f.loslassen(), istSoftware: istSoftware,
+                                optionDa: lage.optionDa, grund: grund)
+        }
+        let neu = FunkLage.lesen()
+        let kurz = "\(neu.art)/\(f.haelt ? "hq" : "apple")"
         if kurz != f.letzteArt {
             f.letzteArt = kurz
             diagMelden("funk_route", ["grund": grund, "ziel": ziel ? "hq" : "apple"])
+        }
+    }
+
+    /// Übernehmen (oder nach einem Neuveröffentlichen der Spur nachziehen):
+    /// erst die Automatik nehmen, DANN die Verarbeitung wechseln — sonst
+    /// richtete das SDK dazwischen noch einmal seine eigene Kategorie ein.
+    private func funkHqHalten(_ spur: LocalAudioTrack?, schonGehalten: Bool, optionDa: Bool,
+                              istSoftware: Bool, grund: String) async {
+        let f = SpracheFunkHq.geteilt
+        if !schonGehalten {
+            guard await MainActor.run(body: { f.automatikNehmen() }) else { return }
+        }
+        if !istSoftware { verarbeitungSetzen(spur, software: true) }
+        guard !schonGehalten || !optionDa else { return }
+        if let fehler = await MainActor.run(body: { f.hqEinrichten() }) {
+            f.gescheitert = true
+            diagMelden("funk_hq_fehler", ["grund": grund, "fehler": fehler])
+            await funkHqZurueck(spur, hielt: f.loslassen(), istSoftware: true, optionDa: true,
+                                grund: "fehler")
+            return
+        }
+        diagMelden("funk_hq_an", ["grund": grund])
+    }
+
+    /// Zurück an das SDK. Wechselt die Verarbeitung zurück auf `.automatic`,
+    /// richtet das SDK seine Kategorie dabei selbst neu ein
+    /// (`isPlatformVoiceProcessingExpected` → `onDidMutate`); sonst setzen
+    /// wir sie so, wie es das SDK täte, damit die HQ-Option nicht stehen bleibt.
+    private func funkHqZurueck(_ spur: LocalAudioTrack?, hielt: Bool, istSoftware: Bool,
+                               optionDa: Bool, grund: String) async {
+        if istSoftware, !ton.volle {
+            verarbeitungSetzen(spur, software: false)
+        } else if optionDa {
+            await MainActor.run { SpracheFunkHq.geteilt.sdkKategorieSetzen(software: istSoftware) }
+        }
+        if hielt { diagMelden("funk_hq_aus", ["grund": grund]) }
+    }
+
+    private func verarbeitungSetzen(_ spur: LocalAudioTrack?, software: Bool) {
+        guard let spur else { return }
+        do {
+            try spur.setAudioProcessingOptions(software ? Self.volleVerarbeitung : AudioProcessingOptions())
+        } catch {
+            diagMelden("funk_hq_verarbeitung_fehler", ["fehler": error.localizedDescription])
         }
     }
 
@@ -147,6 +188,7 @@ extension SpracheRaum {
             "ios": "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)",
             "funkArt": l.art,
             "funkWunsch": SpracheFunkHq.geteilt.wunsch,
+            "funkHaelt": SpracheFunkHq.geteilt.haelt,
             "hqOpt": l.optionDa,
             "hqKann": l.hqKann.map { $0 ? "ja" : "nein" } ?? "unbekannt",
             "hqAn": l.hqAn,

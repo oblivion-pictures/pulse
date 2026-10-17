@@ -22,29 +22,38 @@ import LiveKit
 /// `.allowBluetoothHFP` ist HFP der Rückfall, wenn die Route es nicht trägt.
 /// **Apple schreibt dazu ausdrücklich:** die Option „kann die Eingangslatenz
 /// erhöhen und wird für Echtzeit-Kommunikation nicht empfohlen" — deshalb ist
-/// sie abschaltbar (`wunsch`, Spracheinstellungen).
+/// sie abschaltbar (`wunsch`, Spracheinstellungen; Eigentümer-Freigabe
+/// 2026-10-17: automatisch, nur mit HQ-fähigen Kopfhörern, Vorgabe an).
 ///
-/// **Der Weg durch das SDK:** Verarbeitung `.software` (dieselbe wie „Volle
-/// Tonqualität", `volleVerarbeitung`) → das SDK erwartet kein VPIO mehr und
-/// wählt von selbst den Modus `.default` (`selectConfiguration`, die
-/// `…Media`-Vorgaben) → hier kommt nur die eine Option dazu. Am Lautsprecher,
-/// am Kabel und mit Kopfhörern ohne HQ bleibt alles wie heute (VPIO).
+/// **Warum wir die Session während HQ SELBST halten** (Gegenprüfung B2).
+/// Die erste Fassung hängte die Option hinter die Konfiguration des SDK —
+/// aber das SDK setzt bei JEDER eigenen Konfiguration seine festen Optionen
+/// ohne HQ (Stream-Kachel auf/zu, Lautsprecher-Wahl, Neubau der Maschine), und
+/// jedes Mal hätte der Kopfhörer zweimal das Profil gewechselt, im Neubau
+/// womöglich in einer Schleife. Einen Haken ins SELBE `setCategory` gibt es in
+/// 2.17 nicht: `sessionConfiguration` wird nirgends gelesen,
+/// `customConfigureAudioSessionFunc` ist veraltet und ersetzt auch das
+/// Aktivieren, und `AudioSessionEngineObserver` ist nicht ableitbar (`public`,
+/// nicht `open`) — ihn in `set(engineObservers:)` zu ersetzen nähme dem
+/// Stream-Ton die Anforderungen, über die er die Session bekommt
+/// (`StreamTonSitzung`).
 ///
-/// **Warum ein Maschinen-Beobachter und nicht `sessionConfiguration`:** die
-/// Eigenschaft wird im SDK 2.17 gespeichert und nirgends gelesen (`grep`
-/// über `Sources/` findet nur ihre Deklaration). `set(engineObservers:)` ist
-/// der Weg, den das SDK selbst nennt; wir hängen uns HINTER seinen
-/// Session-Beobachter, der vorher Kategorie und Modus gesetzt hat.
+/// Also derselbe Weg wie bei CallKit (`AnrufSitzung.swift`): Automatik aus
+/// (`isAutomaticConfigurationEnabled = false`), Kategorie selbst setzen. Die
+/// Buchführung des SDK läuft dabei weiter (Anforderungen, `hasRecorded`), nur
+/// `configureIfNeeded` kehrt sofort zurück — kein `setCategory`, kein
+/// `setActive(false)` beim Neubau der Maschine. Zurück an die Automatik geht
+/// es beim Verlassen, ohne Kopfhörer, bei jedem Anruf und wenn HQ nicht
+/// anspringt; die Heilwege des Wächters stellen sie ohnehin zurück
+/// (`maschineNeu`), danach übernimmt der Abgleich neu — gebremst.
 final class SpracheFunkHq: @unchecked Sendable {
     static let geteilt = SpracheFunkHq()
 
     private let sperre = NSLock()
     private var _wunsch = true
-    private var _optionGewollt = false
-    private var eingehaengt = false
-    /// Für diesen Raum aufgegeben: die Option war gesetzt, das Mikrofon des
-    /// Kopfhörers lief trotzdem nicht in HQ. Verhindert ein Pendeln. Nur in
-    /// der Befehlskette des Raums angefasst.
+    private var _haelt = false
+    private var uebernahmen: [CFAbsoluteTime] = []
+    /// Für diesen Raum aufgegeben (HQ springt nicht an, oder es pendelt).
     var gescheitert = false
     /// Zuletzt gemeldete Route — eine Diagnose-Zeile nur bei Wechsel.
     var letzteArt = ""
@@ -55,73 +64,99 @@ final class SpracheFunkHq: @unchecked Sendable {
         set { sperre.withLock { _wunsch = newValue } }
     }
 
-    /// Soll die Option an der Session stehen? Gelesen auch vom Faden der
-    /// Audio-Maschine, deshalb hinter der Sperre.
-    var optionGewollt: Bool {
-        get { sperre.withLock { _optionGewollt } }
-        set { sperre.withLock { _optionGewollt = newValue } }
+    /// Halten wir die Session gerade (Automatik von uns aus)?
+    var haelt: Bool { sperre.withLock { _haelt } }
+
+    /// **Pendelbremse:** mehr als `pendelGrenze` Übernahmen in `pendelFenster`
+    /// Sekunden heisst, irgendetwas gibt sie immer wieder zurück — dann lieber
+    /// VPIO als Profilwechsel im Sekundentakt. `true` = die Bremse greift.
+    static let pendelGrenze = 3
+    static let pendelFenster: CFAbsoluteTime = 30
+
+    func uebernahmeZaehlen(_ jetzt: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()) -> Bool {
+        sperre.withLock {
+            uebernahmen = uebernahmen.filter { jetzt - $0 < Self.pendelFenster } + [jetzt]
+            return uebernahmen.count > Self.pendelGrenze
+        }
     }
 
-    func einhaengenFallsNoetig() {
-        let neu = sperre.withLock { () -> Bool in
-            defer { eingehaengt = true }
-            return !eingehaengt
+    /// Gibt die Session ans SDK zurück, falls wir sie halten. Von jedem Faden:
+    /// es ist nur ein Merker und der Schalter des SDK (dort hinter dessen
+    /// Sperre). Neu einrichten tut das SDK erst beim nächsten Wechsel — den
+    /// stösst der Abgleich an (Verarbeitung zurück auf `.automatic`).
+    @discardableResult
+    func loslassen() -> Bool {
+        let hielt = sperre.withLock { () -> Bool in
+            defer { _haelt = false }
+            return _haelt
         }
-        guard neu else { return }
-        let am = AudioManager.shared
-        am.set(engineObservers: [am.audioSession, FunkHqMaschine(), am.mixer])
+        if hielt { AudioManager.shared.audioSession.isAutomaticConfigurationEnabled = true }
+        return hielt
     }
+
+    /// Jemand anderes hat die Automatik schon zurückgestellt (Heilweg).
+    func verloren() { sperre.withLock { _haelt = false } }
 
     func raumWeg() {
-        optionGewollt = false
+        loslassen()
+        sperre.withLock { uebernahmen = [] }
         gescheitert = false
         letzteArt = ""
     }
 
-    /// Die Option setzen oder nehmen, wie `optionGewollt` es sagt — nur an
-    /// einer `.playAndRecord`-Session, und gesetzt nur im Modus `.default`.
-    /// Ohne Sperre gegen das SDK: setzt es gleichzeitig seine Vorgabe, kommt
-    /// danach ein Routenwechsel, und der Abgleich setzt sie wieder.
-    static func optionDurchsetzen(_ grund: String) {
-        guard #available(iOS 26.0, *) else { return }
+    // MARK: - Session (auf dem Hauptthread, wie die CallKit-Übergabe)
+
+    /// Übernehmen, Schritt 1: die Automatik nehmen — nur, wenn kein Anruf die
+    /// Session führt und niemand sonst sie gerade hält. Auf dem Hauptthread,
+    /// weil dort auch `sessionUebernehmen` läuft: CallKit kann so nicht
+    /// zwischen Prüfen und Nehmen fallen.
+    @MainActor func automatikNehmen() -> Bool {
+        let v = Anrufverwaltung.geteilt
+        let am = AudioManager.shared
+        guard !v.callkitAktiv, !v.ohneCallKit, AnrufRaum.geteilt.raum == nil,
+              am.audioSession.isAutomaticConfigurationEnabled else { return false }
+        am.audioSession.isAutomaticConfigurationEnabled = false
+        sperre.withLock { _haelt = true }
+        return true
+    }
+
+    /// Übernehmen, Schritt 2: die Kategorie, die das SDK für
+    /// Software-Verarbeitung setzt (`playAndRecord…Media`, Modus `.default`),
+    /// plus HQ. `nil` = eingerichtet, sonst der Grund.
+    @MainActor func hqEinrichten() -> String? {
+        guard haelt, !Anrufverwaltung.geteilt.callkitAktiv else { return "verloren" }
+        guard #available(iOS 26.0, *) else { return "ios" }
+        var optionen = Self.sdkOptionen()
+        optionen.insert(.bluetoothHighQualityRecording)
         let s = AVAudioSession.sharedInstance()
-        let soll = geteilt.optionGewollt
-        guard s.category == .playAndRecord,
-              soll != s.categoryOptions.contains(.bluetoothHighQualityRecording),
-              !soll || s.mode == .default,
-              AudioManager.shared.audioSession.isAutomaticConfigurationEnabled
-        else { return }
-        var optionen = s.categoryOptions
-        if soll { optionen.insert(.bluetoothHighQualityRecording) } else {
-            optionen.remove(.bluetoothHighQualityRecording)
-        }
         do {
-            try s.setCategory(s.category, mode: s.mode, options: optionen)
-            NSLog("[PulseSprache] FunkHq Option %@ (%@)", soll ? "an" : "aus", grund)
+            try s.setCategory(.playAndRecord, mode: .default, options: optionen)
+            // Im Kanal ist sie schon aktiv; nach einer Unterbrechung womöglich
+            // nicht — und solange wir halten, aktiviert das SDK nicht.
+            try s.setActive(true)
+            return nil
         } catch {
-            NSLog("[PulseSprache] FunkHq Option FEHLER (%@): %@", grund, error.localizedDescription)
+            return error.localizedDescription
         }
     }
-}
 
-/// Setzt die Option, bevor die Maschine mit Aufnahme anläuft — der
-/// Session-Beobachter des SDK hat Kategorie und Modus da schon gesetzt. Ohne
-/// das liefe sie nach jedem Neustart (Wächter, Stummschalten) erst auf HFP an
-/// und wechselte Augenblicke später die Route.
-private final class FunkHqMaschine: AudioEngineObserver, @unchecked Sendable {
-    private let sperre = NSLock()
-    private var _next: (any AudioEngineObserver)?
-    var next: (any AudioEngineObserver)? {
-        get { sperre.withLock { _next } }
-        set { sperre.withLock { _next = newValue } }
+    /// Die Kategorie, die das SDK selbst setzen würde — für ein Zurückgeben,
+    /// das keinen Wechsel der Verarbeitung auslöst (dann richtet das SDK von
+    /// selbst nichts neu ein, und die HQ-Option bliebe stehen).
+    @MainActor func sdkKategorieSetzen(software: Bool) {
+        let am = AudioManager.shared
+        guard am.audioSession.isAutomaticConfigurationEnabled,
+              !Anrufverwaltung.geteilt.callkitAktiv else { return }
+        let lautsprecher = am.isSpeakerOutputPreferred
+        let modus: AVAudioSession.Mode = software ? .default : (lautsprecher ? .videoChat : .voiceChat)
+        try? AVAudioSession.sharedInstance().setCategory(
+            .playAndRecord, mode: modus, options: Self.sdkOptionen())
     }
 
-    func engineWillEnable(_ engine: AVAudioEngine, isPlayoutEnabled: Bool,
-                          isRecordingEnabled: Bool) -> Int {
-        if isRecordingEnabled, !engine.isInManualRenderingMode {
-            SpracheFunkHq.optionDurchsetzen("maschine")
-        }
-        return next?.engineWillEnable(engine, isPlayoutEnabled: isPlayoutEnabled,
-                                      isRecordingEnabled: isRecordingEnabled) ?? 0
+    /// Die Optionen der `playAndRecord`-Vorgaben des SDK 2.17.
+    @MainActor static func sdkOptionen() -> AVAudioSession.CategoryOptions {
+        var o: AVAudioSession.CategoryOptions = [.allowBluetoothHFP, .allowBluetoothA2DP, .allowAirPlay]
+        if AudioManager.shared.isSpeakerOutputPreferred { o.insert(.defaultToSpeaker) }
+        return o
     }
 }

@@ -189,7 +189,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         taub = taubStart
         await hoerwunschSetzen(je: lautstaerken, gesamt: gesamt)
         self.ton = ton
-        let r = Room(delegate: self, roomOptions: Self.raumOptionen(ton, funk: funkHqVorBeitritt(ton)))
+        let r = Room(delegate: self, roomOptions: Self.raumOptionen(ton))
         sitzung += 1
         raum = r
         self.kanalId = kanalId

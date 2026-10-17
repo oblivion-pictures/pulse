@@ -10,25 +10,27 @@ import { test } from 'node:test';
 const swift = (f: string) =>
   readFileSync(new URL(`../../mobile/ios/App/App/${f}`, import.meta.url), 'utf8');
 
-test('die Option hängt HINTER dem Session-Beobachter des SDK, vor dem Mischer', () => {
-  assert.match(
-    swift('SpracheFunkHq.swift'),
-    /am\.set\(engineObservers: \[am\.audioSession, FunkHqMaschine\(\), am\.mixer\]\)/
-  );
-});
-
-test('die Option nur an playAndRecord, gesetzt nur im Modus .default (Apple-Kopf)', () => {
+test('B2: während HQ hält die Hülle die Session selbst (Automatik aus), kein Anhängen ans SDK', () => {
   const q = swift('SpracheFunkHq.swift');
-  assert.match(q, /s\.category == \.playAndRecord/);
-  assert.match(q, /!soll \|\| s\.mode == \.default/);
-  assert.match(q, /#available\(iOS 26\.0, \*\)/);
+  assert.match(q, /am\.audioSession\.isAutomaticConfigurationEnabled = false\n\s*sperre\.withLock \{ _haelt = true \}/);
+  assert.match(q, /try s\.setCategory\(\.playAndRecord, mode: \.default, options: optionen\)/);
+  assert.match(q, /optionen\.insert\(\.bluetoothHighQualityRecording\)/);
+  assert.doesNotMatch(q, /\.set\(engineObservers:/);
+  // Nehmen und Einrichten auf dem Hauptthread, wie die CallKit-Übergabe.
+  assert.match(q, /@MainActor func automatikNehmen\(\) -> Bool/);
+  assert.match(q, /@MainActor func hqEinrichten\(\) -> String\?/);
 });
 
-test('HQ nur mit Bluetooth-Ausgabe, iOS 26, Wunsch und einem Kopfhörer, der es kann', () => {
-  const q = swift('SpracheFunkHqAbgleich.swift');
-  assert.match(q, /guard wunsch, lage\.ios26, lage\.ausgangFunk, !gescheitert else \{ return false \}/);
-  assert.match(q, /return lage\.hqKann \?\? bisher/);
-  assert.match(q, /highQualityRecording\.isSupported/);
+test('B2: Pendelbremse — mehr als 3 Übernahmen in 30 s, dann VPIO', () => {
+  const q = swift('SpracheFunkHq.swift');
+  assert.match(q, /static let pendelGrenze = 3/);
+  assert.match(q, /static let pendelFenster: CFAbsoluteTime = 30/);
+  assert.match(swift('SpracheFunkHqAbgleich.swift'), /diagMelden\("funk_hq_pendelt"/);
+});
+
+test('jeder Anruf nimmt dem Kanal die Session sofort wieder ab', () => {
+  const a = swift('AnrufSitzung.swift');
+  assert.equal(a.match(/SpracheFunkHq\.geteilt\.loslassen\(\)/g)?.length, 2);
 });
 
 test('der Weg folgt der Route, dem Anruf-Ende und dem Beitritt', () => {
@@ -41,7 +43,7 @@ test('der Weg folgt der Route, dem Anruf-Ende und dem Beitritt', () => {
 test('jede Diagnose-Zeile sagt, welcher Weg lief', () => {
   assert.match(swift('SpracheRaumNeustart.swift'), /\]\.merging\(funkFelder\(\)\) \{ \$1 \}/);
   const q = swift('SpracheFunkHqAbgleich.swift');
-  for (const feld of ['ios', 'funkArt', 'hqOpt', 'hqKann', 'hqAn', 'rate']) {
+  for (const feld of ['ios', 'funkArt', 'funkHaelt', 'hqOpt', 'hqKann', 'hqAn', 'rate']) {
     assert.match(q, new RegExp(`"${feld}":`), feld);
   }
 });

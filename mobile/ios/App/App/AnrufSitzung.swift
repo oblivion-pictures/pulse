@@ -56,6 +56,9 @@ extension Anrufverwaltung {
         guard !callkitAktiv else { return }
         callkitAktiv = true
         NSLog("[PulseAnruf] CallKit übernimmt die Audio-Session")
+        // Hält der Kanal die Session für Bluetooth-HQ (`SpracheFunkHq`),
+        // geht sie hier zurück — die Zeile darunter nimmt sie für CallKit.
+        SpracheFunkHq.geteilt.loslassen()
         kanalPause(true)
         AudioManager.shared.audioSession.isAutomaticConfigurationEnabled = false
         // Ohne Automatik wirkt das Loslassen nicht auf die Session; es sorgt
@@ -215,6 +218,10 @@ extension Anrufverwaltung {
             kanalLautsprecher = AudioManager.shared.isSpeakerOutputPreferred
         }
         AudioManager.shared.isSpeakerOutputPreferred = AnrufRaum.geteilt.lautsprecher
+        // SOFORT, nicht erst mit der Pause in der Kette: die Spur des Anrufs
+        // startet mit Apples Verarbeitung, und das SDK muss die Session dafür
+        // einrichten dürfen (`SpracheFunkHq`, Automatik).
+        SpracheFunkHq.geteilt.loslassen()
         kanalPause(true)
     }
 

@@ -16,10 +16,7 @@ test('L2: nach der Anruf-Pause gilt „Volle Tonqualität" wieder', () => {
     neustart,
     /static let volleVerarbeitung = AudioProcessingOptions\(\s*echoCancellationMode: \.software, autoGainControlMode: \.software,\s*noiseSuppressionMode: \.software\)/
   );
-  assert.match(
-    swift('SpracheRaum.swift'),
-    /self\.ton = ton\n\s*let r = Room\(delegate: self, roomOptions: Self\.raumOptionen\(ton, funk: funkHqVorBeitritt\(ton\)\)\)/
-  );
+  assert.match(swift('SpracheRaum.swift'), /self\.ton = ton\n\s*let r = Room\(delegate: self, roomOptions: Self\.raumOptionen\(ton\)\)/);
 });
 
 test('L3: Beitritt meldet vpio, aec und kbps', () => {
