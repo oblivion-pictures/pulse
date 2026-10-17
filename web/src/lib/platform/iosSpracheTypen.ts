@@ -159,7 +159,8 @@ export interface SprachePlugin {
      *  nativen Weg fern (`SPRACHE_METHODEN`). */
     communityName?: string;
     /** Der Server-Wert der Sende-Bitrate (wie am Desktop). Nur an einen Bau mit
-     *  Wächter geschickt (`nativeWacheDa`); ein älterer übergeht das Feld. */
+     *  Wächter geschickt (`nativeWacheDa`). Die Hülle liest das Feld nicht mehr
+     *  (ihr „Volle Tonqualität"-Weg ist entfernt); es bleibt für ältere Bauten. */
     bitrateKbps?: number;
     /** Diese Web-App kennt die Aktion `neuVerbinden` der nativen Ansicht —
      *  sonst zeigt deren Band statt des Knopfs „App neu starten". */

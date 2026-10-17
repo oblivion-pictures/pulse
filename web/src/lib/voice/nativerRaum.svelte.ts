@@ -116,8 +116,9 @@ export class NativerRaum {
         community: guilds.byId[guilds.guildIdForChannel(channelId) ?? '']?.name,
         // Es gilt Apples Sprachverarbeitung (VPIO); „Volle Tonqualität" gibt es
         // nicht mehr (Eigentümer-Entscheid 2026-10-17). `bitrateKbps` geht
-        // weiter mit — die Hülle wertet es nur zusammen mit ihrem alten
-        // Software-Weg aus, sonst gilt die SDK-Vorgabe (48 kbps).
+        // noch mit, die Hülle wertet es aber nicht mehr aus (ihr Software-Weg
+        // ist weg, es gilt die feste Sende-Bitrate); `ton` schaltet nur noch
+        // `kannNeuVerbinden` (`spracheBeitreten`).
         ton: { bitrateKbps: effectiveVoiceBitrateMaxKbps(channelId) }
       });
     } catch (e) {
