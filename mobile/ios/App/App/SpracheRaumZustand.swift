@@ -189,6 +189,9 @@ extension SpracheRaum {
     }
 
     func schickeEigenen() {
+        // Mikrofon, Stumm oder Route haben sich geändert: die Echo-Absenkung
+        // des Stream-Tons sofort nachziehen, nicht erst im Takt (S9).
+        StreamTonVerwaltung.geteilt.echoAnstossen()
         melden("eigenerZustand", [
             "mikro": raum?.localParticipant.isMicrophoneEnabled() ?? false,
             "kamera": raum?.localParticipant.isCameraEnabled() ?? false,

@@ -171,6 +171,7 @@ final class AnrufRaum: NSObject, @unchecked Sendable {
     private func loesen(_ r: Room) {
         guard raum === r else { return }
         raum = nil
+        StreamTonVerwaltung.geteilt.echoAnstossen()
         kennung = nil
         kontext = [:]
         verbundenSeit = nil
@@ -252,6 +253,7 @@ final class AnrufRaum: NSObject, @unchecked Sendable {
     }
 
     func schicke() {
+        StreamTonVerwaltung.geteilt.echoAnstossen()
         melde?("anrufRaum", zustand())
     }
 

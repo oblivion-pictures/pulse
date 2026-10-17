@@ -177,3 +177,9 @@ test('S7: Verbindungsende hält das Gerät sofort an (kein Stille-Lauf im Hinter
   assert.match(tot, /geraet\.anhalten\(grund: grund\)/);
   assert.match(tot, /p\?\.close\(\)/);
 });
+
+test('S9: Echo-Absenkung folgt dem Mikrofon auf Ereignis, der Takt ist nur Netz', () => {
+  assert.match(quelle('SpracheRaumZustand.swift'), /func schickeEigenen\(\) \{[\s\S]{0,300}echoAnstossen\(\)/);
+  assert.match(quelle('AnrufRaum.swift'), /func schicke\(\) \{\s*StreamTonVerwaltung\.geteilt\.echoAnstossen\(\)/);
+  assert.match(quelle('StreamTonPlugin.swift'), /withTimeInterval: 5, repeats: true/);
+});

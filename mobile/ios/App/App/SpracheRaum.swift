@@ -267,6 +267,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     private func raumLoesen(_ r: Room) {
         guard raum === r else { return }
         raum = nil
+        StreamTonVerwaltung.geteilt.echoAnstossen()
         wache.beenden()
         kanalId = nil
         kanalName = ""

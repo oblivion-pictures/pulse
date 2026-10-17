@@ -216,11 +216,20 @@ final class StreamTonVerwaltung: @unchecked Sendable {
         }
         echoPruefen()
         guard echoUhr == nil else { return }
-        // Das Mikrofon geht auch ohne Routenwechsel auf und zu; einmal je
-        // Sekunde nachsehen ist billig und braucht keine Brücke.
-        echoUhr = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        // **Nur ein Sicherheitsnetz** (S9): umgeschaltet wird auf Ereignis —
+        // Mikrofon/Stumm/Push-to-Talk (`schickeEigenen`, `AnrufRaum.schicke`),
+        // Verlassen und Routenwechsel. Im 1-s-Takt ging bei jedem Druck auf
+        // Push-to-Talk bis zu 1 s Stream in voller Lautstärke ins Mikrofon.
+        // Der Takt fängt nur einen Weg ab, an den kein Ereignis gedacht hat.
+        echoUhr = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.echoPruefen() }
         }
+    }
+
+    /// Von jedem Faden: die Echo-Lage jetzt neu bewerten (auf dem Hauptthread).
+    func echoAnstossen() {
+        guard sperre.withLock({ !liste.isEmpty }) else { return }
+        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.echoPruefen() } }
     }
 
     @MainActor private func echoPruefen() {
