@@ -59,3 +59,12 @@ test('B1: „springt nicht an" wird erst im verzögerten Abgleich gewertet', () 
   assert.match(q, /static let funkPruefFrist: TimeInterval = 3/);
   assert.match(q, /asyncAfter\(deadline: \.now\(\) \+ Self\.funkPruefFrist\)/);
 });
+
+test('B3: Kopfhörer raus → sofort im Beobachter zurück und stumm, bis VPIO läuft', () => {
+  const sitzung = swift('SpracheRaumSession.swift');
+  assert.match(sitzung, /SpracheFunkHq\.geteilt\.kopfhoererWeg\(\)\n\s*schickeEigenen\(\)\n\s*funkHqAnstossen\("route"\)/);
+  const q = swift('SpracheFunkHq.swift');
+  assert.match(q, /guard haelt, !FunkLage\.lesen\(\)\.ausgangFunk else \{ return \}\n\s*daempfen\(\)\n\s*loslassen\(\)/);
+  assert.match(q, /mixer\.outputVolume = 0/);
+  assert.match(q, /voiceProcessingEnabled\.isActive/);
+});

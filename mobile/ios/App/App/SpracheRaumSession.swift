@@ -38,7 +38,11 @@ extension SpracheRaum {
                   funkFelder().map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " "))
             // Kopfhörer rein/raus, und jeder Kategoriewechsel (auch der
             // eigene): der Bluetooth-Weg folgt der Route (`SpracheFunkHq`).
-            if raum != nil { schickeEigenen(); funkHqAnstossen("route") }
+            if raum != nil {
+                SpracheFunkHq.geteilt.kopfhoererWeg()
+                schickeEigenen()
+                funkHqAnstossen("route")
+            }
         }
         // **Eine Unterbrechung heisst: jemand anderes hat die Session.** Das
         // ist die Zeile, an der der Hoermuschel-Fehler hing — die Oberfläche

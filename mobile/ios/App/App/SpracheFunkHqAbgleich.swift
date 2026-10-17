@@ -127,6 +127,9 @@ extension SpracheRaum {
             await funkHqHalten(spur, schonGehalten: haelt, optionDa: lage.optionDa,
                                istSoftware: istSoftware, grund: grund)
         } else {
+            // Zurück auf VPIO am Lautsprecher: bis es läuft, nichts hören
+            // lassen (B3; `kopfhoererWeg` tut dasselbe schon im Beobachter).
+            if istSoftware, !ton.volle, !lage.ausgangFunk { f.daempfen() }
             await funkHqZurueck(spur, hielt: f.loslassen(), istSoftware: istSoftware,
                                 optionDa: lage.optionDa, grund: grund)
         }
