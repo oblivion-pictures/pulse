@@ -195,7 +195,8 @@ test('V1: nach dem letzten Stream-Ton deaktiviert die Hülle die Session (ohne R
   const nach = /private func nachDemLetzten[\s\S]*?\n    \}\n/.exec(src)?.[0] ?? '';
   assert.match(nach, /SpracheRaum\.geteilt\.raum == nil, AnrufRaum\.geteilt\.raum == nil/);
   assert.match(nach, /!v\.callkitAktiv, !v\.ohneCallKit/);
-  assert.match(nach, /nutzer == 0, s\.category == \.playback, s\.categoryOptions\.contains\(\.mixWithOthers\)/);
+  assert.match(nach, /let gehoertIosTon = s\.category == \.playback && !s\.categoryOptions\.contains\(\.mixWithOthers\)/);
+  assert.match(nach, /guard nutzer == 0, !gehoertIosTon else \{ return \}/);
   assert.match(nach, /setActive\(false, options: \.notifyOthersOnDeactivation\)/);
 });
 

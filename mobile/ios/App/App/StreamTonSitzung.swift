@@ -95,10 +95,8 @@ final class StreamTonSitzung: @unchecked Sendable {
     /// statt sie wie ohne Stream frisch zu aktivieren.
     ///
     /// Nur wenn niemand sonst sie braucht: kein Raum, kein Anruf (auch keiner
-    /// über CallKit), kein Stream-Ton mehr, und die Kategorie ist noch die von
-    /// LiveKit für uns gesetzte (`.playback` mit `.mixWithOthers`) — hat
-    /// `iosTon` sie inzwischen für eine Wiedergabe der WebView eingerichtet
-    /// (nicht mischbar), gehört sie ihm. „Busy" kann hier nicht kommen: die
+    /// über CallKit), kein Stream-Ton mehr, und `iosTon` hat sie nicht für eine
+    /// Wiedergabe der WebView eingerichtet (s. unten). „Busy" kann hier nicht kommen: die
     /// eigenen Maschinen stehen, die des SDK läuft ohne Raum nicht. Ein Fehler
     /// wird nur gemeldet — LiveKits Buchführung hängt nicht daran.
     /// Auf dem Hauptthread (die Anruf-Merker leben dort); geprüft und
@@ -111,9 +109,14 @@ final class StreamTonSitzung: @unchecked Sendable {
             sperre.lock()
             defer { sperre.unlock() }
             let s = AVAudioSession.sharedInstance()
-            guard nutzer == 0, s.category == .playback, s.categoryOptions.contains(.mixWithOthers) else {
-                return
-            }
+            // `iosTon` richtet für eine Wiedergabe der WebView `.playback` OHNE
+            // `.mixWithOthers` ein (`AudioSessionPlugin.setPlaybackMode`) —
+            // dann gehört die Session ihm. Alles andere ist ohne Raum und Anruf
+            // ein Rest von LiveKit: `.playback` mit `.mixWithOthers` für uns, oder
+            // `.playAndRecord`, wenn der Kanal ging, während wir hielten (in der
+            // Simulator-Probe gesehen).
+            let gehoertIosTon = s.category == .playback && !s.categoryOptions.contains(.mixWithOthers)
+            guard nutzer == 0, !gehoertIosTon else { return }
             do {
                 try s.setActive(false, options: .notifyOthersOnDeactivation)
                 melden("streamton_session_aus", [:])
