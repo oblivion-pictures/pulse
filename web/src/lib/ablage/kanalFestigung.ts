@@ -158,9 +158,9 @@ export function starteKanalFestigungsSchleife(kanalId: string, intervalMs = 30_0
 	//
 	// Bei verdeckter Seite schläft der Takt (`sichtbarerTakt`) und holt beim
 	// Sichtbarwerden nach: `nachziehen()` setzt am Ablage-Stand an, nicht an
-	// der Uhr — ein späterer Lauf nimmt den dann offenen Postfach-Bestand ab
-	// dort auf. (Was der normale Empfang inzwischen quittiert hat, liegt
-	// dort nicht mehr; das gilt für jeden Lauf, auch im 30-s-Takt.)
+	// der Uhr — ein späterer Lauf nimmt ab dort alles auf, was der Empfang
+	// inzwischen im lokalen Verlauf abgelegt hat (`verlaufQuelle.ts`), auch
+	// was er längst quittiert hat. Verschlafen geht dabei nichts verloren.
 	eintrag.stopp = sichtbarerTakt(() => {
 		if (eintrag.laufend) return;
 		eintrag.laufend = true;
