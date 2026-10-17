@@ -434,15 +434,6 @@ export class ManagedHqStream {
     // `this.stream` zeigte auf einen Strom, den es nicht mehr gibt.
     if (this.#abgebrochen()) return;
     this.stream = stream;
-    // iOS: ab jetzt will diese Kachel Ton. Der Koordinator entscheidet, welche
-    // Audio-Betriebsart daraus folgt — ein Sprachkanal gewinnt (s.
-    // `platform/tonModus.ts`). Mehrfaches Anmelden derselben Kachel beim
-    // Wiederaufbau zaehlt einmal; No-op ausserhalb der iOS-Huelle.
-    // Titel fuer Sperrbildschirm/Kontrollzentrum. Der Name kann fehlen (Cache
-    // noch nicht gefuellt) — dann bleibt es bei der Vorgabe im Plugin.
-    const sender = userCache.get(this.userId);
-    const wer = sender?.display_name || sender?.username || '';
-    tonWiedergabe(this.#tonKennung, true, wer ? `Übertragung von ${wer}` : undefined);
     if (this.#nativ?.zustaendig && stream.getAudioTracks().length > 0) {
       // iOS-Hülle mit Fähigkeit: der Ton spielt nativ, die WebView schweigt.
       webViewTonAbschalten(stream, true);
@@ -461,6 +452,25 @@ export class ManagedHqStream {
   /** Der Ton in der WebView — der Weg ohne nativen Stream-Ton und dessen
    *  Rückfall. */
   #webTonAnhaengen(stream: MediaStream): void {
+    // iOS: ab jetzt will diese Kachel Ton. Der Koordinator entscheidet, welche
+    // Audio-Betriebsart daraus folgt — ein Sprachkanal gewinnt (s.
+    // `platform/tonModus.ts`). Mehrfaches Anmelden derselben Kachel beim
+    // Wiederaufbau zaehlt einmal; No-op ausserhalb der iOS-Huelle.
+    // Titel fuer Sperrbildschirm/Kontrollzentrum. Der Name kann fehlen (Cache
+    // noch nicht gefuellt) — dann bleibt es bei der Vorgabe im Plugin.
+    //
+    // **Nur auf dem WebView-Weg** (Eigentümer-Entscheid 2026-10-17, S8): spielt
+    // der Ton nativ, gehört die Session LiveKit (`StreamTonSitzung.swift`), und
+    // ohne Kanal ist sie mischbar (`.playback` + `.mixWithOthers`) — Musik
+    // anderer Apps läuft mit, und eine mischbare App wird nie „Jetzt läuft"-App.
+    // Karte und Fernbefehle wären tote Wege; `iosTon` hätte über die Session
+    // ohnehin nichts zu sagen. Der Entscheid nimmt die fehlende
+    // Sperrbildschirm-Karte bewusst in Kauf: ein nicht mischbares `.playback`
+    // hiesse, die Session an LiveKit vorbei umzustellen — die Fehlerklasse,
+    // gegen die der ganze native Weg gebaut ist.
+    const sender = userCache.get(this.userId);
+    const wer = sender?.display_name || sender?.username || '';
+    tonWiedergabe(this.#tonKennung, true, wer ? `Übertragung von ${wer}` : undefined);
     // Nur nach einem Rückfall vom nativen Ton nötig; ohne ihn bleibt die Spur,
     // wie WebRTC sie liefert.
     if (this.#nativ) webViewTonAbschalten(stream, false);

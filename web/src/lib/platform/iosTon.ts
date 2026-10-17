@@ -320,6 +320,9 @@ export function tonWiedergabe(kennung: string, an: boolean, titel?: string): voi
   const vorher = wiedergaben.size;
   if (an) wiedergaben.add(kennung);
   else wiedergaben.delete(kennung);
+  if ((vorher > 0) !== (wiedergaben.size > 0)) {
+    for (const h of [...wiedergabeHoerer]) h(wiedergaben.size > 0);
+  }
   void anwenden();
   // Sperrbildschirm-Anzeige hängt an der ERSTEN und der LETZTEN Wiedergabe,
   // nicht an jeder: bei zwei offenen Kacheln soll die zweite die Anzeige der
@@ -329,6 +332,19 @@ export function tonWiedergabe(kennung: string, an: boolean, titel?: string): voi
   } else if (!an && wiedergaben.size === 0) {
     void iosJetztLaeuftAus();
   }
+}
+
+/**
+ * Spielt die WebView selbst gerade Ton ab (eine Kachel auf dem WebView-Weg,
+ * eine Watch-Party)? Für den nativen Stream-Ton (`stream/streamTonLage.ts`):
+ * ausserhalb eines Raums vertragen sich beide nicht. Native Kacheln melden
+ * sich hier nicht an. Rückgabe meldet ab.
+ */
+const wiedergabeHoerer = new Set<(laeuft: boolean) => void>();
+export function tonWiedergabenBeobachten(h: (laeuft: boolean) => void): () => void {
+  wiedergabeHoerer.add(h);
+  h(wiedergaben.size > 0);
+  return () => wiedergabeHoerer.delete(h);
 }
 
 /** Testhilfe / Abmeldung: alles zurück auf Anfang. */

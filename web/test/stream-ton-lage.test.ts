@@ -74,3 +74,38 @@ test('ohne Kachel, die nativ spielen will, kein Halter', () => {
   lage.setzen({ aufnahme: false });
   assert.deepEqual(halter, []);
 });
+
+test('S8: Watch-Party oder Kachel im Rückfall ausserhalb eines Raums → alle auf den WebView-Ton', () => {
+  const halter: boolean[] = [];
+  const lage = new StreamTonLage((an) => halter.push(an));
+  const k = kachel();
+  lage.anmelden(k);
+  lage.wollen(k, true);
+  lage.setzen({ webWiedergabe: true });
+  // Kein `ambient` mehr (die WebView-Wiedergabe folgte sonst dem
+  // Stummschalter), und die native Kachel wechselt ebenfalls.
+  assert.deepEqual(halter, [true, false]);
+  assert.deepEqual(k.lagen, ['rueckfall']);
+});
+
+test('S8: in einem Raum ist WebKit ohnehin ambient — eine Watch-Party ändert nichts', () => {
+  assert.equal(lageAus({ aufnahme: false, webWiedergabe: true, raum: true }), 'nativ');
+  const lage = new StreamTonLage(() => undefined);
+  const k = kachel();
+  lage.anmelden(k);
+  lage.setzen({ raum: true, webWiedergabe: true });
+  assert.deepEqual(k.lagen, []);
+  // Verlässt man den Raum mit laufender Watch-Party, wechselt die Kachel.
+  lage.setzen({ raum: false });
+  assert.deepEqual(k.lagen, ['rueckfall']);
+});
+
+test('S8: native Kacheln melden keine „Jetzt läuft"-Wiedergabe an', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/lib/stream/hqStreamManager.svelte.ts', import.meta.url), 'utf8');
+  const onStream = /#onStream\(stream: MediaStream\): void \{[\s\S]*?\n {2}\}\n/.exec(src)?.[0] ?? '';
+  const web = /#webTonAnhaengen\(stream: MediaStream\): void \{[\s\S]*?\n {2}\}\n/.exec(src)?.[0] ?? '';
+  assert.ok(onStream.length > 0 && web.length > 0, 'Quelltext nicht erkannt');
+  assert.doesNotMatch(onStream, /tonWiedergabe\(this\.#tonKennung, true/);
+  assert.match(web, /tonWiedergabe\(this\.#tonKennung, true/);
+});

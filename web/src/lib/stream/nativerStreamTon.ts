@@ -37,6 +37,11 @@ import {
   type StreamTonZustand
 } from '$lib/platform/iosStreamTonNativ';
 import { WebAufnahme } from '$lib/platform/webAufnahme';
+import { tonWiedergabenBeobachten } from '$lib/platform/iosTon';
+import {
+  mikrofonBeiDerHuelle,
+  mikrofonBeiDerHuelleBeobachten
+} from '$lib/platform/mikrofonBeiDerHuelle';
 import { StreamTonLage, type Lage, type Teilnehmer } from './streamTonLage';
 import { melde } from '$lib/diagnose/app-diagnose';
 import {
@@ -76,6 +81,14 @@ if (typeof navigator !== 'undefined' && navigator.mediaDevices && streamTonNativ
   new WebAufnahme((a) => lage.setzen({ aufnahme: a })).einhaengen(
     navigator.mediaDevices as unknown as Parameters<WebAufnahme['einhaengen']>[0]
   );
+}
+// Ein eigener Ton der WebView ausserhalb eines Raums (Watch-Party, Kachel im
+// Rückfall) verträgt sich nicht mit dem nativen (S8, `streamTonLage.ts`).
+// „Raum" = dieselben Halter, die das Mikrofon der Hülle zusprechen.
+if (streamTonNativDa()) {
+  lage.setzen({ raum: mikrofonBeiDerHuelle() });
+  mikrofonBeiDerHuelleBeobachten((raum) => lage.setzen({ raum }));
+  tonWiedergabenBeobachten((webWiedergabe) => lage.setzen({ webWiedergabe }));
 }
 
 export interface NativStand {
@@ -125,7 +138,15 @@ export class NativerStreamTon implements Teilnehmer {
   }
 
   lageSetzen(l: Lage): void {
-    if (!this.zustaendig) return;
+    if (this.#aufgegeben || this.#beendet) return;
+    if (l === 'rueckfall') {
+      // Bis die Kachel neu aufgeht: ein Hin und Her zwischen den Wegen kostete
+      // je eine Lücke, und die WebView spielt ohnehin schon selbst.
+      this.#aufgegeben = true;
+      this.#pausiert = false;
+      void this.#halt().then(() => this.#rueckfall('webview_spielt'));
+      return;
+    }
     if (l === 'pause') {
       if (this.#pfad === null && this.#retry === undefined) return;
       this.#pausiert = true;
@@ -144,7 +165,7 @@ export class NativerStreamTon implements Teilnehmer {
 
   /** Spielt der native Weg (oder versucht es noch)? `false` nach dem Aufgeben. */
   get zustaendig(): boolean {
-    return !this.#aufgegeben && !this.#beendet;
+    return !this.#aufgegeben && !this.#beendet && lage.lage !== 'rueckfall';
   }
 
   verbinden(url: string, lautstaerke: number): void {
