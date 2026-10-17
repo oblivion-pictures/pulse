@@ -13,7 +13,7 @@
  *
  * Bewusst keine Benachrichtigungsstufe: sie gehört dem SERVER
  * (`ServerEntry.notification_mode`), nicht der Community, und stünde im
- * Community-Blatt irreführend als Einstellung der Community da.
+ * Community-Blatt irreführend als deren Einstellung da.
  */
 import SettingsIcon from '@lucide/svelte/icons/settings';
 import PencilIcon from '@lucide/svelte/icons/pencil';
