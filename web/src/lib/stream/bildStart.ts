@@ -137,7 +137,7 @@ export interface MitSpuren {
 export function bildDiagnose(
   el: Abspielbar,
   strom: MitSpuren | null,
-  ergebnis: BildErgebnis
+  ergebnis: BildErgebnis | 'pausiert'
 ): Record<string, string | number | boolean> {
   const video = strom?.getVideoTracks()[0];
   return {

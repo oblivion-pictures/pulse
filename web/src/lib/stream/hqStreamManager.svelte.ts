@@ -41,6 +41,7 @@ import {
 } from './nativerStreamTon';
 import { aufGesteAbspielen, bildAnlaufen, bildDiagnose, type BildErgebnis } from './bildStart';
 import { iosTonMelden } from '$lib/diagnose/iosTonDiagnose';
+import { bildWache, type BildWache } from './bildWache';
 import { streamTonNativDa } from '$lib/platform/iosStreamTonNativ';
 import { FreezeRecycler, FREEZE_RECYCLE_MAX } from './freezeRecycle';
 import { chatApi } from '$lib/api/chat';
@@ -171,6 +172,8 @@ export class ManagedHqStream {
    *  Ton — sonst spielt die WebView selbst Ton, und die Sperre greift nicht. */
   bildGesperrt = $state(false);
   #gesteAbbauen: (() => void) | null = null;
+  /** Startet ein fremd pausiertes Bild nach (`bildWache.ts`); nur mit nativem Ton. */
+  #bildWache: BildWache | null = null;
 
   constructor(channelId: string, userId: string, slot = 0) {
     this.channelId = channelId;
@@ -183,6 +186,9 @@ export class ManagedHqStream {
         stand: (st) => {
           this.nativTon = st;
           this.audioBlocked = st.phase === 'unterbrochen';
+          // Spielt der native Ton (wieder), ist eine Unterbrechung vorbei —
+          // WebKit setzt ein dabei pausiertes Bild nicht immer fort.
+          if (st.phase === 'spielt') this.#bildWache?.anstossen('pausiert_nach_nativ_ton');
         },
         rueckfall: () => {
           this.nativTon = null;
@@ -208,6 +214,7 @@ export class ManagedHqStream {
     // Echo-Unterdrückung ein Ausgabegerät und muss deshalb demselben folgen
     // wie der hörbare Weg (Begründung: `anchor` in `voice/audioElements.ts`).
     if (this.#outputDeviceId) void applySinkId(el, this.#outputDeviceId);
+    if (this.#nativ) this.#bildWacheAnhaengen(el);
     if (this.stream) {
       el.srcObject = this.stream;
       el.muted = true; // Ton läuft über den Web-Audio-Graphen, nie übers Video.
@@ -252,10 +259,30 @@ export class ManagedHqStream {
 
   /** Ein Bildstart in die App-Diagnose UND in den iOS-Bericht: nur dort kommt
    *  er beim Server an (`iosTonDiagnose.ts`, Anlässe `bild_*`). */
-  #bildMelden(el: HTMLVideoElement, art: string, ergebnis: BildErgebnis): void {
+  #bildMelden(el: HTMLVideoElement, art: string, ergebnis: BildErgebnis | 'pausiert'): void {
     const werte = bildDiagnose(el, this.stream, ergebnis);
     melde('stream', 'stream_bild_start', `Bild: ${art}`, werte);
     iosTonMelden(`bild_${art}`, werte);
+  }
+
+  /** Pausiert WebKit das Bild später (Unterbrechung, `bildWache.ts`), es über
+   *  denselben Weg erneut starten — nur, solange dieser Strom daran hängt. */
+  #bildWacheAnhaengen(el: HTMLVideoElement): void {
+    this.#bildWacheLoesen();
+    this.#bildWache = bildWache(el, document, (grund) => {
+      if (this.#disposed || this.#videoEl !== el || !this.stream) return;
+      // Ohne Strom am Element gibt es nichts zu starten; bei einer Sperre
+      // wartet der Geste-Rückfall schon (`#bildAbspielen`).
+      if (el.srcObject !== this.stream || this.bildGesperrt) return;
+      this.#bildMelden(el, grund, 'pausiert');
+      this.#bildAbspielen(el);
+    });
+  }
+
+  /** Die Bild-Wache samt Zuhörern und Zeitgeber abbauen, falls eine hängt. */
+  #bildWacheLoesen(): void {
+    this.#bildWache?.abbauen();
+    this.#bildWache = null;
   }
 
   /** Den Geste-Zuhörer von `aufGesteAbspielen` abbauen, falls einer hängt. */
@@ -274,6 +301,7 @@ export class ManagedHqStream {
       el.srcObject = null;
       this.#videoEl = null;
       this.#gesteLoesen();
+      this.#bildWacheLoesen();
       this.bildGesperrt = false;
     }
   }
@@ -889,6 +917,7 @@ export class ManagedHqStream {
     // er steht — bis dahin fasst `iosTon` die Session nicht an.
     void this.#nativ?.beenden();
     this.#gesteLoesen();
+    this.#bildWacheLoesen();
     // Abmelden, BEVOR `stream` faellt: faellt die letzte Wiedergabe weg und
     // laeuft kein Sprachkanal, gibt der Koordinator die Audio-Session frei.
     tonWiedergabe(this.#tonKennung, false);

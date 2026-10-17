@@ -56,7 +56,11 @@ export const ANLAESSE: ReadonlySet<string> = new Set([
   // iOS-Hülle den Server erreicht.
   'bild_gesperrt',
   'bild_haengt',
-  'bild_fehler'
+  'bild_fehler',
+  // Bild stand fremd pausiert (`stream/bildWache.ts`) — Unterbrechung durch
+  // WebKit oder nach dem Ende einer Unterbrechung des nativen Tons.
+  'bild_pausiert_von_webkit',
+  'bild_pausiert_nach_nativ_ton'
 ]);
 
 export const SAMMEL_MS = 30_000;

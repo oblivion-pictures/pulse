@@ -150,7 +150,13 @@ test('jeder Anlass der Hülle ist im Web als Anlass bekannt', () => {
     assert.ok(d.ANLAESSE.has(a), `${a} ist kein Anlass`);
   }
   // Ein HQ-Bild, das nicht anläuft, löst aus.
-  for (const a of ['bild_gesperrt', 'bild_haengt', 'bild_fehler']) {
+  for (const a of [
+    'bild_gesperrt',
+    'bild_haengt',
+    'bild_fehler',
+    'bild_pausiert_von_webkit',
+    'bild_pausiert_nach_nativ_ton'
+  ]) {
     assert.ok(d.ANLAESSE.has(a), `${a} ist kein Anlass`);
   }
   // Gewöhnlicher Verlauf und ein gelungener Bildstart lösen nie aus.
