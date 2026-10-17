@@ -68,3 +68,13 @@ test('B3: Kopfhörer raus → sofort im Beobachter zurück und stumm, bis VPIO l
   assert.match(q, /mixer\.outputVolume = 0/);
   assert.match(q, /voiceProcessingEnabled\.isActive/);
 });
+
+test('B4: nur die aktuelle Route, Bluetooth-Eingang und Sprechprofil verlangt', () => {
+  const q = swift('SpracheFunkHqAbgleich.swift');
+  assert.doesNotMatch(q, /s\.availableInputs/);
+  assert.match(q, /let mikros = route\.inputs\.compactMap\(\\\.bluetoothMicrophoneExtension\)/);
+  assert.match(
+    q,
+    /return haelt \|\| \(lage\.ausgangSprech && lage\.eingangFunk && lage\.hqKann == true\)/
+  );
+});

@@ -2,14 +2,21 @@ import AVFoundation
 import LiveKit
 
 /// Was die Route über Bluetooth gerade hergibt — gelesen, nicht angenommen.
+///
+/// **Nur die AKTUELLE Route zählt** (Gegenprüfung B4). Die erste Fassung las
+/// auch `availableInputs`: verbundene, aber nicht gewählte AirPods machten
+/// dann eine Soundbar (nur A2DP, Mikrofon eingebaut) zum HQ-Fall —
+/// Software-Echo-Unterdrückung an einem Raumlautsprecher.
 struct FunkLage {
     var ios26 = false
-    /// Geht die Ausgabe an einen Bluetooth-Kopfhörer?
+    /// Geht die Ausgabe an ein Bluetooth-Gerät (jedes Profil)?
     var ausgangFunk = false
+    /// …an eines mit Sprechprofil (HFP oder LE) — also ein Headset, keine
+    /// reine A2DP-Box?
+    var ausgangSprech = false
     /// Nimmt ein Bluetooth-Mikrofon auf?
     var eingangFunk = false
-    /// Kann ein Bluetooth-Mikrofon der Route HQ? `nil`: keines sichtbar (die
-    /// Session führt Eingänge nur unter `.playAndRecord`).
+    /// Kann das Bluetooth-Mikrofon der Route HQ? `nil`: keines in der Route.
     var hqKann: Bool?
     /// Läuft HQ am aktuellen Eingang?
     var hqAn = false
@@ -20,24 +27,24 @@ struct FunkLage {
     static func lesen() -> FunkLage {
         let s = AVAudioSession.sharedInstance()
         let route = s.currentRoute
-        let funk: Set<AVAudioSession.Port> = [.bluetoothHFP, .bluetoothLE, .bluetoothA2DP]
+        // Am Namen statt an einer Liste: unter HQ meldet iOS womöglich einen
+        // Porttyp, den es heute nicht gibt — alle Bluetooth-Typen beginnen so.
+        let funk = { (p: AVAudioSessionPortDescription) in p.portType.rawValue.hasPrefix("Bluetooth") }
         var l = FunkLage()
-        l.ausgangFunk = route.outputs.contains { funk.contains($0.portType) }
-        l.eingangFunk = route.inputs.contains { funk.contains($0.portType) }
+        l.ausgangFunk = route.outputs.contains(where: funk)
+        l.ausgangSprech = route.outputs.contains { [.bluetoothHFP, .bluetoothLE].contains($0.portType) }
+        l.eingangFunk = route.inputs.contains(where: funk)
         if #available(iOS 26.0, *) {
             l.ios26 = true
             l.optionDa = s.categoryOptions.contains(.bluetoothHighQualityRecording)
-            let kandidaten = route.inputs + (s.availableInputs ?? [])
-            let mikros = kandidaten.compactMap(\.bluetoothMicrophoneExtension)
+            let mikros = route.inputs.compactMap(\.bluetoothMicrophoneExtension)
+            l.eingangFunk = l.eingangFunk || !mikros.isEmpty
             if !mikros.isEmpty {
                 l.hqKann = mikros.contains { $0.highQualityRecording.isSupported }
-            } else if kandidaten.contains(where: { funk.contains($0.portType) }) {
+            } else if l.eingangFunk {
                 l.hqKann = false
             }
-            l.hqAn = route.inputs.contains {
-                $0.bluetoothMicrophoneExtension?.highQualityRecording.isEnabled == true
-            }
-            l.eingangFunk = l.eingangFunk || route.inputs.contains { $0.bluetoothMicrophoneExtension != nil }
+            l.hqAn = mikros.contains { $0.highQualityRecording.isEnabled }
         }
         l.art = routenArt(ausgaenge: Set(route.outputs.map(\.portType)), hqAn: l.hqAn)
         return l
@@ -59,13 +66,14 @@ enum FunkHqRegeln {
     /// während des eigenen Umschaltens soll ihn nicht zurückwerfen).
     static func ziel(wunsch: Bool, lage: FunkLage, gescheitert: Bool, haelt: Bool) -> Bool {
         guard wunsch, lage.ios26, lage.ausgangFunk, !gescheitert else { return false }
-        return haelt || lage.hqKann == true
+        return haelt || (lage.ausgangSprech && lage.eingangFunk && lage.hqKann == true)
     }
 
-    /// Wir halten die Session mit HQ, das Bluetooth-Mikrofon läuft trotzdem
-    /// nicht darin: der Kopfhörer meldet es, trägt es aber nicht.
+    /// Wir halten die Session mit HQ, und kein Eingang der Route läuft darin —
+    /// ob HFP oder das eingebaute Mikrofon aufnimmt: beides ist nicht der
+    /// Weg, für den wir Apples Verarbeitung abgegeben haben.
     static func gescheitert(lage: FunkLage, haelt: Bool) -> Bool {
-        haelt && lage.eingangFunk && !lage.hqAn
+        haelt && !lage.hqAn
     }
 }
 
@@ -210,7 +218,8 @@ extension SpracheRaum {
             "funkWunsch": SpracheFunkHq.geteilt.wunsch,
             "funkHaelt": SpracheFunkHq.geteilt.haelt,
             "hqOpt": l.optionDa,
-            "hqKann": l.hqKann.map { $0 ? "ja" : "nein" } ?? "unbekannt",
+            "funkSprech": l.ausgangSprech,
+        "hqKann": l.hqKann.map { $0 ? "ja" : "nein" } ?? "unbekannt",
             "hqAn": l.hqAn,
             "rate": Int(s.sampleRate),
             "eingKanaele": s.inputNumberOfChannels,
