@@ -50,6 +50,8 @@ struct MikrofonZeichen: View {
 /// ist es die einzige Anzeige des Mikrofons und zeigt dieses.
 struct KopfZeichen: View {
     let stand: SpracheAktivitaet.ContentState
+    /// Bei veraltetem Stand stehen keine Knöpfe daneben (`AktivitaetKnoepfe`).
+    var veraltet = false
 
     var body: some View {
         if mikrofonKnopfDaneben {
@@ -61,7 +63,7 @@ struct KopfZeichen: View {
 
     /// Dieselbe Bedingung, unter der `AktivitaetKnoepfe` den Mikrofon-Knopf zeigt.
     private var mikrofonKnopfDaneben: Bool {
-        guard #available(iOSApplicationExtension 17.0, *) else { return false }
+        guard #available(iOSApplicationExtension 17.0, *), !veraltet else { return false }
         return SpracheAktivitaet.mikrofonSchaltbar(stand)
     }
 
@@ -111,7 +113,9 @@ struct KanalKopf: View {
     }
 }
 
-/// Eine Zeile Zustand: was gerade das Wichtigste ist, in dieser Reihenfolge.
+/// Eine Zeile Zustand: was gerade das Wichtigste ist, in dieser Reihenfolge —
+/// zuerst was die Anzeige selbst unglaubwürdig macht (veraltet, getrennt,
+/// angehalten), dann der eigene Zustand (gesperrt, taub), zuletzt wer spricht.
 struct Statuszeile: View {
     let stand: SpracheAktivitaet.ContentState
     /// Die App hat den Stand nicht mehr aufgefrischt (D4) — dann gilt nichts
@@ -128,14 +132,14 @@ struct Statuszeile: View {
         if veraltet { return "Stand unklar – App öffnen" }
         if !stand.verbunden { return "Verbindung wird wiederhergestellt …" }
         if stand.pausiert { return "Angehalten, Anruf läuft" }
+        if stand.gesperrt { return "Vom Mod stummgeschaltet" }
+        if stand.taub { return "Mithören aus" }
         if !stand.sprechend.isEmpty {
             let namen = stand.sprechend.joined(separator: ", ")
             let mehr = stand.weitereSprechend > 0 ? " +\(stand.weitereSprechend)" : ""
             let verb = stand.sprechend.count + stand.weitereSprechend > 1 ? "Sprechen" : "Spricht"
             return "\(verb): \(namen)\(mehr)"
         }
-        if stand.gesperrt { return "Vom Mod stummgeschaltet" }
-        if stand.taub { return "Mithören aus" }
         return nil
     }
 }
@@ -147,12 +151,20 @@ struct Statuszeile: View {
 /// Taubstellen; `SpracheAktivitaet.mikrofonSchaltbar`) — ein Knopf, der still
 /// nichts tut, ist schlimmer als keiner. Die App prüft beim Ausführen trotzdem
 /// noch einmal: der Stand hier kann um die Drosselung veraltet sein.
+///
+/// **Feste Plätze:** Mikrofon links, Verlassen rechts aussen (rot), mit
+/// deutlichem Abstand — ein Fehltipp auf „Verlassen" beendet das Gespräch.
+/// Fehlt der Mikrofon-Knopf, bleibt sein Platz leer, statt dass „Verlassen"
+/// an dessen Stelle rutscht (ein Daumen, der eben noch stumm schaltete, träfe
+/// sonst das Auflegen). **Bei veraltetem Stand gar keine Knöpfe:** sie
+/// handelten nach einem Bild, das nicht mehr stimmt.
 struct AktivitaetKnoepfe: View {
     let stand: SpracheAktivitaet.ContentState
+    var veraltet = false
 
     var body: some View {
-        if #available(iOSApplicationExtension 17.0, *) {
-            HStack(spacing: 10) {
+        if #available(iOSApplicationExtension 17.0, *), !veraltet {
+            HStack(spacing: 28) {
                 if SpracheAktivitaet.mikrofonSchaltbar(stand) {
                     Button(intent: SpracheMikrofonAbsicht(stumm: !stand.stumm)) {
                         rund(stand.stumm ? "mic.slash.fill" : "mic.fill",
@@ -160,6 +172,9 @@ struct AktivitaetKnoepfe: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(stand.stumm ? "Mikrofon einschalten" : "Mikrofon stummschalten"))
+                } else {
+                    Color.clear.frame(width: 44, height: 44)
+                        .accessibilityHidden(true)
                 }
                 Button(intent: SpracheVerlassenAbsicht()) {
                     rund("phone.down.fill", WidgetFarben.schlecht)
