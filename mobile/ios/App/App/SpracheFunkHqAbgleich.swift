@@ -149,7 +149,7 @@ extension SpracheRaum {
         } else {
             // Zurück auf VPIO am Lautsprecher: bis es läuft, nichts hören
             // lassen (B3; `kopfhoererWeg` tut dasselbe schon im Beobachter).
-            if istSoftware, !ton.volle, !lage.ausgangSprech || !lage.eingangFunk { f.daempfen() }
+            if istSoftware, !lage.ausgangSprech || !lage.eingangFunk { f.daempfen() }
             await funkHqZurueck(spur, istSoftware: istSoftware,
                                 optionDa: lage.optionDa, grund: grund)
         }
@@ -240,11 +240,10 @@ extension SpracheRaum {
                                optionDa: Bool, grund: String) async {
         let f = SpracheFunkHq.geteilt
         let hielt = f.haelt
-        let bleibtSoftware = ton.volle
         if hielt {
-            await MainActor.run { f.sdkKategorieSetzen(software: bleibtSoftware, gehalten: true) }
+            await MainActor.run { f.sdkKategorieSetzen(software: false, gehalten: true) }
         }
-        if istSoftware, !bleibtSoftware {
+        if istSoftware {
             verarbeitungSetzen(spur, software: false)
         } else if !hielt, optionDa {
             await MainActor.run { f.sdkKategorieSetzen(software: istSoftware) }
@@ -255,7 +254,7 @@ extension SpracheRaum {
     private func verarbeitungSetzen(_ spur: LocalAudioTrack?, software: Bool) {
         guard let spur else { return }
         do {
-            try spur.setAudioProcessingOptions(software ? Self.volleVerarbeitung : AudioProcessingOptions())
+            try spur.setAudioProcessingOptions(software ? Self.softwareVerarbeitung : AudioProcessingOptions())
         } catch {
             diagMelden("funk_hq_verarbeitung_fehler", ["fehler": error.localizedDescription])
         }

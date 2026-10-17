@@ -39,7 +39,7 @@ import UIKit
 /// `tonFaden` (s. `SpracheRaumTaub.swift`), die Kette hinter der Sperre in
 /// `Befehlskette`. Die übrigen Felder (`raum`, `kanalId`, `kanalName`,
 /// `kameraVorn`, `taub`, `anrufPausiert`, `mikroWunsch`, `mikrofonFehler`,
-/// `ton`, `sitzung`, `aufgelegtSitzung`, `melde`) sind kleine Werte, die ein
+/// `sitzung`, `aufgelegtSitzung`, `melde`) sind kleine Werte, die ein
 /// Befehl setzt und andere lesen; sie sind NICHT synchronisiert, und das ist
 /// der Grund für `unchecked`. Wer auf Swift 6 geht, muss sie wirklich
 /// absichern.
@@ -101,9 +101,6 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     /// Reist im Zustand mit, statt den Beitritt zu werfen — Begründung in
     /// `beitreten`.
     private(set) var mikrofonFehler: String?
-    /// Wie dieser Raum aufnimmt und sendet (vom Beitritt) — die Anruf-Pause
-    /// stellt danach „Volle Tonqualität" wieder her (`SpracheRaumStumm.swift`).
-    private(set) var ton = TonOptionen()
     /// Griff auf den Routen-Beobachter. **Nur in `SpracheRaumSession.swift`
     /// anfassen** — `private` ginge nicht, Swift rechnet es datei-weit.
     var sessionBeobachter: NSObjectProtocol?
@@ -170,8 +167,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
 
     func beitreten(wsUrl: String, token: String, kanalId: String, kanalName: String,
                    communityName: String = "", stumm: Bool, taubStart: Bool,
-                   lautstaerken: [String: Double]? = nil, gesamt: Double? = nil,
-                   ton: TonOptionen = TonOptionen()) async throws {
+                   lautstaerken: [String: Double]? = nil, gesamt: Double? = nil) async throws {
         await verlassen()
         sessionBeobachtenFallsNoetig()
         // **Jeder Beitritt beginnt bei einer sauberen Kette** — was ein
@@ -190,8 +186,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // (Bughunt 2026-10-11, E1).
         taub = taubStart
         await hoerwunschSetzen(je: lautstaerken, gesamt: gesamt)
-        self.ton = ton
-        let r = Room(delegate: self, roomOptions: Self.raumOptionen(ton))
+        let r = Room(delegate: self, roomOptions: Self.raumOptionen())
         sitzung += 1
         raum = r
         self.kanalId = kanalId
@@ -244,7 +239,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // Ausfall — nur der zweite Fall ist ein Anlass für den Bericht.
         let art = mikrofonFehler == nil ? "beitritt"
             : (Anrufverwaltung.mikrofonErlaubt() ? "beitritt_ohne_mikro" : "beitritt_ohne_erlaubnis")
-        diagMelden(art, tonBeleg(ton).merging(["volleTon": ton.volle, "stumm": stumm]) { $1 })
+        diagMelden(art, tonBeleg().merging(["stumm": stumm]) { $1 })
         await funkHqAbgleichen("beitritt")
         let vorn = await MainActor.run { UIApplication.shared.applicationState != .background }
         wache.beginnen(vordergrund: vorn)

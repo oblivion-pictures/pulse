@@ -72,9 +72,14 @@ struct SpracheAnsicht: View {
 
     /// Fehlschläge der Steuerung — sichtbar, nicht verschluckt. Im Simulator
     /// ist das der Normalfall (keine Kamera, kein Mikrofon), am Gerät die
-    /// verweigerte Erlaubnis.
-    @State private var fehler: String?
+    /// verweigerte Erlaubnis. **Das Band geht von selbst weg:** bei der
+    /// nächsten gelungenen Aktion, sonst nach `bandDauer` — ausser bei
+    /// verweigerter Erlaubnis, die bleibt bis zum nächsten Erfolg oder „OK".
+    @State private var fehler: SpracheMeldung?
+    private static let bandDauer: UInt64 = 6_000_000_000
     @ObservedObject private var stand = SpracheStand.geteilt
+    /// Trefferfläche des Schliessen-Pfeils; wächst mit der Schriftgrösse.
+    @ScaledMetric(relativeTo: .headline) private var pfeilFlaeche: CGFloat = 44
 
     var body: some View {
         VStack(spacing: 0) {
@@ -86,9 +91,18 @@ struct SpracheAnsicht: View {
                 fehlerband(fehler)
             }
             kacheln
-            SpracheSteuerleiste(raum: raum, fehlerMelden: { self.fehler = $0 })
+            SpracheSteuerleiste(
+                raum: raum, fehlerMelden: { self.fehler = $0 },
+                fehlerAufheben: { self.fehler = nil })
         }
         .background(SpracheFarben.grund.ignoresSafeArea())
+        // Läuft neu an, sobald eine neue Meldung kommt (`id`), und endet mit
+        // dem Verschwinden der Ansicht oder des Bands.
+        .task(id: fehler) {
+            guard let meldung = fehler, !meldung.einstellungen else { return }
+            try? await Task.sleep(nanoseconds: Self.bandDauer)
+            if !Task.isCancelled, fehler == meldung { fehler = nil }
+        }
     }
 
     // MARK: - Kopfzeile
@@ -97,29 +111,32 @@ struct SpracheAnsicht: View {
         HStack(spacing: 12) {
             Button(action: schliessen) {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(SpracheFarben.text)
-                    .frame(width: 44, height: 44)
+                    .frame(width: min(pfeilFlaeche, 64), height: min(pfeilFlaeche, 64))
             }
             .accessibilityLabel(
-                NSLocalizedString("Kanalansicht schliessen", comment: "Sprachkanal"))
+                NSLocalizedString("Kanalansicht schließen", comment: "Sprachkanal"))
+            .accessibilityHint(
+                NSLocalizedString("Der Kanal bleibt verbunden.", comment: "Sprachkanal"))
             .accessibilityIdentifier("sprache.schliessen")
             VStack(alignment: .leading, spacing: 1) {
                 Text(kanalName.isEmpty
                     ? NSLocalizedString("Sprachkanal", comment: "Sprachkanal") : kanalName)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(SpracheFarben.text)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .accessibilityAddTraits(.isHeader)
                 Text(zustandsZeile)
-                    .font(.system(size: 13))
+                    .font(.footnote)
                     .foregroundStyle(SpracheFarben.textMatt)
-                    .lineLimit(1)
+                    .lineLimit(2)
                     // Der Zustand des NATIVEN Raums, wie ihn die XCUITests lesen.
                     .accessibilityIdentifier("sprache.zustand")
             }
             Spacer(minLength: 0)
             // System-Bild-in-Bild (Punkt 29) — nur, wo das Gerät es kann.
-            SpracheBildImBildKnopf(fehlerMelden: { self.fehler = $0 })
+            SpracheBildImBildKnopf(fehlerMelden: { self.fehler = SpracheMeldung(text: $0) })
         }
         .padding(.trailing, 16)
         .padding(.top, 4)
@@ -146,13 +163,23 @@ struct SpracheAnsicht: View {
                 anzahl)
     }
 
-    private func fehlerband(_ text: String) -> some View {
+    private func fehlerband(_ meldung: SpracheMeldung) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-            Text(text).font(.system(size: 13)).lineLimit(3)
+                .accessibilityHidden(true)
+            Text(meldung.text).font(.footnote).lineLimit(6)
             Spacer(minLength: 0)
+            if meldung.einstellungen {
+                Button(NSLocalizedString("Einstellungen öffnen", comment: "Fehlerband")) {
+                    if let ziel = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(ziel)
+                    }
+                }
+                .font(.footnote.weight(.semibold))
+                .accessibilityIdentifier("sprache.fehler.einstellungen")
+            }
             Button(NSLocalizedString("OK", comment: "Fehlerband")) { fehler = nil }
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
         }
         .foregroundStyle(SpracheFarben.schlecht)
         .padding(.horizontal, 16)
@@ -165,17 +192,18 @@ struct SpracheAnsicht: View {
     private var mikroTotBand: some View {
         HStack(spacing: 8) {
             Image(systemName: "mic.slash.fill")
+                .accessibilityHidden(true)
             Text(stand.neuVerbindenMoeglich
                 ? NSLocalizedString("Mikrofon ausgefallen", comment: "Sprachkanal")
                 : NSLocalizedString(
                     "Mikrofon ausgefallen – bitte die App neu starten", comment: "Sprachkanal"))
-                .font(.system(size: 13)).lineLimit(2)
+                .font(.footnote).lineLimit(4)
             Spacer(minLength: 0)
             if stand.neuVerbindenMoeglich {
                 Button(NSLocalizedString("Erneut verbinden", comment: "Sprachkanal")) {
                     Task { try? await SpracheRaum.geteilt.wunsch(.neuVerbinden, an: true) }
                 }
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
                 .accessibilityIdentifier("sprache.mikroTot.neu")
             }
         }
@@ -235,8 +263,15 @@ struct SpracheAnsicht: View {
         sprache.einreihen({
             try await sprache.kameraSeite(front: !sprache.kameraVorn)
         }, fertig: { ergebnis in
-            guard case .failure(let fehlschlag) = ergebnis else { return }
-            DispatchQueue.main.async { fehler = fehlschlag.localizedDescription }
+            DispatchQueue.main.async {
+                switch ergebnis {
+                case .success: fehler = nil
+                case .failure(let fehlschlag):
+                    NSLog("[PulseSprache] Kamerawechsel fehlgeschlagen: %@",
+                          fehlschlag.localizedDescription)
+                    fehler = SpracheMeldung.aus(fehlschlag, knopf: "kameraSeite")
+                }
+            }
         })
     }
 

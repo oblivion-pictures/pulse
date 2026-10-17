@@ -1,0 +1,342 @@
+{
+  "sourceLanguage": "de",
+  "strings": {
+    "%lld im Kanal": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld in the channel"
+          }
+        }
+      }
+    },
+    "%lld ungelesene Nachrichten": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld unread messages"
+          }
+        }
+      }
+    },
+    "1 ungelesene Nachricht": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 unread message"
+          }
+        }
+      }
+    },
+    "Alles gelesen": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All read"
+          }
+        }
+      }
+    },
+    "Angehalten, Anruf läuft": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused, call in progress"
+          }
+        }
+      }
+    },
+    "Angehalten, ein Anruf läuft": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused, a call is in progress"
+          }
+        }
+      }
+    },
+    "Jemand spricht": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Someone is speaking"
+          }
+        }
+      }
+    },
+    "Kanal verlassen": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave channel"
+          }
+        }
+      }
+    },
+    "Mikrofon an": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone on"
+          }
+        }
+      }
+    },
+    "Mikrofon aus": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone off"
+          }
+        }
+      }
+    },
+    "Mikrofon einschalten": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn microphone on"
+          }
+        }
+      }
+    },
+    "Mikrofon im Sprachkanal": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone in voice channel"
+          }
+        }
+      }
+    },
+    "Mikrofon stummschalten": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mute microphone"
+          }
+        }
+      }
+    },
+    "Mithören aus": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listening off"
+          }
+        }
+      }
+    },
+    "Niemand spricht": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nobody is speaking"
+          }
+        }
+      }
+    },
+    "Sprachkanal": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice channel"
+          }
+        }
+      }
+    },
+    "Sprachkanal verlassen": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave voice channel"
+          }
+        }
+      }
+    },
+    "Sprechen: %@": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speaking: %@"
+          }
+        }
+      }
+    },
+    "Spricht: %@": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speaking: %@"
+          }
+        }
+      }
+    },
+    "Stand %@": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As of %@"
+          }
+        }
+      }
+    },
+    "Stand unklar – App öffnen": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Status unclear – open the app"
+          }
+        }
+      }
+    },
+    "Stumm": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muted"
+          }
+        }
+      }
+    },
+    "Ungelesen": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unread"
+          }
+        }
+      }
+    },
+    "Ungelesene Nachrichten in deinen privaten Gesprächen.": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unread messages in your private conversations."
+          }
+        }
+      }
+    },
+    "Verbindung wird wiederhergestellt …": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnecting …"
+          }
+        }
+      }
+    },
+    "Vom Mod stummgeschaltet": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muted by a moderator"
+          }
+        }
+      }
+    },
+    "ungelesene Nachricht": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "unread message"
+          }
+        }
+      }
+    },
+    "ungelesene Nachrichten": {
+      "comment": "Pulse-Widget und Live Activity (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "unread messages"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

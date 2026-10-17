@@ -552,6 +552,7 @@
   "anhang_hinweis_verbinden": "Connect a drive",
   "anhang_kein_laufwerk": "Attachment not stored: one of the participants has no cloud drive connected.",
   "anhang_laufwerk_nicht_erreichbar": "Attachment not stored: a cloud drive could not be reached. Please try again.",
+  "freigabe_nicht_uebernommen": "Not included: {anzahl} (too large, unreadable or too many).",
   "anhang_zu_gross": "This file is too large. At most {grenze} per attachment.",
   "anmeldung_gesperrt": "You are banned on this server. Only the operator can lift that.",
   "anmeldung_instanz_geloescht": "This server was deleted. Remove it from your server list.",

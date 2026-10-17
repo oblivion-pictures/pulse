@@ -16,26 +16,6 @@ import LiveKit
 /// gescheiterten `setActive` zurückgerollt (K2). Der nächste Beitritt sah dann
 /// keinen Übergang und aktivierte die Session nie.
 extension SpracheRaum {
-    /// Wie der Raum aufnimmt und sendet — vom Web je Beitritt mitgeschickt.
-    struct TonOptionen {
-        /// „Volle Tonqualität": WebRTCs eigene Echo-, Pegel- und
-        /// Rauschverarbeitung statt Apples Voice-Processing, das am
-        /// eingebauten Mikrofon „dumpf wie am Telefon" klang (Befund B in der
-        /// Akte vom 2026-10-17). **Ein Vergleichsschalter, Vorgabe AUS** —
-        /// WebRTCs Echo-Unterdrückung am iPhone-Lautsprecher ist schwächer als
-        /// Apples; ob sie trägt, entscheidet die Echo-Probe am Gerät.
-        ///
-        /// **Seit dem 2026-10-17 unerreichbar** (Eigentümer-Entscheid): die
-        /// Oberfläche bietet den Schalter nicht an und schickt immer `false`
-        /// (`web/src/lib/platform/iosVolleTon.ts`); es gilt Apples VPIO. Der
-        /// Weg hier bleibt bestehen, damit ein Wiederanbieten nur die Web-Seite
-        /// braucht.
-        var volle = false
-        /// Sende-Bitrate in kbps (der Server-Wert, wie am Desktop). Nur mit
-        /// `volle`; sonst bleibt die Vorgabe des SDK (48 kbps).
-        var bitrateKbps: Int?
-    }
-
     /// `adaptiveStream` und `dynacast` sind AN — wie im Web-Weg
     /// (`livekit.svelte.ts::#roomOptions`). Ohne sie empfing das Telefon jede
     /// fremde Kamera in voller Stufe, auch ungesehen, und sendete selbst alle
@@ -46,58 +26,18 @@ extension SpracheRaum {
     /// Bild-in-Bild-Fenster (`SpracheBildImBildInhalt`, eine `SwiftUIVideoView`)
     /// melden sich also richtig an; ohne jede Ansicht pausiert das Video, und
     /// beim Öffnen kommt es nach einem Takt des SDK und einem Vollbild zurück.
-    static func raumOptionen(_ ton: TonOptionen) -> RoomOptions {
-        guard ton.volle else {
-            return RoomOptions(adaptiveStream: true, dynacast: true)
-        }
-        let aufnahme = AudioCaptureOptions(
-            echoCancellationMode: .software, autoGainControlMode: .software,
-            noiseSuppressionMode: .software)
-        let senden = AudioPublishOptions(
-            encoding: kbpsBegrenzt(ton).map { AudioEncoding(maxBitrate: $0 * 1000) })
-        return RoomOptions(defaultAudioCaptureOptions: aufnahme, defaultAudioPublishOptions: senden,
-                           adaptiveStream: true, dynacast: true)
+    static func raumOptionen() -> RoomOptions {
+        RoomOptions(adaptiveStream: true, dynacast: true)
     }
 
-    /// Die Server-Bitrate, auf das begrenzt, was Opus trägt.
-    static func kbpsBegrenzt(_ ton: TonOptionen) -> Int? {
-        ton.bitrateKbps.map { min(510, max(16, $0)) }
-    }
-
-    /// Dieselbe Verarbeitung wie `raumOptionen` bei `volle`, als
-    /// Laufzeit-Optionen einer Spur.
-    static let volleVerarbeitung = AudioProcessingOptions(
+    /// WebRTCs eigene Echo-, Pegel- und Rauschverarbeitung statt Apples
+    /// Voice-Processing — nur noch für Bluetooth in hoher Qualität
+    /// (`SpracheFunkHqAbgleich`): dort läuft die Aufnahme ohne VPIO, siehe
+    /// `SpracheFunkHq.swift`. („Volle Tonqualität" als Schalter gibt es nicht
+    /// mehr; Eigentümer-Entscheid 2026-10-17, es gilt Apples VPIO.)
+    static let softwareVerarbeitung = AudioProcessingOptions(
         echoCancellationMode: .software, autoGainControlMode: .software,
         noiseSuppressionMode: .software)
-
-    /// **Nach einem Direktanruf „Volle Tonqualität" wiederherstellen** (L2 der
-    /// Prüfung vom 2026-10-17). Die Spur des Anrufs startet ihre Aufnahme mit
-    /// `.automatic` — die Audio-Maschine ist prozessweit EINE, also läuft
-    /// danach auch der Kanal über Apples Voice-Processing und die Session im
-    /// Modus `.voiceChat`/`.videoChat`. Ein Aufheben der Stummschaltung startet
-    /// keine Aufnahme neu (SDK 2.17 `Track._unmute`), stellt also nichts zurück.
-    ///
-    /// **Was `setAudioProcessingOptions` nachzieht, am SDK 2.17 gelesen:** die
-    /// Optionen gehen über den Sender an die Audio-Maschine, ohne die Aufnahme
-    /// neu zu starten (`LocalAudioTrack.swift`, Doc-Kommentar — der C++-Teil
-    /// liegt nicht im Quelltext vor), und danach
-    /// `updateExpectedPlatformVoiceProcessing` → `isPlatformVoiceProcessingExpected
-    /// = false` → `onDidMutate` → `configureAudioSession` → Modus `.default`
-    /// (`AudioSessionEngineObserver.swift`), sofern die automatische
-    /// Konfiguration an ist — `sessionZurueckgeben` schaltet sie vor dem Ende
-    /// der Pause wieder ein. Ob VPIO wirklich aus ist, sagt die Diagnose-Zeile
-    /// (`vpio`).
-    func volleTonZurueck(in r: Room) {
-        guard let spur = r.localParticipant.audioTracks
-            .first(where: { $0.source == .microphone })?.track as? LocalAudioTrack
-        else { return }
-        do {
-            let ergebnis = try spur.setAudioProcessingOptions(Self.volleVerarbeitung)
-            diagMelden("volle_ton_zurueck", ["ergebnis": "\(ergebnis)"])
-        } catch {
-            diagMelden("volle_ton_zurueck_fehler", ["fehler": error.localizedDescription])
-        }
-    }
 
     // MARK: - Herstellen
 
@@ -289,8 +229,7 @@ extension SpracheRaum {
         melde?("diagnose", ["art": art, "felder": felder])
     }
 
-    /// Was beim Beitritt WIRKLICH gilt, nicht nur der Wunsch `volleTon` (L3
-    /// der Prüfung vom 2026-10-17): Echo-Unterdrückung, wie die geteilte
+    /// Was beim Beitritt WIRKLICH gilt: Echo-Unterdrückung, wie die geteilte
     /// Verarbeitung sie aufgelöst hat, und die Sende-Obergrenze in kbps (48 =
     /// die SDK-Vorgabe `presetMusic`). `vpio` steht in `diagnoseFelder`.
     ///
@@ -298,18 +237,16 @@ extension SpracheRaum {
     /// Getter, der in WebRTCs Fabrik blockierend liest — wie die ADM-Getter in
     /// `diagnoseFelder`. Gerufen wird er nur aus der Befehlskette, nie von
     /// einem WebRTC-Faden.
-    func tonBeleg(_ ton: TonOptionen) -> [String: Any] {
-        let vorgabe = AudioEncoding.presetMusic.maxBitrate / 1000
-        return [
+    func tonBeleg() -> [String: Any] {
+        [
             "aec": AudioManager.shared.audioProcessingState.echoCancellation.effective.description,
-            "kbps": ton.volle ? (Self.kbpsBegrenzt(ton) ?? vorgabe) : vorgabe
+            "kbps": AudioEncoding.presetMusic.maxBitrate / 1000
         ]
     }
 
     /// Die Zustände, die die drei Ketten der Befundakte unterscheiden. `vpio`:
     /// läuft Apples Voice-Processing gerade (Live-Wert vom Eingangsknoten,
-    /// `false` vor dem Einrichten der Aufnahme) — deckt auch auf, wenn ein
-    /// Anruf es unter „Volle Tonqualität" wieder eingeschaltet hat.
+    /// `false` vor dem Einrichten der Aufnahme).
     func diagnoseFelder() -> [String: Any] {
         let s = AVAudioSession.sharedInstance()
         let am = AudioManager.shared

@@ -552,6 +552,7 @@
   "anhang_hinweis_verbinden": "Laufwerk verbinden",
   "anhang_kein_laufwerk": "Anhang nicht abgelegt: einer der Beteiligten hat kein Cloud-Laufwerk verbunden.",
   "anhang_laufwerk_nicht_erreichbar": "Anhang nicht abgelegt: ein Cloud-Laufwerk war nicht erreichbar. Bitte erneut versuchen.",
+  "freigabe_nicht_uebernommen": "Nicht übernommen: {anzahl} (zu groß, nicht lesbar oder zu viele).",
   "anhang_zu_gross": "Diese Datei ist zu groß. Höchstens {grenze} je Anhang.",
   "anmeldung_gesperrt": "Du bist auf diesem Server gesperrt. Nur der Betreiber kann das aufheben.",
   "anmeldung_instanz_geloescht": "Dieser Server wurde gelöscht. Entferne ihn aus deiner Serverliste.",

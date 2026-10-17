@@ -18,7 +18,7 @@ struct SpracheAktivitaetWidget: Widget {
             let stand = kontext.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    KopfZeichen(stand: stand)
+                    KopfZeichen(stand: stand, veraltet: veraltet(kontext))
                         .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -35,7 +35,7 @@ struct SpracheAktivitaetWidget: Widget {
                             .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.75))
                         Spacer(minLength: 0)
-                        AktivitaetKnoepfe(stand: stand)
+                        AktivitaetKnoepfe(stand: stand, veraltet: veraltet(kontext))
                     }
                     .padding(.horizontal, 4)
                 }
@@ -74,10 +74,10 @@ struct SperrbildAnsicht: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
-                KopfZeichen(stand: stand)
+                KopfZeichen(stand: stand, veraltet: veraltet)
                 KanalKopf(form: form, hell: false)
                 Spacer(minLength: 0)
-                AktivitaetKnoepfe(stand: stand)
+                AktivitaetKnoepfe(stand: stand, veraltet: veraltet)
             }
             HStack(spacing: 8) {
                 TeilnehmerZahl(stand: stand)

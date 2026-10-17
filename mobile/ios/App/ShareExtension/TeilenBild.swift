@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// Speichergrenze (gängig genannt: rund 120 MB, selbst nicht gemessen; wer
 /// darüber kommt, wird ohne Rückfrage beendet), und ein Foto aus einer
 /// aktuellen iPhone-Kamera hat 48 Megapixel — ausgepackt knapp 200 MB.
-/// Ausserdem reist das Bild danach als Base64 über die Brücke in die WebView.
+/// Ausserdem reist das Bild danach über die Brücke in die WebView (Base64 in Stücken, `ShareReceiverPlugin`).
 /// Deshalb wird nie das ganze Bild ausgepackt, sondern über ImageIO gleich in
 /// der Zielgrösse gelesen (`CGImageSourceCreateThumbnail…` aus der Datei,
 /// nicht über `UIImage`).
@@ -22,7 +22,7 @@ import UniformTypeIdentifiers
 /// **Ausgabe: JPEG, ausser die Quelle ist PNG.** HEIC kann nicht jeder
 /// Empfänger anzeigen (Android, Chromium); PNG bleibt PNG, weil Bildschirmfotos
 /// mit Text als JPEG ausfransen und Transparenz verloren ginge. Ein bewegtes
-/// GIF verliert dabei die Bewegung — bewusst, die Ablage kennt nur ein Bild.
+/// GIF verliert dabei die Bewegung — bewusst, ein geteiltes Bild wird zu einem Standbild.
 ///
 /// **Nebenwirkung, die man kennen muss:** neu kodiert wird aus den
 /// Bildpunkten, die Metadaten der Quelle (EXIF, darunter der Aufnahmeort)

@@ -94,10 +94,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// dem UI-Thread — kein JS-Rundtrip, der das Rennen gegen den Snapshot
     /// verliert (erste Fassung mit body-Klasse+CSS-Blur war am Gerät zu
     /// langsam, Befund 2026-10-06).
+    ///
+    /// **Die Scheibe liegt auf dem FENSTER, nicht auf der Wurzel-Ansicht.** Die
+    /// native Kanalansicht ist ein darüber präsentiertes `.pageSheet`
+    /// (`SpracheAnsichtHalter`); ein Blur auf der Wurzel-Ansicht läge UNTER
+    /// ihr, und der Umschalter-Schnappschuss zeigte die Kanalansicht
+    /// unverdeckt. Präsentierte Ansichten hängen im Fenster ÜBER der Wurzel —
+    /// nur ein Kind des Fensters selbst deckt alles zu.
     private var privacyDeck: UIView?
 
     private func privacySchutz(_ an: Bool) {
-        guard let rootView = window?.rootViewController?.view else { return }
+        guard let fenster = window else { return }
         if an {
             // Schon eine Scheibe drauf? Dann NICHT noch eine. `willResignActive`
             // kann ohne dazwischenliegendes `didBecomeActive` ein zweites Mal
@@ -108,9 +115,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             // für immer und durch nichts mehr erreichbar.
             guard privacyDeck == nil else { return }
             let deck = UIVisualEffectView(effect: UIBlurEffect(style: .regular))
-            deck.frame = rootView.bounds
+            deck.frame = fenster.bounds
             deck.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            rootView.addSubview(deck)
+            fenster.addSubview(deck)
             privacyDeck = deck
         } else {
             privacyDeck?.removeFromSuperview()
