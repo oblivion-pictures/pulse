@@ -216,8 +216,7 @@ export class ManagedHqStream {
       void el.play().catch(() => {});
       return;
     }
-    this.#gesteAbbauen?.();
-    this.#gesteAbbauen = null;
+    this.#gesteLoesen();
     el.play().then(
       () => {
         this.bildGesperrt = false;
@@ -237,6 +236,12 @@ export class ManagedHqStream {
     );
   }
 
+  /** Den Geste-Zuhörer von `aufGesteAbspielen` abbauen, falls einer hängt. */
+  #gesteLoesen(): void {
+    this.#gesteAbbauen?.();
+    this.#gesteAbbauen = null;
+  }
+
   /** Knopf „Bild starten" der Kachel — läuft in der Geste. */
   bildStarten(): void {
     if (this.#videoEl) this.#bildAbspielen(this.#videoEl);
@@ -246,8 +251,7 @@ export class ManagedHqStream {
     if (this.#videoEl === el) {
       el.srcObject = null;
       this.#videoEl = null;
-      this.#gesteAbbauen?.();
-      this.#gesteAbbauen = null;
+      this.#gesteLoesen();
       this.bildGesperrt = false;
     }
   }
@@ -862,8 +866,7 @@ export class ManagedHqStream {
     // Vor `tonWiedergabe`: der native Ton gibt seinen Halter erst frei, wenn
     // er steht — bis dahin fasst `iosTon` die Session nicht an.
     void this.#nativ?.beenden();
-    this.#gesteAbbauen?.();
-    this.#gesteAbbauen = null;
+    this.#gesteLoesen();
     // Abmelden, BEVOR `stream` faellt: faellt die letzte Wiedergabe weg und
     // laeuft kein Sprachkanal, gibt der Koordinator die Audio-Session frei.
     tonWiedergabe(this.#tonKennung, false);

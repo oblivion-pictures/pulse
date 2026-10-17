@@ -99,25 +99,22 @@ export function aufGesteAbspielen(
   fertig: (laeuft: boolean) => void
 ): () => void {
   let aktiv = true;
-  const abbauen = () => {
+  function abbauen(): void {
     aktiv = false;
     for (const art of GESTEN) ziel.removeEventListener(art, gehoert, true);
-  };
+  }
+  function gelaufen(): void {
+    if (!aktiv) return;
+    abbauen();
+    fertig(true);
+  }
   function gehoert(): void {
     if (!aktiv) return;
     if (!el.paused) {
-      abbauen();
-      fertig(true);
+      gelaufen();
       return;
     }
-    el.play().then(
-      () => {
-        if (!aktiv) return;
-        abbauen();
-        fertig(true);
-      },
-      () => undefined
-    );
+    el.play().then(gelaufen, () => undefined);
   }
   for (const art of GESTEN) ziel.addEventListener(art, gehoert, true);
   return abbauen;
