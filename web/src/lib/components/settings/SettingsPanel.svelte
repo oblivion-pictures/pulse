@@ -13,6 +13,7 @@
   import SettingsAppearance from './SettingsAppearance.svelte';
   import SettingsLayout from './SettingsLayout.svelte';
   import SettingsAudioVideo from './SettingsAudioVideo.svelte';
+  import SettingsAudioVideoIos from './SettingsAudioVideoIos.svelte';
   import SettingsScreenShare from './SettingsScreenShare.svelte';
   import SettingsNotifications from './SettingsNotifications.svelte';
   import SettingsSounds from './SettingsSounds.svelte';
@@ -24,8 +25,11 @@
   import SettingsApps from './SettingsApps.svelte';
   import SettingsExperimental from './SettingsExperimental.svelte';
   import SpeicherSektion from './SpeicherSektion.svelte';
+  import { isCapacitorIOS } from '$lib/platform/runtime';
 
   let { tab }: { tab: SettingsTab } = $props();
+  // Die iOS-Hülle hat eine eigene Ton-Seite (ohne Mikrofontest, Geräte, Filter).
+  const ios = isCapacitorIOS();
 </script>
 
 {#if tab === 'profile'}
@@ -35,7 +39,11 @@
 {:else if tab === 'layout'}
   <SettingsLayout />
 {:else if tab === 'audio-video'}
-  <SettingsAudioVideo />
+  {#if ios}
+    <SettingsAudioVideoIos />
+  {:else}
+    <SettingsAudioVideo />
+  {/if}
 {:else if tab === 'screen-share'}
   <SettingsScreenShare />
 {:else if tab === 'notifications'}

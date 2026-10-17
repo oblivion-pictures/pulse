@@ -3563,5 +3563,6 @@
   "zeilen_menue_schliessen": "Close",
   "menue_mehr": "More",
   "chats_neu": "New",
-  "chats_zeile_als_gelesen": "Mark as read"
+  "chats_zeile_als_gelesen": "Mark as read",
+  "settings_notifications_subheading_huelle": "When Pulse notifies you. Notifications reach you even when Pulse is not open."
 }
