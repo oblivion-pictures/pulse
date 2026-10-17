@@ -11,6 +11,10 @@
   Eine echte Lösung (Übertragungs-Ton nativ in den Raum mischen) wird getrennt
   geplant; bis dahin ist der Hinweis ehrlich.
 
+  Im selbst gebauten Vollbild (`data-eigenes-vollbild` an der Kachel) steht
+  keiner der beiden Hinweise: das Bild gehört dort dem Stream, und die Pille
+  läge unter der Dynamic Island.
+
   Desktop und Android sehen ihn nie: `mikrofonBeiDerHuelle()` ist dort immer
   `false`.
 
@@ -46,7 +50,7 @@
 {#if nativ}
   {#if nativ.echoGedaempft && mitTon}
     <div
-      class="pointer-events-none absolute left-1/2 top-2 z-10 flex max-w-[90%] -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-xs text-white/90"
+      class="pointer-events-none absolute left-1/2 top-2 z-10 flex max-w-[90%] in-data-[eigenes-vollbild]:hidden -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-xs text-white/90"
       data-testid="hq-stream-ios-echo"
     >
       <Volume1Icon class="size-3.5 shrink-0" />
@@ -55,7 +59,7 @@
   {/if}
 {:else if beiDerHuelle && mitTon}
   <div
-    class="pointer-events-none absolute left-1/2 top-2 z-10 flex max-w-[90%] -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-xs text-white/90"
+    class="pointer-events-none absolute left-1/2 top-2 z-10 flex max-w-[90%] in-data-[eigenes-vollbild]:hidden -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-xs text-white/90"
     data-testid="hq-stream-ios-lautlos"
   >
     <VolumeXIcon class="size-3.5 shrink-0" />

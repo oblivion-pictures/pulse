@@ -103,7 +103,13 @@
   let dockWide = $state(true);
   const DOCK_WIDE_MIN = 340;
 
-  const hudEffective = $derived(hudVisible || forceHud);
+  // `forceHud` (Ton blockiert) hält die Steuerung am Rechner sichtbar, weil dort
+  // der Ton-Knopf in der Leiste sitzt. Im selbst gebauten Vollbild des iPhones
+  // (`eigenesVollbild`) hielt es die schwebenden Knöpfe DAUERHAFT auf dem Bild:
+  // dort blockiert WebKit die Wiedergabe mit Ton, bis jemand tippt, und das
+  // Ausblenden nach `HUD_HIDE_AFTER_MS` griff nie. „Ton freigeben" fadet ohnehin
+  // nicht mit (`TileMobilSteuerung`), die Abhilfe bleibt also sichtbar.
+  const hudEffective = $derived(hudVisible || (forceHud && !eigenesVollbild));
   const fadeClass = $derived(
     `transition-opacity duration-300 ${hudEffective ? 'opacity-100' : 'pointer-events-none opacity-0'}`
   );
