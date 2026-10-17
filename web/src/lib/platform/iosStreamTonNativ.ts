@@ -19,6 +19,7 @@ import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { mitFrist } from './brueckenFrist.ts';
 import { huellenBefund } from './huelleKann.ts';
 import { nativerSprachwegDa } from './iosSpracheWeiche.ts';
+import { isCapacitorIOS } from './runtime.ts';
 
 /** Die Fähigkeitsliste — muss mit `pluginMethods` in `StreamTonPlugin.swift`
  *  übereinstimmen (der Test liest beide). */
@@ -82,10 +83,15 @@ const nativ = registerPlugin<StreamTonPlugin>('StreamTonPlugin');
  * beenden** (Gegenprüfung S2). Die Empfänger der Hülle überleben ein Neuladen
  * der WebView; ohne Kachel gäbe es niemanden mehr, der sie stoppt. Die Hülle
  * reiht den Ruf VOR jedes spätere `starten` (eine Kette, `StreamTonPlugin`).
+ *
+ * **An der Fähigkeit des Baus, NICHT an `streamTonNativDa()`** (Gegenprüfung
+ * 2, V4): ist der native Sprachweg per Notschalter aus, bietet die Seite den
+ * nativen Ton nicht an — eine frühere Seite kann ihn aber gestartet haben,
+ * und gerade dann darf er nicht neben dem Web-Sprachweg weiterlaufen.
  */
 let aufgeraeumt: Promise<void> | null = null;
 export function streamTonAufraeumen(): Promise<void> {
-  aufgeraeumt ??= streamTonNativDa()
+  aufgeraeumt ??= isCapacitorIOS() && huellenBefund('StreamTonPlugin', ['alleStoppen']).da
     ? mitFrist(nativ.alleStoppen(), SOFORT_FRIST_MS, 'streamton.alleStoppen').catch(() => undefined)
     : Promise.resolve();
   return aufgeraeumt;

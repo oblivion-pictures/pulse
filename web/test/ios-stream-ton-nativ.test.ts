@@ -205,3 +205,10 @@ test('V3: nach dem Anruf laufen auch Kacheln an, die während des Anrufs aufging
   const starten = /func starten\(grund: String\) \{[\s\S]*?\n    \}\n/.exec(quelle('StreamTonGeraet.swift'))?.[0] ?? '';
   assert.ok(starten.indexOf('anrufHaelt') < starten.indexOf('anmelden()'));
 });
+
+test('V4: aufgeräumt wird auch mit ausgeschaltetem nativem Sprachweg', () => {
+  const src = readFileSync(new URL('../src/lib/platform/iosStreamTonNativ.ts', import.meta.url), 'utf8');
+  const fn = /export function streamTonAufraeumen[\s\S]*?\n\}/.exec(src)?.[0] ?? '';
+  assert.match(fn, /huellenBefund\('StreamTonPlugin', \['alleStoppen'\]\)\.da/);
+  assert.doesNotMatch(fn, /streamTonNativDa\(\)/);
+});
