@@ -28,6 +28,7 @@
   import StreamChatPanel from './StreamChatPanel.svelte';
   import TileShell from './TileShell.svelte';
   import IosLautlosHinweis from './IosLautlosHinweis.svelte';
+  import BildStartenKnopf from './BildStartenKnopf.svelte';
   import RemoteRequestButton from '$lib/remote/components/RemoteRequestButton.svelte';
 	import { isElectron, isLinux } from '$lib/platform/runtime';
   import { remoteSession } from '$lib/remote/session.svelte';
@@ -471,6 +472,7 @@
         stream={useNative ? null : (mgr?.stream ?? null)}
         nativ={mgr?.nativTon ?? null}
       />
+      <BildStartenKnopf gesperrt={!useNative && (mgr?.bildGesperrt ?? false)} onStarten={() => mgr?.bildStarten()} />
     {/if}
   {/snippet}
   {#snippet controlsExtra()}

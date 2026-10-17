@@ -3144,6 +3144,7 @@
   "voice_mikro_tot_neu": "Reconnect",
   "stream_ios_lautlos_hinweis": "In silent mode, the stream's audio is muted",
   "stream_ios_echo_hinweis": "Quieter while your mic is open on the speaker – full volume with headphones",
+  "stream_ios_bild_starten": "Start video",
   "voice_bar_undeafen": "Undeafen",
   "voice_uebernommen_toast": "Voice channel taken over by your other device — the connection continues there.",
   "voice_channel_full": "This voice channel is full.",

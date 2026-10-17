@@ -34,6 +34,7 @@ import { VolumeBoost } from './volumeBoost';
 import { fernStummEinmalHeilen, getStreamVolume, setStreamVolume } from './streamVolume';
 import { ohneGesteFortsetzen } from './iosStreamTon';
 import { NativerStreamTon, webViewTonAbschalten, type NativStand } from './nativerStreamTon';
+import { aufGesteAbspielen, bildDiagnose, bildErgebnis } from './bildStart';
 import { streamTonNativDa } from '$lib/platform/iosStreamTonNativ';
 import { FreezeRecycler, FREEZE_RECYCLE_MAX } from './freezeRecycle';
 import { chatApi } from '$lib/api/chat';
@@ -156,6 +157,10 @@ export class ManagedHqStream {
   readonly #nativ: NativerStreamTon | null = null;
   nativTon = $state<NativStand | null>(null);
   #whepUrl = '';
+  /** Verweigert WebKit das Bild ohne Geste (`bildStart.ts`)? Nur mit nativem
+   *  Ton — sonst spielt die WebView selbst Ton, und die Sperre greift nicht. */
+  bildGesperrt = $state(false);
+  #gesteAbbauen: (() => void) | null = null;
 
   constructor(channelId: string, userId: string, slot = 0) {
     this.channelId = channelId;
@@ -196,14 +201,54 @@ export class ManagedHqStream {
     if (this.stream) {
       el.srcObject = this.stream;
       el.muted = true; // Ton läuft über den Web-Audio-Graphen, nie übers Video.
-      void el.play().catch(() => {});
+      this.#bildAbspielen(el);
     }
+  }
+
+  /**
+   * `play()` am Video. Ohne nativen Ton wie immer (best effort). Mit nativem
+   * Ton spielt die WebView keinen Ton, und WebKit verweigert das Bild im
+   * Stromsparmodus ohne Geste (`bildStart.ts`): dann melden, Knopf zeigen und
+   * bei der nächsten Berührung erneut.
+   */
+  #bildAbspielen(el: HTMLVideoElement): void {
+    if (!this.#nativ) {
+      void el.play().catch(() => {});
+      return;
+    }
+    this.#gesteAbbauen?.();
+    this.#gesteAbbauen = null;
+    el.play().then(
+      () => {
+        this.bildGesperrt = false;
+        melde('stream', 'stream_bild_start', 'Bild läuft', bildDiagnose(el, this.stream, 'spielt'));
+      },
+      (e: unknown) => {
+        const ergebnis = bildErgebnis(e);
+        melde('stream', 'stream_bild_start', `Bild: ${ergebnis}`, bildDiagnose(el, this.stream, ergebnis));
+        if (ergebnis !== 'gesperrt' || this.#disposed || this.#videoEl !== el) return;
+        this.bildGesperrt = true;
+        this.#gesteAbbauen = aufGesteAbspielen(el, document, () => {
+          this.#gesteAbbauen = null;
+          this.bildGesperrt = false;
+          melde('stream', 'stream_bild_start', 'Bild nach Geste', bildDiagnose(el, this.stream, 'spielt'));
+        });
+      }
+    );
+  }
+
+  /** Knopf „Bild starten" der Kachel — läuft in der Geste. */
+  bildStarten(): void {
+    if (this.#videoEl) this.#bildAbspielen(this.#videoEl);
   }
 
   detachVideo(el: HTMLVideoElement): void {
     if (this.#videoEl === el) {
       el.srcObject = null;
       this.#videoEl = null;
+      this.#gesteAbbauen?.();
+      this.#gesteAbbauen = null;
+      this.bildGesperrt = false;
     }
   }
 
@@ -444,7 +489,7 @@ export class ManagedHqStream {
     if (this.#videoEl) {
       this.#videoEl.srcObject = stream;
       this.#videoEl.muted = true;
-      void this.#videoEl.play().catch(() => {});
+      this.#bildAbspielen(this.#videoEl);
     }
     this.#applyVolume();
   }
@@ -817,6 +862,8 @@ export class ManagedHqStream {
     // Vor `tonWiedergabe`: der native Ton gibt seinen Halter erst frei, wenn
     // er steht — bis dahin fasst `iosTon` die Session nicht an.
     void this.#nativ?.beenden();
+    this.#gesteAbbauen?.();
+    this.#gesteAbbauen = null;
     // Abmelden, BEVOR `stream` faellt: faellt die letzte Wiedergabe weg und
     // laeuft kein Sprachkanal, gibt der Koordinator die Audio-Session frei.
     tonWiedergabe(this.#tonKennung, false);
