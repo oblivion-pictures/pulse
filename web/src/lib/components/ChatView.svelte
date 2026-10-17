@@ -452,7 +452,7 @@
                 {...props}
                 variant="ghost"
                 size="icon"
-                class="relative"
+                class="relative handy:size-11"
                 onclick={ladePins}
                 title={pm.chat_view_pins_title({ count: pinCount })}
                 aria-label={pm.chat_view_pins_title({ count: pinCount })}
@@ -497,7 +497,7 @@
         <Button
           variant="ghost"
           size="icon"
-          class="ml-auto"
+          class="ml-auto handy:size-11"
           onclick={onGruppenBlatt}
           aria-label={pm.gruppen_blatt_oeffnen()}
           data-testid="group-sheet-toggle"
@@ -509,6 +509,7 @@
         <Button
           variant="ghost"
           size="icon"
+          class="handy:size-11"
           onclick={() => (medienOffen = true)}
           aria-label={pm.medien_titel()}
           data-testid="media-sheet-toggle"
@@ -520,7 +521,7 @@
         <Button
           variant="ghost"
           size="icon"
-          class="ml-auto"
+          class="ml-auto handy:size-11"
           onclick={onAnrufen}
           aria-label={pm.anruf_starten()}
           data-testid="dm-call-button"
