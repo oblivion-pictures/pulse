@@ -19,28 +19,20 @@
    * fast das Doppelte der Grössen-Grenze für Svelte-Komponenten.
    */
   import PencilIcon from '@lucide/svelte/icons/pencil';
-  import { anfangsBuchstabe } from '$lib/utils/anfangsBuchstabe';
   import UsersIcon from '@lucide/svelte/icons/users';
-  import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+  import KopfMenue from './KopfMenue.svelte';
+  import MobileChatsZeile from './MobileChatsZeile.svelte';
+  import type { ZeilenAktion } from '$lib/components/menu/zeilenAktionen';
   import BereichsKopf from './BereichsKopf.svelte';
   import SuchPille from '$lib/components/SuchPille.svelte';
   import MobileChatsSuche from './MobileChatsSuche.svelte';
   import NeuesGespraechDialog from './NeuesGespraechDialog.svelte';
   import NeueGruppeDialog from './NeueGruppeDialog.svelte';
   import MobileGruppenZeile from './MobileGruppenZeile.svelte';
-  import { auth } from '$lib/stores/auth.svelte';
   import { directMessages } from '$lib/stores/directMessages.svelte';
   import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
   import { userCache } from '$lib/stores/users.svelte';
-  import { presence } from '$lib/stores/presence.svelte';
-  import { readState } from '$lib/stores/readState.svelte';
-  import { nameStyle } from '$lib/utils/nameColor';
-  import { safeAvatarUrl } from '$lib/avatar';
-  import { kurzeUhrzeit } from '$lib/utils/kurzeUhrzeit';
-  import { currentLocale } from '$lib/i18n';
   import { suchnorm } from '$lib/utils/suche';
-  import StatusDot from '$lib/components/ui/StatusDot.svelte';
   import type { DMChannel } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
 
@@ -61,6 +53,27 @@
   let neueGruppe = $state(false);
   let suche = $state('');
 
+  const kopfAktionen = $derived<ZeilenAktion[]>([
+    {
+      id: 'neues-gespraech',
+      label: m.chats_compose(),
+      icon: PencilIcon,
+      onSelect: () => (neuesGespraech = true),
+      testid: 'chats-menu-new-chat'
+    },
+    ...(onSelectGruppe
+      ? [
+          {
+            id: 'neue-gruppe',
+            label: m.chats_new_group(),
+            icon: UsersIcon,
+            onSelect: () => (neueGruppe = true),
+            testid: 'chats-menu-new-group'
+          }
+        ]
+      : [])
+  ]);
+
   /** Ab drei ZEICHEN wird gesucht — gerechnet wird über die normalisierte
    *  Eingabe, damit „a -" noch lange keine Suche auslöst. */
   let suchbegriff = $derived.by(() => {
@@ -73,22 +86,6 @@
   $effect(() => {
     for (const dm of directMessages.list) userCache.queue(dm.other_user_id);
   });
-
-  /**
-   * Der Ausschnitt unter dem Namen. Die beiden Marker aus `dm_vorschau.py`
-   * werden hier zu Wörtern — der Server schickt bewusst keinen Dateinamen.
-   */
-  function vorschau(dm: DMChannel): string {
-    const roh = dm.last_message_preview;
-    if (!roh) return '';
-    let text = roh;
-    if (roh === '__image__') text = m.dm_preview_image();
-    else if (roh === '__file__') text = m.dm_preview_file();
-    // Private Nachrichten sind cloud-gebunden (`CloudOnly` im Gateway) —
-    // die eigene Kennung ist deshalb die des Kontos, nicht die server-lokale.
-    const vonMir = !!auth.user && dm.last_message_author_id === auth.user.id;
-    return vonMir ? m.dm_preview_own_prefix() + text : text;
-  }
 </script>
 
 <div
@@ -97,45 +94,11 @@
 >
   <BereichsKopf titel={m.nav_tab_chats()}>
     {#snippet handlung()}
-      <!-- Neues Gespräch — oben rechts in der Kopfzeile, hinter einem
-           Drei-Punkte-Menü: Platz für künftige Handlungen (Gruppen, Einstellungen),
-           ohne die Kopfzeile erneut umzubauen. `size-12` statt `size-11`: die
-           Trefferfläche wird gemessen (mobile-treffflaechen.spec.ts) und 44 px
-           reissen die 48-dp-Grenze. -->
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          {#snippet child({ props })}
-            <button
-              {...props}
-              class="text-text-muted hover:bg-bg-hover hover:text-text-bright flex size-12 items-center justify-center rounded-[14px] transition-colors"
-              data-testid="chats-menu"
-              aria-label={m.chats_menu()}
-            >
-              <EllipsisIcon class="size-6" />
-            </button>
-          {/snippet}
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="end" class="w-52">
-          <DropdownMenu.Item
-            onclick={() => (neuesGespraech = true)}
-            data-testid="chats-menu-new-chat"
-            class="flex items-center gap-2"
-          >
-            <PencilIcon class="size-4" />
-            {m.chats_compose()}
-          </DropdownMenu.Item>
-          {#if onSelectGruppe}
-            <DropdownMenu.Item
-              onclick={() => (neueGruppe = true)}
-              data-testid="chats-menu-new-group"
-              class="flex items-center gap-2"
-            >
-              <UsersIcon class="size-4" />
-              {m.chats_new_group()}
-            </DropdownMenu.Item>
-          {/if}
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+      <!-- Neues Gespräch / Neue Gruppe: ein Knopf MIT WORT (`BereichsKopf`), der
+           die Auswahl als Blatt von unten öffnet. Vorher ein wortloses ⋯ mit
+           Popover im Desktop-Stil — am Handy schlecht zu treffen und ohne Hinweis,
+           was dahinter liegt. -->
+      <KopfMenue wort={m.chats_neu()} icon={PencilIcon} aktionen={kopfAktionen} testid="chats-menu" />
     {/snippet}
   </BereichsKopf>
 
@@ -162,65 +125,7 @@
         </div>
       {/if}
       {#each directMessages.list as dm (dm.id)}
-        {@const ungelesen = readState.isUnread(dm.id)}
-        {@const zahl = readState.getUnreadCount(dm.id)}
-        {@const u = userCache.get(dm.other_user_id)}
-        {@const bild = safeAvatarUrl(u?.avatar_url ?? null)}
-        {@const name = userCache.displayName(dm.other_user_id)}
-        {@const text = vorschau(dm)}
-        <button
-          class="hover:bg-bg-hover border-border bg-bg-input flex w-full items-center gap-3 rounded-[14px] border p-2.5 text-left transition-colors"
-          onclick={() => onSelect(dm)}
-          data-testid={`chat-row-${dm.id}`}
-          data-unread={ungelesen}
-        >
-          <span class="relative size-[46px] shrink-0">
-            {#if bild}
-              <img src={bild} alt="" class="size-full rounded-full object-cover" />
-            {:else}
-              <span
-                class="flex size-full items-center justify-center rounded-full text-base font-bold text-white"
-                style="background-image: linear-gradient(135deg in oklab, var(--accent-grad-from), var(--accent-grad-to));"
-                >{anfangsBuchstabe(name)}</span
-              >
-            {/if}
-            <StatusDot
-              status={presence.displayStatusForFriend(dm.other_user_id)}
-              class="ring-bg-panel absolute -right-px -bottom-px size-[13px] ring-[3px]"
-            />
-          </span>
-
-          <span class="min-w-0 flex-1">
-            <span class="flex items-center gap-2">
-              <span
-                class="truncate text-sm font-semibold {ungelesen
-                  ? 'text-text-bright'
-                  : 'text-text-base'}"
-                style={nameStyle(dm.other_user_id)}>{name}</span
-              >
-              {#if zahl > 0}
-                <span
-                  class="bg-badge-count text-2xs ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 font-extrabold leading-none text-white"
-                  data-testid="chat-row-unread"
-                  data-unread-count={zahl}
-                  aria-label={m.nav_tab_unread_badge({ count: zahl })}
-                  >{zahl > 99 ? '99+' : zahl}</span
-                >
-              {:else if dm.last_message_at}
-                <time class="text-text-muted text-2xs ml-auto shrink-0"
-                  >{kurzeUhrzeit(dm.last_message_at, new Date(), currentLocale())}</time
-                >
-              {/if}
-            </span>
-            {#if text}
-              <span
-                class="block truncate text-xs {ungelesen
-                  ? 'text-text-bright font-medium'
-                  : 'text-text-muted'}">{text}</span
-              >
-            {/if}
-          </span>
-        </button>
+        <MobileChatsZeile {dm} {onSelect} />
       {/each}
       <!-- Private Gruppen unter den Direktnachrichten, in derselben Liste
            aber als eigener Block: die Sortierung der DMs nach Aktualitaet

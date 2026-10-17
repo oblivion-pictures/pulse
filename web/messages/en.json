@@ -3554,5 +3554,10 @@
   "settings_mitteilungen_huelle_offen": "Pulse can't send you notifications yet. Your device will ask for permission once.",
   "settings_mitteilungen_huelle_erteilt": "Allowed — you'll get a notification when a message arrives for you.",
   "settings_mitteilungen_huelle_verweigert": "Turned off. You can only turn them on in the iOS settings.",
-  "settings_mitteilungen_huelle_einstellungen": "Open Settings"
+  "settings_mitteilungen_huelle_einstellungen": "Open Settings",
+  "zeilen_menue_oeffnen": "More actions",
+  "zeilen_menue_schliessen": "Close",
+  "menue_mehr": "More",
+  "chats_neu": "New",
+  "chats_zeile_als_gelesen": "Mark as read"
 }

@@ -12,11 +12,6 @@
   import HashIcon from '@lucide/svelte/icons/hash';
   import ArchiveIcon from '@lucide/svelte/icons/archive';
   import LockIcon from '@lucide/svelte/icons/lock';
-  import PencilIcon from '@lucide/svelte/icons/pencil';
-  import ShieldIcon from '@lucide/svelte/icons/shield';
-  import Trash2Icon from '@lucide/svelte/icons/trash-2';
-  import FlagIcon from '@lucide/svelte/icons/flag';
-  import { goto } from '$app/navigation';
   import { readState } from '$lib/stores/readState.svelte';
   import { channelNameStyle } from '$lib/utils/nameColor';
   import { CHANNEL_BTN_CLASS } from '$lib/channels/stil';
@@ -29,6 +24,9 @@
     type ZiehKontext
   } from '$lib/channels/ziehen.svelte';
   import ChannelTopicTooltip from '../ChannelTopicTooltip.svelte';
+  import ZeilenKontextInhalt from '$lib/components/menu/ZeilenKontextInhalt.svelte';
+  import ZeilenMenue from '$lib/components/mobile/ZeilenMenue.svelte';
+  import { kanalAktionen } from '$lib/channels/kanalAktionen';
   import type { Channel, Guild } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
 
@@ -72,6 +70,8 @@
 {#each channels as c (c.id)}
   {@const isUnread = activeChannelId !== c.id && readState.isUnread(c.id)}
   {@const unreadCount = activeChannelId !== c.id ? readState.getUnreadCount(c.id) : 0}
+  {@const aktionen = kanalAktionen(c, { guild, canCreate, canManagePermissions, onRename, onDelete, onReport })}
+  <div class="relative">
   <ContextMenu.Root>
     <ContextMenu.Trigger>
       {#snippet child({ props: ctxProps })}
@@ -80,7 +80,7 @@
         <button
           {...ctxProps}
           {...tipProps}
-          class="{CHANNEL_BTN_CLASS} {ziehen.ueber === c.id
+          class="{CHANNEL_BTN_CLASS} handy:pr-14 {ziehen.ueber === c.id
             ? 'border-t-2 border-primary'
             : ''} {ziehen.id === c.id ? 'opacity-50' : ''}"
           data-active={activeChannelId === c.id}
@@ -130,39 +130,10 @@
         </ChannelTopicTooltip>
       {/snippet}
     </ContextMenu.Trigger>
-    <ContextMenu.Content>
-      {#if canCreate}
-        <ContextMenu.Item onSelect={() => onRename(c)} data-testid="channel-context-settings">
-          <PencilIcon />
-          {m.channel_list_rename_channel()}
-        </ContextMenu.Item>
-      {/if}
-      {#if canManagePermissions && guild}
-        <ContextMenu.Item
-          onSelect={() => goto(`/app/guilds/${guild!.id}/channels/${c.id}/permissions`)}
-          data-testid={`channel-permissions-${c.id}`}
-        >
-          <ShieldIcon />
-          {m.channel_list_permissions()}
-        </ContextMenu.Item>
-      {/if}
-      <!-- Melden steht jedem Mitglied offen, nicht nur Managern. -->
-      <ContextMenu.Item
-        onSelect={() => onReport(c)}
-        data-testid={`channel-report-${c.id}`}
-      >
-        <FlagIcon />
-        {m.channel_list_report()}
-      </ContextMenu.Item>
-      {#if canCreate}
-        <ContextMenu.Separator />
-        <ContextMenu.Item variant="destructive" onSelect={() => onDelete(c)}>
-          <Trash2Icon />
-          {m.channel_list_delete_channel()}
-        </ContextMenu.Item>
-      {/if}
-    </ContextMenu.Content>
+    <ZeilenKontextInhalt {aktionen} />
   </ContextMenu.Root>
+  <ZeilenMenue {aktionen} testid={`channel-menu-${c.id}`} titel={c.name} />
+  </div>
 {/each}
 {#if channels.length === 0}
   <p class="text-text-muted px-3 py-2 text-xs">{m.channel_list_no_text_channels()}</p>
