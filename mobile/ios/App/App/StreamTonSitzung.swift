@@ -101,7 +101,8 @@ final class StreamTonSitzung: @unchecked Sendable {
     /// wird nur gemeldet — LiveKits Buchführung hängt nicht daran.
     /// Auf dem Hauptthread (die Anruf-Merker leben dort); geprüft und
     /// deaktiviert unter der Sperre, damit kein neues `anmelden` dazwischenfährt.
-    private func nachDemLetzten() {
+    /// Auch nach einem Abriss mitten in Bluetooth-HQ (`SpracheFunkHq.nachAbriss`).
+    func nachDemLetzten() {
         DispatchQueue.main.async { [self] in
             let v = Anrufverwaltung.geteilt
             guard SpracheRaum.geteilt.raum == nil, AnrufRaum.geteilt.raum == nil,

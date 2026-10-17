@@ -112,3 +112,10 @@ test('C2: Fristen der Dämpfung ab der Rückgabe, Obergrenze als eigener Zeitgeb
   // Frist vor den blockierenden Gettern.
   assert.ok(d.indexOf('Self.ohneVpio {') < d.indexOf('am.audioProcessingState'));
 });
+
+test('C3: ein Abriss während HQ deaktiviert die Session wie nach dem letzten Stream-Ton', () => {
+  const r = swift('SpracheRaum.swift');
+  assert.match(r, /let hielt = SpracheFunkHq\.geteilt\.haelt\n\s*raumLoesen\(r\)\n\s*if hielt \{ SpracheFunkHq\.geteilt\.nachAbriss\(\) \}/);
+  assert.match(swift('SpracheFunkHq.swift'), /guard !laeuft else \{ return \}\n\s*StreamTonSitzung\.geteilt\.nachDemLetzten\(\)/);
+  assert.match(swift('StreamTonSitzung.swift'), /\n    func nachDemLetzten\(\) \{/);
+});

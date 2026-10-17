@@ -145,6 +145,27 @@ final class SpracheFunkHq: @unchecked Sendable {
         }
     }
 
+    /// **Abriss von aussen, während wir hielten** (Gegenprüfung C3). Beim
+    /// Verlassen gibt `raumLoesen` die Automatik zurück, BEVOR die Maschine
+    /// stoppt, und das SDK deaktiviert selbst. Bei einem Abriss meldet LiveKit
+    /// erst nach dem Abbau (`didDisconnectWithError` nach `cleanUpRTC`): die
+    /// Maschine stand, solange die Automatik noch aus war, das SDK verbuchte
+    /// „nichts aktiv" ohne `setActive(false)`, und die Session blieb aktiv —
+    /// fremde Musik kam nicht wieder, der Kopfhörer blieb im Aufnahmeprofil.
+    /// Deaktiviert wird unter denselben Bedingungen wie nach dem letzten
+    /// Stream-Ton (`StreamTonSitzung.nachDemLetzten`: kein Raum, kein Anruf,
+    /// kein Stream-Ton) und nur bei stehender Maschine. `isEngineRunning`
+    /// fragt WebRTC blockierend — deshalb hier auf einem eigenen Faden, nicht
+    /// auf dem Hauptthread.
+    func nachAbriss() {
+        DispatchQueue.global().async {
+            let laeuft = AudioManager.shared.isEngineRunning
+            SpracheRaum.geteilt.diagMelden("funk_hq_abriss", ["maschineLaeuft": laeuft])
+            guard !laeuft else { return }
+            StreamTonSitzung.geteilt.nachDemLetzten()
+        }
+    }
+
     // MARK: - Dämpfung (Gegenprüfung B3, C2)
 
     let daempfung = FunkDaempfung()

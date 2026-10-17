@@ -323,7 +323,9 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     /// als toter Raum stehen (Bughunt M1).
     func raumAbgerissen(_ r: Room) {
         guard raum === r else { return }
+        let hielt = SpracheFunkHq.geteilt.haelt
         raumLoesen(r)
+        if hielt { SpracheFunkHq.geteilt.nachAbriss() }
         // **Der Raum ist weg, also muss die Ansicht weg.** Gemeldet wird das
         // Schliessen, damit die Oberfläche keinen Griff „zurück in den Kanal"
         // anbietet, wenn es keinen Kanal mehr gibt.
