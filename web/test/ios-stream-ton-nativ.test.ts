@@ -212,3 +212,10 @@ test('V4: aufgeräumt wird auch mit ausgeschaltetem nativem Sprachweg', () => {
   assert.match(fn, /huellenBefund\('StreamTonPlugin', \['alleStoppen'\]\)\.da/);
   assert.doesNotMatch(fn, /streamTonNativDa\(\)/);
 });
+
+test('V5: ein Aussetzer hält nur an, erst `.failed` schliesst', () => {
+  const src = quelle('StreamTonEmpfaenger.swift');
+  assert.match(src, /case \.disconnected:[\s\S]{0,900}geraet\.pausieren\(grund: "netz_weg"\)/);
+  assert.match(src, /case \.connected:[\s\S]{0,200}geraet\.fortsetzen\(grund: "netz_zurueck"\)/);
+  assert.doesNotMatch(src, /verbindungTot\("verbindung_weg"\)/);
+});

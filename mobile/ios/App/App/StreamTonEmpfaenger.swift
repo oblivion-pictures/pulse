@@ -238,7 +238,8 @@ final class StreamTonEmpfaenger: NSObject, LKRTCPeerConnectionDelegate, @uncheck
         sperre.withLock { sammelnFertig = nil }
     }
 
-    /// **Die Verbindung ist weg — das Gerät steht sofort** (Gegenprüfung S7).
+    /// **Die Verbindung ist weg (`.failed`/`.closed`) — das Gerät steht
+    /// sofort** (Gegenprüfung S7; einen Aussetzer behandelt V5 oben).
     /// WebRTC hielte die Wiedergabe sonst, solange der Empfangsstrom besteht,
     /// und die Maschine spielte Stille: im Hintergrund oder bei Sperre ruht das
     /// JS, kein `stoppen` käme, und die App liefe mit Hintergrund-Audio und
@@ -263,15 +264,22 @@ final class StreamTonEmpfaenger: NSObject, LKRTCPeerConnectionDelegate, @uncheck
         switch newState {
         case .connected:
             sperre.withLock { verbunden = true }
+            // Zurück nach einem Aussetzer (unten): die Maschine läuft wieder an.
+            geraet.fortsetzen(grund: "netz_zurueck")
             neuBewerten("verbunden")
         case .failed, .closed:
             verbindungTot("verbindung_\(newState.rawValue)")
         case .disconnected:
-            // Vorübergehend (WebRTC erholt sich meist) — erst nach einer Frist
-            // ohne Rückkehr ist es ein Fehler.
+            // **Vorübergehend — nur die Maschine anhalten, die Verbindung
+            // bleibt** (Gegenprüfung 2, V5). WebRTC erholt sich aus
+            // `.disconnected` oft von selbst (bis es nach etwa 30 s `.failed`
+            // meldet), und das ohne JS: bei gesperrtem Gerät ruht die WebView,
+            // ein Neuaufbau über die Oberfläche käme erst beim Entsperren.
+            // Geschlossen wird erst bei `.failed`; die Stille im Aussetzer
+            // kostet so höchstens diese ~30 s Akku.
             DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [weak self] in
                 guard let self, peerConnection.connectionState == .disconnected else { return }
-                verbindungTot("verbindung_weg")
+                geraet.pausieren(grund: "netz_weg")
             }
         default:
             break
