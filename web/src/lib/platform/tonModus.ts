@@ -119,9 +119,11 @@ export function tonSchritt(z: {
 /**
  * Was nach dem Ende des nativen Raums als angewandt gilt.
  *
- * `aus`, weil LiveKit die Session beim Verlassen selbst deaktiviert
- * (`AudioSessionEngineObserver.configureAudioSession`: `setActive(false)`,
- * sobald weder Wiedergabe noch Aufnahme läuft). Läuft dann noch ein Stream,
+ * `aus`, weil die Session danach deaktiviert ist: nach einem Raum durch LiveKit
+ * selbst (`AudioSessionEngineObserver.configureAudioSession`: `setActive(false)`,
+ * sobald weder Wiedergabe noch Aufnahme läuft), nach dem nativen Stream-Ton
+ * durch die Hülle (`StreamTonSitzung.nachDemLetzten` — LiveKit deaktiviert
+ * dort bewusst nicht, s. `loslassen`). Läuft dann noch ein Stream,
  * richtet der nächste Schritt `wiedergabe` neu ein; läuft nichts, bleibt es
  * bei LiveKits Deaktivierung — ein zweites `setActive(false)` wäre nur ein
  * weiterer Griff an eine Session, die gerade jemand anderes losgelassen hat.

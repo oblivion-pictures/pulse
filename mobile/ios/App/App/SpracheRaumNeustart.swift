@@ -174,10 +174,19 @@ extension SpracheRaum {
     /// `streamTonZurueck: false` (nur beim Beitritt, Gegenprüfung S3): der
     /// Stream-Ton holt seine Anforderung NICHT gleich zurück. Sonst machte
     /// ER den Übergang „nichts aktiv → aktiv" (mit `.playback`), und der Kanal
-    /// stellte danach nur noch die Kategorie um — ein anderer Weg als der, mit
-    /// dem der Mikrofon-Befund geheilt und am Gerät geprüft wurde. So aktiviert
-    /// die Maschine des Kanals wie ohne Stream; die Session bleibt solange
-    /// aktiv, weil das Loslassen ohne Automatik nichts deaktiviert.
+    /// stellte danach nur noch die Kategorie um. So verbucht LiveKit den
+    /// Übergang „nichts → Aufnahme" selbst und richtet PlayAndRecord ein.
+    ///
+    /// **Was das NICHT ändert, ehrlich:** läuft beim Beitritt eine Kachel, ist
+    /// die Session schon aktiv (ihre Maschine spielt; deaktivieren ginge nur mit
+    /// einer Pause des Stream-Tons). LiveKits `setActive(true)` trifft dann eine
+    /// aktive Session, der Beitritt ist ein Kategoriewechsel `.playback` →
+    /// `.playAndRecord` — nicht der Weg, mit dem der Mikrofon-Befund geheilt
+    /// wurde. LiveKit kennt denselben Wechsel aus „stumm beitreten, Mikrofon
+    /// an". **Am Gerät zu prüfen** (orangener Punkt, Wächter-Puffer, ob fremde
+    /// Musik endet). Ohne laufende Kachel hat die Hülle die Session nach dem
+    /// letzten Stream-Ton deaktiviert (`StreamTonSitzung.nachDemLetzten`), dort
+    /// gilt der geprüfte Weg.
     func maschineNeu(grund: String, streamTonZurueck: Bool = true) async {
         let fehler = await MainActor.run { () -> String? in
             let v = Anrufverwaltung.geteilt

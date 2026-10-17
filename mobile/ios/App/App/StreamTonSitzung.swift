@@ -69,8 +69,9 @@ final class StreamTonSitzung: @unchecked Sendable {
         return true
     }
 
-    /// Ein Gerät steht (seine Maschine ist schon angehalten). Deaktiviert die
-    /// Session nicht (`loslassen`).
+    /// Ein Gerät steht (seine Maschine ist schon angehalten). War es das
+    /// letzte, geht die Anforderung zurück, und ohne Raum und Anruf wird die
+    /// Session danach deaktiviert (`nachDemLetzten`).
     func abmelden() {
         sperre.lock()
         nutzer = max(0, nutzer - 1)
@@ -78,6 +79,43 @@ final class StreamTonSitzung: @unchecked Sendable {
         if nutzer == 0 { anforderung = nil }
         sperre.unlock()
         loslassen(los)
+        if los != nil { nachDemLetzten() }
+    }
+
+    /// **Die Session nach dem letzten Stream-Ton selbst deaktivieren**
+    /// (Gegenprüfung 2, V1). Das Loslassen deaktiviert nicht (`loslassen`),
+    /// und sonst täte es niemand: LiveKit verbucht „nichts aktiv", `iosTon`
+    /// hält die Session dann für aus (`NACH_NATIVEM_RAUM`). Sie blieb aktiv und
+    /// mischbar, und ein späterer Beitritt fände eine schon aktive Session vor,
+    /// statt sie wie ohne Stream frisch zu aktivieren.
+    ///
+    /// Nur wenn niemand sonst sie braucht: kein Raum, kein Anruf (auch keiner
+    /// über CallKit), kein Stream-Ton mehr, und die Kategorie ist noch die von
+    /// LiveKit für uns gesetzte (`.playback` mit `.mixWithOthers`) — hat
+    /// `iosTon` sie inzwischen für eine Wiedergabe der WebView eingerichtet
+    /// (nicht mischbar), gehört sie ihm. „Busy" kann hier nicht kommen: die
+    /// eigenen Maschinen stehen, die des SDK läuft ohne Raum nicht. Ein Fehler
+    /// wird nur gemeldet — LiveKits Buchführung hängt nicht daran.
+    /// Auf dem Hauptthread (die Anruf-Merker leben dort); geprüft und
+    /// deaktiviert unter der Sperre, damit kein neues `anmelden` dazwischenfährt.
+    private func nachDemLetzten() {
+        DispatchQueue.main.async { [self] in
+            let v = Anrufverwaltung.geteilt
+            guard SpracheRaum.geteilt.raum == nil, AnrufRaum.geteilt.raum == nil,
+                  !v.callkitAktiv, !v.ohneCallKit else { return }
+            sperre.lock()
+            defer { sperre.unlock() }
+            let s = AVAudioSession.sharedInstance()
+            guard nutzer == 0, s.category == .playback, s.categoryOptions.contains(.mixWithOthers) else {
+                return
+            }
+            do {
+                try s.setActive(false, options: .notifyOthersOnDeactivation)
+                melden("streamton_session_aus", [:])
+            } catch {
+                melden("streamton_session_aus_fehler", ["fehler": "\(error)"])
+            }
+        }
     }
 
     /// Unmittelbar NACH `isAutomaticConfigurationEnabled = false`.
@@ -134,9 +172,8 @@ final class StreamTonSitzung: @unchecked Sendable {
     /// bis zum Prozessende nie wieder „nichts aktiv", weder zum Aktivieren beim
     /// Beitritt noch zum Deaktivieren — die Klasse K2, nur dauerhaft. Deshalb
     /// ist `isAutomaticDeactivationEnabled` für die Dauer des Loslassens aus.
-    /// Die Session bleibt danach aktiv, ohne Ein- und Ausgabe; sie ist dann
-    /// mischbar (`.playback` mit `.mixWithOthers`) und stört niemanden, und der
-    /// nächste Nutzer (Kanal, Stream, `iosTon`) richtet sie ohnehin neu ein.
+    /// Deaktiviert wird danach ausdrücklich und nur, wo es niemandem schadet
+    /// (`nachDemLetzten`); steht ein Raum, bleibt die Session dessen.
     /// Verlässt der Kanal in genau diesem Augenblick, entfällt auch sein
     /// Deaktivieren — aus demselben Grund harmlos.
     private func loslassen(_ h: SessionRequirementHandle?) {

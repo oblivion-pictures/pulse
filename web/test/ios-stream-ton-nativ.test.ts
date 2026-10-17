@@ -183,3 +183,13 @@ test('S9: Echo-Absenkung folgt dem Mikrofon auf Ereignis, der Takt ist nur Netz'
   assert.match(quelle('AnrufRaum.swift'), /func schicke\(\) \{\s*StreamTonVerwaltung\.geteilt\.echoAnstossen\(\)/);
   assert.match(quelle('StreamTonPlugin.swift'), /withTimeInterval: 5, repeats: true/);
 });
+
+test('V1: nach dem letzten Stream-Ton deaktiviert die Hülle die Session (ohne Raum/Anruf)', () => {
+  const src = quelle('StreamTonSitzung.swift');
+  assert.match(src, /if los != nil \{ nachDemLetzten\(\) \}/);
+  const nach = /private func nachDemLetzten[\s\S]*?\n    \}\n/.exec(src)?.[0] ?? '';
+  assert.match(nach, /SpracheRaum\.geteilt\.raum == nil, AnrufRaum\.geteilt\.raum == nil/);
+  assert.match(nach, /!v\.callkitAktiv, !v\.ohneCallKit/);
+  assert.match(nach, /nutzer == 0, s\.category == \.playback, s\.categoryOptions\.contains\(\.mixWithOthers\)/);
+  assert.match(nach, /setActive\(false, options: \.notifyOthersOnDeactivation\)/);
+});
