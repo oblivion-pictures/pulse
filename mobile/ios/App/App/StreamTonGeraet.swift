@@ -127,6 +127,11 @@ final class StreamTonGeraet: NSObject, LKRTCAudioDevice, @unchecked Sendable {
     /// kämpfen, das unsere Session gerade hält (Messung in `iosTon.ts`).
     func starten(grund: String) {
         guard sperre.withLock({ wiedergabeGewollt }) else { return }
+        if StreamTonSitzung.geteilt.anrufHaelt {
+            maschine?.stop()
+            setze(.unterbrochen, "anruf")
+            return
+        }
         if !angemeldet {
             guard StreamTonSitzung.geteilt.anmelden() else {
                 setze(.unterbrochen, "session:\(grund)")
@@ -164,6 +169,16 @@ final class StreamTonGeraet: NSObject, LKRTCAudioDevice, @unchecked Sendable {
             StreamTonSitzung.geteilt.abmelden()
         }
         if phase != .aus { setze(.aus, grund) }
+    }
+
+    /// Für die Dauer eines CallKit-Anrufs anhalten, angemeldet bleiben
+    /// (`StreamTonSitzung.automatikAus(anruf:)`).
+    func pausieren(grund: String) {
+        faden.async { [weak self] in
+            guard let self, let m = maschine, m.isRunning else { return }
+            m.stop()
+            setze(.unterbrochen, grund)
+        }
     }
 
     /// Nach einer Unterbrechung, einem Vordergrund-Wechsel oder auf Wunsch der

@@ -61,7 +61,7 @@ extension Anrufverwaltung {
         // Ohne Automatik wirkt das Loslassen nicht auf die Session; es sorgt
         // nur dafür, dass die Rückgabe unten wieder bei „nichts aktiv"
         // beginnt (`StreamTonSitzung`).
-        StreamTonSitzung.geteilt.automatikAus()
+        StreamTonSitzung.geteilt.automatikAus(anruf: true)
         maschineStellen(.none, "anhalten")
         kategorieSetzen()
     }

@@ -103,7 +103,7 @@ test('jede Stelle, die LiveKits Automatik ausschaltet, lässt den Stream-Ton los
     zeilen.forEach((z, i) => {
       if (!/isAutomaticConfigurationEnabled = false/.test(z)) return;
       const danach = zeilen.slice(i + 1, i + 6).join('\n');
-      assert.match(danach, /StreamTonSitzung\.geteilt\.automatikAus\(\)/, `${datei}:${i + 1}`);
+      assert.match(danach, /StreamTonSitzung\.geteilt\.automatikAus\(/, `${datei}:${i + 1}`);
     });
     const an = zeilen.filter((z) => /isAutomaticConfigurationEnabled = true/.test(z)).length;
     const zurueck = zeilen.filter((z) => /StreamTonSitzung\.geteilt\.automatikAn\(/.test(z)).length;
@@ -153,4 +153,14 @@ test('S4: das Loslassen kann nicht an einem Deaktivieren scheitern', () => {
   assert.match(los, /isAutomaticDeactivationEnabled = false/);
   assert.ok(los.indexOf('= false') < los.indexOf('h.release()'), 'erst ausschalten, dann loslassen');
   assert.match(los, /defer \{ beobachter\.isAutomaticDeactivationEnabled = vorher \}/);
+});
+
+test('S5: CallKit-Übernahme hält die Stream-Geräte an, erst die Rückgabe lässt sie laufen', () => {
+  const anruf = quelle('AnrufSitzung.swift');
+  assert.match(anruf, /StreamTonSitzung\.geteilt\.automatikAus\(anruf: true\)/);
+  assert.match(anruf, /StreamTonSitzung\.geteilt\.automatikAn\(grund: "callkit"\)/);
+  const sitzung = quelle('StreamTonSitzung.swift');
+  // Ein Beitritt oder der Wächter neben dem Anruf darf nicht freigeben.
+  assert.match(sitzung, /\} else if anrufFuehrt \{[\s\S]{0,200}return/);
+  assert.match(quelle('StreamTonGeraet.swift'), /if StreamTonSitzung\.geteilt\.anrufHaelt \{/);
 });

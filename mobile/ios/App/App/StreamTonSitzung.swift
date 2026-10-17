@@ -39,8 +39,17 @@ final class StreamTonSitzung: @unchecked Sendable {
     private var anforderung: SessionRequirementHandle?
     /// Ausgesetzt für die Dauer einer Übergabe (`automatikAus`).
     private var ausgesetzt = false
+    /// CallKit führt die Session (`automatikAus(anruf: true)` bis
+    /// `automatikAn(grund: "callkit")`). Solange spielt kein Gerät.
+    private var anrufFuehrt = false
     /// Wer bei einem Wiederanlauf gefragt wird (die laufenden Geräte).
     var wiederanlauf: ((String) -> Void)?
+    /// Wer bei einer CallKit-Übernahme anhalten muss (die laufenden Geräte).
+    var anhalten: ((String) -> Void)?
+
+    /// Hält gerade ein Anruf über CallKit die Session? Dann startet kein
+    /// Gerät, auch nicht auf „Ton aktivieren" oder beim Vordergrund-Wechsel.
+    var anrufHaelt: Bool { sperre.withLock { anrufFuehrt } }
 
     /// Ein Gerät will spielen. `false`, wenn LiveKit die Session nicht
     /// einrichten konnte — das Gerät bleibt dann unterbrochen.
@@ -72,13 +81,23 @@ final class StreamTonSitzung: @unchecked Sendable {
     }
 
     /// Unmittelbar NACH `isAutomaticConfigurationEnabled = false`.
-    func automatikAus() {
+    ///
+    /// **`anruf`: CallKit übernimmt** (Gegenprüfung S5). Für LiveKits Maschine
+    /// verlangt die Übergabe, dass sie VOR CallKits Aktivierung steht
+    /// (`.none`, Kopf von `AnrufSitzung.swift`); eine laufende Stream-Maschine
+    /// hielte dagegen Ein-/Ausgabe in der Session, die CallKit gerade
+    /// übernimmt, und spielte die Übertragung in den Anruf hinein. Die Geräte
+    /// halten deshalb an (ohne sich abzumelden) und laufen erst mit der
+    /// Rückgabe wieder an (`automatikAn(grund: "callkit")`).
+    func automatikAus(anruf: Bool = false) {
         sperre.lock()
         ausgesetzt = true
+        if anruf { anrufFuehrt = true }
         let los = anforderung
         anforderung = nil
         sperre.unlock()
         loslassen(los)
+        if anruf { anhalten?("anruf") }
     }
 
     /// Nachdem Automatik und Maschine wieder frei sind. Hält jemand den Ton,
@@ -86,6 +105,14 @@ final class StreamTonSitzung: @unchecked Sendable {
     /// aktiv"), danach laufen unterbrochene Geräte wieder an.
     func automatikAn(grund: String) {
         sperre.lock()
+        if grund == "callkit" {
+            anrufFuehrt = false
+        } else if anrufFuehrt {
+            // Ein Beitritt oder der Wächter neben einem CallKit-Anruf: die
+            // Session gehört weiter CallKit, die Rückgabe gibt frei.
+            sperre.unlock()
+            return
+        }
         ausgesetzt = false
         var neu = false
         if nutzer > 0, anforderung == nil {

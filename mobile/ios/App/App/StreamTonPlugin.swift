@@ -171,6 +171,10 @@ final class StreamTonVerwaltung: @unchecked Sendable {
                 "hardwareKanaele": e.geraet.puffer.ausgabeKanaele]
     }
 
+    func alleAnhalten(_ grund: String) {
+        for e in sperre.withLock({ Array(liste.values) }) { e.geraet.pausieren(grund: grund) }
+    }
+
     func alleFortsetzen(_ grund: String) {
         for e in sperre.withLock({ Array(liste.values) }) { e.geraet.fortsetzen(grund: grund) }
     }
@@ -202,6 +206,7 @@ final class StreamTonVerwaltung: @unchecked Sendable {
         if beobachter.isEmpty {
             let nc = NotificationCenter.default
             StreamTonSitzung.geteilt.wiederanlauf = { [weak self] grund in self?.alleFortsetzen(grund) }
+            StreamTonSitzung.geteilt.anhalten = { [weak self] grund in self?.alleAnhalten(grund) }
             beobachter.append(nc.addObserver(
                 forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
             ) { [weak self] _ in self?.alleFortsetzen("vordergrund") })
