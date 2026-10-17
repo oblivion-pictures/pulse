@@ -47,3 +47,38 @@ test('ohne Plugin im Bau wird nicht gefragt — und es gilt nicht als gefragt (F
 		true
 	);
 });
+
+import {
+	FRAGE_MINDESTWARTEN_MS,
+	FRAGE_WARTEN_MAX_MS,
+	alsGefragtWerten,
+	frageMoment
+} from '../src/lib/platform/bewertungRegel.ts';
+
+test('B13: nicht direkt nach dem Senden und nicht bei offener Tastatur', () => {
+	assert.equal(frageMoment({ tastaturOffen: false, seitSendenMs: 100 }), 'warten');
+	assert.equal(
+		frageMoment({ tastaturOffen: true, seitSendenMs: FRAGE_MINDESTWARTEN_MS + 5000 }),
+		'warten'
+	);
+	assert.equal(
+		frageMoment({ tastaturOffen: false, seitSendenMs: FRAGE_MINDESTWARTEN_MS }),
+		'fragen'
+	);
+});
+
+test('B13: wer ewig tippt, bekommt die Frage nicht aufgedrängt (Versuch verfällt)', () => {
+	assert.equal(
+		frageMoment({ tastaturOffen: true, seitSendenMs: FRAGE_WARTEN_MAX_MS + 1 }),
+		'verwerfen'
+	);
+});
+
+test('B13: gefragt zählt erst, wenn die Hülle es bestätigt — ältere Bauten wie bisher', () => {
+	assert.equal(alsGefragtWerten({ angezeigt: true }), true);
+	assert.equal(alsGefragtWerten({ angezeigt: false }), false);
+	// Älterer Bau: Antwort ohne Feld (oder gar keine) = wie bisher gefragt.
+	assert.equal(alsGefragtWerten(undefined), true);
+	assert.equal(alsGefragtWerten(null), true);
+	assert.equal(alsGefragtWerten({}), true);
+});

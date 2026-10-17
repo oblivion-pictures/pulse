@@ -32,11 +32,14 @@
  * WebKit sie schreibt.
  */
 
+import { toast } from 'svelte-sonner';
 import { devS3Url } from '$lib/api/devS3Url';
+import { m } from '$lib/paraglide/messages.js';
 // Reiner Kern in eigenem, importfreiem Modul — nur so erreicht ihn Nodes
 // Testläufer (diese Datei hier zieht `devS3Url` über den $lib-Alias nach).
 import { dateiNameOderErsatz } from './dateinameErsatz';
-import { isCapacitorAndroid } from './runtime';
+import { teilenFehlerArt } from './dateiTeilenFehler';
+import { isCapacitorAndroid, isCapacitorIOS } from './runtime';
 import { androidLaedtDirekt } from './speicherWeg';
 
 /**
@@ -44,9 +47,9 @@ import { androidLaedtDirekt } from './speicherWeg';
  * Share-Sheet (Touch-Geräte) oder den klassischen Anker-Download (Desktop/
  * Electron). `fetch` funktioniert auch für `blob:`-Adressen — der Aufrufer
  * muss nicht wissen, ob hinter `quelle` der Server oder der Objektspeicher
- * steht. Fire-and-forget wie die Vorgänger: Scheitern wird still gefangen —
- * die Kacheln zeigen ihren Zustand ohnehin selbst, ein Rückgabewert hätte
- * keinen Leser.
+ * steht. Fire-and-forget wie die Vorgänger: Scheitern wird gefangen — die
+ * Kacheln zeigen ihren Zustand ohnehin selbst, ein Rückgabewert hätte keinen
+ * Leser. Nur in der iOS-Hülle meldet ein Toast den Fehler (s. unten).
  */
 export async function dateiTeilenOderLaden(
   quelle: string,
@@ -74,12 +77,22 @@ export async function dateiTeilenOderLaden(
         await navigator.share({ files: [datei] });
         return; // geteilt (oder Sheet geschlossen — beides in Ordnung)
       } catch (e) {
-        // Nutzer-Abbruch beendet den Vorgang sauber. Jede ANDERE Störung —
-        // typisch: abgelaufene Nutzeraktivierung nach langem Fetch über
-        // Mobile-Netz — fällt in den Anker-Download weiter unten, der keine
-        // Aktivierung braucht (WKWebView speichert den trotzdem nicht, aber
-        // mobile Browser tun es).
-        if (e instanceof DOMException && e.name === 'AbortError') return;
+        const art = teilenFehlerArt(e);
+        // Nutzer-Abbruch beendet den Vorgang sauber.
+        if (art === 'abbruch') return;
+        // **iOS-Hülle (Review B8):** die Nutzeraktivierung ist nach dem Holen
+        // oft verbraucht (`NotAllowedError`), und der Anker unten tut in der
+        // WKWebView nichts — früher scheiterte „Speichern" dort lautlos. Die
+        // Datei liegt aber schon im Speicher: ein Tipp auf den Toast ist eine
+        // frische Geste und öffnet das Blatt ohne zweites Laden.
+        if (isCapacitorIOS()) {
+          if (art === 'geste') teilenNachTipp(datei);
+          else toast.error(m.datei_speichern_fehler());
+          return;
+        }
+        // Jede ANDERE Störung — typisch: abgelaufene Nutzeraktivierung nach
+        // langem Fetch über Mobile-Netz — fällt in den Anker-Download weiter
+        // unten, der keine Aktivierung braucht (mobile Browser speichern den).
       }
     }
 
@@ -89,9 +102,27 @@ export async function dateiTeilenOderLaden(
     ankerKlicken(adresse, name, false);
     setTimeout(() => URL.revokeObjectURL(adresse), 10_000);
   } catch {
-    // Hol-Fehler (Netz, HTTP, revokete blob:-Adresse) — still, wie bisher
-    // bei `blob === null`.
+    // Hol-Fehler (Netz, HTTP, revokete blob:-Adresse) — überall still, wie
+    // bisher bei `blob === null`; nur die iOS-Hülle sagt es, weil dort sonst
+    // gar nichts passiert und der Tipp wie ein totes Bedienelement wirkt.
+    if (isCapacitorIOS()) toast.error(m.datei_speichern_fehler());
   }
+}
+
+/** Die geholte Datei hinter einem Toast-Knopf: dessen Tipp ist eine frische
+ *  Nutzergeste, aus der `navigator.share` wieder erlaubt ist. */
+function teilenNachTipp(datei: File): void {
+  toast(m.datei_speichern_bereit(), {
+    duration: 20_000,
+    action: {
+      label: m.datei_speichern_teilen(),
+      onClick: () => {
+        navigator.share({ files: [datei] }).catch((e) => {
+          if (teilenFehlerArt(e) !== 'abbruch') toast.error(m.datei_speichern_fehler());
+        });
+      }
+    }
+  });
 }
 
 /** Ein unsichtbarer Anker, einmal geklickt. `neuesFenster`: so stand der

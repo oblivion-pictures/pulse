@@ -17,7 +17,13 @@
  * Beitreten. Je Anlass EIN Bericht (was in den folgenden 30 s dazukommt, hängt
  * sich an), höchstens einer je 10 min und fünf je Tag — gezählt wird jeder
  * VERSUCH, auch ein gescheiterter, sonst wäre die Drossel bei fehlendem Netz
- * keine (Gegenprüfung T4). Höchstens 60 KiB; Opt-out wie am Desktop
+ * keine (Gegenprüfung T4). **Die `bild_*`-Anlässe haben ein eigenes Budget**
+ * (Review B11): ein hängender Bildstart darf nicht den einen Bericht je
+ * 10 min aufbrauchen, den ein echtes `mikro_tot` braucht. **Ein Anlass
+ * überlebt das App-Ende:** der 30-s-Sammler feuert nicht, wenn iOS die App
+ * vorher einfriert oder beendet — der Anlass steht deshalb im `localStorage`
+ * und wird beim nächsten Start nachgereicht (nur Anlass-Namen aus der Liste
+ * unten, keine Inhalte). Höchstens 60 KiB; Opt-out wie am Desktop
  * (`uploadDiagnosticLogs`, Schalter in den Ton-Einstellungen der App).
  *
  * **Inhalt:** nur Zeilen dieses Bausteins (`ios_ton`) aus den zwei Minuten vor
@@ -49,8 +55,6 @@ export const ANLAESSE: ReadonlySet<string> = new Set([
   'beitritt_ohne_mikro',
   'callkit_haengt',
   'anruf_pause_haengt',
-  // „Volle Tonqualität" nach einem Anruf nicht zurückgestellt (`SpracheRaumNeustart.swift`).
-  'volle_ton_zurueck_fehler',
   // HQ-Kachel mit nativem Ton ohne Bild (`hqStreamManager.svelte.ts`,
   // `stream/bildStart.ts`) — der einzige Weg, auf dem ein Bildstart der
   // iOS-Hülle den Server erreicht.
@@ -67,10 +71,11 @@ export const SAMMEL_MS = 30_000;
 export const VORLAUF_MS = 120_000;
 export const ABSTAND_MS = 10 * 60_000;
 export const JE_TAG = 5;
+const TAG_MS = 24 * 60 * 60_000;
 /** Unter der 64-KiB-Grenze für `fetch(…, {keepalive})` (WHATWG Fetch). */
 export const BERICHT_MAX_BYTES = 60 * 1024;
-const TAG_MS = 24 * 60 * 60_000;
-const GESENDET_KEY = 'pulse.diag.ios_ton_berichte';
+/** Ein nachgereichter Anlass, der älter ist, erzählt nichts Brauchbares mehr. */
+export const OFFEN_MAX_ALTER_MS = TAG_MS;
 const LADE_KEY = 'pulse.diag.ladezaehler';
 
 /**
@@ -89,6 +94,39 @@ export function berichtEntscheiden(
   if (zuletzt && jetzt - zuletzt < ABSTAND_MS) return 'gedrosselt';
   if (gueltig.filter((t) => jetzt - t < TAG_MS).length >= JE_TAG) return 'gedrosselt';
   return 'neu';
+}
+
+/** Zwei getrennte Budgets: `bild_*` (Bildstart der HQ-Kachel) und alles andere. */
+export type Gruppe = 'ton' | 'bild';
+
+export function gruppeVon(art: string): Gruppe {
+  return art.startsWith('bild_') ? 'bild' : 'ton';
+}
+
+export interface OffenerBericht {
+  start: number;
+  anlaesse: string[];
+}
+
+/**
+ * Den gemerkten, nie abgeschickten Bericht wieder lesen. `null`, wenn nichts
+ * da ist, es nicht lesbar ist oder zu alt. Übernommen werden nur Anlass-Namen
+ * aus {@link ANLAESSE} — was sonst im Speicher steht, gelangt nie in einen
+ * Bericht.
+ */
+export function offenenBerichtLesen(roh: string | null, jetzt: number): OffenerBericht | null {
+  if (!roh) return null;
+  try {
+    const o = JSON.parse(roh) as { start?: unknown; anlaesse?: unknown };
+    if (typeof o.start !== 'number' || o.start > jetzt || jetzt - o.start > OFFEN_MAX_ALTER_MS)
+      return null;
+    const anlaesse = Array.isArray(o.anlaesse)
+      ? o.anlaesse.filter((a): a is string => typeof a === 'string' && ANLAESSE.has(a)).slice(0, 16)
+      : [];
+    return anlaesse.length ? { start: o.start, anlaesse } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Die Zeilen fürs Senden: dieser Baustein, ab `start - VORLAUF_MS`. */
@@ -137,33 +175,87 @@ export type BerichtSender = (bericht: {
 }) => Promise<boolean>;
 
 let sender: BerichtSender | null = null;
-let offen: { start: number; anlaesse: Set<string> } | null = null;
+const offen: Record<Gruppe, { start: number; anlaesse: Set<string> } | null> = {
+  ton: null,
+  bild: null
+};
 let ladeNummer: number | null = null;
 
-/** Die App reicht den Versand hinein (nur iOS, `iosTonBerichtSenden.ts`). */
+/** Speicherschlüssel je Gruppe: gesendete Versuche (Drossel) und offener Bericht. */
+const GESENDET: Record<Gruppe, string> = {
+  ton: 'pulse.diag.ios_ton_berichte',
+  bild: 'pulse.diag.ios_ton_berichte_bild'
+};
+const OFFEN: Record<Gruppe, string> = {
+  ton: 'pulse.diag.ios_ton_offen',
+  bild: 'pulse.diag.ios_ton_offen_bild'
+};
+const GRUPPEN: readonly Gruppe[] = ['ton', 'bild'];
+
+/** Die App reicht den Versand hinein (nur iOS, `iosTonBerichtSenden.ts`). Mit
+ *  einem Sender werden Anlässe der letzten Sitzung nachgereicht. */
 export function berichtSenderSetzen(s: BerichtSender | null): void {
   sender = s;
+  if (s) offenesNachreichen(Date.now());
 }
 
 function speicher(): Storage | null {
   return typeof localStorage === 'undefined' ? null : localStorage;
 }
 
-function gesendetLesen(): number[] {
+function gesendetLesen(gruppe: Gruppe): number[] {
   try {
-    const roh = JSON.parse(speicher()?.getItem(GESENDET_KEY) ?? '[]') as unknown;
+    const roh = JSON.parse(speicher()?.getItem(GESENDET[gruppe]) ?? '[]') as unknown;
     return Array.isArray(roh) ? roh.filter((t): t is number => typeof t === 'number') : [];
   } catch {
     return [];
   }
 }
 
-function gesendetMerken(jetzt: number): void {
+function gesendetMerken(gruppe: Gruppe, jetzt: number): void {
   try {
-    const rest = gesendetLesen().filter((t) => t <= jetzt && jetzt - t < TAG_MS);
-    speicher()?.setItem(GESENDET_KEY, JSON.stringify([...rest, jetzt]));
+    const rest = gesendetLesen(gruppe).filter((t) => t <= jetzt && jetzt - t < TAG_MS);
+    speicher()?.setItem(GESENDET[gruppe], JSON.stringify([...rest, jetzt]));
   } catch {
     /* best effort */
+  }
+}
+
+/** Den offenen Bericht im Speicher festhalten (oder streichen) — für den Fall,
+ *  dass der Sammel-Zeitgeber durch App-Ende oder Einfrieren nie feuert. */
+function offenMerken(gruppe: Gruppe): void {
+  try {
+    const b = offen[gruppe];
+    if (b) {
+      const wert: OffenerBericht = { start: b.start, anlaesse: [...b.anlaesse] };
+      speicher()?.setItem(OFFEN[gruppe], JSON.stringify(wert));
+    } else {
+      speicher()?.removeItem(OFFEN[gruppe]);
+    }
+  } catch {
+    /* best effort */
+  }
+}
+
+/** Beim Start: was die letzte Sitzung als Anlass hinterliess und nie abschickte,
+ *  jetzt senden — nach derselben Drossel wie ein frischer Anlass. */
+function offenesNachreichen(jetzt: number): void {
+  for (const gruppe of GRUPPEN) {
+    if (offen[gruppe]) continue; // diese Sitzung sammelt schon
+    let roh: string | null = null;
+    try {
+      roh = speicher()?.getItem(OFFEN[gruppe]) ?? null;
+    } catch {
+      /* kein Speicher */
+    }
+    if (roh === null) continue;
+    const alt = offenenBerichtLesen(roh, jetzt);
+    if (!alt || berichtEntscheiden(gesendetLesen(gruppe), jetzt, false) !== 'neu') {
+      offenMerken(gruppe); // `offen` ist leer -> streicht den Eintrag
+      continue;
+    }
+    offen[gruppe] = { start: alt.start, anlaesse: new Set([...alt.anlaesse, 'nachgereicht']) };
+    void abschicken(gruppe);
   }
 }
 
@@ -209,23 +301,30 @@ export function iosTonGespielt(ton: string): void {
 
 function anlass(art: string, jetzt: number): void {
   if (!sender) return;
-  const entscheid = berichtEntscheiden(gesendetLesen(), jetzt, offen !== null);
+  const gruppe = gruppeVon(art);
+  const b = offen[gruppe];
+  const entscheid = berichtEntscheiden(gesendetLesen(gruppe), jetzt, b !== null);
   if (entscheid === 'gedrosselt') return;
-  if (entscheid === 'anhaengen' && offen) {
-    offen.anlaesse.add(art);
+  if (entscheid === 'anhaengen' && b) {
+    b.anlaesse.add(art);
+    offenMerken(gruppe);
     return;
   }
-  offen = { start: jetzt, anlaesse: new Set([art]) };
-  setTimeout(() => void abschicken(), SAMMEL_MS);
+  offen[gruppe] = { start: jetzt, anlaesse: new Set([art]) };
+  offenMerken(gruppe);
+  setTimeout(() => void abschicken(gruppe), SAMMEL_MS);
 }
 
-async function abschicken(): Promise<void> {
-  const b = offen;
-  offen = null;
+async function abschicken(gruppe: Gruppe): Promise<void> {
+  const b = offen[gruppe];
+  offen[gruppe] = null;
   const s = sender;
   if (!b || !s) return;
   const zeilen = berichtZeilen(leseRingpuffer(), b.start);
-  gesendetMerken(Date.now());
+  // Gezählt und aus dem Speicher gestrichen, BEVOR gesendet wird: ein Absturz
+  // mitten im Versand soll keine Dauerschleife aus Nachreichen ergeben.
+  gesendetMerken(gruppe, Date.now());
+  offenMerken(gruppe);
   try {
     await s({ anlaesse: [...b.anlaesse], zeilen });
   } catch {

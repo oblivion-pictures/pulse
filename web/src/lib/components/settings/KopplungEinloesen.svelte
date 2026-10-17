@@ -30,11 +30,12 @@
   } from '$lib/kopplung/empfangen';
   import { standSicherAbfragen } from '$lib/kopplung/standAbfragen';
   import { codeNormalisieren } from '$lib/kopplung/code';
-  import { qrScanMoeglich, qrScannen } from '$lib/platform/qrScan';
+  import { qrScanMoeglich, qrScannenErgebnis } from '$lib/platform/qrScan';
   import { kannVerwerfen, verwerfenGesperrt } from '$lib/kopplung/ansichtZustand';
   import type { EinloesFehler } from '$lib/kopplung/einloesFehler';
 
   let eingabe = $state('');
+  let eingabeFeld = $state<HTMLInputElement | null>(null);
   let laeuft = $state(false);
   let kopplungId = $state<string | null>(null);
   let code = $state<string | null>(null);
@@ -96,8 +97,13 @@
   async function scannen() {
     scanLaeuft = true;
     try {
-      const roh = await qrScannen();
-      if (roh === null) return; // Abbruch, keine Kamera, keine Erlaubnis
+      const { code: roh, kameraVerweigert } = await qrScannenErgebnis();
+      if (roh === null) {
+        // Kamera verweigert: die Hülle hat den Hinweis schon selbst gezeigt —
+        // hier KEIN zweiter Toast, nur der Weg zum Eintippen (Review V6).
+        if (kameraVerweigert) eingabeFeld?.focus();
+        return; // Abbruch oder keine Kamera
+      }
       const sauber = codeNormalisieren(roh);
       eingabe = sauber ?? roh;
       if (sauber !== null) await einloesen();
@@ -180,6 +186,7 @@
   {#if kopplungId === null}
     <Input
       bind:value={eingabe}
+      bind:ref={eingabeFeld}
       placeholder={m.kopplung_eingeben_platzhalter()}
       autocapitalize="characters"
       autocomplete="off"

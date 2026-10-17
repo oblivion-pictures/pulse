@@ -38,3 +38,36 @@ export function sollFragen(stand: Bewertungsstand): boolean {
   if (stand.bereitsGefragt || stand.pluginDa === false) return false;
   return stand.gesendet >= SENDUNGEN_BIS_ZUR_FRAGE;
 }
+
+/** So lange mindestens wartet die Frage nach dem Senden (die Sendebewegung ist
+ *  dann vorbei, der Nutzer liest, was er geschrieben hat). */
+export const FRAGE_MINDESTWARTEN_MS = 1500;
+/** Länger als das wartet sie nicht auf eine geschlossene Tastatur: wer minutenlang
+ *  tippt, hat gerade keinen Moment für eine Frage — dann beim nächsten Senden. */
+export const FRAGE_WARTEN_MAX_MS = 5 * 60_000;
+
+/**
+ * Ist jetzt der Moment für die System-Frage? Direkt nach dem Senden steht die
+ * Tastatur meist noch offen; die Frage legte sich darüber, mitten in die
+ * Unterhaltung (iOS-Review B13). Deshalb: erst nach kurzer Pause UND bei
+ * geschlossener Tastatur; nach {@link FRAGE_WARTEN_MAX_MS} verfällt der Versuch
+ * (nicht als gefragt gezählt — er kommt mit der nächsten Nachricht wieder).
+ */
+export function frageMoment(o: {
+  tastaturOffen: boolean;
+  seitSendenMs: number;
+}): 'warten' | 'fragen' | 'verwerfen' {
+  if (o.seitSendenMs > FRAGE_WARTEN_MAX_MS) return 'verwerfen';
+  if (o.seitSendenMs < FRAGE_MINDESTWARTEN_MS || o.tastaturOffen) return 'warten';
+  return 'fragen';
+}
+
+/**
+ * Hat die Hülle die Frage wirklich gestellt? Neuere Bauten melden
+ * `{ angezeigt }` (keine aktive Szene: `false`); ein älterer Bau antwortet
+ * ohne das Feld, und dann gilt wie bisher: gefragt. Nur ein ausdrückliches
+ * `false` hält die Frage offen.
+ */
+export function alsGefragtWerten(antwort: unknown): boolean {
+  return (antwort as { angezeigt?: unknown } | null | undefined)?.angezeigt !== false;
+}

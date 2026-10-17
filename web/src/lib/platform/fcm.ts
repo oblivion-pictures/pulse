@@ -186,11 +186,15 @@ export function installiereFcmPush(): void {
           perms = await fcm.requestPermissions();
         }
         if (perms.receive !== 'granted') return;
-        await meldeAn(fcm);
+        // **Der Tipp-Hörer hängt VOR der Netzmeldung** (iOS-Review B7): bei
+        // offline oder 401 wirft `meldeAn`, und stünde der Hörer dahinter,
+        // bliebe ein Tipp auf ein Banner ohne Wirkung, bis ein Resume die
+        // Meldung nachholt. Der Tipp braucht das Netz nicht.
         if (!listenerBereit) {
           listenerBereit = true;
           void fcm.addListener('notificationActionPerformed', zeigAn);
         }
+        await meldeAn(fcm);
       } catch {
         // Kein Firebase-Setup / keine Session / offline — bewusst still.
       } finally {
@@ -205,6 +209,10 @@ export function installiereFcmPush(): void {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') meldeBestEffort();
   });
+  // Eine gescheiterte Token-Meldung (offline, Deploy-Fenster) wartet auf den
+  // nächsten Resume — ein Gerät, das im Vordergrund wieder Netz bekommt, soll
+  // nicht erst dafür weggewischt werden. Nur iOS: Android bleibt, wie es war.
+  if (isCapacitorIOS()) window.addEventListener('online', meldeBestEffort);
 }
 
 function huelle(): Huelle {
