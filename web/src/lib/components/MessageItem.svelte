@@ -12,7 +12,7 @@
   import MessageRowLayout from './message/MessageRowLayout.svelte';
   import MessageBubbleLayout from './message/MessageBubbleLayout.svelte';
   import { detectEmbeds } from '$lib/embeds/providers';
-  import { renderMessage } from './messageRender';
+  import { plainifyMentions, renderMessage } from './messageRender';
   import { m } from '$lib/paraglide/messages.js';
   import { haptikTicken } from '$lib/platform/haptik';
   import { ersteEinladungImText } from '$lib/einladung/einladungsLink';
@@ -356,7 +356,7 @@
 {/if}
 </div>
 
-<MessageActionSheet bind:open={sheetOpen} {...aktionen} kopierText={message.content} />
+<MessageActionSheet bind:open={sheetOpen} {...aktionen} kopierText={plainifyMentions(message.content)} />
 
 <NachrichtInfoDialog
   {message}

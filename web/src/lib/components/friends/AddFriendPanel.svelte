@@ -24,6 +24,7 @@
   import FieldError from '$lib/components/feedback/FieldError.svelte';
   import { toast } from 'svelte-sonner';
   import { m } from '$lib/paraglide/messages.js';
+  import { technischeEingabe } from '$lib/platform/technischeEingabe';
 
   let query = $state('');
   let hits = $state<UserSearchHit[]>([]);
@@ -113,6 +114,7 @@
     bind:value={query}
     placeholder={m.add_friend_input_placeholder()}
     data-testid="add-friend-input"
+    {...technischeEingabe()}
     autocomplete="off"
   />
   {#if searching}

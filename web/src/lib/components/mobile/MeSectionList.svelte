@@ -33,6 +33,9 @@
   import { initialen } from '$lib/utils/initialen';
   import { safeAvatarUrl } from '$lib/avatar';
   import { m } from '$lib/paraglide/messages.js';
+  import { onMount } from 'svelte';
+  import type { Stand } from '$lib/platform/berechtigungRegel';
+  import { mitteilungenStand } from '$lib/platform/fcm';
 
   let { aktiv = null }: { aktiv?: string | null } = $props();
 
@@ -42,6 +45,20 @@
   // nur die zuletzt geöffnete Community und der Standplatz-Eintrag bliebe
   // dauerhaft unsichtbar. Dieselbe Begründung wie im Einstellungsdialog.
   $effect(alleGeraeteVorladen);
+
+  // In der Hülle (iOS und Android) zählt die Erlaubnis des Geräts, nicht der
+  // Web-Schalter `browserPushEnabled` — der sagt dort nichts. Ohne Hülle bleibt
+  // `null` und es gilt der Schalter.
+  let huellenStand = $state<Stand | null>(null);
+  onMount(() => {
+    const auffrischen = () => void mitteilungenStand().then((s) => (huellenStand = s));
+    auffrischen();
+    const beiSichtbar = () => {
+      if (document.visibilityState === 'visible') auffrischen();
+    };
+    document.addEventListener('visibilitychange', beiSichtbar);
+    return () => document.removeEventListener('visibilitychange', beiSichtbar);
+  });
 
   let sichtbar = $derived(sichtbareReiterJetzt(tabs));
 
@@ -78,7 +95,11 @@
           : m.settings_appearance_theme_system_label();
     }
     if (id === 'notifications') {
-      return settings.notifications.browserPushEnabled ? m.me_value_on() : m.me_value_off();
+      const an =
+        huellenStand !== null
+          ? huellenStand === 'erteilt'
+          : settings.notifications.browserPushEnabled;
+      return an ? m.me_value_on() : m.me_value_off();
     }
     return '';
   }
