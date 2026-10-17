@@ -6,7 +6,8 @@
         "components": [
           { "/": "/app/@me/*", "comment": "Direktnachrichten — Ziel der Push-Taps" },
           { "/": "/app/rooms/*", "comment": "Community-Kanaele" },
-          { "/": "/app/guilds/*", "comment": "Kanal-Direktlinks der Desktop-Fassung" }
+          { "/": "/app/guilds/*", "comment": "Kanal-Direktlinks der Desktop-Fassung" },
+          { "/": "/invite/*", "comment": "Einladungslinks zu Communitys (nicht Gast-Links unter /gast/ und nicht /c/<handle>)" }
         ]
       }
     ]

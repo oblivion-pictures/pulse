@@ -132,7 +132,7 @@ def _fcm_sender(monkeypatch):
 
     sent: list[tuple[str, dict]] = []
 
-    def _fake_send(*, token: str, payload: dict, badge: int | None = None) -> str:
+    def _fake_send(*, token: str, payload: dict, badge: int | None = None, lokal=None) -> str:
         sent.append((token, payload))
         return "ok"
 
@@ -193,7 +193,7 @@ async def test_push_raeumt_tote_tokens(client, session_factory, monkeypatch):
 
     monkeypatch.setattr(fcm_mod, "ensure_fcm", lambda: object())
     monkeypatch.setattr(
-        fcm_mod, "_send_one", lambda *, token, payload, badge=None: "dead"
+        fcm_mod, "_send_one", lambda *, token, payload, badge=None, lokal=None: "dead"
     )
     n = await fcm_mod.fan_out_fcm_dm_push(
         recipient_ids={444}, author_name="Anna", channel_id=42

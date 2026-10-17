@@ -37,7 +37,7 @@ def _fcm_sender(monkeypatch):
 
     sent: list[tuple[str, dict, int | None]] = []
 
-    def _fake_send(*, token: str, payload: dict, badge: int | None = None) -> str:
+    def _fake_send(*, token: str, payload: dict, badge: int | None = None, lokal=None) -> str:
         sent.append((token, payload, badge))
         return "ok"
 

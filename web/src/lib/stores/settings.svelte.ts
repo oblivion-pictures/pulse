@@ -68,6 +68,11 @@ import {
   NOTIFICATIONS_SECTION,
   type NotificationSettings
 } from '$lib/settings-registry/sections/notifications';
+import {
+  PUSH_ABSCHNITT,
+  PUSH_DM_SECTION,
+  type PushDmSettings
+} from '$lib/settings-registry/sections/pushDm';
 import { SOUNDS_SECTION } from '$lib/settings-registry/sections/sounds';
 import { LAYOUT_SECTION, type LayoutSettings } from '$lib/settings-registry/sections/layout';
 import { SHORTCUTS_SECTION } from '$lib/settings-registry/sections/shortcuts';
@@ -139,6 +144,7 @@ class SettingsStore {
   #screenShare: SectionStore<ScreenShareSettings>;
   #streamChat: SectionStore<StreamChatSettings>;
   #notifications: SectionStore<NotificationSettings>;
+  #push: SectionStore<PushDmSettings>;
   #sounds: SectionStore<SoundsSettings>;
   #shortcuts: SectionStore<ShortcutsSettings>;
   #layout: SectionStore<LayoutSettings>;
@@ -150,9 +156,18 @@ class SettingsStore {
     this.#screenShare = registerSettingsSection('screenShare', SCREEN_SHARE_SECTION);
     this.#streamChat = registerSettingsSection('streamChat', STREAM_CHAT_SECTION);
     this.#notifications = registerSettingsSection('notifications', NOTIFICATIONS_SECTION);
+    this.#push = registerSettingsSection(PUSH_ABSCHNITT, PUSH_DM_SECTION);
     this.#sounds = registerSettingsSection('sounds', SOUNDS_SECTION);
     this.#shortcuts = registerSettingsSection('shortcuts', SHORTCUTS_SECTION);
     this.#layout = registerSettingsSection('layout', LAYOUT_SECTION);
+    // Einmalige Übernahme: wer den DM-Schalter vor der Server-Spiegelung
+    // ausgeschaltet hatte, behält das. Danach steht der Schalter allein in
+    // `push`; `notifications.onDM` bleibt auf `true` stehen (der Getter
+    // `notifications` überlagert es mit `push.dm`).
+    if (!this.#notifications.value.onDM) {
+      this.#push.set('dm', false);
+      this.#notifications.set('onDM', true);
+    }
   }
 
   // --- reactive read accessors (delegate to the underlying rune store) ---
@@ -174,8 +189,10 @@ class SettingsStore {
   get streamChat() {
     return this.#streamChat.value;
   }
-  get notifications() {
-    return this.#notifications.value;
+  /** `onDM` kommt aus dem server-gespiegelten Abschnitt `push` (Pushes ans
+   *  Telefon sendet der Server — er muss den Schalter kennen). */
+  get notifications(): NotificationSettings {
+    return { ...this.#notifications.value, onDM: this.#push.value.dm };
   }
   get sounds() {
     return this.#sounds.value;
@@ -300,7 +317,7 @@ class SettingsStore {
     this.#notifications.set('onMention', v);
   }
   setNotifyOnDM(v: boolean): void {
-    this.#notifications.set('onDM', v);
+    this.#push.set('dm', v);
   }
   setNotifyOnFriendRequests(v: boolean): void {
     this.#notifications.set('onFriendRequests', v);

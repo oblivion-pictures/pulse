@@ -131,7 +131,7 @@ async def test_tote_tokens_werden_als_warning_gemeldet(
         s.add(FcmToken(user_id=777, geraet_id="g1", token="tok-sehr-geheim"))
         await s.commit()
     monkeypatch.setattr(fcm_mod, "ensure_fcm", lambda: object())
-    monkeypatch.setattr(fcm_mod, "_send_one", lambda *, token, payload, badge=None: "dead")
+    monkeypatch.setattr(fcm_mod, "_send_one", lambda *, token, payload, badge=None, lokal=None: "dead")
     with caplog.at_level(logging.DEBUG, logger=fcm_mod.log.name):
         await fcm_mod.fan_out_fcm_dm_push(recipient_ids={777}, author_name="Anna", channel_id=42)
     treffer = [r for r in caplog.records if "fcm_token_tot" in r.getMessage()]
