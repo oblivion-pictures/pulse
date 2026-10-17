@@ -37,6 +37,10 @@
    routes/+layout.svelte). Für Layout, das Browser, Desktop und Android nicht
    treffen darf. Kommafrei wie die Varianten oben. */
 @custom-variant ios (&:is([data-huelle='ios'] *));
+/* quer-stream = iOS-Handy quer MIT angedocktem Stream: `data-quer-stream` am
+   <html> setzt allein `routes/app/+layout.svelte` (`kanalQuerStream`, dort nur
+   iOS-Hülle) — die Variante ist damit von selbst iOS-only. */
+@custom-variant quer-stream (&:is([data-quer-stream] *));
 
 /* Mobile Slide-Rein: Detail-Bildschirme (Chat, Community, Entdecken …)
    schieben sich auf dem Handy von rechts rein — WhatsApp-Prinzip, als

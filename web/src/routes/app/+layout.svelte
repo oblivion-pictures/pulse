@@ -69,12 +69,7 @@
   import WatchBackgroundHost from '$lib/watch/WatchBackgroundHost.svelte';
   import MobileTabBar from '$lib/components/mobile/MobileTabBar.svelte';
   import TabletNavRail from '$lib/components/mobile/TabletNavRail.svelte';
-  import { istDetailScreen } from '$lib/navigation/tabs';
-  import { kanalAusPfad, istAktiverSprachKanal } from '$lib/navigation/kanalBildschirm';
-  import { openedTiles } from '$lib/stream/openedTiles.svelte';
-  import { orientierungSperren } from '$lib/platform/orientation';
-  import { huellenLage } from '$lib/platform/huellenLage.svelte';
-  import { isCapacitorIOS } from '$lib/platform/runtime';
+  import { layoutLage } from '$lib/navigation/layoutLage.svelte';
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { registriereZurueckTaste } from '$lib/platform/zurueckTaste';
@@ -484,71 +479,10 @@
     statusLeisteFolgtTheme(mode.current === 'dark');
   });
 
-  // Die eine Regel, die entscheidet, wer auf welcher Bildschirmgroesse
-  // navigiert. Steht bewusst NUR hier: die Leisten rendern sich nicht selbst
-  // weg, sonst gaebe es zwei Stellen mit derselben Bedingung.
-  //
-  //   < md   : Bereichs-Leiste unten, ausser auf einem Detail-Bildschirm
-  //   md-lg  : Bereichs-Spalte links
-  //   >= lg  : keines von beidem — das Drei-Spalten-Layout bleibt unberuehrt
-  //
-  // Auf einem Detail-Bildschirm (offenes Gespraech, Kanal, Einstellungsseite)
-  // verschwindet die Leiste, damit der Bildschirm dem Inhalt gehoert; zurueck
-  // fuehrt der Pfeil oder die System-Geste.
-  //
-  // AUSNAHME Sprachkanal: der ist laufender Zustand, nicht ein Durchgangs-
-  // Bildschirm — die Leiste bleibt (2026-08-25, Nutzerwunsch), der Stream
-  // füllt die Fläche, Teilnehmer und Controls schweben darüber. Ein TEXTkanal
-  // ist die Ausnahme ausdrücklich NICHT: dort stünden Zurück-Pfeil und
-  // Bereichs-Leiste gleichzeitig da, und der Verfasser verlöre die Höhe.
-  let kanalAufSchirm = $derived(kanalAusPfad(page.url.pathname));
-  let istSprachBildschirm = $derived.by(() => {
-    const k = kanalAufSchirm;
-    if (!k) return false;
-    return (guilds.channelsByGuild[k.guildId] ?? []).some(
-      (c) => c.id === k.channelId && c.type === 1
-    );
-  });
-  // Quer-Handy MIT offenem Stream: reines Stream-Vollbild — Bereichs-Leiste
-  // und Voice-Dock bleiben aus (Steuerung schwebt auf dem Bild). Ohne Stream
-  // bleibt quer alles wie hochkant: die normale mobile Ansicht, nur breiter.
-  //
-  // Geprüft wird der Kanal, in dem der Stream WIRKLICH läuft. „Irgendein
-  // Kanal-Bildschirm" genügte nicht: wer aus dem Sprachkanal mit Stream in
-  // einen Textkanal wechselt und dann kippt, verlöre sonst Leiste, Dock,
-  // Community-Leiste und Kanalliste gleichzeitig — auf einem Textchat, der
-  // von dem Stream gar nichts weiss.
-  // Der Kanal, in dem der Stream WIRKLICH läuft, einen angedockten Stream
-  // hat — die Viewport-unabhängige Kernbedingung, die auch die Orientierungs-
-  // Sperre unten nutzt (dort ohne die Viewport-Anteile, s. Kommentar dort).
-  let streamAngedockt = $derived(
-    voice.connected &&
-      istAktiverSprachKanal(page.url.pathname, voice.channelId) &&
-      openedTiles.hasAny(voice.channelId!)
-  );
-  // **Nur iOS-Hülle.** Der alte Ausdruck `istHandy && !isMobile` verglich seit
-  // der Geräteklassen-Vereinheitlichung (2026-09-04) dieselbe Klasse mit ihrer
-  // eigenen Negation und war immer falsch; Android bleibt dabei. `quer` rechnet
-  // wie die Querformat-Wache der HQ-Kachel (`istQuer`) — nach der
-  // BILDSCHIRMGRÖSSE, nicht nach der Fensterbreite (die Geräteklasse bleibt im
-  // Querformat `handy`). Quer bekommt der Stream die Fläche: Tab-Leiste,
-  // Voice-Dock und Kopfzeile weichen.
-  const istIosHuelle = isCapacitorIOS();
-  let kanalQuerStream = $derived(
-    istIosHuelle && viewport.istHandy && huellenLage.quer && streamAngedockt
-  );
-  let zeigeDockUnten = $derived(
-    viewport.istHandy && !kanalQuerStream && (voice.connected || voice.connecting)
-  );
-  let zeigeLeisteUnten = $derived(
-    hydrated &&
-      viewport.istHandy &&
-      !kanalQuerStream &&
-      (!istDetailScreen(page.url.pathname) || istSprachBildschirm)
-  );
-  // Nur die Tablet-Klasse traegt die linke Navigations-Spalte — die Partition
-  // im Store schliesst handy wie desktop bereits aus, keine zweite Bedingung.
-  let zeigeSpalteLinks = $derived(hydrated && viewport.isTablet);
+  // Welche Leisten stehen (Bereichs-Leiste, Voice-Dock, Spalte links) und die
+  // Hüllen-Lage (Querformat mit Stream, Orientierungs-Sperre): die Regeln samt
+  // Begründungen stehen in `navigation/layoutLage.svelte.ts`.
+  const lage = layoutLage(() => hydrated);
 
   // Räume-Bereich-Gedächtnis: jede Navigation, die im Räume-Bereich landet
   // (Räume, Raum-Ansicht, Kanal, Entdecken), wird als letzter Stand gemerkt
@@ -595,28 +529,6 @@
     voiceWarVerbunden = verbunden;
   });
 
-  // Mobil-Hüllen (Android und iOS): Querformat nur mit ANGEDOCKTEM Stream. Ein Stream im
-  // Popup-Eckfenster (Corner-Mode: man hat den Kanal verlassen) lockt
-  // trotzdem auf Hochformat — quer ist nur fürs Stream-Vollbild auf dem
-  // Kanal-Bildschirm gedacht. Bedingung = kanalQuerStream OHNE die
-  // Viewport-Anteile (die hängen am aktuellen Format und würden die Sperre
-  // sonst selbst blockieren: gesperrtes Hochformat ⇒ nie breit ⇒ nie frei).
-  $effect(() => {
-    // streamAngedockt ist kanalQuerStream OHNE die Viewport-Anteile: gesperrtes
-    // Hochformat ⇒ nie breit ⇒ kanalQuerStream würde die Sperre sonst selbst
-    // blockieren (s. Kommentar zu kanalQuerStream oben).
-    void orientierungSperren(!streamAngedockt);
-  });
-
-  // iOS-Hülle: Quer-/Tastatur-Lage beobachten (`huellenLage`), und die Kopfzeile
-  // des Kanals weicht dem Stream, solange er quer die Fläche bekommt.
-  $effect(() => huellenLage.starten());
-  $effect(() => {
-    const wurzel = document.documentElement;
-    wurzel.toggleAttribute('data-quer-stream', kanalQuerStream);
-    return () => wurzel.removeAttribute('data-quer-stream');
-  });
-
   // Ablehnungen des Servers zur Watch-Party sichtbar machen. Einmal je
   // Fenster — Begruendung in `watch/fehlerwacht.svelte.ts`.
   watchFehlerWacht();
@@ -656,9 +568,9 @@
        die tragen den Home-Balken, ein Composer darüber (`MessageInput`) hätte
        ihn sonst ein zweites Mal als Leerraum. Nur iOS-Hülle am Handy. -->
   <div
-    class="flex flex-1 gap-0 p-0 pt-[var(--safe-top)] ios:handy:pt-0 nicht-handy:gap-3 nicht-handy:p-3 nicht-handy:pt-3 min-h-0 {zeigeDockUnten || zeigeLeisteUnten ? 'ios:handy:[--safe-bottom:0px]' : ''}"
+    class="flex flex-1 gap-0 p-0 pt-[var(--safe-top)] ios:handy:pt-0 nicht-handy:gap-3 nicht-handy:p-3 nicht-handy:pt-3 min-h-0 {lage.zeigeDockUnten || lage.zeigeLeisteUnten ? 'ios:handy:[--safe-bottom:0px]' : ''}"
   >
-    {#if zeigeSpalteLinks}
+    {#if lage.zeigeSpalteLinks}
       <TabletNavRail />
     {/if}
     {#if !hydrated}
@@ -672,10 +584,10 @@
        Eigene Flex-Zeile → der Drawer (absolute in der Panel-Zeile) kann sie
        nicht überdecken; Auflegen ist immer erreichbar. Desktop: Controls
        leben im Sidebar-Footer (s. SidebarFooter). -->
-  {#if zeigeDockUnten}
+  {#if lage.zeigeDockUnten}
     <!-- `mb-2`, wenn die Bereichs-Leiste darunter steht: Abstand statt
          Kleben — das Dock sitzt damit spürbar über der Navigation. -->
-    <div class="shrink-0 {zeigeLeisteUnten ? 'mb-2' : 'pb-[var(--safe-bottom)]'}">
+    <div class="shrink-0 {lage.zeigeLeisteUnten ? 'mb-2' : 'pb-[var(--safe-bottom)]'}">
       <VoiceControlBar handy={true} />
     </div>
   {/if}
@@ -696,7 +608,7 @@
   <!-- Die Bereichs-Leiste sitzt UNTER dem Voice-Dock (Canvas 3a): das Dock ist
        der laufende Zustand, die Leiste die Navigation. `--safe-bottom` traegt
        jetzt sie, sonst laege der Home-Balken des Telefons darauf. -->
-  {#if zeigeLeisteUnten}
+  {#if lage.zeigeLeisteUnten}
     <div class="shrink-0 pb-[var(--safe-bottom)]">
       <MobileTabBar />
     </div>
