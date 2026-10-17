@@ -5,12 +5,10 @@
   schlechter als keiner; deshalb rendert die Komponente ausserhalb der
   iOS-Hülle nichts.
 
-  - Bluetooth-HQ: **EIN Schalter für beide Wege** (Review W2). Er setzt
-    `iosFunkHq` (nativer Sprachkanal, `nativeFunkHqDa`) UND `bluetoothHq`
-    (Web-Rückfall älterer Bauten, Abwägung an der Einstellung in
-    `settings-registry/sections/audio.ts`). Angezeigt wird der Wert des Wegs,
-    der in diesem Bau wirklich läuft. Ein früher gespeichertes `bluetoothHq`
-    wird einmal übernommen (`platform/iosBluetoothHq.ts`).
+  - Bluetooth-HQ: ein Schalter für den nativen Sprachkanal (`iosFunkHq`),
+    nur wenn der Bau ihn trägt (`nativeFunkHqDa`). Den Web-Weg dafür
+    (`bluetoothHq`) gibt es nicht mehr (Eigentümer-Entscheid E6); ein früher
+    gespeicherter Wert wird einmal übernommen (`platform/iosBluetoothHq.ts`).
   - Volle Tonqualität gibt es nicht mehr (Eigentümer-Entscheid 2026-10-17: es
     gilt Apples Sprachverarbeitung).
   - Diagnose bei Tonausfall: der Opt-out für den automatischen Bericht
@@ -24,13 +22,12 @@
   import { m } from '$lib/paraglide/messages.js';
   import { funkHqSetzen } from '$lib/platform/iosFunkHq';
   import { nativeFunkHqDa } from '$lib/platform/iosSpracheWeiche';
-  import { tonHqFunkSetzen } from '$lib/platform/iosTon';
   import { isCapacitorIOS } from '$lib/platform/runtime';
   import { settings } from '$lib/stores/settings.svelte';
   import { loadAll, saveAll } from '$lib/stream/persistence';
 
   const ios = isCapacitorIOS();
-  const funkHqNativ = ios && nativeFunkHqDa();
+  const funkHqAnbieten = ios && nativeFunkHqDa();
   let diagnoseSenden = $state(true);
 
   onMount(async () => {
@@ -56,20 +53,18 @@
 {/snippet}
 
 {#if ios}
-  {@render schalter(
-    'settings-ios-funk-hq',
-    m.settings_audio_ios_funk_hq_label(),
-    m.settings_audio_ios_funk_hq_hint(),
-    funkHqNativ ? settings.audio.iosFunkHq : settings.audio.bluetoothHq,
-    (v) => {
-      // Beide Wege, damit der Schalter hält, was er sagt — auch nach einem
-      // Bau-Wechsel zwischen nativem Weg und Rückfall.
-      settings.setIosFunkHq(v);
-      settings.setBluetoothHq(v);
-      funkHqSetzen(v);
-      tonHqFunkSetzen(v);
-    }
-  )}
+  {#if funkHqAnbieten}
+    {@render schalter(
+      'settings-ios-funk-hq',
+      m.settings_audio_ios_funk_hq_label(),
+      m.settings_audio_ios_funk_hq_hint(),
+      settings.audio.iosFunkHq,
+      (v) => {
+        settings.setIosFunkHq(v);
+        funkHqSetzen(v);
+      }
+    )}
+  {/if}
   {@render schalter(
     'settings-ios-ton-diagnose',
     m.settings_audio_ios_diagnose_label(),

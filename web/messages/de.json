@@ -3134,6 +3134,7 @@
   "appsperre_laeuft": "Wird geprüft …",
   "appsperre_abmelden": "Abmelden",
   "appsperre_kein_code_hinweis": "Auf diesem iPhone ist kein Code mehr eingerichtet, die App-Sperre kann nicht geprüft werden. Melde dich ab und wieder an, um weiterzumachen.",
+  "voice_ios_app_veraltet": "Bitte die App über TestFlight aktualisieren, um Sprachkanäle zu nutzen.",
   "datei_speichern_fehler": "Die Datei konnte nicht gespeichert werden.",
   "datei_speichern_bereit": "Die Datei ist bereit.",
   "datei_speichern_teilen": "Speichern",

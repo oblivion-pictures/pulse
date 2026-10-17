@@ -14,7 +14,6 @@ import { ballistics, ClipHold, LEVEL_DECAY, PEAK_DECAY } from './meter';
 import { createSendProcessor, type SendProcessorHandle, type SendProcessorMode } from './noiseFilter';
 import { LocalMicAnalyser } from './localMicAnalyser';
 import { SpeakingDetector } from './speakingDetector';
-import { tonSystemFiltert } from '$lib/platform/iosTon';
 import { filterziel } from './filterwahl';
 
 /** Was das Signal vom Voice-Store braucht. */
@@ -130,16 +129,8 @@ export class EigenesSignal {
     if (!room) return;
     const gen = ++this.#filterGen;
     const gain = settings.audio.inputMakeupGain;
-    // **Nicht mehr allein die Einstellung, sondern auch: filtert das System
-    // schon?** Auf iOS im `voiceChat`-Modus filtert Apple (Echo, Rauschen,
-    // Pegel) und ist dort nicht abschaltbar; RNNoise darüber wäre das zweite
-    // Mal, und zwei Rauschunterdrückungen in Reihe schneiden Wortanfänge ab.
     // Rechnung geprüft in `voice/filterwahl.ts`.
-    const ziel = filterziel({
-      wunsch: settings.audio.noiseSuppression,
-      makeup: gain,
-      systemFiltert: tonSystemFiltert()
-    });
+    const ziel = filterziel({ wunsch: settings.audio.noiseSuppression, makeup: gain });
     const target: 'off' | SendProcessorMode = ziel === 'keiner' ? 'off' : ziel;
     const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
     const audioTrack = pub?.audioTrack;

@@ -58,7 +58,6 @@ interface AudioSessionPlugin {
   ): Promise<{ modus: string; weg: string }>;
   setPlaybackMode(): Promise<void>;
   routen(): Promise<TonWege>;
-  routeSetzen(options: { id: string }): Promise<void>;
   jetztLaeuft(options: { titel: string; zeile2: string }): Promise<void>;
   jetztLaeuftAus(): Promise<void>;
   airplayWaehler(): Promise<void>;
@@ -79,9 +78,9 @@ interface AudioSessionPlugin {
  * Antwort immer `null`, und jede Funktion hier fällt auf ihre Rückfall-Antwort.
  *
  * **Das rohe `Capacitor.Plugins`-Objekt hat genau die Methoden SEINES Baus.**
- * Fünf kamen erst zwei Tage nach dem Plugin (`routen`, `routeSetzen`,
- * `jetztLaeuft`, `jetztLaeuftAus`, `airplayWaehler`, alle 2026-10-08; das
- * Plugin selbst 2026-10-06). Auf einem Bau dazwischen sind sie `undefined`,
+ * Vier kamen erst zwei Tage nach dem Plugin (`routen`, `jetztLaeuft`,
+ * `jetztLaeuftAus`, `airplayWaehler`, alle 2026-10-08; das Plugin selbst
+ * 2026-10-06; `routeSetzen` ist hier nicht mehr eingebunden). Auf einem Bau dazwischen sind sie `undefined`,
  * und ihr Aufruf wäre ein `TypeError` statt der Rückfall-Antwort, die jede
  * Funktion hier verspricht (`null`, `false`, nichts). Hängen kann dabei
  * nichts (`huelleKann.ts`); gefragt wird trotzdem an derselben Stelle wie
@@ -98,26 +97,23 @@ function plugin(methode: keyof AudioSessionPlugin): AudioSessionPlugin | null {
 /**
  * Voice-Modus an/aus. Liefert den Modus, den die Hülle gewählt hat.
  *
- * **Der Rückgabewert trägt die halbe Entscheidung über die Tonqualität.**
- * `voiceChat` heisst: Apple filtert schon (Echo, Rauschen, Pegel) — dann darf
- * RNNoise NICHT zusätzlich laufen. `default` heisst: Apple filtert nicht
- * (Hochqualitäts-Route über Bluetooth) — dann ist RNNoise der einzige Filter.
- * Die Rechnung dazu steht geprüft in `voice/filterwahl.ts`.
+ * Heute nur noch für den Web-Anruf der Hülle (`anrufe/webAnrufRaum.ts`, Bauten
+ * ohne nativen Anruf-Raum): der Sprachkanal läuft nativ, und die Hülle wählt
+ * dort Modus und Bluetooth-HQ selbst. Die Bluetooth-HQ-Route des früheren
+ * Web-Sprachwegs (`hqFunk`) wird deshalb nicht mehr angefordert.
  *
- * `unbekannt`, wenn die Hülle nicht antwortet (älterer Bau ohne das Feld):
- * dann bleibt es beim Wunsch des Nutzers, also beim bisherigen Verhalten.
+ * `modus` ist `unbekannt`, wenn die Hülle ihn nicht nennt (älterer Bau).
  *
  * `ok`: hat die Hülle eingerichtet? Ohne das merkte sich `iosTon` eine
  * Betriebsart, die nie angewandt war, und versuchte sie nie wieder
  * (Bughunt 2026-10-11, G2).
  */
 export async function iosVoiceAktiv(
-  aktiv: boolean,
-  hqFunk = false
+  aktiv: boolean
 ): Promise<{ modus: string; weg: string | null; ok: boolean }> {
   const p = plugin('setVoiceActive');
   if (!p) return { modus: 'unbekannt', weg: null, ok: false };
-  const antwort = await p.setVoiceActive({ aktiv, hqFunk }).catch((e: unknown) => {
+  const antwort = await p.setVoiceActive({ aktiv, hqFunk: false }).catch((e: unknown) => {
     // **Nicht stillschweigend verschlucken.** Scheitert das Einrichten, ist
     // die Session nicht aktiv — der Sprachkanal steht dann verbunden da und
     // ist stumm. Am 2026-10-10 am Geraet gesehen; der Fehlschlag war in der
@@ -162,16 +158,6 @@ export async function iosTonWege(): Promise<TonWege | null> {
   const p = plugin('routen');
   if (!p) return null;
   return p.routen().catch(() => null);
-}
-
-/** Einen Ausgabeweg erzwingen. `false`, wenn er nicht (mehr) da ist. */
-export async function iosTonWegSetzen(id: string): Promise<boolean> {
-  const p = plugin('routeSetzen');
-  if (!p) return false;
-  return p
-    .routeSetzen({ id })
-    .then(() => true)
-    .catch(() => false);
 }
 
 // **Unterbrechungen (Telefonanruf, Siri, Wecker) hören wir hier bewusst nicht

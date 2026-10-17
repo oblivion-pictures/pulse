@@ -195,7 +195,7 @@ export class NativeBefehle {
    * feuert beim Ziehen Dutzende Male pro Sekunde, und die Brücke ist EINE
    * serielle Warteschlange — ihre Verstopfung hat am 2026-10-10 die App
    * einfrieren lassen (`LetzterWunsch`). Eine Hülle, die den Befehl nicht
-   * kennt, kommt hier nicht mehr an: die Weiche lässt sie beim Web-Weg.
+   * kennt, kommt hier nicht mehr an: die Weiche lässt sie nicht beitreten.
    *
    * Der Begrenzer (`limiter`) reist mit, weil er dieselbe Wiedergabe formt —
    * gelesen hier aus der Einstellung, damit kein Aufrufer ihn vergisst.

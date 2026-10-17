@@ -30,9 +30,9 @@ test('der gespeicherte Wert übersteht das Neuladen (parse)', () => {
 
 test('die Schalter gehen über die Setter der Registry', () => {
   const store = lesen('../src/lib/stores/settings.svelte.ts');
-  assert.match(store, /setBluetoothHq\(v: boolean\): void \{\s*this\.#audio\.set\('bluetoothHq', v\);/);
+  assert.doesNotMatch(store, /setBluetoothHq/, 'der Web-Schalter ist entfernt (E6)');
   const ui = lesen('../src/lib/components/settings/IosTonEinstellungen.svelte');
-  assert.match(ui, /settings\.setBluetoothHq\(v\)/);
+  assert.doesNotMatch(ui, /setBluetoothHq|tonHqFunkSetzen/);
   assert.match(store, /setIosFunkHq\(v: boolean\): void \{\s*this\.#audio\.set\('iosFunkHq', v\);/);
   assert.match(ui, /settings\.setIosFunkHq\(v\)/);
 });

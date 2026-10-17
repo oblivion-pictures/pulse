@@ -27,69 +27,21 @@ export type AudioSettings = {
   echoCancellation: boolean;
   noiseSuppression: NoiseSuppressionMode;
   /**
-   * Hochqualitäts-Route über Bluetooth (iOS 26, nur die iOS-Hülle).
-   *
-   * Sobald ein Mikrofon offen ist, verlässt ein Bluetooth-Kopfhörer A2DP und
-   * beide Richtungen werden schmalbandig und mono — klassisches Bluetooth hat
-   * nicht die Bandbreite für Stereo hin und Mikrofon zurück. iOS 26 bietet
-   * dafür eine asymmetrische Route: Eingang bleibt HFP, **Ausgabe wird 48 kHz
-   * stereo**. Der Preis: die Option verlangt `mode: .default`, und damit
-   * entfällt Apples Sprachverarbeitung (Echo, Rauschen, Pegel). Für Kopfhörer
-   * IM OHR ist das der richtige Tausch — dort gibt es kaum einen akustischen
-   * Echo-Weg, und RNNoise wird dann der einzige Rauschfilter.
-   *
-   * **Vorgabe false, und das ist kein Zögern, sondern Disziplin:** es gibt
-   * einen Bericht, dass WebRTC-Engines auf dieser Route verstummen. Stille
-   * ist für eine Sprach-App der schlimmste Fehlschlag; die Vorgabe wechselt,
-   * wenn sie an einem Gerät gemessen ist.
-   *
-   * **Und seit dem 2026-10-10 ist eine zweite Hürde gemessen, die VOR der
-   * ersten liegt: dieser Schalter würde heute doppelt filtern.**
-   *
-   * Am Gerät mitgeschnitten (`idevicesyslog`, Sprachkanal, ohne Kopfhörer):
-   * das Mikrofon nimmt NICHT unsere App-Session auf, sondern die der
-   * WebView — `CMSUtility_SetIsRecording: Client sid:0x…, com.apple.WebKit,
-   * 'prim' has started recording`. Der systemweite Modus war dabei
-   * `VideoChat` (405 Treffer), und Apples Verarbeitung lief sichtbar:
-   * 655× `AUVoiceIO`, 594× `EchoCancellation`. Unser Plugin setzt sein
-   * `voiceChat` auf einer Session, die gar nichts aufnimmt.
-   *
-   * Heute stimmt das Ergebnis trotzdem — beide Modi schalten Apples
-   * Verarbeitung ein, `systemFiltert` trifft also zu. **Zufällig, nicht
-   * ursächlich.** Mit diesem Schalter AN bräche der Zufall:
-   *
-   * 1. Unser Plugin stellt auf `default` um und meldet „Apple filtert nicht".
-   * 2. `voice/filterwahl.ts` schaltet daraufhin RNNoise dazu.
-   * 3. WebKit lässt seine Session unverändert im Sprach-Modus — Apple
-   *    filtert weiter.
-   * 4. Zwei Rauschunterdrückungen in Reihe: abgeschnittene Wortanfänge,
-   *    blecherner Klang. Genau der Fehler, gegen den `filterwahl.ts`
-   *    geschrieben wurde.
-   *
-   * **Wer diesen Schalter einschalten will, muss also zuerst WebKits Session
-   * erreichen** — und der einzige Hebel dafür ist `navigator.audioSession`
-   * (`platform/iosSprache.ts::webSessionTyp`; der frühere Weg über
-   * `platform/iosTon.ts` war abgeschaltet, weil ein erster Versuch die App
-   * aufhängte, und ist entfernt). Vorher ist der Schalter nicht
-   * „fertig und nur noch ungemessen", sondern nachweislich schädlich.
+   * **Veraltet — nur noch zum Übernehmen.** Der Schalter „Beste Tonqualität
+   * über Bluetooth" des früheren Web-Sprachwegs der iOS-App. Den Weg gibt es
+   * nicht mehr (Eigentümer-Entscheid E6, 2026-10-18); ein gespeichertes „an"
+   * wird beim ersten Start in `iosFunkHq` übernommen
+   * (`platform/iosBluetoothHq.ts`) und danach nicht mehr gelesen.
    */
   bluetoothHq: boolean;
   /**
    * Bluetooth-Kopfhörer in hoher Qualität im NATIVEN Sprachkanal der iOS-App
-   * (iOS 26, Kopfhörer wie AirPods Pro 2) — **Vorgabe an**. Nicht dasselbe
-   * wie `bluetoothHq`: der wirkt nur auf dem Web-Weg, und dort ist er aus den
-   * oben genannten Gründen schädlich; auf dem nativen Weg gehört die Session
-   * LiveKit, und `bluetoothHq` erreichte sie nie.
+   * (iOS 26, Kopfhörer wie AirPods Pro 2) — **Vorgabe an**.
    *
    * An heisst nur „erlaubt": die Hülle schaltet den Weg allein, wenn iOS und
    * Kopfhörer ihn tragen, und nur mit Bluetooth-Ausgabe; sonst bleibt es bei
    * Apples Sprachverarbeitung (`SpracheFunkHq.swift`). Aus ist der Rückweg,
    * falls die höhere Mikrofon-Latenz stört, vor der Apple selbst warnt.
-   *
-   * **In der Oberfläche gibt es nur EINEN Schalter** (Review W2,
-   * `IosTonEinstellungen.svelte`): er setzt `iosFunkHq` und `bluetoothHq`
-   * zugleich, damit er hält, was er sagt, ob der native Weg oder der
-   * Web-Rückfall älterer Bauten läuft.
    */
   iosFunkHq: boolean;
   noiseGateThresholdDb: number;

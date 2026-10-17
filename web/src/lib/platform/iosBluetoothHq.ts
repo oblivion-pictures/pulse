@@ -1,12 +1,11 @@
 /**
  * Der EINE Bluetooth-HQ-Schalter der iOS-Hülle (Review W2).
  *
- * Es gab zwei: `bluetoothHq` (Web-Rückfall älterer Bauten) und `iosFunkHq`
- * (nativer Sprachkanal) — je nach Bau stand nur einer in den Einstellungen,
- * und wer den Bau wechselte, hatte den anderen irgendwo „gesetzt". Jetzt
- * steuert der eine Schalter beide (`IosTonEinstellungen.svelte`). Einmalig
- * wird ein früher gespeichertes „an" des alten Web-Schalters übernommen: wer
- * Bluetooth-HQ ausdrücklich eingeschaltet hatte, soll es nicht durch einen
+ * Es gab zwei: `bluetoothHq` (Web-Sprachweg der iOS-Hülle) und `iosFunkHq`
+ * (nativer Sprachkanal). Den Web-Sprachweg gibt es nicht mehr (Eigentümer-
+ * Entscheid E6, 2026-10-18); in den Einstellungen steht nur noch `iosFunkHq`.
+ * Einmalig wird ein früher gespeichertes „an" des alten Schalters übernommen:
+ * wer Bluetooth-HQ ausdrücklich eingeschaltet hatte, soll es nicht durch einen
  * später ausgeschalteten `iosFunkHq` verlieren.
  *
  * Importfrei (CLAUDE.md, `pnpm test:unit`): hier nur die Rechnung.

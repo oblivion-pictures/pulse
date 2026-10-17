@@ -40,9 +40,9 @@ import { NACH_NATIVEM_RAUM, tonSchritt, wegAntwort, zielModus, type TonModus } f
  * Die VOICE-Quellen, nicht ein Schalter.
  *
  * Bis zum 2026-10-08 stand hier ein `boolean`, und das ging gut, solange es
- * genau einen Voice-Verbraucher gab (den Sprachkanal). Mit den Anrufen gibt es
- * zwei, und sie laufen unabhängig: ein Anruf fasst den Sprachkanal nicht an,
- * man kann also in einem Kanal sitzen und telefonieren. Mit einem Schalter
+ * genau einen Voice-Verbraucher gab (den Sprachkanal). Mit den Anrufen gab es
+ * zwei, und sie liefen unabhängig: ein Anruf fasste den Sprachkanal nicht an,
+ * man konnte also in einem Kanal sitzen und telefonieren. Mit einem Schalter
  * hätte das Auflegen die Session des Kanals mit abgeräumt — genau die
  * Fehlerklasse, vor der der Kopf dieser Datei warnt („wer sie unabhängig
  * schaltet, reisst dem anderen den Ton weg"), nur eine Ebene höher.
@@ -53,32 +53,6 @@ import { NACH_NATIVEM_RAUM, tonSchritt, wegAntwort, zielModus, type TonModus } f
 const voiceQuellen = new Set<string>();
 const wiedergaben = new Set<string>();
 let angewandt: TonModus = 'aus';
-
-/**
- * Filtert das Betriebssystem gerade im Sendeweg?
- *
- * Das ist nicht dasselbe wie „Voice-Modus läuft": die Hülle richtet die
- * Session nach dem AUSGABEWEG ein, und auf der Hochqualitäts-Route über
- * Bluetooth (`mode: .default`) filtert Apple NICHT. Nur die Hülle weiss das,
- * deshalb kommt der Wert von dort zurück.
- */
-let systemFiltert = false;
-/** Wer auf einen Wechsel reagieren muss — heute der Sendefilter. */
-const filterHoerer = new Set<() => void>();
-
-/** Will der Nutzer die Hochqualitäts-Route über Bluetooth? Wird von aussen
- *  gesetzt (Einstellung), damit dieses Modul nichts über Einstellungen
- *  wissen muss. */
-let hqFunk = false;
-
-export function tonHqFunkSetzen(an: boolean): void {
-  if (hqFunk === an) return;
-  hqFunk = an;
-  // Die Route wird beim nächsten Einrichten gewählt — also jetzt neu
-  // einrichten, sonst wirkt die Einstellung erst beim nächsten Beitritt.
-  erzwingen = true;
-  void anwenden();
-}
 
 /**
  * Hält die Hülle gerade einen nativen Sprachraum? Dann gehört die Session
@@ -100,22 +74,6 @@ export function tonNativerRaum(an: boolean): void {
     wegAngewandt = null;
   });
   void anwenden();
-}
-
-/**
- * Auf Wechsel des System-Filters hören. Rückgabe meldet ab.
- *
- * Gebraucht, weil der Wechsel NICHT von einer Nutzeraktion kommt: es genügt,
- * die AirPods einzusetzen. Ohne diesen Weg liefe danach entweder zweimal
- * gefiltert oder gar nicht.
- */
-export function tonSystemFilterBeobachten(cb: () => void): () => void {
-  filterHoerer.add(cb);
-  return () => filterHoerer.delete(cb);
-}
-
-export function tonSystemFiltert(): boolean {
-  return systemFiltert;
 }
 
 /**
@@ -149,7 +107,7 @@ let wegAngewandt: string | null = null;
 
 /** Steht ein nativer Sprachraum? S. `tonNativerRaum`. */
 let nativerRaum = false;
-/** Gleiches Ziel, aber neu einrichten (Weg oder Bluetooth-Wahl geändert). */
+/** Gleiches Ziel, aber neu einrichten (der Ausgabeweg hat gewechselt). */
 let erzwingen = false;
 
 /**
@@ -185,27 +143,21 @@ async function schritt(): Promise<void> {
   }
   angewandt = ziel;
   wegAngewandt = ergebnis.weg;
-  if (systemFiltert === ergebnis.filtert) return;
-  systemFiltert = ergebnis.filtert;
-  // Kopie, weil ein Hörer sich im Ruf abmelden darf.
-  for (const h of [...filterHoerer]) h();
 }
 
 /** Die Hülle für `ziel` einrichten lassen. `null`, wenn sie scheitert. */
-async function einrichten(
-  ziel: TonModus
-): Promise<{ filtert: boolean; weg: string | null } | null> {
+async function einrichten(ziel: TonModus): Promise<{ weg: string | null } | null> {
   if (ziel === 'voice') {
-    const antwort = await iosVoiceAktiv(true, hqFunk);
-    return antwort.ok ? { filtert: antwort.modus === 'voiceChat', weg: antwort.weg } : null;
+    const antwort = await iosVoiceAktiv(true);
+    return antwort.ok ? { weg: antwort.weg } : null;
   }
   if (ziel === 'wiedergabe') {
     // Die Wiedergabe-Kategorie richtet sich nicht nach dem Weg — was gilt,
     // ist damit unbekannt. Nicht raten.
-    return (await iosPlaybackModus()) ? { filtert: false, weg: null } : null;
+    return (await iosPlaybackModus()) ? { weg: null } : null;
   }
   const antwort = await iosVoiceAktiv(false);
-  return antwort.ok ? { filtert: false, weg: antwort.weg } : null;
+  return antwort.ok ? { weg: antwort.weg } : null;
 }
 
 /**
@@ -255,12 +207,11 @@ function unterbrechungenBeobachten(): void {
   // kaputtgeht.
 
   // **Wegwechsel richten die Session neu ein** (seit 2026-10-09). Die Hülle
-  // wählt Kategorie und Modus nach dem AUSGABEWEG: am Lautsprecher mit
-  // Apples Sprachverarbeitung, mit Kopfhörern im Ohr auf der
-  // Hochqualitäts-Route. Dieser Wechsel kommt von KEINER Nutzeraktion — es
-  // genügt, die AirPods einzusetzen. Ohne diesen Haken behielte die Session
-  // die Konfiguration des alten Wegs, und mit ihr liefe entweder zweimal
-  // gefiltert oder gar nicht.
+  // wählt Kategorie und Modus nach dem AUSGABEWEG (eingebaut, Kabel, Funk).
+  // Dieser Wechsel kommt von KEINER Nutzeraktion — es genügt, die AirPods
+  // einzusetzen. Ohne diesen Haken behielte die Session die Konfiguration des
+  // alten Wegs. (Der eigene Sendefilter muss dabei nicht mehr neu entscheiden:
+  // seit dem Wegfall des Web-Sprachwegs hängt er nicht mehr am Systemfilter.)
   //
   // `erzwingen`, weil gewollt weiter `voice` ist: bei gleichem Ziel stiege
   // `tonSchritt` sonst aus, obwohl die Einrichtung dahinter eine andere ist.
@@ -285,8 +236,9 @@ function unterbrechungenBeobachten(): void {
 /**
  * Eine Voice-Quelle an- oder abmelden.
  *
- * `kennung` unterscheidet die Verbraucher (`'sprachkanal'`, `'anruf'`). Ohne
- * sie würde der eine dem anderen die Session wegnehmen — Begründung an
+ * `kennung` unterscheidet die Verbraucher (heute nur der Web-Anruf,
+ * `'anruf'`; der Sprachkanal läuft nativ und meldet sich hier nicht an). Ohne
+ * sie würde ein Verbraucher dem anderen die Session wegnehmen — Begründung an
  * `voiceQuellen`.
  *
  * **Gibt seit dem 2026-10-10 ein Promise zurück, und beim ANMELDEN muss darauf

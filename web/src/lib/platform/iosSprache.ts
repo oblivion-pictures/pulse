@@ -41,7 +41,12 @@ import type {
 // Typen und die Weiche sind Teil DIESER Schnittstelle, sie liegen nur woanders
 // (die Weiche in `iosSpracheWeiche.ts`, Begründung dort).
 export type { NativerEigenerZustand, NativerTeilnehmer, NativerWunsch, NativerZustand };
-export { nativerSprachwegBefund, nativerSprachwegDa, nativeWacheDa } from './iosSpracheWeiche';
+export {
+  nativerSprachwegBefund,
+  nativerSprachwegDa,
+  nativeWacheDa,
+  sprachwegVeraltet
+} from './iosSpracheWeiche';
 
 /** Alles, was die Hülle unter dem Namen `SprachePlugin` anbietet — je nach Bau
  *  nicht vollständig (s. `iosSpracheWeiche.ts`). */
@@ -342,7 +347,7 @@ export async function spracheTaub(an: boolean): Promise<NativerZustand | null> {
  * `lautstaerken` in `SprachePlugin.swift`) —, dazu der Begrenzer am Ende der
  * Wiedergabe als Feld, das eine ältere Hülle übergeht. Eine Hülle, die den
  * Befehl nicht kennt, erreicht diese Stelle nicht mehr: die Weiche lässt sie
- * beim Web-Weg (`SPRACHE_METHODEN`).
+ * nicht beitreten (`SPRACHE_METHODEN`).
  */
 export async function spracheLautstaerken(w: NativerHoerwunsch): Promise<void> {
   await rufen('lautstaerken', SPRACHE_FRIST_KETTE_MS, (p) =>

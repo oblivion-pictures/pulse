@@ -20,8 +20,7 @@ import { nativerSprachwegBefund } from './iosSpracheWeiche.ts';
  * Audio-Session, und deren Übergabe (`AnrufSitzung.swift`) rechnet mit einem
  * KANAL, der nativ läuft und sich anhalten lässt. Ein Kanal über WebKit neben
  * einem nativen Anruf wäre wieder eine zweite Partei an der Session — genau
- * die Lage, aus der der Umbau herausführt. Der Notschalter des Sprachwegs
- * (`NATIVER_SPRACHWEG_AN`) gilt damit für beide.
+ * die Lage, aus der der Umbau herausführt.
  *
  * **Und nur mit ALLEN Methoden** (`ANRUF_RAUM_METHODEN`): eine Hülle mit dem
  * alten `Anruf`-Plugin (ankommen, beenden, voipToken) bleibt vollständig beim
