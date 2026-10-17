@@ -58,6 +58,10 @@ extension Anrufverwaltung {
         NSLog("[PulseAnruf] CallKit übernimmt die Audio-Session")
         kanalPause(true)
         AudioManager.shared.audioSession.isAutomaticConfigurationEnabled = false
+        // Ohne Automatik wirkt das Loslassen nicht auf die Session; es sorgt
+        // nur dafür, dass die Rückgabe unten wieder bei „nichts aktiv"
+        // beginnt (`StreamTonSitzung`).
+        StreamTonSitzung.geteilt.automatikAus()
         maschineStellen(.none, "anhalten")
         kategorieSetzen()
     }
@@ -166,6 +170,7 @@ extension Anrufverwaltung {
         try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
         AudioManager.shared.audioSession.isAutomaticConfigurationEnabled = true
         maschineStellen(.default, "freigeben")
+        StreamTonSitzung.geteilt.automatikAn(grund: "callkit")
         // Läuft daneben ein Gespräch ohne CallKit (abgewiesen, während CallKit
         // die Session noch hielt — die Rückgabe wartet bis zu 3 s auf
         // `didDeactivate`), bleibt der Kanal angehalten, und das SDK führt

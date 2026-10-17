@@ -165,9 +165,15 @@ extension SpracheRaum {
             guard !v.callkitAktiv, !v.ohneCallKit else { return nil }
             let am = AudioManager.shared
             am.audioSession.isAutomaticConfigurationEnabled = false
+            // Der native Stream-Ton lässt seine Session-Anforderung los, solange
+            // die Automatik aus ist — sonst sähe LiveKit gleich keinen Übergang
+            // „nichts aktiv → aktiv" und aktivierte nicht (`StreamTonSitzung`).
+            StreamTonSitzung.geteilt.automatikAus()
             try? am.setEngineAvailability(.none)
             am.audioSession.isAutomaticConfigurationEnabled = true
-            return Self.maschineFreigebenJetzt()
+            let fehler = Self.maschineFreigebenJetzt()
+            StreamTonSitzung.geteilt.automatikAn(grund: "maschine_neu")
+            return fehler
         }
         diagMelden(fehler == nil ? "maschine_neu" : "maschine_neu_fehler",
                    ["grund": grund, "fehler": fehler ?? ""])
@@ -182,7 +188,9 @@ extension SpracheRaum {
             let v = Anrufverwaltung.geteilt
             guard !v.callkitAktiv, !v.ohneCallKit else { return nil }
             AudioManager.shared.audioSession.isAutomaticConfigurationEnabled = true
-            return Self.maschineFreigebenJetzt()
+            let fehler = Self.maschineFreigebenJetzt()
+            StreamTonSitzung.geteilt.automatikAn(grund: "nachholen")
+            return fehler
         }
         if fehler == nil || melden {
             diagMelden(fehler == nil ? "maschine_frei" : "maschine_neu_fehler",

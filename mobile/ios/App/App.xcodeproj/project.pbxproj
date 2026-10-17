@@ -26,6 +26,13 @@
 		A1B2C3D4E5F60718000001D5 /* SpracheRaumDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001D6 /* SpracheRaumDelegate.swift */; };
 		A1B2C3D4E5F6071800000183 /* SpracheRaumTaub.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071800000184 /* SpracheRaumTaub.swift */; };
 		A1B2C3D4E5F60718000001A7 /* Wiedergabebegrenzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001A8 /* Wiedergabebegrenzer.swift */; };
+		A1B2C3D4E5F60718000001EC /* StreamTonProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001ED /* StreamTonProbe.swift */; };
+		A1B2C3D4E5F60718000001EA /* StreamTonPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001EB /* StreamTonPlugin.swift */; };
+		A1B2C3D4E5F60718000001E8 /* StreamTonEmpfaenger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001E9 /* StreamTonEmpfaenger.swift */; };
+		A1B2C3D4E5F60718000001E6 /* StreamTonWhep.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001E7 /* StreamTonWhep.swift */; };
+		A1B2C3D4E5F60718000001E4 /* StreamTonSitzung.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001E5 /* StreamTonSitzung.swift */; };
+		A1B2C3D4E5F60718000001E2 /* StreamTonPuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001E3 /* StreamTonPuffer.swift */; };
+		A1B2C3D4E5F60718000001E0 /* StreamTonGeraet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001E1 /* StreamTonGeraet.swift */; };
 		A1B2C3D4E5F60718000001A9 /* WiedergabebegrenzerProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001AA /* WiedergabebegrenzerProbe.swift */; };
 		A1B2C3D4E5F6071800000185 /* SpracheAnsicht.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071800000186 /* SpracheAnsicht.swift */; };
 		A1B2C3D4E5F60718000001B0 /* SpracheBildImBild.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001B1 /* SpracheBildImBild.swift */; };
@@ -124,6 +131,13 @@
 		A1B2C3D4E5F60718000001D6 /* SpracheRaumDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheRaumDelegate.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071800000184 /* SpracheRaumTaub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheRaumTaub.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000001A8 /* Wiedergabebegrenzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wiedergabebegrenzer.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001ED /* StreamTonProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTonProbe.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001EB /* StreamTonPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTonPlugin.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001E9 /* StreamTonEmpfaenger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTonEmpfaenger.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001E7 /* StreamTonWhep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTonWhep.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001E5 /* StreamTonSitzung.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTonSitzung.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001E3 /* StreamTonPuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTonPuffer.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000001E1 /* StreamTonGeraet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTonGeraet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000001AA /* WiedergabebegrenzerProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiedergabebegrenzerProbe.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071800000186 /* SpracheAnsicht.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheAnsicht.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000001B1 /* SpracheBildImBild.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheBildImBild.swift; sourceTree = "<group>"; };
@@ -286,6 +300,13 @@
 				A1B2C3D4E5F60718000001D6 /* SpracheRaumDelegate.swift */,
 				A1B2C3D4E5F6071800000184 /* SpracheRaumTaub.swift */,
 				A1B2C3D4E5F60718000001A8 /* Wiedergabebegrenzer.swift */,
+				A1B2C3D4E5F60718000001ED /* StreamTonProbe.swift */,
+				A1B2C3D4E5F60718000001EB /* StreamTonPlugin.swift */,
+				A1B2C3D4E5F60718000001E9 /* StreamTonEmpfaenger.swift */,
+				A1B2C3D4E5F60718000001E7 /* StreamTonWhep.swift */,
+				A1B2C3D4E5F60718000001E5 /* StreamTonSitzung.swift */,
+				A1B2C3D4E5F60718000001E3 /* StreamTonPuffer.swift */,
+				A1B2C3D4E5F60718000001E1 /* StreamTonGeraet.swift */,
 				A1B2C3D4E5F60718000001AA /* WiedergabebegrenzerProbe.swift */,
 				A1B2C3D4E5F6071800000186 /* SpracheAnsicht.swift */,
 				A1B2C3D4E5F60718000001B1 /* SpracheBildImBild.swift */,
@@ -605,6 +626,13 @@
 				A1B2C3D4E5F60718000001D5 /* SpracheRaumDelegate.swift in Sources */,
 				A1B2C3D4E5F6071800000183 /* SpracheRaumTaub.swift in Sources */,
 				A1B2C3D4E5F60718000001A7 /* Wiedergabebegrenzer.swift in Sources */,
+				A1B2C3D4E5F60718000001EC /* StreamTonProbe.swift in Sources */,
+				A1B2C3D4E5F60718000001EA /* StreamTonPlugin.swift in Sources */,
+				A1B2C3D4E5F60718000001E8 /* StreamTonEmpfaenger.swift in Sources */,
+				A1B2C3D4E5F60718000001E6 /* StreamTonWhep.swift in Sources */,
+				A1B2C3D4E5F60718000001E4 /* StreamTonSitzung.swift in Sources */,
+				A1B2C3D4E5F60718000001E2 /* StreamTonPuffer.swift in Sources */,
+				A1B2C3D4E5F60718000001E0 /* StreamTonGeraet.swift in Sources */,
 				A1B2C3D4E5F60718000001A9 /* WiedergabebegrenzerProbe.swift in Sources */,
 				A1B2C3D4E5F6071800000185 /* SpracheAnsicht.swift in Sources */,
 				A1B2C3D4E5F60718000001B0 /* SpracheBildImBild.swift in Sources */,
