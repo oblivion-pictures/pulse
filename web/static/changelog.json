@@ -2,6 +2,18 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-17",
+      "date": "2026-10-17",
+      "style": "Sachlich",
+      "title": "Weniger Störungen, weniger Akku",
+      "items": [
+        "Liest du gerade am Rechner, bleibt das Handy still.",
+        "Auf dem iPhone verschwindet die Musik-Anzeige auf dem Sperrbildschirm, und Pulse-Töne halten keine Musik mehr an.",
+        "Fällt im Sprachkanal das Mikrofon aus, erholt sich Pulse selbst oder zeigt einen Hinweis.",
+        "Pulse weckt das Gerät im Hintergrund seltener."
+      ]
+    },
+    {
       "id": "2026-10-16.7",
       "date": "2026-10-16",
       "style": "Sachlich",
