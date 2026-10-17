@@ -18,6 +18,7 @@ import { m } from '$lib/paraglide/messages.js';
 import { registerWsHandler } from '../handler-registry';
 import { verlaufKanalVergessen } from '$lib/verlauf';
 import { aktuellesKonto } from '$lib/verlauf/konto';
+import { mitteilungsAnlassMelden } from '$lib/platform/mitteilungsAnlass';
 
 export function register(): void {
   registerWsHandler('friend_request_received', (evt) => {
@@ -78,6 +79,9 @@ export function register(): void {
     }
     userCache.queue(evt.data.friendship.user_id);
     void directMessages.hydrate().catch(() => undefined);
+    // Beide Seiten: jetzt gibt es jemanden, der schreiben kann — der Moment, in
+    // dem die Mitteilungs-Erlaubnis Sinn ergibt (iOS, mit Vorerklärung).
+    mitteilungsAnlassMelden();
     if (wasMyOutgoing) {
       const u = userCache.get(evt.data.friendship.user_id);
       const name = u?.display_name ?? u?.username ?? null;

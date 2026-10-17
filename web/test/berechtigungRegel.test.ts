@@ -117,3 +117,39 @@ test('Mitteilungsfrage: Android beim Start, iOS nach einem Anlass, sonst nirgend
   assert.equal(mitteilungenNachAnlassFragen('android'), false);
   assert.equal(mitteilungenNachAnlassFragen(null), false);
 });
+
+test('die erste eigene Sendung genügt als Anlass', () => {
+  assert.equal(SENDUNGEN_BIS_ZUR_MITTEILUNGSFRAGE, 1);
+  assert.equal(vorgehenVorDemDialog(lage({ art: 'mitteilungen', sendungen: 0 })), 'nicht');
+  assert.equal(vorgehenVorDemDialog(lage({ art: 'mitteilungen', sendungen: 1 })), 'erklaeren');
+});
+
+test('ein anderer Anlass ohne eigene Sendung: das Blatt kommt', () => {
+  // Angenommene Freundschaftsanfrage, erste eingehende DM.
+  assert.equal(
+    vorgehenVorDemDialog(lage({ art: 'mitteilungen', sendungen: 0, anlass: true })),
+    'erklaeren'
+  );
+});
+
+test('ein anderer Anlass hebelt weder "spaeter" noch eine entschiedene Lage aus', () => {
+  assert.equal(
+    vorgehenVorDemDialog(
+      lage({ art: 'mitteilungen', anlass: true, schonAbgelehnt: true })
+    ),
+    'nicht'
+  );
+  assert.equal(
+    vorgehenVorDemDialog(lage({ art: 'mitteilungen', anlass: true, stand: 'verweigert' })),
+    'weiter'
+  );
+  assert.equal(
+    vorgehenVorDemDialog(lage({ art: 'mitteilungen', anlass: true, iosHuelle: false })),
+    'weiter'
+  );
+});
+
+test('der Anlass gilt nur für Mitteilungen', () => {
+  // Kamera und Mikrofon haben ihre Handlung; der Merker ändert dort nichts.
+  assert.equal(vorgehenVorDemDialog(lage({ art: 'kamera', anlass: true })), 'erklaeren');
+});
