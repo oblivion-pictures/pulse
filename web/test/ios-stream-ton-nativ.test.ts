@@ -169,3 +169,11 @@ test('S6: keine frische URL zählt als Fehlschlag (führt nach drei zum Rückfal
   const src = readFileSync(new URL('../src/lib/stream/nativerStreamTon.ts', import.meta.url), 'utf8');
   assert.match(src, /if \(!url\) \{\s*this\.#fehlschlag\('url'\);\s*return;\s*\}/);
 });
+
+test('S7: Verbindungsende hält das Gerät sofort an (kein Stille-Lauf im Hintergrund)', () => {
+  const src = quelle('StreamTonEmpfaenger.swift');
+  assert.match(src, /case \.failed, \.closed:\s*verbindungTot\(/);
+  const tot = /private func verbindungTot[\s\S]*?\n    \}\n/.exec(src)?.[0] ?? '';
+  assert.match(tot, /geraet\.anhalten\(grund: grund\)/);
+  assert.match(tot, /p\?\.close\(\)/);
+});

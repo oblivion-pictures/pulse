@@ -238,6 +238,25 @@ final class StreamTonEmpfaenger: NSObject, LKRTCPeerConnectionDelegate, @uncheck
         sperre.withLock { sammelnFertig = nil }
     }
 
+    /// **Die Verbindung ist weg — das Gerät steht sofort** (Gegenprüfung S7).
+    /// WebRTC hielte die Wiedergabe sonst, solange der Empfangsstrom besteht,
+    /// und die Maschine spielte Stille: im Hintergrund oder bei Sperre ruht das
+    /// JS, kein `stoppen` käme, und die App liefe mit Hintergrund-Audio und
+    /// gehaltener Session-Anforderung weiter. Die PeerConnection wird
+    /// geschlossen (nicht im Rückruf selbst — der läuft auf WebRTCs
+    /// Signalfaden), die Fabrik bleibt bis `stoppen`. Die Oberfläche baut mit
+    /// frischer URL neu auf (`nativerStreamTon.ts`).
+    private func verbindungTot(_ grund: String) {
+        let (schon, p) = sperre.withLock { () -> (Bool, LKRTCPeerConnection?) in
+            defer { verbunden = false; pc = nil }
+            return (beendet, pc)
+        }
+        guard !schon else { return }
+        DispatchQueue.global().async { p?.close() }
+        geraet.faden.async { [geraet] in geraet.anhalten(grund: grund) }
+        setze(.fehler, grund)
+    }
+
     // MARK: - LKRTCPeerConnectionDelegate
 
     func peerConnection(_ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCPeerConnectionState) {
@@ -246,16 +265,13 @@ final class StreamTonEmpfaenger: NSObject, LKRTCPeerConnectionDelegate, @uncheck
             sperre.withLock { verbunden = true }
             neuBewerten("verbunden")
         case .failed, .closed:
-            sperre.withLock { verbunden = false }
-            if !sperre.withLock({ beendet }) { setze(.fehler, "verbindung_\(newState.rawValue)") }
+            verbindungTot("verbindung_\(newState.rawValue)")
         case .disconnected:
             // Vorübergehend (WebRTC erholt sich meist) — erst nach einer Frist
             // ohne Rückkehr ist es ein Fehler.
             DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [weak self] in
-                guard let self, !sperre.withLock({ self.beendet }),
-                      peerConnection.connectionState == .disconnected else { return }
-                sperre.withLock { self.verbunden = false }
-                setze(.fehler, "verbindung_weg")
+                guard let self, peerConnection.connectionState == .disconnected else { return }
+                verbindungTot("verbindung_weg")
             }
         default:
             break
