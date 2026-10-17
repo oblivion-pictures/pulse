@@ -24,18 +24,22 @@ extension SpracheRaum {
     /// trägt. Die Oberfläche braucht die Wahrheit ausserdem auch dann, wenn
     /// sie den Wechsel nicht selbst ausgelöst hat (Kopfhörer rein, AirPods).
     func sessionBeobachtenFallsNoetig() {
+        SpracheFunkHq.geteilt.einhaengenFallsNoetig()
         guard sessionBeobachter == nil else { return }
         sessionBeobachter = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil
         ) { [weak self] n in
             guard let self else { return }
             let grund = n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt ?? 99
-            NSLog("[PulseSprache] Routenwechsel grund=%lu neu=%@ kat=%@ modus=%@ opt=%lu",
+            NSLog("[PulseSprache] Routenwechsel grund=%lu neu=%@ kat=%@ modus=%@ opt=%lu funk=%@",
                   grund, routeJetzt(),
                   AVAudioSession.sharedInstance().category.rawValue,
                   AVAudioSession.sharedInstance().mode.rawValue,
-                  AVAudioSession.sharedInstance().categoryOptions.rawValue)
-            if raum != nil { schickeEigenen() }
+                  AVAudioSession.sharedInstance().categoryOptions.rawValue,
+                  funkFelder().map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " "))
+            // Kopfhörer rein/raus, und jeder Kategoriewechsel (auch der
+            // eigene): der Bluetooth-Weg folgt der Route (`SpracheFunkHq`).
+            if raum != nil { schickeEigenen(); funkHqAnstossen("route") }
         }
         // **Eine Unterbrechung heisst: jemand anderes hat die Session.** Das
         // ist die Zeile, an der der Hoermuschel-Fehler hing — die Oberfläche

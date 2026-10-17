@@ -34,6 +34,9 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
         // Liste des nativen Wegs — ein älterer Bau bliebe sonst ganz beim
         // Web-Weg, statt nur ohne Wächter.
         CAPPluginMethod(name: "diagnose", returnType: CAPPluginReturnPromise),
+        // Kennzeichen UND Schalter für Bluetooth in hoher Qualität
+        // (`SpracheFunkHq.swift`), ebenfalls einzeln abgefragt (`nativeFunkHqDa`).
+        CAPPluginMethod(name: "funkHq", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnCallback),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise)
     ]
@@ -257,5 +260,13 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
     /// (s. `pluginMethods`).
     @objc func diagnose(_ call: CAPPluginCall) {
         call.resolve(SpracheRaum.geteilt.diagnoseFelder())
+    }
+
+    /// Bluetooth in hoher Qualität erlauben (Vorgabe an). Wirkt sofort, auch
+    /// mitten im Kanal — der Abgleich läuft in der Kette des Raums.
+    @objc func funkHq(_ call: CAPPluginCall) {
+        SpracheFunkHq.geteilt.wunsch = call.getBool("an") ?? true
+        SpracheRaum.geteilt.funkHqAnstossen("wunsch")
+        call.resolve()
     }
 }

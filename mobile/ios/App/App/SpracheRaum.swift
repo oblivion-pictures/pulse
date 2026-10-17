@@ -189,7 +189,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         taub = taubStart
         await hoerwunschSetzen(je: lautstaerken, gesamt: gesamt)
         self.ton = ton
-        let r = Room(delegate: self, roomOptions: Self.raumOptionen(ton))
+        let r = Room(delegate: self, roomOptions: Self.raumOptionen(ton, funk: funkHqVorBeitritt(ton)))
         sitzung += 1
         raum = r
         self.kanalId = kanalId
@@ -243,6 +243,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         let art = mikrofonFehler == nil ? "beitritt"
             : (Anrufverwaltung.mikrofonErlaubt() ? "beitritt_ohne_mikro" : "beitritt_ohne_erlaubnis")
         diagMelden(art, tonBeleg(ton).merging(["volleTon": ton.volle, "stumm": stumm]) { $1 })
+        await funkHqAbgleichen("beitritt")
         let vorn = await MainActor.run { UIApplication.shared.applicationState != .background }
         wache.beginnen(vordergrund: vorn)
         schickeTeilnehmer()
@@ -267,6 +268,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     private func raumLoesen(_ r: Room) {
         guard raum === r else { return }
         raum = nil
+        SpracheFunkHq.geteilt.raumWeg()
         StreamTonVerwaltung.geteilt.echoAnstossen()
         wache.beenden()
         kanalId = nil

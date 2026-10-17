@@ -46,15 +46,18 @@ extension SpracheRaum {
     /// Bild-in-Bild-Fenster (`SpracheBildImBildInhalt`, eine `SwiftUIVideoView`)
     /// melden sich also richtig an; ohne jede Ansicht pausiert das Video, und
     /// beim Öffnen kommt es nach einem Takt des SDK und einem Vollbild zurück.
-    static func raumOptionen(_ ton: TonOptionen) -> RoomOptions {
-        guard ton.volle else {
+    ///
+    /// `funk`: Start auf dem Bluetooth-HQ-Weg (`SpracheFunkHq.swift`) —
+    /// dieselbe Software-Verarbeitung, die Bitrate bleibt die des SDK.
+    static func raumOptionen(_ ton: TonOptionen, funk: Bool = false) -> RoomOptions {
+        guard ton.volle || funk else {
             return RoomOptions(adaptiveStream: true, dynacast: true)
         }
         let aufnahme = AudioCaptureOptions(
             echoCancellationMode: .software, autoGainControlMode: .software,
             noiseSuppressionMode: .software)
-        let senden = AudioPublishOptions(
-            encoding: kbpsBegrenzt(ton).map { AudioEncoding(maxBitrate: $0 * 1000) })
+        let senden = AudioPublishOptions(encoding: ton.volle
+            ? kbpsBegrenzt(ton).map { AudioEncoding(maxBitrate: $0 * 1000) } : nil)
         return RoomOptions(defaultAudioCaptureOptions: aufnahme, defaultAudioPublishOptions: senden,
                            adaptiveStream: true, dynacast: true)
     }
@@ -326,6 +329,6 @@ extension SpracheRaum {
             "verbunden": raum?.connectionState == .connected,
             "mikro": raum?.localParticipant.isMicrophoneEnabled() ?? false,
             "wacheTot": wache.tot
-        ]
+        ].merging(funkFelder()) { $1 }
     }
 }

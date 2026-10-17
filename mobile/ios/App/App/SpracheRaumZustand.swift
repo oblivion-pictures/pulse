@@ -71,6 +71,9 @@ extension SpracheRaum {
         if o.contains(.allowBluetoothHFP) { namen.append("allowBluetoothHFP") }
         if o.contains(.allowBluetoothA2DP) { namen.append("allowBluetoothA2DP") }
         if o.contains(.mixWithOthers) { namen.append("mixWithOthers") }
+        if #available(iOS 26.0, *), o.contains(.bluetoothHighQualityRecording) {
+            namen.append("bluetoothHighQualityRecording")
+        }
         return namen
     }
 
