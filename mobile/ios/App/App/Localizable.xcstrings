@@ -1,6 +1,78 @@
 {
   "sourceLanguage": "de",
   "strings": {
+    "%1$@ und %2$@": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ und %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ and %2$@"
+          }
+        }
+      }
+    },
+    "%1$@, %2$@ und %3$@": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ und %3$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ and %3$@"
+          }
+        }
+      }
+    },
+    "%1$@, %2$@ und %3$@ weitere": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ und %3$@ weitere"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ and %3$@ more"
+          }
+        }
+      }
+    },
+    "%@ neue Nachrichten": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ neue Nachrichten"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ new messages"
+          }
+        }
+      }
+    },
     "Abbrechen": {
       "comment": "Pulse-App (Entwicklungssprache Deutsch)",
       "extractionState": "manual",
@@ -265,6 +337,24 @@
         }
       }
     },
+    "Hat dir einen Anhang geschickt": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hat dir einen Anhang geschickt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent you an attachment"
+          }
+        }
+      }
+    },
     "Kamera ausschalten": {
       "comment": "Pulse-App (Entwicklungssprache Deutsch)",
       "extractionState": "manual",
@@ -417,6 +507,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "Message"
+          }
+        }
+      }
+    },
+    "Neue Nachricht": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neue Nachricht"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New message"
           }
         }
       }

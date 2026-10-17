@@ -108,6 +108,31 @@ async def erhoehen_einmal(
         return None
 
 
+async def fuer_konten(
+    redis: Any,
+    user_ids: set[int],
+    um: int,
+    marke: str | None,
+    *,
+    marke_haltbarkeit_s: int,
+) -> dict[int, int | None]:
+    """Je Konto EINMAL hochzählen (nicht je Gerät) und die neuen Stände
+    liefern. Mit ``marke`` (Push-Warteschlange) höchstens einmal je Eintrag,
+    auch wenn er mehrfach versucht wird (:func:`erhoehen_einmal`). Ohne Redis:
+    leer — der Stand bleibt unbekannt."""
+    if redis is None:
+        return {}
+    staende: dict[int, int | None] = {}
+    for uid in user_ids:
+        if marke:
+            staende[uid] = await erhoehen_einmal(
+                redis, uid, um, marke, marke_haltbarkeit_s=marke_haltbarkeit_s
+            )
+        else:
+            staende[uid] = await erhoehen(redis, uid, um)
+    return staende
+
+
 async def lesen(redis: Any, user_id: int) -> int:
     """Aktuellen Stand lesen; 0 für unbekannte Konten und bei Störung."""
     try:
@@ -141,6 +166,7 @@ __all__ = [
     "begrenzen",
     "erhoehen",
     "erhoehen_einmal",
+    "fuer_konten",
     "lesen",
     "schluessel",
     "setzen",

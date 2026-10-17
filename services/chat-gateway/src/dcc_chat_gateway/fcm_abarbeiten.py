@@ -22,7 +22,7 @@ import logging
 from typing import Any
 
 import dcc_chat_gateway.config as chat_config
-from dcc_chat_gateway import fcm, fcm_gelesen
+from dcc_chat_gateway import fcm, fcm_gelesen, fcm_texte
 from dcc_chat_gateway import fcm_warteschlange as ablage
 
 log = logging.getLogger(__name__)
@@ -50,6 +50,10 @@ def _namen(autoren: list[str]) -> str:
     return f"{autoren[0]}, {autoren[1]} und {len(autoren) - 2} weitere"
 
 
+def _autoren(offen: list[dict[str, Any]]) -> list[str]:
+    return list(dict.fromkeys(t.get("autor") or "Pulse" for t in offen))
+
+
 def buendel_mitteilung(offen: list[dict[str, Any]]) -> tuple[str, str | None, bool]:
     """Titel, Text (``None`` = der übliche Einzeltext) und Anhang-Hinweis für
     die EINE Mitteilung eines Bündels.
@@ -61,7 +65,7 @@ def buendel_mitteilung(offen: list[dict[str, Any]]) -> tuple[str, str | None, bo
     nichts. Jetzt nennt der Titel alle Absender und der Text die Zahl; einen
     Anhang behauptet er nicht, weil „3 neue Nachrichten" nicht sagt, welche
     ihn trug. Nur Namen und Zahlen — nie Inhalt."""
-    autoren = list(dict.fromkeys(t.get("autor") or "Pulse" for t in offen))
+    autoren = _autoren(offen)
     if len(offen) == 1:
         return autoren[0], None, bool(offen[0].get("anhang"))
     return _namen(autoren), f"{len(offen)} neue Nachrichten", False
@@ -99,6 +103,9 @@ async def abarbeiten(manager: Any, arbeit: str) -> None:
         await ablage.abschliessen(redis, arbeit)
         return
     titel, text, hat_anhang = buendel_mitteilung(offen)
+    # Dieselbe Mitteilung als Schlüssel — nur iOS-Geräte bekommen sie
+    # (``fcm_texte``); Android bleibt beim fertigen deutschen Text.
+    lokal = fcm_texte.lokal_aus(_autoren(offen), len(offen), hat_anhang)
     # Der Versand läuft abgeschirmt: ``asyncio.to_thread`` lässt sich nicht
     # abbrechen, der Push ginge beim Herunterfahren also trotzdem hinaus —
     # und der nächste Prozess sendete ihn ein zweites Mal (Gegenprüfung P5).
@@ -112,6 +119,7 @@ async def abarbeiten(manager: Any, arbeit: str) -> None:
             anzahl=len(offen),
             plakette_marke=ablage.plakette_marke(arbeit),
             text=text,
+            lokal=lokal,
         )
     )
     try:
