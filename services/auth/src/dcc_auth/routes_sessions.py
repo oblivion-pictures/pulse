@@ -20,6 +20,7 @@ Kept in its own file so ``routes.py`` stays under the size cap.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -33,11 +34,12 @@ from dcc_auth.models import RefreshToken, User, UserSession
 from dcc_auth.routes import _get_current_user, _hash_ip
 from dcc_auth.schemas import SessionOut, SessionsRevokeAllOut
 from dcc_auth.session_link import (
+    as_sid,
     parse_sid,
     revoke_session_of_token_fallback,
     revoke_sessions_of_tokens,
 )
-from dcc_auth.widerruf import konto_sperren
+from dcc_auth.widerruf import bearer_kette, konto_sperren
 
 router = APIRouter()
 
@@ -45,9 +47,10 @@ router = APIRouter()
 def _is_current(rt: RefreshToken, current_ip_hash: str, current_ua: str | None) -> bool:
     """Heuristic: same IP-hash AND same user-agent string.
 
-    Not strictly accurate (two browsers on the same machine collide); good
-    enough to drive a "this device" badge in the UI and to gate the
-    "revoke all except current" sweep without surprising the caller.
+    Not strictly accurate (two browsers on the same machine collide, and a
+    changed IP since the last rotation misses); good enough to drive a "this
+    device" badge in the UI. Den Sammel-Widerruf steuert sie nur noch als
+    Rückfall (``_ist_eigene``).
     """
     if rt.ip_hash is None or rt.ip_hash != current_ip_hash:
         return False
@@ -156,6 +159,29 @@ async def revoke_session(
     return None
 
 
+def _ist_eigene(
+    request: Request, *, keep_sid: str | None, user_agent: str | None
+) -> Callable[[RefreshToken], bool]:
+    """Erkennt die Refresh-Token des aufrufenden Geräts — in dieser Rangfolge:
+
+    1. **Bearer:** dieselbe Anmelde-Kette (``widerruf.bearer_kette``) — das
+       Token beweist sie, und sie überlebt jede Rotation.
+    2. **Cookie** (Anmeldung ohne Bearer): die Token, die an der Sitzung
+       dieses Cookies hängen (``refresh_tokens.session_id``, Migration 0049;
+       ``/session/renew`` hängt sie beim Ablösen um).
+    3. **Weder noch** (Cookie ohne lesbare Kennung kann hier nicht ankommen,
+       ``_get_current_user`` hätte abgelehnt; der Zweig bleibt als Rückfall):
+       IP-Hash + UA wie ``_is_current``.
+    """
+    kette = bearer_kette(request)
+    if kette is not None:
+        return lambda rt: rt.family_id is not None and str(rt.family_id) == kette
+    if keep_sid is not None:
+        return lambda rt: as_sid(rt.session_id) == keep_sid
+    ip_hash = _hash_ip(request)
+    return lambda rt: _is_current(rt, ip_hash, user_agent)
+
+
 @router.delete("/sessions", response_model=SessionsRevokeAllOut)
 async def revoke_all_sessions(
     request: Request,
@@ -165,18 +191,20 @@ async def revoke_all_sessions(
 ) -> SessionsRevokeAllOut:
     """Revoke every active session of the caller *except* the current one.
 
-    "Current" is the same heuristic the list endpoint uses (IP-hash +
-    UA). If nothing matches — e.g. the caller is on a brand-new device
-    whose refresh-token row hasn't been written yet for some reason — we
-    sweep them all. Dann ist auch die Kette des Aufrufers zu Ende: sein
-    Zugriffstoken gilt am auth-svc nicht mehr (``widerruf.py``), nur noch
-    bei chat-gateway & Co. bis zum Ablauf (≤ 15 min) — die laufende Anfrage
-    beendet das nicht, die nächste am auth-svc meldet ihn ab.
+    Welche Refresh-Token „das eigene Gerät“ sind, steht in ``_ist_eigene``:
+    die Anmelde-Kette des Bearers, sonst die Token am Cookie dieser Anfrage,
+    nur ohne beides die IP-Hash-+-UA-Heuristik der Liste. Bis 2026-10-17 galt
+    allein die Heuristik — wechselte die IP seit der letzten Rotation
+    (Mobilfunk-CGNAT, IPv4/IPv6), traf der Aufruf auch die eigene Kette, und
+    seit ``widerruf.py`` meldete das den Aufrufer sofort ab. Trifft nichts
+    (Heuristik ohne Treffer), wird alles beendet; dann gilt das Zugriffstoken
+    des Aufrufers am auth-svc nicht mehr, nur noch bei chat-gateway & Co. bis
+    zum Ablauf (≤ 15 min), und die nächste Anfrage am auth-svc meldet ihn ab.
     """
     await konto_sperren(session, current.id)  # vor jedem Widerruf, ``widerruf.py``
     now = datetime.now(tz=UTC)
-    current_ip_hash = _hash_ip(request)
-    incoming_ua = (user_agent[:1000] if user_agent else None) or None
+    keep_sid = parse_sid(request.cookies.get(COOKIE_NAME))
+    ist_eigene = _ist_eigene(request, keep_sid=keep_sid, user_agent=user_agent)
 
     stmt = select(RefreshToken).where(
         RefreshToken.user_id == current.id,
@@ -187,9 +215,7 @@ async def revoke_all_sessions(
 
     beendet: list[RefreshToken] = []
     for rt in rows:
-        stored_ua = rt.user_agent or None
-        is_current = rt.ip_hash == current_ip_hash and stored_ua == incoming_ua
-        if is_current:
+        if ist_eigene(rt):
             continue
         rt.revoked_at = now
         beendet.append(rt)
@@ -199,13 +225,6 @@ async def revoke_all_sessions(
     # "sign out everywhere else". Preserve the caller's own current cookie so
     # this request's device stays signed in. validate_session rejects any row
     # with revoked_at set, so the other cookies die immediately.
-    current_sid = request.cookies.get(COOKIE_NAME)
-    keep_sid: str | None = None
-    if current_sid:
-        try:
-            keep_sid = str(uuid.UUID(current_sid))
-        except ValueError:
-            keep_sid = None
     cond = [
         UserSession.user_id == current.id,
         UserSession.revoked_at.is_(None),
