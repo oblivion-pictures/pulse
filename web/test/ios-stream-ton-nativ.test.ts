@@ -134,3 +134,15 @@ test('S2: die Seite räumt beim Laden ab, was eine frühere nativ gestartet hat'
   const swift = quelle('StreamTonPlugin.swift');
   assert.match(swift, /kette\.einreihen\(\{ await StreamTonVerwaltung\.geteilt\.alleStoppen\(\) \}\)/);
 });
+
+test('S3: beim Beitritt holt der Stream-Ton seine Anforderung erst nach dem Beitritt zurück', () => {
+  const neustart = quelle('SpracheRaumNeustart.swift');
+  assert.match(neustart, /await maschineNeu\(grund: "beitritt", streamTonZurueck: false\)/);
+  assert.match(neustart, /if streamTonZurueck \{ StreamTonSitzung\.geteilt\.automatikAn/);
+  const raum = quelle('SpracheRaum.swift');
+  // `defer` direkt nach dem Herstellen: gilt für jeden Ausgang des Beitritts.
+  assert.match(
+    raum,
+    /let streamTonZurueck = await sitzungFrischHerstellen\(\)[\s\S]{0,300}defer \{ if streamTonZurueck \{ StreamTonSitzung\.geteilt\.automatikAn\(grund: "beitritt"\) \} \}/
+  );
+});

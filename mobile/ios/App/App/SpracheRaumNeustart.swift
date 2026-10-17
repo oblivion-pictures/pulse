@@ -99,7 +99,11 @@ extension SpracheRaum {
     /// prozessweiten Zustand vollständig neu herstellen — **nur, wenn kein
     /// Anruf der App läuft**. Läuft einer, gehört die Session ihm, und alles
     /// hier bliebe ihm fremd.
-    func sitzungFrischHerstellen() async {
+    /// `true`, wenn die Maschine neu angestossen wurde — dann hält der
+    /// Stream-Ton seine Session-Anforderung zurück, bis der Beitritt steht, und
+    /// der Rufer gibt sie mit `StreamTonSitzung.automatikAn` frei (S3).
+    @discardableResult
+    func sitzungFrischHerstellen() async -> Bool {
         await rueckgabeAbwarten()
         let lage = await MainActor.run { () -> (frei: Bool, haengt: Bool) in
             let v = Anrufverwaltung.geteilt
@@ -117,13 +121,14 @@ extension SpracheRaum {
             await MainActor.run { Anrufverwaltung.geteilt.sessionZurueckgeben() }
         } else if !lage.frei {
             diagMelden("beitritt_neben_anruf", [:])
-            return
+            return false
         }
         if anrufPausiert {
             diagMelden("anruf_pause_haengt", [:])
             anrufPausiert = false
         }
-        await maschineNeu(grund: "beitritt")
+        await maschineNeu(grund: "beitritt", streamTonZurueck: false)
+        return true
     }
 
     /// **Nach dem Auflegen gibt CallKit die Session erst mit `didDeactivate`
@@ -159,7 +164,15 @@ extension SpracheRaum {
     /// Freigeben nach, sobald es erlaubt ist (`SpracheMikroWache`). „Nur
     /// Ausgabe" gibt es allein bei fehlender Mikrofon-Erlaubnis — sonst wäre
     /// ein vorübergehender Fehlschlag ein dauerhaft taubes Mikrofon.
-    func maschineNeu(grund: String) async {
+    ///
+    /// `streamTonZurueck: false` (nur beim Beitritt, Gegenprüfung S3): der
+    /// Stream-Ton holt seine Anforderung NICHT gleich zurück. Sonst machte
+    /// ER den Übergang „nichts aktiv → aktiv" (mit `.playback`), und der Kanal
+    /// stellte danach nur noch die Kategorie um — ein anderer Weg als der, mit
+    /// dem der Mikrofon-Befund geheilt und am Gerät geprüft wurde. So aktiviert
+    /// die Maschine des Kanals wie ohne Stream; die Session bleibt solange
+    /// aktiv, weil das Loslassen ohne Automatik nichts deaktiviert.
+    func maschineNeu(grund: String, streamTonZurueck: Bool = true) async {
         let fehler = await MainActor.run { () -> String? in
             let v = Anrufverwaltung.geteilt
             guard !v.callkitAktiv, !v.ohneCallKit else { return nil }
@@ -172,7 +185,7 @@ extension SpracheRaum {
             try? am.setEngineAvailability(.none)
             am.audioSession.isAutomaticConfigurationEnabled = true
             let fehler = Self.maschineFreigebenJetzt()
-            StreamTonSitzung.geteilt.automatikAn(grund: "maschine_neu")
+            if streamTonZurueck { StreamTonSitzung.geteilt.automatikAn(grund: "maschine_neu") }
             return fehler
         }
         diagMelden(fehler == nil ? "maschine_neu" : "maschine_neu_fehler",

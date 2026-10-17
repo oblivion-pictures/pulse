@@ -175,7 +175,11 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // **Jeder Beitritt beginnt bei einer sauberen Kette** — was ein
         // früherer Raum oder Anruf prozessweit hinterliess, gilt nicht mit
         // (`SpracheRaumNeustart.swift`).
-        await sitzungFrischHerstellen()
+        let streamTonZurueck = await sitzungFrischHerstellen()
+        // Der Stream-Ton bekommt seine Session-Anforderung erst zurück, wenn
+        // Verbinden und Mikrofon durch sind — auch auf jedem Fehlerweg (S3,
+        // `SpracheRaumNeustart.maschineNeu`).
+        defer { if streamTonZurueck { StreamTonSitzung.geteilt.automatikAn(grund: "beitritt") } }
         // **Taub und Lautstärken ZUERST, nicht am Ende.** Bis zum 2026-10-11
         // stand `taub = taubStart` als letzte Zeile — dazwischen abonniert
         // LiveKit schon die vorhandenen Spuren und stellte sie nach dem ALTEN
