@@ -198,7 +198,7 @@
   }
 </script>
 
-<div class="relative flex min-h-dvh overflow-hidden">
+<div class="relative flex min-h-dvh overflow-hidden ios:pt-[var(--safe-top)] ios:pb-[var(--safe-bottom)]">
   <AuthBuehne />
 
   <AuthBrandPanel

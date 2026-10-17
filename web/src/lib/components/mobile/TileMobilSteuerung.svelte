@@ -16,6 +16,8 @@
   Hochformat gelockt war — im Hochformat sind links und rechts null. Mit dem
   Querformat fürs Stream-Vollbild (Punkt 27) wandert die Aussparung an eine
   Seite, und genau dort sitzen Schliessen, Lautstärke und Vollbild-Ausstieg.
+  Seitlich gilt das nur im Vollbild: in der KACHEL hat die Shell die Aussparung
+  schon abgezogen (sonst stünde sie doppelt, `seiteLinks`).
   Oben und unten gilt `top-2`/`bottom-2` nur in der KACHEL (sie liegt nicht am
   Bildrand). Im selbst gebauten Vollbild (`TileShell`, `fixed inset-0`) liegen
   die Knöpfe AM Bildrand: im Hochformat unter der Dynamic Island und über dem
@@ -91,6 +93,12 @@
   const obenKlasse = $derived(isFullscreen ? 'ios:top-[calc(0.5rem+var(--safe-top))]' : '');
   const untenKlasse = $derived(isFullscreen ? 'ios:bottom-[calc(0.5rem+var(--safe-bottom))]' : '');
 
+  // Die Aussparung zählt nur im selbst gebauten Vollbild (`fixed inset-0`, am
+  // Bildrand). In der KACHEL hat sie die Shell schon abgezogen
+  // (`routes/app/+layout.svelte`: `ios:handy:pl/pr-[var(--safe-…)]`) — ein
+  // zweites Mal stünde der Abstand doppelt.
+  const seiteLinks = $derived(isFullscreen ? 'var(--safe-left)' : '0px');
+  const seiteRechts = $derived(isFullscreen ? 'var(--safe-right)' : '0px');
   // 44 pt (`size-11`): die Mindestfläche, die Apple und Material für einen
   // Finger nennen. Vorher 40 pt, die Lautstärke-Knöpfe 36 pt.
   const RUND =
@@ -103,7 +111,7 @@
   <button
     type="button"
     class="absolute top-2 z-30 {RUND} {obenKlasse} {fadeClass}"
-    style="left: calc(0.5rem + var(--safe-left))"
+    style="left: calc(0.5rem + {seiteLinks})"
     onclick={() => (isFullscreen ? onToggleFullscreen() : onHide?.())}
     aria-label={isFullscreen ? m.tile_shell_fullscreen_exit() : m.tile_shell_hide_tile()}
     data-pip-hide
@@ -122,7 +130,7 @@
 {#if onToggleChat || onToggleQueue || video}
   <div
     class="absolute top-2 z-30 flex items-center gap-2 {obenKlasse} {fadeClass}"
-    style="right: calc(0.5rem + var(--safe-right))"
+    style="right: calc(0.5rem + {seiteRechts})"
   >
     <BildImBildKnopf {video} klasse={RUND} pipHide testid={`${testidPrefix}-pip-float`} />
     {#if onToggleQueue}
@@ -158,7 +166,7 @@
   <button
     type="button"
     class="absolute bottom-2 z-20 {RUND}"
-    style="right: calc(0.5rem + var(--safe-right))"
+    style="right: calc(0.5rem + {seiteRechts})"
     onclick={onToggleFullscreen}
     aria-label={m.tile_shell_fullscreen_enter()}
     data-pip-hide
@@ -175,7 +183,7 @@
 {#if hatLautstaerke}
   <div
     class="absolute bottom-2 z-30 {untenKlasse} {fadeClass}"
-    style="left: calc(0.5rem + var(--safe-left))"
+    style="left: calc(0.5rem + {seiteLinks})"
   >
     <div
       class="flex items-center gap-0.5 rounded-full bg-black/45 px-1 text-white backdrop-blur-sm"

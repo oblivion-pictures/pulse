@@ -29,7 +29,7 @@
   }
 </script>
 
-<div class="bg-background text-foreground min-h-dvh">
+<div class="bg-background text-foreground min-h-dvh ios:pt-[var(--safe-top)] ios:pb-[var(--safe-bottom)]">
   <div class="mx-auto max-w-3xl px-5 py-10 nicht-handy:px-8 nicht-handy:py-14">
     <header class="mb-8 flex items-center justify-between gap-4">
       <a href="/" class="flex items-center gap-2.5">

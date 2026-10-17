@@ -37,7 +37,7 @@
   } = $props();
 </script>
 
-<div class="flex min-h-dvh {outerClass}">
+<div class="flex min-h-dvh ios:pt-[var(--safe-top)] ios:pb-[var(--safe-bottom)] {outerClass}">
   <AuthBrandPanel
     {headline}
     {headlineSub}

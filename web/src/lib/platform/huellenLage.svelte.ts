@@ -44,7 +44,26 @@ class HuellenLage {
       Keyboard.addListener('keyboardWillShow', () => tastatur(true)),
       Keyboard.addListener('keyboardWillHide', () => tastatur(false))
     ].map((h) => h.catch(() => undefined));
+    // Sicherheitsnetz: `keyboardWillHide` kommt nicht immer (App im Hintergrund
+    // während die Tastatur steht, Feld verliert den Fokus ohne neues Feld) —
+    // sonst bliebe `--safe-bottom` bei 0 und der Home-Balken verdeckte die
+    // untere Leiste.
+    const versteckt = () => {
+      if (document.visibilityState === 'hidden') tastatur(false);
+    };
+    const fokusWeg = () => {
+      setTimeout(() => {
+        const fokus = document.activeElement as HTMLElement | null;
+        const eingabe =
+          fokus && (fokus.matches('input, textarea, select') || fokus.isContentEditable);
+        if (!eingabe) tastatur(false);
+      }, 0);
+    };
+    document.addEventListener('visibilitychange', versteckt);
+    document.addEventListener('focusout', fokusWeg);
     return () => {
+      document.removeEventListener('visibilitychange', versteckt);
+      document.removeEventListener('focusout', fokusWeg);
       window.removeEventListener('resize', querLesen);
       fenster.removeEventListener('change', querLesen);
       screen.orientation?.removeEventListener('change', querLesen);
