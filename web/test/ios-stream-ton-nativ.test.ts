@@ -164,3 +164,8 @@ test('S5: CallKit-Übernahme hält die Stream-Geräte an, erst die Rückgabe lä
   assert.match(sitzung, /\} else if anrufFuehrt \{[\s\S]{0,200}return/);
   assert.match(quelle('StreamTonGeraet.swift'), /if StreamTonSitzung\.geteilt\.anrufHaelt \{/);
 });
+
+test('S6: keine frische URL zählt als Fehlschlag (führt nach drei zum Rückfall)', () => {
+  const src = readFileSync(new URL('../src/lib/stream/nativerStreamTon.ts', import.meta.url), 'utf8');
+  assert.match(src, /if \(!url\) \{\s*this\.#fehlschlag\('url'\);\s*return;\s*\}/);
+});

@@ -253,7 +253,13 @@ export class NativerStreamTon implements Teilnehmer {
     if (gen !== this.#gen || !this.zustaendig) return;
     const url = await this.#neueUrl();
     if (gen !== this.#gen || !this.zustaendig || this.#pausiert) return;
-    if (!url) return;
+    // Keine URL (Netz weg, 5xx bei `GET /whep`) ist ein Fehlschlag wie jeder
+    // andere — sonst bliebe die Kachel stumm, ohne Versuch und ohne Rückfall,
+    // und die Audiospur der WebView aus (Gegenprüfung S6).
+    if (!url) {
+      this.#fehlschlag('url');
+      return;
+    }
     void this.#starten(url, whepPfad(url));
   }
 
