@@ -30,13 +30,14 @@
  * und zwar nur unter WebKits `ambient` (Halter `streamton`), sodass er die
  * Session-Regeln des nativen Wegs nicht bricht. Verweigert WebKit trotzdem,
  * wartet {@link bildAnlaufen} auf den Kontext und versucht es erneut — ohne
- * Geste (Eigentümer-Entscheid: keine Knöpfe zum Antippen). Erst wenn auch das
- * scheitert, zeigt die Kachel den Knopf und jede Berührung startet erneut —
- * der letzte Rückfall.
+ * Geste (Eigentümer-Entscheid: keine Knöpfe zum Antippen). Parallel dazu
+ * startet ab dem ersten Versuch jede Berührung irgendwo das Bild erneut
+ * ({@link aufGesteAbspielen}) — auch dann, wenn WebKit gar nicht antwortet.
+ * Erst wenn alles scheitert, zeigt die Kachel zusätzlich den Knopf.
  */
 
 /** Was beim Start herauskam — für die Diagnose und die Kachel. */
-export type BildErgebnis = 'spielt' | 'gesperrt' | 'abgebrochen' | 'fehler';
+export type BildErgebnis = 'spielt' | 'gesperrt' | 'abgebrochen' | 'fehler' | 'haengt';
 
 /**
  * Ein abgelehntes `play()` deuten. `NotAllowedError` = Richtlinie (braucht eine
@@ -66,24 +67,54 @@ export interface Abspielbar {
 export const NACH_KONTEXT_MS = [150, 350, 700, 1500] as const;
 
 /**
+ * Wie lange {@link bildAnlaufen} höchstens auf etwas wartet, das WebKit nicht
+ * zusagt. **Gesetzt, nicht gemessen.** Grund: `AudioContext.resume()` bleibt in
+ * WebKit offen, solange der Kontext nicht starten darf (die Zusage wird erst
+ * beim Übergang nach `running` eingelöst, aus dem WebKit-Quelltext gefolgert,
+ * nicht am Gerät beobachtet), und `play()` an einem MediaStream sagt erst zu,
+ * wenn ein Bild da ist. Ohne Frist hinge die Kachel dann ewig — weder Bild
+ * noch Knopf noch Diagnose. Anlass: TestFlight 11.1 zeigte auch mit beiden
+ * Fixes auf main kein Bild (2026-10-17); ob WebKit dort sperrte oder hing, ist
+ * nicht gemessen — `stream_bild_start` erreichte den Server bis dahin nie.
+ */
+export const FRISTEN = { kontext: 2000, play: 5000 } as const;
+
+/** `p` oder nach `ms` der Ersatzwert — der Zeitgeber wird immer abgeräumt. */
+function mitFrist<T>(p: Promise<T>, ms: number, ersatz: T): Promise<T> {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  const ablauf = new Promise<T>((r) => {
+    t = setTimeout(() => r(ersatz), ms);
+  });
+  return Promise.race([p, ablauf]).finally(() => clearTimeout(t));
+}
+
+/**
  * `play()` versuchen; verweigert WebKit (`gesperrt`), auf den unhörbaren
  * Kontext warten (`stummerKontext.ts`) und in {@link NACH_KONTEXT_MS} erneut.
  * Der erste Versuch läuft SYNCHRON an — aus einem Knopf heraus zählt er als
  * Geste. `noch()` = gilt der Versuch noch (Kachel offen, dasselbe Element)?
+ * Jedes Warten auf WebKit ist durch {@link FRISTEN} begrenzt: ein `play()`
+ * ohne Antwort ergibt `haengt`, ein Kontext ohne Antwort zählt als nicht da.
  */
 export async function bildAnlaufen(
   el: Abspielbar,
   kontextBereit: () => Promise<boolean>,
   warten: (ms: number) => Promise<void>,
-  noch: () => boolean
+  noch: () => boolean,
+  fristen: { kontext: number; play: number } = FRISTEN
 ): Promise<BildErgebnis> {
   const versuch = (): Promise<BildErgebnis> =>
-    el.play().then(
-      () => 'spielt' as const,
-      (e: unknown) => bildErgebnis(e)
+    mitFrist(
+      el.play().then(
+        () => 'spielt' as const,
+        (e: unknown) => bildErgebnis(e)
+      ),
+      fristen.play,
+      'haengt'
     );
   let ergebnis = await versuch();
-  if (ergebnis !== 'gesperrt' || !(await kontextBereit())) return ergebnis;
+  if (ergebnis !== 'gesperrt') return ergebnis;
+  if (!(await mitFrist(kontextBereit(), fristen.kontext, false))) return ergebnis;
   for (const ms of NACH_KONTEXT_MS) {
     await warten(ms);
     if (!noch()) return ergebnis;

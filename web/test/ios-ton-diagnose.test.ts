@@ -149,8 +149,12 @@ test('jeder Anlass der Hülle ist im Web als Anlass bekannt', () => {
     assert.ok(arten.has(a), `Hülle meldet ${a} nicht`);
     assert.ok(d.ANLAESSE.has(a), `${a} ist kein Anlass`);
   }
-  // Gewöhnlicher Verlauf löst nie aus.
-  for (const a of ['beitritt', 'verlassen', 'unterbrechung_beginn', 'maschine_neu', 'wache_erholt']) {
+  // Ein HQ-Bild, das nicht anläuft, löst aus.
+  for (const a of ['bild_gesperrt', 'bild_haengt', 'bild_fehler']) {
+    assert.ok(d.ANLAESSE.has(a), `${a} ist kein Anlass`);
+  }
+  // Gewöhnlicher Verlauf und ein gelungener Bildstart lösen nie aus.
+  for (const a of ['beitritt', 'verlassen', 'unterbrechung_beginn', 'maschine_neu', 'wache_erholt', 'bild_spielt', 'bild_nach_geste', 'bild_abgebrochen']) {
     assert.ok(!d.ANLAESSE.has(a), `${a} darf kein Anlass sein`);
   }
 });

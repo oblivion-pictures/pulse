@@ -50,7 +50,13 @@ export const ANLAESSE: ReadonlySet<string> = new Set([
   'callkit_haengt',
   'anruf_pause_haengt',
   // „Volle Tonqualität" nach einem Anruf nicht zurückgestellt (`SpracheRaumNeustart.swift`).
-  'volle_ton_zurueck_fehler'
+  'volle_ton_zurueck_fehler',
+  // HQ-Kachel mit nativem Ton ohne Bild (`hqStreamManager.svelte.ts`,
+  // `stream/bildStart.ts`) — der einzige Weg, auf dem ein Bildstart der
+  // iOS-Hülle den Server erreicht.
+  'bild_gesperrt',
+  'bild_haengt',
+  'bild_fehler'
 ]);
 
 export const SAMMEL_MS = 30_000;

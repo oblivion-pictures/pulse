@@ -39,7 +39,8 @@ import {
   webViewTonAbschalten,
   type NativStand
 } from './nativerStreamTon';
-import { aufGesteAbspielen, bildAnlaufen, bildDiagnose } from './bildStart';
+import { aufGesteAbspielen, bildAnlaufen, bildDiagnose, type BildErgebnis } from './bildStart';
+import { iosTonMelden } from '$lib/diagnose/iosTonDiagnose';
 import { streamTonNativDa } from '$lib/platform/iosStreamTonNativ';
 import { FreezeRecycler, FREEZE_RECYCLE_MAX } from './freezeRecycle';
 import { chatApi } from '$lib/api/chat';
@@ -219,8 +220,9 @@ export class ManagedHqStream {
    * Ton spielt die WebView keinen Ton, und WebKit verweigert das Bild im
    * Stromsparmodus ohne Geste (`bildStart.ts`). Der Hauptweg ist der
    * unhörbare Kontext (`stummerKontext.ts`): auf ihn warten, erneut starten.
-   * Erst wenn auch das scheitert, Knopf zeigen und bei der nächsten Berührung
-   * erneut — der letzte Rückfall.
+   * Zugleich startet ab dem ersten Versuch jede Berührung das Bild erneut —
+   * auch wenn WebKit gar nicht antwortet. Den Knopf gibt es nur bei einer
+   * Sperre, die nach allen Versuchen bleibt.
    */
   #bildAbspielen(el: HTMLVideoElement): void {
     if (!this.#nativ) {
@@ -229,17 +231,31 @@ export class ManagedHqStream {
     }
     this.#gesteLoesen();
     const noch = () => !this.#disposed && this.#videoEl === el;
-    void bildAnlaufen(el, stummerKontextBereit, warte, noch).then((ergebnis) => {
-      melde('stream', 'stream_bild_start', `Bild: ${ergebnis}`, bildDiagnose(el, this.stream, ergebnis));
-      if (ergebnis === 'spielt') this.bildGesperrt = false;
-      if (ergebnis !== 'gesperrt' || !noch()) return;
-      this.bildGesperrt = true;
-      this.#gesteAbbauen = aufGesteAbspielen(el, document, () => {
-        this.#gesteAbbauen = null;
-        this.bildGesperrt = false;
-        melde('stream', 'stream_bild_start', 'Bild nach Geste', bildDiagnose(el, this.stream, 'spielt'));
-      });
+    const abbauen = aufGesteAbspielen(el, document, () => {
+      if (this.#gesteAbbauen === abbauen) this.#gesteAbbauen = null;
+      this.bildGesperrt = false;
+      this.#bildMelden(el, 'nach_geste', 'spielt');
     });
+    this.#gesteAbbauen = abbauen;
+    void bildAnlaufen(el, stummerKontextBereit, warte, noch).then((ergebnis) => {
+      this.#bildMelden(el, ergebnis, ergebnis);
+      // Die Geste kam zuvor, oder ein neuerer Versuch hat übernommen.
+      if (!noch() || this.#gesteAbbauen !== abbauen) return;
+      if (ergebnis === 'spielt') {
+        this.#gesteLoesen();
+        this.bildGesperrt = false;
+      } else if (ergebnis === 'gesperrt') {
+        this.bildGesperrt = true;
+      }
+    });
+  }
+
+  /** Ein Bildstart in die App-Diagnose UND in den iOS-Bericht: nur dort kommt
+   *  er beim Server an (`iosTonDiagnose.ts`, Anlässe `bild_*`). */
+  #bildMelden(el: HTMLVideoElement, art: string, ergebnis: BildErgebnis): void {
+    const werte = bildDiagnose(el, this.stream, ergebnis);
+    melde('stream', 'stream_bild_start', `Bild: ${art}`, werte);
+    iosTonMelden(`bild_${art}`, werte);
   }
 
   /** Den Geste-Zuhörer von `aufGesteAbspielen` abbauen, falls einer hängt. */

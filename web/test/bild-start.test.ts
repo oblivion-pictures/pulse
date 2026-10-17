@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import {
+  FRISTEN,
   NACH_KONTEXT_MS,
   aufGesteAbspielen,
   bildAnlaufen,
@@ -161,4 +162,38 @@ test('läuft sofort: kein Warten auf den Kontext', async () => {
   const r = await bildAnlaufen(v.el, async () => ((gefragt = true), true), async () => undefined, () => true);
   assert.equal(r, 'spielt');
   assert.equal(gefragt, false);
+});
+
+// TestFlight 11.1 (2026-10-17): auch mit beiden Fixes kein Bild. Ein Warten auf
+// WebKit ohne Antwort darf die Kachel nie ewig festhalten.
+const kurz = { kontext: 20, play: 20 };
+
+test('play() ohne Antwort ergibt nach der Frist „haengt“', async () => {
+  const el: Abspielbar = {
+    paused: true,
+    readyState: 0,
+    videoWidth: 0,
+    videoHeight: 0,
+    play: () => new Promise<void>(() => undefined)
+  };
+  const r = await bildAnlaufen(el, async () => true, async () => undefined, () => true, kurz);
+  assert.equal(r, 'haengt');
+});
+
+test('Kontext ohne Antwort zählt als nicht da: „gesperrt“ ohne Wiederholen', async () => {
+  const v = video();
+  const r = await bildAnlaufen(
+    v.el,
+    () => new Promise<boolean>(() => undefined),
+    async () => undefined,
+    () => true,
+    kurz
+  );
+  assert.equal(r, 'gesperrt');
+  assert.equal(v.rufe, 1);
+});
+
+test('die Fristen sind endlich und der Kontext wartet kürzer als play()', () => {
+  assert.ok(FRISTEN.kontext > 0 && FRISTEN.play > 0);
+  assert.ok(FRISTEN.kontext <= FRISTEN.play);
 });
