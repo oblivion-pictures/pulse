@@ -18,8 +18,7 @@
   import ComposerDisabledBanner from './ComposerDisabledBanner.svelte';
   import { plainifyMentions, snippet80 } from './messageRender';
   import { Button } from '$lib/components/ui/button';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-  import PinIcon from '@lucide/svelte/icons/pin';
+  import PinListe from './chat/PinListe.svelte';
   import type { Channel, Message } from '$lib/api/types';
   import type { AnhangAngabe } from '$lib/krypto/nachrichtNutzlast';
   import { auth } from '$lib/stores/auth.svelte';
@@ -443,61 +442,20 @@
            Direktnachricht verschluesselt ist, sagt ein immer sichtbares
            Schloss nichts — der Gegenfall sperrt das Eingabefeld mit Grund. -->
       {#if pinCount > 0}
-        <!-- "📌 N" + Pin-Liste als Dropdown (Desktop genügt laut Scope; auf
-             Mobil ist derselbe Button klickbar, nur nicht extra gestylt). -->
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            {#snippet child({ props })}
-              <Button
-                {...props}
-                variant="ghost"
-                size="icon"
-                class="relative"
-                onclick={ladePins}
-                title={pm.chat_view_pins_title({ count: pinCount })}
-                aria-label={pm.chat_view_pins_title({ count: pinCount })}
-                data-testid="pins-toggle"
-              >
-                <PinIcon class="text-text-muted size-4" />
-                <span
-                  class="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold"
-                  >{pinCount}</span
-                >
-              </Button>
-            {/snippet}
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content align="end" class="max-h-80 w-80 overflow-y-auto" data-testid="pins-list">
-            <DropdownMenu.Item
-              class="text-text-muted text-xs font-semibold"
-              disabled
-            >
-              {pm.chat_view_pins_title({ count: pinCount })}
-            </DropdownMenu.Item>
-            {#each pins ?? [] as p (p.id)}
-              <DropdownMenu.Item
-                class="cursor-pointer gap-2"
-                onclick={() => jumpToMessage?.(p.id)}
-                data-testid="pin-entry"
-              >
-                <PinIcon class="text-primary size-3.5 shrink-0" />
-                <span class="min-w-0">
-                  <span class="text-text-bright block truncate text-xs font-semibold"
-                    >{authorName(p)}</span
-                  >
-                  <span class="text-text-muted block truncate text-xs"
-                    >{snippet80(p.content)}</span
-                  >
-                </span>
-              </DropdownMenu.Item>
-            {/each}
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
+        <PinListe
+          {handy}
+          {pinCount}
+          {pins}
+          {authorName}
+          onOeffnen={ladePins}
+          onSprung={(id) => jumpToMessage?.(id)}
+        />
       {/if}
       {#if headerKind === 'gruppe' && onGruppenBlatt}
         <Button
           variant="ghost"
           size="icon"
-          class="ml-auto"
+          class="ml-auto handy:size-11"
           onclick={onGruppenBlatt}
           aria-label={pm.gruppen_blatt_oeffnen()}
           data-testid="group-sheet-toggle"
@@ -509,6 +467,7 @@
         <Button
           variant="ghost"
           size="icon"
+          class="handy:size-11"
           onclick={() => (medienOffen = true)}
           aria-label={pm.medien_titel()}
           data-testid="media-sheet-toggle"
@@ -520,7 +479,7 @@
         <Button
           variant="ghost"
           size="icon"
-          class="ml-auto"
+          class="ml-auto handy:size-11"
           onclick={onAnrufen}
           aria-label={pm.anruf_starten()}
           data-testid="dm-call-button"

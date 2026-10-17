@@ -10,7 +10,9 @@
  *
  * **Ausgelöst wird allein der ÜBERGANG**, nie der Zustand — sonst wäre ein im
  * Querformat verlassenes Vollbild sofort wieder da (dieselbe Falle, die der
- * alte, stillgelegte Kipp-Effekt in `TileShell` beschreibt).
+ * frühere, stillgelegte Kipp-Effekt in `TileShell` hatte, bis er entfernt
+ * wurde: ein Effekt, der `isFullscreen` liest, fordert nach dem Verlassen
+ * sofort wieder an).
  *
  * **Welche Kachel:** genau eine offene — oder bei mehreren die zuletzt
  * angetippte. Ohne Tipp bei mehreren keine: zwei Kacheln gleichzeitig im

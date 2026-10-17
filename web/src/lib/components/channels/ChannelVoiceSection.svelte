@@ -12,13 +12,8 @@
   import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
   import Volume2Icon from '@lucide/svelte/icons/volume-2';
   import LockIcon from '@lucide/svelte/icons/lock';
-  import PencilIcon from '@lucide/svelte/icons/pencil';
-  import ShieldIcon from '@lucide/svelte/icons/shield';
-  import Trash2Icon from '@lucide/svelte/icons/trash-2';
   import ZapIcon from '@lucide/svelte/icons/zap';
   import ZapOffIcon from '@lucide/svelte/icons/zap-off';
-  import FlagIcon from '@lucide/svelte/icons/flag';
-  import { goto } from '$app/navigation';
   import { voice } from '$lib/voice/livekit.svelte';
   import { voiceAutoConnect } from '$lib/voice/autoconnect.svelte';
   import { activeServer } from '$lib/stores/active-server.svelte';
@@ -42,6 +37,10 @@
   import { Perm } from '$lib/permissions/bitfield';
   import GastLinkDialog from '$lib/gast/GastLinkDialog.svelte';
   import ChannelTopicTooltip from '../ChannelTopicTooltip.svelte';
+  import ZeilenKontextInhalt from '$lib/components/menu/ZeilenKontextInhalt.svelte';
+  import ZeilenMenue from '$lib/components/mobile/ZeilenMenue.svelte';
+  import type { ZeilenAktion } from '$lib/components/menu/zeilenAktionen';
+  import { kanalAktionen } from '$lib/channels/kanalAktionen';
   import VoiceChannelPresence from './VoiceChannelPresence.svelte';
   import DeviceChannelRows from '$lib/devices/components/DeviceChannelRows.svelte';
   import type { Device } from '$lib/api/devices';
@@ -109,6 +108,59 @@
       });
     }
   }
+
+  // Die Aktionen einer Sprachkanal-Zeile — Rechtsklick, Langdruck und ⋯-Knopf
+  // am Handy zeigen dieselbe Liste. Auto-Connect für alle Mitglieder (nicht nur
+  // Admins); der Raumklang-Schalter nur am Rechner.
+  function sprachAktionen(c: Channel): ZeilenAktion[] {
+    const autoConnect = voiceAutoConnect.isTarget(c.id);
+    return kanalAktionen(c, {
+      guild,
+      canCreate,
+      canManagePermissions,
+      onRename,
+      onDelete,
+      onReport,
+      anfang: [
+        {
+          id: 'autoconnect',
+          label: autoConnect ? m.channel_list_autoconnect_remove() : m.channel_list_autoconnect_set(),
+          icon: autoConnect ? ZapOffIcon : ZapIcon,
+          onSelect: () => toggleAutoConnect(c),
+          testid: `channel-autoconnect-toggle-${c.id}`
+        },
+        {
+          id: 'raumklang',
+          label: m.settings_audio_video_spatial_label(),
+          nurDesktop: true,
+          testid: `channel-spatial-${c.id}`,
+          schalter: {
+            checked: settings.audio.spatialMode !== 'off',
+            onChange: (an) => {
+              const mode = an ? 'high' : 'off';
+              settings.setSpatialMode(mode);
+              voice.setSpatialMode(mode);
+            }
+          }
+        }
+      ],
+      mitte:
+        guild && roles.hasGuildPermission(guild.id, Perm.MOVE_MEMBERS)
+          ? [
+              {
+                id: 'gast-links',
+                label: m.gast_links_titel(),
+                icon: LinkIcon,
+                onSelect: () => {
+                  gastLinkKanal = c.id;
+                  gastLinkOffen = true;
+                },
+                testid: `channel-guest-links-${c.id}`
+              }
+            ]
+          : []
+    });
+  }
 </script>
 
 {#if channels.length > 0}
@@ -119,6 +171,8 @@
     {m.channel_list_voice_channels()}
   </div>
   {#each channels as c (c.id)}
+  {@const aktionen = sprachAktionen(c)}
+  <div class="relative">
   <ContextMenu.Root>
     <ContextMenu.Trigger>
       {#snippet child({ props: ctxProps })}
@@ -127,7 +181,7 @@
         <button
           {...ctxProps}
           {...tipProps}
-          class="{CHANNEL_BTN_CLASS} {ziehen.ueber === c.id
+          class="{CHANNEL_BTN_CLASS} handy:pr-14 {ziehen.ueber === c.id
             ? 'border-t-2 border-primary'
             : ''} {ziehen.id === c.id ? 'opacity-50' : ''} {ziehen.nutzerUeber === c.id
             ? 'ring-2 ring-primary'
@@ -177,77 +231,10 @@
         </ChannelTopicTooltip>
       {/snippet}
     </ContextMenu.Trigger>
-    <ContextMenu.Content>
-      <!-- Für alle Mitglieder, nicht nur Admins: Auto-Connect-Wahl. -->
-      <ContextMenu.Item
-        onSelect={() => toggleAutoConnect(c)}
-        data-testid={`channel-autoconnect-toggle-${c.id}`}
-      >
-        {#if voiceAutoConnect.isTarget(c.id)}
-          <ZapOffIcon />
-          {m.channel_list_autoconnect_remove()}
-        {:else}
-          <ZapIcon />
-          {m.channel_list_autoconnect_set()}
-        {/if}
-      </ContextMenu.Item>
-      {#if !handy}
-        <ContextMenu.CheckboxItem
-          checked={settings.audio.spatialMode !== 'off'}
-          onCheckedChange={(v) => {
-            const mode = v ? 'high' : 'off';
-            settings.setSpatialMode(mode);
-            voice.setSpatialMode(mode);
-          }}
-          data-testid={`channel-spatial-${c.id}`}
-        >
-          {m.settings_audio_video_spatial_label()}
-        </ContextMenu.CheckboxItem>
-      {/if}
-      {#if canCreate}
-        <ContextMenu.Separator />
-        <ContextMenu.Item onSelect={() => onRename(c)} data-testid="channel-context-settings">
-          <PencilIcon />
-          {m.channel_list_rename_channel()}
-        </ContextMenu.Item>
-      {/if}
-      {#if guild && roles.hasGuildPermission(guild.id, Perm.MOVE_MEMBERS)}
-        <ContextMenu.Item
-          onSelect={() => {
-            gastLinkKanal = c.id;
-            gastLinkOffen = true;
-          }}
-          data-testid={`channel-guest-links-${c.id}`}
-        >
-          <LinkIcon />
-          {m.gast_links_titel()}
-        </ContextMenu.Item>
-      {/if}
-      {#if canManagePermissions && guild}
-        <ContextMenu.Item
-          onSelect={() => goto(`/app/guilds/${guild!.id}/channels/${c.id}/permissions`)}
-          data-testid={`channel-permissions-${c.id}`}
-        >
-          <ShieldIcon />
-          {m.channel_list_permissions()}
-        </ContextMenu.Item>
-      {/if}
-      <ContextMenu.Item
-        onSelect={() => onReport(c)}
-        data-testid={`channel-report-${c.id}`}
-      >
-        <FlagIcon />
-        {m.channel_list_report()}
-      </ContextMenu.Item>
-      {#if canCreate}
-        <ContextMenu.Separator />
-        <ContextMenu.Item variant="destructive" onSelect={() => onDelete(c)}>
-          <Trash2Icon />
-          {m.channel_list_delete_channel()}
-        </ContextMenu.Item>
-      {/if}
-    </ContextMenu.Content>
+    <ZeilenKontextInhalt {aktionen} {handy} />
   </ContextMenu.Root>
+  <ZeilenMenue {aktionen} testid={`channel-menu-${c.id}`} titel={c.name} />
+  </div>
   <VoiceChannelPresence channel={c} {myId} {handy} {onSelect} />
   <!-- Standplatz-Geraete stehen UNTER ihrem Kanal, nicht in einer eigenen
        Kategorie (Aenderung 2026-08-16, Begruendung in DeviceChannelRows) —

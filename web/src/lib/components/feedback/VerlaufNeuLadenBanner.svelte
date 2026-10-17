@@ -12,6 +12,11 @@
   Gerendert im App-Layout (`routes/app/+layout.svelte`), auf jedem Gerät
   gleich — keine Breakpoint-Varianten (`scripts/geraete-trennung.sh`); nur
   der Knopf bekommt auf Handy und Tablet die Trefferfläche von 48 dp.
+
+  Abstand nach oben: eigenes `--safe-top` (Android, Tablet). In der iOS-Hülle am
+  Handy trägt die Shell die Aussparung einmal für alle Banner
+  (`routes/app/+layout.svelte`), dort bleibt nur `mt-2` — sonst stünde der
+  Abstand doppelt.
 -->
 <script lang="ts">
   import AlertCircleIcon from '@lucide/svelte/icons/alert-circle';
@@ -22,7 +27,7 @@
 
 {#if verlaufZustand.verriegelt}
   <div
-    class="mx-3 mt-[calc(var(--safe-top)+0.5rem)] flex flex-wrap items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/15 px-3 py-2 text-sm text-destructive"
+    class="mx-3 mt-[calc(var(--safe-top)+0.5rem)] ios:handy:mt-2 flex flex-wrap items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/15 px-3 py-2 text-sm text-destructive"
     data-testid="verlauf-neu-laden-banner"
     role="alert"
   >

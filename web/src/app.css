@@ -33,6 +33,14 @@
    keine Utilities, der Build schon (Falle vom 2026-10-06). */
 @custom-variant nicht-handy (&:not(.geraet-handy *));
 @custom-variant desktop (&:is(.geraet-desktop *));
+/* ios = nur in der iOS-Hülle (`data-huelle='ios'` am <html>, gesetzt in
+   routes/+layout.svelte). Für Layout, das Browser, Desktop und Android nicht
+   treffen darf. Kommafrei wie die Varianten oben. */
+@custom-variant ios (&:is([data-huelle='ios'] *));
+/* quer-stream = iOS-Handy quer MIT angedocktem Stream: `data-quer-stream` am
+   <html> setzt allein `routes/app/+layout.svelte` (`kanalQuerStream`, dort nur
+   iOS-Hülle) — die Variante ist damit von selbst iOS-only. */
+@custom-variant quer-stream (&:is([data-quer-stream] *));
 
 /* Mobile Slide-Rein: Detail-Bildschirme (Chat, Community, Entdecken …)
    schieben sich auf dem Handy von rechts rein — WhatsApp-Prinzip, als
@@ -568,6 +576,14 @@
    dran — der Wert lebt nur hier. */
 @utility card-shadow {
   box-shadow: 0 18px 40px -10px rgba(0, 0, 0, 0.7);
+}
+
+/* iOS-Hülle, Tastatur offen: der Home-Balken liegt unter der Tastatur, nicht
+   unter dem Eingabefeld — der Abstand dafür wäre Leerraum über der Tastatur.
+   `data-tastatur` setzt `platform/huellenLage.svelte.ts`. Ungeschichtet und
+   spezifischer als `:root` unten, sonst gewänne dessen `--safe-bottom`. */
+:root[data-huelle='ios'][data-tastatur='offen'] {
+  --safe-bottom: 0px;
 }
 
 /* ---------- Light = Default ---------- */

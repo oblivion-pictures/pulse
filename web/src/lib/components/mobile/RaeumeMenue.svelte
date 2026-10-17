@@ -16,49 +16,37 @@
   import LogInIcon from '@lucide/svelte/icons/log-in';
   import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
   import ServerIcon from '@lucide/svelte/icons/server';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+  import KopfMenue from './KopfMenue.svelte';
+  import type { ZeilenAktion } from '$lib/components/menu/zeilenAktionen';
   import { uiOverlays } from '$lib/stores/uiOverlays.svelte';
   import { m } from '$lib/paraglide/messages.js';
+
+  // Ein Knopf MIT WORT, der die Auswahl als Blatt von unten öffnet — vorher ein
+  // wortloses ⋯ mit Popover im Desktop-Stil. Testids unverändert.
+  const aktionen: ZeilenAktion[] = [
+    {
+      id: 'beitreten',
+      label: m.guild_rail_join_community(),
+      icon: LogInIcon,
+      onSelect: () => void goto('/app?add=join'),
+      testid: 'rooms-menu-join'
+    },
+    {
+      id: 'entdecken',
+      label: m.rooms_discover_short(),
+      icon: CompassIcon,
+      onSelect: () => void goto('/app/discover'),
+      testid: 'rooms-menu-discover'
+    },
+    {
+      id: 'eigener-server',
+      label: m.eigener_server_einrichten(),
+      icon: ServerIcon,
+      onSelect: () => (uiOverlays.eigenerServerOpen = true),
+      testid: 'rooms-eigener-server',
+      trenner: true
+    }
+  ];
 </script>
 
-<DropdownMenu.Root>
-  <DropdownMenu.Trigger>
-    {#snippet child({ props })}
-      <button
-        {...props}
-        class="text-text-muted hover:bg-bg-hover hover:text-text-bright flex size-12 items-center justify-center rounded-[14px] transition-colors"
-        data-testid="rooms-menu"
-        aria-label={m.chats_menu()}
-      >
-        <EllipsisIcon class="size-6" />
-      </button>
-    {/snippet}
-  </DropdownMenu.Trigger>
-  <DropdownMenu.Content align="end" class="w-56">
-    <DropdownMenu.Item
-      onclick={() => void goto('/app?add=join')}
-      data-testid="rooms-menu-join"
-      class="flex items-center gap-2"
-    >
-      <LogInIcon class="size-4" />
-      {m.guild_rail_join_community()}
-    </DropdownMenu.Item>
-    <DropdownMenu.Item
-      onclick={() => void goto('/app/discover')}
-      data-testid="rooms-menu-discover"
-      class="flex items-center gap-2"
-    >
-      <CompassIcon class="size-4" />
-      {m.rooms_discover_short()}
-    </DropdownMenu.Item>
-    <DropdownMenu.Separator />
-    <DropdownMenu.Item
-      onclick={() => (uiOverlays.eigenerServerOpen = true)}
-      data-testid="rooms-eigener-server"
-      class="flex items-center gap-2"
-    >
-      <ServerIcon class="size-4" />
-      {m.eigener_server_einrichten()}
-    </DropdownMenu.Item>
-  </DropdownMenu.Content>
-</DropdownMenu.Root>
+<KopfMenue wort={m.menue_mehr()} icon={EllipsisIcon} {aktionen} testid="rooms-menu" />

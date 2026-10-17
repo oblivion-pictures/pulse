@@ -18,7 +18,6 @@ import { voice } from './livekit.svelte';
 import { activeServer } from '$lib/stores/active-server.svelte';
 import { currentServerUserId } from '$lib/stores/currentServerUser';
 import { voicePresence } from '$lib/stores/voicePresence.svelte';
-import { navDrawer } from '$lib/stores/navDrawer.svelte';
 
 const KEY = 'pulse.voice.autoconnect';
 
@@ -129,10 +128,8 @@ export async function autoConnectIfConfigured(): Promise<void> {
     (path === '/app' || path === '/app/' || path === '/app/@me' || path === '/app/friends') &&
     location.search === '';
   if (t.guildId && onDefaultLanding) {
-    // Mobil: Kanal-Liste zuerst (Desktop: Drawer ist statisch, wirkungslos).
     // Als Weiterleitung (S1, `navigation/herkunft.ts`): beigetreten ist schon,
     // die Kanal-Route soll es nicht ein zweites Mal entscheiden.
-    navDrawer.open = true;
     await weiterleiten(`/app/guilds/${t.guildId}/channels/${t.channelId}`);
   }
 }

@@ -6,7 +6,7 @@
  *  - `auth.signOut()` als Konsolidierung der bisher inline gepflegten
  *    Liste (vorher 15+ einzelne `.clear()`-Calls).
  *
- * Globale UI-State (`settings`, `viewport`, `navDrawer`, `uiOverlays`,
+ * Globale UI-State (`settings`, `viewport`, `uiOverlays`,
  * `privacy`) bleibt erhalten — die hängt nicht am gerade aktiven Server.
  * `capabilities` stand hier lange mit in der Aufzählung, und das war falsch:
  * der Store hält instanz-eigene Admin-Grenzen (`GET /capabilities` liest die

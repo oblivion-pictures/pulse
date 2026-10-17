@@ -13,6 +13,8 @@
    */
   import UsersIcon from '@lucide/svelte/icons/users';
   import { readState } from '$lib/stores/readState.svelte';
+  import ZeilenMenue from './ZeilenMenue.svelte';
+  import { chatZeilenAktionen } from './chatZeilenAktionen';
   import { m } from '$lib/paraglide/messages.js';
   import type { PrivateGruppe } from '$lib/api/gruppen';
 
@@ -26,36 +28,40 @@
 
   const ungelesen = $derived(readState.isUnread(gruppe.id));
   const zahl = $derived(readState.getUnreadCount(gruppe.id));
+  const aktionen = $derived(chatZeilenAktionen(gruppe.id));
 </script>
 
-<button
-  class="hover:bg-bg-hover border-border bg-bg-input flex w-full items-center gap-3 rounded-[14px] border p-2.5 text-left transition-colors"
-  onclick={() => onSelect(gruppe.id)}
-  data-testid={`chat-row-${gruppe.id}`}
-  data-unread={ungelesen}
->
-  <span
-    class="text-text-muted flex size-[46px] shrink-0 items-center justify-center rounded-full"
-    style="background-image: linear-gradient(135deg in oklab, var(--accent-grad-from), var(--accent-grad-to));"
+<div class="relative">
+  <button
+    class="hover:bg-bg-hover border-border bg-bg-input flex w-full items-center gap-3 rounded-[14px] border p-2.5 text-left transition-colors {aktionen.length > 0 ? 'handy:pr-14' : ''}"
+    onclick={() => onSelect(gruppe.id)}
+    data-testid={`chat-row-${gruppe.id}`}
+    data-unread={ungelesen}
   >
-    <UsersIcon class="size-5 text-white" />
-  </span>
-
-  <span class="min-w-0 flex-1">
-    <span class="flex items-center gap-2">
-      <span
-        class="truncate text-sm font-semibold {ungelesen ? 'text-text-bright' : 'text-text-base'}"
-        >{gruppe.name}</span
-      >
-      {#if zahl > 0}
-        <span
-          class="bg-badge-count text-2xs ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 font-extrabold leading-none text-white"
-          data-testid="chat-row-unread"
-          data-unread-count={zahl}
-          aria-label={m.nav_tab_unread_badge({ count: zahl })}
-          >{zahl > 99 ? '99+' : zahl}</span
-        >
-      {/if}
+    <span
+      class="text-text-muted flex size-[46px] shrink-0 items-center justify-center rounded-full"
+      style="background-image: linear-gradient(135deg in oklab, var(--accent-grad-from), var(--accent-grad-to));"
+    >
+      <UsersIcon class="size-5 text-white" />
     </span>
-  </span>
-</button>
+
+    <span class="min-w-0 flex-1">
+      <span class="flex items-center gap-2">
+        <span
+          class="truncate text-sm font-semibold {ungelesen ? 'text-text-bright' : 'text-text-base'}"
+          >{gruppe.name}</span
+        >
+        {#if zahl > 0}
+          <span
+            class="bg-badge-count text-2xs ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 font-extrabold leading-none text-white"
+            data-testid="chat-row-unread"
+            data-unread-count={zahl}
+            aria-label={m.nav_tab_unread_badge({ count: zahl })}
+            >{zahl > 99 ? '99+' : zahl}</span
+          >
+        {/if}
+      </span>
+    </span>
+  </button>
+  <ZeilenMenue {aktionen} testid={`chat-menu-${gruppe.id}`} />
+</div>

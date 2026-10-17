@@ -74,7 +74,7 @@
   erscheint.
 -->
 <div
-  class="group relative mx-2 flex gap-3 rounded-2xl px-3 {isContinuation
+  class="group relative mx-2 flex gap-3 rounded-2xl px-3 ios:handy:[-webkit-touch-callout:none] ios:handy:select-none {isContinuation
     ? 'py-0.5'
     : 'py-1.5'} transition-colors hover:bg-bg-hover {pinned ? 'bg-primary/5' : ''}"
   class:ring-2={highlight}

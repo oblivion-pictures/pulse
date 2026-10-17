@@ -356,7 +356,7 @@
 {/if}
 </div>
 
-<MessageActionSheet bind:open={sheetOpen} {...aktionen} />
+<MessageActionSheet bind:open={sheetOpen} {...aktionen} kopierText={message.content} />
 
 <NachrichtInfoDialog
   {message}

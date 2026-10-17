@@ -1791,6 +1791,9 @@
   "member_role_assignment_search_placeholder": "Mitglied suchen…",
   "member_role_assignment_toggle_failed": "Rolle ändern fehlgeschlagen",
   "message_action_sheet_close": "Schließen",
+  "message_action_sheet_copied": "Text kopiert",
+  "message_action_sheet_copy": "Text kopieren",
+  "message_action_sheet_copy_failed": "Kopieren fehlgeschlagen",
   "message_action_sheet_delete": "Löschen",
   "message_action_sheet_edit": "Bearbeiten",
   "message_action_sheet_more_emojis": "Weitere Emojis",
@@ -3555,5 +3558,10 @@
   "settings_mitteilungen_huelle_offen": "Pulse darf dir noch keine Mitteilungen schicken. Dein Gerät fragt einmal nach der Erlaubnis.",
   "settings_mitteilungen_huelle_erteilt": "Erlaubt — du bekommst eine Mitteilung, wenn eine Nachricht für dich ankommt.",
   "settings_mitteilungen_huelle_verweigert": "Ausgeschaltet. Einschalten kannst du sie nur in den iOS-Einstellungen.",
-  "settings_mitteilungen_huelle_einstellungen": "Einstellungen öffnen"
+  "settings_mitteilungen_huelle_einstellungen": "Einstellungen öffnen",
+  "zeilen_menue_oeffnen": "Weitere Aktionen",
+  "zeilen_menue_schliessen": "Schließen",
+  "menue_mehr": "Mehr",
+  "chats_neu": "Neu",
+  "chats_zeile_als_gelesen": "Als gelesen markieren"
 }

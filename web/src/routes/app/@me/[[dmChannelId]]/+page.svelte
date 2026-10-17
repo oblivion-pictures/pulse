@@ -19,7 +19,6 @@
   import { chatApi } from '$lib/api/chat';
   import { verlaufZustand } from '$lib/verlauf/zustand.svelte';
   import { serversStore } from '$lib/api/servers.svelte';
-  import { navDrawer } from '$lib/stores/navDrawer.svelte';
   import { selectGuild, selectDM as selectDmRail } from '$lib/navigation/railNavi';
   import { viewport } from '$lib/stores/viewport.svelte';
   import { toast } from 'svelte-sonner';
@@ -171,8 +170,7 @@
     kanalWechsel.aufraeumen();
   });
 
-  // Server-Icon ist der Drawer-Trigger — `selectGuild` aus dem geteilten
-  // Helfer in `$lib/navigation/railNavi.ts`.
+  // `selectGuild` kommt aus dem geteilten Helfer `$lib/navigation/railNavi.ts`.
   // DM-Klick auf die schon offene DM: kein Navigieren (sonst Scroll-Sprung).
   async function selectDM(dm: DMChannel) {
     if (dm.id === dmChannelId) return;
@@ -184,7 +182,6 @@
    *  keinen Gruppen-Abschnitt. */
   const selectGruppe = PRIVATE_GRUPPEN_ENABLED
     ? async (gruppeId: string) => {
-        navDrawer.open = false;
         if (gruppeId === dmChannelId) return;
         await goto(`/app/@me/${gruppeId}`);
       }
@@ -293,10 +290,7 @@
   onSelect={selectGuild}
   onCreateClick={() => goto('/app?add=create')}
   onJoinClick={() => goto('/app?add=join')}
-  onHomeClick={async () => {
-    navDrawer.open = !navDrawer.open;
-    await goto('/app/friends');
-  }}
+  onHomeClick={() => goto('/app/friends')}
 />
 
 <!-- Die Liste bleibt IMMER erreichbar — Freunde und (Community-)Einladungen

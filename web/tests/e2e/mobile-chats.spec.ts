@@ -110,9 +110,9 @@ test.describe.serial('Chats-Bereich auf dem Handy', () => {
   });
 
   test('ein neues Gespraech ist ueber das Kopfmenue erreichbar', async () => {
-    // Der freistehende Knopf ist einem Drei-Punkte-Menue gewichen (Platz fuer
-    // kuenftige Handlungen). Geprueft wird deshalb der Weg, nicht der alte
-    // Knopf: Menue gross genug, Eintrag da, Dialog geht auf.
+    // Der Knopf oben rechts traegt ein Wort ("Neu") und oeffnet ein Blatt von
+    // unten (frueher ein wortloses Drei-Punkte-Popover). Geprueft wird der Weg:
+    // Knopf gross genug, Eintrag im Blatt da, Dialog geht auf.
     const menue = a.getByTestId('chats-menu');
     await expect(menue).toBeVisible();
     const kasten = await menue.boundingBox();

@@ -222,9 +222,11 @@ import { errText } from '$lib/utils/errText';
 <section class="glass-panel slide-rein relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl" data-testid="voice-channel-view">
   <!-- Mobil verschwindet die Kopfzeile, sobald ein Stream läuft: der Bildschirm
        gehört dann dem Video, Navigation übernimmt die Bereichs-Leiste unten.
-       Zurück bleibt der Kopf für den Normalzustand (Kacheln, nicht verbunden). -->
+       Zurück bleibt der Kopf für den Normalzustand (Kacheln, nicht verbunden).
+       `quer-stream:hidden`: iOS-Hülle quer mit angedocktem Stream — dann gehört
+       die Fläche dem Stream auch dann, wenn `streamViewOpen` nicht greift. -->
   <header
-    class="flex h-14 items-center gap-2.5 px-3 nicht-handy:px-5 {handy &&
+    class="flex h-14 items-center gap-2.5 px-3 quer-stream:hidden nicht-handy:px-5 {handy &&
     streamViewOpen &&
     isThisChannel &&
     (voice.connected || voice.connecting)

@@ -142,7 +142,7 @@
   <Button
     variant="ghost"
     size="icon"
-    class="shrink-0"
+    class="shrink-0 handy:size-11"
     onclick={umschalten}
     aria-expanded={!collapsed}
     aria-label={toggleLabel}
