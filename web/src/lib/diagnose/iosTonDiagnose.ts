@@ -48,7 +48,9 @@ export const ANLAESSE: ReadonlySet<string> = new Set([
   'spur_neu_fehler',
   'beitritt_ohne_mikro',
   'callkit_haengt',
-  'anruf_pause_haengt'
+  'anruf_pause_haengt',
+  // „Volle Tonqualität" nach einem Anruf nicht zurückgestellt (`SpracheRaumNeustart.swift`).
+  'volle_ton_zurueck_fehler'
 ]);
 
 export const SAMMEL_MS = 30_000;

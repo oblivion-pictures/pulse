@@ -47,10 +47,50 @@ extension SpracheRaum {
         let aufnahme = AudioCaptureOptions(
             echoCancellationMode: .software, autoGainControlMode: .software,
             noiseSuppressionMode: .software)
-        let kbps = ton.bitrateKbps.map { min(510, max(16, $0)) }
-        let senden = AudioPublishOptions(encoding: kbps.map { AudioEncoding(maxBitrate: $0 * 1000) })
+        let senden = AudioPublishOptions(
+            encoding: kbpsBegrenzt(ton).map { AudioEncoding(maxBitrate: $0 * 1000) })
         return RoomOptions(defaultAudioCaptureOptions: aufnahme, defaultAudioPublishOptions: senden,
                            adaptiveStream: true, dynacast: true)
+    }
+
+    /// Die Server-Bitrate, auf das begrenzt, was Opus trägt.
+    static func kbpsBegrenzt(_ ton: TonOptionen) -> Int? {
+        ton.bitrateKbps.map { min(510, max(16, $0)) }
+    }
+
+    /// Dieselbe Verarbeitung wie `raumOptionen` bei `volle`, als
+    /// Laufzeit-Optionen einer Spur.
+    static let volleVerarbeitung = AudioProcessingOptions(
+        echoCancellationMode: .software, autoGainControlMode: .software,
+        noiseSuppressionMode: .software)
+
+    /// **Nach einem Direktanruf „Volle Tonqualität" wiederherstellen** (L2 der
+    /// Prüfung vom 2026-10-17). Die Spur des Anrufs startet ihre Aufnahme mit
+    /// `.automatic` — die Audio-Maschine ist prozessweit EINE, also läuft
+    /// danach auch der Kanal über Apples Voice-Processing und die Session im
+    /// Modus `.voiceChat`/`.videoChat`. Ein Aufheben der Stummschaltung startet
+    /// keine Aufnahme neu (SDK 2.17 `Track._unmute`), stellt also nichts zurück.
+    ///
+    /// **Was `setAudioProcessingOptions` nachzieht, am SDK 2.17 gelesen:** die
+    /// Optionen gehen über den Sender an die Audio-Maschine, ohne die Aufnahme
+    /// neu zu starten (`LocalAudioTrack.swift`, Doc-Kommentar — der C++-Teil
+    /// liegt nicht im Quelltext vor), und danach
+    /// `updateExpectedPlatformVoiceProcessing` → `isPlatformVoiceProcessingExpected
+    /// = false` → `onDidMutate` → `configureAudioSession` → Modus `.default`
+    /// (`AudioSessionEngineObserver.swift`), sofern die automatische
+    /// Konfiguration an ist — `sessionZurueckgeben` schaltet sie vor dem Ende
+    /// der Pause wieder ein. Ob VPIO wirklich aus ist, sagt die Diagnose-Zeile
+    /// (`vpio`).
+    func volleTonZurueck(in r: Room) {
+        guard let spur = r.localParticipant.audioTracks
+            .first(where: { $0.source == .microphone })?.track as? LocalAudioTrack
+        else { return }
+        do {
+            let ergebnis = try spur.setAudioProcessingOptions(Self.volleVerarbeitung)
+            diagMelden("volle_ton_zurueck", ["ergebnis": "\(ergebnis)"])
+        } catch {
+            diagMelden("volle_ton_zurueck_fehler", ["fehler": error.localizedDescription])
+        }
     }
 
     // MARK: - Herstellen
@@ -205,7 +245,27 @@ extension SpracheRaum {
         melde?("diagnose", ["art": art, "felder": felder])
     }
 
-    /// Die Zustände, die die drei Ketten der Befundakte unterscheiden.
+    /// Was beim Beitritt WIRKLICH gilt, nicht nur der Wunsch `volleTon` (L3
+    /// der Prüfung vom 2026-10-17): Echo-Unterdrückung, wie die geteilte
+    /// Verarbeitung sie aufgelöst hat, und die Sende-Obergrenze in kbps (48 =
+    /// die SDK-Vorgabe `presetMusic`). `vpio` steht in `diagnoseFelder`.
+    ///
+    /// **Faden:** `audioProcessingState` ist ein öffentlicher, synchroner
+    /// Getter, der in WebRTCs Fabrik blockierend liest — wie die ADM-Getter in
+    /// `diagnoseFelder`. Gerufen wird er nur aus der Befehlskette, nie von
+    /// einem WebRTC-Faden.
+    func tonBeleg(_ ton: TonOptionen) -> [String: Any] {
+        let vorgabe = AudioEncoding.presetMusic.maxBitrate / 1000
+        return [
+            "aec": AudioManager.shared.audioProcessingState.echoCancellation.effective.description,
+            "kbps": ton.volle ? (Self.kbpsBegrenzt(ton) ?? vorgabe) : vorgabe
+        ]
+    }
+
+    /// Die Zustände, die die drei Ketten der Befundakte unterscheiden. `vpio`:
+    /// läuft Apples Voice-Processing gerade (Live-Wert vom Eingangsknoten,
+    /// `false` vor dem Einrichten der Aufnahme) — deckt auch auf, wenn ein
+    /// Anruf es unter „Volle Tonqualität" wieder eingeschaltet hat.
     func diagnoseFelder() -> [String: Any] {
         let s = AVAudioSession.sharedInstance()
         let am = AudioManager.shared
@@ -224,6 +284,7 @@ extension SpracheRaum {
             "maschineAus": maschine.isOutputAvailable,
             "automatik": am.audioSession.isAutomaticConfigurationEnabled,
             "micMuted": am.isMicrophoneMuted,
+            "vpio": am.platformVoiceProcessingState.voiceProcessingEnabled.isActive,
             "anrufPausiert": anrufPausiert,
             "callkitAktiv": Anrufverwaltung.geteilt.callkitAktiv,
             "verbunden": raum?.connectionState == .connected,
