@@ -23,7 +23,8 @@ final class StreamTonPuffer: @unchecked Sendable {
     static let ringFrames = 24_000 + maxBlock
     static let blende = 240
 
-    /// Die Quelle: WebRTCs `getPlayoutData` (vom Gerät beim Start gesetzt).
+    /// Die Quelle: WebRTCs `getPlayoutData`. Gesetzt nur bei stehender
+    /// Maschine (`StreamTonGeraet.starten`/`anhalten`, S10).
     var holen: LKRTCAudioDeviceGetPlayoutDataBlock?
     /// Gewollte Verstärkung (linear). Der Renderblock gleitet hin (100 ms),
     /// damit ein Umschalten (Echo-Lage) nicht knackt.

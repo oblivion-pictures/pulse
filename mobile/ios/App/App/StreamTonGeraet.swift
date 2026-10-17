@@ -41,6 +41,9 @@ final class StreamTonGeraet: NSObject, LKRTCAudioDevice, @unchecked Sendable {
     private var wiedergabeGewollt = false
     private var initialisiert = false
     private var wiedergabeBereit = false
+    /// WebRTCs Quelle, gemerkt in `startPlayout`. In den Puffer kommt sie nur
+    /// auf `faden` und nur bei stehender Maschine (`starten`) — s. dort.
+    private var holenBlock: LKRTCAudioDeviceGetPlayoutDataBlock?
     // Ab hier nur auf `faden`.
     private var maschine: AVAudioEngine?
     private var quelle: AVAudioSourceNode?
@@ -82,6 +85,7 @@ final class StreamTonGeraet: NSObject, LKRTCAudioDevice, @unchecked Sendable {
     func terminateDevice() -> Bool {
         sperre.withLock {
             delegat = nil
+            holenBlock = nil
             initialisiert = false
             wiedergabeBereit = false
             wiedergabeGewollt = false
@@ -104,7 +108,7 @@ final class StreamTonGeraet: NSObject, LKRTCAudioDevice, @unchecked Sendable {
             return delegat?.getPlayoutData
         }
         guard let block else { return false }
-        puffer.holen = block
+        sperre.withLock { holenBlock = block }
         faden.async { [weak self] in self?.starten(grund: "webrtc") }
         return true
     }
@@ -149,6 +153,16 @@ final class StreamTonGeraet: NSObject, LKRTCAudioDevice, @unchecked Sendable {
         if phase != .aus, let d = sperre.withLock({ delegat }) {
             d.dispatchAsync { d.notifyAudioOutputInterrupted() }
         }
+        // **Die Quelle wechselt nur, solange die Maschine steht** (Gegenprüfung
+        // S10). `puffer.holen` liest der Echtzeit-Faden ohne Sperre (dort darf
+        // keine stehen), und ein Swift-Abschluss ist eine Referenz mit
+        // Retain/Release — ein Schreiben von WebRTCs Gerätefaden mitten in
+        // einen laufenden Renderblock (`stopPlayout` → `startPlayout`, während
+        // die alte Maschine noch läuft) wäre ein Datenrennen. Geschrieben wird
+        // deshalb allein hier und in `anhalten`, beide auf `faden`, beide bei
+        // stehender Maschine: `AVAudioEngine.stop()` kehrt erst zurück, wenn
+        // kein Renderblock mehr läuft.
+        puffer.holen = sperre.withLock { holenBlock }
         do {
             m.prepare()
             try m.start()
@@ -163,6 +177,7 @@ final class StreamTonGeraet: NSObject, LKRTCAudioDevice, @unchecked Sendable {
     /// laufender Ein-/Ausgabe (`setActive(false)` „busy", Rückroll K2).
     func anhalten(grund: String) {
         if let m = maschine { m.stop() }
+        puffer.holen = nil
         abbauen()
         if angemeldet {
             angemeldet = false
