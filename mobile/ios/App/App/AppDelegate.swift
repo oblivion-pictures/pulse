@@ -53,6 +53,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         webView.evaluateJavaScript(css, completionHandler: nil)
     }
 
+    /// Wie beim Safe-Area-Skript: das Nutzerskript für künftige Ladevorgänge
+    /// wird nur EINMAL angehängt, der aktuelle Stand jedes Mal nachgereicht.
+    /// Der Startwert im Skript veraltet dabei nicht gefährlich — bei einem
+    /// Wechsel läuft diese Methode erneut und reicht den neuen nach.
+    private var schriftSkriptGesetzt = false
+
     /// Systemschriftgröße in die WebView melden (Punkt 38).
     ///
     /// **Warum über ein Attribut und nicht über ein Plugin.** Es ist ein
@@ -77,12 +83,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
-
-    /// Wie beim Safe-Area-Skript: das Nutzerskript für künftige Ladevorgänge
-    /// wird nur EINMAL angehängt, der aktuelle Stand jedes Mal nachgereicht.
-    /// Der Startwert im Skript veraltet dabei nicht gefährlich — bei einem
-    /// Wechsel läuft diese Methode erneut und reicht den neuen nach.
-    private var schriftSkriptGesetzt = false
 
     @objc private func schriftGroesseGewechselt() {
         schriftKategorieMelden()
@@ -245,17 +245,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         Ungelesen.beimVerlassen()
     }
 
-    func applicationDidEnterBackground(_ application: UIApplication) {
-        // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-        // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
-    }
-
-    func applicationWillEnterForeground(_ application: UIApplication) {
-        // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
-    }
-
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
         injectSafeAreaInsets()
         schriftKategorieMelden()
         privacySchutz(false)
@@ -266,7 +256,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
-        // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
         SpracheLiveAktivitaet.beimBeendenDerApp()
     }
 

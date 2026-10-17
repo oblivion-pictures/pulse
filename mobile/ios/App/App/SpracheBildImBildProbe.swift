@@ -55,7 +55,7 @@ import UIKit
                 NSLog("[PulseSprache] BildImBildProbe Beitritt gescheitert: %@", error.localizedDescription)
                 return
             }
-            guard let raum = sprache.raum, let wurzel = await fensterWurzel() else {
+            guard let raum = sprache.raum, let wurzel = await SpracheAnsichtProbe.fensterWurzel() else {
                 soll("Raum und Fensterwurzel da", false)
                 return
             }
@@ -104,12 +104,10 @@ import UIKit
         /// Der Inhalt des Fensters als Einblendung oben über der App.
         @MainActor private static func einblenden(raum: Room) -> UIHostingController<SpracheBildImBildInhalt> {
             let halter = UIHostingController(rootView: SpracheBildImBildInhalt(raum: raum, videoErzwingen: true))
-            let fenster = UIApplication.shared.connectedScenes
-                .compactMap { ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } }.first
             halter.view.frame = CGRect(x: 16, y: 120, width: 320, height: 180)
             halter.view.layer.cornerRadius = 12
             halter.view.clipsToBounds = true
-            fenster?.addSubview(halter.view)
+            UIApplication.shared.sprachSchluesselFenster?.addSubview(halter.view)
             return halter
         }
 
@@ -126,16 +124,6 @@ import UIKit
         @MainActor private static func videoView(in v: UIView) -> VideoView? {
             if let vv = v as? VideoView { return vv }
             for kind in v.subviews { if let vv = videoView(in: kind) { return vv } }
-            return nil
-        }
-
-        @MainActor private static func fensterWurzel() async -> UIViewController? {
-            for _ in 0 ..< 40 {
-                if let w = UIApplication.shared.connectedScenes
-                    .compactMap({ ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } })
-                    .first?.rootViewController { return w }
-                try? await Task.sleep(nanoseconds: 250_000_000)
-            }
             return nil
         }
     }

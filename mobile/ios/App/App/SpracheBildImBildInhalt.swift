@@ -111,14 +111,14 @@ private struct SpracheBildImBildFlaeche: View {
             } else {
                 Circle()
                     .fill(SpracheFarben.marke.opacity(0.35))
-                    .overlay(Text(kuerzel).font(.system(size: 28, weight: .semibold))
+                    .overlay(Text(teilnehmer.spracheKuerzel).font(.system(size: 28, weight: .semibold))
                         .foregroundStyle(SpracheFarben.aufBild))
                     .frame(width: 84, height: 84)
                     .overlay(Circle().strokeBorder(SpracheFarben.gut,
                                                    lineWidth: teilnehmer.isSpeaking ? 4 : 0))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            Text(name)
+            Text(teilnehmer.spracheAnzeigename)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(SpracheFarben.aufBild)
                 .lineLimit(1)
@@ -130,16 +130,6 @@ private struct SpracheBildImBildFlaeche: View {
         .overlay(
             Rectangle().strokeBorder(SpracheFarben.gut, lineWidth: video != nil && teilnehmer.isSpeaking ? 3 : 0)
         )
-    }
-
-    private var name: String {
-        if let n = teilnehmer.name, !n.isEmpty { return n }
-        return teilnehmer.identity?.stringValue ?? "?"
-    }
-
-    private var kuerzel: String {
-        let k = String(name.split(separator: " ").prefix(2).compactMap(\.first))
-        return k.isEmpty ? "?" : k.uppercased()
     }
 }
 

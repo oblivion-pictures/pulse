@@ -74,7 +74,9 @@ interface AudioSessionPlugin {
 }
 
 /**
- * Das Plugin — aber nur, wenn der installierte Bau `methode` kennt.
+ * Das Plugin — aber nur in der iOS-Hülle und nur, wenn der installierte Bau
+ * `methode` kennt. Ausserhalb der Hülle (Browser, Electron, Android) ist die
+ * Antwort immer `null`, und jede Funktion hier fällt auf ihre Rückfall-Antwort.
  *
  * **Das rohe `Capacitor.Plugins`-Objekt hat genau die Methoden SEINES Baus.**
  * Fünf kamen erst zwei Tage nach dem Plugin (`routen`, `routeSetzen`,
@@ -86,7 +88,7 @@ interface AudioSessionPlugin {
  * überall.
  */
 function plugin(methode: keyof AudioSessionPlugin): AudioSessionPlugin | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || !isCapacitorIOS()) return null;
   const cap = (window as Window & { Capacitor?: { Plugins?: Record<string, unknown> } })
     .Capacitor;
   const p = cap?.Plugins?.AudioSessionPlugin as AudioSessionPlugin | undefined;
@@ -113,7 +115,6 @@ export async function iosVoiceAktiv(
   aktiv: boolean,
   hqFunk = false
 ): Promise<{ modus: string; weg: string | null; ok: boolean }> {
-  if (!isCapacitorIOS()) return { modus: 'unbekannt', weg: null, ok: false };
   const p = plugin('setVoiceActive');
   if (!p) return { modus: 'unbekannt', weg: null, ok: false };
   const antwort = await p.setVoiceActive({ aktiv, hqFunk }).catch((e: unknown) => {
@@ -137,7 +138,6 @@ export async function iosVoiceAktiv(
 /** Playback-Modus (Watch-/Stream-Ton ohne Mikro). `false` = nicht
  *  eingerichtet (s. `ok` an `iosVoiceAktiv`). */
 export async function iosPlaybackModus(): Promise<boolean> {
-  if (!isCapacitorIOS()) return false;
   const p = plugin('setPlaybackMode');
   if (!p) return false;
   return p
@@ -159,7 +159,6 @@ export async function iosPlaybackModus(): Promise<boolean> {
  * Eintraege in der Liste.
  */
 export async function iosTonWege(): Promise<TonWege | null> {
-  if (!isCapacitorIOS()) return null;
   const p = plugin('routen');
   if (!p) return null;
   return p.routen().catch(() => null);
@@ -167,7 +166,6 @@ export async function iosTonWege(): Promise<TonWege | null> {
 
 /** Einen Ausgabeweg erzwingen. `false`, wenn er nicht (mehr) da ist. */
 export async function iosTonWegSetzen(id: string): Promise<boolean> {
-  if (!isCapacitorIOS()) return false;
   const p = plugin('routeSetzen');
   if (!p) return false;
   return p
@@ -189,7 +187,6 @@ export async function iosTonWegSetzen(id: string): Promise<boolean> {
  * ueberhaupt etwas kaputtgeht.
  */
 export function iosUnterbrechungen(cb: (e: Unterbrechung) => void): () => void {
-  if (!isCapacitorIOS()) return () => undefined;
   const p = plugin('addListener');
   if (!p) return () => undefined;
   return abmelder(p.addListener('unterbrechung', cb));
@@ -197,7 +194,6 @@ export function iosUnterbrechungen(cb: (e: Unterbrechung) => void): () => void {
 
 /** Wegwechsel melden (Headset rein/raus, AirPods verbunden). */
 export function iosWegWechsel(cb: (e: WegWechsel) => void): () => void {
-  if (!isCapacitorIOS()) return () => undefined;
   const p = plugin('addListener');
   if (!p) return () => undefined;
   // **Die Nutzlast wird durchgereicht, nicht verworfen.** Sie war von Anfang
@@ -209,19 +205,16 @@ export function iosWegWechsel(cb: (e: WegWechsel) => void): () => void {
 
 /** Was gerade läuft, auf Sperrbildschirm und Kontrollzentrum anzeigen. */
 export async function iosJetztLaeuft(titel: string, zeile2: string): Promise<void> {
-  if (!isCapacitorIOS()) return;
   await plugin('jetztLaeuft')?.jetztLaeuft({ titel, zeile2 }).catch(() => undefined);
 }
 
 /** Anzeige wieder abräumen. */
 export async function iosJetztLaeuftAus(): Promise<void> {
-  if (!isCapacitorIOS()) return;
   await plugin('jetztLaeuftAus')?.jetztLaeuftAus().catch(() => undefined);
 }
 
 /** Knopfdrücke vom Sperrbildschirm (`laut`/`stumm`). Rückgabe = Abriss. */
 export function iosFernbefehle(cb: (befehl: 'laut' | 'stumm') => void): () => void {
-  if (!isCapacitorIOS()) return () => undefined;
   const p = plugin('addListener');
   if (!p) return () => undefined;
   return abmelder(p.addListener('fernbefehl', (e) => cb(e.befehl)));
@@ -236,7 +229,6 @@ export function iosFernbefehle(cb: (befehl: 'laut' | 'stumm') => void): () => vo
  * still nichts tut, wäre die schlechtere Antwort.
  */
 export async function iosAirplayWaehler(): Promise<boolean> {
-  if (!isCapacitorIOS()) return false;
   const p = plugin('airplayWaehler');
   if (!p) return false;
   return p

@@ -43,6 +43,10 @@ import type {
 export type { NativerEigenerZustand, NativerTeilnehmer, NativerWunsch, NativerZustand };
 export { nativerSprachwegBefund, nativerSprachwegDa, nativeWacheDa } from './iosSpracheWeiche';
 
+/** Alles, was die Hülle unter dem Namen `SprachePlugin` anbietet — je nach Bau
+ *  nicht vollständig (s. `iosSpracheWeiche.ts`). */
+type HuellenPlugin = SprachePlugin & SpracheWachePlugin & SpracheFunkHqPlugin;
+
 /**
  * **Über `registerPlugin`, nicht über `window.Capacitor.Plugins` — und das ist
  * kein Geschmack, das hat die App zum Absturz gebracht.**
@@ -63,11 +67,11 @@ export { nativerSprachwegBefund, nativerSprachwegDa, nativeWacheDa } from './ios
  * Der Rest des Projekts macht es längst so (`schnellwahl.ts`, `appSperre`,
  * `iosWachhalten`, Anrufe).
  */
-const nativ = registerPlugin<SprachePlugin & SpracheWachePlugin & SpracheFunkHqPlugin>('SprachePlugin');
+const nativ = registerPlugin<HuellenPlugin>('SprachePlugin');
 
 /** Das Plugin der Hülle, `null` ausserhalb — auch für `iosSpracheWache.ts`,
  *  damit es genau EINMAL registriert wird. */
-export function huelle(): (SprachePlugin & SpracheWachePlugin & SpracheFunkHqPlugin) | null {
+export function huelle(): HuellenPlugin | null {
   // **Der Guard ist Pflicht, nicht Vorsicht.** Ausserhalb der Hülle ist das
   // ein Web-Stub, und dessen `addListener` WIRFT („not implemented on web") —
   // im Browser riss das schon einmal den ganzen Start mit (Befund 2026-09-09
@@ -79,7 +83,7 @@ export function huelle(): (SprachePlugin & SpracheWachePlugin & SpracheFunkHqPlu
 function rufen<T>(
   befehl: string,
   frist: number,
-  ruf: (p: SprachePlugin & SpracheWachePlugin & SpracheFunkHqPlugin) => Promise<T>
+  ruf: (p: HuellenPlugin) => Promise<T>
 ): Promise<T | null> {
   const p = huelle();
   return p ? mitFrist(ruf(p), frist, befehl) : Promise.resolve(null);

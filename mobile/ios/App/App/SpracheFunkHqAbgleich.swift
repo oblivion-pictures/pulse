@@ -276,7 +276,7 @@ extension SpracheRaum {
             "funkHaelt": SpracheFunkHq.geteilt.haelt,
             "hqOpt": l.optionDa,
             "funkSprech": l.ausgangSprech,
-        "hqKann": l.hqKann.map { $0 ? "ja" : "nein" } ?? "unbekannt",
+            "hqKann": l.hqKann.map { $0 ? "ja" : "nein" } ?? "unbekannt",
             "hqAn": l.hqAn,
             "konfigWechsel": SpracheFunkHq.geteilt.konfigWechsel,
             "rate": Int(s.sampleRate),

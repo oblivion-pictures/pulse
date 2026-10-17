@@ -15,6 +15,10 @@ import UIKit
     /// geladenen Seite heraus über `Capacitor.nativePromise`, also über den
     /// Kopf des Plugins und `packageClassList` — der Weg, den die Web-App nimmt.
     ///
+    /// Mit `sprache` (oder `sprache-ohne` als Gegenprobe ohne Stream-Ton) läuft
+    /// der Wechselbetrieb mit dem Sprachkanal (`mitSprache`):
+    /// `"<whepUrl>|<sekunden>|sprache[-ohne]|<wsUrl>|<token>"`.
+    ///
     /// Belegt der Reihe nach, je Zeile `[PulseStreamTon] Probe …` im Log:
     /// Handshake, Stereo (`codecKanaele`, `fmtp`, Pegel L/R getrennt), dass
     /// LiveKit die Session ohne Sprachraum auf `.playback` stellt, Lautstärke,

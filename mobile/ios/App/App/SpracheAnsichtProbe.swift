@@ -75,12 +75,13 @@ import UIKit
             soll("Grund hell, wenn hell, sonst dunkel", (r > 0.5) == (ist == .light))
         }
 
-        @MainActor private static func fensterWurzel() async -> UIViewController? {
+        /// Wartet bis zu 10 s auf das Schlüsselfenster (die Prüfpfade laufen aus
+        /// `didFinishLaunchingWithOptions`); auch von `SpracheBildImBildProbe` genutzt.
+        @MainActor static func fensterWurzel() async -> UIViewController? {
             for _ in 0 ..< 40 {
-                let wurzel = UIApplication.shared.connectedScenes
-                    .compactMap { ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } }
-                    .first?.rootViewController
-                if let wurzel { return wurzel }
+                if let wurzel = UIApplication.shared.sprachSchluesselFenster?.rootViewController {
+                    return wurzel
+                }
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
             return nil

@@ -241,10 +241,7 @@ extension SpracheRaum {
     /// **Hört dort niemand zu** (Prüfpfad, Oberfläche lädt gerade neu), tut die
     /// Hülle es selbst — ein Knopf, der nichts tut, ist schlimmer als keiner.
     func wunsch(_ w: Wunsch, an: Bool) async throws {
-        if await wunschAnWeb?(w, an) == true {
-            if w == .auflegen { auflegenAbsichern() }
-            return
-        }
+        if await anWebGereicht(w, an: an) { return }
         switch w {
         case .mikrofon: try await nacheinander { try await self.mikrofon(an) }
         case .taub: try await nacheinander { await self.taubStellen(an) }
@@ -265,10 +262,7 @@ extension SpracheRaum {
     /// Auflegen gehört nicht hierher, s. `nacheinander`.
     func wunschEinreihen(_ w: Wunsch, an: Bool, fertig: @escaping (Result<Void, Error>) -> Void) {
         einreihen({
-            if await self.wunschAnWeb?(w, an) == true {
-                if w == .auflegen { self.auflegenAbsichern() }
-                return
-            }
+            if await self.anWebGereicht(w, an: an) { return }
             switch w {
             case .mikrofon: try await self.mikrofon(an)
             case .taub: await self.taubStellen(an)
@@ -276,6 +270,14 @@ extension SpracheRaum {
             case .neuVerbinden: break
             }
         }, fertig: fertig)
+    }
+
+    /// Reicht den Wunsch ans Web. `true`, wenn dort jemand zuhört — dann
+    /// befiehlt das Web, und beim Auflegen sichert die Hülle ab.
+    private func anWebGereicht(_ w: Wunsch, an: Bool) async -> Bool {
+        guard await wunschAnWeb?(w, an) == true else { return false }
+        if w == .auflegen { auflegenAbsichern() }
+        return true
     }
 
     /// **Auflegen muss immer gehen.** Antwortet das Web nicht binnen vier

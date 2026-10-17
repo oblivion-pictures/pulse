@@ -69,25 +69,11 @@ struct SpracheKachel: View {
         Circle()
             .fill(SpracheFarben.marke.opacity(0.25))
             .overlay(
-                Text(anfangsBuchstaben)
+                Text(teilnehmer.spracheKuerzel)
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(SpracheFarben.text)
             )
             .frame(width: 64, height: 64)
-    }
-
-    /// Bis zu zwei Anfangsbuchstaben. Bei einem Gast-Namen ohne Leerzeichen ist
-    /// es einer — bewusst keine Kunstgriffe, ein falsch geratenes Kürzel ist
-    /// schlimmer als ein kurzes.
-    private var anfangsBuchstaben: String {
-        let teile = anzeigeName.split(separator: " ").prefix(2)
-        let kurz = String(teile.compactMap(\.first))
-        return kurz.isEmpty ? "?" : kurz.uppercased()
-    }
-
-    private var anzeigeName: String {
-        if let n = teilnehmer.name, !n.isEmpty { return n }
-        return teilnehmer.identity?.stringValue ?? "?"
     }
 
     // MARK: - Ring und Pegel
@@ -161,7 +147,7 @@ struct SpracheKachel: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(SpracheFarben.aufBild.opacity(0.7))
             }
-            Text(anzeigeName)
+            Text(teilnehmer.spracheAnzeigename)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(SpracheFarben.aufBild)
                 .lineLimit(1)
@@ -185,5 +171,23 @@ struct SpracheKachel: View {
                 }
             }
             .accessibilityLabel(beschriftung)
+    }
+}
+
+extension Participant {
+    /// Der Name, wie Kachel und Bild-in-Bild-Fläche ihn zeigen: der gesetzte,
+    /// sonst die Kennung.
+    var spracheAnzeigename: String {
+        if let n = name, !n.isEmpty { return n }
+        return identity?.stringValue ?? "?"
+    }
+
+    /// Bis zu zwei Anfangsbuchstaben. Bei einem Gast-Namen ohne Leerzeichen ist
+    /// es einer — bewusst keine Kunstgriffe, ein falsch geratenes Kürzel ist
+    /// schlimmer als ein kurzes.
+    var spracheKuerzel: String {
+        let teile = spracheAnzeigename.split(separator: " ").prefix(2)
+        let kurz = String(teile.compactMap(\.first))
+        return kurz.isEmpty ? "?" : kurz.uppercased()
     }
 }

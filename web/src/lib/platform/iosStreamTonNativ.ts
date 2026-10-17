@@ -78,6 +78,11 @@ interface StreamTonPlugin {
 
 const nativ = registerPlugin<StreamTonPlugin>('StreamTonPlugin');
 
+/** Ein WHEP-Handshake dauert über eine echte Leitung 0,5–2 s (ICE-Sammeln
+ *  allein bis 2 s); mit Reserve für einen langsamen Server. */
+const START_FRIST_MS = 15_000;
+const SOFORT_FRIST_MS = 3_000;
+
 /**
  * **Einmal beim Laden der Seite: was eine frühere Seite nativ gestartet hat,
  * beenden** (Gegenprüfung S2). Die Empfänger der Hülle überleben ein Neuladen
@@ -96,11 +101,6 @@ export function streamTonAufraeumen(): Promise<void> {
     : Promise.resolve();
   return aufgeraeumt;
 }
-
-/** Ein WHEP-Handshake dauert über eine echte Leitung 0,5–2 s (ICE-Sammeln
- *  allein bis 2 s); mit Reserve für einen langsamen Server. */
-const START_FRIST_MS = 15_000;
-const SOFORT_FRIST_MS = 3_000;
 
 /**
  * Trägt dieser Bau den nativen Stream-Ton — vollständig?

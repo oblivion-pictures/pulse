@@ -148,9 +148,7 @@ import UIKit
         private static func ansichtZeigen() async {
             for _ in 0 ..< 20 {
                 let wurzel: UIViewController? = await MainActor.run {
-                    UIApplication.shared.connectedScenes
-                        .compactMap { ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } }
-                        .first?.rootViewController
+                    UIApplication.shared.sprachSchluesselFenster?.rootViewController
                 }
                 if let wurzel, let raum = SpracheRaum.geteilt.raum {
                     await MainActor.run {
@@ -386,9 +384,8 @@ import UIKit
             }
             try? await Task.sleep(nanoseconds: 15_000_000_000)
             let ausgeloest = await MainActor.run { () -> Bool in
-                let wurzel = UIApplication.shared.connectedScenes
-                    .compactMap { ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } }
-                    .first?.rootViewController as? CAPBridgeViewController
+                let wurzel = UIApplication.shared.sprachSchluesselFenster?.rootViewController
+                    as? CAPBridgeViewController
                 guard let web = wurzel?.webView else { return false }
                 web.reload()
                 return true

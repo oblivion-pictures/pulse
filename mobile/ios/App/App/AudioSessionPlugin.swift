@@ -253,6 +253,7 @@ public class AudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
 
     /// Richtet die Sprach-Session für den aktuellen Weg ein und liefert den
     /// gewählten Modus (`voiceChat` oder `default`).
+    ///
     /// **Diese Session nimmt das Mikrofon NICHT auf.** Am 2026-10-10 am Gerät
     /// mitgeschnitten: aufgenommen wird auf der Session der WebView
     /// (`com.apple.WebKit`, `has started recording`), der systemweite Modus
@@ -264,6 +265,7 @@ public class AudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
     /// Verarbeitung einschalten. Es bricht, sobald `hqFunk` auf `default`
     /// stellt — die volle Herleitung steht an der Einstellung `bluetoothHq`
     /// (`web/src/lib/settings-registry/sections/audio.ts`).
+    ///
     /// `mitWuenschen: false` laesst `setPreferredSampleRate`/
     /// `setPreferredIOBufferDuration` aus. Die gehoeren laut Apple VOR das
     /// Aktivieren — mitten im Betrieb sind sie eine komplette
@@ -323,18 +325,12 @@ public class AudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
 
     // MARK: - Ereignisse
 
-    /// Telefonanruf, Siri, Wecker (Punkt 26).
+    /// Unterbrechungen der Session melden (Telefonanruf, Siri, Wecker,
+    /// Punkt 26) — **zum MITLESEN, nicht als Handlungsanweisung.**
     ///
-    /// iOS deaktiviert die Session beim Beginn der Unterbrechung selbst; ohne
-    /// Gegenmassnahme bleibt sie danach TOT, und der Sprachkanal ist stumm,
-    /// obwohl die Verbindung steht. Wir melden beides nach oben — das Wieder-
-    /// Aktivieren macht der Koordinator im Web (`platform/iosTon.ts`), weil
-    /// nur er weiss, ob gerade Voice oder Wiedergabe gilt.
-    ///
-    /// `shouldResume` wird mitgereicht und NICHT hier ausgewertet: iOS setzt
-    /// es nicht immer (bei einem Anruf schon, bei manchen Apps nicht), und die
-    /// Entscheidung, es trotzdem zu versuchen, gehört zur Anwendung.
-    /// Unterbrechungen melden — **zum MITLESEN, nicht als Handlungsanweisung.**
+    /// Beginn und Ende gehen als `unterbrechung` ins Web; `shouldResume` reist
+    /// als `weiterMoeglich` mit und wird hier NICHT ausgewertet (iOS setzt es
+    /// nicht immer).
     ///
     /// Im Web hoert darauf seit dem 2026-10-10 niemand mehr, und das ist
     /// Absicht: wer auf eine beendete Unterbrechung hin unsere Session wieder

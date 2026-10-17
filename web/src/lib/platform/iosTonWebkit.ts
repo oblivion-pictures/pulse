@@ -97,8 +97,3 @@ export function webAudioSession(ziel: TonModus): void {
     // Merker NICHT setzen, damit der naechste Anlauf es erneut versucht.
   }
 }
-
-/** Testhilfe / Abmeldung: der nächste Aufruf schreibt wieder. */
-export function webAudioSessionVergessen(): void {
-  webTyp = null;
-}

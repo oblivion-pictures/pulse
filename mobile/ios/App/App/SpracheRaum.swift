@@ -27,8 +27,9 @@ import UIKit
 /// Tag die App einfrieren lassen. Pegel bleiben deshalb hier.
 ///
 /// Die Abbildung nach oben (Zustands-Vollbild, Teilnehmerform, Diagnosefelder)
-/// und die Delegat-Haken liegen in `SpracheRaumZustand.swift`, die Lautstärken
-/// in `SpracheRaumTaub.swift` — hier steht nur, was etwas TUT.
+/// liegt in `SpracheRaumZustand.swift`, die Delegat-Haken in
+/// `SpracheRaumDelegate.swift`, die Lautstärken in `SpracheRaumTaub.swift` —
+/// hier steht nur, was etwas TUT.
 ///
 /// **`@unchecked Sendable` ist eine Aussage, also hier was sie bedeutet.**
 /// `RoomDelegate` verlangt `Sendable`, und diese Klasse wird wirklich von
@@ -37,11 +38,11 @@ import UIKit
 /// Hauptthread. Geprüft sind davon zwei Dinge — `hoerwunsch` liegt hinter
 /// `tonFaden` (s. `SpracheRaumTaub.swift`), die Kette hinter der Sperre in
 /// `Befehlskette`. Die übrigen Felder (`raum`, `kanalId`, `kanalName`,
-/// `kameraVorn`, `taub`, `anrufPausiert`, `mikroWunsch`, `sitzung`,
-/// `aufgelegtSitzung`, `melde`)
-/// sind kleine Werte, die ein Befehl setzt und andere lesen; sie sind NICHT
-/// synchronisiert, und das ist der Grund für `unchecked`. Wer auf Swift 6
-/// geht, muss sie wirklich absichern.
+/// `kameraVorn`, `taub`, `anrufPausiert`, `mikroWunsch`, `mikrofonFehler`,
+/// `ton`, `sitzung`, `aufgelegtSitzung`, `melde`) sind kleine Werte, die ein
+/// Befehl setzt und andere lesen; sie sind NICHT synchronisiert, und das ist
+/// der Grund für `unchecked`. Wer auf Swift 6 geht, muss sie wirklich
+/// absichern.
 final class SpracheRaum: NSObject, @unchecked Sendable {
     static let geteilt = SpracheRaum()
 
@@ -88,8 +89,9 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     }
     /// Ein Direktanruf hält den Kanal an (`SpracheRaumStumm.swift`).
     /// **Überdauert Beitritte**: wer WÄHREND eines Anrufs einem Kanal
-    /// beitritt, tritt angehalten bei — gesetzt und gelöst nur von der
-    /// Anrufverwaltung (`AnrufSitzung.swift`).
+    /// beitritt, tritt angehalten bei — gesetzt und gelöst von der
+    /// Anrufverwaltung (`AnrufSitzung.swift`), nur `sitzungFrischHerstellen`
+    /// löst eine hängengebliebene Pause selbst.
     var anrufPausiert = false
     /// Was der Nutzer für das Mikrofon WILL. Während der Pause bleibt das
     /// Mikrofon zu, ein Mikrofon-Befehl ändert nur den Wunsch; mit dem Ende des

@@ -42,17 +42,9 @@ final class SpracheAnsichtHalter: NSObject, UISheetPresentationControllerDelegat
     private let sperre = NSLock()
     private var offenFlag = false
 
-    var istOffenSynchron: Bool {
-        sperre.lock()
-        defer { sperre.unlock() }
-        return offenFlag
-    }
+    var istOffenSynchron: Bool { sperre.withLock { offenFlag } }
 
-    private func flagSetzen(_ an: Bool) {
-        sperre.lock()
-        offenFlag = an
-        sperre.unlock()
-    }
+    private func flagSetzen(_ an: Bool) { sperre.withLock { offenFlag = an } }
 
     // MARK: - Zeigen und schliessen
 

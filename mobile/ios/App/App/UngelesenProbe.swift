@@ -26,7 +26,7 @@ import WebKit
         }
 
         @MainActor private static func fahren(_ anzahl: Int) async {
-            guard let webView = await bereiteWebView() else {
+            guard let webView = await ShareReceiverProbe.bereiteWebView() else {
                 NSLog("[PulseUngelesen] Probe: WebView mit Capacitor-Brücke nach 60 s nicht bereit")
                 return
             }
@@ -45,20 +45,6 @@ import WebKit
             NSLog("[PulseUngelesen] Probe Container: %ld, Stand %@", stand.anzahl,
                   stand.zeit.map { "\($0)" } ?? "-")
             soll("Container trägt \(anzahl)", stand.anzahl == max(0, anzahl))
-        }
-
-        @MainActor private static func bereiteWebView() async -> WKWebView? {
-            for _ in 0 ..< 120 {
-                let wurzel = (UIApplication.shared.delegate as? AppDelegate)?.window?.rootViewController
-                if let webView = (wurzel as? CAPBridgeViewController)?.webView,
-                   let bereit = try? await webView.callAsyncJavaScript(
-                       "return document.readyState === 'complete' && typeof window.Capacitor?.nativePromise === 'function'",
-                       contentWorld: .page) as? Bool, bereit {
-                    return webView
-                }
-                try? await Task.sleep(nanoseconds: 500_000_000)
-            }
-            return nil
         }
     }
 #endif

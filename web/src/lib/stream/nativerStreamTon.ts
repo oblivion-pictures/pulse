@@ -346,22 +346,22 @@ export class NativerStreamTon implements Teilnehmer {
     this.#video = video;
     this.#ton = tonZ;
     if (vPuffer === null || tPuffer === null) return;
-    const lage = {
+    const messung = {
       videoMs: vPuffer + (vDekod ?? 0),
       tonMs: tPuffer + (ton.ausgabeMs ?? 0),
       aktuellMs: this.#verzoegerung,
       vorschlagVorher: this.#vorschlag,
       seitAenderungMs: jetzt - this.#seitAenderung
     };
-    const { vorschlag, setzen } = versatzEntscheiden(lage);
+    const { vorschlag, setzen } = versatzEntscheiden(messung);
     this.#vorschlag = vorschlag;
     if (setzen === null) return;
     this.#verzoegerung = setzen;
     this.#seitAenderung = jetzt;
     streamTonVerzoegerung(this.#kennung, setzen);
     melde('stream', 'stream_nativ_ton_versatz', `Ton um ${setzen} ms verzögert`, {
-      video_ms: Math.round(lage.videoMs),
-      ton_ms: Math.round(lage.tonMs)
+      video_ms: Math.round(messung.videoMs),
+      ton_ms: Math.round(messung.tonMs)
     });
   }
 }

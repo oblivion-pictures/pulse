@@ -7,7 +7,7 @@ import {
   iosVoiceAktiv
 } from './iosAudioSession';
 import { NACH_NATIVEM_RAUM, tonSchritt, wegAntwort, zielModus, type TonModus } from './tonModus';
-import { webAudioSession, webAudioSessionVergessen } from './iosTonWebkit';
+import { webAudioSession } from './iosTonWebkit';
 
 /**
  * Der eine Ort, der die iOS-Audio-Session schaltet.
@@ -346,20 +346,4 @@ export function tonWiedergabenBeobachten(h: (laeuft: boolean) => void): () => vo
   wiedergabeHoerer.add(h);
   h(wiedergaben.size > 0);
   return () => wiedergabeHoerer.delete(h);
-}
-
-/** Testhilfe / Abmeldung: alles zurück auf Anfang. */
-export function tonZuruecksetzen(): void {
-  voiceQuellen.clear();
-  wiedergaben.clear();
-  angewandt = 'aus';
-  webAudioSessionVergessen();
-  wegAngewandt = null;
-  nativerRaum = false;
-  erzwingen = false;
-}
-
-/** Der zuletzt angewandte Modus — für Anzeige und Tests. */
-export function tonModusJetzt(): TonModus {
-  return angewandt;
 }

@@ -134,7 +134,9 @@ import WebKit
             return abruf
         }
 
-        @MainActor private static func bereiteWebView() async -> WKWebView? {
+        /// Wartet, bis die Seite steht und die Capacitor-Brücke antwortet (bis
+        /// zu 60 s). Auch von `UngelesenProbe` genutzt.
+        @MainActor static func bereiteWebView() async -> WKWebView? {
             for _ in 0 ..< 120 {
                 let wurzel = (UIApplication.shared.delegate as? AppDelegate)?.window?.rootViewController
                 if let webView = (wurzel as? CAPBridgeViewController)?.webView,

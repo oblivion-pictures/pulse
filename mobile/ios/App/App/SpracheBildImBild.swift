@@ -165,9 +165,7 @@ final class SpracheBildImBild: NSObject, ObservableObject {
 
     private func quelleJetzt() -> UIView? {
         if let v = ansichtsQuelle, v.window != nil { return v }
-        return UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } }
-            .first?.rootViewController?.view
+        return UIApplication.shared.sprachSchluesselFenster?.rootViewController?.view
     }
 
     // MARK: - Steuern
@@ -242,6 +240,17 @@ final class SpracheBildImBild: NSObject, ObservableObject {
         if steuerung.canStartPictureInPictureAutomaticallyFromInline != jetzt {
             steuerung.canStartPictureInPictureAutomaticallyFromInline = jetzt
         }
+    }
+}
+
+extension UIApplication {
+    /// Das Schlüsselfenster der ersten Szene, die eines hat — die Wurzel, aus
+    /// der das Bild-in-Bild-Fenster aufgeht und auf die die Kanalansicht
+    /// (auch die der Prüfpfade) gelegt wird.
+    var sprachSchluesselFenster: UIWindow? {
+        connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } }
+            .first
     }
 }
 

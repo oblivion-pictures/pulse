@@ -96,9 +96,9 @@ final class StreamTonSitzung: @unchecked Sendable {
     ///
     /// Nur wenn niemand sonst sie braucht: kein Raum, kein Anruf (auch keiner
     /// über CallKit), kein Stream-Ton mehr, und `iosTon` hat sie nicht für eine
-    /// Wiedergabe der WebView eingerichtet (s. unten). „Busy" kann hier nicht kommen: die
-    /// eigenen Maschinen stehen, die des SDK läuft ohne Raum nicht. Ein Fehler
-    /// wird nur gemeldet — LiveKits Buchführung hängt nicht daran.
+    /// Wiedergabe der WebView eingerichtet (s. unten). „Busy" kann hier nicht
+    /// kommen: die eigenen Maschinen stehen, die des SDK läuft ohne Raum nicht.
+    /// Ein Fehler wird nur gemeldet — LiveKits Buchführung hängt nicht daran.
     /// Auf dem Hauptthread (die Anruf-Merker leben dort); geprüft und
     /// deaktiviert unter der Sperre, damit kein neues `anmelden` dazwischenfährt.
     /// Auch nach einem Abriss mitten in Bluetooth-HQ (`SpracheFunkHq.nachAbriss`).
