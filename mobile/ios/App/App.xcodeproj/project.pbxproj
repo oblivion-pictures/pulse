@@ -45,6 +45,7 @@
 		A1B2C3D4E5F607180000018D /* SprachePluginProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607180000018E /* SprachePluginProbe.swift */; };
 		A1B2C3D4E5F607180000018F /* SpracheRaumSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071800000190 /* SpracheRaumSession.swift */; };
 		A1B2C3D4E5F60718000002A3 /* SpracheFunkHqAbgleich.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000002A4 /* SpracheFunkHqAbgleich.swift */; };
+		A1B2C3D4E5F60718000002A5 /* SpracheFunkHqDaempfung.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000002A6 /* SpracheFunkHqDaempfung.swift */; };
 		A1B2C3D4E5F60718000002A1 /* SpracheFunkHq.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000002A2 /* SpracheFunkHq.swift */; };
 		A1B2C3D4E5F607180000019D /* AnrufProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607180000019E /* AnrufProbe.swift */; };
 		A1B2C3D4E5F607180000019F /* AnrufPush.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001A0 /* AnrufPush.swift */; };
@@ -152,6 +153,7 @@
 		A1B2C3D4E5F607180000018E /* SprachePluginProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SprachePluginProbe.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071800000190 /* SpracheRaumSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheRaumSession.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000002A4 /* SpracheFunkHqAbgleich.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheFunkHqAbgleich.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000002A6 /* SpracheFunkHqDaempfung.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheFunkHqDaempfung.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000002A2 /* SpracheFunkHq.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheFunkHq.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F607180000019E /* AnrufProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnrufProbe.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000001A0 /* AnrufPush.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnrufPush.swift; sourceTree = "<group>"; };
@@ -323,6 +325,7 @@
 				A1B2C3D4E5F607180000018E /* SprachePluginProbe.swift */,
 				A1B2C3D4E5F6071800000190 /* SpracheRaumSession.swift */,
 				A1B2C3D4E5F60718000002A4 /* SpracheFunkHqAbgleich.swift */,
+				A1B2C3D4E5F60718000002A6 /* SpracheFunkHqDaempfung.swift */,
 				A1B2C3D4E5F60718000002A2 /* SpracheFunkHq.swift */,
 				A1B2C3D4E5F607180000019E /* AnrufProbe.swift */,
 				A1B2C3D4E5F60718000001A0 /* AnrufPush.swift */,
@@ -651,6 +654,7 @@
 				A1B2C3D4E5F607180000018D /* SprachePluginProbe.swift in Sources */,
 				A1B2C3D4E5F607180000018F /* SpracheRaumSession.swift in Sources */,
 				A1B2C3D4E5F60718000002A3 /* SpracheFunkHqAbgleich.swift in Sources */,
+				A1B2C3D4E5F60718000002A5 /* SpracheFunkHqDaempfung.swift in Sources */,
 				A1B2C3D4E5F60718000002A1 /* SpracheFunkHq.swift in Sources */,
 				A1B2C3D4E5F607180000019D /* AnrufProbe.swift in Sources */,
 				A1B2C3D4E5F607180000019F /* AnrufPush.swift in Sources */,

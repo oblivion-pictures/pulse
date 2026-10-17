@@ -145,78 +145,26 @@ final class SpracheFunkHq: @unchecked Sendable {
         }
     }
 
-    // MARK: - Dämpfung (Gegenprüfung B3)
+    // MARK: - Dämpfung (Gegenprüfung B3, C2)
 
-    private var gedaempftSeit: CFAbsoluteTime?
-    private var vorherLautstaerke: Float = 1
+    let daempfung = FunkDaempfung()
+    func daempfen() { daempfung.an() }
+    func entdaempfen(grund: String) { daempfung.aus(grund: grund) }
 
     /// **Kopfhörer raus (oder ein anderes Gerät, C1), während wir HQ halten.**
-    /// iOS leitet SOFORT auf den
-    /// Lautsprecher um; VPIO ist da noch aus, und bis der Abgleich in der
-    /// Kette dran ist und die Maschine mit VPIO neu steht, liefe der Kanal
-    /// laut über den Lautsprecher mit nur WebRTCs Echo-Unterdrückung — die
-    /// Lage, die als „Volle Tonqualität" wegen Hall abgeschaltet wurde.
-    /// Deshalb hier, im Routen-Beobachter und ohne Kette: Session zurück an
-    /// das SDK und die Wiedergabe des Kanals stumm, bis VPIO wieder läuft.
-    func kopfhoererWeg() {
+    /// iOS leitet SOFORT auf den Lautsprecher um; VPIO ist da noch aus, und
+    /// bis der Abgleich in der Kette dran ist und die Maschine mit VPIO neu
+    /// steht, liefe der Kanal laut über den Lautsprecher mit nur WebRTCs
+    /// Echo-Unterdrückung — die Lage, die als „Volle Tonqualität" wegen Hall
+    /// abgeschaltet wurde. Deshalb hier, im Routen-Beobachter und ohne Kette:
+    /// Session zurück an das SDK und die Wiedergabe des Kanals stumm, bis VPIO
+    /// wieder läuft. **Mit `volle` nicht stumm** (C2): dort bleibt die
+    /// Software-Verarbeitung gewollt, VPIO käme nie, und die Dämpfung stünde
+    /// bis zur Obergrenze.
+    func kopfhoererWeg(volle: Bool) {
         guard haelt, !haltenErlaubt(FunkLage.lesen()) else { return }
-        daempfen()
+        if !volle { daempfen() }
         loslassen()
-    }
-
-    /// Die Wiedergabe des Kanals stumm (LiveKits Mischer; der Stream-Ton hat
-    /// seine eigene Maschine und bleibt hörbar), bis die Verarbeitung zurück
-    /// ist und VPIO läuft — höchstens `daempfungHoechstens` Sekunden.
-    func daempfen() {
-        let neu = sperre.withLock { () -> Bool in
-            guard gedaempftSeit == nil else { return false }
-            gedaempftSeit = CFAbsoluteTimeGetCurrent()
-            return true
-        }
-        guard neu else { return }
-        let mixer = AudioManager.shared.mixer
-        let vorher = mixer.outputVolume
-        sperre.withLock { vorherLautstaerke = vorher }
-        mixer.outputVolume = 0
-        DispatchQueue.global().async { SpracheRaum.geteilt.diagMelden("funk_daempfung", ["an": true]) }
-        daempfungPruefen()
-    }
-
-    static let daempfungHoechstens: CFAbsoluteTime = 8
-    /// Ohne VPIO-Rückmeldung (Simulator, oder sie kommt nicht): so lange nach
-    /// dem Zurückstellen der Verarbeitung, dann wieder hörbar.
-    static let daempfungOhneVpio: CFAbsoluteTime = 1.5
-
-    /// Liest die blockierenden Getter des SDK auf einem eigenen Faden, nie auf
-    /// einem von WebRTC (dieselbe Regel wie `tonBeleg`).
-    private func daempfungPruefen() {
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.25) { [self] in
-            guard let seit = sperre.withLock({ gedaempftSeit }) else { return }
-            let dauer = CFAbsoluteTimeGetCurrent() - seit
-            let am = AudioManager.shared
-            let zurueck = am.audioProcessingState.echoCancellation.requested?.mode != .software
-            let vpio = am.platformVoiceProcessingState.voiceProcessingEnabled.isActive
-            if zurueck, vpio || dauer >= Self.daempfungOhneVpio {
-                entdaempfen(grund: vpio ? "vpio" : "frist")
-            } else if dauer >= Self.daempfungHoechstens {
-                entdaempfen(grund: "hoechstens")
-            } else {
-                daempfungPruefen()
-            }
-        }
-    }
-
-    func entdaempfen(grund: String) {
-        let vorher = sperre.withLock { () -> Float? in
-            guard gedaempftSeit != nil else { return nil }
-            gedaempftSeit = nil
-            return vorherLautstaerke
-        }
-        guard let vorher else { return }
-        AudioManager.shared.mixer.outputVolume = vorher
-        DispatchQueue.global().async {
-            SpracheRaum.geteilt.diagMelden("funk_daempfung", ["an": false, "grund": grund])
-        }
     }
 
     // MARK: - Session (auf dem Hauptthread, wie die CallKit-Übergabe)

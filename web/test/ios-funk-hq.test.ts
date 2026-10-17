@@ -62,11 +62,12 @@ test('B1: „springt nicht an" wird erst im verzögerten Abgleich gewertet', () 
 
 test('B3: Kopfhörer raus → sofort im Beobachter zurück und stumm, bis VPIO läuft', () => {
   const sitzung = swift('SpracheRaumSession.swift');
-  assert.match(sitzung, /SpracheFunkHq\.geteilt\.kopfhoererWeg\(\)\n\s*schickeEigenen\(\)\n\s*funkHqAnstossen\("route"\)/);
+  assert.match(sitzung, /SpracheFunkHq\.geteilt\.kopfhoererWeg\(volle: ton\.volle\)\n\s*schickeEigenen\(\)\n\s*funkHqAnstossen\("route"\)/);
   const q = swift('SpracheFunkHq.swift');
-  assert.match(q, /guard haelt, !haltenErlaubt\(FunkLage\.lesen\(\)\) else \{ return \}\n\s*daempfen\(\)\n\s*loslassen\(\)/);
-  assert.match(q, /mixer\.outputVolume = 0/);
-  assert.match(q, /voiceProcessingEnabled\.isActive/);
+  assert.match(q, /guard haelt, !haltenErlaubt\(FunkLage\.lesen\(\)\) else \{ return \}\n\s*if !volle \{ daempfen\(\) \}\n\s*loslassen\(\)/);
+  const d = swift('SpracheFunkHqDaempfung.swift');
+  assert.match(d, /mixer\.outputVolume = 0/);
+  assert.match(d, /voiceProcessingEnabled\.isActive/);
 });
 
 test('B4: nur die aktuelle Route, Bluetooth-Eingang und Sprechprofil verlangt', () => {
@@ -102,4 +103,12 @@ test('C1: Halten nur für dasselbe Gerät (uid) und mit Bluetooth-Eingang', () =
   assert.match(q, /guard l\.ausgangFunk, uid == nil \|\| l\.ausgangUid == uid else \{ return false \}/);
   assert.match(q, /guard haelt, !haltenErlaubt\(FunkLage\.lesen\(\)\) else \{ return \}/);
   assert.match(swift('SpracheFunkHqAbgleich.swift'), /if haelt \{ return haltenOk \}/);
+});
+
+test('C2: Fristen der Dämpfung ab der Rückgabe, Obergrenze als eigener Zeitgeber', () => {
+  const d = swift('SpracheFunkHqDaempfung.swift');
+  assert.match(d, /asyncAfter\(deadline: \.now\(\) \+ Self\.hoechstens\) \{ \[self\] in\n\s*aus\(grund: "hoechstens", runde: r\)/);
+  assert.match(d, /if zurueckSeit == nil \{ zurueckSeit = CFAbsoluteTimeGetCurrent\(\) \}/);
+  // Frist vor den blockierenden Gettern.
+  assert.ok(d.indexOf('Self.ohneVpio {') < d.indexOf('am.audioProcessingState'));
 });

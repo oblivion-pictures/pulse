@@ -39,7 +39,7 @@ extension SpracheRaum {
             // Kopfhörer rein/raus, und jeder Kategoriewechsel (auch der
             // eigene): der Bluetooth-Weg folgt der Route (`SpracheFunkHq`).
             if raum != nil {
-                SpracheFunkHq.geteilt.kopfhoererWeg()
+                SpracheFunkHq.geteilt.kopfhoererWeg(volle: ton.volle)
                 schickeEigenen()
                 funkHqAnstossen("route")
             }
