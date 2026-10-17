@@ -151,11 +151,11 @@ export const AUDIO_SECTION: SectionConfig<AudioSettings> = {
       outputDeviceId: str(a.outputDeviceId, d.outputDeviceId),
       outputDeviceLabel: str(a.outputDeviceLabel, d.outputDeviceLabel),
       echoCancellation: bool(a.echoCancellation, d.echoCancellation),
+      bluetoothHq: a.bluetoothHq === true,
+      iosVolleTonqualitaet: a.iosVolleTonqualitaet === true,
       // Migration: pre-binary configs may carry 'browser'/'rnnoise'/'deepfilternet'
       // (DFN3 was removed 2026-05-16). Any non-'off', non-current legacy value
       // indicates the user wanted *some* filter on — map to the gated mode.
-      bluetoothHq: a.bluetoothHq === true,
-      iosVolleTonqualitaet: a.iosVolleTonqualitaet === true,
       noiseSuppression:
         a.noiseSuppression === 'off' || a.noiseSuppression === 'rnnoise_gated'
           ? a.noiseSuppression

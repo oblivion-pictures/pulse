@@ -233,6 +233,16 @@ class SettingsStore {
   setSpatialMode(v: SpatialMode): void {
     this.#audio.set('spatialMode', parseSpatialMode(v));
   }
+  // Die beiden iOS-Schalter (`IosTonEinstellungen.svelte`). Bis zum
+  // 2026-10-17 wies die Komponente direkt an `settings.audio` zu — das wirkte
+  // in der Sitzung, wurde aber nie gespeichert (nur `set`/`patch` lösen das
+  // Speichern aus), und nach einem App-Neustart stand der Schalter wieder aus.
+  setBluetoothHq(v: boolean): void {
+    this.#audio.set('bluetoothHq', v);
+  }
+  setIosVolleTonqualitaet(v: boolean): void {
+    this.#audio.set('iosVolleTonqualitaet', v);
+  }
 
   // --- voice / PTT setters ---
   setPttMode(v: boolean): void {

@@ -57,7 +57,7 @@
     m.settings_audio_bluetooth_hq_hint(),
     settings.audio.bluetoothHq,
     (v) => {
-      settings.audio.bluetoothHq = v;
+      settings.setBluetoothHq(v);
       tonHqFunkSetzen(v);
     }
   )}
@@ -67,7 +67,7 @@
       m.settings_audio_ios_volle_ton_label(),
       m.settings_audio_ios_volle_ton_hint(),
       settings.audio.iosVolleTonqualitaet,
-      (v) => (settings.audio.iosVolleTonqualitaet = v)
+      (v) => settings.setIosVolleTonqualitaet(v)
     )}
   {/if}
   {@render schalter(
