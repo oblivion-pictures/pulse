@@ -42,6 +42,11 @@ final class StreamTonSitzung: @unchecked Sendable {
     /// CallKit führt die Session (`automatikAus(anruf: true)` bis
     /// `automatikAn(grund: "callkit")`). Solange spielt kein Gerät.
     private var anrufFuehrt = false
+    /// Sperrt das Übergabe-Fenster gerade die Deaktivierung (`automatikAus`)?
+    private var fensterSperrt = false
+    /// Gezählte Sperre der Deaktivierung (`deaktivierungSperren`).
+    private var sperrTiefe = 0
+    private var deaktivierungVorher = true
     /// Wer bei einem Wiederanlauf gefragt wird (die laufenden Geräte).
     var wiederanlauf: ((String) -> Void)?
     /// Wer bei einer CallKit-Übernahme anhalten muss (die laufenden Geräte).
@@ -133,7 +138,16 @@ final class StreamTonSitzung: @unchecked Sendable {
         if anruf { anrufFuehrt = true }
         let los = anforderung
         anforderung = nil
+        // **Für das ganze Fenster bis `automatikAn` keine Deaktivierung**,
+        // solange ein Stream-Ton spielt (Gegenprüfung 2, V2): in dieser Zeit
+        // hält LiveKit keine Anforderung von uns. Fiele die der Kanal-Maschine
+        // weg (Rauswurf, Abriss während `setMicrophone`), riefe LiveKit
+        // `setActive(false)` unter der laufenden Stream-Maschine — „busy",
+        // Rückroll, die Mechanik aus S4.
+        let sperren = nutzer > 0 && !fensterSperrt
+        if sperren { fensterSperrt = true }
         sperre.unlock()
+        if sperren { deaktivierungSperren() }
         loslassen(los)
         if anruf { anhalten?("anruf") }
     }
@@ -159,7 +173,12 @@ final class StreamTonSitzung: @unchecked Sendable {
             if !neu { melden("streamton_session_fehler", ["grund": grund]) }
         }
         let laeuft = nutzer > 0
+        let freigeben = fensterSperrt
+        fensterSperrt = false
         sperre.unlock()
+        // Erst nach dem Zurückholen: dazwischen gäbe es sonst einen Augenblick
+        // ohne unsere Anforderung UND mit Deaktivierung.
+        if freigeben { deaktivierungFreigeben() }
         if neu { melden("streamton_session_neu", ["grund": grund]) }
         if laeuft { wiederanlauf?(grund) }
     }
@@ -178,14 +197,38 @@ final class StreamTonSitzung: @unchecked Sendable {
     /// Deaktivieren — aus demselben Grund harmlos.
     private func loslassen(_ h: SessionRequirementHandle?) {
         guard let h else { return }
-        let beobachter = AudioManager.shared.audioSession
-        let vorher = beobachter.isAutomaticDeactivationEnabled
-        beobachter.isAutomaticDeactivationEnabled = false
-        defer { beobachter.isAutomaticDeactivationEnabled = vorher }
+        deaktivierungSperren()
+        defer { deaktivierungFreigeben() }
         do {
             try h.release()
         } catch {
             melden("streamton_session_loslassen_fehler", ["fehler": "\(error)"])
+        }
+    }
+
+    /// LiveKits Deaktivierung aus, gezählt: zwei Geräte (je ein eigener Faden)
+    /// und das Übergabe-Fenster sperren unabhängig voneinander. Der alte Wert
+    /// wird beim ERSTEN Sperren gemerkt und beim LETZTEN Freigeben
+    /// zurückgestellt, beides unter der Sperre — sonst konnten zwei
+    /// verschränkte „merken → aus → zurück" den Wert für immer auf `false`
+    /// lassen (Gegenprüfung 2, Nebenbefund zu S4). Nie unter `sperre` rufen.
+    private func deaktivierungSperren() {
+        sperre.lock()
+        defer { sperre.unlock() }
+        if sperrTiefe == 0 {
+            let beobachter = AudioManager.shared.audioSession
+            deaktivierungVorher = beobachter.isAutomaticDeactivationEnabled
+            beobachter.isAutomaticDeactivationEnabled = false
+        }
+        sperrTiefe += 1
+    }
+
+    private func deaktivierungFreigeben() {
+        sperre.lock()
+        defer { sperre.unlock() }
+        sperrTiefe = max(0, sperrTiefe - 1)
+        if sperrTiefe == 0 {
+            AudioManager.shared.audioSession.isAutomaticDeactivationEnabled = deaktivierungVorher
         }
     }
 

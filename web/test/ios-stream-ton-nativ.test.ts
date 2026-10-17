@@ -147,12 +147,17 @@ test('S3: beim Beitritt holt der Stream-Ton seine Anforderung erst nach dem Beit
   );
 });
 
-test('S4: das Loslassen kann nicht an einem Deaktivieren scheitern', () => {
+test('S4/V2: Loslassen und Übergabe-Fenster sperren LiveKits Deaktivierung, gezählt', () => {
   const src = quelle('StreamTonSitzung.swift');
   const los = /private func loslassen[\s\S]*?\n    \}\n/.exec(src)?.[0] ?? '';
-  assert.match(los, /isAutomaticDeactivationEnabled = false/);
-  assert.ok(los.indexOf('= false') < los.indexOf('h.release()'), 'erst ausschalten, dann loslassen');
-  assert.match(los, /defer \{ beobachter\.isAutomaticDeactivationEnabled = vorher \}/);
+  assert.ok(los.indexOf('deaktivierungSperren()') < los.indexOf('h.release()'), 'erst sperren, dann loslassen');
+  assert.match(los, /defer \{ deaktivierungFreigeben\(\) \}/);
+  // Der alte Wert beim ersten Sperren gemerkt, beim letzten zurück (V2).
+  assert.match(src, /if sperrTiefe == 0 \{\s*let beobachter[\s\S]{0,120}deaktivierungVorher = beobachter\.isAutomaticDeactivationEnabled/);
+  const aus = /func automatikAus[\s\S]*?\n    \}\n/.exec(src)?.[0] ?? '';
+  assert.match(aus, /let sperren = nutzer > 0 && !fensterSperrt/);
+  const an = /func automatikAn[\s\S]*?\n    \}\n/.exec(src)?.[0] ?? '';
+  assert.ok(an.indexOf('acquireSessionRequirement') < an.indexOf('deaktivierungFreigeben()'), 'erst zurückholen, dann freigeben');
 });
 
 test('S5: CallKit-Übernahme hält die Stream-Geräte an, erst die Rückgabe lässt sie laufen', () => {
