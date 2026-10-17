@@ -467,7 +467,10 @@
            lebenden Stream (die Platzhalter-Flaechen oben haben damit nichts
            zu tun). -->
       <StreamReactions {channelId} leisteAn={reaktionenAn} />
-      <IosLautlosHinweis stream={useNative ? null : (mgr?.stream ?? null)} />
+      <IosLautlosHinweis
+        stream={useNative ? null : (mgr?.stream ?? null)}
+        nativ={mgr?.nativTon ?? null}
+      />
     {/if}
   {/snippet}
   {#snippet controlsExtra()}

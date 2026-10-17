@@ -3143,6 +3143,7 @@
   "voice_mikro_tot_text": "Mikrofon ausgefallen",
   "voice_mikro_tot_neu": "Erneut verbinden",
   "stream_ios_lautlos_hinweis": "Im Lautlos-Modus ist der Ton der Übertragung stumm",
+  "stream_ios_echo_hinweis": "Leiser, solange dein Mikrofon am Lautsprecher offen ist – mit Kopfhörern voll",
   "voice_bar_undeafen": "Ton aktivieren",
   "voice_uebernommen_toast": "Sprachkanal wurde von deinem anderen Gerät übernommen — dort läuft die Verbindung jetzt weiter.",
   "voice_channel_full": "Dieser Sprachkanal ist voll.",

@@ -33,6 +33,8 @@ import { melde } from '$lib/diagnose/app-diagnose';
 import { VolumeBoost } from './volumeBoost';
 import { fernStummEinmalHeilen, getStreamVolume, setStreamVolume } from './streamVolume';
 import { ohneGesteFortsetzen } from './iosStreamTon';
+import { NativerStreamTon, webViewTonAbschalten, type NativStand } from './nativerStreamTon';
+import { streamTonNativDa } from '$lib/platform/iosStreamTonNativ';
 import { FreezeRecycler, FREEZE_RECYCLE_MAX } from './freezeRecycle';
 import { chatApi } from '$lib/api/chat';
 import { isPlayerAvailable } from '$lib/player/client';
@@ -145,12 +147,34 @@ export class ManagedHqStream {
    *  wie der Registry-Schluessel unten, damit zwei Kacheln sich nie
    *  gegenseitig abmelden. */
   readonly #tonKennung: string;
+  /**
+   * Der native Stream-Ton der iOS-Hülle (`nativerStreamTon.ts`); `null` ohne
+   * Fähigkeit (Desktop, Browser, Android, ältere iOS-Bauten) — dann bleibt
+   * alles wie bisher. `nativTon` ist sein Stand für die Kachel; `null`, solange
+   * der WebView-Ton spielt.
+   */
+  readonly #nativ: NativerStreamTon | null = null;
+  nativTon = $state<NativStand | null>(null);
+  #whepUrl = '';
 
   constructor(channelId: string, userId: string, slot = 0) {
     this.channelId = channelId;
     this.userId = userId;
     this.slot = slot;
     this.#tonKennung = `hq:${channelId}:${userId}:${slot}`;
+    if (streamTonNativDa()) {
+      this.#nativ = new NativerStreamTon(this.#tonKennung, {
+        neueUrl: () => this.#frischeUrl(),
+        stand: (st) => {
+          this.nativTon = st;
+          this.audioBlocked = st.phase === 'unterbrochen';
+        },
+        rueckfall: () => {
+          this.nativTon = null;
+          if (this.stream && !this.#disposed) this.#webTonAnhaengen(this.stream);
+        }
+      });
+    }
     if (isCapacitorIOS()) fernStummEinmalHeilen();
     const v = getStreamVolume(userId);
     this.volume = v;
@@ -321,6 +345,10 @@ export class ManagedHqStream {
    * `components/ScreenShareTile.svelte` und `voice/livekit.svelte.ts`.
    */
   async enableAudio(): Promise<void> {
+    if (this.nativTon) {
+      this.#nativ?.fortsetzen();
+      return;
+    }
     if (!isIosWebKit()) {
       // Desktop und Android: unverändert wie vor der iOS-Arbeit.
       try {
@@ -353,10 +381,16 @@ export class ManagedHqStream {
     if (!laeuft) this.#boost.resumeOnGesture();
   }
 
+  /** Die Wiedergabe-Lautstärke (linear). Der ANGEZEIGTE Wert bleibt erhalten
+   *  (`this.volume`) — er gilt dann für den Player, der ihn über `set_option`
+   *  bekommt. */
+  get #zielLautstaerke(): number {
+    return this.nativeAudio ? 0 : this.volume / 100;
+  }
+
   #applyVolume(): void {
-    // Der ANGEZEIGTE Wert bleibt erhalten (`this.volume`) — er gilt dann für
-    // den Player, der ihn über `set_option` bekommt.
-    const v = this.nativeAudio ? 0 : this.volume / 100;
+    const v = this.#zielLautstaerke;
+    this.#nativ?.lautstaerke(v);
     if (this.#audioEl) this.#audioEl.volume = Math.min(1.0, v);
     this.#boost.setVolume(v);
   }
@@ -409,6 +443,27 @@ export class ManagedHqStream {
     const sender = userCache.get(this.userId);
     const wer = sender?.display_name || sender?.username || '';
     tonWiedergabe(this.#tonKennung, true, wer ? `Übertragung von ${wer}` : undefined);
+    if (this.#nativ?.zustaendig && stream.getAudioTracks().length > 0) {
+      // iOS-Hülle mit Fähigkeit: der Ton spielt nativ, die WebView schweigt.
+      webViewTonAbschalten(stream, true);
+      this.#nativ.verbinden(this.#whepUrl, this.#zielLautstaerke);
+    } else {
+      this.#webTonAnhaengen(stream);
+    }
+    if (this.#videoEl) {
+      this.#videoEl.srcObject = stream;
+      this.#videoEl.muted = true;
+      void this.#videoEl.play().catch(() => {});
+    }
+    this.#applyVolume();
+  }
+
+  /** Der Ton in der WebView — der Weg ohne nativen Stream-Ton und dessen
+   *  Rückfall. */
+  #webTonAnhaengen(stream: MediaStream): void {
+    // Nur nach einem Rückfall vom nativen Ton nötig; ohne ihn bleibt die Spur,
+    // wie WebRTC sie liefert.
+    if (this.#nativ) webViewTonAbschalten(stream, false);
     // Audio bevorzugt über den Web-Audio-Graphen (boost) — läuft unabhängig vom
     // Video-Element weiter. Greift der nicht, Fallback auf ein verstecktes,
     // ungemutetes <audio>-Element (auch dauerhaft, ohne Video).
@@ -431,12 +486,19 @@ export class ManagedHqStream {
         if (isIosWebKit()) this.audioBlocked = true;
       });
     }
-    if (this.#videoEl) {
-      this.#videoEl.srcObject = stream;
-      this.#videoEl.muted = true;
-      void this.#videoEl.play().catch(() => {});
-    }
     this.#applyVolume();
+  }
+
+  /** Eine frische WHEP-URL für den nativen Ton (das Lese-Token lebt 10 min).
+   *  `null`, wenn die Kachel inzwischen zu ist oder der Server ablehnt. */
+  async #frischeUrl(): Promise<string | null> {
+    if (this.#abgebrochen()) return null;
+    try {
+      const { whep_url } = await chatApi.getWhepUrl(this.channelId, this.userId, this.slot);
+      return this.#abgebrochen() ? null : whep_url;
+    } catch {
+      return null;
+    }
   }
 
   // ---- WHEP-Verbindung (aus WhepPlayer übernommen) ------------------------
@@ -639,6 +701,7 @@ export class ManagedHqStream {
         return;
       }
       if (this.#abgebrochen()) return;
+      this.#whepUrl = whep_url;
       const s = await connectWhep(whep_url, (stream) => this.#onStream(stream));
       if (this.#abgebrochen()) {
         // Hier wird wirklich geschlossen und nicht bloss die Referenz fallen
@@ -707,6 +770,7 @@ export class ManagedHqStream {
         if (this.#disposed || this.#session !== cur) return;
         this.stats = next;
         this.#diagnose?.beobachte(next);
+        if (this.nativTon) void this.#nativ?.abgleich(cur.pc);
         // Startup-black watchdog: while playing but no frame has EVER decoded,
         // reconnect once the stall passes the threshold. Disarms permanently as
         // soon as the first frame decodes (mid-stream stalls are the connection-
@@ -740,6 +804,9 @@ export class ManagedHqStream {
     void this.#teardown();
     this.#boost.dispose();
     this.#removeAudioEl();
+    // Vor `tonWiedergabe`: der native Ton gibt seinen Halter erst frei, wenn
+    // er steht — bis dahin fasst `iosTon` die Session nicht an.
+    void this.#nativ?.beenden();
     // Abmelden, BEVOR `stream` faellt: faellt die letzte Wiedergabe weg und
     // laeuft kein Sprachkanal, gibt der Koordinator die Audio-Session frei.
     tonWiedergabe(this.#tonKennung, false);
