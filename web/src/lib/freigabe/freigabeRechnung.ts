@@ -54,6 +54,15 @@ export function normalisiereDateien(roh: unknown): GeteilteDatei[] {
   return ergebnis;
 }
 
+/** Die Paket-Kennung der Hülle, wie sie roh in der Antwort steht — auch dann,
+ *  wenn `inhaltAusAntwort` kein Paket daraus macht (nur ungültige Einträge):
+ *  die Hülle hält die Dateien trotzdem im Container und muss es erfahren
+ *  (`abschliessen`), sonst bleiben sie bis zur 24-Stunden-Aufräumung liegen. */
+export function paketIdAusAntwort(roh: unknown): string | null {
+  const id = roh && typeof roh === 'object' ? (roh as Record<string, unknown>).paketId : null;
+  return typeof id === 'string' && id !== '' ? id : null;
+}
+
 /**
  * Macht aus der Antwort von `ShareReceiver.getPending()` den Inhalt — für
  * BEIDE Fassungen der Hülle: die neue (`dateien` + `paketId`) und die alte

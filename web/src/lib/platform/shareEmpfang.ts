@@ -33,12 +33,19 @@ import { App as CapApp } from '@capacitor/app';
 import { isCapacitorAndroid, isCapacitorIOS } from './runtime';
 import { ShareReceiver } from './shareReceiverPlugin';
 import { freigabeAnkommen, freigabeHolen } from '$lib/freigabe/freigabeStore';
-import { inhaltAusAntwort } from '$lib/freigabe/freigabeRechnung';
+import { inhaltAusAntwort, paketIdAusAntwort } from '$lib/freigabe/freigabeRechnung';
 
 async function hole(): Promise<void> {
   try {
     // `mitDateien` sagt der Hülle, dass diese Seite das Verzeichnis versteht.
-    const inhalt = inhaltAusAntwort(await ShareReceiver.getPending({ mitDateien: true }));
+    const roh = await ShareReceiver.getPending({ mitDateien: true });
+    const inhalt = inhaltAusAntwort(roh);
+    // Ein Paket, aus dem nichts Brauchbares wurde (nur ungültige Einträge),
+    // trotzdem abschließen — sonst liegen seine Dateien bis zur Hüllen-Aufräumung.
+    const rohId = paketIdAusAntwort(roh);
+    if (rohId && rohId !== inhalt?.paketId) {
+      void ShareReceiver.abschliessen({ paketId: rohId }).catch(() => {});
+    }
     if (!inhalt) return;
     // Ein neues Paket ersetzt ein unübernommenes: dessen Dateien freigeben.
     const alt = freigabeHolen()?.paketId;

@@ -29,17 +29,35 @@ enum TeilenDateien {
                     fortsetzung.resume(returning: .fehlgeschlagen)
                     return
                 }
-                let groesse = (try? quelle.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-                guard groesse <= min(TeilenGrenzen.dateiBytes, restBytes) else {
+                let grenze = min(TeilenGrenzen.dateiBytes, restBytes)
+                // Früh abweisen, was schon an der Quelle zu groß ist (spart die
+                // Kopie) — eine unbekannte Größe gilt hier NICHT als 0, sie wird
+                // nach der Kopie am Ziel gelesen.
+                if let vorab = (try? quelle.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, vorab > grenze {
                     fortsetzung.resume(returning: .zuGross)
                     return
                 }
                 let id = UUID().uuidString
+                let ziel = ordner.appendingPathComponent(id)
                 do {
-                    try FileManager.default.copyItem(at: quelle, to: ordner.appendingPathComponent(id))
+                    try FileManager.default.copyItem(at: quelle, to: ziel)
                 } catch {
                     NSLog("[PulseTeilen] Kopieren fehlgeschlagen: %@", "\(error)")
                     fortsetzung.resume(returning: .fehlgeschlagen)
+                    return
+                }
+                // Maßgeblich ist die Größe der KOPIE: sie ist, was die Hülle
+                // später ausliefert. Unlesbar oder 0 → ablehnen und wegräumen
+                // (eine leere Datei lehnt der Server ohnehin ab).
+                guard let groesse = (try? ziel.resourceValues(forKeys: [.fileSizeKey]))?.fileSize,
+                      groesse > 0 else {
+                    try? FileManager.default.removeItem(at: ziel)
+                    fortsetzung.resume(returning: .fehlgeschlagen)
+                    return
+                }
+                guard groesse <= grenze else {
+                    try? FileManager.default.removeItem(at: ziel)
+                    fortsetzung.resume(returning: .zuGross)
                     return
                 }
                 let endung = quelle.pathExtension

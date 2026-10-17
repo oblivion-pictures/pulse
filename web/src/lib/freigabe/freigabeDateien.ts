@@ -41,7 +41,8 @@ async function eineDatei(paketId: string, d: GeteilteDatei, nummer: number): Pro
  */
 export async function dateienLaden(
   paketId: string,
-  dateien: GeteilteDatei[]
+  dateien: GeteilteDatei[],
+  fortschritt?: (fertig: number, gesamt: number) => void
 ): Promise<{ dateien: File[]; fehlgeschlagen: number }> {
   const geladen: File[] = [];
   let fehlgeschlagen = 0;
@@ -52,6 +53,7 @@ export async function dateienLaden(
       } catch {
         fehlgeschlagen += 1;
       }
+      fortschritt?.(i + 1, dateien.length);
     }
   } finally {
     try {

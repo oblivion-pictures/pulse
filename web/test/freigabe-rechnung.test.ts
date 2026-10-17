@@ -6,6 +6,7 @@ import {
   base64ZuBytes,
   dateiName,
   inhaltAusAntwort,
+  paketIdAusAntwort,
   naechstesStueck,
   normalisiereDateien
 } from '../src/lib/freigabe/freigabeRechnung.ts';
@@ -102,4 +103,12 @@ test('Store: Dateien kommen mit Kennung an, ein zweiter Share ersetzt sie', () =
   freigabeAnkommen({ dateien: [datei('a')], paketId: null });
   assert.equal(freigabeHolen(), null);
   freigabeLeeren();
+});
+
+test('paketIdAusAntwort: die rohe Kennung bleibt auch bei nur ungültigen Einträgen greifbar', () => {
+  const roh = { paketId: 'P', dateien: [{ id: '' }, 5, null] };
+  assert.equal(inhaltAusAntwort(roh), null);
+  assert.equal(paketIdAusAntwort(roh), 'P');
+  assert.equal(paketIdAusAntwort({ text: 'x' }), null);
+  assert.equal(paketIdAusAntwort(null), null);
 });

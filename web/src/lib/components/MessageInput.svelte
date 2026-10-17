@@ -202,11 +202,15 @@
     // iOS, mehrere Dateien: erst jetzt aus der Hülle holen, dann durch
     // dieselbe Anhang-Pipeline wie eine gewählte Datei.
     if (paket.paketId && paket.dateien?.length) {
-      const { dateienLaden } = await import('$lib/freigabe/freigabeDateien');
-      const { dateien, fehlgeschlagen } = await dateienLaden(paket.paketId, paket.dateien);
-      if (dateien.length) addFiles(dateien);
-      const nichtUebernommen = fehlgeschlagen + (paket.uebersprungen ?? 0);
-      if (nichtUebernommen > 0) toast.info(m.freigabe_nicht_uebernommen({ anzahl: nichtUebernommen }));
+      const startKanal = channelId;
+      const { geteilteDateienHolen } = await import('$lib/freigabe/freigabeUebernahme');
+      const geladen = await geteilteDateienHolen(
+        paket.paketId,
+        paket.dateien,
+        paket.uebersprungen ?? 0,
+        () => channelId === startKanal
+      );
+      if (geladen.length) addFiles(geladen);
     }
   }
 
