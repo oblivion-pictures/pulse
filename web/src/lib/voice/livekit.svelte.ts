@@ -46,7 +46,6 @@ import { sounds } from '$lib/sounds/engine';
 import { toast } from 'svelte-sonner';
 import { m } from '$lib/paraglide/messages.js';
 import { acquireWakeLock } from '$lib/platform/wakeLock';
-import { istAblehnung, standMerken } from '$lib/platform/berechtigung.svelte';
 import { isIosWebKit, isMobile } from '$lib/platform/runtime';
 import { nativerSprachwegBefund, sprachwegVeraltet } from '$lib/platform/iosSprache';
 import { NativerRaum } from './nativerRaum.svelte';
@@ -582,12 +581,6 @@ class VoiceRoom {
       }
       try {
         await room.localParticipant.setMicrophoneEnabled(true, this.#audioCaptureDefaults());
-        // Der Zugriff hat geklappt — also liegt die Mikrofon-Erlaubnis vor.
-        // Gemerkt, damit die Vorerklärung (iOS-Punkt 36) nicht bei jedem
-        // Beitritt wiederkommt: eine WKWebView gibt über den Stand keine
-        // Auskunft, der Ausgang ist der einzige Beleg
-        // (`platform/berechtigung.svelte.ts`).
-        standMerken('mikrofon', 'erteilt');
         // Der teuerste Abbruchpunkt: hier existiert die Mikrofonspur bereits.
         // Nur zurueckkehren wuerde sie offen zuruecklassen — #abbruch nimmt sie
         // zurueck und stoppt sie, bevor der Raum getrennt wird.
@@ -603,9 +596,6 @@ class VoiceRoom {
           return;
         }
         this.micEnabled = false;
-        // Nur eine echte ABLEHNUNG wird gemerkt — ein fehlendes oder belegtes
-        // Gerät sagt über die Erlaubnis nichts.
-        if (istAblehnung(e)) standMerken('mikrofon', 'verweigert');
         // Auch hier: Override-Abweisung (LiveKit-Grant ohne Mic) klar benennen.
         this.error = this.#selfOverride().muted
           ? m.voice_admin_mute_aktiv()

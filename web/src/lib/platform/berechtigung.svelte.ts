@@ -6,7 +6,7 @@
  * Versprechen, auf das der Aufrufer wartet.
  *
  * **Der Aufrufer stellt den System-Dialog selbst.** Diese Datei weiss nichts
- * von Mitteilungen, Mikrofon oder Kamera — sie sagt nur „weitermachen" oder
+ * von Mitteilungen oder Kamera — sie sagt nur „weitermachen" oder
  * „nicht". Täte sie es selbst, müsste sie `fcm.ts` und `getUserMedia`
  * kennen, und die Reihenfolge „erst erklären, dann fragen" wäre an zwei
  * Stellen verteilt statt an einer.
@@ -51,10 +51,10 @@ function karteMerken<Wert>(schluessel: string, art: Berechtigung, wert: Wert): v
 }
 
 /**
- * Erinnerter Erlaubnis-Stand für Mikrofon und Kamera.
+ * Erinnerter Erlaubnis-Stand für die Kamera.
  *
  * **Warum erinnert und nicht gefragt.** Für Mitteilungen gibt es eine echte
- * Auskunft (`checkPermissions` des FCM-Plugins). Für Mikrofon und Kamera gibt
+ * Auskunft (`checkPermissions` des FCM-Plugins). Für die Kamera gibt
  * es sie in einer WKWebView NICHT: `navigator.permissions.query` kennt die
  * Namen `microphone`/`camera` dort nicht verlässlich, und ein Plugin dafür
  * wollten wir uns nicht anlegen. Ohne Stand würde die Vorerklärung bei JEDEM
@@ -130,7 +130,7 @@ class Berechtigungsblatt {
     this.#zurueckgezogen = false;
     // Ein zurückgezogenes Blatt ist keine Antwort des Nutzers — nichts merken.
     if (zurueckgezogen) return false;
-    // Nur ANLASSLOSE Ablehnungen werden gemerkt — bei Mikrofon und Kamera ist
+    // Nur ANLASSLOSE Ablehnungen werden gemerkt — bei der Kamera ist
     // „später" das Abbrechen der Handlung, nicht das Ablehnen der Erklärung
     // (Begründung an `ablehnungMerken`). Gemerkt wird der ZEITPUNKT: das
     // „später" hält nur eine Weile (`spaeterGiltNoch`, iOS-Bughunt 2, F3).
@@ -151,7 +151,7 @@ class Berechtigungsblatt {
    *
    * Ohne das blieb die Kamera-Erklärung stehen, nachdem die Kamera-Ansicht
    * darunter schon weg war (Android: die Zurück-Taste schliesst die Ansicht,
-   * nicht das Blatt). Ein „Erlauben" öffnete danach Kamera und Mikrofon für
+   * nicht das Blatt). Ein „Erlauben" öffnete danach die Kamera für
    * eine Ansicht, die es nicht mehr gab.
    */
   abbrechen(art: Berechtigung): void {

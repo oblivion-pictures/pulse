@@ -11,6 +11,9 @@
  */
 import { toast } from 'svelte-sonner';
 import { m } from '$lib/paraglide/messages.js';
+import { aufnahmeGesperrt } from '$lib/platform/aufnahmeSperre';
+import { istAblehnung } from '$lib/platform/berechtigung.svelte';
+import { isCapacitorIOS } from '$lib/platform/runtime';
 import {
   beendeAufnahme,
   brichAufnahmeAb,
@@ -42,9 +45,25 @@ export class SprachAufnahme {
 
   async starten(): Promise<void> {
     if (this.lauf) return;
+    // iOS-Hülle: im Sprachkanal gehört das Mikrofon der Hülle.
+    if (aufnahmeGesperrt('ton')) {
+      toast.info(m.aufnahme_im_sprachkanal_gesperrt());
+      return;
+    }
     try {
       this.lauf = await starteAufnahme();
-    } catch {
+    } catch (e) {
+      // iOS: eine abgelehnte Erlaubnis lässt sich nur in den Einstellungen
+      // umkehren — den Weg nennen statt nur „nicht verfügbar".
+      if (isCapacitorIOS() && istAblehnung(e)) {
+        toast.error(m.mikrofon_abgelehnt_ios(), {
+          action: {
+            label: m.settings_mitteilungen_huelle_einstellungen(),
+            onClick: () => (window.location.href = 'app-settings:')
+          }
+        });
+        return;
+      }
       toast.error(m.message_input_mikrofon_fehler());
       return;
     }

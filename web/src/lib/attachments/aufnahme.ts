@@ -13,6 +13,7 @@
  * Aufnahme). Der Wiedereinstieg nach Ablehnung: `getUserMedia` wirft, der
  * Composer zeigt einen Toast; ein zweites Halten fragt erneut.
  */
+import { aufnahmeGesperrt } from '$lib/platform/aufnahmeSperre';
 import {
   AUFGABE_MAX_SEKUNDEN,
   aufnahmeDauerRegister,
@@ -40,6 +41,8 @@ export interface LaufendeAufnahme {
 export async function starteAufnahme(): Promise<LaufendeAufnahme> {
   const mime = besterMime();
   if (!mime) throw new Error('AUDIO_RECORDING_UNSUPPORTED');
+  // Rückhalt: die Oberfläche fängt es vorher ab (`SprachAufnahme.starten`).
+  if (aufnahmeGesperrt('ton')) throw new Error('AUFNAHME_IM_SPRACHKANAL_GESPERRT');
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   const recorder = new MediaRecorder(stream, { mimeType: mime });
   const lauf: LaufendeAufnahme = {

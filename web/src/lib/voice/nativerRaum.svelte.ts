@@ -143,7 +143,12 @@ export class NativerRaum {
     // Beigetreten, aber ohne Mikrofon (verweigerte Erlaubnis, belegtes Gerät):
     // die Hülle lässt den Raum dafür bewusst stehen — man kann zuhören —, also
     // muss die Oberfläche es SAGEN.
-    if (z.mikrofonFehler) w.error = z.mikrofonFehler;
+    // Die Hülle liefert eine rohe SDK-Zeile (englisch, technisch) — in die Konsole,
+    // dem Nutzer die vorhandene Erklärung (Erlaubnis/Gerät prüfen).
+    if (z.mikrofonFehler) {
+      console.warn('[Sprache] Mikrofon in der Hülle nicht verfügbar:', z.mikrofonFehler);
+      w.error = m.livekit_microphone_access_failed();
+    }
     this.#stehen(z, opts.taub, opts.micBeforeDeafen);
     // **Muss hier stehen.** Die Sperre „Audio aktivieren" gehört zum
     // WebKit-Weg; ein stehengebliebenes `true` aus einem früheren Beitritt
