@@ -38,9 +38,9 @@ struct MikrofonZeichen: View {
     }
 
     private var beschriftung: String {
-        if stand.pausiert { return "Angehalten, ein Anruf läuft" }
-        if stand.gesperrt { return "Vom Mod stummgeschaltet" }
-        return stand.stumm ? "Mikrofon aus" : "Mikrofon an"
+        if stand.pausiert { return String(localized: "Angehalten, ein Anruf läuft") }
+        if stand.gesperrt { return String(localized: "Vom Mod stummgeschaltet") }
+        return stand.stumm ? String(localized: "Mikrofon aus") : String(localized: "Mikrofon an")
     }
 }
 
@@ -74,7 +74,7 @@ struct KopfZeichen: View {
             .foregroundStyle(.white)
             .frame(width: 40, height: 40)
             .background(still ? Color.gray : WidgetFarben.marke, in: Circle())
-            .accessibilityLabel(Text(still ? "Niemand spricht" : "Jemand spricht"))
+            .accessibilityLabel(Text(still ? String(localized: "Niemand spricht") : String(localized: "Jemand spricht")))
     }
 }
 
@@ -99,7 +99,7 @@ struct KanalKopf: View {
 
     var body: some View {
         VStack(alignment: hell ? .center : .leading, spacing: 1) {
-            Text(form.kanalName.isEmpty ? "Sprachkanal" : form.kanalName)
+            Text(form.kanalName.isEmpty ? String(localized: "Sprachkanal") : form.kanalName)
                 .font(.headline)
                 .foregroundStyle(hell ? Color.white : Color.primary)
                 .lineLimit(1)
@@ -129,16 +129,18 @@ struct Statuszeile: View {
     }
 
     private var text: String? {
-        if veraltet { return "Stand unklar – App öffnen" }
-        if !stand.verbunden { return "Verbindung wird wiederhergestellt …" }
-        if stand.pausiert { return "Angehalten, Anruf läuft" }
-        if stand.gesperrt { return "Vom Mod stummgeschaltet" }
-        if stand.taub { return "Mithören aus" }
+        if veraltet { return String(localized: "Stand unklar – App öffnen") }
+        if !stand.verbunden { return String(localized: "Verbindung wird wiederhergestellt …") }
+        if stand.pausiert { return String(localized: "Angehalten, Anruf läuft") }
+        if stand.gesperrt { return String(localized: "Vom Mod stummgeschaltet") }
+        if stand.taub { return String(localized: "Mithören aus") }
         if !stand.sprechend.isEmpty {
             let namen = stand.sprechend.joined(separator: ", ")
             let mehr = stand.weitereSprechend > 0 ? " +\(stand.weitereSprechend)" : ""
-            let verb = stand.sprechend.count + stand.weitereSprechend > 1 ? "Sprechen" : "Spricht"
-            return "\(verb): \(namen)\(mehr)"
+            let wer = namen + mehr
+            return stand.sprechend.count + stand.weitereSprechend > 1
+                ? String(localized: "Sprechen: \(wer)")
+                : String(localized: "Spricht: \(wer)")
         }
         return nil
     }
@@ -171,7 +173,8 @@ struct AktivitaetKnoepfe: View {
                              stand.stumm ? WidgetFarben.schlecht : WidgetFarben.marke)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(Text(stand.stumm ? "Mikrofon einschalten" : "Mikrofon stummschalten"))
+                    .accessibilityLabel(Text(stand.stumm
+                        ? String(localized: "Mikrofon einschalten") : String(localized: "Mikrofon stummschalten")))
                 } else {
                     Color.clear.frame(width: 44, height: 44)
                         .accessibilityHidden(true)
