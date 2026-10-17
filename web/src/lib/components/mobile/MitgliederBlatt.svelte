@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Die Mitgliederliste einer Community als Blatt von unten (Handy). Am Rechner
-   * steht sie als Spalte neben dem Chat (`ChatView`); dort gibt es kein Platz
+   * steht sie als Spalte neben dem Chat (`ChatView`); dort gibt es keinen Platz
    * dafür, und die Taste im Kanalkopf war am Handy bis hierher ausgeblendet.
    *
    * Dieselbe `MemberList` wie am Rechner — Presence, Rollen, Aktivitäts-Marken

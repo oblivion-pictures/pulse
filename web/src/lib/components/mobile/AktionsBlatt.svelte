@@ -29,7 +29,7 @@
 
   const sichtbar = $derived(aktionen.filter((a) => !a.nurDesktop));
 
-  function waehlen(a: ZeilenAktion) {
+  function waehlen(a: ZeilenAktion): void {
     a.onSelect?.();
     open = false;
   }

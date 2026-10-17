@@ -50,9 +50,10 @@ export type Stand = 'offen' | 'erteilt' | 'verweigert';
  *
  * Bewusst klein — seit 2026-10-18 EINE (vorher drei): schon die erste
  * Nachricht macht den Nutzen offensichtlich („ich will wissen, wenn geantwortet
- * wird"), und zu langes Warten verschenkt genau die Pushs, um die es geht. Dieselbe Mechanik wie die Bewertungsfrage
- * (`bewertungRegel.ts`), aber eine viel kleinere Zahl — eine Bewertung ist
- * eine Gefälligkeit, eine Mitteilung ein Dienst am Nutzer.
+ * wird"), und zu langes Warten verschenkt genau die Pushs, um die es geht.
+ * Dieselbe Mechanik wie die Bewertungsfrage (`bewertungRegel.ts`), aber eine
+ * viel kleinere Zahl — eine Bewertung ist eine Gefälligkeit, eine Mitteilung
+ * ein Dienst am Nutzer.
  *
  * Der Name trägt deshalb die Frage mit: `bewertungRegel.ts` hat eine Schwelle
  * auf dieselbe Zahl mit anderem Wert, und zwei gleichnamige Konstanten in

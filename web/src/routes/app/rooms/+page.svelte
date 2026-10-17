@@ -103,15 +103,15 @@
   // sagen — je Server einer und darunter nochmal der globale.
   let ueberallLeer = $derived(server.every((s) => serverGuilds.get(s.id).length === 0));
 
+  // Die Kachel, deren ⋯-Blatt offen ist (ein Blatt für die ganze Seite).
+  let aktionsZiel = $state<{ guild: Guild; serverId: string } | null>(null);
+
   // Wie `GuildRail.selectGuildFromServer`: eine Kachel kann zu einem
   // NICHT-aktiven Server gehoeren (fremder Self-Host) — ohne den Wechsel
   // laedt die Zielseite gegen den falschen Server und zeigt dauerhaft nichts
   // (guild/channels bleiben leer, `ensureChannels` scheitert still gegen den
   // falschen Server). `activeServer.set()` resettet die Server-scoped Stores
   // und stoesst die WS-Connection an; der Ready-Frame befuellt sie neu.
-  // Die Kachel, deren ⋯-Blatt offen ist (ein Blatt für die ganze Seite).
-  let aktionsZiel = $state<{ guild: Guild; serverId: string } | null>(null);
-
   function oeffnen(g: Guild, serverId: string) {
     if (serverId !== activeServer.serverId) activeServer.set(serverId);
     void goto(`/app/rooms/${g.id}`);

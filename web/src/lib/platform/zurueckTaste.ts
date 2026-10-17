@@ -9,7 +9,7 @@
  * Priorität pro Druck:
  *   1. URL-Hierarchie: Kanal → Raum-Ansicht → Räume, DM → Chats, …
  *   2. Kein Elter bekannt → Browser-Historie zurück (falls vorhanden).
- *   3. Histrien-Ende + Wurzel-Bildschirm → App minimieren.
+ *   3. Historien-Ende + Wurzel-Bildschirm → App minimieren.
  */
 import { App as CapApp } from '@capacitor/app';
 import { goto } from '$app/navigation';

@@ -27,19 +27,17 @@
   import { uiOverlays } from '$lib/stores/uiOverlays.svelte';
   import { chatApi } from '$lib/api/chat';
   import { guildIconSrc } from '$lib/guildIcon';
+  // Channels-by-guild map drives the guild-rail mention indicator. We
+  // reach into the same store; the rail's `guilds` prop only has
+  // top-level guild metadata, not their channel lists.
   import { guilds as guildsStore } from '$lib/stores/guilds.svelte';
   import { directMessages } from '$lib/stores/directMessages.svelte';
 	import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
   import { readState } from '$lib/stores/readState.svelte';
   import { friendRequests } from '$lib/stores/friendRequests.svelte';
   import { communityInvites } from '$lib/stores/communityInvites.svelte';
-  // Channels-by-guild map drives the guild-rail mention indicator. We
-  // reach into the same store; the rail's `guilds` prop only has
-  // top-level guild metadata, not their channel lists.
-  import { roles } from '$lib/stores/roles.svelte';
   import { modQueueCounts } from '$lib/stores/modQueueCounts.svelte';
   import { auth } from '$lib/stores/auth.svelte';
-  import { Perm } from '$lib/permissions/bitfield';
   import {
     serversStore,
     serverDisplayName as resolveServerName,
