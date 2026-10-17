@@ -38,6 +38,10 @@ public class SperrePlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["verfuegbar": ja])
     }
 
+    /// Rückgabe: `{ ok: true }` oder `{ ok: false, abgebrochen: Bool, grund: String }`.
+    /// `grund == "kein_code"`: das Gerät hat keinen Code mehr, die Sperre kann
+    /// nie wieder bestanden werden — die Oberfläche hebt sie auf. Sonst ist
+    /// `grund` der Systemtext des Fehlers (nur für Diagnose).
     @objc func pruefen(_ call: CAPPluginCall) {
         let grund = call.getString("grund") ?? "Pulse entsperren"
         let kontext = LAContext()
@@ -58,10 +62,15 @@ public class SperrePlugin: CAPPlugin, CAPBridgedPlugin {
                 let code = (fehler as? LAError)?.code
                 let abgebrochen =
                     code == .userCancel || code == .systemCancel || code == .appCancel
+                // **Kein Geräte-Code mehr** (nach dem Einschalten der Sperre
+                // entfernt) oder keine Prüfung möglich: das ist KEINE Antwort
+                // des Nutzers, und Erneut-Versuchen hilft nie — die Sperre
+                // würde ihn für immer aussperren. Das Web hebt sie dann auf.
+                let keinCode = code == .passcodeNotSet || code == .biometryNotAvailable
                 call.resolve([
                     "ok": false,
                     "abgebrochen": abgebrochen,
-                    "grund": (fehler as NSError?)?.localizedDescription ?? ""
+                    "grund": keinCode ? "kein_code" : ((fehler as NSError?)?.localizedDescription ?? "")
                 ])
             }
         }

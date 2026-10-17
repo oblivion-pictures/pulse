@@ -12,8 +12,12 @@ import StoreKit
 /// kein Befehl: das System zeigt die Frage hoechstens dreimal im Jahr je
 /// Nutzer, unterdrueckt sie in Entwickler-Builds haeufig ganz und sagt nie,
 /// ob sie erschienen ist. Deshalb loest der Aufruf immer auf (`resolve`) und
-/// die Oberflaeche darf daraus NICHTS schliessen — ein „Danke fuer deine
-/// Bewertung" danach waere eine Luege.
+/// die Oberflaeche darf daraus NICHTS ueber eine Bewertung schliessen — ein
+/// „Danke fuer deine Bewertung" danach waere eine Luege.
+///
+/// Rueckgabe: `{ angezeigt: Bool }`. `true` heisst NUR „die Anfrage ging an
+/// das System" (es gab eine aktive Szene) — nicht, dass die Frage erschien.
+/// `false`: keine Szene im Vordergrund, es wurde gar nichts angefragt.
 @objc(ReviewPlugin)
 public class ReviewPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ReviewPlugin"
@@ -34,11 +38,11 @@ public class ReviewPlugin: CAPPlugin, CAPBridgedPlugin {
                 // Keine aktive Szene (App gerade im Hintergrund): still
                 // aufloesen. Ein Fehler waere hier irrefuehrend — es ist
                 // schlicht kein Moment zum Fragen.
-                call.resolve()
+                call.resolve(["angezeigt": false])
                 return
             }
             SKStoreReviewController.requestReview(in: szene)
-            call.resolve()
+            call.resolve(["angezeigt": true])
         }
     }
 }
