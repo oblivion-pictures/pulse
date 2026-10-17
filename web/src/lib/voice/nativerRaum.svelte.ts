@@ -1,4 +1,3 @@
-import { volleTonqualitaetWirksam } from '$lib/platform/iosVolleTon';
 import { ConnectionState } from 'livekit-client';
 import { toast } from 'svelte-sonner';
 
@@ -22,6 +21,7 @@ import {
   type NativerWunsch,
   type NativerZustand
 } from '$lib/platform/iosSprache';
+import { volleTonqualitaetWirksam } from '$lib/platform/iosVolleTon';
 import {
   abgleichEntscheiden,
   pausenWunsch,

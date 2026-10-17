@@ -334,13 +334,14 @@ export function tonWiedergabe(kennung: string, an: boolean, titel?: string): voi
   }
 }
 
+const wiedergabeHoerer = new Set<(laeuft: boolean) => void>();
+
 /**
  * Spielt die WebView selbst gerade Ton ab (eine Kachel auf dem WebView-Weg,
  * eine Watch-Party)? Für den nativen Stream-Ton (`stream/streamTonLage.ts`):
  * ausserhalb eines Raums vertragen sich beide nicht. Native Kacheln melden
  * sich hier nicht an. Rückgabe meldet ab.
  */
-const wiedergabeHoerer = new Set<(laeuft: boolean) => void>();
 export function tonWiedergabenBeobachten(h: (laeuft: boolean) => void): () => void {
   wiedergabeHoerer.add(h);
   h(wiedergaben.size > 0);

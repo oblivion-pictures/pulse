@@ -24,19 +24,19 @@
 
 import { nativerTonHalten } from '$lib/platform/iosSprache';
 import {
+  streamTonAufraeumen,
   streamTonFortsetzen,
   streamTonHoeren,
   streamTonLautstaerke,
+  streamTonNativDa,
   streamTonStarten,
   streamTonStatistik,
   streamTonStoppen,
   streamTonVerzoegerung,
-  streamTonAufraeumen,
-  streamTonNativDa,
   type StreamTonPhase,
   type StreamTonZustand
 } from '$lib/platform/iosStreamTonNativ';
-import { WebAufnahme } from '$lib/platform/webAufnahme';
+import { WebAufnahme, type Geraete } from '$lib/platform/webAufnahme';
 import { CLOUD_HOSTNAME } from '$lib/api/servers.svelte';
 import { activeServer } from '$lib/stores/active-server.svelte';
 import { tonWiedergabenBeobachten } from '$lib/platform/iosTon';
@@ -75,20 +75,21 @@ const ABGLEICH_MS = 5000;
 /** Halter und Lage für alle Kacheln (`streamTonLage.ts`). */
 const lage = new StreamTonLage((an) => nativerTonHalten('streamton', an));
 
-// Jede Aufnahme der WebView lässt den Halter fallen (S1, `webAufnahme.ts`).
-// Beim Laden des Moduls: eine Aufnahme, die vor der ersten Kachel begann,
-// soll genauso zählen. Nur in der Hülle mit nativem Stream-Ton.
-// Dazu einmal aufräumen, was eine frühere Seite nativ gestartet hat (S2).
+// Beim Laden des Moduls einmal aufräumen, was eine frühere Seite nativ
+// gestartet hat (S2).
 void streamTonAufraeumen();
-if (typeof navigator !== 'undefined' && navigator.mediaDevices && streamTonNativDa()) {
-  new WebAufnahme((a) => lage.setzen({ aufnahme: a })).einhaengen(
-    navigator.mediaDevices as unknown as Parameters<WebAufnahme['einhaengen']>[0]
-  );
-}
-// Ein eigener Ton der WebView ausserhalb eines Raums (Watch-Party, Kachel im
-// Rückfall) verträgt sich nicht mit dem nativen (S8, `streamTonLage.ts`).
-// „Raum" = dieselben Halter, die das Mikrofon der Hülle zusprechen.
 if (streamTonNativDa()) {
+  // Jede Aufnahme der WebView lässt den Halter fallen (S1, `webAufnahme.ts`).
+  // Schon beim Laden des Moduls: eine Aufnahme, die vor der ersten Kachel
+  // begann, soll genauso zählen.
+  if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+    new WebAufnahme((a) => lage.setzen({ aufnahme: a })).einhaengen(
+      navigator.mediaDevices as unknown as Geraete
+    );
+  }
+  // Ein eigener Ton der WebView ausserhalb eines Raums (Watch-Party, Kachel im
+  // Rückfall) verträgt sich nicht mit dem nativen (S8, `streamTonLage.ts`).
+  // „Raum" = dieselben Halter, die das Mikrofon der Hülle zusprechen.
   lage.setzen({ raum: mikrofonBeiDerHuelle() });
   mikrofonBeiDerHuelleBeobachten((raum) => lage.setzen({ raum }));
   tonWiedergabenBeobachten((webWiedergabe) => lage.setzen({ webWiedergabe }));
