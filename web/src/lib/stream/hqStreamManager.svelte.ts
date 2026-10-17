@@ -31,14 +31,15 @@ import { sendeDiagnoseBericht } from './diagnose-senden';
 import { WhepStatsReader, type StreamStats } from './whep-stats';
 import { melde } from '$lib/diagnose/app-diagnose';
 import { VolumeBoost } from './volumeBoost';
-import { getStreamVolume, setStreamVolume } from './streamVolume';
+import { fernStummEinmalHeilen, getStreamVolume, setStreamVolume } from './streamVolume';
+import { ohneGesteFortsetzen } from './iosStreamTon';
 import { FreezeRecycler, FREEZE_RECYCLE_MAX } from './freezeRecycle';
 import { chatApi } from '$lib/api/chat';
 import { isPlayerAvailable } from '$lib/player/client';
 import { settings } from '$lib/stores/settings.svelte';
 import { applySinkId } from '$lib/audio/applySinkId';
 import { spieleAb, spieltBinnen } from '$lib/audio/abspielen';
-import { isIosWebKit } from '$lib/platform/runtime';
+import { isCapacitorIOS, isIosWebKit } from '$lib/platform/runtime';
 import { m } from '$lib/paraglide/messages.js';
 
 // Retry-Backoff: Publisher evtl. noch nicht online (404) oder transienter
@@ -150,6 +151,7 @@ export class ManagedHqStream {
     this.userId = userId;
     this.slot = slot;
     this.#tonKennung = `hq:${channelId}:${userId}:${slot}`;
+    if (isCapacitorIOS()) fernStummEinmalHeilen();
     const v = getStreamVolume(userId);
     this.volume = v;
     this.#prevVolume = v > 0 ? v : 100;
@@ -281,7 +283,11 @@ export class ManagedHqStream {
     await this.#start();
   }
 
-  setVolume(v: number): void {
+  /** `speichern = false` nur für „Pause" vom Sperrbildschirm (unten,
+   *  `iosFernbefehle`): gemerkt wird allein, was der Nutzer in der Kachel
+   *  einstellt — sonst blieb der Stream nach einer Pause bei jedem Öffnen
+   *  stumm. */
+  setVolume(v: number, speichern = true): void {
     if (v > 0) this.#prevVolume = v;
     this.volume = v;
     this.#applyVolume();
@@ -293,13 +299,13 @@ export class ManagedHqStream {
       .resume()
       .then(() => this.#applyVolume())
       .catch(() => undefined);
-    setStreamVolume(this.userId, v);
+    if (speichern) setStreamVolume(this.userId, v);
   }
 
-  toggleMute(): void {
+  toggleMute(speichern = true): void {
     const next = this.volume > 0 ? 0 : this.#prevVolume > 0 ? this.#prevVolume : 100;
     if (this.volume > 0) this.#prevVolume = this.volume;
-    this.setVolume(next);
+    this.setVolume(next, speichern);
   }
 
   /**
@@ -336,6 +342,15 @@ export class ManagedHqStream {
     // Welcher Weg hoerbar ist, entscheidet, woran die Sperre haengt: mit
     // Graph der Kontext, ohne ihn das Element (s. `#bindStream`).
     this.audioBlocked = this.#audioEl ? !elementSpielt : this.#boost.suspended;
+  }
+
+  async #ohneGesteStarten(): Promise<void> {
+    const laeuft = await ohneGesteFortsetzen(this.#boost);
+    if (this.#disposed) return;
+    this.audioBlocked = !laeuft;
+    // Gescheitert: jede nächste Berührung der Seite versucht es erneut, nicht
+    // nur der Knopf (`audio/kontextFortsetzen.ts`).
+    if (!laeuft) this.#boost.resumeOnGesture();
   }
 
   #applyVolume(): void {
@@ -398,8 +413,11 @@ export class ManagedHqStream {
     // Video-Element weiter. Greift der nicht, Fallback auf ein verstecktes,
     // ungemutetes <audio>-Element (auch dauerhaft, ohne Video).
     if (this.#boost.attach(stream)) {
-      this.audioBlocked = this.#boost.suspended;
       this.#removeAudioEl();
+      // iOS-Hülle: sofort mit Ton, ohne Geste (`iosStreamTon.ts`); der Knopf
+      // „Ton aktivieren" erst, wenn das scheitert. Sonst wie bisher.
+      if (isCapacitorIOS() && this.#boost.suspended) void this.#ohneGesteStarten();
+      else this.audioBlocked = this.#boost.suspended;
     } else {
       const el = this.#ensureAudioEl();
       el.srcObject = stream;
@@ -749,8 +767,9 @@ const registry = new Map<string, ManagedHqStream>();
 iosFernbefehle((befehl) => {
   for (const m of registry.values()) {
     const stumm = m.volume === 0;
-    if (befehl === 'stumm' && !stumm) m.toggleMute();
-    if (befehl === 'laut' && stumm) m.toggleMute();
+    // `false`: nicht speichern — eine Pause ist kein Stummschalten der Kachel.
+    if (befehl === 'stumm' && !stumm) m.toggleMute(false);
+    if (befehl === 'laut' && stumm) m.toggleMute(false);
   }
 });
 const keyOf = (channelId: string, userId: string, slot: number) =>

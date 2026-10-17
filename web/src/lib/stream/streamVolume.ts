@@ -19,6 +19,7 @@
  */
 
 import { VOLUME_BOOST_MAX } from './volumeBoost';
+import { ohneNullen } from './iosStreamTon';
 
 const LS_KEY = 'dcc.streamVolumes';
 const DEBOUNCE_MS = 300;
@@ -69,4 +70,28 @@ export function setStreamVolume(userId: string, percent: number): void {
   pending = { ...(pending ?? read()), [userId]: clamp(percent) };
   if (timer) clearTimeout(timer);
   timer = setTimeout(flush, DEBOUNCE_MS);
+}
+
+const GEHEILT_KEY = 'pulse.streamVolumes.fernStummGeheilt';
+
+/**
+ * Nur iOS-Hülle, einmal je Gerät: gespeicherte Nullen entfernen, die aus einem
+ * „Pause" im Kontrollzentrum stammen können (Begründung an `ohneNullen`). Seit
+ * dem 2026-10-17 speichert dieser Weg nichts mehr (`hqStreamManager`,
+ * `toggleMute(false)`).
+ */
+export function fernStummEinmalHeilen(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (localStorage.getItem(GEHEILT_KEY)) return;
+    const werte = pending ?? read();
+    const rest = ohneNullen(werte);
+    if (Object.keys(rest).length !== Object.keys(werte).length) {
+      pending = rest;
+      flush();
+    }
+    localStorage.setItem(GEHEILT_KEY, '1');
+  } catch {
+    /* Speicher gesperrt — dann bleibt es beim alten Wert */
+  }
 }
