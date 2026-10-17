@@ -146,7 +146,7 @@ extension SpracheRaum {
             // Zurück auf VPIO am Lautsprecher: bis es läuft, nichts hören
             // lassen (B3; `kopfhoererWeg` tut dasselbe schon im Beobachter).
             if istSoftware, !ton.volle, !lage.ausgangSprech || !lage.eingangFunk { f.daempfen() }
-            await funkHqZurueck(spur, hielt: f.loslassen(), istSoftware: istSoftware,
+            await funkHqZurueck(spur, istSoftware: istSoftware,
                                 optionDa: lage.optionDa, grund: grund)
         }
         let neu = FunkLage.lesen()
@@ -175,7 +175,7 @@ extension SpracheRaum {
             if !abgebrochen { f.gescheitert = true }
             diagMelden(abgebrochen ? "funk_hq_abgebrochen" : "funk_hq_fehler",
                        ["grund": grund, "fehler": fehler])
-            await funkHqZurueck(spur, hielt: f.loslassen(), istSoftware: true, optionDa: true,
+            await funkHqZurueck(spur, istSoftware: true, optionDa: true,
                                 grund: "fehler")
             return
         }
@@ -193,18 +193,36 @@ extension SpracheRaum {
     static let funkPruefFrist: TimeInterval = 3
     static let funkPruefGrund = "hq_pruefen"
 
-    /// Zurück an das SDK. Wechselt die Verarbeitung zurück auf `.automatic`,
-    /// richtet das SDK seine Kategorie dabei selbst neu ein
-    /// (`isPlatformVoiceProcessingExpected` → `onDidMutate`); sonst setzen
-    /// wir sie so, wie es das SDK täte, damit die HQ-Option nicht stehen bleibt.
-    private func funkHqZurueck(_ spur: LocalAudioTrack?, hielt: Bool, istSoftware: Bool,
+    /// Zurück an das SDK.
+    ///
+    /// **Die Reihenfolge, seit Gegenprüfung C5:** solange wir noch halten,
+    /// ZUERST die Kategorie, wie das SDK sie setzen würde, DANN die
+    /// Verarbeitung zurück, ZULETZT die Automatik. Umgekehrt (Automatik
+    /// zuerst) richtete das SDK beim Wechsel der Verarbeitung selbst ein
+    /// (`isPlatformVoiceProcessingExpected` → `onDidMutate` → `setCategory`),
+    /// und zwar NACH dem Neubau der Maschine für VPIO: der Formatwechsel
+    /// HQ → HFP träfe eine laufende Maschine, `ReconfigureEngine` liefe MIT
+    /// Automatik, also mit `setActive(false)`/`(true)` und freigegebener
+    /// fremder Musik. So läuft der Neubau, während das SDK die Session nicht
+    /// anfasst, und danach gibt es für das SDK nichts mehr einzurichten.
+    /// Hielten wir nicht mehr (`kopfhoererWeg` lässt sofort los — dort wiegt
+    /// das Echo schwerer), richtet das SDK beim Wechsel der Verarbeitung selbst
+    /// ein; ohne Wechsel setzen wir seine Werte, damit HQ nicht stehen bleibt.
+    /// Gezählt werden die Neubauten in `konfigWechsel` (Diagnose).
+    private func funkHqZurueck(_ spur: LocalAudioTrack?, istSoftware: Bool,
                                optionDa: Bool, grund: String) async {
-        if istSoftware, !ton.volle {
-            verarbeitungSetzen(spur, software: false)
-        } else if optionDa {
-            await MainActor.run { SpracheFunkHq.geteilt.sdkKategorieSetzen(software: istSoftware) }
+        let f = SpracheFunkHq.geteilt
+        let hielt = f.haelt
+        let bleibtSoftware = ton.volle
+        if hielt {
+            await MainActor.run { f.sdkKategorieSetzen(software: bleibtSoftware, gehalten: true) }
         }
-        if hielt { diagMelden("funk_hq_aus", ["grund": grund]) }
+        if istSoftware, !bleibtSoftware {
+            verarbeitungSetzen(spur, software: false)
+        } else if !hielt, optionDa {
+            await MainActor.run { f.sdkKategorieSetzen(software: istSoftware) }
+        }
+        if f.loslassen() || hielt { diagMelden("funk_hq_aus", ["grund": grund]) }
     }
 
     private func verarbeitungSetzen(_ spur: LocalAudioTrack?, software: Bool) {
@@ -233,6 +251,7 @@ extension SpracheRaum {
             "funkSprech": l.ausgangSprech,
         "hqKann": l.hqKann.map { $0 ? "ja" : "nein" } ?? "unbekannt",
             "hqAn": l.hqAn,
+            "konfigWechsel": SpracheFunkHq.geteilt.konfigWechsel,
             "rate": Int(s.sampleRate),
             "eingKanaele": s.inputNumberOfChannels,
             "ausKanaele": s.outputNumberOfChannels

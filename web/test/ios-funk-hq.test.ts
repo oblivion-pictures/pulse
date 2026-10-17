@@ -125,3 +125,13 @@ test('C4: „verloren" beim Einrichten ist kein Fehlschlag für den ganzen Raum'
   assert.match(q, /let abgebrochen = fehler == SpracheFunkHq\.verlorenGrund\n\s*if !abgebrochen \{ f\.gescheitert = true \}/);
   assert.match(q, /"funk_hq_abgebrochen"/);
 });
+
+test('C5: Rückgabe erst Kategorie, dann Verarbeitung, zuletzt die Automatik; Neubauten gezählt', () => {
+  const q = swift('SpracheFunkHqAbgleich.swift');
+  const a = q.indexOf('f.sdkKategorieSetzen(software: bleibtSoftware, gehalten: true)');
+  const b = q.indexOf('verarbeitungSetzen(spur, software: false)');
+  const c = q.indexOf('if f.loslassen() || hielt');
+  assert.ok(a > 0 && a < b && b < c, 'Reihenfolge');
+  assert.match(q, /"konfigWechsel":/);
+  assert.match(swift('SpracheFunkHq.swift'), /forName: \.AVAudioEngineConfigurationChange, object: nil/);
+});

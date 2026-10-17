@@ -59,6 +59,27 @@ final class SpracheFunkHq: @unchecked Sendable {
     /// Übernahme), und seit wann — Gegenprüfung C1.
     private var haltUid: String?
     private var haltSeit: CFAbsoluteTime = 0
+    private var _konfigWechsel = 0
+    private var konfigBeobachter: NSObjectProtocol?
+
+    /// Wie oft eine Audio-Maschine in diesem Raum ihre Konfiguration wechseln
+    /// musste (`AVAudioEngineConfigurationChange` — darauf baut WebRTCs ADM
+    /// mit `ReconfigureEngine` neu). Zählt alle Maschinen des Prozesses, also
+    /// auch die des Stream-Tons; ein Pendeln zeigt sich als schnell steigende
+    /// Zahl. Diagnose `konfigWechsel` (C5).
+    var konfigWechsel: Int { sperre.withLock { _konfigWechsel } }
+
+    func maschinenBeobachtenFallsNoetig() {
+        sperre.withLock {
+            guard konfigBeobachter == nil else { return }
+            konfigBeobachter = NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil
+            ) { [weak self] _ in
+                guard let self else { return }
+                sperre.withLock { self._konfigWechsel += 1 }
+            }
+        }
+    }
 
     /// **Alles hier hinter `sperre`** (Gegenprüfung B7): geschrieben wird aus
     /// der Befehlskette, aber auch aus `raumLoesen` ← `raumAbgerissen` (ein
@@ -141,6 +162,7 @@ final class SpracheFunkHq: @unchecked Sendable {
         sperre.withLock {
             uebernahmen = []
             _gescheitert = false
+            _konfigWechsel = 0
             letzteArt = ""
         }
     }
@@ -232,10 +254,12 @@ final class SpracheFunkHq: @unchecked Sendable {
     /// Die Kategorie, die das SDK selbst setzen würde — für ein Zurückgeben,
     /// das keinen Wechsel der Verarbeitung auslöst (dann richtet das SDK von
     /// selbst nichts neu ein, und die HQ-Option bliebe stehen).
-    @MainActor func sdkKategorieSetzen(software: Bool) {
+    /// `gehalten`: noch während wir halten (Rückgabe, C5) — dann gilt unser
+    /// Merker statt des Automatik-Schalters.
+    @MainActor func sdkKategorieSetzen(software: Bool, gehalten: Bool = false) {
         let am = AudioManager.shared
-        guard am.audioSession.isAutomaticConfigurationEnabled,
-              !Anrufverwaltung.geteilt.callkitAktiv else { return }
+        let darf = gehalten ? haelt : am.audioSession.isAutomaticConfigurationEnabled
+        guard darf, !Anrufverwaltung.geteilt.callkitAktiv else { return }
         let lautsprecher = am.isSpeakerOutputPreferred
         let modus: AVAudioSession.Mode = software ? .default : (lautsprecher ? .videoChat : .voiceChat)
         try? AVAudioSession.sharedInstance().setCategory(

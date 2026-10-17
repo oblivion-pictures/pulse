@@ -24,6 +24,7 @@ extension SpracheRaum {
     /// trägt. Die Oberfläche braucht die Wahrheit ausserdem auch dann, wenn
     /// sie den Wechsel nicht selbst ausgelöst hat (Kopfhörer rein, AirPods).
     func sessionBeobachtenFallsNoetig() {
+        SpracheFunkHq.geteilt.maschinenBeobachtenFallsNoetig()
         guard sessionBeobachter == nil else { return }
         sessionBeobachter = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil
