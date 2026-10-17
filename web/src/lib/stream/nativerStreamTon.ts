@@ -37,6 +37,8 @@ import {
   type StreamTonZustand
 } from '$lib/platform/iosStreamTonNativ';
 import { WebAufnahme } from '$lib/platform/webAufnahme';
+import { CLOUD_HOSTNAME } from '$lib/api/servers.svelte';
+import { activeServer } from '$lib/stores/active-server.svelte';
 import { tonWiedergabenBeobachten } from '$lib/platform/iosTon';
 import {
   mikrofonBeiDerHuelle,
@@ -48,6 +50,7 @@ import {
   fensterMs,
   versatzEntscheiden,
   videoZaehler,
+  whepHostErlaubt,
   whepPfad,
   type Zaehler
 } from './tonVersatz';
@@ -213,6 +216,15 @@ export class NativerStreamTon implements Teilnehmer {
   }
 
   async #starten(url: string, pfad: string): Promise<void> {
+    const seite = typeof location !== 'undefined' ? location.origin : undefined;
+    if (!whepHostErlaubt(url, [CLOUD_HOSTNAME, activeServer.current?.hostname, seite])) {
+      // Kein Wiederholen: eine fremde Adresse wird beim nächsten Mal nicht
+      // eigen. Die Kachel spielt den Ton selbst.
+      this.#aufgegeben = true;
+      melde('stream', 'stream_nativ_ton_fehler', 'Nativer Stream-Ton: fremder Host', {});
+      void this.#halt().then(() => this.#rueckfall('host'));
+      return;
+    }
     const gen = ++this.#gen;
     clearTimeout(this.#retry);
     this.#pfad = pfad;

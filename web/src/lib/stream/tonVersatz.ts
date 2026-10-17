@@ -94,3 +94,31 @@ export function whepPfad(url: string): string {
     return url;
   }
 }
+
+/**
+ * Darf diese WHEP-URL an die Hülle? Nur auf einen der eigenen Pulse-Hosts
+ * (Cloud, aktiver Server, die Seite selbst) und nur über https — http allein
+ * für eine lokale Entwicklungsadresse. Die Hülle schickt die URL ohne CORS
+ * und ohne Rückfrage per POST hinaus; was hier durchkommt, bestimmt, wohin
+ * das Telefon eine Verbindung aufbaut (Gegenprüfung 2026-10-17, Randnotiz).
+ * `erlaubt`: Hostnamen oder Ursprünge, fehlende Einträge zählen nicht.
+ */
+export function whepHostErlaubt(url: string, erlaubt: readonly (string | undefined)[]): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  const lokal = u.hostname === '127.0.0.1' || u.hostname === 'localhost';
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && lokal)) return false;
+  const hosts = erlaubt.flatMap((e) => {
+    if (!e) return [];
+    try {
+      return [new URL(e.includes('://') ? e : `https://${e}`).host];
+    } catch {
+      return [];
+    }
+  });
+  return hosts.includes(u.host);
+}

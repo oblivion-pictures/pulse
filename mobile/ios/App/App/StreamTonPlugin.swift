@@ -45,8 +45,8 @@ public class StreamTonPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func starten(_ call: CAPPluginCall) {
         guard let kennung = call.getString("kennung"),
               let roh = call.getString("url"), let url = URL(string: roh),
-              url.scheme == "https" || url.scheme == "http" else {
-            call.reject("kennung und url sind Pflicht")
+              Self.adresseErlaubt(url) else {
+            call.reject("kennung und eine https-URL sind Pflicht")
             return
         }
         let lautstaerke = call.getDouble("lautstaerke") ?? 1
@@ -63,6 +63,19 @@ public class StreamTonPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject(error.localizedDescription, "streamton_\(status)", error, ["status": status])
             }
         }
+    }
+
+    /// Nur https. Welcher Host, prüft die Seite (`whepHostErlaubt`, nur
+    /// Cloud, aktiver Server, die Seite selbst) — die Hülle kennt die Liste
+    /// der Server nicht. Klartext-http nur in Debug-Bauten und nur an die
+    /// eigene Maschine (`StreamTonProbe` gegen eine lokale MediaMTX).
+    static func adresseErlaubt(_ url: URL) -> Bool {
+        if url.scheme == "https", url.host != nil { return true }
+        #if DEBUG
+            return url.scheme == "http" && (url.host == "127.0.0.1" || url.host == "localhost")
+        #else
+            return false
+        #endif
     }
 
     @objc func stoppen(_ call: CAPPluginCall) {

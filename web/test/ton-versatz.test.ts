@@ -7,6 +7,7 @@ import {
   fensterMs,
   versatzEntscheiden,
   videoZaehler,
+  whepHostErlaubt,
   whepPfad
 } from '../src/lib/stream/tonVersatz.ts';
 
@@ -86,4 +87,15 @@ test('Pfad ohne Lese-Token: dieselbe Übertragung erkennt man am Pfad', () => {
   const b = whepPfad('https://howispulse.com/whep/channel-1-2-abc/whep?token=y');
   assert.equal(a, b);
   assert.notEqual(a, whepPfad('https://howispulse.com/whep/channel-1-2-def/whep?token=x'));
+});
+
+test('nur eigene Pulse-Hosts, nur https (http nur lokal)', () => {
+  const erlaubt = ['https://howispulse.com', 'heim.example.org', undefined];
+  assert.ok(whepHostErlaubt('https://howispulse.com/whep/p/whep?token=x', erlaubt));
+  assert.ok(whepHostErlaubt('https://heim.example.org/whep/p/whep', erlaubt));
+  assert.ok(!whepHostErlaubt('https://evil.example.com/whep/p/whep', erlaubt));
+  assert.ok(!whepHostErlaubt('http://howispulse.com/whep/p/whep', erlaubt));
+  assert.ok(!whepHostErlaubt('kein-url', erlaubt));
+  assert.ok(whepHostErlaubt('http://127.0.0.1:8889/p/whep', ['http://127.0.0.1:8889']));
+  assert.ok(!whepHostErlaubt('http://127.0.0.1:8889/p/whep', ['http://127.0.0.1:5173']));
 });
