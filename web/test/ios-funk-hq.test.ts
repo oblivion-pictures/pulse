@@ -85,3 +85,10 @@ test('B5: nach den Heilwegen des Wächters gleicht der Bluetooth-Weg nach', () =
     assert.match(n, new RegExp(`funkHqAnstossen\\("${g}"\\)`), g);
   }
 });
+
+test('B6: nach einem Anruf ohne CallKit kommt HQ zurück, wenn der Anruf-Raum weg ist', () => {
+  assert.match(
+    swift('AnrufSitzung.swift'),
+    /await AnrufRaum\.geteilt\.verlassen\(nur: kennung\)\n\s*SpracheRaum\.geteilt\.funkHqAnstossen\("anruf_raum_weg"\)/
+  );
+});

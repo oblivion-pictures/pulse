@@ -236,7 +236,13 @@ extension Anrufverwaltung {
         guard ohneCallKitKennung == kennung else { return }
         ohneCallKitKennung = nil
         kuerzlichBeendet[kennung] = Date()
-        Task { await AnrufRaum.geteilt.verlassen(nur: kennung) }
+        // Erst wenn der Anruf-Raum weg ist, ist die Session wieder frei für
+        // Bluetooth-HQ — die Pause endet womöglich vorher (`anruf_ende`
+        // fände den Raum noch vor und täte nichts, Gegenprüfung B6).
+        Task {
+            await AnrufRaum.geteilt.verlassen(nur: kennung)
+            SpracheRaum.geteilt.funkHqAnstossen("anruf_raum_weg")
+        }
         if let wunsch = kanalLautsprecher { AudioManager.shared.isSpeakerOutputPreferred = wunsch }
         kanalLautsprecher = nil
         if !callkitAktiv { kanalPause(false) }
