@@ -11,6 +11,9 @@ struct FunkLage {
     var ios26 = false
     /// Geht die Ausgabe an ein Bluetooth-Gerät (jedes Profil)?
     var ausgangFunk = false
+    /// Welches (`uid` des ersten Bluetooth-Ausgangs) — nur zum Vergleich,
+    /// nie in der Diagnose.
+    var ausgangUid: String?
     /// …an eines mit Sprechprofil (HFP oder LE) — also ein Headset, keine
     /// reine A2DP-Box?
     var ausgangSprech = false
@@ -31,7 +34,8 @@ struct FunkLage {
         // Porttyp, den es heute nicht gibt — alle Bluetooth-Typen beginnen so.
         let funk = { (p: AVAudioSessionPortDescription) in p.portType.rawValue.hasPrefix("Bluetooth") }
         var l = FunkLage()
-        l.ausgangFunk = route.outputs.contains(where: funk)
+        l.ausgangUid = route.outputs.first(where: funk)?.uid
+        l.ausgangFunk = l.ausgangUid != nil
         l.ausgangSprech = route.outputs.contains { [.bluetoothHFP, .bluetoothLE].contains($0.portType) }
         l.eingangFunk = route.inputs.contains(where: funk)
         if #available(iOS 26.0, *) {
@@ -62,11 +66,14 @@ struct FunkLage {
 /// Die Entscheidung, ohne Seiteneffekt.
 enum FunkHqRegeln {
     /// Soll der Kanal auf dem HQ-Weg stehen? `haelt`: steht er schon dort —
-    /// dann bleibt er, bis der Kopfhörer weg ist (ein Zwischenstand der Route
-    /// während des eigenen Umschaltens soll ihn nicht zurückwerfen).
-    static func ziel(wunsch: Bool, lage: FunkLage, gescheitert: Bool, haelt: Bool) -> Bool {
+    /// dann bleibt er, solange `haltenOk` (dasselbe Gerät, s.
+    /// `SpracheFunkHq.haltenErlaubt`); ein Zwischenstand der Route während
+    /// des eigenen Umschaltens soll ihn nicht zurückwerfen.
+    static func ziel(wunsch: Bool, lage: FunkLage, gescheitert: Bool, haelt: Bool,
+                     haltenOk: Bool) -> Bool {
         guard wunsch, lage.ios26, lage.ausgangFunk, !gescheitert else { return false }
-        return haelt || (lage.ausgangSprech && lage.eingangFunk && lage.hqKann == true)
+        if haelt { return haltenOk }
+        return lage.ausgangSprech && lage.eingangFunk && lage.hqKann == true
     }
 
     /// Wir halten die Session mit HQ, und kein Eingang der Route läuft darin —
@@ -121,7 +128,8 @@ extension SpracheRaum {
             f.gescheitert = true
             diagMelden("funk_hq_gescheitert", ["grund": grund])
         }
-        var ziel = FunkHqRegeln.ziel(wunsch: f.wunsch, lage: lage, gescheitert: f.gescheitert, haelt: haelt)
+        var ziel = FunkHqRegeln.ziel(wunsch: f.wunsch, lage: lage, gescheitert: f.gescheitert,
+                                     haelt: haelt, haltenOk: f.haltenErlaubt(lage))
         if ziel, !haelt, f.uebernahmeZaehlen() {
             f.gescheitert = true
             ziel = false
@@ -137,7 +145,7 @@ extension SpracheRaum {
         } else {
             // Zurück auf VPIO am Lautsprecher: bis es läuft, nichts hören
             // lassen (B3; `kopfhoererWeg` tut dasselbe schon im Beobachter).
-            if istSoftware, !ton.volle, !lage.ausgangFunk { f.daempfen() }
+            if istSoftware, !ton.volle, !lage.ausgangSprech || !lage.eingangFunk { f.daempfen() }
             await funkHqZurueck(spur, hielt: f.loslassen(), istSoftware: istSoftware,
                                 optionDa: lage.optionDa, grund: grund)
         }

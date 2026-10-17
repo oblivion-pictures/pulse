@@ -64,7 +64,7 @@ test('B3: Kopfhörer raus → sofort im Beobachter zurück und stumm, bis VPIO l
   const sitzung = swift('SpracheRaumSession.swift');
   assert.match(sitzung, /SpracheFunkHq\.geteilt\.kopfhoererWeg\(\)\n\s*schickeEigenen\(\)\n\s*funkHqAnstossen\("route"\)/);
   const q = swift('SpracheFunkHq.swift');
-  assert.match(q, /guard haelt, !FunkLage\.lesen\(\)\.ausgangFunk else \{ return \}\n\s*daempfen\(\)\n\s*loslassen\(\)/);
+  assert.match(q, /guard haelt, !haltenErlaubt\(FunkLage\.lesen\(\)\) else \{ return \}\n\s*daempfen\(\)\n\s*loslassen\(\)/);
   assert.match(q, /mixer\.outputVolume = 0/);
   assert.match(q, /voiceProcessingEnabled\.isActive/);
 });
@@ -73,10 +73,7 @@ test('B4: nur die aktuelle Route, Bluetooth-Eingang und Sprechprofil verlangt', 
   const q = swift('SpracheFunkHqAbgleich.swift');
   assert.doesNotMatch(q, /s\.availableInputs/);
   assert.match(q, /let mikros = route\.inputs\.compactMap\(\\\.bluetoothMicrophoneExtension\)/);
-  assert.match(
-    q,
-    /return haelt \|\| \(lage\.ausgangSprech && lage\.eingangFunk && lage\.hqKann == true\)/
-  );
+  assert.match(q, /return lage\.ausgangSprech && lage\.eingangFunk && lage\.hqKann == true/);
 });
 
 test('B5: nach den Heilwegen des Wächters gleicht der Bluetooth-Weg nach', () => {
@@ -98,4 +95,11 @@ test('B7: Zustand hinter der Sperre, kein main.sync im Bluetooth-Weg', () => {
   assert.doesNotMatch(q, /DispatchQueue\.main\.sync/);
   assert.match(swift('SpracheFunkHq.swift'), /var gescheitert: Bool \{\n\s*get \{ sperre\.withLock \{ _gescheitert \} \}/);
   assert.match(swift('SpracheFunkHq.swift'), /func artGewechselt\(_ kurz: String\) -> Bool/);
+});
+
+test('C1: Halten nur für dasselbe Gerät (uid) und mit Bluetooth-Eingang', () => {
+  const q = swift('SpracheFunkHq.swift');
+  assert.match(q, /guard l\.ausgangFunk, uid == nil \|\| l\.ausgangUid == uid else \{ return false \}/);
+  assert.match(q, /guard haelt, !haltenErlaubt\(FunkLage\.lesen\(\)\) else \{ return \}/);
+  assert.match(swift('SpracheFunkHqAbgleich.swift'), /if haelt \{ return haltenOk \}/);
 });

@@ -55,6 +55,10 @@ final class SpracheFunkHq: @unchecked Sendable {
     private var uebernahmen: [CFAbsoluteTime] = []
     private var _gescheitert = false
     private var letzteArt = ""
+    /// Das Gerät, für das wir halten (`uid` des Bluetooth-Ausgangs bei der
+    /// Übernahme), und seit wann — Gegenprüfung C1.
+    private var haltUid: String?
+    private var haltSeit: CFAbsoluteTime = 0
 
     /// **Alles hier hinter `sperre`** (Gegenprüfung B7): geschrieben wird aus
     /// der Befehlskette, aber auch aus `raumLoesen` ← `raumAbgerissen` (ein
@@ -118,6 +122,19 @@ final class SpracheFunkHq: @unchecked Sendable {
     /// Jemand anderes hat die Automatik schon zurückgestellt (Heilweg).
     func verloren() { sperre.withLock { _haelt = false } }
 
+    /// **Darf das Halten weiterlaufen?** (Gegenprüfung C1) Nur für DASSELBE
+    /// Gerät: wechselt die Route auf ein anderes Bluetooth-Gerät (Soundbar,
+    /// Auto), gilt das wie „Kopfhörer weg" — sonst liefe dort Software-Echo-
+    /// Unterdrückung mit eingebautem Mikrofon. Am Porttyp lässt es sich nicht
+    /// festmachen (unter HQ unbekannt), an der `uid` schon. Ein fehlender
+    /// Bluetooth-Eingang zählt erst nach der Prüffrist: während des eigenen
+    /// Umschaltens fehlt er womöglich für einen Augenblick.
+    func haltenErlaubt(_ l: FunkLage, jetzt: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()) -> Bool {
+        let (uid, seit) = sperre.withLock { (haltUid, haltSeit) }
+        guard l.ausgangFunk, uid == nil || l.ausgangUid == uid else { return false }
+        return l.eingangFunk || jetzt - seit < SpracheRaum.funkPruefFrist
+    }
+
     func raumWeg() {
         entdaempfen(grund: "raum_weg")
         loslassen()
@@ -133,7 +150,8 @@ final class SpracheFunkHq: @unchecked Sendable {
     private var gedaempftSeit: CFAbsoluteTime?
     private var vorherLautstaerke: Float = 1
 
-    /// **Kopfhörer raus, während wir HQ halten.** iOS leitet SOFORT auf den
+    /// **Kopfhörer raus (oder ein anderes Gerät, C1), während wir HQ halten.**
+    /// iOS leitet SOFORT auf den
     /// Lautsprecher um; VPIO ist da noch aus, und bis der Abgleich in der
     /// Kette dran ist und die Maschine mit VPIO neu steht, liefe der Kanal
     /// laut über den Lautsprecher mit nur WebRTCs Echo-Unterdrückung — die
@@ -141,7 +159,7 @@ final class SpracheFunkHq: @unchecked Sendable {
     /// Deshalb hier, im Routen-Beobachter und ohne Kette: Session zurück an
     /// das SDK und die Wiedergabe des Kanals stumm, bis VPIO wieder läuft.
     func kopfhoererWeg() {
-        guard haelt, !FunkLage.lesen().ausgangFunk else { return }
+        guard haelt, !haltenErlaubt(FunkLage.lesen()) else { return }
         daempfen()
         loslassen()
     }
@@ -231,6 +249,11 @@ final class SpracheFunkHq: @unchecked Sendable {
             // Im Kanal ist sie schon aktiv; nach einer Unterbrechung womöglich
             // nicht — und solange wir halten, aktiviert das SDK nicht.
             try s.setActive(true)
+            let uid = FunkLage.lesen().ausgangUid
+            sperre.withLock {
+                haltUid = uid
+                haltSeit = CFAbsoluteTimeGetCurrent()
+            }
             return nil
         } catch {
             return error.localizedDescription
