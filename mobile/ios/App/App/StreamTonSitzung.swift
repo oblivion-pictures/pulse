@@ -180,7 +180,10 @@ final class StreamTonSitzung: @unchecked Sendable {
         // ohne unsere Anforderung UND mit Deaktivierung.
         if freigeben { deaktivierungFreigeben() }
         if neu { melden("streamton_session_neu", ["grund": grund]) }
-        if laeuft { wiederanlauf?(grund) }
+        // Nach einem Anruf IMMER: ein Gerät, das während des Anrufs aufging,
+        // hat sich nie angemeldet (`starten` bleibt im Anruf vor `anmelden`
+        // stehen), `nutzer` zählt es also nicht (Gegenprüfung 2, V3).
+        if laeuft || grund == "callkit" { wiederanlauf?(grund) }
     }
 
     /// **Loslassen deaktiviert nie** (Gegenprüfung S4). Ohne Kanal hiesse das

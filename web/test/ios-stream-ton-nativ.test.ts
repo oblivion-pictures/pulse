@@ -198,3 +198,10 @@ test('V1: nach dem letzten Stream-Ton deaktiviert die Hülle die Session (ohne R
   assert.match(nach, /nutzer == 0, s\.category == \.playback, s\.categoryOptions\.contains\(\.mixWithOthers\)/);
   assert.match(nach, /setActive\(false, options: \.notifyOthersOnDeactivation\)/);
 });
+
+test('V3: nach dem Anruf laufen auch Kacheln an, die während des Anrufs aufgingen', () => {
+  assert.match(quelle('StreamTonSitzung.swift'), /if laeuft \|\| grund == "callkit" \{ wiederanlauf\?\(grund\) \}/);
+  // Im Anruf bleibt ein Gerät VOR `anmelden` stehen — deshalb zählt `nutzer` es nicht.
+  const starten = /func starten\(grund: String\) \{[\s\S]*?\n    \}\n/.exec(quelle('StreamTonGeraet.swift'))?.[0] ?? '';
+  assert.ok(starten.indexOf('anrufHaelt') < starten.indexOf('anmelden()'));
+});
