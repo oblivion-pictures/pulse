@@ -7,7 +7,6 @@ import {
   iosVoiceAktiv
 } from './iosAudioSession';
 import { NACH_NATIVEM_RAUM, tonSchritt, wegAntwort, zielModus, type TonModus } from './tonModus';
-import { webAudioSession } from './iosTonWebkit';
 
 /**
  * Der eine Ort, der die iOS-Audio-Session schaltet.
@@ -171,7 +170,6 @@ function anwenden(): Promise<void> {
 
 async function schritt(): Promise<void> {
   const ziel = zielModus(voiceQuellen.size > 0, wiedergaben.size);
-  if (!nativerRaum) webAudioSession(ziel);
   if (!isCapacitorIOS()) return;
   if (tonSchritt({ ziel, angewandt, nativerRaum, erzwingen }) === 'nichts') return;
   const warErzwungen = erzwingen;

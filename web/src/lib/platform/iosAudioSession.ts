@@ -174,23 +174,14 @@ export async function iosTonWegSetzen(id: string): Promise<boolean> {
     .catch(() => false);
 }
 
-/**
- * Unterbrechungen melden (Telefonanruf, Siri, Wecker). Rueckgabe = Abriss.
- *
- * **Ohne Hoerer seit dem 2026-10-10 — und das ist Absicht.**
- *
- * Der Binder bleibt, der Aufrufer ist weg: wer auf eine beendete
- * Unterbrechung hin die eigene Session wieder aktiviert, unterbricht damit
- * WebKit und raeumt dessen laufende Aufnahme ab (Messung an der Stelle in
- * `iosTon.ts`, wo der Hoerer sass). Die Huelle meldet weiter und schreibt es
- * ins Geraetelog; wer hier wieder zuhoert, braucht vorher eine Messung, dass
- * ueberhaupt etwas kaputtgeht.
- */
-export function iosUnterbrechungen(cb: (e: Unterbrechung) => void): () => void {
-  const p = plugin('addListener');
-  if (!p) return () => undefined;
-  return abmelder(p.addListener('unterbrechung', cb));
-}
+// **Unterbrechungen (Telefonanruf, Siri, Wecker) hören wir hier bewusst nicht
+// ab** (Entscheid 2026-10-10; der Binder `iosUnterbrechungen` ist entfernt,
+// er hatte keinen Aufrufer mehr): wer auf eine beendete Unterbrechung hin die
+// eigene Session wieder aktiviert, unterbricht damit WebKit und räumt dessen
+// laufende Aufnahme ab. Die Hülle meldet weiter und schreibt es ins
+// Gerätelog; wer hier wieder zuhört, braucht vorher eine Messung, dass
+// überhaupt etwas kaputtgeht. Das Plugin-Ereignis `unterbrechung` bleibt in
+// `AudioSessionPlugin` (`addListener` unten) deklariert.
 
 /** Wegwechsel melden (Headset rein/raus, AirPods verbunden). */
 export function iosWegWechsel(cb: (e: WegWechsel) => void): () => void {

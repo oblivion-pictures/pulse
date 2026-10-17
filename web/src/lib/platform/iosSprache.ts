@@ -133,9 +133,10 @@ function rufen<T>(
  * ältere Bauten ohne `StreamTonPlugin` gilt der Satz oben weiter — dort zeigt
  * die Kachel den Lautlos-Hinweis.
  *
- * **Zweite Schreibstelle derselben Eigenschaft** ist `webAudioSession` in
- * `platform/iosTon.ts`; die ist abgeschaltet (`WEB_AUDIO_SESSION_AN`) und
- * schweigt zusätzlich, solange der native Raum steht.
+ * **Dies ist die einzige Schreibstelle** von `navigator.audioSession`: die
+ * zweite in `platform/iosTon.ts` (`webAudioSession`) war abgeschaltet und ist
+ * entfernt, ihre Messung steht in der Git-Historie von
+ * `platform/iosTonWebkit.ts`.
  */
 function webSessionTyp(typ: 'ambient' | 'auto'): void {
   if (!isCapacitorIOS()) return;
@@ -259,7 +260,7 @@ export async function spracheBeitreten(
     gesamt: number;
     community?: string;
     /** Nur an einen Bau mit Wächter (`nativeWacheDa`). */
-    ton?: { volle: boolean; bitrateKbps: number };
+    ton?: { bitrateKbps: number };
   }
 ): Promise<NativerZustand> {
   const p = huelle();
@@ -281,9 +282,7 @@ export async function spracheBeitreten(
       lautstaerken: zusatz?.je,
       gesamt: zusatz?.gesamt,
       communityName: zusatz?.community,
-      ...(ton
-        ? { volleTonqualitaet: ton.volle, bitrateKbps: ton.bitrateKbps, kannNeuVerbinden: true }
-        : {})
+      ...(ton ? { bitrateKbps: ton.bitrateKbps, kannNeuVerbinden: true } : {})
     });
   } catch (e) {
     raumEndet(gen);

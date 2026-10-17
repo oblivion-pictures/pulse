@@ -68,8 +68,9 @@ export type AudioSettings = {
    *
    * **Wer diesen Schalter einschalten will, muss also zuerst WebKits Session
    * erreichen** — und der einzige Hebel dafür ist `navigator.audioSession`
-   * (`platform/iosTon.ts`, dort hinter `WEB_AUDIO_SESSION_AN` abgeschaltet,
-   * weil ein erster Versuch die App aufhängte). Vorher ist der Schalter nicht
+   * (`platform/iosSprache.ts::webSessionTyp`; der frühere Weg über
+   * `platform/iosTon.ts` war abgeschaltet, weil ein erster Versuch die App
+   * aufhängte, und ist entfernt). Vorher ist der Schalter nicht
    * „fertig und nur noch ungemessen", sondern nachweislich schädlich.
    */
   bluetoothHq: boolean;
@@ -84,20 +85,13 @@ export type AudioSettings = {
    * Kopfhörer ihn tragen, und nur mit Bluetooth-Ausgabe; sonst bleibt es bei
    * Apples Sprachverarbeitung (`SpracheFunkHq.swift`). Aus ist der Rückweg,
    * falls die höhere Mikrofon-Latenz stört, vor der Apple selbst warnt.
+   *
+   * **In der Oberfläche gibt es nur EINEN Schalter** (Review W2,
+   * `IosTonEinstellungen.svelte`): er setzt `iosFunkHq` und `bluetoothHq`
+   * zugleich, damit er hält, was er sagt, ob der native Weg oder der
+   * Web-Rückfall älterer Bauten läuft.
    */
   iosFunkHq: boolean;
-  /**
-   * „Volle Tonqualität" im nativen Sprachkanal der iOS-App — ein
-   * VERGLEICHSSCHALTER, Vorgabe aus. An: WebRTCs eigene Echo-, Pegel- und
-   * Rauschverarbeitung statt Apples Voice-Processing, das am eingebauten
-   * Mikrofon „dumpf wie am Telefon" klang, und die Sende-Bitrate des Servers
-   * wie am Desktop statt 48 kbps (`SpracheRaumNeustart.swift::raumOptionen`).
-   * Preis: WebRTCs Echo-Unterdrückung am iPhone-Lautsprecher ist schwächer als
-   * Apples — ob sie trägt, zeigt erst die Echo-Probe am Gerät. Wirkt beim
-   * nächsten Beitritt; nur an einen App-Bau mit Mikrofon-Wächter geschickt
-   * (`nativeWacheDa`), ein älterer bekäme es nicht mit.
-   */
-  iosVolleTonqualitaet: boolean;
   noiseGateThresholdDb: number;
   stereo: boolean;
   inputMakeupGain: number;
@@ -125,7 +119,6 @@ const DEFAULTS_AUDIO: AudioSettings = {
   noiseSuppression: 'rnnoise_gated',
   bluetoothHq: false,
   iosFunkHq: true,
-  iosVolleTonqualitaet: false,
   noiseGateThresholdDb: NOISE_GATE_DB_DEFAULT,
   stereo: false,
   inputMakeupGain: INPUT_MAKEUP_DEFAULT,
@@ -167,7 +160,6 @@ export const AUDIO_SECTION: SectionConfig<AudioSettings> = {
       echoCancellation: bool(a.echoCancellation, d.echoCancellation),
       bluetoothHq: a.bluetoothHq === true,
       iosFunkHq: a.iosFunkHq !== false,
-      iosVolleTonqualitaet: a.iosVolleTonqualitaet === true,
       // Migration: pre-binary configs may carry 'browser'/'rnnoise'/'deepfilternet'
       // (DFN3 was removed 2026-05-16). Any non-'off', non-current legacy value
       // indicates the user wanted *some* filter on — map to the gated mode.

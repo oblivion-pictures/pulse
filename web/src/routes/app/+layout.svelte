@@ -39,6 +39,7 @@
   import { schnellwahlSetzen, schnellwahlVerfolgen } from '$lib/platform/schnellwahl';
   import { tonHqFunkSetzen } from '$lib/platform/iosTon';
   import { funkHqSetzen } from '$lib/platform/iosFunkHq';
+  import { bluetoothHqEinmalUebernehmen } from '$lib/platform/iosBluetoothHqUebernahme';
   import { settings } from '$lib/stores/settings.svelte';
   import { schnellwahlEintraege } from '$lib/platform/schnellwahlAuswahl';
   import VerbindungsHinweis from '$lib/components/VerbindungsHinweis.svelte';
@@ -319,6 +320,9 @@
     // Hochqualitäts-Route über Bluetooth aus der Einstellung übernehmen —
     // nicht erst beim Umlegen des Schalters, sonst gilt sie nach einem
     // Neustart nicht (die Session wird beim Beitritt eingerichtet).
+    // Zuvor: ein früher gespeichertes „an" des alten Web-Schalters einmal in
+    // den einen iOS-Schalter übernehmen (`platform/iosBluetoothHq.ts`).
+    bluetoothHqEinmalUebernehmen();
     tonHqFunkSetzen(settings.audio.bluetoothHq);
     // Dasselbe für den nativen Sprachkanal (`platform/iosFunkHq.ts`).
     funkHqSetzen(settings.audio.iosFunkHq);

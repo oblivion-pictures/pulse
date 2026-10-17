@@ -80,7 +80,7 @@ export function nativerSprachwegDa(): boolean {
  * Trägt der Bau den Mikrofon-Wächter (seit 2026-10-17)? Nur auf dem nativen
  * Weg sinnvoll, und einzeln gefragt — Begründung an `SpracheWachePlugin`
  * (`iosSpracheTypen.ts`). An dieser Antwort hängen der Beitrittston nach dem
- * Mikrofon, der Schalter „Volle Tonqualität" und der Diagnosebericht.
+ * Mikrofon und der Diagnosebericht.
  */
 export function nativeWacheDa(): boolean {
   return nativerSprachwegDa() && huellenBefund('SprachePlugin', SPRACHE_WACHE_METHODEN).da;
