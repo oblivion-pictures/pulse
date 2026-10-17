@@ -133,6 +133,10 @@ grep -q "NSLocalNetworkUsageDescription" "$IOS/Info.plist" \
   && gut "NSLocalNetworkUsageDescription" \
   || schlecht "NSLocalNetworkUsageDescription fehlt (Self-Host im Heimnetz wird still blockiert)"
 
+grep -A1 "ITSAppUsesNonExemptEncryption" "$IOS/Info.plist" | grep -q "<false/>" \
+  && gut "ITSAppUsesNonExemptEncryption = NO (kein Compliance-Fragebogen je Bau)" \
+  || schlecht "ITSAppUsesNonExemptEncryption fehlt — App Store Connect fragt sonst bei jedem Bau nach"
+
 echo "── 4. Nichts Lokales im Bundle ──"
 # Mit Schrägstrich am Ende: die Regel in `.gitignore` lautet `web/.cert/` und
 # gilt nur für Verzeichnisse. Ohne Schrägstrich kann git das nur wissen, wenn

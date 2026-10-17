@@ -2,6 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Export-Compliance: App Store Connect wertet die Antworten „Standard-Algorithmen,
+	     nicht Frankreich“ selbst als „keine meldepflichtige Verschlüsselung“ und empfiehlt
+	     dafür genau diesen Eintrag (Hinweis im Compliance-Dialog, 2026-10-17). Damit entfällt
+	     der Fragebogen bei jedem Bau. Vor einer öffentlichen Veröffentlichung, besonders in
+	     Frankreich (ANSSI), die Exportfrage erneut prüfen (Eigentümer-Entscheid 2026-10-17). -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
     <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
