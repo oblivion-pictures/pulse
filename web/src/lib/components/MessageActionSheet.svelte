@@ -17,6 +17,7 @@
   import EmojiPicker from './EmojiPicker.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import MenuRow from '$lib/components/menu/MenuRow.svelte';
+  import { haptikTicken } from '$lib/platform/haptik';
 
   let {
     open = $bindable(false),
@@ -52,6 +53,14 @@
   // Hand-picked frequent reactions — the full grid is one tap away.
   const QUICK = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
   let pickerView = $state(false);
+
+  // Das Blatt geht auf — kurzer Tick (nur iOS-Hülle, sonst No-op), nur beim
+  // Übergang von zu auf, nicht bei jeder Neuauswertung.
+  let warOffen = false;
+  $effect(() => {
+    if (open && !warOffen) haptikTicken();
+    warOffen = open;
+  });
 
   function close() {
     open = false;
