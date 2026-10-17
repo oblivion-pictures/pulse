@@ -92,3 +92,10 @@ test('B6: nach einem Anruf ohne CallKit kommt HQ zurück, wenn der Anruf-Raum we
     /await AnrufRaum\.geteilt\.verlassen\(nur: kennung\)\n\s*SpracheRaum\.geteilt\.funkHqAnstossen\("anruf_raum_weg"\)/
   );
 });
+
+test('B7: Zustand hinter der Sperre, kein main.sync im Bluetooth-Weg', () => {
+  const q = swift('SpracheFunkHq.swift') + swift('SpracheFunkHqAbgleich.swift');
+  assert.doesNotMatch(q, /DispatchQueue\.main\.sync/);
+  assert.match(swift('SpracheFunkHq.swift'), /var gescheitert: Bool \{\n\s*get \{ sperre\.withLock \{ _gescheitert \} \}/);
+  assert.match(swift('SpracheFunkHq.swift'), /func artGewechselt\(_ kurz: String\) -> Bool/);
+});

@@ -143,8 +143,7 @@ extension SpracheRaum {
         }
         let neu = FunkLage.lesen()
         let kurz = "\(neu.art)/\(f.haelt ? "hq" : "apple")"
-        if kurz != f.letzteArt {
-            f.letzteArt = kurz
+        if f.artGewechselt(kurz) {
             diagMelden("funk_route", ["grund": grund, "ziel": ziel ? "hq" : "apple"])
         }
     }

@@ -53,10 +53,31 @@ final class SpracheFunkHq: @unchecked Sendable {
     private var _wunsch = true
     private var _haelt = false
     private var uebernahmen: [CFAbsoluteTime] = []
+    private var _gescheitert = false
+    private var letzteArt = ""
+
+    /// **Alles hier hinter `sperre`** (Gegenprüfung B7): geschrieben wird aus
+    /// der Befehlskette, aber auch aus `raumLoesen` ← `raumAbgerissen` (ein
+    /// Delegat des SDK, ausserhalb der Kette), dem Routen-Beobachter und den
+    /// Anruf-Wegen auf dem Hauptthread. Der Maschinenweg (WebRTC-Faden) fasst
+    /// nichts davon an; `main.sync` gibt es nirgends — `maschineNeu` ruft
+    /// `setEngineAvailability` auf dem Hauptthread und wartet dabei auf
+    /// WebRTC, das wäre eine Verklemmung.
+
     /// Für diesen Raum aufgegeben (HQ springt nicht an, oder es pendelt).
-    var gescheitert = false
-    /// Zuletzt gemeldete Route — eine Diagnose-Zeile nur bei Wechsel.
-    var letzteArt = ""
+    var gescheitert: Bool {
+        get { sperre.withLock { _gescheitert } }
+        set { sperre.withLock { _gescheitert = newValue } }
+    }
+
+    /// `true`, wenn sich die gemeldete Route geändert hat — eine
+    /// Diagnose-Zeile nur bei Wechsel.
+    func artGewechselt(_ kurz: String) -> Bool {
+        sperre.withLock {
+            defer { letzteArt = kurz }
+            return letzteArt != kurz
+        }
+    }
 
     /// Will der Nutzer den HQ-Weg? Vorgabe an; gesetzt vom Web.
     var wunsch: Bool {
@@ -100,9 +121,11 @@ final class SpracheFunkHq: @unchecked Sendable {
     func raumWeg() {
         entdaempfen(grund: "raum_weg")
         loslassen()
-        sperre.withLock { uebernahmen = [] }
-        gescheitert = false
-        letzteArt = ""
+        sperre.withLock {
+            uebernahmen = []
+            _gescheitert = false
+            letzteArt = ""
+        }
     }
 
     // MARK: - Dämpfung (Gegenprüfung B3)
