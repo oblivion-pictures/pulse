@@ -23,6 +23,8 @@ export interface ZeilenAktion {
   zahlTestid?: string;
   /** Umschalter statt Knopf — gibt es nur im Kontextmenü am Rechner. */
   schalter?: { checked: boolean; onChange: (an: boolean) => void };
+  /** Zeigt im Blatt rechts einen Haken: die aktuell gewählte Stufe einer Auswahl. */
+  haken?: boolean;
   /** Am Handy weder im Blatt noch im Kontextmenü (z. B. Raumklang-Schalter). */
   nurDesktop?: boolean;
 }

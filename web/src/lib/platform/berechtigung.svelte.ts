@@ -23,6 +23,7 @@ import { sendungenLesen } from './eigeneSendungen';
 
 const ABGELEHNT_SCHLUESSEL = 'pulse.berechtigung';
 const STAND_SCHLUESSEL = 'pulse.berechtigung.stand';
+const ANLASS_SCHLUESSEL = 'pulse.berechtigung.anlass';
 
 /** Je Berechtigung ein Wert, im `localStorage` als EIN JSON-Objekt. */
 type Karte<Wert> = Partial<Record<Berechtigung, Wert>>;
@@ -87,6 +88,28 @@ export function istAblehnung(e: unknown): boolean {
   return e instanceof Error && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
 }
 
+/**
+ * Einen Anlass für die Mitteilungsfrage merken, der keine eigene Sendung ist
+ * (angenommene Freundschaftsanfrage, erste eingehende Direktnachricht). Wie
+ * der Sendungen-Zähler nur ein Zeichen für „kennt die App schon": geht der
+ * Merker verloren, kommt die Frage beim nächsten Anlass.
+ */
+export function anlassMerken(): void {
+  try {
+    window.localStorage.setItem(ANLASS_SCHLUESSEL, '1');
+  } catch {
+    /* Speicher voll oder abgeschaltet — dann zählt nur dieser Aufruf nicht. */
+  }
+}
+
+function anlassGemerkt(): boolean {
+  try {
+    return window.localStorage.getItem(ANLASS_SCHLUESSEL) === '1';
+  } catch {
+    return false;
+  }
+}
+
 class Berechtigungsblatt {
   /** Offenes Blatt, oder `null`. Die Komponente rendert daran. */
   offen = $state<Berechtigung | null>(null);
@@ -111,7 +134,8 @@ class Berechtigungsblatt {
       // Nur iOS — Android bleibt ohne Blatt (Eigentümer-Entscheid 2026-10-16).
       iosHuelle: isCapacitorIOS(),
       schonAbgelehnt: spaeterGiltNoch(karteLesen<unknown>(ABGELEHNT_SCHLUESSEL)[art], Date.now()),
-      sendungen: sendungenLesen()
+      sendungen: sendungenLesen(),
+      anlass: anlassGemerkt()
     });
     if (vorgehen === 'weiter') return true;
     if (vorgehen === 'nicht') return false;

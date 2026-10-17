@@ -21,9 +21,17 @@
    * Masse des Griff-Strichs unterscheiden sich zwischen den dreien, und ein
    * Baustein, der sie einebnet, aendert das Aussehen. `panelClass` und
    * `panelTestid` reichen sie durch.
+   *
+   * **Bedienung (2026-10-18):** nach unten wegwischbar — Griff-Strich und
+   * Titelzeile ziehen (`blattAktionen.wischen`, Rechnung in `blattWischen.ts`),
+   * Rückfedern unter der Schwelle. Für VoiceOver ist das Blatt ein modaler
+   * Dialog (`role`, `aria-modal`); der Rest der Seite wird `inert`, der Fokus
+   * bleibt im Blatt (`blattAktionen.fokusFalle`). `ariaLabel` benennt den
+   * Dialog; ohne ihn liest VoiceOver nur „Dialog".
    */
   import { Portal } from 'bits-ui';
   import type { Snippet } from 'svelte';
+  import { fokusFalle, wischen } from './blattAktionen';
 
   let {
     open,
@@ -31,6 +39,7 @@
     closeLabel,
     panelClass,
     panelTestid,
+    ariaLabel,
     onClose,
     children
   }: {
@@ -42,6 +51,8 @@
     /** Klassen des Blattes selbst; jeder Aufrufer bringt seine eigenen mit. */
     panelClass: string;
     panelTestid?: string;
+    /** Name des Dialogs für Screenreader (meist die Titelzeile des Blattes). */
+    ariaLabel?: string;
     onClose: () => void;
     children: Snippet;
   } = $props();
@@ -49,14 +60,26 @@
 
 {#if open}
   <Portal>
-    <div class="fixed inset-0 z-50 flex flex-col justify-end" data-testid={testid}>
+    <div
+      class="fixed inset-0 z-50 flex flex-col justify-end"
+      data-testid={testid}
+      use:fokusFalle={{ onClose }}
+    >
       <button
         type="button"
         class="absolute inset-0 bg-black/50"
         aria-label={closeLabel}
         onclick={onClose}
       ></button>
-      <div class={panelClass} data-testid={panelTestid}>
+      <div
+        class={panelClass}
+        data-testid={panelTestid}
+        role="dialog"
+        aria-modal="true"
+        aria-label={ariaLabel}
+        tabindex="-1"
+        use:wischen={{ onClose }}
+      >
         {@render children()}
       </div>
     </div>

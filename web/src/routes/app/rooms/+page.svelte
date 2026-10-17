@@ -23,6 +23,8 @@
   import CommunityAnlegenKnopf from '$lib/components/mobile/CommunityAnlegenKnopf.svelte';
   import CommunityBeitretenKnopf from '$lib/components/mobile/CommunityBeitretenKnopf.svelte';
   import RaeumeMenue from '$lib/components/mobile/RaeumeMenue.svelte';
+  import CommunityAktionen from '$lib/components/mobile/CommunityAktionen.svelte';
+  import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
   import { guilds as guildsStore } from '$lib/stores/guilds.svelte';
   import { readState } from '$lib/stores/readState.svelte';
   import { voicePresence } from '$lib/stores/voicePresence.svelte';
@@ -101,6 +103,9 @@
   // sagen — je Server einer und darunter nochmal der globale.
   let ueberallLeer = $derived(server.every((s) => serverGuilds.get(s.id).length === 0));
 
+  // Die Kachel, deren ⋯-Blatt offen ist (ein Blatt für die ganze Seite).
+  let aktionsZiel = $state<{ guild: Guild; serverId: string } | null>(null);
+
   // Wie `GuildRail.selectGuildFromServer`: eine Kachel kann zu einem
   // NICHT-aktiven Server gehoeren (fremder Self-Host) — ohne den Wechsel
   // laedt die Zielseite gegen den falschen Server und zeigt dauerhaft nichts
@@ -149,45 +154,63 @@
             {@const zahl = ungelesen(g)}
             {@const l = leben(g)}
             {@const iconSrc = guildIconSrc(g.icon_url, s.hostname)}
-            <button
-              class="bg-bg-input border-border hover:border-primary/40 hover:bg-bg-hover flex flex-col items-start gap-2.5 rounded-[16px] border p-3.5 text-left transition-colors"
-              onclick={() => oeffnen(g, s.id)}
-              data-testid={`room-tile-${g.id}`}
-            >
-              <span class="relative">
-                <span
-                  class="flex size-14 items-center justify-center overflow-hidden rounded-[18px] text-lg font-bold text-white"
-                  style={iconSrc
-                    ? ''
-                    : 'background-image: linear-gradient(135deg in oklab, var(--accent-grad-from), var(--accent-grad-to));'}
-                >
-                  {#if iconSrc}
-                    <img src={iconSrc} alt={g.name} class="size-full object-cover" />
-                  {:else}
-                    {initialen(g.name)}
+            <div class="relative">
+              <button
+                class="bg-bg-input border-border hover:border-primary/40 hover:bg-bg-hover flex h-full w-full flex-col items-start gap-2.5 rounded-[16px] border p-3.5 text-left transition-colors"
+                onclick={() => oeffnen(g, s.id)}
+                data-testid={`room-tile-${g.id}`}
+              >
+                <span class="relative">
+                  <span
+                    class="flex size-14 items-center justify-center overflow-hidden rounded-[18px] text-lg font-bold text-white"
+                    style={iconSrc
+                      ? ''
+                      : 'background-image: linear-gradient(135deg in oklab, var(--accent-grad-from), var(--accent-grad-to));'}
+                  >
+                    {#if iconSrc}
+                      <img src={iconSrc} alt={g.name} class="size-full object-cover" />
+                    {:else}
+                      {initialen(g.name)}
+                    {/if}
+                  </span>
+                  {#if zahl > 0}
+                    <span
+                      class="bg-badge-count ring-bg-panel absolute -bottom-1 -right-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-2xs font-extrabold leading-none text-white ring-2"
+                      data-testid={`room-unread-${g.id}`}
+                    >{zahl > 99 ? '99+' : zahl}</span>
                   {/if}
                 </span>
-                {#if zahl > 0}
-                  <span
-                    class="bg-badge-count ring-bg-panel absolute -bottom-1 -right-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-2xs font-extrabold leading-none text-white ring-2"
-                    data-testid={`room-unread-${g.id}`}
-                  >{zahl > 99 ? '99+' : zahl}</span>
-                {/if}
-              </span>
-              <span class="w-full min-w-0">
-                <span class="text-text-bright block truncate text-sm font-semibold">{g.name}</span>
-                {#if l.imGespraech > 0}
-                  <span class="text-text-muted mt-0.5 flex items-center gap-1.5 text-2xs">
-                    <span class="bg-success size-1.5 shrink-0 rounded-full"></span>
-                    {m.rooms_in_voice({ count: l.imGespraech })}
-                  </span>
-                {:else if l.kanaele > 0}
-                  <span class="text-text-muted mt-0.5 block text-2xs"
-                    >{m.rooms_channel_count({ count: l.kanaele })}</span
-                  >
-                {/if}
-              </span>
-            </button>
+                <span class="w-full min-w-0">
+                  <span class="text-text-bright block truncate text-sm font-semibold">{g.name}</span>
+                  {#if l.imGespraech > 0}
+                    <span class="text-text-muted mt-0.5 flex items-center gap-1.5 text-2xs">
+                      <span class="bg-success size-1.5 shrink-0 rounded-full"></span>
+                      {m.rooms_in_voice({ count: l.imGespraech })}
+                    </span>
+                  {:else if l.kanaele > 0}
+                    <span class="text-text-muted mt-0.5 block text-2xs"
+                      >{m.rooms_channel_count({ count: l.kanaele })}</span
+                    >
+                  {/if}
+                </span>
+              </button>
+              <!-- Rechtsklick gibt es am Handy nicht: derselbe Menüumfang wie in der
+                   Leiste am Rechner, nur für Communitys des aktiven Servers (nur
+                   dort sind Rollen und Besitzer bekannt). Geschwister der Kachel —
+                   Knopf in Knopf ist kein gültiges HTML. -->
+              {#if s.id === activeServer.serverId}
+                <button
+                  type="button"
+                  class="text-text-muted hover:bg-bg-hover hover:text-text-bright absolute top-1 right-1 flex size-12 items-center justify-center rounded-full transition-colors"
+                  aria-label={m.rooms_community_menue({ name: g.name })}
+                  aria-haspopup="dialog"
+                  onclick={() => (aktionsZiel = { guild: g, serverId: s.id })}
+                  data-testid={`room-menu-${g.id}`}
+                >
+                  <EllipsisIcon class="size-5" />
+                </button>
+              {/if}
+            </div>
           {/each}
         </div>
       {/if}
@@ -216,6 +239,8 @@
       </div>
     {/if}
   </div>
+
+  <CommunityAktionen ziel={aktionsZiel} />
 </div>
 
 {#if !viewport.isMobile}

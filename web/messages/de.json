@@ -3570,5 +3570,10 @@
   "zeilen_menue_schliessen": "Schließen",
   "menue_mehr": "Mehr",
   "chats_neu": "Neu",
-  "chats_zeile_als_gelesen": "Als gelesen markieren"
+  "chats_zeile_als_gelesen": "Als gelesen markieren",
+  "settings_notifications_subheading_huelle": "Wann Pulse dich informiert. Mitteilungen erreichen dich auch, wenn Pulse nicht geöffnet ist.",
+  "community_aktion_mitglieder": "Mitglieder",
+  "rooms_community_menue": "Menü von {name} öffnen",
+  "settings_appearance_language_ios_hint": "Pulse folgt der Sprache deines iPhones.",
+  "settings_appearance_language_ios_button": "Einstellungen von Pulse öffnen"
 }

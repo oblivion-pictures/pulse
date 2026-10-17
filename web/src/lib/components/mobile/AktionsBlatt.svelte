@@ -9,6 +9,7 @@
    * `MessageActionSheet`, damit ein Dialog, den die Aktion öffnet, nicht gegen
    * das Schliessen läuft.
    */
+  import CheckIcon from '@lucide/svelte/icons/check';
   import BottomSheet from './BottomSheet.svelte';
   import MenuRow from '$lib/components/menu/MenuRow.svelte';
   import type { ZeilenAktion } from '$lib/components/menu/zeilenAktionen';
@@ -28,7 +29,7 @@
 
   const sichtbar = $derived(aktionen.filter((a) => !a.nurDesktop));
 
-  function waehlen(a: ZeilenAktion) {
+  function waehlen(a: ZeilenAktion): void {
     a.onSelect?.();
     open = false;
   }
@@ -38,6 +39,7 @@
   {open}
   {testid}
   closeLabel={m.zeilen_menue_schliessen()}
+  ariaLabel={titel}
   panelClass="bg-popover text-popover-foreground relative max-h-[80dvh] overflow-y-auto rounded-t-2xl border-t border-border pb-[var(--safe-bottom)] shadow-2xl"
   onClose={() => (open = false)}
 >
@@ -58,6 +60,9 @@
     >
       {#if Icon}<Icon class="size-5 shrink-0 {a.variant ? '' : 'text-text-muted'}" />{/if}
       {a.label}
+      {#if a.haken}
+        <CheckIcon class="text-primary ml-auto size-5 shrink-0" aria-hidden="true" />
+      {/if}
       {#if a.zahl && a.zahl > 0}
         <span
           class="bg-rose-500 text-2xs ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 font-semibold leading-none text-white"

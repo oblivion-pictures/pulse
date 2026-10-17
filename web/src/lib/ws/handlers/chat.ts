@@ -39,6 +39,7 @@ import { serversStore } from '$lib/api/servers.svelte';
 import { dispatchingServerId } from '$lib/ws/gateway-connection';
 import { isRecentMention, markRecentMention } from './_mentionSuppression';
 import { page } from '$app/state';
+import { mitteilungsAnlassMelden } from '$lib/platform/mitteilungsAnlass';
 import type { HandlerContext } from './context';
 import { m } from '$lib/paraglide/messages.js';
 
@@ -357,6 +358,9 @@ export function register(ctx: HandlerContext): void {
         if (!isRecentMention(evt.message_id) && !isDnd()) {
           sounds.play('notification.dm');
         }
+        // Eine Direktnachricht erreicht uns bei offener App: Anlass für die
+        // Mitteilungsfrage (nur iOS, nur solange noch nichts entschieden ist).
+        mitteilungsAnlassMelden();
       }
     }
   });

@@ -15,6 +15,7 @@
   import MessageInput, { ZEICHEN_LIMIT } from './MessageInput.svelte';
   import MessageList from './MessageList.svelte';
   import MemberList from './MemberList.svelte';
+  import MitgliederBlatt from './mobile/MitgliederBlatt.svelte';
   import ComposerDisabledBanner from './ComposerDisabledBanner.svelte';
   import { plainifyMentions, snippet80 } from './messageRender';
   import { Button } from '$lib/components/ui/button';
@@ -247,7 +248,8 @@
   }
 
   let memberListOpen = $state(false);
-  // Mitgliederliste: nur Desktop — auf Mobil komplett ausgeblendet.
+  // Mitgliederliste: am Rechner als Spalte neben dem Chat, am Handy als Blatt
+  // von unten (`MitgliederBlatt`) — dieselbe Taste im Kanalkopf, anderer Ort.
   let showMemberInline = $derived(memberListOpen && !handy);
 
   // Eigene Identität AUF DEM AKTIVEN SERVER (Cloud-id ≠ Self-Host-id). Für jeden
@@ -491,7 +493,7 @@
         <Button
           variant="ghost"
           size="icon"
-          class="ml-auto handy:hidden"
+          class="ml-auto handy:size-11"
           onclick={() => (memberListOpen = !memberListOpen)}
           aria-label={pm.chat_view_toggle_member_list()}
           data-testid="member-list-toggle"
@@ -529,6 +531,9 @@
     <!-- Inline auf md+ -->
     {#if channel && showMemberList && showMemberInline}
       <MemberList guildId={channel.guild_id} />
+    {/if}
+    {#if channel && showMemberList && handy}
+      <MitgliederBlatt bind:open={memberListOpen} guildId={channel.guild_id} />
     {/if}
   </div>
 

@@ -30,9 +30,11 @@
  *     Handlung ab (s. `ablehnungMerken`).
  *  4. **Mitteilungen brauchen einen ANLASS.** Die Kamera wird von
  *     einer Handlung ausgelöst (Kamera öffnen), die den
- *     Grund selbst erklärt. Mitteilungen nicht — deshalb hängen sie an einer
- *     Mindestnutzung, damit die Frage nicht die erste Begegnung mit der App
- *     ist.
+ *     Grund selbst erklärt. Mitteilungen nicht — deshalb hängen sie an einem
+ *     Anlass, damit die Frage nicht die erste Begegnung mit der App ist: die
+ *     erste eigene gesendete Nachricht, eine angenommene Freundschaftsanfrage
+ *     oder die erste eingehende Direktnachricht bei offener App
+ *     (`mitteilungsAnlass.ts`; Eigentümer-Entscheid 2026-10-18).
  *
  * Importfrei und damit prüfbar (s. die `pnpm test:unit`-Falle in CLAUDE.md).
  */
@@ -49,17 +51,18 @@ export type Stand = 'offen' | 'erteilt' | 'verweigert';
 /**
  * Wie viele eigene Nachrichten, bevor nach Mitteilungen gefragt wird.
  *
- * Bewusst klein: nach der ersten Unterhaltung ist der Nutzen offensichtlich
- * („ich will wissen, wenn geantwortet wird"), und zu langes Warten verschenkt
- * genau die Pushs, um die es geht. Dieselbe Mechanik wie die Bewertungsfrage
- * (`bewertungRegel.ts`), aber eine viel kleinere Zahl — eine Bewertung ist
- * eine Gefälligkeit, eine Mitteilung ein Dienst am Nutzer.
+ * Bewusst klein — seit 2026-10-18 EINE (vorher drei): schon die erste
+ * Nachricht macht den Nutzen offensichtlich („ich will wissen, wenn geantwortet
+ * wird"), und zu langes Warten verschenkt genau die Pushs, um die es geht.
+ * Dieselbe Mechanik wie die Bewertungsfrage (`bewertungRegel.ts`), aber eine
+ * viel kleinere Zahl — eine Bewertung ist eine Gefälligkeit, eine Mitteilung
+ * ein Dienst am Nutzer.
  *
  * Der Name trägt deshalb die Frage mit: `bewertungRegel.ts` hat eine Schwelle
  * auf dieselbe Zahl mit anderem Wert, und zwei gleichnamige Konstanten in
  * Nachbardateien sind genau der Verwechsler, der später still importiert wird.
  */
-export const SENDUNGEN_BIS_ZUR_MITTEILUNGSFRAGE = 3;
+export const SENDUNGEN_BIS_ZUR_MITTEILUNGSFRAGE = 1;
 
 export interface Lage {
   art: Berechtigung;
@@ -72,6 +75,10 @@ export interface Lage {
   schonAbgelehnt: boolean;
   /** Eigene gesendete Nachrichten (nur für `mitteilungen` relevant). */
   sendungen: number;
+  /** Ein anderer Anlass als eine eigene Sendung liegt vor (angenommene
+   *  Freundschaftsanfrage, erste eingehende Direktnachricht) — nur für
+   *  `mitteilungen` relevant. */
+  anlass?: boolean;
 }
 
 /**
@@ -142,7 +149,8 @@ export function vorgehenVorDemDialog(lage: Lage): Vorgehen {
   // trotzdem ein Merker, darf er die Handlung nicht sperren.
   if (lage.schonAbgelehnt && ablehnungMerken(lage.art)) return 'nicht';
   if (lage.art === 'mitteilungen') {
-    return lage.sendungen >= SENDUNGEN_BIS_ZUR_MITTEILUNGSFRAGE ? 'erklaeren' : 'nicht';
+    const anlass = lage.anlass === true || lage.sendungen >= SENDUNGEN_BIS_ZUR_MITTEILUNGSFRAGE;
+    return anlass ? 'erklaeren' : 'nicht';
   }
   return 'erklaeren';
 }
