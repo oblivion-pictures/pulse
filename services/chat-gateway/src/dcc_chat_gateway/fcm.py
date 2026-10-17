@@ -350,6 +350,14 @@ async def dm_push_senden(
                 if outcome == "dead"
             ]
             if dead_tokens:
+                # warning, nicht info: die Cloud loggt erst ab warning. Ohne
+                # Token (die sind Geheimnisse) — nur die Anzahl. Viele auf
+                # einmal bei sonst gesunden Sendungen deuten auf ein falsches
+                # Firebase-Projekt (Token gehört zu einem anderen).
+                log.warning(
+                    "fcm_token_tot — %d Token entfernt (abgemeldet/ungültig)",
+                    len(dead_tokens),
+                )
                 await session.execute(
                     delete(FcmToken).where(FcmToken.token.in_(dead_tokens))
                 )

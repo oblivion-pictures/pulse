@@ -26,6 +26,7 @@ from dcc_chat_gateway.presence_status import idle_sweeper_loop
 from dcc_chat_gateway.pubsub import ConnectionManager
 from dcc_chat_gateway.remote_guard import remote_perm_audit_loop
 from dcc_chat_gateway.push import ensure_vapid
+from dcc_chat_gateway.push_konfig_pruefung import pruefe_push_konfiguration
 from dcc_chat_gateway.routes import router
 from dcc_chat_gateway.routes.attachments import reaper_loop as attachments_reaper
 from dcc_chat_gateway.start_riegel import pruefe_startbedingungen
@@ -87,6 +88,8 @@ async def lifespan(app: FastAPI):
     # ``start_riegel``). Startverweigerungen (Altbestand, Platzhalter-Secret,
     # MinIO-Default):
     await pruefe_startbedingungen(settings, skip_redis=getattr(app.state, "skip_redis", False))
+    # Fehlende Handy-Push-Konfiguration in der Cloud sichtbar machen (warning).
+    pruefe_push_konfiguration(settings)
     # Resolve / auto-generate the Web-Push VAPID keypair. Logs the
     # *public* half (the browser needs it; not secret) on first call;
     # NEVER logs the private PEM. ``ensure_vapid`` is idempotent so
