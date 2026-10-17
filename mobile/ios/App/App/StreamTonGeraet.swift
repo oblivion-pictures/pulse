@@ -161,7 +161,11 @@ final class StreamTonGeraet: NSObject, LKRTCAudioDevice, @unchecked Sendable {
         // die alte Maschine noch läuft) wäre ein Datenrennen. Geschrieben wird
         // deshalb allein hier und in `anhalten`, beide auf `faden`, beide bei
         // stehender Maschine: `AVAudioEngine.stop()` kehrt erst zurück, wenn
-        // kein Renderblock mehr läuft.
+        // kein Renderblock mehr läuft. **Gefolgert, nicht von Apple
+        // dokumentiert:** so verhält sich `AudioOutputUnitStop`, das auf den
+        // laufenden Zyklus wartet (deshalb verklemmt ein Aufruf aus dem
+        // Renderblock heraus); nach einer Unterbrechung oder einem
+        // Konfigurationswechsel steht die Ein-/Ausgabe, bevor iOS sie meldet.
         puffer.holen = sperre.withLock { holenBlock }
         do {
             m.prepare()
