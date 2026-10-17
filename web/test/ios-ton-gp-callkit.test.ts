@@ -12,6 +12,8 @@ const swift = (f: string) => lesen(`../../mobile/ios/App/App/${f}`);
 test('T2: „CallKit hängt" nicht im regulären Rückgabe-Fenster', () => {
   const n = swift('SpracheRaumNeustart.swift');
   assert.match(n, /!fremd && !v\.sessionAktiv && v\.rueckgabeUhr == nil/);
-  const herstellen = /func sitzungFrischHerstellen\(\) async \{[\s\S]*?\n {4}\}/.exec(n)?.[0] ?? '';
-  assert.match(herstellen, /async \{\n {8}await rueckgabeAbwarten\(\)/);
+  // Seit S3 (Stream-Ton) meldet die Funktion, ob sie die Maschine neu anstiess.
+  const herstellen =
+    /func sitzungFrischHerstellen\(\) async(?: -> Bool)? \{[\s\S]*?\n {4}\}/.exec(n)?.[0] ?? '';
+  assert.match(herstellen, /async(?: -> Bool)? \{\n {8}await rueckgabeAbwarten\(\)/);
 });
