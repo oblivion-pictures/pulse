@@ -120,6 +120,9 @@
     padding: 0.1rem 0.35rem;
     border-radius: 0.25rem;
     font-size: 0.875em;
+    /* Lange Paketnamen (Drittanbieter-Tabelle) brechen statt die Seite zu
+       verbreitern; wirkt nur bei echtem Überlauf. */
+    overflow-wrap: anywhere;
   }
   .legal-prose :global(hr) {
     margin: 2rem 0;
