@@ -167,7 +167,7 @@
   // links, den `TileMobilSteuerung` im Vollbild immer zeigt (`zeigeVollbildAus`).
   const querId = `kachel-${Math.random().toString(36).slice(2)}`;
   $effect(() => {
-    if (kind !== 'hq') return;
+    if (kind !== 'hq' && kind !== 'party') return;
     return querVollbildBeobachten(querId, {
       eigenes: (an) => {
         eigenesVollbild = an;
