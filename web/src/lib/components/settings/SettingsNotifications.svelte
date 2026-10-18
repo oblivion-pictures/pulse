@@ -203,8 +203,12 @@
         <span class="text-text-muted text-xs">{m.settings_notifications_on_dm_desc()}</span>
       </span>
       <Checkbox
-        checked={settings.notifications.onDM}
-        onchange={(e) => settings.setNotifyOnDM((e.currentTarget as HTMLInputElement).checked)}
+        checked={huelle ? settings.push.dm : settings.notifications.onDM}
+        onchange={(e) => {
+          const an = (e.currentTarget as HTMLInputElement).checked;
+          settings.setNotifyOnDM(an);
+          if (huelle) settings.setPushDm(an);
+        }}
         data-testid="notifications-on-dm"
       />
     </label>

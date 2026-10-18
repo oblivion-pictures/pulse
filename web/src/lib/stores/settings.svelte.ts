@@ -160,14 +160,6 @@ class SettingsStore {
     this.#sounds = registerSettingsSection('sounds', SOUNDS_SECTION);
     this.#shortcuts = registerSettingsSection('shortcuts', SHORTCUTS_SECTION);
     this.#layout = registerSettingsSection('layout', LAYOUT_SECTION);
-    // Einmalige Übernahme: wer den DM-Schalter vor der Server-Spiegelung
-    // ausgeschaltet hatte, behält das. Danach steht der Schalter allein in
-    // `push`; `notifications.onDM` bleibt auf `true` stehen (der Getter
-    // `notifications` überlagert es mit `push.dm`).
-    if (!this.#notifications.value.onDM) {
-      this.#push.set('dm', false);
-      this.#notifications.set('onDM', true);
-    }
   }
 
   // --- reactive read accessors (delegate to the underlying rune store) ---
@@ -189,10 +181,14 @@ class SettingsStore {
   get streamChat() {
     return this.#streamChat.value;
   }
-  /** `onDM` kommt aus dem server-gespiegelten Abschnitt `push` (Pushes ans
-   *  Telefon sendet der Server — er muss den Schalter kennen). */
-  get notifications(): NotificationSettings {
-    return { ...this.#notifications.value, onDM: this.#push.value.dm };
+  get notifications() {
+    return this.#notifications.value;
+  }
+  /** Server-gespiegelter DM-Schalter nur der Hülle (iOS/Android): Pushes ans
+   *  Telefon sendet der Server — er muss den Schalter kennen. Desktop und
+   *  Browser nutzen weiter `notifications.onDM` (lokal pro Gerät). */
+  get push() {
+    return this.#push.value;
   }
   get sounds() {
     return this.#sounds.value;
@@ -317,6 +313,9 @@ class SettingsStore {
     this.#notifications.set('onMention', v);
   }
   setNotifyOnDM(v: boolean): void {
+    this.#notifications.set('onDM', v);
+  }
+  setPushDm(v: boolean): void {
     this.#push.set('dm', v);
   }
   setNotifyOnFriendRequests(v: boolean): void {
