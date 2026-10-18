@@ -124,7 +124,8 @@ struct Statuszeile: View {
 
     var body: some View {
         if let text {
-            Text(text).lineLimit(1)
+            // Lange Namen neben den Knöpfen: erst etwas kleiner, dann erst kürzen.
+            Text(text).lineLimit(1).minimumScaleFactor(0.8)
         }
     }
 

@@ -622,7 +622,7 @@ import { Portal } from 'bits-ui';
     >
       <!-- Kopf mit Verlauf: schließen + Galerie-Zähler -->
       <div
-        class="relative z-10 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-4 pb-8 ios:pt-[max(1rem,var(--safe-top))] transition-opacity duration-300 {steuerungSichtbar
+        class="relative z-10 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-4 pb-8 ios:pt-[max(1rem,var(--safe-top))] ios:pl-[max(1rem,var(--safe-left))] ios:pr-[max(1rem,var(--safe-right))] transition-opacity duration-300 {steuerungSichtbar
           ? 'opacity-100'
           : 'pointer-events-none opacity-0'}"
         data-testid="attachment-fullscreen-header"

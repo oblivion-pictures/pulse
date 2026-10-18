@@ -905,7 +905,7 @@
            dem Verwerfen-Knopf, und ein Kamera-Wechsel über dem Entwurf
            wäre tote UI. -->
       {#if !entwurfDatei}
-        <div class="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 pt-[26px] pb-5 ios:pt-[calc(26px+var(--safe-top))]">
+        <div class="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 pt-[26px] pb-5 ios:pt-[calc(26px+var(--safe-top))] ios:pl-[max(1.25rem,var(--safe-left))] ios:pr-[max(1.25rem,var(--safe-right))]">
           <button
             type="button"
             class="flex size-11 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white backdrop-blur-md transition-transform active:scale-90"
@@ -941,7 +941,7 @@
       {/if}
 
       <!-- Untere Aktionszone. -->
-      <div class="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-8 ios:pb-[calc(2rem+var(--safe-bottom))]">
+      <div class="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-8 ios:pb-[calc(2rem+var(--safe-bottom))] ios:pl-[max(1.5rem,var(--safe-left))] ios:pr-[max(1.5rem,var(--safe-right))]">
         {#if nimmtAuf}
           <!-- Aufnahme läuft: Modus gesperrt, Auslöser ist der Stopp. -->
           <div class="flex items-center justify-center">

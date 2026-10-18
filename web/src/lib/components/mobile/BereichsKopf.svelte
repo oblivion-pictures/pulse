@@ -38,8 +38,8 @@
   data-testid="bereichs-kopf"
 >
   <h1
-    class="text-text-bright flex min-h-12 min-w-0 items-center truncate text-[22px] font-extrabold leading-tight tracking-[-0.02em]"
-  >{titel}</h1>
+    class="text-text-bright flex min-h-12 min-w-0 items-center text-[22px] font-extrabold leading-tight tracking-[-0.02em]"
+  ><span class="truncate">{titel}</span></h1>
   {#if handlung}
     <div class="shrink-0">{@render handlung()}</div>
   {/if}

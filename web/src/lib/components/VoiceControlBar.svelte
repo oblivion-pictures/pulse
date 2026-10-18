@@ -112,7 +112,11 @@
   // Bis zur Design-Vereinheitlichung kam die Rundung unausgesprochen aus der
   // Button-Komponente (die pauschal `rounded-full` war); seit die auf
   // `rounded-md` steht, muss sie hier stehen, wo sie hingehört.
-  const btnCls = 'size-14 rounded-full nicht-handy:size-8';
+  // Am Handy `flex-1` + `max-w-14` statt fester `size-14`: bis fünf Knöpfe
+  // bleiben 56 px, bei sechs (343 px Breite) schrumpfen sie gleichmäßig, statt
+  // über den Rand zu laufen; `aspect-square` hält sie rund.
+  const btnCls =
+    'rounded-full handy:aspect-square handy:min-w-0 handy:max-w-14 handy:flex-1 nicht-handy:size-8';
   const iconCls = 'size-6 nicht-handy:size-4';
 </script>
 

@@ -79,7 +79,7 @@
   {#if gezeigt}
     <!-- Während des Ausblendens (`open` schon falsch) keine zweite Eingabe annehmen. -->
     <div
-      class="fixed inset-0 z-50 flex flex-col justify-end"
+      class="fixed inset-0 z-50 flex flex-col justify-end ios:pr-[var(--safe-right)] ios:pl-[var(--safe-left)]"
       class:pointer-events-none={!open}
       data-testid={testid}
       use:fokusFalle={{ onClose }}
