@@ -2,6 +2,16 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-19",
+      "date": "2026-10-19",
+      "style": "Sachlich",
+      "title": "Nachrichten bearbeiten",
+      "items": [
+        "Beim Bearbeiten einer Nachricht wächst das Eingabefeld mit dem Text mit, sodass die ganze Nachricht zu sehen ist.",
+        "In Direktnachrichten nutzt die Sprechblase beim Bearbeiten die volle Breite, und der Hinweis „Enter zum Speichern“ ist gut lesbar."
+      ]
+    },
+    {
       "id": "2026-10-18.3",
       "date": "2026-10-18",
       "style": "Sachlich",
