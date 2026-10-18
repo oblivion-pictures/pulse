@@ -618,6 +618,7 @@ import { Portal } from 'bits-ui';
       ontouchstart={wischStart}
       ontouchend={wischEnde}
       data-testid="attachment-video-fullscreen"
+      data-edge-swipe-aus
     >
       <!-- Kopf mit Verlauf: schließen + Galerie-Zähler -->
       <div

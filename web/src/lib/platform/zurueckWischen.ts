@@ -34,7 +34,8 @@ import { isCapacitorIOS } from './runtime';
 let registriert = false;
 
 /** Etwas, das Berührungen am Rand selbst braucht (Schieber, Video, Eingabe). */
-const EIGENE_BEDIENUNG = 'video, audio, input[type="range"], textarea, [data-edge-swipe-aus]';
+const EIGENE_BEDIENUNG =
+  'video, audio, input[type="range"], textarea, [role="application"], [data-edge-swipe-aus]';
 /** Offene Dialoge, Alert-Dialoge und Blätter (`BottomSheet` ist `role="dialog"`). */
 const OFFENE_DECKE = '[role="dialog"], [role="alertdialog"]';
 
@@ -63,57 +64,56 @@ export function registriereZurueckWischen(): void {
   let start: { x: number; y: number; id: number } | null = null;
   let entschieden = false;
 
+  // `touchmove` ist nicht passiv (preventDefault) und hängt deshalb nur,
+  // solange eine Randgeste läuft — ein dauerhafter nicht-passiver Hörer am
+  // Dokument bremste jedes Scrollen der App.
+  function beiBewegung(e: TouchEvent): void {
+    const s = start;
+    if (!s) return;
+    const t = Array.from(e.touches).find((x) => x.identifier === s.id);
+    if (!t) return;
+    const v = verlauf(t.clientX - s.x, t.clientY - s.y);
+    if (v === 'abgebrochen') {
+      beenden();
+      return;
+    }
+    if (v === 'waagrecht') {
+      entschieden = true;
+      // Die Seite dahinter soll nicht mitscrollen oder federn.
+      if (e.cancelable) e.preventDefault();
+    }
+  }
+
+  function beiEnde(e: TouchEvent): void {
+    const s = start;
+    const war = entschieden;
+    beenden();
+    if (!s || !war || e.type === 'touchcancel') return;
+    const t = Array.from(e.changedTouches).find((x) => x.identifier === s.id);
+    if (!t || !ausgeloest(t.clientX - s.x, t.clientY - s.y)) return;
+    const elter = elterVon(page.url.pathname);
+    if (elter) void goto(elter, { noScroll: true });
+  }
+
+  function beenden(): void {
+    start = null;
+    entschieden = false;
+    document.removeEventListener('touchmove', beiBewegung);
+    document.removeEventListener('touchend', beiEnde);
+    document.removeEventListener('touchcancel', beiEnde);
+  }
+
   document.addEventListener(
     'touchstart',
     (e) => {
-      start = null;
-      entschieden = false;
+      beenden();
       if (e.touches.length !== 1) return;
       const t = e.touches[0];
       if (!anDerKante(t.clientX) || !darfStarten(e.target)) return;
       start = { x: t.clientX, y: t.clientY, id: t.identifier };
-    },
-    { passive: true }
-  );
-
-  document.addEventListener(
-    'touchmove',
-    (e) => {
-      if (!start) return;
-      const t = Array.from(e.touches).find((x) => x.identifier === start!.id);
-      if (!t) return;
-      const v = verlauf(t.clientX - start.x, t.clientY - start.y);
-      if (v === 'abgebrochen') {
-        start = null;
-        return;
-      }
-      if (v === 'waagrecht') {
-        entschieden = true;
-        // Die Seite dahinter soll nicht mitscrollen oder federn.
-        if (e.cancelable) e.preventDefault();
-      }
-    },
-    { passive: false }
-  );
-
-  document.addEventListener(
-    'touchend',
-    (e) => {
-      const s = start;
-      start = null;
-      if (!s || !entschieden) return;
-      const t = Array.from(e.changedTouches).find((x) => x.identifier === s.id);
-      if (!t || !ausgeloest(t.clientX - s.x, t.clientY - s.y)) return;
-      const elter = elterVon(page.url.pathname);
-      if (elter) void goto(elter, { noScroll: true });
-    },
-    { passive: true }
-  );
-
-  document.addEventListener(
-    'touchcancel',
-    () => {
-      start = null;
+      document.addEventListener('touchmove', beiBewegung, { passive: false });
+      document.addEventListener('touchend', beiEnde, { passive: true });
+      document.addEventListener('touchcancel', beiEnde, { passive: true });
     },
     { passive: true }
   );

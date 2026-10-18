@@ -723,6 +723,7 @@
     <div
       class="fixed inset-0 z-50 touch-none bg-black"
       data-testid="camera-overlay"
+      data-edge-swipe-aus
       role="application"
       ontouchstart={wischStart}
       ontouchend={wischEnde}
