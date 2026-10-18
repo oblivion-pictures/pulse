@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Akzent der FCM-Push-Karten (AndroidManifest default_notification_color) —
+     das Marken-Grün aus ic_launcher_background. -->
+<resources>
+    <color name="push_akzent">#10B981</color>
+</resources>

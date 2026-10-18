@@ -2,6 +2,8 @@ package com.howispulse.app;
 
 import android.Manifest;
 import android.app.DownloadManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.content.pm.ActivityInfo;
@@ -72,6 +74,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(VideoCapturePlugin.class);
         registerPlugin(VoicePlugin.class);
         super.onCreate(savedInstanceState);
+        pushKanalAnlegen();
         // Bughunt Runde 45: Capacitor setzt KEINEN DownloadListener — ein
         // Android-WebView wirft Downloads STILLWEGE weg (Blob-URLs aus
         // `URL.createObjectURL` inklusive). Jeder Download-Knopf in der App
@@ -100,6 +103,24 @@ public class MainActivity extends BridgeActivity {
         // hochkant — das Web gibt die Sperre frei, sobald ein Stream läuft.
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
         shareAusIntent(getIntent());
+    }
+
+    /**
+     * Der chat-gateway adressiert DM-Push mit der Kanal-ID „messages"
+     * (fcm.py ANDROID_CHANNEL_ID). Ohne einen Kanal mit genau dieser ID
+     * fällt Android auf „Sonstige" zurück: kein Pop-up-Banner, Standardton,
+     * im Benachrichtigungsschirm unter der App-Bezeichnung versteckt. Der
+     * Kanal darf JEDE Zeit angelegt werden — createNotificationChannel ist
+     * idempotent, bestehende Nutzer-Einstellungen daran bleiben erhalten.
+     */
+    private void pushKanalAnlegen() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationChannel ch = new NotificationChannel(
+                "messages", "Nachrichten", NotificationManager.IMPORTANCE_HIGH);
+        ch.setDescription("Direktnachrichten und Erwähnungen");
+        ch.enableVibration(true);
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null) nm.createNotificationChannel(ch);
     }
 
     @Override

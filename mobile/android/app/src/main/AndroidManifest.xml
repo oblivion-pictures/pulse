@@ -16,6 +16,17 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- FCM-Push-Optik: ohne diese Meta-Daten zeigt Android im
+             Benachrichtigungsbalken den Roboter-Standard. Die kleine
+             Statusleisten-Optik muss einflächig sein — das Launch-Icon geht
+             zur Not, der Akzent färbt die Karte. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/push_akzent" />
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
