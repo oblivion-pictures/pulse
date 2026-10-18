@@ -34,9 +34,10 @@
   import { voice } from '$lib/voice/livekit.svelte';
   import { startBeitritteAusfuehren } from '$lib/voice/startBeitritte';
   import { spracheRaumVorhalten } from '$lib/platform/spracheVorhalt';
-  import { netzwacheStarten, hintergrundTrennSperre } from '$lib/ws/netzwache';
+  import { netzwacheStarten, hintergrundTrennSperre, beiHintergrund, beiVordergrund } from '$lib/ws/netzwache';
   import { voiceState } from '$lib/voice/state.svelte';
   import { anrufe } from '$lib/anrufe/anruf.svelte';
+  import { hintergrundZyklusStarten, hintergrundZyklusStoppen } from '$lib/krypto/empfangen';
   import { schriftGroesseVerfolgen } from '$lib/platform/schriftGroesse';
   import { voipTokenVerfolgen } from '$lib/platform/voipToken';
   import { schnellwahlSetzen, schnellwahlVerfolgen } from '$lib/platform/schnellwahl';
@@ -323,6 +324,12 @@
     // Nachrichten bleiben laut). Sprachkanal und Anruf sperren die Trennung —
     // deren Signalisierung hängt an derselben Leitung.
     hintergrundTrennSperre(() => voiceState.connected || anrufe.inAnruf);
+    // Im Hintergrund läuft der Postfach-Zyklus im 60-s-Takt weiter: jede
+    // Runde quittiert Zugestelltes, sodass der Absender die ✓✓ sieht, ohne
+    // dass die App geöffnet werden muss. Vordergrund: der normale Antrieb
+    // (WS-Ereignisse) übernimmt, der Takt ruht.
+    beiHintergrund(() => hintergrundZyklusStarten());
+    beiVordergrund(() => hintergrundZyklusStoppen());
     // Systemschriftgröße anwenden, falls die Hülle sie meldet (Punkt 38).
     schriftGroesseVerfolgen();
     // PushKit-Token anmelden, damit ein Anruf das Telefon erreicht, auch wenn

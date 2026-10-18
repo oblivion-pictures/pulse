@@ -52,8 +52,10 @@ export function netzwacheStarten(): void {
     void CapApp.addListener('appStateChange', ({ isActive }) => {
       if (isActive) {
         wecken();
+        for (const haken of vordergrundHaken) haken();
         return;
       }
+      for (const haken of hintergrundHaken) haken();
       // Gegenrichtung zum Wecken: Hintergrund ⇒ Verbindungen bewusst lösen,
       // damit der Server die Zustellung auf Push umstellt (Entscheidung in
       // `wachentscheid.hintergrundTrennung`, Mechanik in
@@ -76,4 +78,22 @@ const trennSperren = new Set<() => boolean>();
 export function hintergrundTrennSperre(sperre: () => boolean): () => void {
   trennSperren.add(sperre);
   return () => trennSperren.delete(sperre);
+}
+
+/** Haken für „App ist in den Hintergrund“ bzw. „wieder vorn“ — gefeuert in
+ *  dieser Reihenfolge VOR der Hintergrund-Trennung. Die Haken dürfen selbst
+ *  importieren, was sie brauchen; hier liegen nur die Anlässe. Genau dasselbe
+ *  Muster wie `hintergrundTrennSperre`: die interessierten Module dürfen
+ *  netzwache nicht importieren (Kreis über `lib/ws`). */
+const hintergrundHaken = new Set<() => void>();
+const vordergrundHaken = new Set<() => void>();
+
+export function beiHintergrund(haken: () => void): () => void {
+  hintergrundHaken.add(haken);
+  return () => hintergrundHaken.delete(haken);
+}
+
+export function beiVordergrund(haken: () => void): () => void {
+  vordergrundHaken.add(haken);
+  return () => vordergrundHaken.delete(haken);
 }

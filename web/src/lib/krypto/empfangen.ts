@@ -292,3 +292,50 @@ async function postfachZyklus(): Promise<Message[]> {
 export const postfachAbholenUndEntschluesseln = mitNachlaufBeiWeckung(() =>
   mitKontosperre(postfachZyklus)
 );
+
+/**
+ * Hintergrund-Takt der Hülle: solange die App hinten ist, läuft der Zyklus
+ * in einem sanften Intervall weiter — jede gerundete Runde quittiert die
+ * zwischenzeitlich zugestellten Umschläge, und damit erscheint beim ABSANDER
+ * der doppelte Haken, ohne dass der Empfänger die App öffnet. Der Push-
+ * Banner selbst kommt unabhängig davon vom System (Kanal „messages“); der
+ * Takt ist nur die Quittung und das Vorab-Ablegen der Nachrichten.
+ *
+ * **Warum 60 s.** Chromium drosselt Hintergrund-Timer auf mindestens eine
+ * Minute — ein engeres Intervall würde still entwertet. Wer es schneller
+ * braucht, bekommt mit der Zeit auch die ✓✓ beim Öffnen der App; sofort
+ * nach dem Hintergrund-Werden läuft ohnehin eine Extra-Runde, die genau das
+ * Szenario „gerade fertig gechattet, Handy weg“ abdeckt.
+ *
+ * Gestartet/gestoppt wird der Takt von `+layout.svelte` über die
+ * netzwache-Haken (`beiHintergrund`/`beiVordergrund`) — nur in der
+ * Android-Hülle, nur einmal, der doppelte Start ist wirkungslos.
+ */
+const HINTERGRUND_TAKT_MS = 60_000;
+let takt: ReturnType<typeof setInterval> | null = null;
+
+function stoppen(): void {
+  if (takt !== null) {
+    clearInterval(takt);
+    takt = null;
+  }
+}
+
+/** Den Hintergrund-Takt anhalten (Vordergrund übernommen). */
+export function hintergrundZyklusStoppen(): void {
+  stoppen();
+}
+
+export function hintergrundZyklusStarten(): void {
+  if (takt !== null) return;
+  void postfachAbholenUndEntschluesseln();
+  takt = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      // Vordergrund hat übernommen (netzwache-Haken stoppen ihn dort auch
+      // selbst) — hier nur sauber aufräumen.
+      stoppen();
+      return;
+    }
+    void postfachAbholenUndEntschluesseln();
+  }, HINTERGRUND_TAKT_MS);
+}
