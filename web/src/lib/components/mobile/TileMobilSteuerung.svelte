@@ -16,8 +16,8 @@
   Hochformat gelockt war — im Hochformat sind links und rechts null. Mit dem
   Querformat fürs Stream-Vollbild (Punkt 27) wandert die Aussparung an eine
   Seite, und genau dort sitzen Schliessen, Lautstärke und Vollbild-Ausstieg.
-  Seitlich gilt das nur im Vollbild: in der KACHEL hat die Shell die Aussparung
-  schon abgezogen (sonst stünde sie doppelt, `seiteLinks`).
+  Seitlich entfällt es nur in der KACHEL der iOS-Hülle: dort hat die Shell die
+  Aussparung schon abgezogen (sonst stünde sie doppelt, `seiteLinks`).
   Oben und unten gilt `top-2`/`bottom-2` nur in der KACHEL (sie liegt nicht am
   Bildrand). Im selbst gebauten Vollbild (`TileShell`, `fixed inset-0`) liegen
   die Knöpfe AM Bildrand: im Hochformat unter der Dynamic Island und über dem
@@ -39,6 +39,7 @@
   import MessageSquareIcon from '@lucide/svelte/icons/message-square';
   import ListVideoIcon from '@lucide/svelte/icons/list-video';
   import { m } from '$lib/paraglide/messages.js';
+  import { isCapacitorIOS } from '$lib/platform/runtime';
   import BildImBildKnopf from '$lib/stream/components/BildImBildKnopf.svelte';
 
   let {
@@ -93,12 +94,14 @@
   const obenKlasse = $derived(isFullscreen ? 'ios:top-[calc(0.5rem+var(--safe-top))]' : '');
   const untenKlasse = $derived(isFullscreen ? 'ios:bottom-[calc(0.5rem+var(--safe-bottom))]' : '');
 
-  // Die Aussparung zählt nur im selbst gebauten Vollbild (`fixed inset-0`, am
-  // Bildrand). In der KACHEL hat sie die Shell schon abgezogen
-  // (`routes/app/+layout.svelte`: `ios:handy:pl/pr-[var(--safe-…)]`) — ein
-  // zweites Mal stünde der Abstand doppelt.
-  const seiteLinks = $derived(isFullscreen ? 'var(--safe-left)' : '0px');
-  const seiteRechts = $derived(isFullscreen ? 'var(--safe-right)' : '0px');
+  // Nur in der iOS-HÜLLE hat die Shell die seitliche Aussparung außerhalb des
+  // Vollbilds schon abgezogen (`routes/app/+layout.svelte`:
+  // `ios:handy:pl/pr-[var(--safe-…)]`) — ein zweites Mal stünde der Abstand
+  // doppelt. Im selbst gebauten Vollbild (`fixed inset-0`) und überall sonst
+  // gilt es wie bisher.
+  const seitenAbzug = $derived(!isFullscreen && isCapacitorIOS());
+  const seiteLinks = $derived(seitenAbzug ? '0px' : 'var(--safe-left)');
+  const seiteRechts = $derived(seitenAbzug ? '0px' : 'var(--safe-right)');
   // 44 pt (`size-11`): die Mindestfläche, die Apple und Material für einen
   // Finger nennen. Vorher 40 pt, die Lautstärke-Knöpfe 36 pt.
   const RUND =
