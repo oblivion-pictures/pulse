@@ -75,11 +75,16 @@ class OpenedTiles {
     return out;
   }
 
-  /** Whether any tile is open for this channel (any kind, any id). */
-  hasAny(channelId: string): boolean {
+  /** Whether any tile is open for this channel (any kind, any id).
+   *  `ausser` nimmt einzelne Kacheln aus der Zählung — `VoiceChannelView`
+   *  lässt so HQ-Ströme weg, die im eigenen Player-Fenster laufen: die sind
+   *  offen, belegen aber keinen Platz im Raster. */
+  hasAny(channelId: string, ausser?: (kind: TileKind, id: string) => boolean): boolean {
     const marker = `::${channelId}::`;
     for (const k of this.#set) {
-      if (k.includes(marker)) return true;
+      const at = k.indexOf(marker);
+      if (at < 0) continue;
+      if (!ausser?.(k.slice(0, at) as TileKind, k.slice(at + marker.length))) return true;
     }
     return false;
   }

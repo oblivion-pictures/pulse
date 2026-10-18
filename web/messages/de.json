@@ -1972,7 +1972,6 @@
   "my_instances_loading": "Lade…",
   "my_instances_status_active": "Freigegeben",
   "my_instances_status_suspended": "Gesperrt",
-  "native_panel_focus_window": "Fenster nach vorne holen",
   "native_update_download_action": "Herunterladen",
   "native_update_download_desc": "Es ist eine neue Version der Mac-App verfügbar. Lade sie herunter und ersetze die bestehende App.",
   "native_update_flatpak_desc": "Es ist eine neue App-Version verfügbar. Aktualisiere über deine Software-Verwaltung oder im Terminal mit „flatpak update“.",
@@ -3279,7 +3278,6 @@
   "whep_player_microstutter_title": "Mikro-Stutter seit Verbindungsstart (Chromium freezeCount)",
   "whep_player_native_toggle_forced": "Dieser Stream sendet in 10 bit — nur das eigene Fenster kann das darstellen",
   "whep_player_native_toggle_off": "Wieder hier in der Kachel zeigen",
-  "whep_player_native_window": "Wird in einem separaten Fenster wiedergegeben",
   "whep_player_popup_blocked": "Popup blockiert",
   "whep_player_popup_blocked_description": "Bitte erlaube Pop-up-Fenster für Pulse und versuche es erneut.",
   "whep_player_stream_load_failed": "Stream konnte nicht geladen werden",
@@ -3577,5 +3575,8 @@
   "rooms_community_menue": "Menü von {name} öffnen",
   "settings_appearance_language_ios_hint": "Pulse folgt der Sprache deines iPhones.",
   "settings_appearance_language_ios_button": "Einstellungen von Pulse öffnen",
-  "einladung_link_ungueltig": "Diese Einladung ist ungültig."
+  "einladung_link_ungueltig": "Diese Einladung ist ungültig.",
+  "voice_participant_fenster_badge": "Fenster",
+  "voice_participant_fenster_badge_title": "Läuft im eigenen Fenster – klicken holt es nach vorne",
+  "voice_participant_fenster_badge_aria": "Fenster mit dem Stream von {name} nach vorne holen"
 }

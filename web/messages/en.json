@@ -1972,7 +1972,6 @@
   "my_instances_loading": "Loading…",
   "my_instances_status_active": "Approved",
   "my_instances_status_suspended": "Suspended",
-  "native_panel_focus_window": "Bring window to front",
   "native_update_download_action": "Download",
   "native_update_download_desc": "A new version of the Mac app is available. Download it and replace the existing app.",
   "native_update_flatpak_desc": "A new app version is available. Update via your software manager, or run “flatpak update” in a terminal.",
@@ -3279,7 +3278,6 @@
   "whep_player_microstutter_title": "Micro-stutters since connection start (Chromium freezeCount)",
   "whep_player_native_toggle_forced": "This stream is 10-bit — only the separate window can display that",
   "whep_player_native_toggle_off": "Show here in the tile again",
-  "whep_player_native_window": "Playing back in a separate window",
   "whep_player_popup_blocked": "Popup blocked",
   "whep_player_popup_blocked_description": "Please allow pop-up windows for Pulse and try again.",
   "whep_player_stream_load_failed": "Stream could not be loaded",
@@ -3577,5 +3575,8 @@
   "rooms_community_menue": "Open menu for {name}",
   "settings_appearance_language_ios_hint": "Pulse follows your iPhone's language.",
   "settings_appearance_language_ios_button": "Open Pulse settings",
-  "einladung_link_ungueltig": "This invitation is invalid."
+  "einladung_link_ungueltig": "This invitation is invalid.",
+  "voice_participant_fenster_badge": "Window",
+  "voice_participant_fenster_badge_title": "Playing in its own window – click to bring it to the front",
+  "voice_participant_fenster_badge_aria": "Bring the window with {name}'s stream to the front"
 }
