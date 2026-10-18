@@ -3575,5 +3575,6 @@
   "community_aktion_mitglieder": "Members",
   "rooms_community_menue": "Open menu for {name}",
   "settings_appearance_language_ios_hint": "Pulse follows your iPhone's language.",
-  "settings_appearance_language_ios_button": "Open Pulse settings"
+  "settings_appearance_language_ios_button": "Open Pulse settings",
+  "einladung_link_ungueltig": "This invitation is invalid."
 }
