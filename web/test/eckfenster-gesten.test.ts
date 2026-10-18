@@ -15,55 +15,12 @@ import { describe, it } from 'node:test';
 
 import {
   abstand,
-  eckeVon,
   einpassen,
-  istDiagonale,
   skalieren,
   MARGIN,
   MIN_H,
   MIN_W
 } from '../src/lib/watch/eckfensterGesten.ts';
-
-const KASTEN = { left: 100, top: 100, right: 400, bottom: 300 };
-
-describe('eckeVon', () => {
-  it('erkennt alle vier Ecken', () => {
-    assert.equal(eckeVon(KASTEN, 105, 105), 'ol');
-    assert.equal(eckeVon(KASTEN, 395, 105), 'or');
-    assert.equal(eckeVon(KASTEN, 105, 295), 'ul');
-    assert.equal(eckeVon(KASTEN, 395, 295), 'ur');
-  });
-
-  it('die Mitte ist keine Ecke', () => {
-    assert.equal(eckeVon(KASTEN, 250, 200), null);
-  });
-
-  it('eine Kantenmitte ist keine Ecke — nur eine der beiden Achsen passt', () => {
-    assert.equal(eckeVon(KASTEN, 250, 105), null); // oben mittig
-    assert.equal(eckeVon(KASTEN, 105, 200), null); // links mittig
-  });
-});
-
-describe('istDiagonale', () => {
-  it('gegenüberliegende Ecken bilden eine Diagonale', () => {
-    assert.equal(istDiagonale('ol', 'ur'), true);
-    assert.equal(istDiagonale('or', 'ul'), true);
-  });
-
-  it('zwei Ecken derselben Kante NICHT — das ist Verschieben, nicht Skalieren', () => {
-    assert.equal(istDiagonale('ol', 'or'), false); // beide oben
-    assert.equal(istDiagonale('ol', 'ul'), false); // beide links
-  });
-
-  it('dieselbe Ecke zweimal ist keine Diagonale', () => {
-    assert.equal(istDiagonale('ol', 'ol'), false);
-  });
-
-  it('ein Griff ausserhalb jeder Ecke verhindert das Skalieren', () => {
-    assert.equal(istDiagonale('ol', null), false);
-    assert.equal(istDiagonale(null, null), false);
-  });
-});
 
 describe('einpassen', () => {
   const FENSTER = { innerWidth: 1000, innerHeight: 800 };

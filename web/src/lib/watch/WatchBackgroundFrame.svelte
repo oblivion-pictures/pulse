@@ -9,7 +9,7 @@
   (`viewport.zeigerGrob`):
   * grab the window anywhere and drag → moves it,
   * hold BOTH ends of a diagonal (top-left + bottom-right OR top-right +
-    bottom-left) and pinch → resizes it (smaller and bigger, any corner pair),
+    bottom-left) and pinch → resizes it (smaller and bigger, anywhere on the surface),
   * a single tap toggles the floating controls — close (X) top-left, back to
     channel (fullscreen) bottom-right, system picture-in-picture top-right
     where it works (`EckfensterSteuerung`) — which auto-hide after HUD_HIDE_MS.
@@ -30,8 +30,6 @@
   import {
     abstand,
     einpassen,
-    eckeVon,
-    istDiagonale,
     skalieren,
     MARGIN,
     TAP_TOLERANZ
@@ -129,22 +127,21 @@
     if (rect) return; // drag/resize only in corner mode
     pointer.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointer.size === 2) {
-      // Zwei Finger: Pinch, wenn sie gegenüberliegende Ecken halten
-      // (ol+ur oder or+ul) — dann Skalieren statt Verschieben.
+      // Zwei Finger: Pinch — überall auf der Fläche, um den Finger-Mittelpunkt
+      // (Nutzerwunsch 2026-10-19: vorher mussten die Finger gegenüberliegende
+      // Ecken halten, das fand niemand). Ein evtl. laufender Einzelzug wird
+      // abgebrochen.
       const [r1, r2] = [...pointer.values()];
-      const box = frameEl.getBoundingClientRect();
-      if (istDiagonale(eckeVon(box, r1.x, r1.y), eckeVon(box, r2.x, r2.y))) {
-        pinch = {
-          dist: abstand(r1, r2),
-          w: breite,
-          h: hoehe,
-          cx: (r1.x + r2.x) / 2,
-          cy: (r1.y + r2.y) / 2
-        };
-        dragging = false; // ein evtl. laufender Einzelzug wird abgebrochen
-        zeigteBewegung = true;
-        return;
-      }
+      pinch = {
+        dist: abstand(r1, r2),
+        w: breite,
+        h: hoehe,
+        cx: (r1.x + r2.x) / 2,
+        cy: (r1.y + r2.y) / 2
+      };
+      dragging = false;
+      zeigteBewegung = true;
+      return;
     }
     if (pinch) return; // Pinch läuft — keine neuen Einzelgriffe zulassen
     const r = frameEl.getBoundingClientRect();
@@ -215,10 +212,10 @@
 
   {#if !rect}
     <!-- PiP-Fläche: fängt die Pointer-Events des Eckfensters — Ziehen verschiebt
-         das Fenster, zwei Finger auf gegenüberliegenden Ecken skalieren es
-         (Pinch), ein Tap (unter der Toleranz) zeigt/versteckt die Steuerung.
-         Die Steuerungs-Knöpfe stoppen ihr pointerdown, damit sie nicht als
-         Ziehen/Tap durchschlagen.
+         das Fenster, zwei Finger skalieren es (Pinch, überall auf der Fläche,
+         um den Finger-Mittelpunkt), ein Tap (unter der Toleranz) zeigt/versteckt
+         die Steuerung. Die Steuerungs-Knöpfe stoppen ihr pointerdown, damit sie
+         nicht als Ziehen/Tap durchschlagen.
 
          Ganzflächig NUR am Finger; mit Maus bleibt es der Streifen oben, unter
          dem die Bedienleiste der Kachel klickbar bleibt (s. Kopfkommentar). -->

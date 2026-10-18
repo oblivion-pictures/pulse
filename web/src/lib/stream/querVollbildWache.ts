@@ -1,11 +1,12 @@
 /**
  * Verdrahtung von `querVollbild.ts` für eine Kachel: Lage-Ereignisse hören,
- * die Entscheidung fragen, betreten/verlassen ausführen. **Nur in der
- * iOS-Hülle** — Android, Desktop und Browser bekommen einen leeren Abbau und
- * bleiben unverändert (einen Kipp-Weg für Android gibt es nicht mehr: der
- * stillgelegte Effekt in `TileShell` ist entfernt).
+ * die Entscheidung fragen, betreten/verlassen ausführen. **In beiden
+ * Mobil-Hüllen** (iOS kam zuerst, Android nach Nutzerwunsch am 2026-10-19);
+ * Desktop und Browser bekommen einen leeren Abbau und bleiben unverändert —
+ * auf dem Desktop würde jede Fenstergrößen-Änderung über die Quer-Schwelle
+ * sonst ins Vollbild kippen.
  */
-import { isCapacitorIOS } from '$lib/platform/runtime';
+import { isCapacitorAndroid, isCapacitorIOS } from '$lib/platform/runtime';
 import { aufVollbildWechsel, vollbildElement, vollbildVerlassen } from './fullscreen';
 import { QuerKacheln, QuerVerlauf, istEingabe, istQuer } from './querVollbild';
 
@@ -62,7 +63,9 @@ export function jetztQuer(): boolean {
 
 /** Beobachten, solange die Kachel offen ist. Rückgabe baut ab. */
 export function querVollbildBeobachten(id: string, kachel: QuerVollbildKachel): () => void {
-  if (!isCapacitorIOS() || typeof window === 'undefined') return () => undefined;
+  if ((!isCapacitorIOS() && !isCapacitorAndroid()) || typeof window === 'undefined') {
+    return () => undefined;
+  }
   const ziel = zielFuer(kachel);
   querKacheln.anmelden(id);
   const verlauf = new QuerVerlauf(jetztQuer());

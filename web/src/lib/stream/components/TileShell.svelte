@@ -160,11 +160,11 @@
     toggleFullscreen(containerEl, video);
   }
 
-  // iOS-Hülle: HQ-Kachel quer → Vollbild, hoch → verlassen (`querVollbild.ts`,
-  // welche Quelle wann: `querVollbildWache.ts`). Liest `isFullscreen` nur im
-  // Ereignis, nicht im Effekt. Verlassen lässt sich das selbst gebaute Vollbild
-  // sonst über `toggleFs` — am Telefon der Pfeil oben links, den
-  // `TileMobilSteuerung` im Vollbild immer zeigt (`zeigeVollbildAus`).
+  // Mobil-Hüllen: HQ-Kachel quer → Vollbild, hoch → verlassen
+  // (`querVollbild.ts`, welche Quelle wann: `querVollbildWache.ts`). Liest
+  // `isFullscreen` nur im Ereignis, nicht im Effekt. Verlassen lässt sich das
+  // selbst gebaute Vollbild sonst über `toggleFs` — am Telefon der Pfeil oben
+  // links, den `TileMobilSteuerung` im Vollbild immer zeigt (`zeigeVollbildAus`).
   const querId = `kachel-${Math.random().toString(36).slice(2)}`;
   $effect(() => {
     if (kind !== 'hq') return;
