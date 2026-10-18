@@ -276,7 +276,7 @@
         data-testid="message-reply-quote"
       >
         <CornerDownRightIcon class="size-3 shrink-0" />
-        <span class="font-semibold">{replyTo.author}</span>
+        <span class="max-w-[50%] min-w-0 truncate font-semibold">{replyTo.author}</span>
         <span class="text-text-muted/70 truncate">{replyTo.snippet}</span>
       </button>
     {/if}

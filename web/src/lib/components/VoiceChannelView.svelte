@@ -337,7 +337,7 @@ import { errText } from '$lib/utils/errText';
       <div class="flex flex-1 items-center justify-center">
         <div class="text-center">
           <Volume2Icon class="text-text-muted mx-auto mb-3 size-12" />
-          <p class="text-text-bright mb-1 text-lg">{channel.name}</p>
+          <p class="text-text-bright mb-1 max-w-full px-4 text-lg break-words">{channel.name}</p>
           <FieldError message={voice.error} class="mt-2" />
           {#if !handy}
             <p class="text-text-muted text-sm">{m.voice_channel_view_join_hint()}</p>

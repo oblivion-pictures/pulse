@@ -131,7 +131,7 @@
           />
         </label>
         {#if file}
-          <p class="text-text-muted text-xs">{file.name}</p>
+          <p class="text-text-muted max-w-full truncate text-xs">{file.name}</p>
         {/if}
       </div>
 

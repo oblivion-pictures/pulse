@@ -23,11 +23,11 @@
   data-testid="reply-banner"
 >
   <span class="text-text-muted">{m.message_input_reply_to()}</span>
-  <span class="text-text-bright font-semibold">{replyTo.author}</span>
+  <span class="text-text-bright max-w-[45%] min-w-0 truncate font-semibold">{replyTo.author}</span>
   <span class="text-text-muted truncate">— {replyTo.snippet}</span>
   <button
     type="button"
-    class="text-text-muted hover:text-text-bright ml-auto rounded p-0.5"
+    class="text-text-muted hover:text-text-bright ml-auto shrink-0 rounded p-0.5"
     aria-label={m.message_input_cancel_reply()}
     onclick={() => onCancel?.()}
   >

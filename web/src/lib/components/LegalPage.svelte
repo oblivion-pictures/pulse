@@ -62,6 +62,11 @@
     font-weight: 800;
     letter-spacing: -0.01em;
     margin-bottom: 1.5rem;
+    /* Greift nur, wenn ein einzelnes Wort breiter als die Zeile ist (lange
+       zusammengesetzte Wörter am Handy); sonst bricht die Zeile wie bisher.
+       Keine Silbentrennung (`hyphens: auto`): `<html lang>` steht fest auf
+       „en“, das Wörterbuch passte nicht zum deutschen Text. */
+    overflow-wrap: anywhere;
   }
   .legal-prose :global(h2) {
     font-size: 1.25rem;
@@ -126,6 +131,14 @@
     border-collapse: collapse;
     margin: 1rem 0;
     font-size: 0.9rem;
+  }
+  /* Breite Tabellen scrollen für sich, nicht die ganze Seite. Nur am Handy:
+     `display: block` lässt eine schmale Tabelle sonst auf Inhaltsbreite
+     schrumpfen. */
+  :global(.geraet-handy) .legal-prose :global(table) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
   }
   .legal-prose :global(th),
   .legal-prose :global(td) {

@@ -90,7 +90,7 @@
 </script>
 
 <li
-  class="border-border bg-bg-input/40 flex items-center gap-3 rounded-xl border p-3"
+  class="border-border bg-bg-input/40 flex flex-wrap items-center gap-3 rounded-xl border p-3"
   data-testid="passkey-row"
 >
   <span class="bg-bg-input text-text-muted flex size-9 shrink-0 items-center justify-center rounded-full">
@@ -117,7 +117,7 @@
     </span>
   </div>
 
-  <div class="flex shrink-0 items-center gap-1">
+  <div class="ml-auto flex max-w-full shrink-0 flex-wrap items-center gap-1">
     {#if editing}
       <Button
         variant="ghost"
@@ -145,7 +145,7 @@
         autocomplete="current-password"
         bind:value={loeschPasswort}
         placeholder={m.passkey_row_password_label()}
-        class="h-7 w-40 text-xs"
+        class="h-7 w-40 max-w-full min-w-0 text-xs handy:h-11"
         data-testid="passkey-delete-password"
       />
       {#if brauchtBackupCode}
@@ -154,7 +154,7 @@
           maxlength={28}
           autocomplete="off"
           placeholder={m.passkey_row_backup_code_label()}
-          class="h-7 w-40 text-xs"
+          class="h-7 w-40 max-w-full min-w-0 text-xs handy:h-11"
           data-testid="passkey-delete-backup-code"
         />
       {/if}

@@ -145,12 +145,12 @@
           {#snippet children({ props })}
             <button
               {...props}
-              class="text-text-bright font-semibold"
+              class="text-text-bright min-w-0 truncate font-semibold"
               style={authorStyle}
               data-testid="message-author">{authorName}</button>
           {/snippet}
         </UserProfilePopover>
-        <span class="text-text-muted text-xs">{time}</span>
+        <span class="text-text-muted shrink-0 text-xs">{time}</span>
         {@render haeckel()}
         {#if pinned}
           <PinIcon

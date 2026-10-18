@@ -115,7 +115,7 @@
       {#each QUICK as e (e)}
         <button
           type="button"
-          class="flex size-11 items-center justify-center rounded-full text-2xl active:bg-bg-hover"
+          class="flex aspect-square max-w-11 min-w-0 flex-1 items-center justify-center rounded-full text-2xl active:bg-bg-hover"
           data-testid="sheet-quick-react"
           data-emoji={e}
           onclick={() => react(e)}
@@ -123,7 +123,7 @@
       {/each}
       <button
         type="button"
-        class="text-text-muted flex size-11 items-center justify-center rounded-full active:bg-bg-hover"
+        class="text-text-muted flex aspect-square max-w-11 min-w-0 flex-1 items-center justify-center rounded-full active:bg-bg-hover"
         aria-label={m.message_action_sheet_more_emojis()}
         data-testid="sheet-action-react"
         onclick={() => (pickerView = true)}
