@@ -1,8 +1,10 @@
 import { App } from '@capacitor/app';
+import { toast } from 'svelte-sonner';
+import { m } from '$lib/paraglide/messages.js';
 import { vonAussenOeffnen } from '$lib/navigation/navigationsHerkunft';
 import { isCapacitorIOS } from './runtime';
 import { einladungAusDeepLink } from '$lib/einladung/deepLink';
-import { einladungsZiel, zielPfad } from './tiefenlink';
+import { einladungsZiel, istEinladungsAdresse, zielPfad } from './tiefenlink';
 
 /**
  * Chat-Adressen von howispulse.com öffnen die App statt des Browsers.
@@ -36,6 +38,11 @@ export function installiereUniversalLinks(): () => void {
     const einladung = einladungsZiel(url);
     if (einladung) {
       einladungAusDeepLink({ hostname: einladung.host ?? '', code: einladung.code });
+      return;
+    }
+    // Ein Einladungslink, den der Parser ablehnt: sagen, statt zu schweigen.
+    if (istEinladungsAdresse(url)) {
+      toast.error(m.einladung_link_ungueltig());
       return;
     }
     const ziel = zielPfad(url);

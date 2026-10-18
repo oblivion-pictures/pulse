@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { aktiverBereich } from '../src/lib/navigation/tabs.ts';
-import { einladungsZiel, zielPfad, zielPfadIntern } from '../src/lib/platform/tiefenlink.ts';
+import { einladungsZiel, istEinladungsAdresse, zielPfad, zielPfadIntern } from '../src/lib/platform/tiefenlink.ts';
 
 test('Chat-Adresse wird zum Ziel in der App', () => {
 	assert.equal(zielPfad('https://howispulse.com/app/@me/12345'), '/app/@me/12345');
@@ -150,4 +150,15 @@ test('AASA beansprucht Einladungen, aber keine Gast-Links und keine Community-Ad
   assert.ok(pfade.includes('/invite/*'));
   assert.ok(pfade.includes('/app/@me/*'));
   assert.equal(pfade.some((p) => p.startsWith('/gast') || p.startsWith('/c/')), false);
+});
+
+test('Einladungsadresse erkennen, auch wenn der Parser sie ablehnt', () => {
+  assert.equal(istEinladungsAdresse('https://howispulse.com/invite/abc123XY'), true);
+  assert.equal(istEinladungsAdresse('https://howispulse.com/invite/%%%'), true);
+  assert.equal(einladungsZiel('https://howispulse.com/invite/%%%'), null);
+  assert.equal(istEinladungsAdresse('https://howispulse.com/inviteX'), false);
+  assert.equal(istEinladungsAdresse('https://howispulse.com/app/@me/1'), false);
+  assert.equal(istEinladungsAdresse('https://evil.example/invite/abc123XY'), false);
+  assert.equal(istEinladungsAdresse('http://howispulse.com/invite/abc123XY'), false);
+  assert.equal(istEinladungsAdresse('kein link'), false);
 });

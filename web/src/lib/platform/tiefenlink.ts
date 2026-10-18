@@ -76,6 +76,25 @@ export function einladungsZiel(adresse: string): Einladung | null {
 }
 
 /**
+ * Sieht die Adresse nach einem Einladungslink von uns aus (https, unser Haus,
+ * Pfad `/invite…`)? Zusammen mit einem `null` von `einladungsZiel` heißt das:
+ * abgelehnt (kaputter Code, ungültiger `?host=`) — der Nutzer bekommt eine
+ * Rückmeldung statt Stille.
+ */
+export function istEinladungsAdresse(adresse: string): boolean {
+  try {
+    const u = new URL(adresse);
+    return (
+      u.protocol === 'https:' &&
+      ERLAUBTE_HOSTS.includes(u.hostname.toLowerCase()) &&
+      (u.pathname === '/invite' || u.pathname.startsWith('/invite/'))
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Dasselbe für einen PFAD ohne Herkunft — für Ziele, die aus der Hülle
  * zurückkommen (Schnellwahl am Icon, iOS-Punkt 44).
  *
