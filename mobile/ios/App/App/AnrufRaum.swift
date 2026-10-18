@@ -108,12 +108,17 @@ final class AnrufRaum: NSObject, @unchecked Sendable {
         // Anruf zeichnet heute KEIN fremdes Video (keine `VideoView` an diesem
         // Raum); bisher wurde es trotzdem empfangen und dekodiert. Wer hier ein
         // Bild ergänzt, nimmt eine `VideoView` — sonst bleibt es aus.
-        var optionen = RoomOptions(adaptiveStream: true, dynacast: true)
+        // Dieselbe Aufnahme-Verarbeitung (AGC aus) wie im Kanal — beide Räume
+        // teilen den einen `AudioManager`; Begründung an `aufnahmeOptionen`.
+        let aufnahme = SpracheRaum.aufnahmeOptionen
+        var optionen = RoomOptions(defaultAudioCaptureOptions: aufnahme,
+                                   adaptiveStream: true, dynacast: true)
         if let schluessel {
             let anbieter = BaseKeyProvider(
                 options: KeyProviderOptions(sharedKey: true, keyDerivationAlgorithm: .hkdf))
             anbieter.setKey(keyData: schluessel)
-            optionen = RoomOptions(adaptiveStream: true, dynacast: true,
+            optionen = RoomOptions(defaultAudioCaptureOptions: aufnahme,
+                                   adaptiveStream: true, dynacast: true,
                                    encryptionOptions: EncryptionOptions(keyProvider: anbieter))
         }
         let r = Room(delegate: self, roomOptions: optionen)
@@ -149,6 +154,7 @@ final class AnrufRaum: NSObject, @unchecked Sendable {
         await MainActor.run { Anrufverwaltung.geteilt.nachMikrofonErlaubnis() }
         do {
             try await r.localParticipant.setMicrophone(enabled: true)
+            SpracheRaum.agcAus()
             if stumm { try await stummSchalten(true) }
         } catch {
             // Wie im Kanal: ohne Mikrofon kann man zuhören, also bleibt der

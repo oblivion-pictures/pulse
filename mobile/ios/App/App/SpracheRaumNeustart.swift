@@ -27,7 +27,35 @@ extension SpracheRaum {
     /// melden sich also richtig an; ohne jede Ansicht pausiert das Video, und
     /// beim Öffnen kommt es nach einem Takt des SDK und einem Vollbild zurück.
     static func raumOptionen() -> RoomOptions {
-        RoomOptions(adaptiveStream: true, dynacast: true)
+        RoomOptions(defaultAudioCaptureOptions: aufnahmeOptionen,
+                    adaptiveStream: true, dynacast: true)
+    }
+
+    /// **Automatische Mikrofon-Regelung (AGC) AUS, Echo- und Rauschunterdrückung
+    /// bleiben** (Eigentümer-Entscheid 2026-10-18). Grund: Angleichen an den
+    /// Desktop, dort ist AGC bewusst aus (`autoGainControl: false`, Makeup 1);
+    /// mit der SDK-Vorgabe (Apples VPIO-AGC an) klangen Nutzer vom iPhone viel
+    /// lauter. **Gefolgert, nicht gemessen** — am Gerät mit dem Feld `agc` der
+    /// Diagnose zu belegen. Wirkung laut SDK 2.17 (`AudioManager`,
+    /// `AudioProcessingOptions`): `isVoiceProcessingAGCEnabled` darf zur
+    /// Laufzeit gesetzt werden, aber „Runtime `AudioProcessingOptions` may
+    /// overwrite this … when capture starts or when local audio track options
+    /// are reapplied" — der Schalter allein genügt also nicht. Darum zweierlei:
+    /// (1) die Aufnahme-Optionen des Raums tragen `autoGainControl: false`
+    /// (gelten für jede neu veröffentlichte Spur, auch im Anruf), (2) `agcAus()`
+    /// setzt den VPIO-Schalter nach jedem Aufbau der Kette noch einmal.
+    static let aufnahmeOptionen = AudioCaptureOptions(autoGainControl: false)
+
+    /// Die Verarbeitung der Spur am Lautsprecher/Ohr (Apples VPIO), AGC aus —
+    /// Rückweg aus Bluetooth-HQ. Begründung an `aufnahmeOptionen`.
+    static let vpioVerarbeitung = AudioProcessingOptions(autoGainControl: false)
+
+    /// Der VPIO-Schalter, einzige Stelle: nach Beitritt, Spur-Neubau, Neubau der
+    /// Maschine (Heilwege, Rückgabe aus Anruf/Bluetooth-HQ) und im Anruf zu
+    /// rufen. Synchroner Getter/Setter in WebRTCs Fabrik — nie von einem
+    /// WebRTC-Faden aus.
+    static func agcAus() {
+        AudioManager.shared.isVoiceProcessingAGCEnabled = false
     }
 
     /// WebRTCs eigene Echo-, Pegel- und Rauschverarbeitung statt Apples
@@ -35,9 +63,10 @@ extension SpracheRaum {
     /// (`SpracheFunkHqAbgleich`): dort läuft die Aufnahme ohne VPIO, siehe
     /// `SpracheFunkHq.swift`. („Volle Tonqualität" als Schalter gibt es nicht
     /// mehr; Eigentümer-Entscheid 2026-10-17, es gilt Apples VPIO.)
+    /// AGC auch hier aus (Begründung an `aufnahmeOptionen`).
     static let softwareVerarbeitung = AudioProcessingOptions(
-        echoCancellationMode: .software, autoGainControlMode: .software,
-        noiseSuppressionMode: .software)
+        echoCancellation: true, autoGainControl: false, noiseSuppression: true,
+        echoCancellationMode: .software, noiseSuppressionMode: .software)
 
     // MARK: - Herstellen
 
@@ -180,6 +209,7 @@ extension SpracheRaum {
             : AudioEngineAvailability(isInputAvailable: false, isOutputAvailable: true)
         do {
             try AudioManager.shared.setEngineAvailability(ziel)
+            if ziel.isInputAvailable { agcAus() }
             return nil
         } catch {
             return "\(error)"
@@ -198,6 +228,7 @@ extension SpracheRaum {
                     try await r.localParticipant.unpublish(publication: pub)
                 }
                 try await r.localParticipant.setMicrophone(enabled: true)
+                Self.agcAus()
                 if !mikroWunsch { try await Self.stummSchalten(true, in: r) }
                 schickeEigenen()
                 schickeTeilnehmer()
@@ -240,6 +271,7 @@ extension SpracheRaum {
     func tonBeleg() -> [String: Any] {
         [
             "aec": AudioManager.shared.audioProcessingState.echoCancellation.effective.description,
+            "agcMod": AudioManager.shared.audioProcessingState.autoGainControl.effective.description,
             "kbps": AudioEncoding.presetMusic.maxBitrate / 1000
         ]
     }
@@ -266,6 +298,10 @@ extension SpracheRaum {
             "automatik": am.audioSession.isAutomaticConfigurationEnabled,
             "micMuted": am.isMicrophoneMuted,
             "vpio": am.platformVoiceProcessingState.voiceProcessingEnabled.isActive,
+            // Apples VPIO-AGC: Live-Wert vom Eingangsknoten (false auch, wo
+            // nicht beobachtbar) und der zuletzt angeforderte. Soll: beide false.
+            "agc": am.platformVoiceProcessingState.voiceProcessingAGCEnabled.isActive,
+            "agcAngef": am.platformVoiceProcessingState.voiceProcessingAGCEnabled.isRequested,
             "anrufPausiert": anrufPausiert,
             "callkitAktiv": Anrufverwaltung.geteilt.callkitAktiv,
             "verbunden": raum?.connectionState == .connected,

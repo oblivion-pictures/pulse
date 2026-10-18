@@ -254,7 +254,8 @@ extension SpracheRaum {
     private func verarbeitungSetzen(_ spur: LocalAudioTrack?, software: Bool) {
         guard let spur else { return }
         do {
-            try spur.setAudioProcessingOptions(software ? Self.softwareVerarbeitung : AudioProcessingOptions())
+            try spur.setAudioProcessingOptions(software ? Self.softwareVerarbeitung : Self.vpioVerarbeitung)
+            if !software { Self.agcAus() }
         } catch {
             diagMelden("funk_hq_verarbeitung_fehler", ["fehler": error.localizedDescription])
         }

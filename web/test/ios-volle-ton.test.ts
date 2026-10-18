@@ -20,9 +20,9 @@ test('L2: der native „Volle Tonqualität"-Weg ist entfernt, die Software-Verar
   const neustart = swift('SpracheRaumNeustart.swift');
   assert.match(
     neustart,
-    /static let softwareVerarbeitung = AudioProcessingOptions\(\s*echoCancellationMode: \.software, autoGainControlMode: \.software,\s*noiseSuppressionMode: \.software\)/
+    /static let softwareVerarbeitung = AudioProcessingOptions\(\s*echoCancellation: true, autoGainControl: false, noiseSuppression: true,\s*echoCancellationMode: \.software, noiseSuppressionMode: \.software\)/
   );
-  assert.match(swift('SpracheFunkHqAbgleich.swift'), /try spur\.setAudioProcessingOptions\(software \? Self\.softwareVerarbeitung : AudioProcessingOptions\(\)\)/);
+  assert.match(swift('SpracheFunkHqAbgleich.swift'), /try spur\.setAudioProcessingOptions\(software \? Self\.softwareVerarbeitung : Self\.vpioVerarbeitung\)/);
   assert.match(swift('SpracheRaum.swift'), /let r = Room\(delegate: self, roomOptions: Self\.raumOptionen\(\)\)/);
 });
 
@@ -32,4 +32,25 @@ test('L3: Beitritt meldet vpio, aec und kbps', () => {
   assert.match(neustart, /"aec": AudioManager\.shared\.audioProcessingState\.echoCancellation\.effective\.description/);
   assert.match(neustart, /"kbps": AudioEncoding\.presetMusic\.maxBitrate \/ 1000/);
   assert.match(swift('SpracheRaum.swift'), /diagMelden\(art, tonBeleg\(\)\.merging/);
+});
+
+test('L4: Mikrofon-Regelung (AGC) ist auf dem iPhone aus, in Kanal, Anruf und Rückweg aus Bluetooth-HQ', () => {
+  const neustart = swift('SpracheRaumNeustart.swift');
+  assert.match(neustart, /static let aufnahmeOptionen = AudioCaptureOptions\(autoGainControl: false\)/);
+  assert.match(neustart, /static let vpioVerarbeitung = AudioProcessingOptions\(autoGainControl: false\)/);
+  assert.match(neustart, /RoomOptions\(defaultAudioCaptureOptions: aufnahmeOptionen,/);
+  assert.match(neustart, /AudioManager\.shared\.isVoiceProcessingAGCEnabled = false/);
+  assert.match(neustart, /"agc": am\.platformVoiceProcessingState\.voiceProcessingAGCEnabled\.isActive/);
+  assert.match(neustart, /"agcAngef": am\.platformVoiceProcessingState\.voiceProcessingAGCEnabled\.isRequested/);
+  assert.match(neustart, /"agcMod": AudioManager\.shared\.audioProcessingState\.autoGainControl\.effective\.description/);
+  // Kein Weg baut die Spur wieder mit der SDK-Vorgabe (AGC an).
+  const alle = ['SpracheRaum.swift', 'SpracheRaumNeustart.swift', 'SpracheFunkHqAbgleich.swift', 'AnrufRaum.swift']
+    .map(swift)
+    .join('\n');
+  assert.doesNotMatch(alle, /AudioProcessingOptions\(\)|RoomOptions\(adaptiveStream/);
+  const anruf = swift('AnrufRaum.swift');
+  assert.equal((anruf.match(/defaultAudioCaptureOptions: aufnahme,/g) ?? []).length, 2);
+  assert.match(anruf, /setMicrophone\(enabled: true\)\s*SpracheRaum\.agcAus\(\)/);
+  assert.match(swift('AnrufSitzung.swift'), /if stand\.isInputAvailable \{ SpracheRaum\.agcAus\(\) \}/);
+  assert.match(swift('SpracheRaum.swift'), /setMicrophone\(enabled: true\)\s*Self\.agcAus\(\)/);
 });

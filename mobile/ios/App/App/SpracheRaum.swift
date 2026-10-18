@@ -225,6 +225,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         mikroWunsch = !stumm
         do {
             try await r.localParticipant.setMicrophone(enabled: true)
+            Self.agcAus()
             // `r`, nicht `raum`: ein Befehl dieses Beitritts darf nie auf einem
             // anderen Raum landen (M6). Läuft ein Anruf, bleibt das Mikrofon
             // im Kanal zu — der Anruf gewinnt (Entwurf §8, Punkt 2).

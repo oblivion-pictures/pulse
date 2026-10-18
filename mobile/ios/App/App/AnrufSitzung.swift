@@ -299,6 +299,7 @@ extension Anrufverwaltung {
     private func maschineStellen(_ stand: AudioEngineAvailability, _ was: String) {
         do {
             try AudioManager.shared.setEngineAvailability(stand)
+            if stand.isInputAvailable { SpracheRaum.agcAus() }
         } catch {
             NSLog("[PulseAnruf] Maschine %@ fehlgeschlagen: %@", was, error.localizedDescription)
         }
