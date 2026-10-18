@@ -4,6 +4,7 @@
   import { emailVerifySend, me } from '$lib/api/auth';
   import { forceTokenRefresh } from '$lib/api/client';
   import { auth } from '$lib/stores/auth.svelte';
+  import { viewport } from '$lib/stores/viewport.svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import * as Alert from '$lib/components/ui/alert/index.js';
   import AuthCard from '$lib/components/AuthCard.svelte';
@@ -33,6 +34,17 @@
       return;
     }
     ready = true;
+  });
+
+  // Am Handy geht der Weg über die Mail-App und zurück: beim Zurückkehren
+  // automatisch neu prüfen, statt auf den Knopf zu warten. Am Rechner bleibt es
+  // beim Knopf.
+  onMount(() => {
+    const beiSichtbar = () => {
+      if (document.visibilityState === 'visible' && viewport.isMobile && ready) void recheck();
+    };
+    document.addEventListener('visibilitychange', beiSichtbar);
+    return () => document.removeEventListener('visibilitychange', beiSichtbar);
   });
 
   async function resend() {

@@ -5,14 +5,12 @@
   schlechter als keiner; deshalb rendert die Komponente ausserhalb der
   iOS-Hülle nichts.
 
-  - Bluetooth-HQ: Begründung samt Abwägung an der Einstellung `bluetoothHq`
-    (`settings-registry/sections/audio.ts`). Der Schalter wirkt nur auf dem
-    Web-Weg und steht deshalb nur dort. Auf dem nativen Weg steht an seiner
-    Stelle `iosFunkHq` — nur, wenn der Bau ihn trägt (`nativeFunkHqDa`).
-  - Volle Tonqualität: ein Vergleichsschalter (Vorgabe aus), nur, wenn der
-    App-Bau ihn trägt (`nativeWacheDa`), Begründung an `iosVolleTonqualitaet`.
-    **Vorerst ausgeblendet** (Eigentümer-Entscheid 2026-10-17: es gilt Apples
-    Sprachverarbeitung, `platform/iosVolleTon.ts`).
+  - Bluetooth-HQ: ein Schalter für den nativen Sprachkanal (`iosFunkHq`),
+    nur wenn der Bau ihn trägt (`nativeFunkHqDa`). Den Web-Weg dafür
+    (`bluetoothHq`) gibt es nicht mehr (Eigentümer-Entscheid E6); ein früher
+    gespeicherter Wert wird einmal übernommen (`platform/iosBluetoothHq.ts`).
+  - Volle Tonqualität gibt es nicht mehr (Eigentümer-Entscheid 2026-10-17: es
+    gilt Apples Sprachverarbeitung).
   - Diagnose bei Tonausfall: der Opt-out für den automatischen Bericht
     (`diagnose/iosTonDiagnose.ts`) — derselbe Schlüssel wie am Desktop
     (`uploadDiagnosticLogs`, Vorgabe an), dort im Reiter „Experimental", den es
@@ -23,20 +21,12 @@
   import Switch from '$lib/components/form/Switch.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { funkHqSetzen } from '$lib/platform/iosFunkHq';
-  import {
-    nativeFunkHqDa,
-    nativeWacheDa,
-    nativerSprachwegDa
-  } from '$lib/platform/iosSpracheWeiche';
-  import { VOLLE_TONQUALITAET_ANGEBOTEN } from '$lib/platform/iosVolleTon';
-  import { tonHqFunkSetzen } from '$lib/platform/iosTon';
+  import { nativeFunkHqDa } from '$lib/platform/iosSpracheWeiche';
   import { isCapacitorIOS } from '$lib/platform/runtime';
   import { settings } from '$lib/stores/settings.svelte';
   import { loadAll, saveAll } from '$lib/stream/persistence';
 
   const ios = isCapacitorIOS();
-  const volleTonAnbieten = ios && VOLLE_TONQUALITAET_ANGEBOTEN && nativeWacheDa();
-  const webHqAnbieten = ios && !nativerSprachwegDa();
   const funkHqAnbieten = ios && nativeFunkHqDa();
   let diagnoseSenden = $state(true);
 
@@ -63,18 +53,6 @@
 {/snippet}
 
 {#if ios}
-  {#if webHqAnbieten}
-    {@render schalter(
-      'settings-bluetooth-hq',
-      m.settings_audio_bluetooth_hq_label(),
-      m.settings_audio_bluetooth_hq_hint(),
-      settings.audio.bluetoothHq,
-      (v) => {
-        settings.setBluetoothHq(v);
-        tonHqFunkSetzen(v);
-      }
-    )}
-  {/if}
   {#if funkHqAnbieten}
     {@render schalter(
       'settings-ios-funk-hq',
@@ -85,15 +63,6 @@
         settings.setIosFunkHq(v);
         funkHqSetzen(v);
       }
-    )}
-  {/if}
-  {#if volleTonAnbieten}
-    {@render schalter(
-      'settings-ios-volle-tonqualitaet',
-      m.settings_audio_ios_volle_ton_label(),
-      m.settings_audio_ios_volle_ton_hint(),
-      settings.audio.iosVolleTonqualitaet,
-      (v) => settings.setIosVolleTonqualitaet(v)
     )}
   {/if}
   {@render schalter(

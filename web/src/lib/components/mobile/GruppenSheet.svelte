@@ -170,7 +170,7 @@
         {#if darfEntfernen && mm.user_id !== currentServerUserId()}
           <button
             type="button"
-            class="text-text-muted hover:text-error ml-auto flex size-9 items-center justify-center rounded-full"
+            class="text-text-muted hover:text-error ml-auto flex size-9 handy:size-11 items-center justify-center rounded-full"
             onclick={() => entfernen(mm.user_id)}
             aria-label={m.gruppen_mitglied_entfernen()}
             data-testid={`group-member-remove-${mm.user_id}`}
@@ -197,7 +197,7 @@
           <span class="truncate text-sm font-semibold" style={nameStyle(f.user_id)}>{anzName}</span>
           <button
             type="button"
-            class="text-primary hover:bg-bg-hover ml-auto flex size-9 items-center justify-center rounded-full"
+            class="text-primary hover:bg-bg-hover ml-auto flex size-9 handy:size-11 items-center justify-center rounded-full"
             onclick={() => hinzufuegen(f.user_id)}
             aria-label={m.gruppen_mitglied_hinzufuegen()}
             data-testid={`group-member-add-${f.user_id}`}

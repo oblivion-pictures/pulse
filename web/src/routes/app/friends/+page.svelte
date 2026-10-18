@@ -14,7 +14,6 @@
   import DMChannelList from '$lib/components/DMChannelList.svelte';
   import { guilds } from '$lib/stores/guilds.svelte';
   import { currentServerUserId } from '$lib/stores/currentServerUser';
-  import { navDrawer } from '$lib/stores/navDrawer.svelte';
   import { selectGuild, selectDM } from '$lib/navigation/railNavi';
   import { viewport } from '$lib/stores/viewport.svelte';
   import { friendRequests } from '$lib/stores/friendRequests.svelte';
@@ -32,7 +31,8 @@
   import UserPlusIcon from '@lucide/svelte/icons/user-plus';
   import ClockIcon from '@lucide/svelte/icons/clock';
   import BanIcon from '@lucide/svelte/icons/ban';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+  import KopfMenue from '$lib/components/mobile/KopfMenue.svelte';
+  import type { ZeilenAktion } from '$lib/components/menu/zeilenAktionen';
   import { m } from '$lib/paraglide/messages.js';
 
   // Suche über die Freundesliste — nur Namen, keine Nachrichten/Kanäle; das
@@ -82,6 +82,34 @@
     });
   }
 
+  // Seltenes (Hinzufügen, Anfragen, Blockiert) steckt hinter dem Kopf-Knopf; die
+  // Anfragen-Zahl wandert als Plakette mit.
+  const kopfAktionen = $derived<ZeilenAktion[]>([
+    {
+      id: 'add',
+      label: m.friends_tab_add(),
+      icon: UserPlusIcon,
+      onSelect: () => void switchTab('add'),
+      testid: 'friends-menu-add'
+    },
+    {
+      id: 'pending',
+      label: m.friends_tab_pending(),
+      icon: ClockIcon,
+      onSelect: () => void switchTab('pending'),
+      testid: 'friends-menu-pending',
+      zahl: pendingBadge,
+      zahlTestid: 'pending-badge'
+    },
+    {
+      id: 'blocked',
+      label: m.friends_tab_blocked(),
+      icon: BanIcon,
+      onSelect: () => void switchTab('blocked'),
+      testid: 'friends-menu-blocked'
+    }
+  ]);
+
   async function switchTab(key: TabKey) {
     const url = new URL(page.url);
     url.searchParams.set('tab', key);
@@ -97,10 +125,7 @@
   onSelect={selectGuild}
   onCreateClick={() => goto('/app?add=create')}
   onJoinClick={() => goto('/app?add=join')}
-  onHomeClick={async () => {
-    navDrawer.open = !navDrawer.open;
-    await goto('/app/friends');
-  }}
+  onHomeClick={() => goto('/app/friends')}
 />
 
 <!-- Die DM-Spalte gehoert ab `md` neben die Freunde; auf dem Handy sind
@@ -126,54 +151,7 @@
            steckt im Menü. Die Anfragen-Zahl wandert als Badge mit. -->
       <FriendsKopfAktionen {activeTab} {pendingBadge} onSwitch={switchTab} />
       <div class="nicht-handy:hidden">
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          {#snippet child({ props })}
-            <button
-              {...props}
-              class="text-text-muted hover:bg-bg-hover hover:text-text-bright flex size-12 items-center justify-center rounded-[14px] transition-colors"
-              data-testid="friends-menu"
-              aria-label={m.chats_menu()}
-            >
-              <EllipsisIcon class="size-6" />
-            </button>
-          {/snippet}
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="end" class="w-56">
-          <DropdownMenu.Item
-            onclick={() => switchTab('add')}
-            data-testid="friends-menu-add"
-            class="flex items-center gap-2"
-          >
-            <UserPlusIcon class="size-4" />
-            {m.friends_tab_add()}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            onclick={() => switchTab('pending')}
-            data-testid="friends-menu-pending"
-            class="flex items-center gap-2"
-          >
-            <ClockIcon class="size-4" />
-            {m.friends_tab_pending()}
-            {#if pendingBadge > 0}
-              <span
-                class="bg-rose-500 text-white ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-2xs font-semibold leading-none"
-                data-testid="pending-badge"
-              >
-                {pendingBadge}
-              </span>
-            {/if}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            onclick={() => switchTab('blocked')}
-            data-testid="friends-menu-blocked"
-            class="flex items-center gap-2"
-          >
-            <BanIcon class="size-4" />
-            {m.friends_tab_blocked()}
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+        <KopfMenue wort={m.menue_mehr()} icon={EllipsisIcon} aktionen={kopfAktionen} testid="friends-menu" />
       </div>
     {/snippet}
   </BereichsKopf>

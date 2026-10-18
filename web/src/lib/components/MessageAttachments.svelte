@@ -618,10 +618,11 @@ import { Portal } from 'bits-ui';
       ontouchstart={wischStart}
       ontouchend={wischEnde}
       data-testid="attachment-video-fullscreen"
+      data-edge-swipe-aus
     >
       <!-- Kopf mit Verlauf: schließen + Galerie-Zähler -->
       <div
-        class="relative z-10 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-4 pb-8 transition-opacity duration-300 {steuerungSichtbar
+        class="relative z-10 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-4 pb-8 ios:pt-[max(1rem,var(--safe-top))] transition-opacity duration-300 {steuerungSichtbar
           ? 'opacity-100'
           : 'pointer-events-none opacity-0'}"
         data-testid="attachment-fullscreen-header"
@@ -630,7 +631,7 @@ import { Portal } from 'bits-ui';
         type="button"
         class="flex size-11 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white backdrop-blur-md transition-transform active:scale-90"
         onclick={schliesseVollbild}
-        aria-label={m.attachment_preview_strip_remove_label()}
+        aria-label={m.lightbox_close()}
         data-testid="attachment-video-fullscreen-close"
       >
         <XIcon class="size-5" />
@@ -740,7 +741,7 @@ import { Portal } from 'bits-ui';
             e.stopPropagation();
             galerieWechsel(-1);
           }}
-          aria-label="Vorheriges Video"
+          aria-label={m.attachment_fullscreen_prev()}
           data-testid="attachment-fullscreen-prev"
         >
           <ChevronLeftIcon class="size-6" />
@@ -756,7 +757,7 @@ import { Portal } from 'bits-ui';
             e.stopPropagation();
             galerieWechsel(1);
           }}
-          aria-label="Nächstes Video"
+          aria-label={m.attachment_fullscreen_next()}
           data-testid="attachment-fullscreen-next"
         >
           <ChevronRightIcon class="size-6" />
@@ -767,7 +768,7 @@ import { Portal } from 'bits-ui';
     <!-- Schmale Spurliste unten mit Verlauf -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="relative z-10 flex items-center gap-3 bg-gradient-to-t from-black/80 to-transparent px-4 pb-5 pt-8 text-xs text-white/80 tabular-nums transition-opacity duration-300 {steuerungSichtbar
+      class="relative z-10 flex items-center gap-3 bg-gradient-to-t from-black/80 to-transparent px-4 pb-5 pt-8 ios:pb-[max(1.25rem,var(--safe-bottom))] text-xs text-white/80 tabular-nums transition-opacity duration-300 {steuerungSichtbar
         ? 'opacity-100'
         : 'pointer-events-none opacity-0'}"
       data-testid="attachment-fullscreen-controls"
@@ -785,7 +786,7 @@ import { Portal } from 'bits-ui';
             if (el) el.currentTime = Number(e.currentTarget.value);
           }}
         class="h-1.5 flex-1 cursor-pointer accent-white/90"
-        aria-label="Wiedergabeposition"
+        aria-label={m.attachment_fullscreen_seek()}
         data-testid="attachment-fullscreen-seek"
       />
       <span>{formatiereDauer(spielerDauer)}</span>

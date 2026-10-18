@@ -94,10 +94,6 @@ extension SpracheRaum {
                       error.localizedDescription)
             }
         }
-        // Der Anruf hat Apples Verarbeitung prozessweit wieder eingeschaltet
-        // (`volleTonZurueck`); ohne das liefe der Kanal bis zum nächsten
-        // Beitritt ohne „Volle Tonqualität".
-        if !an, ton.volle, let r = raum { volleTonZurueck(in: r) }
         // Dasselbe für Bluetooth in hoher Qualität (`SpracheFunkHq.swift`).
         if !an { await funkHqAbgleichen("anruf_ende") }
         await lautstaerkenAnwenden()

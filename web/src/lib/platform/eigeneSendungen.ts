@@ -2,7 +2,7 @@
  * Wie viele Nachrichten dieser Nutzer auf DIESEM Gerät gesendet hat.
  *
  * Eine Zahl, zwei Verbraucher: die Bewertungsfrage (`bewertung.ts`, ab 20) und
- * die Vorerklärung zu Mitteilungen (`berechtigung.svelte.ts`, ab 3). Beide
+ * die Vorerklärung zu Mitteilungen (`berechtigung.svelte.ts`, ab 1). Beide
  * wollen dasselbe wissen — „kennt dieser Mensch die App schon?" —, und zwei
  * Zähler auf dasselbe Ereignis wären zwei Wahrheiten, von denen eine irgendwann
  * nicht mitgezählt wird.

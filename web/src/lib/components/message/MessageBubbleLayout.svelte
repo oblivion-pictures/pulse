@@ -80,7 +80,7 @@
 </script>
 
 <div
-  class="group relative flex px-3 {isContinuation ? 'pt-0.5' : 'pt-2'} {eigen
+  class="group relative flex px-3 ios:handy:[-webkit-touch-callout:none] ios:handy:select-none {isContinuation ? 'pt-0.5' : 'pt-2'} {eigen
     ? 'justify-end'
     : 'justify-start'}"
   data-testid="message-item"

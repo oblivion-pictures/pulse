@@ -36,10 +36,16 @@
   import { Button } from '$lib/components/ui/button';
   import { m } from '$lib/paraglide/messages.js';
   import { appSperre } from '$lib/platform/appSperre.svelte';
+  import { abmelden } from '$lib/auth/abmelden';
   import { restlicheAppSperren } from '$lib/remote/sichtschutz';
 
   onMount(() => {
     void appSperre.entsperren(m.appsperre_text());
+    const sichtbar = () => {
+      if (document.visibilityState === 'visible') void appSperre.codeNeuPruefen();
+    };
+    document.addEventListener('visibilitychange', sichtbar);
+    return () => document.removeEventListener('visibilitychange', sichtbar);
   });
 
   let wurzel = $state<HTMLElement | null>(null);
@@ -77,11 +83,17 @@
     </div>
     <h1 class="text-text-bright text-lg font-semibold">{m.appsperre_titel()}</h1>
     <p class="text-text-muted max-w-xs text-sm">{m.appsperre_text()}</p>
+    {#if appSperre.keinCode}
+      <p class="text-destructive max-w-xs text-sm" data-testid="app-sperre-kein-code">
+        {m.appsperre_kein_code_hinweis()}
+      </p>
+    {/if}
     {#if appSperre.fehler}
       <p class="text-destructive max-w-xs text-sm" data-testid="app-sperre-fehler">
         {appSperre.fehler}
       </p>
     {/if}
+    {#if !appSperre.keinCode}
     <Button
       class="min-h-12 w-full max-w-xs"
       disabled={appSperre.laeuft}
@@ -90,6 +102,19 @@
     >
       {appSperre.laeuft ? m.appsperre_laeuft() : m.appsperre_knopf()}
     </Button>
+    {/if}
+    <!-- Der Ausweg: ohne ihn käme aus einer Sperre, die nicht mehr aufgeht
+         (Face ID gesperrt, Code entfernt), nur die Neuinstallation heraus.
+         Abmelden räumt die Sitzung ab und nimmt die Sperre mit; wieder hinein
+         kommt man nur über eine normale Anmeldung. Unauffällig, solange
+         entsperrt werden kann; bei fehlendem Code der einzige Weg. -->
+    <button
+      class="{appSperre.keinCode ? 'text-text-bright text-sm font-semibold' : 'text-text-muted text-xs'} min-h-11 px-4 underline underline-offset-2"
+      onclick={() => void appSperre.abmeldenUndAufheben(abmelden)}
+      data-testid="app-sperre-abmelden"
+    >
+      {m.appsperre_abmelden()}
+    </button>
   </div>
 {/if}
 

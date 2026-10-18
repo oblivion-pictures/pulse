@@ -60,7 +60,7 @@
     <span class="truncate text-base font-bold tracking-tight">{eintrag?.label ?? ''}</span>
   </header>
 
-  <div class="flex-1 overflow-y-auto px-4 pb-6 pt-4">
+  <div class="flex-1 overflow-y-auto px-4 pb-6 pt-4 ios:handy:pb-[max(1.5rem,var(--safe-bottom))]">
     {#if eintrag}
       <SettingsPanel tab={eintrag.id as SettingsTab} />
     {/if}

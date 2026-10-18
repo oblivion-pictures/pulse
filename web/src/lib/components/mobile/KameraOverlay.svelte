@@ -38,6 +38,8 @@
   import { m } from '$lib/paraglide/messages.js';
   import { Portal } from 'bits-ui';
   import { untrack } from 'svelte';
+  import { aufnahmeGesperrt } from '$lib/platform/aufnahmeSperre';
+  import { toast } from 'svelte-sonner';
   import {
     berechtigungsblatt,
     istAblehnung,
@@ -77,6 +79,9 @@
   let frontKameraId: string | undefined;
   let stream: MediaStream | undefined;
   let videoTrack: MediaStreamTrack | undefined;
+  /** Die Ton-Anfrage dieser Sitzung (einmalig: eine Ablehnung wird nicht bei
+   *  jedem Antippen des Video-Reiters erneut verlangt). */
+  let tonAnfrage: Promise<void> | null = null;
 
   // Kamera-Wechsel ohne Lade-Loch: das letzte Bild der laufenden Kamera
   // wird eingefroren (Canvas-Schnappschuss) und ÜBER dem Video gezeigt, bis
@@ -130,7 +135,7 @@
     // Wischen = nur Modus wechseln (pure state, KEIN Stream-Restart — der
     // alte Weg rief starten() und ließ die Kamera neu anlaufen).
     if (dx < -60 && modus === 'foto') {
-      modus = 'video';
+      videoModus();
     } else if (dx > 60 && modus === 'video') {
       modus = 'foto';
     }
@@ -386,10 +391,13 @@
     }
     try {
       stream?.getTracks().forEach((t) => t.stop());
+      tonAnfrage = null;
       const neu = await navigator.mediaDevices.getUserMedia({
-        // Ton immer mit — der Video-Modus braucht ihn, Foto ignoriert ihn.
+        // **Ohne Ton**: ein Foto braucht kein Mikrofon, und eine Mikrofon-
+        // Ablehnung darf die Kamera nicht sperren. Der Ton wird erst beim
+        // Wechsel auf Video angefragt (`tonHolen`).
         video: { facingMode: nutzeFront ? 'user' : 'environment' },
-        audio: true
+        audio: false
       });
       // Während des System-Dialogs geschlossen: Kamera und Mikrofon sofort
       // wieder freigeben, sonst liefen sie ohne Ansicht weiter (F7).
@@ -398,12 +406,11 @@
         return;
       }
       stream = neu;
-      // Der Zugriff hat geklappt — also liegt die Erlaubnis vor, und zwar für
-      // beides: der Aufruf oben verlangt Bild UND Ton. Gemerkt, damit die
-      // Vorerklärung nicht bei jedem Öffnen wiederkommt (es gibt in einer
-      // WKWebView keine Auskunft darüber, s. `berechtigung.svelte.ts`).
+      // Der Zugriff hat geklappt — also liegt die Kamera-Erlaubnis vor.
+      // Gemerkt, damit die Vorerklärung nicht bei jedem Öffnen wiederkommt (es
+      // gibt in einer WKWebView keine Auskunft darüber, s.
+      // `berechtigung.svelte.ts`).
       standMerken('kamera', 'erteilt');
-      standMerken('mikrofon', 'erteilt');
       videoTrack = stream.getVideoTracks()[0];
       untrack(() => anzeigeBinden());
       // Notfall: kein Ereignis → Spinner löst sich nach 4 s von selbst.
@@ -414,17 +421,45 @@
       // Nur eine echte ABLEHNUNG wird gemerkt. Ein belegtes oder fehlendes
       // Gerät sagt über die Erlaubnis nichts — den Stand dort anzufassen
       // hiesse, aus einem Zufall eine Entscheidung zu machen.
-      //
-      // Welche der beiden abgelehnt wurde, sagt der Fehler nicht — beide zu
-      // merken kann also eine zu viel treffen. Die Folge wäre eine
-      // ausgelassene VORERKLÄRUNG, nie eine ausgelassene Erlaubnis: die
-      // harmlose Richtung.
-      if (istAblehnung(e)) {
-        standMerken('kamera', 'verweigert');
-        standMerken('mikrofon', 'verweigert');
-      }
+      if (istAblehnung(e)) standMerken('kamera', 'verweigert');
       fehler = true;
     }
+    if (modus === 'video') void tonHolen();
+  }
+
+  /** Mikrofon erst beim Wechsel auf Video anfragen und an den Live-Stream
+   *  hängen. Eine Ablehnung lässt die Kamera und das Foto unberührt — Video
+   *  gibt es dann ohne Ton, mit Hinweis. Wer die Spur braucht, wartet auf
+   *  dasselbe Versprechen. */
+  function tonHolen(): Promise<void> {
+    if (!stream || stream.getAudioTracks().length > 0) return Promise.resolve();
+    tonAnfrage ??= (async () => {
+      const ziel = stream;
+      try {
+        const ton = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Die Ansicht oder der Stream ist inzwischen weg: Mikrofon sofort frei.
+        if (!ziel || ziel !== stream) {
+          ton.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        ton.getAudioTracks().forEach((t) => ziel.addTrack(t));
+      } catch {
+        toast.info(m.kamera_video_ohne_ton());
+      }
+    })();
+    return tonAnfrage;
+  }
+
+  /** Auf Video umschalten — und dabei den Ton anfragen. */
+  function videoModus(): void {
+    // iOS-Hülle im Sprachkanal: kein Video (das Mikrofon gehört der Hülle),
+    // das Foto bleibt möglich.
+    if (aufnahmeGesperrt('video')) {
+      toast.info(m.aufnahme_im_sprachkanal_gesperrt());
+      return;
+    }
+    modus = 'video';
+    void tonHolen();
   }
 
   /** Kamera-Wechsel — MITTEN in der Aufnahme über den Track-Tausch des
@@ -467,13 +502,13 @@
       try {
         neu = await navigator.mediaDevices.getUserMedia({
           video: ziel ? { deviceId: { exact: ziel } } : { facingMode: nutzeFront ? 'user' : 'environment' },
-          audio: true
+          audio: false
         });
       } catch {
         // Fallback: weiche facingMode-Anfrage statt exakter Geräte-ID.
         neu = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: nutzeFront ? 'user' : 'environment' },
-          audio: true
+          audio: false
         });
       }
       videoTrack = neu.getVideoTracks()[0];
@@ -504,6 +539,16 @@
   }
 
   async function videoStarten(): Promise<void> {
+    // Rückhalt: der Kanal kann beigetreten sein, während die Kamera schon im
+    // Video-Reiter stand.
+    if (aufnahmeGesperrt('video')) {
+      toast.info(m.aufnahme_im_sprachkanal_gesperrt());
+      modus = 'foto';
+      return;
+    }
+    // Der Ton wird beim Umschalten angefragt; ist die Abfrage noch offen, hier
+    // abwarten, damit der Rekorder die Tonspur noch mitbekommt.
+    await tonHolen();
     const mime = besterVideoMime();
     if (!mime || !stream || !video) {
       fehler = true;
@@ -678,6 +723,7 @@
     <div
       class="fixed inset-0 z-50 touch-none bg-black"
       data-testid="camera-overlay"
+      data-edge-swipe-aus
       role="application"
       ontouchstart={wischStart}
       ontouchend={wischEnde}
@@ -782,7 +828,7 @@
                  Tippen auf einen Griff wählt ihn aus (weiß); die ±Knöpfe
                  verschieben dann IHN in 1-s-Schritten, ohne Auswahl spulen
                  sie ±10 s. -->
-            <div class="absolute inset-x-0 top-0 z-20 px-12 pt-[34px]" data-testid="camera-draft-trim">
+            <div class="absolute inset-x-0 top-0 z-20 px-12 pt-[34px] ios:pt-[calc(34px+var(--safe-top))]" data-testid="camera-draft-trim">
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <div
                 bind:this={spur}
@@ -859,7 +905,7 @@
            dem Verwerfen-Knopf, und ein Kamera-Wechsel über dem Entwurf
            wäre tote UI. -->
       {#if !entwurfDatei}
-        <div class="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 pt-[26px] pb-5">
+        <div class="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 pt-[26px] pb-5 ios:pt-[calc(26px+var(--safe-top))]">
           <button
             type="button"
             class="flex size-11 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white backdrop-blur-md transition-transform active:scale-90"
@@ -884,7 +930,7 @@
       <!-- Aufnahme-Timer (gleicher Riegel wie die Kopfleiste: ~1 mm tiefer) -->
       {#if nimmtAuf}
         <div
-          class="absolute left-1/2 top-[30px] z-20 flex -translate-x-1/2 items-center gap-2.5 rounded-full border border-white/10 bg-black/50 px-4 py-1.5 shadow-[0_0_24px_rgba(37,99,235,0.35)] backdrop-blur-md"
+          class="absolute left-1/2 top-[30px] ios:top-[calc(30px+var(--safe-top))] z-20 flex -translate-x-1/2 items-center gap-2.5 rounded-full border border-white/10 bg-black/50 px-4 py-1.5 shadow-[0_0_24px_rgba(37,99,235,0.35)] backdrop-blur-md"
           data-testid="camera-overlay-timer"
         >
           <span class="bg-error size-2.5 animate-pulse rounded-full shadow-[0_0_8px_rgba(239,68,68,0.9)]"></span>
@@ -895,7 +941,7 @@
       {/if}
 
       <!-- Untere Aktionszone. -->
-      <div class="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-8">
+      <div class="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-8 ios:pb-[calc(2rem+var(--safe-bottom))]">
         {#if nimmtAuf}
           <!-- Aufnahme läuft: Modus gesperrt, Auslöser ist der Stopp. -->
           <div class="flex items-center justify-center">
@@ -957,7 +1003,7 @@
                — der aktive Modus ist weiß mit blauem Unterstrich, der
                inaktive gedimmt. -->
           <div
-            class="absolute inset-x-0 bottom-44 z-20 flex items-center justify-center gap-6"
+            class="absolute inset-x-0 bottom-44 ios:bottom-[calc(11rem+var(--safe-bottom))] z-20 flex items-center justify-center gap-6"
             data-testid="camera-mode-bar"
           >
             <button
@@ -978,7 +1024,7 @@
               class="flex flex-col items-center gap-1 transition-colors {modus === 'video'
                 ? 'text-white'
                 : 'text-white/40'}"
-              onclick={() => (modus = 'video')}
+              onclick={videoModus}
               data-testid="camera-mode-video"
             >
               <span class="text-xs font-semibold">{m.message_input_anhang_video()}</span>

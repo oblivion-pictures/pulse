@@ -1,6 +1,7 @@
 <script lang="ts">
 import { errText } from '$lib/utils/errText';
   import { m } from '$lib/paraglide/messages.js';
+  import { haptikTicken } from '$lib/platform/haptik';
   import { Button } from '$lib/components/ui/button/index.js';
   import StreamGrid from './StreamGrid.svelte';
   import VoiceParticipantTile from './VoiceParticipantTile.svelte';
@@ -155,6 +156,7 @@ import { errText } from '$lib/utils/errText';
   // gesture. On mobile the channel-list tap IS the gesture — der gegardete
   // Auto-Join-Effekt der Kanal-Seite (+page) nutzt diese Aktivierung.
   async function joinChannel() {
+    haptikTicken(); // Beitritt per Tipp — iOS-Hülle: Tick, sonst No-op
     try {
       await voice.connect(channel.id, channel.name);
     } catch (e) {
@@ -220,9 +222,11 @@ import { errText } from '$lib/utils/errText';
 <section class="glass-panel slide-rein relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl" data-testid="voice-channel-view">
   <!-- Mobil verschwindet die Kopfzeile, sobald ein Stream läuft: der Bildschirm
        gehört dann dem Video, Navigation übernimmt die Bereichs-Leiste unten.
-       Zurück bleibt der Kopf für den Normalzustand (Kacheln, nicht verbunden). -->
+       Zurück bleibt der Kopf für den Normalzustand (Kacheln, nicht verbunden).
+       `quer-stream:hidden`: iOS-Hülle quer mit angedocktem Stream — dann gehört
+       die Fläche dem Stream auch dann, wenn `streamViewOpen` nicht greift. -->
   <header
-    class="flex h-14 items-center gap-2.5 px-3 nicht-handy:px-5 {handy &&
+    class="flex h-14 items-center gap-2.5 px-3 quer-stream:hidden nicht-handy:px-5 {handy &&
     streamViewOpen &&
     isThisChannel &&
     (voice.connected || voice.connecting)
@@ -304,7 +308,10 @@ import { errText } from '$lib/utils/errText';
              weg, der Client hing im Connecting). Verlassen ist immer da. -->        {#if handy}
           <Button
             variant="secondary"
-            onclick={() => void voice.disconnect().catch(() => undefined)}
+            onclick={() => {
+              haptikTicken();
+              void voice.disconnect().catch(() => undefined);
+            }}
             data-testid="voice-leave-mobile"
           >
             {m.voice_bar_leave()}

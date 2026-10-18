@@ -15,33 +15,29 @@
   import { anfangsBuchstabe } from '$lib/utils/anfangsBuchstabe';
   import * as Tooltip from '$lib/components/ui/tooltip/index.js';
   import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
+  import ZeilenKontextInhalt from '$lib/components/menu/ZeilenKontextInhalt.svelte';
+  import GuildVerlassenDialog from './guild/GuildVerlassenDialog.svelte';
+  import { guildAktionen, guildRechte, istAdminAufServer } from './guild/guildAktionen';
   import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
-  import PencilIcon from '@lucide/svelte/icons/pencil';
-  import ImageIcon from '@lucide/svelte/icons/image';
-  import ImageOffIcon from '@lucide/svelte/icons/image-off';
-  import SettingsIcon from '@lucide/svelte/icons/settings';
   import ServerIcon from '@lucide/svelte/icons/server';
   import Trash2Icon from '@lucide/svelte/icons/trash-2';
-  import LogOutIcon from '@lucide/svelte/icons/log-out';
   import LockIcon from '@lucide/svelte/icons/lock';
   import BugIcon from '@lucide/svelte/icons/bug';
   import { toast } from 'svelte-sonner';
   import { uiOverlays } from '$lib/stores/uiOverlays.svelte';
   import { chatApi } from '$lib/api/chat';
   import { guildIconSrc } from '$lib/guildIcon';
+  // Channels-by-guild map drives the guild-rail mention indicator. We
+  // reach into the same store; the rail's `guilds` prop only has
+  // top-level guild metadata, not their channel lists.
   import { guilds as guildsStore } from '$lib/stores/guilds.svelte';
   import { directMessages } from '$lib/stores/directMessages.svelte';
 	import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
   import { readState } from '$lib/stores/readState.svelte';
   import { friendRequests } from '$lib/stores/friendRequests.svelte';
   import { communityInvites } from '$lib/stores/communityInvites.svelte';
-  // Channels-by-guild map drives the guild-rail mention indicator. We
-  // reach into the same store; the rail's `guilds` prop only has
-  // top-level guild metadata, not their channel lists.
-  import { roles } from '$lib/stores/roles.svelte';
   import { modQueueCounts } from '$lib/stores/modQueueCounts.svelte';
   import { auth } from '$lib/stores/auth.svelte';
-  import { Perm } from '$lib/permissions/bitfield';
   import {
     serversStore,
     serverDisplayName as resolveServerName,
@@ -122,7 +118,6 @@
   let deleteBusy = $state(false);
   let leaveTarget = $state<Guild | null>(null);
   let leaveConfirmOpen = $state(false);
-  let leaveBusy = $state(false);
   // Server-settings modal — opened from the context-menu, replaces the
   // /settings page navigation.
   let settingsTarget = $state<Guild | null>(null);
@@ -202,25 +197,6 @@
   function openLeave(g: Guild) {
     leaveTarget = g;
     leaveConfirmOpen = true;
-  }
-
-  async function confirmLeave() {
-    if (!leaveTarget) return;
-    const id = leaveTarget.id;
-    leaveBusy = true;
-    try {
-      await chatApi.leaveGuild(id);
-      // Lokal entfernen + (falls aktiv) wegnavigieren — gleiche UX wie beim
-      // Delete; das ``guild_member_removed``-WS-Event räumt parallel mit auf.
-      guildsStore.remove(id);
-      onGuildDeleted?.(id);
-      leaveConfirmOpen = false;
-      leaveTarget = null;
-    } catch (err) {
-      toast.error(m.guild_rail_leave_failed(), { description: (err as Error).message });
-    } finally {
-      leaveBusy = false;
-    }
   }
 
   // -- Server-Instanzen-Section (Cloud + Self-Hosts) ------------------------
@@ -329,13 +305,6 @@
     if (serverId !== activeServer.serverId) activeServer.set(serverId);
     onJoinClick?.();
   }
-
-  // Cloud: is_admin-Flag aus dem Auth-State; Self-Host: serverAdmin-Store aus
-  // dem Ready-Frame. Zentralisiert den doppelten Ausdruck (canCreateOnServer +
-  // Template-@const).
-  function isAdminOnServer(server: ServerEntry): boolean {
-    return server.isCloud ? !!auth.user?.is_admin : serverAdmin.isAdmin(server.id);
-  }
 </script>
 
 <!-- Sichtbarkeit nach GERAETEKLASSE: die Rail gehoert allein zur Desktop-
@@ -413,7 +382,7 @@
       {@const isActiveServer = activeServer.serverId === server.id}
       {@const sectionGuilds = serverGuilds.get(server.id)}
       {@const sState = serverState.get(server.id).state}
-      {@const isServerAdmin = isAdminOnServer(server)}
+      {@const isServerAdmin = istAdminAufServer(server)}
       <!-- App-Hosting (2026-10-03): messbar schlafender Server → ganze Sektion
            gedimmt. Bewusst weiterhin klickbar — die Anwesenheit kann im
            nächsten Takt wieder „an“ sagen. -->
@@ -532,19 +501,12 @@
 
       <!-- Communitys des Servers -->
       {#each sectionGuilds as g (g.id)}
-        {@const isOwner = isActiveServer && currentUserId !== null && g.owner_id === currentUserId}
-        {@const canManageGuild = isActiveServer && roles.hasGuildPermission(g.id, Perm.MANAGE_GUILD)}
-        {@const canManageRoles = isActiveServer && roles.hasGuildPermission(g.id, Perm.MANAGE_ROLES)}
+        {@const rechte = guildRechte(g, { aktiverServer: isActiveServer, userId: currentUserId, serverAdmin: isServerAdmin })}
         {@const active = isActiveServer && activeGuildId === g.id}
         {@const guildChannels = isActiveServer ? (guildsStore.channelsByGuild[g.id] ?? []) : []}
         {@const guildChannelIds = isActiveServer && !active ? guildChannels.map((c) => c.id) : []}
         {@const guildUnread = readState.sumUnread(guildChannelIds)}
-        {@const canModerate =
-          isActiveServer &&
-          (roles.hasGuildPermission(g.id, Perm.MANAGE_MESSAGES) ||
-            roles.hasGuildPermission(g.id, Perm.BAN_MEMBERS) ||
-            roles.hasGuildPermission(g.id, Perm.MANAGE_GUILD))}
-        {@const modOpen = canModerate ? modQueueCounts.get(g.id) : 0}
+        {@const modOpen = rechte.canModerate ? modQueueCounts.get(g.id) : 0}
         {@const iconSrc = guildIconSrc(g.icon_url, server.hostname)}
         <!-- Vom Betreiber stillgelegt: für normale Mitglieder ausgegraut +
              Schloss (weiterhin anklickbar → Hinweis-Tafel). Admins/Betreiber
@@ -623,53 +585,14 @@
             {/snippet}
           </ContextMenu.Trigger>
           {#if isActiveServer}
-            <ContextMenu.Content>
-              <!-- Einstieg, sobald IRGENDEIN Dialog-Tab sichtbar wäre:
-                   Rollen / Guild-Verwaltung (Sounds, Plugins, …) / Mod-Queue /
-                   Ownership — sonst landen MANAGE_GUILD- oder Mod-Inhaber
-                   vor einer verschlossenen Tür. -->
-              {#if canManageRoles || canManageGuild || canModerate || isOwner}
-                <ContextMenu.Item
-                  onSelect={() => openSettings(g)}
-                  data-testid="guild-settings"
-                >
-                  <SettingsIcon />
-                  {m.guild_rail_settings()}
-                </ContextMenu.Item>
-              {/if}
-              {#if canManageGuild}
-                <ContextMenu.Item onSelect={() => (renameTarget = g)} data-testid="guild-rename">
-                  <PencilIcon />
-                  {m.guild_rail_rename_community()}
-                </ContextMenu.Item>
-                <ContextMenu.Item onSelect={() => openIconPicker(g)} data-testid="guild-icon-set">
-                  <ImageIcon />
-                  {m.guild_rail_change_icon()}
-                </ContextMenu.Item>
-                {#if g.icon_url}
-                  <ContextMenu.Item onSelect={() => removeIcon(g)} data-testid="guild-icon-clear">
-                    <ImageOffIcon />
-                    {m.guild_rail_remove_icon()}
-                  </ContextMenu.Item>
-                {/if}
-              {/if}
-              {#if isOwner || isServerAdmin}
-                {#if canManageGuild}<ContextMenu.Separator />{/if}
-                <ContextMenu.Item variant="destructive" onSelect={() => openDelete(g)} data-testid="guild-delete">
-                  <Trash2Icon />
-                  {m.guild_rail_delete_community()}
-                </ContextMenu.Item>
-              {/if}
-              <!-- Verlassen: jedes Mitglied AUSSER dem Owner (der muss erst
-                   übertragen/löschen). Funktioniert identisch Cloud + Self-Host. -->
-              {#if !isOwner}
-                {#if canManageGuild || canManageRoles || isServerAdmin}<ContextMenu.Separator />{/if}
-                <ContextMenu.Item variant="destructive" onSelect={() => openLeave(g)} data-testid="guild-leave">
-                  <LogOutIcon />
-                  {m.guild_rail_leave_community()}
-                </ContextMenu.Item>
-              {/if}
-            </ContextMenu.Content>
+            <ZeilenKontextInhalt aktionen={guildAktionen(g, rechte, {
+              einstellungen: () => openSettings(g),
+              umbenennen: () => (renameTarget = g),
+              symbolWaehlen: () => openIconPicker(g),
+              symbolEntfernen: () => removeIcon(g),
+              loeschen: () => openDelete(g),
+              verlassen: () => openLeave(g)
+            })} />
           {/if}
         </ContextMenu.Root>
       {/each}
@@ -803,23 +726,4 @@
   </AlertDialog.Content>
 </AlertDialog.Root>
 
-<AlertDialog.Root bind:open={leaveConfirmOpen}>
-  <AlertDialog.Content data-testid="leave-guild-dialog">
-    <AlertDialog.Header>
-      <AlertDialog.Title>{m.guild_rail_leave_community_title()}</AlertDialog.Title>
-      <AlertDialog.Description>
-        {m.guild_rail_leave_community_description({ name: leaveTarget?.name ?? m.guild_rail_this_community() })}
-      </AlertDialog.Description>
-    </AlertDialog.Header>
-    <AlertDialog.Footer>
-      <AlertDialog.Cancel disabled={leaveBusy}>{m.guild_rail_cancel()}</AlertDialog.Cancel>
-      <AlertDialog.Action
-        onclick={confirmLeave}
-        disabled={leaveBusy}
-        data-testid="leave-guild-confirm"
-      >
-        {leaveBusy ? m.guild_rail_leaving() : m.guild_rail_leave_action()}
-      </AlertDialog.Action>
-    </AlertDialog.Footer>
-  </AlertDialog.Content>
-</AlertDialog.Root>
+<GuildVerlassenDialog bind:open={leaveConfirmOpen} guild={leaveTarget} onVerlassen={(id) => onGuildDeleted?.(id)} />

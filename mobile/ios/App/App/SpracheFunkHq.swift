@@ -236,12 +236,10 @@ final class SpracheFunkHq: @unchecked Sendable {
     /// Echo-Unterdrückung — die Lage, die als „Volle Tonqualität" wegen Hall
     /// abgeschaltet wurde. Deshalb hier, im Routen-Beobachter und ohne Kette:
     /// Session zurück an das SDK und die Wiedergabe des Kanals stumm, bis VPIO
-    /// wieder läuft. **Mit `volle` nicht stumm** (C2): dort bleibt die
-    /// Software-Verarbeitung gewollt, VPIO käme nie, und die Dämpfung stünde
-    /// bis zur Obergrenze.
-    func kopfhoererWeg(volle: Bool) {
+    /// wieder läuft.
+    func kopfhoererWeg() {
         guard haelt, !haltenErlaubt(FunkLage.lesen()) else { return }
-        if !volle { daempfen() }
+        daempfen()
         loslassen()
     }
 

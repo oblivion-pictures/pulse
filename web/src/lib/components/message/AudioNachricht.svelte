@@ -83,7 +83,7 @@
   ></audio>
   <button
     type="button"
-    class="accent-gradient text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
+    class="accent-gradient text-primary-foreground flex size-9 handy:size-11 shrink-0 items-center justify-center rounded-full"
     onclick={umschalten}
     aria-label={laeuft ? m.audio_player_pause() : m.audio_player_play()}
     data-testid="voice-message-toggle"
@@ -113,7 +113,7 @@
   </div>
   <button
     type="button"
-    class="text-text-muted hover:text-text-bright shrink-0 text-xs font-bold tabular-nums"
+    class="text-text-muted hover:text-text-bright shrink-0 text-xs font-bold tabular-nums handy:min-h-11 handy:min-w-11"
     onclick={() => {
       tempo = naechstesTempo(tempo);
       if (audio) audio.playbackRate = tempo;

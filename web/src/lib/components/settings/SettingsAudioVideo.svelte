@@ -19,7 +19,6 @@
   } from './androidAudioWahl';
   import { onMount, untrack } from 'svelte';
   import { m } from '$lib/paraglide/messages.js';
-  import IosTonEinstellungen from './IosTonEinstellungen.svelte';
 
   // Android: die WebView kann Audioausgänge weder auflisten noch umschalten
   // (setSinkId/`audiooutput`-Enumeration fehlen). Die Ausgabe läuft daher über
@@ -51,7 +50,7 @@
   // Standalone mic test: runs while this tab is open and we're NOT in a voice
   // channel, so the level meter moves and "hear yourself" works without joining.
   // In a channel, voice.localMic* is the live source and the test stays off.
-  // Auf iOS auch nicht, solange die Hülle das Mikrofon hält (`micTest.gesperrt`).
+  // In der iOS-Hülle gar nicht: sie hat eine eigene Seite (`SettingsAudioVideoIos`).
   async function startTest() {
     await micTest.start(settings.audio.inputDeviceId, settings.audio.outputDeviceId);
     // Auch das Auffrischen nicht: ohne erteilte Erlaubnis holt sich LiveKit die
@@ -268,9 +267,6 @@
         onCheckedChange={(v) => onMonitorChange(v)}
       />
     </label>
-
-    <!-- Nur in der iOS-Hülle: Bluetooth-HQ, Volle Tonqualität, Diagnose. -->
-    <IosTonEinstellungen />
   </div>
 
   <!-- ===== Feld: Ausgabe ===== -->

@@ -10,6 +10,8 @@ import { errText } from '$lib/utils/errText';
   import LinkIcon from '@lucide/svelte/icons/link';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import CheckIcon from '@lucide/svelte/icons/check';
+  import ShareIcon from '@lucide/svelte/icons/share';
+  import { isCapacitorIOS } from '$lib/platform/runtime';
   import { chatApi } from '$lib/api/chat';
   import { inviteLink } from '$lib/guilds/inviteLink';
   import { Button } from '$lib/components/ui/button/index.js';
@@ -31,6 +33,21 @@ import { errText } from '$lib/utils/errText';
       toast.success(m.guild_invites_copied());
     } catch {
       toast.error(m.guild_invites_copy_failed());
+    }
+  }
+
+  // iOS-Hülle: zusätzlich das System-Teilen-Blatt (Nachrichten, Mail …). Der
+  // Link steht dafür schon da — `navigator.share` muss aus der Geste heraus
+  // gerufen werden, und nach einer Netz-Anfrage gälte sie nicht mehr.
+  const kannTeilen = isCapacitorIOS() && typeof navigator !== 'undefined' && !!navigator.share;
+
+  async function teilen(value: string) {
+    try {
+      await navigator.share({ url: value });
+    } catch (e) {
+      // Abbruch durch den Nutzer ist keine Störung; alles andere → Kopieren.
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      await copy(value);
     }
   }
 
@@ -68,7 +85,7 @@ import { errText } from '$lib/utils/errText';
       <Button
         variant="ghost"
         size="icon-sm"
-        class="shrink-0"
+        class="shrink-0 handy:size-11"
         onclick={() => void copy(link ?? '')}
         aria-label={m.guild_invites_copy_link()}
         data-testid="invite-share-copy"
@@ -79,6 +96,18 @@ import { errText } from '$lib/utils/errText';
           <CopyIcon class="size-4" />
         {/if}
       </Button>
+      {#if kannTeilen}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          class="shrink-0 handy:size-11"
+          onclick={() => void teilen(link ?? '')}
+          aria-label={m.invite_share_teilen()}
+          data-testid="invite-share-native"
+        >
+          <ShareIcon class="size-4" />
+        </Button>
+      {/if}
     </div>
   {:else}
     <Button

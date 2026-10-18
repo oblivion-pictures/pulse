@@ -12,8 +12,9 @@
   import MessageRowLayout from './message/MessageRowLayout.svelte';
   import MessageBubbleLayout from './message/MessageBubbleLayout.svelte';
   import { detectEmbeds } from '$lib/embeds/providers';
-  import { renderMessage } from './messageRender';
+  import { plainifyMentions, renderMessage } from './messageRender';
   import { m } from '$lib/paraglide/messages.js';
+  import { haptikTicken } from '$lib/platform/haptik';
   import { ersteEinladungImText } from '$lib/einladung/einladungsLink';
   import { einladungsKlicksAbfangen } from '$lib/einladung/linkKlick';
   import { CLOUD_HOSTNAME } from '$lib/api/servers.svelte';
@@ -203,6 +204,7 @@
 
   function handleToggle(emoji: string, mine: boolean) {
     if (isPending || !kannReagieren) return;
+    if (!mine) haptikTicken(); // Reaktion gesetzt (nicht zurückgenommen) — iOS-Hülle: Tick
     onToggleReaction(message, emoji, mine);
   }
 
@@ -354,7 +356,7 @@
 {/if}
 </div>
 
-<MessageActionSheet bind:open={sheetOpen} {...aktionen} />
+<MessageActionSheet bind:open={sheetOpen} {...aktionen} kopierText={plainifyMentions(message.content)} />
 
 <NachrichtInfoDialog
   {message}

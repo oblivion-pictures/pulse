@@ -6,7 +6,7 @@
  * Versprechen, auf das der Aufrufer wartet.
  *
  * **Der Aufrufer stellt den System-Dialog selbst.** Diese Datei weiss nichts
- * von Mitteilungen, Mikrofon oder Kamera — sie sagt nur „weitermachen" oder
+ * von Mitteilungen oder Kamera — sie sagt nur „weitermachen" oder
  * „nicht". Täte sie es selbst, müsste sie `fcm.ts` und `getUserMedia`
  * kennen, und die Reihenfolge „erst erklären, dann fragen" wäre an zwei
  * Stellen verteilt statt an einer.
@@ -23,6 +23,7 @@ import { sendungenLesen } from './eigeneSendungen';
 
 const ABGELEHNT_SCHLUESSEL = 'pulse.berechtigung';
 const STAND_SCHLUESSEL = 'pulse.berechtigung.stand';
+const ANLASS_SCHLUESSEL = 'pulse.berechtigung.anlass';
 
 /** Je Berechtigung ein Wert, im `localStorage` als EIN JSON-Objekt. */
 type Karte<Wert> = Partial<Record<Berechtigung, Wert>>;
@@ -51,10 +52,10 @@ function karteMerken<Wert>(schluessel: string, art: Berechtigung, wert: Wert): v
 }
 
 /**
- * Erinnerter Erlaubnis-Stand für Mikrofon und Kamera.
+ * Erinnerter Erlaubnis-Stand für die Kamera.
  *
  * **Warum erinnert und nicht gefragt.** Für Mitteilungen gibt es eine echte
- * Auskunft (`checkPermissions` des FCM-Plugins). Für Mikrofon und Kamera gibt
+ * Auskunft (`checkPermissions` des FCM-Plugins). Für die Kamera gibt
  * es sie in einer WKWebView NICHT: `navigator.permissions.query` kennt die
  * Namen `microphone`/`camera` dort nicht verlässlich, und ein Plugin dafür
  * wollten wir uns nicht anlegen. Ohne Stand würde die Vorerklärung bei JEDEM
@@ -87,6 +88,28 @@ export function istAblehnung(e: unknown): boolean {
   return e instanceof Error && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
 }
 
+/**
+ * Einen Anlass für die Mitteilungsfrage merken, der keine eigene Sendung ist
+ * (angenommene Freundschaftsanfrage, erste eingehende Direktnachricht). Wie
+ * der Sendungen-Zähler nur ein Zeichen für „kennt die App schon": geht der
+ * Merker verloren, kommt die Frage beim nächsten Anlass.
+ */
+export function anlassMerken(): void {
+  try {
+    window.localStorage.setItem(ANLASS_SCHLUESSEL, '1');
+  } catch {
+    /* Speicher voll oder abgeschaltet — dann zählt nur dieser Aufruf nicht. */
+  }
+}
+
+function anlassGemerkt(): boolean {
+  try {
+    return window.localStorage.getItem(ANLASS_SCHLUESSEL) === '1';
+  } catch {
+    return false;
+  }
+}
+
 class Berechtigungsblatt {
   /** Offenes Blatt, oder `null`. Die Komponente rendert daran. */
   offen = $state<Berechtigung | null>(null);
@@ -111,7 +134,8 @@ class Berechtigungsblatt {
       // Nur iOS — Android bleibt ohne Blatt (Eigentümer-Entscheid 2026-10-16).
       iosHuelle: isCapacitorIOS(),
       schonAbgelehnt: spaeterGiltNoch(karteLesen<unknown>(ABGELEHNT_SCHLUESSEL)[art], Date.now()),
-      sendungen: sendungenLesen()
+      sendungen: sendungenLesen(),
+      anlass: anlassGemerkt()
     });
     if (vorgehen === 'weiter') return true;
     if (vorgehen === 'nicht') return false;
@@ -130,7 +154,7 @@ class Berechtigungsblatt {
     this.#zurueckgezogen = false;
     // Ein zurückgezogenes Blatt ist keine Antwort des Nutzers — nichts merken.
     if (zurueckgezogen) return false;
-    // Nur ANLASSLOSE Ablehnungen werden gemerkt — bei Mikrofon und Kamera ist
+    // Nur ANLASSLOSE Ablehnungen werden gemerkt — bei der Kamera ist
     // „später" das Abbrechen der Handlung, nicht das Ablehnen der Erklärung
     // (Begründung an `ablehnungMerken`). Gemerkt wird der ZEITPUNKT: das
     // „später" hält nur eine Weile (`spaeterGiltNoch`, iOS-Bughunt 2, F3).
@@ -151,7 +175,7 @@ class Berechtigungsblatt {
    *
    * Ohne das blieb die Kamera-Erklärung stehen, nachdem die Kamera-Ansicht
    * darunter schon weg war (Android: die Zurück-Taste schliesst die Ansicht,
-   * nicht das Blatt). Ein „Erlauben" öffnete danach Kamera und Mikrofon für
+   * nicht das Blatt). Ein „Erlauben" öffnete danach die Kamera für
    * eine Ansicht, die es nicht mehr gab.
    */
   abbrechen(art: Berechtigung): void {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import ChannelList from '$lib/components/ChannelList.svelte';
@@ -38,7 +38,6 @@
   import { kanalWsEreignisAbbilden } from '$lib/krypto/gruppe/kanalEreignisAbbildung';
   import { voice } from '$lib/voice/livekit.svelte';
   import { routenBeitrittVerdrahten } from '$lib/voice/routenBeitritt.svelte';
-  import { navDrawer } from '$lib/stores/navDrawer.svelte';
   import { viewport } from '$lib/stores/viewport.svelte';
   import { erstelleKanalWechsel } from '$lib/components/chat/kanalWechsel.svelte';
   import { erstelleKanalNachrichtenAktionen } from '$lib/components/chat/kanalNachrichtenAktionen';
@@ -110,9 +109,6 @@
   // Mobil: Auto-Beitritt beim Landen auf einem Sprachkanal — nur nach einem
   // Tipp in der App und erst, wenn der Start durch ist (Regel und Gründe in
   // `voice/routenBeitritt.svelte.ts`).
-  $effect(() => {
-    if (viewport.isMobile && isVoiceChannel) navDrawer.open = true;
-  });
   routenBeitrittVerdrahten(() => (viewport.isMobile && isVoiceChannel ? activeChannel : null));
 
   // Mobil: Nach dem Auflegen zurück in die Community-Übersicht — die Voice-
@@ -218,18 +214,6 @@
     });
   }
 
-  onMount(() => {
-    // Escape schließt Drawer auf Mobil
-    function onKeydown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && navDrawer.open) navDrawer.open = false;
-    }
-    window.addEventListener('keydown', onKeydown);
-
-    return () => {
-      window.removeEventListener('keydown', onKeydown);
-    };
-  });
-
   onDestroy(() => {
     kanalNachrichten.aufraeumen();
   });
@@ -248,9 +232,7 @@
   }
 
   async function selectGuild(id: string) {
-    // Server-Icon öffnet immer die Kanal-Liste (Gilde → Text- → Sprachkanäle);
-    // kein Auf-/Zu-Toggle mehr. Geschlossen wird sie durch Kanal-Auswahl.
-    navDrawer.open = true;
+    // Server-Icon öffnet immer die Kanal-Liste (Gilde → Text- → Sprachkanäle).
     if (id !== guildId) {
       await goto(`/app/guilds/${id}/channels/_`);
     }
@@ -275,7 +257,6 @@
       if (c.id !== channelId || geraetOffen) await goto(`/app/guilds/${guildId}/channels/${c.id}`);
       return;
     }
-    navDrawer.open = false;
     if (c.id === channelId && !geraetOffen) return;
     await goto(`/app/guilds/${guildId}/channels/${c.id}`);
   }
@@ -329,7 +310,7 @@
   onSelect={(g) => selectGuild(g.id)}
   onCreateClick={() => { createGuildMode = 'create'; creatingGuild = true; }}
   onJoinClick={() => { createGuildMode = 'join'; creatingGuild = true; }}
-  onHomeClick={() => { navDrawer.open = true; void goto('/app/friends'); }}
+  onHomeClick={() => void goto('/app/friends')}
   onGuildDeleted={handleRemoteGuildDeleted}
 />
 

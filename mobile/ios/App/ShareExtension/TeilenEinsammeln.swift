@@ -5,10 +5,12 @@ import UniformTypeIdentifiers
 /// Liest aus dem, was die Quell-App anbietet, EIN Paket und legt es ab.
 ///
 /// Angenommen wird, was die Web-Seite verbrauchen kann (`MessageInput.svelte`,
-/// `freigabeUebernehmen`): Text für den Verfasser und höchstens ein Bild für
-/// den Anhang-Streifen. Eine Web-Adresse wird zu Text — Android bekommt sie
-/// genauso, als `EXTRA_TEXT`. Mehr lässt die Aktivierungsregel in der
-/// `Info.plist` gar nicht erst herein (ein Bild, eine Adresse, Text).
+/// `freigabeUebernehmen`): Text für den Verfasser und bis zu
+/// `TeilenGrenzen.hoechstensElemente` Dateien für den Anhang-Streifen — Bilder
+/// (verkleinert, `TeilenBild`), Videos und Dokumente (unverändert kopiert,
+/// `TeilenDateien`). Eine Web-Adresse wird zu Text — Android bekommt sie
+/// genauso, als `EXTRA_TEXT`. Was über Datei- oder Gesamtgrenze liegt oder
+/// über der Anzahl, wird übersprungen und gezählt; die Karte sagt es.
 enum TeilenEinsammeln {
     enum Ausgang {
         case abgelegt, nichtsBrauchbares, fehlgeschlagen
@@ -17,24 +19,75 @@ enum TeilenEinsammeln {
         case ueberholt
     }
 
+    struct Ergebnis {
+        var ausgang: Ausgang
+        /// Wie viele Elemente übernommen sind (Text zählt als eines).
+        var elemente = 0
+        var uebersprungen = 0
+    }
+
     /// Abgelegt wird nur, wenn `wettlauf` es noch zulässt: ist die Frist um
     /// oder hat der Nutzer abgebrochen, bleibt die Ablage leer.
-    static func einsammelnUndAblegen(_ eingaben: [Any], wettlauf: TeilenWettlauf) async -> Ausgang {
+    static func einsammelnUndAblegen(_ eingaben: [Any], wettlauf: TeilenWettlauf) async -> Ergebnis {
         var texte: [String] = []
-        var bild: TeilenBild.Kodiert?
+        var dateien: [GeteilteDatei] = []
+        var uebersprungen = 0
+        var belegt = 0
+        var paketOrdner: (id: String, ordner: URL)?
+
+        /// Räumt den angelegten Paket-Ordner weg, wenn nichts abgelegt wird.
+        func ordnerVerwerfen() {
+            if let ordner = paketOrdner { TeilenAblage.paketLoeschen(ordner.id) }
+        }
+
+        /// Legt die Datei an (Ordner beim ersten Mal) und bucht das Ergebnis.
+        func ablegen(_ lade: (URL, Int) async -> TeilenDateien.Ergebnis) async {
+            if dateien.count >= TeilenGrenzen.hoechstensElemente {
+                uebersprungen += 1
+                return
+            }
+            if paketOrdner == nil { paketOrdner = try? TeilenAblage.neuerPaketOrdner() }
+            guard let ziel = paketOrdner else {
+                uebersprungen += 1
+                return
+            }
+            switch await lade(ziel.ordner, TeilenGrenzen.gesamtBytes - belegt) {
+            case .abgelegt(let datei):
+                dateien.append(datei)
+                belegt += datei.groesse
+            case .zuGross, .fehlgeschlagen:
+                uebersprungen += 1
+            }
+        }
+
         for case let eintrag as NSExtensionItem in eingaben {
             for anbieter in eintrag.attachments ?? [] {
+                let kopieren: (URL, Int) async -> TeilenDateien.Ergebnis = { ordner, rest in
+                    await dateiKopieren(anbieter, in: ordner, restBytes: rest)
+                }
                 #if DEBUG
                     NSLog("[PulseTeilen] Angebot: %@", anbieter.registeredTypeIdentifiers.joined(separator: ", "))
                 #endif
-                // Bild zuerst: eine Bilddatei aus „Dateien“ ist zugleich eine
-                // (Datei-)Adresse und landete sonst als Pfad im Text.
+                // Reihenfolge ist Absicht: ein Bild aus „Dateien“ ist zugleich
+                // eine Datei-Adresse; eine Web-Adresse aus Safari kann neben
+                // dem Link auch ein Webarchiv anbieten, gemeint ist der Link.
                 if anbieter.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-                    if bild == nil { bild = await bildLaden(anbieter) }
+                    await ablegen { ordner, rest in
+                        await bildAlsDatei(anbieter, in: ordner, restBytes: rest)
+                    }
+                } else if anbieter.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+                    await ablegen(kopieren)
                 } else if anbieter.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-                    if let adresse = await webAdresse(anbieter) { texte.append(adresse) }
+                    if let adresse = await webAdresse(anbieter) {
+                        texte.append(adresse)
+                    } else {
+                        // Eine Datei-Adresse: gemeint ist die Datei dahinter.
+                        await ablegen(kopieren)
+                    }
                 } else if anbieter.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                     if let text = await klartext(anbieter) { texte.append(text) }
+                } else if anbieter.hasItemConformingToTypeIdentifier(UTType.data.identifier) {
+                    await ablegen(kopieren)
                 }
             }
         }
@@ -45,20 +98,52 @@ enum TeilenEinsammeln {
         // Auch „nichts brauchbar" ist ein Ergebnis, das erst gelten darf, wenn
         // Frist und Abbruch nicht schon entschieden haben — sonst überschriebe
         // es die Karte der Frist, oder zeigte etwas nach einem Abbruch.
-        guard wettlauf.entscheiden(.fertig) else { return .ueberholt }
-        guard !text.isEmpty || bild != nil else { return .nichtsBrauchbares }
+        guard wettlauf.entscheiden(.fertig) else {
+            ordnerVerwerfen()
+            return Ergebnis(ausgang: .ueberholt)
+        }
+        guard !text.isEmpty || !dateien.isEmpty else {
+            ordnerVerwerfen()
+            return Ergebnis(ausgang: .nichtsBrauchbares, uebersprungen: uebersprungen)
+        }
 
+        // Nur Text: kein Ordner nötig, die Kennung ist trotzdem gültig.
+        let paketId = paketOrdner?.id ?? UUID().uuidString
         let paket = GeteiltesPaket(
-            text: text.isEmpty ? nil : text, bild: bild?.daten, bildMime: bild?.mime, abgelegt: Date())
+            paketId: paketId, text: text.isEmpty ? nil : text, dateien: dateien,
+            uebersprungen: uebersprungen, abgelegt: Date())
         do {
             try TeilenAblage.ablegen(paket)
-            NSLog("[PulseTeilen] abgelegt: Text %ld Zeichen, Bild %ld Bytes (%@)",
-                  text.count, bild?.daten.count ?? 0, bild?.mime ?? "-")
-            return .abgelegt
+            NSLog("[PulseTeilen] abgelegt: Text %ld Zeichen, %ld Dateien (%ld Bytes), %ld übersprungen",
+                  text.count, dateien.count, belegt, uebersprungen)
+            return Ergebnis(
+                ausgang: .abgelegt, elemente: dateien.count + (text.isEmpty ? 0 : 1),
+                uebersprungen: uebersprungen)
         } catch {
             NSLog("[PulseTeilen] Ablegen fehlgeschlagen: %@", "\(error)")
-            return .fehlgeschlagen
+            ordnerVerwerfen()
+            return Ergebnis(ausgang: .fehlgeschlagen)
         }
+    }
+
+    /// Das Bild verkleinert und als Datei. Gelingt das Dekodieren nicht (ein
+    /// Format, das ImageIO nicht kennt), wird die Datei unverändert kopiert.
+    private static func bildAlsDatei(_ anbieter: NSItemProvider, in ordner: URL, restBytes: Int) async -> TeilenDateien.Ergebnis {
+        if let bild = await bildLaden(anbieter) {
+            return TeilenDateien.ablegen(bild: bild, vorgeschlagenerName: anbieter.suggestedName, in: ordner)
+        }
+        return await dateiKopieren(anbieter, in: ordner, restBytes: restBytes)
+    }
+
+    /// Unverändert kopieren, über den ersten angebotenen Typ, der eine Datei
+    /// ist (nicht Adresse, nicht Text).
+    private static func dateiKopieren(_ anbieter: NSItemProvider, in ordner: URL, restBytes: Int) async -> TeilenDateien.Ergebnis {
+        let typ = anbieter.registeredTypeIdentifiers.first { kennung in
+            guard let t = UTType(kennung) else { return false }
+            return t.conforms(to: .data) && !t.conforms(to: .url) && !t.conforms(to: .plainText)
+        } ?? anbieter.registeredTypeIdentifiers.first { UTType($0)?.conforms(to: .data) == true }
+        guard let typ else { return .fehlgeschlagen }
+        return await TeilenDateien.kopieren(anbieter, typ: typ, in: ordner, restBytes: restBytes)
     }
 
     private static func bildLaden(_ anbieter: NSItemProvider) async -> TeilenBild.Kodiert? {

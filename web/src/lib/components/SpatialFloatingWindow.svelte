@@ -85,6 +85,7 @@
   class="border-border bg-bg-panel fixed z-50 flex flex-col overflow-hidden rounded-xl border shadow-2xl"
   style="left:{x}px;top:{y}px;width:{w}px;height:{h}px"
   data-testid="spatial-floating-window"
+  data-edge-swipe-aus
 >
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div

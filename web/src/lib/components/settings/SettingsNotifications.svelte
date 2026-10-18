@@ -14,7 +14,7 @@
   } from '$lib/notifications/pushSubscribe';
   import { listSubscriptions, type SubscriptionDescriptor } from '$lib/notifications/api';
   import { ApiError } from '$lib/api/client';
-  import { isCapacitorIOS, isElectron } from '$lib/platform/runtime';
+  import { isCapacitorAndroid, isCapacitorIOS, isElectron } from '$lib/platform/runtime';
   import Checkbox from '$lib/components/form/Checkbox.svelte';
   import HuelleMitteilungen from './HuelleMitteilungen.svelte';
 
@@ -38,9 +38,14 @@
   // In der iOS-Hülle gibt es keinen Web-Push, sondern die System-Erlaubnis —
   // eigener Abschnitt statt „nicht unterstützt" (iOS-Bughunt 2, F3).
   const iosHuelle = isCapacitorIOS();
+  // In der Hülle (iOS und Android) kommen Mitteilungen als Push vom Server. Die
+  // Schalter „Bei Erwähnungen" und „Bei Freundschaftsanfragen" steuern nur den
+  // Seiten-Weg (`inPage.ts`, Browser-Notification), den es dort nicht gibt —
+  // sie blieben ohne Wirkung und sind ausgeblendet. Der DM-Schalter bleibt.
+  const huelle = iosHuelle || isCapacitorAndroid();
   // Die Erlaubnis-Zeile der Seite (Notification-API) entfällt in Electron
-  // (native IPC) und in der iOS-Hülle (System-Erlaubnis, eigener Abschnitt).
-  const seitenErlaubnisZeigen = !electron && !iosHuelle;
+  // (native IPC) und in der Hülle (iOS: System-Erlaubnis, eigener Abschnitt).
+  const seitenErlaubnisZeigen = !electron && !huelle;
 
   async function requestNotifyPermission() {
     if (notifyBusy) return;
@@ -118,7 +123,7 @@
   <div class="flex flex-col gap-1">
     <h2 class="text-text-bright text-base font-semibold">{m.settings_notifications_heading()}</h2>
     <p class="text-text-muted text-xs">
-      {m.settings_notifications_subheading()}
+      {huelle ? m.settings_notifications_subheading_huelle() : m.settings_notifications_subheading()}
     </p>
   </div>
 
@@ -178,17 +183,19 @@
   <section class="flex flex-col gap-3 rounded-2xl border border-border bg-bg-input/40 p-4">
     <span class="text-text-bright text-sm font-medium">{m.settings_notifications_notify_for_heading()}</span>
 
-    <label class="flex items-center justify-between gap-3 text-sm">
-      <span class="flex flex-col">
-        <span class="text-text-bright">{m.settings_notifications_on_mention_label()}</span>
-        <span class="text-text-muted text-xs">{m.settings_notifications_on_mention_desc()}</span>
-      </span>
-      <Checkbox
-        checked={settings.notifications.onMention}
-        onchange={(e) => settings.setNotifyOnMention((e.currentTarget as HTMLInputElement).checked)}
-        data-testid="notifications-on-mention"
-      />
-    </label>
+    {#if !huelle}
+      <label class="flex items-center justify-between gap-3 text-sm">
+        <span class="flex flex-col">
+          <span class="text-text-bright">{m.settings_notifications_on_mention_label()}</span>
+          <span class="text-text-muted text-xs">{m.settings_notifications_on_mention_desc()}</span>
+        </span>
+        <Checkbox
+          checked={settings.notifications.onMention}
+          onchange={(e) => settings.setNotifyOnMention((e.currentTarget as HTMLInputElement).checked)}
+          data-testid="notifications-on-mention"
+        />
+      </label>
+    {/if}
 
     <label class="flex items-center justify-between gap-3 text-sm">
       <span class="flex flex-col">
@@ -196,23 +203,29 @@
         <span class="text-text-muted text-xs">{m.settings_notifications_on_dm_desc()}</span>
       </span>
       <Checkbox
-        checked={settings.notifications.onDM}
-        onchange={(e) => settings.setNotifyOnDM((e.currentTarget as HTMLInputElement).checked)}
+        checked={huelle ? settings.push.dm : settings.notifications.onDM}
+        onchange={(e) => {
+          const an = (e.currentTarget as HTMLInputElement).checked;
+          settings.setNotifyOnDM(an);
+          if (huelle) settings.setPushDm(an);
+        }}
         data-testid="notifications-on-dm"
       />
     </label>
 
-    <label class="flex items-center justify-between gap-3 text-sm">
-      <span class="flex flex-col">
-        <span class="text-text-bright">{m.settings_notifications_on_friend_requests_label()}</span>
-        <span class="text-text-muted text-xs">{m.settings_notifications_on_friend_requests_desc()}</span>
-      </span>
-      <Checkbox
-        checked={settings.notifications.onFriendRequests}
-        onchange={(e) => settings.setNotifyOnFriendRequests((e.currentTarget as HTMLInputElement).checked)}
-        data-testid="notifications-on-friend-requests"
-      />
-    </label>
+    {#if !huelle}
+      <label class="flex items-center justify-between gap-3 text-sm">
+        <span class="flex flex-col">
+          <span class="text-text-bright">{m.settings_notifications_on_friend_requests_label()}</span>
+          <span class="text-text-muted text-xs">{m.settings_notifications_on_friend_requests_desc()}</span>
+        </span>
+        <Checkbox
+          checked={settings.notifications.onFriendRequests}
+          onchange={(e) => settings.setNotifyOnFriendRequests((e.currentTarget as HTMLInputElement).checked)}
+          data-testid="notifications-on-friend-requests"
+        />
+      </label>
+    {/if}
 
     {#if seitenErlaubnisZeigen && notifyPermission === 'default'}
       <!-- The toggles above only fire OS popups once the browser permission is

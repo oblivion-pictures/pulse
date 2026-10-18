@@ -21,7 +21,6 @@ import {
   type NativerWunsch,
   type NativerZustand
 } from '$lib/platform/iosSprache';
-import { volleTonqualitaetWirksam } from '$lib/platform/iosVolleTon';
 import {
   abgleichEntscheiden,
   pausenWunsch,
@@ -115,16 +114,12 @@ export class NativerRaum {
         je: $state.snapshot(settings.voice.userVolumes),
         gesamt: settings.voice.outputVolume,
         community: guilds.byId[guilds.guildIdForChannel(channelId) ?? '']?.name,
-        // „Volle Tonqualität" wird vorerst nicht angeboten (Entscheid
-        // 2026-10-17, `platform/iosVolleTon.ts`): ein früher gespeichertes „an"
-        // greift nicht mehr. `bitrateKbps` geht weiter mit, wirkt aber nur
-        // zusammen mit `volle` — ohne gilt nativ die SDK-Vorgabe (48 kbps,
-        // `SpracheRaum.raumOptionen`). Weggelassen änderte es nichts; mit ihm
-        // braucht ein Wiederanbieten nur die eine Zeile.
-        ton: {
-          volle: volleTonqualitaetWirksam(settings.audio.iosVolleTonqualitaet),
-          bitrateKbps: effectiveVoiceBitrateMaxKbps(channelId)
-        }
+        // Es gilt Apples Sprachverarbeitung (VPIO); „Volle Tonqualität" gibt es
+        // nicht mehr (Eigentümer-Entscheid 2026-10-17). `bitrateKbps` geht
+        // noch mit, die Hülle wertet es aber nicht mehr aus (ihr Software-Weg
+        // ist weg, es gilt die feste Sende-Bitrate); `ton` schaltet nur noch
+        // `kannNeuVerbinden` (`spracheBeitreten`).
+        ton: { bitrateKbps: effectiveVoiceBitrateMaxKbps(channelId) }
       });
     } catch (e) {
       if (!this.#haken.aktuell(gen)) return;
@@ -148,7 +143,12 @@ export class NativerRaum {
     // Beigetreten, aber ohne Mikrofon (verweigerte Erlaubnis, belegtes Gerät):
     // die Hülle lässt den Raum dafür bewusst stehen — man kann zuhören —, also
     // muss die Oberfläche es SAGEN.
-    if (z.mikrofonFehler) w.error = z.mikrofonFehler;
+    // Die Hülle liefert eine rohe SDK-Zeile (englisch, technisch) — in die Konsole,
+    // dem Nutzer die vorhandene Erklärung (Erlaubnis/Gerät prüfen).
+    if (z.mikrofonFehler) {
+      console.warn('[Sprache] Mikrofon in der Hülle nicht verfügbar:', z.mikrofonFehler);
+      w.error = m.livekit_microphone_access_failed();
+    }
     this.#stehen(z, opts.taub, opts.micBeforeDeafen);
     // **Muss hier stehen.** Die Sperre „Audio aktivieren" gehört zum
     // WebKit-Weg; ein stehengebliebenes `true` aus einem früheren Beitritt

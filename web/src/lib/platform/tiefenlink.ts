@@ -17,12 +17,22 @@
  *  - **Kein Protokoll-Relativ, kein `//`.** `goto('//boese.example')` wäre
  *    eine Navigation nach draussen, die wie ein Pfad aussieht.
  *
- * Importfrei, damit Nodes Testläufer sie prüfen kann (s. CLAUDE.md).
+ * Importfrei bis auf den ebenfalls importfreien Einladungs-Parser, damit Nodes
+ * Testläufer sie prüfen kann (s. CLAUDE.md).
+ *
+ * **Zwei Arten von Zielen, getrennt.** `zielPfad` liefert den Pfad in der App
+ * (`/app/…`). Einladungslinks (`/invite/<code>`) liegen AUSSERHALB von `/app`
+ * und haben kein Pfad-Ziel: sie öffnen den Einladungs-Dialog, nicht eine Seite
+ * (`einladungsZiel`). Gast-Links (`/gast/<code>`) und die Community-Adresse
+ * (`/c/<handle>`) sind bewusst keins von beidem (Eigentümer-Entscheid
+ * 2026-10-18: nur Einladungslinks) — sie bleiben im Browser.
  */
+import { einladungAusUrl, type Einladung } from '../einladung/einladungsLink.ts';
 
 /** Die Herkunft, für die Universal Links beansprucht sind — dieselbe wie in
  *  `web/static/.well-known/apple-app-site-association`. */
 const ERLAUBTE_HOSTS = ['howispulse.com', 'www.howispulse.com'];
+const CLOUD_HOST = 'howispulse.com';
 
 export function zielPfad(adresse: string): string | null {
   let u: URL;
@@ -41,6 +51,47 @@ export function zielPfad(adresse: string): string | null {
   // steht hier, weil der Schaden gross und die Zeile billig ist.
   if (ziel.startsWith('//')) return null;
   return ziel;
+}
+
+/**
+ * Aus einem Einladungslink `https://howispulse.com/invite/<code>[?host=<fqdn>]`
+ * die Einladung machen — oder `null`, was nicht genau das ist.
+ *
+ * Dieselben Riegel wie `zielPfad` (nur https, nur unser Haus, kein Port), dazu
+ * die des Einladungs-Parsers (Code-Form, `?host=` als gültiger FQDN). Der
+ * Aufrufer öffnet den Dialog nicht selbst, sondern reicht die Einladung an den
+ * Weg des Desktop-Deep-Links (`einladung/deepLink.ts`): angemeldet → Dialog,
+ * sonst merken und nach der Anmeldung zeigen — der Beitritt bleibt ein Klick.
+ */
+export function einladungsZiel(adresse: string): Einladung | null {
+  let u: URL;
+  try {
+    u = new URL(adresse);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' || u.port !== '') return null;
+  if (!ERLAUBTE_HOSTS.includes(u.hostname.toLowerCase())) return null;
+  return einladungAusUrl(adresse, CLOUD_HOST, u.host);
+}
+
+/**
+ * Sieht die Adresse nach einem Einladungslink von uns aus (https, unser Haus,
+ * Pfad `/invite…`)? Zusammen mit einem `null` von `einladungsZiel` heißt das:
+ * abgelehnt (kaputter Code, ungültiger `?host=`) — der Nutzer bekommt eine
+ * Rückmeldung statt Stille.
+ */
+export function istEinladungsAdresse(adresse: string): boolean {
+  try {
+    const u = new URL(adresse);
+    return (
+      u.protocol === 'https:' &&
+      ERLAUBTE_HOSTS.includes(u.hostname.toLowerCase()) &&
+      (u.pathname === '/invite' || u.pathname.startsWith('/invite/'))
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -22,13 +22,16 @@
  * sperrt man, ein Browser auf dem Rechner nicht.
  */
 import { registerPlugin } from '@capacitor/core';
+import { haptikTicken } from './haptik';
 import { isCapacitorIOS } from './runtime';
+import { sperreAusgang } from './appSperreAusgang';
 
 interface SperrePlugin {
   verfuegbar(): Promise<{ verfuegbar: boolean }>;
   pruefen(opts: { grund: string }): Promise<{
     ok: boolean;
     abgebrochen?: boolean;
+    /** `GRUND_KEIN_CODE`, wenn am Gerät kein Code mehr gesetzt ist (neuere Bauten). */
     grund?: string;
   }>;
 }
@@ -77,6 +80,9 @@ class AppSperre {
   /** Letzter Fehlschlag, der KEIN Abbruch war — nur dann gibt es etwas zu
    *  sagen. Ein weggetippter Dialog ist keine Fehlermeldung wert. */
   fehler = $state<string | null>(null);
+  /** Am Gerät ist kein Code mehr gesetzt: Entsperren ist unmöglich, die
+   *  Sperrfläche bietet nur noch das Abmelden an. */
+  keinCode = $state(false);
   #aufgehoben!: () => void;
   #entsperrt = new Promise<void>((weiter) => (this.#aufgehoben = weiter));
 
@@ -98,6 +104,31 @@ class AppSperre {
     return this.#entsperrt;
   }
 
+  /** Ausweg von der Sperrfläche: abmelden und die Sperre aufheben — erst NACH
+   *  dem vollständigen Abmelden (Server-Widerruf, Verbindungen, Speicher),
+   *  sonst stünde die App entsperrt über einer halb abgebauten Sitzung. */
+  async abmeldenUndAufheben(abmelden: () => Promise<void>): Promise<void> {
+    try {
+      await abmelden();
+    } finally {
+      sperreSetzen(false);
+      this.#aufheben();
+    }
+  }
+
+  /** Beim Zurückkehren in den Vordergrund: wer in den Einstellungen wieder
+   *  einen Geräte-Code gesetzt hat, soll die Abfrage erneut anstoßen können —
+   *  `keinCode` steht sonst bis zum nächsten Kaltstart und lässt nur das
+   *  Abmelden übrig. */
+  async codeNeuPruefen(): Promise<void> {
+    if (!this.gesperrt || !this.keinCode) return;
+    try {
+      if ((await plugin.verfuegbar()).verfuegbar) this.keinCode = false;
+    } catch {
+      /* nicht erreichbar: der Stand bleibt */
+    }
+  }
+
   #aufheben(): void {
     this.gesperrt = false;
     this.#aufgehoben();
@@ -109,11 +140,25 @@ class AppSperre {
     this.fehler = null;
     try {
       const antwort = await plugin.pruefen({ grund });
-      if (antwort.ok) {
+      const ausgang = await sperreAusgang(
+        antwort,
+        async () => (await plugin.verfuegbar()).verfuegbar
+      );
+      if (ausgang === 'entsperrt') {
+        haptikTicken(); // erfolgreich entsperrt — kurzer Tick (nur iOS-Hülle)
         this.#aufheben();
         return;
       }
-      if (!antwort.abgebrochen) this.fehler = antwort.grund || null;
+      if (ausgang === 'kein_code') {
+        // Der Geräte-Code wurde nach dem Einschalten entfernt: die Abfrage
+        // kann nie wieder gelingen. **Die Sperre bleibt** (kein Aufschliessen
+        // aus Mangel an Prüfmöglichkeit — wer das Telefon ohne Code findet,
+        // käme sonst ohne jede Hürde hinein). Der Ausweg ist das Abmelden:
+        // danach braucht es eine normale Anmeldung (Passwort/2FA).
+        this.keinCode = true;
+        return;
+      }
+      if (ausgang === 'fehler') this.fehler = antwort.grund || null;
     } catch (e) {
       // Plugin nicht erreichbar (alter Bau ohne das Plugin): **aufschliessen**,
       // nicht aussperren. Sonst macht ein Update, bei dem die Hülle

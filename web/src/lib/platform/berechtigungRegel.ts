@@ -2,7 +2,7 @@
  * Soll vor dem System-Dialog eine Vorerklärung stehen? — die reine Regel.
  *
  * **Warum das ein eigener Punkt ist (iOS-Liste 36).** Ein System-Dialog für
- * Mitteilungen, Mikrofon oder Kamera erscheint auf iOS **genau einmal**. Sagt
+ * Mitteilungen oder Kamera erscheint auf iOS **genau einmal**. Sagt
  * der Nutzer dort „nein", ist die Sache dauerhaft entschieden — der nächste
  * Versuch kommt ohne Dialog zurück, und der einzige Weg zurück führt in die
  * System-Einstellungen. Bis hierher fragte Pulse die Mitteilungs-Erlaubnis
@@ -21,24 +21,29 @@
  *     gebunden und jederzeit über das Schloss in der Adresszeile umkehrbar;
  *     die Einmaligkeit, gegen die wir hier arbeiten, gibt es dort nicht.
  *     **Android bleibt beim alten Weg** (Eigentümer-Entscheid 2026-10-16):
- *     Mitteilungs-Erlaubnis beim Start, kein Blatt, auch nicht vor Kamera
- *     oder Mikrofon — s. `mitteilungenBeimStartFragen`.
+ *     Mitteilungs-Erlaubnis beim Start, kein Blatt, auch nicht vor der Kamera
+ *     — s. `mitteilungenBeimStartFragen`.
  *  3. **Ein „später" hält eine Weile — bei Mitteilungen.** Wer die Erklärung
  *     dort weggetippt hat, sieht sie `SPAETER_GILT_MS` lang nicht wieder,
  *     danach beim nächsten Anlass erneut. Dazu der Weg in den Einstellungen
- *     der App (Mitteilungen). Bei Kamera und Mikrofon bricht „später" nur die
+ *     der App (Mitteilungen). Bei der Kamera bricht „später" nur die
  *     Handlung ab (s. `ablehnungMerken`).
- *  4. **Mitteilungen brauchen einen ANLASS.** Kamera und Mikrofon werden von
- *     einer Handlung ausgelöst (Kachel öffnen, Sprachkanal betreten), die den
- *     Grund selbst erklärt. Mitteilungen nicht — deshalb hängen sie an einer
- *     Mindestnutzung, damit die Frage nicht die erste Begegnung mit der App
- *     ist.
+ *  4. **Mitteilungen brauchen einen ANLASS.** Die Kamera wird von
+ *     einer Handlung ausgelöst (Kamera öffnen), die den
+ *     Grund selbst erklärt. Mitteilungen nicht — deshalb hängen sie an einem
+ *     Anlass, damit die Frage nicht die erste Begegnung mit der App ist: die
+ *     erste eigene gesendete Nachricht, eine angenommene Freundschaftsanfrage
+ *     oder die erste eingehende Direktnachricht bei offener App
+ *     (`mitteilungsAnlass.ts`; Eigentümer-Entscheid 2026-10-18).
  *
  * Importfrei und damit prüfbar (s. die `pnpm test:unit`-Falle in CLAUDE.md).
  */
 
 /** Was gefragt werden soll. */
-export type Berechtigung = 'mitteilungen' | 'mikrofon' | 'kamera';
+export type Berechtigung = 'mitteilungen' | 'kamera';
+// Das Mikrofon hat keine Vorerklärung (mehr): der Sprachkanal erklärt sich
+// selbst, und für die Kamera-Aufnahme wird es erst beim Wechsel auf Video
+// angefragt — ein Blatt dafür hatte keinen Aufrufer.
 
 /** Stand der Berechtigung, wie die Plattform ihn meldet. */
 export type Stand = 'offen' | 'erteilt' | 'verweigert';
@@ -46,17 +51,18 @@ export type Stand = 'offen' | 'erteilt' | 'verweigert';
 /**
  * Wie viele eigene Nachrichten, bevor nach Mitteilungen gefragt wird.
  *
- * Bewusst klein: nach der ersten Unterhaltung ist der Nutzen offensichtlich
- * („ich will wissen, wenn geantwortet wird"), und zu langes Warten verschenkt
- * genau die Pushs, um die es geht. Dieselbe Mechanik wie die Bewertungsfrage
- * (`bewertungRegel.ts`), aber eine viel kleinere Zahl — eine Bewertung ist
- * eine Gefälligkeit, eine Mitteilung ein Dienst am Nutzer.
+ * Bewusst klein — seit 2026-10-18 EINE (vorher drei): schon die erste
+ * Nachricht macht den Nutzen offensichtlich („ich will wissen, wenn geantwortet
+ * wird"), und zu langes Warten verschenkt genau die Pushs, um die es geht.
+ * Dieselbe Mechanik wie die Bewertungsfrage (`bewertungRegel.ts`), aber eine
+ * viel kleinere Zahl — eine Bewertung ist eine Gefälligkeit, eine Mitteilung
+ * ein Dienst am Nutzer.
  *
  * Der Name trägt deshalb die Frage mit: `bewertungRegel.ts` hat eine Schwelle
  * auf dieselbe Zahl mit anderem Wert, und zwei gleichnamige Konstanten in
  * Nachbardateien sind genau der Verwechsler, der später still importiert wird.
  */
-export const SENDUNGEN_BIS_ZUR_MITTEILUNGSFRAGE = 3;
+export const SENDUNGEN_BIS_ZUR_MITTEILUNGSFRAGE = 1;
 
 export interface Lage {
   art: Berechtigung;
@@ -69,6 +75,10 @@ export interface Lage {
   schonAbgelehnt: boolean;
   /** Eigene gesendete Nachrichten (nur für `mitteilungen` relevant). */
   sendungen: number;
+  /** Ein anderer Anlass als eine eigene Sendung liegt vor (angenommene
+   *  Freundschaftsanfrage, erste eingehende Direktnachricht) — nur für
+   *  `mitteilungen` relevant. */
+  anlass?: boolean;
 }
 
 /**
@@ -78,7 +88,7 @@ export interface Lage {
  * heisst „frag mich jetzt nicht", und so wird es behandelt — für
  * `SPAETER_GILT_MS`, nicht für immer (s. `spaeterGiltNoch`).
  *
- * Bei Mikrofon und Kamera ist „später" dagegen **das Abbrechen der Handlung**,
+ * Bei der Kamera ist „später" dagegen **das Abbrechen der Handlung**,
  * nicht das Ablehnen der Erklärung: wer die Kamera öffnet und dann abbricht,
  * hat nichts über künftige Kamera-Öffnungen gesagt. Würde man es merken, käme
  * beim nächsten Öffnen der System-Dialog OHNE Erklärung — also genau das, was
@@ -135,11 +145,12 @@ export type Vorgehen =
 export function vorgehenVorDemDialog(lage: Lage): Vorgehen {
   if (!lage.iosHuelle) return 'weiter';
   if (lage.stand !== 'offen') return 'weiter';
-  // Nur dort, wo ein „später" überhaupt gemerkt wird — steht bei Kamera oder
-  // Mikrofon trotzdem ein Merker, darf er die Handlung nicht sperren.
+  // Nur dort, wo ein „später" überhaupt gemerkt wird — steht bei der Kamera
+  // trotzdem ein Merker, darf er die Handlung nicht sperren.
   if (lage.schonAbgelehnt && ablehnungMerken(lage.art)) return 'nicht';
   if (lage.art === 'mitteilungen') {
-    return lage.sendungen >= SENDUNGEN_BIS_ZUR_MITTEILUNGSFRAGE ? 'erklaeren' : 'nicht';
+    const anlass = lage.anlass === true || lage.sendungen >= SENDUNGEN_BIS_ZUR_MITTEILUNGSFRAGE;
+    return anlass ? 'erklaeren' : 'nicht';
   }
   return 'erklaeren';
 }

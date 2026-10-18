@@ -1,0 +1,870 @@
+{
+  "sourceLanguage": "de",
+  "strings": {
+    "%1$@ und %2$@": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ und %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ and %2$@"
+          }
+        }
+      }
+    },
+    "%1$@, %2$@ und %3$@": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ und %3$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ and %3$@"
+          }
+        }
+      }
+    },
+    "%1$@, %2$@ und %3$@ weitere": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ und %3$@ weitere"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ and %3$@ more"
+          }
+        }
+      }
+    },
+    "%@ neue Nachrichten": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ neue Nachrichten"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ new messages"
+          }
+        }
+      }
+    },
+    "Abbrechen": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "Antworten": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reply"
+          }
+        }
+      }
+    },
+    "Auf Hörmuschel umschalten": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch to earpiece"
+          }
+        }
+      }
+    },
+    "Auf Lautsprecher umschalten": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch to speaker"
+          }
+        }
+      }
+    },
+    "Auf diesem Gerät wurde kein Mikrofon gefunden.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No microphone was found on this device."
+          }
+        }
+      }
+    },
+    "Auf diesem Gerät wurde keine Kamera gefunden.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No camera was found on this device."
+          }
+        }
+      }
+    },
+    "Auflegen": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hang up"
+          }
+        }
+      }
+    },
+    "Auflegen hat nicht geklappt. Versuche es noch einmal.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hanging up didn't work. Please try again."
+          }
+        }
+      }
+    },
+    "Bild-in-Bild": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Picture in Picture"
+          }
+        }
+      }
+    },
+    "Bild-in-Bild beenden": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop Picture in Picture"
+          }
+        }
+      }
+    },
+    "Bild-in-Bild beim Verlassen der App automatisch starten": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start Picture in Picture automatically when leaving the app"
+          }
+        }
+      }
+    },
+    "Bild-in-Bild ist gerade nicht möglich.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Picture in Picture isn't available right now."
+          }
+        }
+      }
+    },
+    "Bildschirmfreigabe": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen share"
+          }
+        }
+      }
+    },
+    "Das Mikrofon konnte nicht umgeschaltet werden. Versuche es noch einmal.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The microphone couldn't be switched. Please try again."
+          }
+        }
+      }
+    },
+    "Das Mithören konnte nicht umgeschaltet werden. Versuche es noch einmal.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listening couldn't be switched. Please try again."
+          }
+        }
+      }
+    },
+    "Das hat nicht geklappt. Versuche es noch einmal.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That didn't work. Please try again."
+          }
+        }
+      }
+    },
+    "Der Kanal bleibt verbunden.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You stay connected to the channel."
+          }
+        }
+      }
+    },
+    "Die Kamera konnte nicht gewechselt werden. Versuche es noch einmal.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The camera couldn't be flipped. Please try again."
+          }
+        }
+      }
+    },
+    "Die Kamera konnte nicht umgeschaltet werden. Versuche es noch einmal.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The camera couldn't be switched. Please try again."
+          }
+        }
+      }
+    },
+    "Einstellungen öffnen": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Settings"
+          }
+        }
+      }
+    },
+    "Erneut verbinden": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect"
+          }
+        }
+      }
+    },
+    "Getrennt": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnected"
+          }
+        }
+      }
+    },
+    "Hat dir einen Anhang geschickt": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hat dir einen Anhang geschickt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent you an attachment"
+          }
+        }
+      }
+    },
+    "Kamera ausschalten": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn camera off"
+          }
+        }
+      }
+    },
+    "Kamera einschalten": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn camera on"
+          }
+        }
+      }
+    },
+    "Kamera nicht erlaubt": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera access denied"
+          }
+        }
+      }
+    },
+    "Kamera wechseln": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch camera"
+          }
+        }
+      }
+    },
+    "Kanalansicht schließen": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close channel view"
+          }
+        }
+      }
+    },
+    "Keine Verbindung zum Server. Versuche es gleich noch einmal.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No connection to the server. Please try again in a moment."
+          }
+        }
+      }
+    },
+    "Mikrofon ausgefallen": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone failed"
+          }
+        }
+      }
+    },
+    "Mikrofon ausgefallen – bitte die App neu starten": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone failed – please restart the app"
+          }
+        }
+      }
+    },
+    "Mikrofon einschalten": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn microphone on"
+          }
+        }
+      }
+    },
+    "Mikrofon im Sprachkanal": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone in voice channel"
+          }
+        }
+      }
+    },
+    "Mikrofon stummschalten": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mute microphone"
+          }
+        }
+      }
+    },
+    "Mithören einschalten": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn listening on"
+          }
+        }
+      }
+    },
+    "Nachricht": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message"
+          }
+        }
+      }
+    },
+    "Neue Nachricht": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neue Nachricht"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New message"
+          }
+        }
+      }
+    },
+    "Nicht mehr mithören": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop listening"
+          }
+        }
+      }
+    },
+    "OK": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
+    "Pulse braucht die Kamera, um den QR-Code zu lesen. Du kannst sie in den Einstellungen erlauben — oder den Code von Hand eingeben.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pulse needs the camera to read the QR code. You can allow it in Settings – or enter the code by hand."
+          }
+        }
+      }
+    },
+    "Pulse darf das Mikrofon nicht benutzen. Erlaube den Zugriff in den Einstellungen.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pulse isn't allowed to use the microphone. Allow access in Settings."
+          }
+        }
+      }
+    },
+    "Pulse darf die Kamera nicht benutzen. Erlaube den Zugriff in den Einstellungen.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pulse isn't allowed to use the camera. Allow access in Settings."
+          }
+        }
+      }
+    },
+    "Schaltet dein Mikrofon im Kanal ein oder aus.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turns your microphone on or off in the channel."
+          }
+        }
+      }
+    },
+    "Schaltet deine Kamera im Kanal ein oder aus.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turns your camera on or off in the channel."
+          }
+        }
+      }
+    },
+    "Schaltet ein oder aus, ob du die anderen im Kanal hörst.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turns hearing the others in the channel on or off."
+          }
+        }
+      }
+    },
+    "Senden": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send"
+          }
+        }
+      }
+    },
+    "Sprachkanal": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice channel"
+          }
+        }
+      }
+    },
+    "Sprachkanal verlassen": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave voice channel"
+          }
+        }
+      }
+    },
+    "Startet Bild-in-Bild von selbst, wenn du Pulse verlässt, solange du im Sprachkanal bist.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starts Picture in Picture on its own when you leave Pulse while you're in a voice channel."
+          }
+        }
+      }
+    },
+    "Stumm": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muted"
+          }
+        }
+      }
+    },
+    "Stummgeschaltet": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muted"
+          }
+        }
+      }
+    },
+    "Tippen schaltet um. Gedrückt halten für Optionen.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap to toggle. Press and hold for options."
+          }
+        }
+      }
+    },
+    "Tonausgabe wählen": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose audio output"
+          }
+        }
+      }
+    },
+    "Tonausgabe: %@ — antippen zum Wählen": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio output: %@ – tap to choose"
+          }
+        }
+      }
+    },
+    "Verbinde …": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting …"
+          }
+        }
+      }
+    },
+    "Verbindung wird wiederhergestellt …": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnecting …"
+          }
+        }
+      }
+    },
+    "Verbunden · %d Teilnehmer": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected · %d participants"
+          }
+        }
+      }
+    },
+    "Verbunden · allein im Kanal": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected · alone in the channel"
+          }
+        }
+      }
+    },
+    "Verlässt den Sprachkanal.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leaves the voice channel."
+          }
+        }
+      }
+    },
+    "Vom Mod stummgeschaltet": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muted by a moderator"
+          }
+        }
+      }
+    },
+    "Vom Mod taubgeschaltet": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deafened by a moderator"
+          }
+        }
+      }
+    },
+    "Wechselt zwischen Front- und Rückkamera.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switches between the front and rear camera."
+          }
+        }
+      }
+    },
+    "Wechselt zwischen Lautsprecher und Hörmuschel.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switches between speaker and earpiece."
+          }
+        }
+      }
+    },
+    "spricht gerade": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "speaking"
+          }
+        }
+      }
+    },
+    "Öffnet die Auswahl der Tonausgabe.": {
+      "comment": "Pulse-App (Entwicklungssprache Deutsch)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens the audio output picker."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

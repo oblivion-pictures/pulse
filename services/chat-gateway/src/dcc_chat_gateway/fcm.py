@@ -34,6 +34,8 @@ from dcc_chat_gateway import badgezaehler
 from dcc_chat_gateway.config import get_settings
 from dcc_chat_gateway.db import SessionLocal
 from dcc_chat_gateway.fcm_empfaenger import empfangende_geraete, ios_geraete
+from dcc_chat_gateway.fcm_stumm import stumme_konten
+from dcc_chat_gateway.fcm_texte import Lokal, aps_alert
 from dcc_chat_gateway.models import FcmToken
 
 # Nur für die Typangabe von ``_build_dm_message``: zur Laufzeit lädt diese
@@ -141,7 +143,7 @@ def reset_fcm_cache_for_tests() -> None:
 
 
 def _build_dm_message(
-    *, token: str, payload: dict, badge: int | None = None
+    *, token: str, payload: dict, badge: int | None = None, lokal: Lokal | None = None
 ) -> messaging.Message:
     """Baut die FCM-Message für eine DM (Alert + iOS-Sound + Zeitkritisch +
     Icon-Badge + Android-Kanal + Deep-Link-Daten). Eigenständige Funktion,
@@ -153,6 +155,11 @@ def _build_dm_message(
     ``None`` heisst *schweigen*: das Feld entfällt und die Zahl am Gerät
     bleibt stehen. Eine ``0`` dagegen räumt die Plakette ab — deshalb darf
     ein unbekannter Stand niemals als 0 durchgehen.
+
+    ``lokal`` (nur iOS-Geräte, s. :mod:`dcc_chat_gateway.fcm_texte`): statt
+    des fertigen Textes gehen ``loc-key``/``loc-args`` hinaus, und der
+    FCM-Block ``notification`` entfällt — er würde sich in denselben
+    ``aps.alert`` mischen, und bei einem ``loc-key`` gilt ``body`` nicht.
     """
     from firebase_admin import messaging
 
@@ -162,8 +169,10 @@ def _build_dm_message(
     # und im Android-Block) — die beiden müssen denselben Inhalt tragen.
     daten = {k: v for k, v in payload.items() if isinstance(v, str)}
     return messaging.Message(
-        notification=messaging.Notification(
-            title=payload["title"], body=payload["body"]
+        notification=(
+            None
+            if lokal
+            else messaging.Notification(title=payload["title"], body=payload["body"])
         ),
         token=token,
         # Deep-Link-Daten TOP-LEVEL, nicht nur im Android-Block: nur so
@@ -188,9 +197,7 @@ def _build_dm_message(
             headers={"apns-push-type": "alert"},
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(
-                    alert=messaging.ApsAlert(
-                        title=payload["title"], body=payload["body"]
-                    ),
+                    alert=aps_alert(payload, lokal),
                     sound="pulse-push.caf",
                     # Der Encoder lässt None-Felder weg — genau das ist hier
                     # die Absicht, s. Docstring.
@@ -213,7 +220,9 @@ def _build_dm_message(
     )
 
 
-def _send_one(*, token: str, payload: dict, badge: int | None = None) -> str:
+def _send_one(
+    *, token: str, payload: dict, badge: int | None = None, lokal: Lokal | None = None
+) -> str:
     """Ein Sendeversuch. Liefert ``"ok"``, ``"dead"`` oder ``"warn"``.
 
     ``dead`` = Token weg (App deinstalliert, rotiert) → Zeile löschen,
@@ -226,7 +235,9 @@ def _send_one(*, token: str, payload: dict, badge: int | None = None) -> str:
         log.error("firebase_admin nicht installiert; FCM-Push deaktiviert")
         return "warn"
     try:
-        messaging.send(_build_dm_message(token=token, payload=payload, badge=badge))
+        messaging.send(
+            _build_dm_message(token=token, payload=payload, badge=badge, lokal=lokal)
+        )
         return "ok"
     except messaging.UnregisteredError:
         return "dead"
@@ -264,6 +275,7 @@ async def dm_push_senden(
     anzahl: int = 1,
     plakette_marke: str | None = None,
     text: str | None = None,
+    lokal: Lokal | None = None,
 ) -> Versand:
     """Inhaltsfreien FCM-Push an die DM-Empfänger ausliefern — SOFORT.
 
@@ -278,6 +290,12 @@ async def dm_push_senden(
     zusätzliche Systemmeldung wäre doppelt. Der Check läuft über
     ``ConnectionManager.user_socket_count``; ohne ``manager`` (Tests, pfad-
     lose Aufrufe) gilt jeder Empfänger als offline.
+
+    **Wer sich Pushes verbeten hat, bekommt keinen** (:func:`stumme_konten`):
+    „Nicht stören“ und der DM-Schalter. Die Plakette zählt für ihn trotzdem
+    hoch (Begründung dort). ``lokal`` (:mod:`dcc_chat_gateway.fcm_texte`)
+    ersetzt den fertigen Text durch Schlüssel — nur für iOS-Geräte mit der
+    Zusage ``dm_vordergrund``, Android bleibt beim deutschen Text.
 
     Löst nie aus — Fehlkonfiguration und tote Tokens dürfen den
     Nachrichtenweg nie brechen. Ob ein neuer Versuch lohnt, sagt
@@ -306,32 +324,28 @@ async def dm_push_senden(
             )
             alle = ergebnis.scalars().all()
             redis = getattr(manager, "redis", None)
-            rows = empfangende_geraete(
-                alle,
-                ios_geraete=await ios_geraete(session, {r.user_id for r in alle}, redis),
-                wach=wach,
-            )
+            ios = await ios_geraete(session, {r.user_id for r in alle}, redis)
+            rows = empfangende_geraete(alle, ios_geraete=ios, wach=wach)
             if not rows:
                 return Versand()
             # Icon-Badge: EINMAL je Konto hochzählen, nicht je Gerätezeile —
             # ein Konto hat einen Ungelesen-Stand, auch wenn Handy und Tablet
             # beide einen Push bekommen. Ohne Redis (pfadlose Aufrufe, Tests)
-            # bleibt der Stand unbekannt und das Feld entfällt im Push.
-            badges: dict[int, int | None] = {}
-            if redis is not None:
-                for uid in {r.user_id for r in rows}:
-                    # Mit Marke (Warteschlange): einmal je Eintrag, auch wenn
-                    # er mehrfach versucht wird (``erhoehen_einmal``).
-                    if plakette_marke:
-                        badges[uid] = await badgezaehler.erhoehen_einmal(
-                            redis,
-                            uid,
-                            anzahl,
-                            plakette_marke,
-                            marke_haltbarkeit_s=PLAKETTE_MARKE_HALTBARKEIT_S,
-                        )
-                    else:
-                        badges[uid] = await badgezaehler.erhoehen(redis, uid, anzahl)
+            # bleibt der Stand unbekannt und das Feld entfällt im Push. Auch
+            # die stummen Konten zählen (``fcm_stumm``), ihre Zahl geht nur
+            # nirgends hin.
+            konten = {r.user_id for r in rows}
+            stumm = await stumme_konten(session, redis, konten)
+            badges = await badgezaehler.fuer_konten(
+                redis,
+                konten,
+                anzahl,
+                plakette_marke,
+                marke_haltbarkeit_s=PLAKETTE_MARKE_HALTBARKEIT_S,
+            )
+            rows = [r for r in rows if r.user_id not in stumm]
+            if not rows:
+                return Versand()
             results = await asyncio.gather(
                 *(
                     asyncio.to_thread(
@@ -339,6 +353,7 @@ async def dm_push_senden(
                         token=r.token,
                         payload=payload,
                         badge=badges.get(r.user_id),
+                        lokal=lokal if (r.user_id, r.geraet_id) in ios else None,
                     )
                     for r in rows
                 ),

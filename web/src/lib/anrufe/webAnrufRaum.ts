@@ -1,16 +1,18 @@
 /**
- * Der Medienweg über `livekit-client` in der WebView — Browser, Electron,
- * Android und iOS-Bauten ohne nativen Anruf-Raum (`anrufMedien.ts`).
+ * Der Medienweg über `livekit-client` in der WebView — Browser, Electron und
+ * Android. **Nicht mehr die iOS-Hülle** (Eigentümer-Entscheid E6, 2026-10-18):
+ * dort läuft der Anruf nativ, und ein Bau ohne nativen Anruf-Raum meldet, dass
+ * die App zu aktualisieren ist (`anruf.svelte.ts`, `anrufNativWeiche.ts`).
+ * iPhone-Safari ohne Hülle geht diesen Weg ohne Session-Schaltung.
  *
  * Aus `anruf.svelte.ts` herausgelöst (Grössen-Policy, die Datei lag bei 705
  * Zeilen), ohne Verhaltensänderung: dieselben Ereignisse, dieselbe
- * Reihenfolge von Rufmodus, iOS-Session und Verbinden.
+ * Reihenfolge von Rufmodus und Verbinden.
  */
 
 import { ConnectionState, ExternalE2EEKeyProvider, Room, RoomEvent, Track } from 'livekit-client';
 
 import { setVoiceActive } from '$lib/platform/audioRoute';
-import { tonVoice } from '$lib/platform/iosTon';
 import { startAudioAbbruchfest } from '$lib/audio/abspielen';
 import type { AnrufMedien, AnrufMedienHaken, LaufenderAnruf } from './anrufMedien';
 import { base64ZuBytes } from './anrufSchluessel';
@@ -108,21 +110,6 @@ export class WebAnrufRaum implements AnrufMedien {
     // im Auto leises A2DP). So läuft der Anruf über die Anruf-Lautstärke und
     // der Mic-Dienst hält die Verbindung bei gesperrtem Bildschirm am Leben.
     await setVoiceActive(true);
-    // **iOS (Bauten ohne nativen Raum): hier fehlte die Audio-Session ganz**
-    // (gefunden 2026-10-08 beim Bau von Punkt 40). `setVoiceActive` ist
-    // Android-only; den iOS-Weg kannte nur der Sprachkanal, nicht der Anruf.
-    //
-    // Eigene Kennung, nicht `'sprachkanal'`: Anruf und Kanal laufen
-    // unabhängig, und mit einer gemeinsamen Kennung nähme das Auflegen dem
-    // Kanal die Session weg (s. `platform/iosTon.ts`).
-    //
-    // Abgewartet — dieselbe Regel wie im Sprachkanal: Session fertig, dann
-    // Mikrofon. Hier stand bis zum 2026-10-10 das Gegenteil, mit der
-    // Begründung, der native `setActive` halte den Hauptthread; am Gerät
-    // nachgemessen stimmt das nicht (die Zahlen und die wirkliche Ursache
-    // stehen bei der Schwesterstelle in `voice/livekit.svelte.ts`).
-    await tonVoice('anruf', true);
-
     await room.connect(zugang.ws_url, zugang.token);
     if (!aktuell()) {
       void room.disconnect();
@@ -153,6 +140,5 @@ export class WebAnrufRaum implements AnrufMedien {
     // Android: Ruf-Modus + Mic-Dienst freigeben (No-op außerhalb des Wrappers) —
     // sonst bleibt das Telefon im Call-Modus hängen (falscher Lautstärkeregler).
     void setVoiceActive(false);
-    void tonVoice('anruf', false);
   }
 }

@@ -19,6 +19,7 @@ import { fireInPageNotification, isDnd } from '$lib/notifications/inPage';
 import { m } from '$lib/paraglide/messages.js';
 import { sichtschutzAktiv } from '$lib/remote/sichtschutz';
 import { sounds } from '$lib/sounds/engine';
+import { mitteilungsAnlassMelden } from '$lib/platform/mitteilungsAnlass';
 import { userCache } from '$lib/stores/users.svelte';
 import { viewport } from '$lib/stores/viewport.svelte';
 import type { Message } from '$lib/api/types';
@@ -74,4 +75,7 @@ export function meldeNeueZustellung(
     guildId: null
   });
   if (!isDnd()) sounds.play('notification.dm');
+  // Eine Direktnachricht (keine Gruppe) bei offener App: Anlass für die
+  // Mitteilungsfrage, wie im Klartext-Weg (`dm_bump` in `chat.ts`).
+  if (!gruppenName) mitteilungsAnlassMelden();
 }

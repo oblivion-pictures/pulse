@@ -122,3 +122,25 @@ export function whepHostErlaubt(url: string, erlaubt: readonly (string | undefin
   });
   return hosts.includes(u.host);
 }
+
+/**
+ * Wann der Fehlschlag-Zähler des nativen Stream-Tons auf null geht (Review
+ * B12). Früher setzte jedes `verbinden` ihn zurück, sobald `#pfad` nach einem
+ * Fehlschlag `null` war — und die Kachel ruft `verbinden` mit derselben
+ * Adresse immer wieder. Bei dauerhaft scheiterndem nativem Ton wurde dadurch
+ * nie bis `VERSUCHE` gezählt, und der Rückfall auf den WebView-Ton kam nie.
+ * Jetzt: null nur, wenn der Ton WIRKLICH spielt, oder wenn ein anderer Stream
+ * (anderer `whepPfad`) beginnt — dessen Fehlschläge hat nicht der alte
+ * verursacht.
+ */
+export function fehlschlaegeNachPhase(zaehler: number, phase: string): number {
+  return phase === 'spielt' ? 0 : zaehler;
+}
+
+export function fehlschlaegeNachVerbinden(
+  zaehler: number,
+  letzterPfad: string | null,
+  pfad: string
+): number {
+  return pfad === letzterPfad ? zaehler : 0;
+}

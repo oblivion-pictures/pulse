@@ -38,6 +38,11 @@ public class SperrePlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["verfuegbar": ja])
     }
 
+    /// Rückgabe: `{ ok: true }` oder `{ ok: false, abgebrochen: Bool, grund: String }`.
+    /// `grund == "kein_code"`: das Gerät hat keinen Code mehr, die Sperre kann
+    /// nie wieder bestanden werden. Die Oberfläche hebt sie dann NICHT auf
+    /// (fail-closed) — sie bietet nur noch das Abmelden an. Sonst ist `grund`
+    /// der Systemtext des Fehlers (nur für Diagnose).
     @objc func pruefen(_ call: CAPPluginCall) {
         let grund = call.getString("grund") ?? "Pulse entsperren"
         let kontext = LAContext()
@@ -58,12 +63,33 @@ public class SperrePlugin: CAPPlugin, CAPBridgedPlugin {
                 let code = (fehler as? LAError)?.code
                 let abgebrochen =
                     code == .userCancel || code == .systemCancel || code == .appCancel
+                // **Kein Geräte-Code mehr** (nach dem Einschalten der Sperre
+                // entfernt): das ist KEINE Antwort des Nutzers, und
+                // Erneut-Versuchen hilft nie. Das Web lässt die Sperre trotzdem
+                // stehen (fail-closed) und zeigt den Weg über das Abmelden.
+                let keinCode = code == .passcodeNotSet && Self.geraetHatKeinenCode()
+                let systemtext = (fehler as NSError?)?.localizedDescription ?? ""
                 call.resolve([
                     "ok": false,
                     "abgebrochen": abgebrochen,
-                    "grund": (fehler as NSError?)?.localizedDescription ?? ""
+                    "grund": keinCode ? "kein_code" : systemtext
                 ])
             }
         }
+    }
+
+    /// Bestätigt per frischer Abfrage, dass das Gerät wirklich keinen Code hat.
+    ///
+    /// **Bewusst eng, fail-closed:** NUR `passcodeNotSet`, und nur, wenn eine
+    /// frische Abfrage derselben Richtlinie ebenfalls daran scheitert.
+    /// `biometryNotAvailable` zählt NICHT — es kann bei gesetztem Code
+    /// auftreten (Face-ID-Erlaubnis entzogen, vorübergehend), und die Sperre
+    /// würde sich dann selbst öffnen. `deviceOwnerAuthentication` fällt bei
+    /// Biometrie-Fehlern ohnehin auf den Geräte-Code zurück, ein
+    /// Biometrie-Fehler allein ist also nie ein Grund, die Sperre aufzugeben.
+    private static func geraetHatKeinenCode() -> Bool {
+        var fehler: NSError?
+        let moeglich = LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: &fehler)
+        return !moeglich && (fehler as? LAError)?.code == .passcodeNotSet
     }
 }

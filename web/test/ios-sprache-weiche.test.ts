@@ -67,13 +67,15 @@ test('K1: registerPlugin fuellt Plugins — isPluginAvailable fragt die Huelle',
   assert.equal(Capacitor.isPluginAvailable('SprachePlugin'), true);
 });
 
-test('ohne SprachePlugin im Bau: Web-Weg, Grund kein-plugin', async () => {
-  const { nativerSprachwegBefund } = await import('../src/lib/platform/iosSpracheWeiche.ts');
+test('ohne SprachePlugin im Bau: veraltet, Grund kein-plugin', async () => {
+  const { nativerSprachwegBefund, sprachwegVeraltet } = await import('../src/lib/platform/iosSpracheWeiche.ts');
   sprachKopfSetzen(null);
   assert.deepEqual(nativerSprachwegBefund(), { nativ: false, grund: 'kein-plugin' });
+  // E6: kein Rückfall auf die WebView — der Sprachkanal verlangt die Aktualisierung.
+  assert.equal(sprachwegVeraltet(nativerSprachwegBefund()), true);
 });
 
-test('Bau des Eigentuemer-Telefons (fuenf Methoden): Web-Weg, mit den fehlenden', async () => {
+test('Bau des Eigentuemer-Telefons (fuenf Methoden): veraltet, mit den fehlenden', async () => {
   const { nativerSprachwegBefund, nativerSprachwegDa } = await import(
     '../src/lib/platform/iosSpracheWeiche.ts'
   );
@@ -170,4 +172,32 @@ test('ausserhalb von iOS entscheidet die Plattform, nicht der Kopf', async () =>
     configurable: true
   });
   assert.deepEqual(nativerSprachwegBefund(), { nativ: false, grund: 'kein-ios' });
+});
+
+test('E6: veraltet heisst nur eine iOS-Hülle ohne vollständigen Weg', async () => {
+  const { sprachwegVeraltet } = await import('../src/lib/platform/iosSpracheWeiche.ts');
+  assert.equal(sprachwegVeraltet({ nativ: true }), false);
+  assert.equal(sprachwegVeraltet({ nativ: false, grund: 'kein-plugin' }), true);
+  assert.equal(
+    sprachwegVeraltet({ nativ: false, grund: 'methoden-fehlen', fehlen: ['taub'] }),
+    true
+  );
+  // Browser (auch iPhone-Safari ohne Hülle), Desktop, Android: der Web-Weg bleibt.
+  assert.equal(sprachwegVeraltet({ nativ: false, grund: 'kein-ios' }), false);
+});
+
+test('E6: connect() weicht in der iOS-Hülle nie auf die WebView aus', () => {
+  const src = readFileSync(
+    new URL('../src/lib/voice/livekit.svelte.ts', import.meta.url),
+    'utf8'
+  );
+  // Die Prüfung steht ganz vorn, vor Token-Abruf und Raum-Aufbau.
+  const veraltet = src.indexOf('if (sprachwegVeraltet(weiche))');
+  assert.ok(veraltet > 0, 'Prüfung fehlt');
+  assert.ok(veraltet < src.indexOf('getVoiceToken(channelId'), 'vor dem Token-Abruf');
+  assert.ok(veraltet < src.indexOf('new Room(this.#roomOptions())'), 'vor dem Raum');
+  assert.match(src, /this\.error = m\.voice_ios_app_veraltet\(\);\s*this\.#weicheMerken\(weiche\);\s*throw/);
+  // Die iOS-Session-Schaltung des Web-Sprachwegs ist weg.
+  assert.doesNotMatch(src, /tonVoice\('sprachkanal'/);
+  assert.doesNotMatch(src, /tonSystemFilterBeobachten/);
 });

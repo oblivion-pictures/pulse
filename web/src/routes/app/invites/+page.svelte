@@ -20,7 +20,6 @@
   import { guilds } from '$lib/stores/guilds.svelte';
   import { communityInvites } from '$lib/stores/communityInvites.svelte';
   import { currentServerUserId } from '$lib/stores/currentServerUser';
-  import { navDrawer } from '$lib/stores/navDrawer.svelte';
   import { selectGuild, selectDM } from '$lib/navigation/railNavi';
   import { viewport } from '$lib/stores/viewport.svelte';
 </script>
@@ -33,10 +32,7 @@
   onSelect={selectGuild}
   onCreateClick={() => goto('/app?add=create')}
   onJoinClick={() => goto('/app?add=join')}
-  onHomeClick={async () => {
-    navDrawer.open = !navDrawer.open;
-    await goto('/app/friends');
-  }}
+  onHomeClick={() => goto('/app/friends')}
 />
 
 {#if !viewport.isMobile}

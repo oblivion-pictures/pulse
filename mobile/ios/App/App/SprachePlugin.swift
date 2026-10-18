@@ -103,9 +103,6 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
         // dann gilt die Vorgabe (Apples Verarbeitung, 48 kbps).
         let kannNeu = call.getBool("kannNeuVerbinden") ?? false
         DispatchQueue.main.async { SpracheStand.geteilt.neuVerbindenMoeglich = kannNeu }
-        let ton = SpracheRaum.TonOptionen(
-            volle: call.getBool("volleTonqualitaet") ?? false,
-            bitrateKbps: call.getInt("bitrateKbps"))
         // In der Kette: ein Mikrofon-Befehl, der während des Aufbaus kommt,
         // wartet auf den Raum, statt auf dem alten oder keinem zu landen. Die
         // Brücken-Warteschlange allein hält das NICHT — der Aufbau läuft
@@ -114,7 +111,7 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
             try await SpracheRaum.geteilt.beitreten(
                 wsUrl: wsUrl, token: token, kanalId: kanalId, kanalName: kanalName,
                 communityName: communityName, stumm: stumm, taubStart: taub,
-                lautstaerken: je, gesamt: gesamt, ton: ton)
+                lautstaerken: je, gesamt: gesamt)
         }
     }
 

@@ -2,6 +2,23 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-18",
+      "date": "2026-10-18",
+      "style": "Sachlich",
+      "title": "Pulse auf dem Handy",
+      "items": [
+        "Auf dem Handy macht die Eingabetaste einen Zeilenumbruch, gesendet wird über den Pfeil.",
+        "Kanäle, Chats und Communitys haben auf dem Handy einen Menü-Knopf. Menüs öffnen sich als Blatt von unten und lassen sich nach unten wegwischen.",
+        "Langes Drücken auf eine Nachricht bietet jetzt auch „Text kopieren“.",
+        "„Nicht stören“ und der Schalter für Direktnachrichten gelten jetzt auch für Push-Mitteilungen.",
+        "Einladungslinks öffnen auf dem iPhone direkt die App.",
+        "Über „Teilen“ lassen sich mehrere Fotos, Videos und Dateien auf einmal an Pulse schicken.",
+        "Auf dem iPhone geht es mit einem Wisch vom linken Rand eine Ebene zurück.",
+        "Die iPhone-App folgt der Sprache des iPhones, der eingestellten Schriftgröße und VoiceOver.",
+        "Im Vollbild einer Übertragung blenden sich die Knöpfe nach kurzer Zeit aus."
+      ]
+    },
+    {
       "id": "2026-10-17.5",
       "date": "2026-10-17",
       "style": "Sachlich",

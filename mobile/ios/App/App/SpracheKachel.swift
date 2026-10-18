@@ -24,7 +24,39 @@ struct SpracheKachel: View {
     /// Front/Rück-Wechsel — nur auf der eigenen Kamerakachel gesetzt.
     var umschalten: (() -> Void)?
 
+    @ScaledMetric(relativeTo: .title3) private var kreis: CGFloat = 64
+    @ScaledMetric(relativeTo: .caption) private var zeichenGroesse: CGFloat = 11
+    @ScaledMetric(relativeTo: .caption) private var schildGroesse: CGFloat = 7
+
     var body: some View {
+        // **VoiceOver: die Kachel ist EIN Element** (Name, Zustand, Sprechen),
+        // nicht ein Haufen aus Kreis, Schrift und Zeichen. Der Kamera-Wechsel
+        // liegt daneben, nicht darin: ein zusammengefasstes Element schluckte
+        // den Knopf.
+        ZStack {
+            anzeige
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(beschreibung)
+                .accessibilityValue(sprichtJetzt
+                    ? NSLocalizedString("spricht gerade", comment: "Sprachkanal") : "")
+                .accessibilityAddTraits(.updatesFrequently)
+            if let umschalten {
+                VStack {
+                    wechselKnopf(umschalten)
+                    Spacer(minLength: 0)
+                }
+                .padding(8)
+            }
+        }
+        .aspectRatio(4.0 / 3.0, contentMode: .fit)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(SpracheFarben.rand, lineWidth: 1)
+        )
+    }
+
+    /// Alles Sichtbare der Kachel ausser dem Kamera-Wechsel.
+    private var anzeige: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(SpracheFarben.kachel)
@@ -32,17 +64,28 @@ struct SpracheKachel: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             ring
             VStack {
-                if let umschalten { wechselKnopf(umschalten) }
                 Spacer(minLength: 0)
                 fussZeile
             }
             .padding(8)
         }
-        .aspectRatio(4.0 / 3.0, contentMode: .fit)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(SpracheFarben.rand, lineWidth: 1)
-        )
+    }
+
+    private var sprichtJetzt: Bool { teilnehmer.isSpeaking }
+
+    /// „Name, stummgeschaltet" — was VoiceOver von der Kachel vorliest. Der
+    /// Sprechzustand steht im Wert (`accessibilityValue`), er wechselt oft.
+    private var beschreibung: String {
+        let zwang = stand.erzwungen(fuer: teilnehmer)
+        var teile = [teilnehmer.spracheAnzeigename]
+        if istBildschirm { teile.append(NSLocalizedString("Bildschirmfreigabe", comment: "Sprachkanal")) }
+        if zwang.stumm {
+            teile.append(NSLocalizedString("Vom Mod stummgeschaltet", comment: "Sprachkanal"))
+        } else if !teilnehmer.isMicrophoneEnabled() {
+            teile.append(NSLocalizedString("Stummgeschaltet", comment: "Sprachkanal"))
+        }
+        if zwang.taub { teile.append(NSLocalizedString("Vom Mod taubgeschaltet", comment: "Sprachkanal")) }
+        return teile.joined(separator: ", ")
     }
 
     // MARK: - Inhalt
@@ -70,10 +113,13 @@ struct SpracheKachel: View {
             .fill(SpracheFarben.marke.opacity(0.25))
             .overlay(
                 Text(teilnehmer.spracheKuerzel)
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(.title3, weight: .semibold))
                     .foregroundStyle(SpracheFarben.text)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                    .accessibilityHidden(true)
             )
-            .frame(width: 64, height: 64)
+            .frame(width: min(kreis, 110), height: min(kreis, 110))
     }
 
     // MARK: - Ring und Pegel
@@ -108,7 +154,7 @@ struct SpracheKachel: View {
             Spacer(minLength: 0)
             Button(action: tun) {
                 Image(systemName: "arrow.triangle.2.circlepath.camera")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(.subheadline, weight: .semibold))
                     .foregroundStyle(SpracheFarben.aufBild)
                     .frame(width: 36, height: 36)
                     .background(Color.black.opacity(0.55), in: Circle())
@@ -116,6 +162,7 @@ struct SpracheKachel: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel(NSLocalizedString("Kamera wechseln", comment: "Sprachkanal"))
+            .accessibilityHint(NSLocalizedString("Wechselt zwischen Front- und Rückkamera.", comment: "Sprachkanal"))
         }
     }
 
@@ -144,11 +191,11 @@ struct SpracheKachel: View {
             }
             if istBildschirm {
                 Image(systemName: "rectangle.on.rectangle")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: min(zeichenGroesse, 20), weight: .semibold))
                     .foregroundStyle(SpracheFarben.aufBild.opacity(0.7))
             }
             Text(teilnehmer.spracheAnzeigename)
-                .font(.system(size: 12, weight: .medium))
+                .font(.caption.weight(.medium))
                 .foregroundStyle(SpracheFarben.aufBild)
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -160,12 +207,12 @@ struct SpracheKachel: View {
 
     private func zeichen(_ symbol: String, mitSchild: Bool, beschriftung: String) -> some View {
         Image(systemName: symbol)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: min(zeichenGroesse, 20), weight: .semibold))
             .foregroundStyle(SpracheFarben.warnungAufBild)
             .overlay(alignment: .bottomTrailing) {
                 if mitSchild {
                     Image(systemName: "shield.fill")
-                        .font(.system(size: 7, weight: .bold))
+                        .font(.system(size: min(schildGroesse, 13), weight: .bold))
                         .foregroundStyle(SpracheFarben.schild)
                         .offset(x: 3, y: 3)
                 }

@@ -139,25 +139,33 @@ private struct SpracheBildImBildFlaeche: View {
 struct SpracheBildImBildKnopf: View {
     @ObservedObject private var bild = SpracheBildImBild.geteilt
     let fehlerMelden: (String) -> Void
+    @ScaledMetric(relativeTo: .headline) private var flaeche: CGFloat = 44
 
     var body: some View {
         if bild.knopfZeigen {
             Menu {
                 Toggle(isOn: $bild.automatisch) {
-                    Label(NSLocalizedString("Beim Verlassen der App automatisch", comment: "Sprachkanal"),
+                    Label(NSLocalizedString(
+                        "Bild-in-Bild beim Verlassen der App automatisch starten", comment: "Sprachkanal"),
                           systemImage: "rectangle.portrait.and.arrow.right")
                 }
+                .accessibilityHint(NSLocalizedString(
+                    "Startet Bild-in-Bild von selbst, wenn du Pulse verlässt, solange du im Sprachkanal bist.",
+                    comment: "Sprachkanal"))
             } label: {
                 Image(systemName: bild.aktiv ? "pip.exit" : "pip.enter")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(SpracheFarben.text)
-                    .frame(width: 44, height: 44)
+                    .frame(width: min(flaeche, 64), height: min(flaeche, 64))
             } primaryAction: {
+                SpracheHaptik.leicht.ausloesen()
                 bild.umschalten()
             }
             .accessibilityLabel(bild.aktiv
                 ? NSLocalizedString("Bild-in-Bild beenden", comment: "Sprachkanal")
                 : NSLocalizedString("Bild-in-Bild", comment: "Sprachkanal"))
+            .accessibilityHint(NSLocalizedString(
+                "Tippen schaltet um. Gedrückt halten für Optionen.", comment: "Sprachkanal"))
             .onChange(of: bild.fehler) { neu in
                 if let neu { fehlerMelden(neu) }
             }

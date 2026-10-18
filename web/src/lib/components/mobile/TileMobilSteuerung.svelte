@@ -16,8 +16,14 @@
   Hochformat gelockt war — im Hochformat sind links und rechts null. Mit dem
   Querformat fürs Stream-Vollbild (Punkt 27) wandert die Aussparung an eine
   Seite, und genau dort sitzen Schliessen, Lautstärke und Vollbild-Ausstieg.
-  Oben und unten bleiben bei `top-2`/`bottom-2`: im Querformat sind sie klein,
-  und im Hochformat liegt die Kachel nicht am Bildrand.
+  Seitlich entfällt es nur in der KACHEL der iOS-Hülle: dort hat die Shell die
+  Aussparung schon abgezogen (sonst stünde sie doppelt, `seiteLinks`).
+  Oben und unten gilt `top-2`/`bottom-2` nur in der KACHEL (sie liegt nicht am
+  Bildrand). Im selbst gebauten Vollbild (`TileShell`, `fixed inset-0`) liegen
+  die Knöpfe AM Bildrand: im Hochformat unter der Dynamic Island und über dem
+  Home-Balken, im Querformat über dem Home-Balken — dort setzen
+  `--safe-top`/`--safe-bottom` den Abstand, aber nur in der iOS-Hülle
+  (`ios:`-Variante), Android und Browser behalten ihre Lage.
 
   Eine Komponente für beide Lagen (Kachel und Vollbild) statt zweier Zweige:
   die Knöpfe sind dieselben, nur das Ausblenden nach Ruhe (`fadeClass`) und der
@@ -33,6 +39,7 @@
   import MessageSquareIcon from '@lucide/svelte/icons/message-square';
   import ListVideoIcon from '@lucide/svelte/icons/list-video';
   import { m } from '$lib/paraglide/messages.js';
+  import { isCapacitorIOS } from '$lib/platform/runtime';
   import BildImBildKnopf from '$lib/stream/components/BildImBildKnopf.svelte';
 
   let {
@@ -83,8 +90,22 @@
   const gerastert = $derived(volume === undefined ? 0 : Math.round(volume / 5) * 5);
   const hatLautstaerke = $derived(onVolumeChange !== undefined && volume !== undefined);
 
+  // Im Vollbild halten die Knöpfe Abstand zur Aussparung (nur iOS-Hülle).
+  const obenKlasse = $derived(isFullscreen ? 'ios:top-[calc(0.5rem+var(--safe-top))]' : '');
+  const untenKlasse = $derived(isFullscreen ? 'ios:bottom-[calc(0.5rem+var(--safe-bottom))]' : '');
+
+  // Nur in der iOS-HÜLLE hat die Shell die seitliche Aussparung außerhalb des
+  // Vollbilds schon abgezogen (`routes/app/+layout.svelte`:
+  // `ios:handy:pl/pr-[var(--safe-…)]`) — ein zweites Mal stünde der Abstand
+  // doppelt. Im selbst gebauten Vollbild (`fixed inset-0`) und überall sonst
+  // gilt es wie bisher.
+  const seitenAbzug = $derived(!isFullscreen && isCapacitorIOS());
+  const seiteLinks = $derived(seitenAbzug ? '0px' : 'var(--safe-left)');
+  const seiteRechts = $derived(seitenAbzug ? '0px' : 'var(--safe-right)');
+  // 44 pt (`size-11`): die Mindestfläche, die Apple und Material für einen
+  // Finger nennen. Vorher 40 pt, die Lautstärke-Knöpfe 36 pt.
   const RUND =
-    'flex size-10 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors hover:bg-black/65';
+    'flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors hover:bg-black/65';
 </script>
 
 <!-- Oben links: zurück (Kachel schliessen) beziehungsweise Vollbild verlassen.
@@ -92,8 +113,8 @@
 {#if isFullscreen ? zeigeVollbildAus : !!onHide}
   <button
     type="button"
-    class="absolute top-2 z-30 {RUND} {fadeClass}"
-    style="left: calc(0.5rem + var(--safe-left))"
+    class="absolute top-2 z-30 {RUND} {obenKlasse} {fadeClass}"
+    style="left: calc(0.5rem + {seiteLinks})"
     onclick={() => (isFullscreen ? onToggleFullscreen() : onHide?.())}
     aria-label={isFullscreen ? m.tile_shell_fullscreen_exit() : m.tile_shell_hide_tile()}
     data-pip-hide
@@ -111,8 +132,8 @@
      selbst ausblendet, wo es nicht trägt. -->
 {#if onToggleChat || onToggleQueue || video}
   <div
-    class="absolute top-2 z-30 flex items-center gap-2 {fadeClass}"
-    style="right: calc(0.5rem + var(--safe-right))"
+    class="absolute top-2 z-30 flex items-center gap-2 {obenKlasse} {fadeClass}"
+    style="right: calc(0.5rem + {seiteRechts})"
   >
     <BildImBildKnopf {video} klasse={RUND} pipHide testid={`${testidPrefix}-pip-float`} />
     {#if onToggleQueue}
@@ -148,7 +169,7 @@
   <button
     type="button"
     class="absolute bottom-2 z-20 {RUND}"
-    style="right: calc(0.5rem + var(--safe-right))"
+    style="right: calc(0.5rem + {seiteRechts})"
     onclick={onToggleFullscreen}
     aria-label={m.tile_shell_fullscreen_enter()}
     data-pip-hide
@@ -164,8 +185,8 @@
      die Lautstärke auf 0 gezogen hat. -->
 {#if hatLautstaerke}
   <div
-    class="absolute bottom-2 z-30 {fadeClass}"
-    style="left: calc(0.5rem + var(--safe-left))"
+    class="absolute bottom-2 z-30 {untenKlasse} {fadeClass}"
+    style="left: calc(0.5rem + {seiteLinks})"
   >
     <div
       class="flex items-center gap-0.5 rounded-full bg-black/45 px-1 text-white backdrop-blur-sm"
@@ -175,7 +196,7 @@
       {#if onToggleMute}
         <button
           type="button"
-          class="flex size-9 items-center justify-center rounded-full transition-colors hover:bg-black/65"
+          class="flex size-11 items-center justify-center rounded-full transition-colors hover:bg-black/65"
           onclick={onToggleMute}
           aria-label={gerastert === 0 ? m.tile_shell_unmute() : m.tile_shell_mute()}
           data-testid={`${testidPrefix}-mute-float`}
@@ -189,7 +210,7 @@
       {/if}
       <button
         type="button"
-        class="flex size-9 items-center justify-center rounded-full transition-colors hover:bg-black/65"
+        class="flex size-11 items-center justify-center rounded-full transition-colors hover:bg-black/65"
         onclick={() => onVolumeChange?.(Math.max(0, gerastert - 5))}
         aria-label={m.tile_shell_volume_down()}
         data-testid={`${testidPrefix}-volume-down`}
@@ -202,7 +223,7 @@
       >
       <button
         type="button"
-        class="flex size-9 items-center justify-center rounded-full transition-colors hover:bg-black/65"
+        class="flex size-11 items-center justify-center rounded-full transition-colors hover:bg-black/65"
         onclick={() => onVolumeChange?.(Math.min(volumeMax ?? 200, gerastert + 5))}
         aria-label={m.tile_shell_volume_up()}
         data-testid={`${testidPrefix}-volume-up`}

@@ -120,7 +120,7 @@ test('Web und Hülle sprechen dieselben Felder und Ereignisse', () => {
   const wache = lesen('../../mobile/ios/App/App/SpracheMikroWache.swift');
   const web = lesen('../src/lib/platform/iosSprache.ts');
   const webWache = lesen('../src/lib/platform/iosSpracheWache.ts');
-  for (const feld of ['volleTonqualitaet', 'bitrateKbps']) {
+  for (const feld of ['kannNeuVerbinden']) {
     assert.match(web, new RegExp(`${feld}:`), `Web schickt ${feld} nicht`);
     assert.match(plugin, new RegExp(`call\\.get\\w+\\("${feld}"\\)`), `Hülle liest ${feld} nicht`);
   }
@@ -163,4 +163,74 @@ test('jeder Anlass der Hülle ist im Web als Anlass bekannt', () => {
   for (const a of ['beitritt', 'verlassen', 'unterbrechung_beginn', 'maschine_neu', 'wache_erholt', 'bild_spielt', 'bild_nach_geste', 'bild_abgebrochen']) {
     assert.ok(!d.ANLAESSE.has(a), `${a} darf kein Anlass sein`);
   }
+});
+
+// --- Review B11: eigenes Budget für bild_*, Anlass überlebt das App-Ende ---
+
+test('B11: bild_* und alles andere haben getrennte Budgets', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 120_000_000_000 });
+  const gesendet: string[][] = [];
+  d.berichtSenderSetzen(async (b) => {
+    gesendet.push(b.anlaesse);
+    return true;
+  });
+  assert.equal(d.gruppeVon('bild_haengt'), 'bild');
+  assert.equal(d.gruppeVon('mikro_tot'), 'ton');
+  d.iosTonMelden('bild_haengt');
+  t.mock.timers.tick(d.SAMMEL_MS + 1);
+  await Promise.resolve();
+  assert.equal(gesendet.length, 1);
+  // Eine Minute später: das echte Mikro-Problem wird NICHT vom Bildstart gedrosselt …
+  t.mock.timers.tick(MIN);
+  d.iosTonMelden('mikro_tot');
+  t.mock.timers.tick(d.SAMMEL_MS + 1);
+  await Promise.resolve();
+  assert.deepEqual(gesendet.at(-1), ['mikro_tot']);
+  // … und ein zweiter Bildstart-Anlass ist durch das Bild-Budget gedrosselt.
+  t.mock.timers.tick(MIN);
+  d.iosTonMelden('bild_fehler');
+  t.mock.timers.tick(d.SAMMEL_MS + 1);
+  await Promise.resolve();
+  assert.equal(gesendet.length, 2);
+  d.berichtSenderSetzen(null);
+});
+
+test('B11: ein offener Anlass wird gemerkt und beim nächsten Start nachgereicht', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 200_000_000_000 });
+  const SCHLUESSEL = 'pulse.diag.ios_ton_offen';
+  d.berichtSenderSetzen(async () => true);
+  d.iosTonMelden('mikro_tot');
+  const gemerkt = JSON.parse(ablage.get(SCHLUESSEL) ?? 'null') as { anlaesse: string[] } | null;
+  assert.deepEqual(gemerkt?.anlaesse, ['mikro_tot'], 'der Anlass steht im Speicher');
+  // Die App endet, bevor der Sammler feuert: neuer Start = neues Modul-Leben,
+  // hier nachgestellt durch einen frischen Sender bei gleichem Speicher.
+  const alterBestand = ablage.get(SCHLUESSEL);
+  d.berichtSenderSetzen(null);
+  ablage.delete('pulse.diag.ios_ton_berichte');
+  t.mock.timers.tick(15 * MIN);
+  ablage.set(SCHLUESSEL, alterBestand ?? '');
+  const gesendet: string[][] = [];
+  d.berichtSenderSetzen(async (b) => {
+    gesendet.push(b.anlaesse);
+    return true;
+  });
+  await Promise.resolve();
+  assert.equal(gesendet.length, 1);
+  assert.deepEqual(gesendet[0].sort(), ['mikro_tot', 'nachgereicht']);
+  assert.equal(ablage.has(SCHLUESSEL), false, 'nach dem Versand ist der Merker weg');
+  d.berichtSenderSetzen(null);
+});
+
+test('B11: Gemerktes wird nur aus bekannten Anlässen und nur frisch gelesen', () => {
+  const jetzt = 10 * 24 * 60 * MIN;
+  const lesen = (o: unknown) => d.offenenBerichtLesen(JSON.stringify(o), jetzt);
+  assert.deepEqual(lesen({ start: jetzt - MIN, anlaesse: ['mikro_tot', 'geheim:abc', 7] }), {
+    start: jetzt - MIN,
+    anlaesse: ['mikro_tot']
+  });
+  assert.equal(lesen({ start: jetzt - MIN, anlaesse: ['unbekannt'] }), null);
+  assert.equal(lesen({ start: jetzt - 25 * 60 * MIN, anlaesse: ['mikro_tot'] }), null, 'zu alt');
+  assert.equal(lesen({ start: jetzt + MIN, anlaesse: ['mikro_tot'] }), null, 'Uhr zurückgesprungen');
+  assert.equal(d.offenenBerichtLesen('kein json', jetzt), null);
+  assert.equal(d.offenenBerichtLesen(null, jetzt), null);
 });

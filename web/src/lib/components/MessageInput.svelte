@@ -199,6 +199,19 @@
       });
       addFiles([datei]);
     }
+    // iOS, mehrere Dateien: erst jetzt aus der Hülle holen, dann durch
+    // dieselbe Anhang-Pipeline wie eine gewählte Datei.
+    if (paket.paketId && paket.dateien?.length) {
+      const startKanal = channelId;
+      const { geteilteDateienHolen } = await import('$lib/freigabe/freigabeUebernahme');
+      const geladen = await geteilteDateienHolen(
+        paket.paketId,
+        paket.dateien,
+        paket.uebersprungen ?? 0,
+        () => channelId === startKanal
+      );
+      if (geladen.length) addFiles(geladen);
+    }
   }
 
   $effect(() => {
@@ -278,8 +291,8 @@
 
   /** Zwei Dinge hängen am erfolgreichen Senden, und beide entscheiden selbst,
    *  ob sie dran sind: der Zähler für die Bewertungsfrage (ab 20 Nachrichten,
-   *  `bewertungRegel.ts`) und die Frage nach der Mitteilungs-Erlaubnis (ab 3,
-   *  mit Vorerklärung — `berechtigungRegel.ts`).
+   *  `bewertungRegel.ts`) und die Frage nach der Mitteilungs-Erlaubnis (schon
+   *  ab der ersten Nachricht, mit Vorerklärung — `berechtigungRegel.ts`).
    *
    *  **Warum ausgerechnet hier.** Die Mitteilungs-Erlaubnis wurde vorher beim
    *  START abgefragt, und der iOS-Dialog erscheint genau EINMAL: ein „nein"
@@ -303,6 +316,11 @@
       return;
     }
     if (e.key === 'Escape' && replyTo) { e.preventDefault(); onCancelReply?.(); return; }
+    // Handy: Return macht einen Zeilenumbruch (der Browser fügt ihn selbst ein,
+    // `enterkeyhint="enter"` unten beschriftet die Taste), gesendet wird nur über
+    // den Senden-Knopf — die Bildschirmtastatur hat kein Shift+Return, eine
+    // mehrzeilige Nachricht wäre sonst unmöglich. Desktop und Tablet: Enter sendet.
+    if (viewport.istHandy) return;
     // !e.isComposing: während einer IME-Komposition (CJK) bestätigt Enter den
     // Kandidaten — NICHT senden, sonst ginge der noch nicht committete Text
     // verloren (compositionend feuert erst nach diesem keydown).
@@ -376,7 +394,7 @@
     />
     <!-- `min-h-*` + `py-*` in zwei Grössen: Der Kasten ist damit jeweils so hoch
          wie die Knöpfe daneben und führt seine Zeile selbst mittig — 44px auf dem
-         Handy (`size-10`-Knöpfe: 24px Zeilenhöhe + 2x8px Abstand), 36px ab
+         Handy (`size-11`-Knöpfe: 24px Zeilenhöhe + 2x10px Abstand), 36px ab
          Tablet (`nicht-handy:size-9`: 24px + 2x6px). Weil die Reihe mit `items-end`
          unten ausrichtet, würde ein niederer Kasten mit seiner Unterkante an
          den Knöpfen kleben und die Textzeile unter die Feldmitte rutschen
@@ -387,6 +405,7 @@
     <textarea
       bind:this={textarea}
       rows="1"
+      enterkeyhint={viewport.istHandy ? 'enter' : undefined}
       bind:value={text}
       onkeydown={onKeydown}
       oninput={() => { mentionOverlay?.update(); if (text.trim()) onTyping?.(); }}
@@ -400,7 +419,7 @@
       onfocus={() => (eingabeFokus = true)}
       placeholder={effectivePlaceholder}
       {disabled}
-      class="text-text-bright placeholder:text-text-muted max-h-40 min-h-10 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-2 text-base nicht-handy:text-[15px] leading-6 outline-none disabled:cursor-not-allowed disabled:opacity-60 nicht-handy:min-h-9 nicht-handy:py-1.5"
+      class="text-text-bright placeholder:text-text-muted max-h-40 min-h-11 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-2.5 text-base nicht-handy:text-[15px] leading-6 outline-none disabled:cursor-not-allowed disabled:opacity-60 nicht-handy:min-h-9 nicht-handy:py-1.5"
       data-testid="message-input"
     ></textarea>
     <MentionTriggerOverlay

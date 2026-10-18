@@ -10,6 +10,13 @@
  * button doesn't also trigger that button. The native touch context menu
  * is suppressed for the same gesture — our sheet is the only thing meant
  * to open.
+ *
+ * `contextmenu` unterdrückt nur das Menü von Android/Chromium. iOS öffnet bei
+ * demselben Langdruck zusätzlich Textauswahl samt Lupe und das Link-Callout —
+ * das kommt NICHT als `contextmenu`, sondern lässt sich nur per CSS abstellen:
+ * `-webkit-touch-callout: none` und `user-select: none` an der Nachrichtenzeile
+ * (`MessageRowLayout`/`MessageBubbleLayout`, `ios:handy:`). Den Text holt man
+ * sich dort über „Text kopieren" im Aktionsblatt.
  */
 import type { Action } from 'svelte/action';
 

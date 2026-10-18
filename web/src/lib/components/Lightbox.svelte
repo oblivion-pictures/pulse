@@ -222,7 +222,7 @@
 
       <button
         type="button"
-        class="absolute right-16 top-[max(1rem,var(--safe-top))] rounded-full bg-black/60 p-2 text-white hover:bg-black/80 disabled:opacity-50"
+        class="absolute right-16 top-[max(1rem,var(--safe-top))] rounded-full bg-black/60 p-2 handy:p-3 text-white hover:bg-black/80 disabled:opacity-50"
         onclick={() => void herunterladen()}
         disabled={laeuft}
         aria-label={m.lightbox_download()}
@@ -236,7 +236,7 @@
         {#snippet child({ props })}
           <button
             {...props}
-            class="absolute right-4 top-[max(1rem,var(--safe-top))] rounded-full bg-black/60 p-2 text-white hover:bg-black/80"
+            class="absolute right-4 top-[max(1rem,var(--safe-top))] rounded-full bg-black/60 p-2 handy:p-3 text-white hover:bg-black/80"
             aria-label={m.lightbox_close()}
             data-testid="lightbox-close"
           >

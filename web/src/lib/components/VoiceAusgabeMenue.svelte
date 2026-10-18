@@ -101,8 +101,8 @@
    * nicht: es dreht unsere Session — die meldet danach brav `Receiver` —,
    * während die aktive Systemroute auf dem Lautsprecher bleibt. Der zweite
    * Versuch über die W3C-Audio-Session-API kam bei WebKit an, nahm
-   * `DefaultToSpeaker` aber nicht weg (Zahlen an `WEB_AUDIO_SESSION_AN` in
-   * `platform/iosTon.ts`).
+   * `DefaultToSpeaker` aber nicht weg (Messung vom 2026-10-10 in der
+   * Git-Historie von `platform/iosTonWebkit.ts`, seither entfernt).
    *
    * **Auf Android bleibt der Eintrag**, dort trägt er: die WebView teilt die
    * Audio-Session der App, und `AudioRoutePlugin` schaltet sie wirklich um.

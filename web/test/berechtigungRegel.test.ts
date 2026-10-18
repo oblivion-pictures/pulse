@@ -10,7 +10,7 @@ import {
 } from '../src/lib/platform/berechtigungRegel.ts';
 
 const lage = (teil: Partial<Lage> = {}): Lage => ({
-  art: 'mikrofon',
+  art: 'kamera',
   stand: 'offen',
   iosHuelle: true,
   schonAbgelehnt: false,
@@ -28,8 +28,7 @@ test('erteilt oder verweigert: ohne Blatt weiter, der Dialog erscheint ohnehin n
   assert.equal(vorgehenVorDemDialog(lage({ stand: 'verweigert' })), 'weiter');
 });
 
-test('Mikrofon und Kamera: die Handlung erklaert sich selbst, das Blatt kommt sofort', () => {
-  assert.equal(vorgehenVorDemDialog(lage({ art: 'mikrofon', sendungen: 0 })), 'erklaeren');
+test('Kamera: die Handlung erklaert sich selbst, das Blatt kommt sofort', () => {
   assert.equal(vorgehenVorDemDialog(lage({ art: 'kamera', sendungen: 0 })), 'erklaeren');
 });
 
@@ -75,12 +74,11 @@ test('nur ein anlassloses "spaeter" wird dauerhaft gemerkt', () => {
   // Mitteilungen haben keine ausloesende Handlung: "spaeter" heisst "frag mich
   // nicht wieder".
   assert.equal(ablehnungMerken('mitteilungen'), true);
-  // Kamera und Mikrofon werden von einer Handlung ausgeloest: "spaeter" bricht
+  // Die Kamera wird von einer Handlung ausgeloest: "spaeter" bricht
   // die Handlung ab und sagt nichts ueber die naechste. Wuerde man es merken,
   // kaeme beim naechsten Oeffnen der System-Dialog OHNE Erklaerung — genau
   // das, was dieser Punkt verhindern soll.
   assert.equal(ablehnungMerken('kamera'), false);
-  assert.equal(ablehnungMerken('mikrofon'), false);
 });
 
 test('ein „später" vor der Mitteilungsfrage hält eine Weile, nicht für immer (F3)', async () => {
@@ -101,10 +99,10 @@ test('ein „später" vor der Mitteilungsfrage hält eine Weile, nicht für imme
 });
 
 // Eigentümer-Entscheid 2026-10-16: Android behält den alten Weg.
-test('Android-Hülle: kein Blatt, auch nicht vor Kamera und Mikrofon', () => {
+test('Android-Hülle: kein Blatt, auch nicht vor der Kamera', () => {
   // Die Android-Hülle meldet `iosHuelle: false` — wie im Browser geht es
   // ohne Blatt direkt an den System-Dialog.
-  for (const art of ['mikrofon', 'kamera', 'mitteilungen'] as const) {
+  for (const art of ['kamera', 'mitteilungen'] as const) {
     assert.equal(vorgehenVorDemDialog(lage({ art, iosHuelle: false, sendungen: 9 })), 'weiter');
   }
 });
@@ -116,4 +114,40 @@ test('Mitteilungsfrage: Android beim Start, iOS nach einem Anlass, sonst nirgend
   assert.equal(mitteilungenNachAnlassFragen('ios'), true);
   assert.equal(mitteilungenNachAnlassFragen('android'), false);
   assert.equal(mitteilungenNachAnlassFragen(null), false);
+});
+
+test('die erste eigene Sendung genügt als Anlass', () => {
+  assert.equal(SENDUNGEN_BIS_ZUR_MITTEILUNGSFRAGE, 1);
+  assert.equal(vorgehenVorDemDialog(lage({ art: 'mitteilungen', sendungen: 0 })), 'nicht');
+  assert.equal(vorgehenVorDemDialog(lage({ art: 'mitteilungen', sendungen: 1 })), 'erklaeren');
+});
+
+test('ein anderer Anlass ohne eigene Sendung: das Blatt kommt', () => {
+  // Angenommene Freundschaftsanfrage, erste eingehende DM.
+  assert.equal(
+    vorgehenVorDemDialog(lage({ art: 'mitteilungen', sendungen: 0, anlass: true })),
+    'erklaeren'
+  );
+});
+
+test('ein anderer Anlass hebelt weder "spaeter" noch eine entschiedene Lage aus', () => {
+  assert.equal(
+    vorgehenVorDemDialog(
+      lage({ art: 'mitteilungen', anlass: true, schonAbgelehnt: true })
+    ),
+    'nicht'
+  );
+  assert.equal(
+    vorgehenVorDemDialog(lage({ art: 'mitteilungen', anlass: true, stand: 'verweigert' })),
+    'weiter'
+  );
+  assert.equal(
+    vorgehenVorDemDialog(lage({ art: 'mitteilungen', anlass: true, iosHuelle: false })),
+    'weiter'
+  );
+});
+
+test('der Anlass gilt nur für Mitteilungen', () => {
+  // Kamera und Mikrofon haben ihre Handlung; der Merker ändert dort nichts.
+  assert.equal(vorgehenVorDemDialog(lage({ art: 'kamera', anlass: true })), 'erklaeren');
 });

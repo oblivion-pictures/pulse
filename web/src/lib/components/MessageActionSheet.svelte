@@ -4,6 +4,11 @@
    * (`MessageActions.svelte`) is invisible without a pointer hover — on
    * touch this sheet is the only path to react / reply / edit / delete.
    * Opened via `use:longpress` on the message row.
+   *
+   * „Text kopieren" steht hier, weil die Handy-Zeile in der iOS-Hülle keine
+   * Textauswahl mehr zulässt (`user-select: none` an `MessageRowLayout` /
+   * `MessageBubbleLayout`): Auswahl samt Lupe und das Aktionsblatt kamen sich
+   * bei demselben Langdruck in die Quere. Das Blatt ist der Weg an den Text.
    */
   import BottomSheet from '$lib/components/mobile/BottomSheet.svelte';
   import ReplyIcon from '@lucide/svelte/icons/reply';
@@ -14,9 +19,12 @@
   import PinIcon from '@lucide/svelte/icons/pin';
   import PinOffIcon from '@lucide/svelte/icons/pin-off';
   import InfoIcon from '@lucide/svelte/icons/info';
+  import CopyIcon from '@lucide/svelte/icons/copy';
+  import { toast } from 'svelte-sonner';
   import EmojiPicker from './EmojiPicker.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import MenuRow from '$lib/components/menu/MenuRow.svelte';
+  import { haptikTicken } from '$lib/platform/haptik';
 
   let {
     open = $bindable(false),
@@ -31,7 +39,8 @@
     onReact,
     onReport,
     onTogglePin,
-    onInfo
+    onInfo,
+    kopierText = ''
   }: {
     open?: boolean;
     canEdit: boolean;
@@ -47,11 +56,21 @@
     onTogglePin?: () => void;
     /** Wer hat gelesen? Nur an eigenen Gruppennachrichten gesetzt. */
     onInfo?: () => void;
+    /** Der Klartext der Nachricht; leer = kein „Text kopieren". */
+    kopierText?: string;
   } = $props();
 
   // Hand-picked frequent reactions — the full grid is one tap away.
   const QUICK = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
   let pickerView = $state(false);
+
+  // Das Blatt geht auf — kurzer Tick (nur iOS-Hülle, sonst No-op), nur beim
+  // Übergang von zu auf, nicht bei jeder Neuauswertung.
+  let warOffen = false;
+  $effect(() => {
+    if (open && !warOffen) haptikTicken();
+    warOffen = open;
+  });
 
   function close() {
     open = false;
@@ -59,6 +78,15 @@
   }
   function react(emoji: string) {
     onReact?.(emoji);
+    close();
+  }
+  async function kopieren() {
+    try {
+      await navigator.clipboard.writeText(kopierText);
+      toast.success(m.message_action_sheet_copied());
+    } catch {
+      toast.error(m.message_action_sheet_copy_failed());
+    }
     close();
   }
   function run(action: () => void) {
@@ -117,6 +145,17 @@
       <ReplyIcon class="text-text-muted size-5 shrink-0" />
       {m.message_action_sheet_reply()}
     </MenuRow>
+
+    {#if kopierText.trim()}
+      <MenuRow
+        density="comfortable"
+        data-testid="sheet-action-copy"
+        onclick={() => void kopieren()}
+      >
+        <CopyIcon class="text-text-muted size-5 shrink-0" />
+        {m.message_action_sheet_copy()}
+      </MenuRow>
+    {/if}
 
     {#if canEdit}
       <MenuRow

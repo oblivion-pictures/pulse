@@ -73,8 +73,7 @@ test('S1a: ohne nativen Sprachweg kein nativer Stream-Ton, auch mit vollem Plugi
   const { streamTonNativDa } = await import('../src/lib/platform/iosStreamTonNativ.ts');
   streamKopfSetzen(kopf('StreamTonPlugin', swiftMethoden('StreamTonPlugin.swift')));
   assert.equal(streamTonNativDa(), true);
-  // Sprache über den Web-Weg (hier: Bau ohne SprachePlugin; der Notschalter
-  // `NATIVER_SPRACHWEG_AN` führt in denselben Zweig der Weiche).
+  // Bau ohne SprachePlugin (zu alt): kein nativer Stream-Ton.
   kopfSetzen('SprachePlugin', null);
   assert.equal(streamTonNativDa(), false);
   kopfSetzen('SprachePlugin', kopf('SprachePlugin', swiftMethoden('SprachePlugin.swift')));

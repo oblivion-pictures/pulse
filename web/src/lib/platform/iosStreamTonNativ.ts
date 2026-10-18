@@ -90,9 +90,10 @@ const SOFORT_FRIST_MS = 3_000;
  * reiht den Ruf VOR jedes spätere `starten` (eine Kette, `StreamTonPlugin`).
  *
  * **An der Fähigkeit des Baus, NICHT an `streamTonNativDa()`** (Gegenprüfung
- * 2, V4): ist der native Sprachweg per Notschalter aus, bietet die Seite den
- * nativen Ton nicht an — eine frühere Seite kann ihn aber gestartet haben,
- * und gerade dann darf er nicht neben dem Web-Sprachweg weiterlaufen.
+ * 2, V4): trägt der Bau den nativen Sprachweg nicht vollständig, bietet die
+ * Seite den nativen Ton nicht an — eine frühere Seite kann ihn aber gestartet
+ * haben, und gerade dann darf er nicht neben einer Aufnahme der WebView
+ * weiterlaufen.
  */
 let aufgeraeumt: Promise<void> | null = null;
 export function streamTonAufraeumen(): Promise<void> {
@@ -109,9 +110,8 @@ export function streamTonAufraeumen(): Promise<void> {
  * Der Stream-Ton erklärt WebKit `ambient`, und unter `ambient` hat eine
  * Aufnahme der WebView keinen Eingang — WebKit nimmt die Übersteuerung VOR
  * der Aufnahme-Regel (`MediaSessionManagerCocoa.mm`). Läuft die Sprache über
- * den Web-Weg (Notschalter `NATIVER_SPRACHWEG_AN`, unvollständiger Bau),
- * nähme schon das Öffnen einer Kachel dem Kanal das Mikrofon — ausgerechnet
- * auf dem Rückweg, den der Notschalter sichern soll. `nativerSprachwegDa`
+ * WebKit (heute nur noch der Web-Anruf eines zu alten Baus), nähme schon das
+ * Öffnen einer Kachel dem Gespräch das Mikrofon. `nativerSprachwegDa`
  * prüft auch die Plattform.
  */
 export function streamTonNativDa(): boolean {

@@ -66,13 +66,6 @@
     queuePanel
   }: TileShellProps = $props();
 
-  // Handy quer: die Kachel springt automatisch ins Element-Vollbild (Kippen).
-  // **Seit der Geräteklassen-Vereinheitlichung (2026-09-04) tot:** der alte
-  // Ausdruck `istHandy && !isMobile` verglich dieselbe Klasse mit ihrer
-  // eigenen Negation und war damit immer falsch — das hier erhält dieses
-  // Verhalten bit-identisch (false), eine Wiederbelebung fürs Tablet wäre
-  // eine Verhaltensänderung und gehört nicht in die Geräte-Trennung.
-  const quer = false;
   const KindIcon = $derived(
     { hq: RocketIcon, screen: MonitorIcon, cam: VideoIcon, party: ClapperboardIcon }[kind]
   );
@@ -110,7 +103,13 @@
   let dockWide = $state(true);
   const DOCK_WIDE_MIN = 340;
 
-  const hudEffective = $derived(hudVisible || forceHud);
+  // `forceHud` (Ton blockiert) hält die Steuerung am Rechner sichtbar, weil dort
+  // der Ton-Knopf in der Leiste sitzt. Im selbst gebauten Vollbild des iPhones
+  // (`eigenesVollbild`) hielt es die schwebenden Knöpfe DAUERHAFT auf dem Bild:
+  // dort blockiert WebKit die Wiedergabe mit Ton, bis jemand tippt, und das
+  // Ausblenden nach `HUD_HIDE_AFTER_MS` griff nie. „Ton freigeben" fadet ohnehin
+  // nicht mit (`TileMobilSteuerung`), die Abhilfe bleibt also sichtbar.
+  const hudEffective = $derived(hudVisible || (forceHud && !eigenesVollbild));
   const fadeClass = $derived(
     `transition-opacity duration-300 ${hudEffective ? 'opacity-100' : 'pointer-events-none opacity-0'}`
   );
@@ -161,50 +160,11 @@
     toggleFullscreen(containerEl, video);
   }
 
-  // Auto-Vollbild beim Kippen (Nutzerwunsch 2026-08-26): Handy quer + Video-
-  // Kachel offen → DIREKT ins Element-Vollbild, ohne vorheriges Tippen auf
-  // das Vollbild-Symbol. Zurück im Hochformat wird es automatisch verlassen.
-  // Schlägt die Anforderung fehl (WebView verlangt eine Nutzer-Geste), bleibt
-  // das Layout-Vollbild von kanalQuerStream als Fallback — Steuerung dann über
-  // die schwebenden Knöpfe wie bisher.
-  //
-  // **Der Effekt darf `isFullscreen` NICHT lesen.** Täte er es, wäre das
-  // Vollbild unverlassbar: Esc setzt `isFullscreen = false`, die Abhängigkeit
-  // ändert sich, der Effekt fordert sofort wieder an. Ausgelöst wird deshalb
-  // allein der ÜBERGANG ins Querformat, gemerkt in `warQuer` — und ein einmal
-  // verlassenes Vollbild bleibt verlassen, bis das Gerät wieder hoch und
-  // erneut quer gedreht wird.
-  let warQuer = false;
-  $effect(() => {
-    if (kind === 'party') return; // iframe: kein requestFullscreen auf dem Div
-    if (quer && !warQuer && containerEl) {
-      containerEl.requestFullscreen?.().catch(() => {
-        /* Fallback: Layout-Vollbild übernimmt */
-      });
-    }
-    warQuer = quer;
-  });
-  // Zurück im Hochformat: Vollbild verlassen. Gilt für jedes Gerät, auf dem
-  // der Kipp-Effekt oben greifen konnte — die Bedingung ist deshalb das
-  // Gegenstück zu `quer` und nicht bloss `isMobile` (auf einem breiten
-  // Handy-Querformat wäre `isMobile` schon vorher falsch gewesen und das
-  // Vollbild liesse sich gar nicht mehr automatisch schliessen).
-  $effect(() => {
-    if (!quer && isFullscreen && warQuer) {
-      document.exitFullscreen?.().catch(() => {});
-    }
-  });
-  // **Dieser Effekt kann heute nicht laufen** — `quer` ist seit dem 2026-09-04
-  // die Konstante `false` (Begründung an der Zeile selbst), `warQuer` bekommt
-  // nur `quer` zugewiesen. Hier steht deshalb bewusst KEIN
-  // `eigenesVollbild = false`: es sähe nach einem automatischen Verlassen des
-  // selbst gebauten Vollbilds beim Zurückdrehen aus, das es nicht gibt.
-  // Verlassen wird es über `toggleFs` — am Telefon der Pfeil oben links, den
-  // `TileMobilSteuerung` im Vollbild immer zeigt (`zeigeVollbildAus`).
-
   // iOS-Hülle: HQ-Kachel quer → Vollbild, hoch → verlassen (`querVollbild.ts`,
   // welche Quelle wann: `querVollbildWache.ts`). Liest `isFullscreen` nur im
-  // Ereignis, nicht im Effekt.
+  // Ereignis, nicht im Effekt. Verlassen lässt sich das selbst gebaute Vollbild
+  // sonst über `toggleFs` — am Telefon der Pfeil oben links, den
+  // `TileMobilSteuerung` im Vollbild immer zeigt (`zeigeVollbildAus`).
   const querId = `kachel-${Math.random().toString(36).slice(2)}`;
   $effect(() => {
     if (kind !== 'hq') return;
@@ -331,10 +291,10 @@
 
       <!-- Mobil: die schwebenden Knöpfe AUF dem Video ersetzen die Leiste
            darunter — in der Kachel wie im Vollbild dieselbe Komponente, im
-           Vollbild nur fadend. Der Pfeil „Vollbild verlassen" steht NUR im
-           Hochformat: quer ist das Vollbild automatisch (Kippen) und wird
-           genauso automatisch verlassen, ein Pfeil wäre redundant
-           (Nutzerwunsch 2026-08-26). Am Rechner bleiben Dock-Leiste und
+           Vollbild nur fadend. Der Pfeil „Vollbild verlassen" steht im
+           Vollbild immer (`zeigeVollbildAus`): auch das HQ-Vollbild, das
+           beim Querdrehen von selbst aufgeht, lässt sich damit schliessen,
+           ohne zurückzudrehen. Am Rechner bleiben Dock-Leiste und
            Doppelklick wie bisher. -->
       {#if handy}
         <TileMobilSteuerung

@@ -36,3 +36,17 @@ test('F1: die Sperrfläche deckt, liegt über den Toasts und legt den Rest still
   assert.match(sperre, /restlicheAppSperren\(wurzel\)/);
   assert.match(sperre, /html\[data-app-sperre\] \[data-sonner-toaster\]/);
 });
+
+test('B1: kein_code hebt die Sperre NICHT auf — Hinweis und Abmelden sind der Ausweg', () => {
+  const sperre = lies('src/lib/components/AppSperre.svelte');
+  assert.match(sperre, /data-testid="app-sperre-abmelden"/);
+  assert.match(sperre, /appSperre\.abmeldenUndAufheben\(abmelden\)/);
+  assert.match(sperre, /\{#if appSperre\.keinCode\}[\s\S]*appsperre_kein_code_hinweis/);
+  const store = lies('src/lib/platform/appSperre.svelte.ts');
+  // Abmelden räumt die Einstellung ab und hebt die Sperre auf.
+  assert.match(store, /abmeldenUndAufheben\(abmelden: \(\) => Promise<void>\): Promise<void> \{\s*try \{\s*await abmelden\(\);\s*\} finally \{\s*sperreSetzen\(false\);\s*this\.#aufheben\(\);/);
+  // kein_code: Merker setzen, NICHT aufheben (fail-closed).
+  const zweig = /ausgang === 'kein_code'\) \{([\s\S]*?)\n      \}/.exec(store)?.[1] ?? '';
+  assert.match(zweig, /this\.keinCode = true;/);
+  assert.doesNotMatch(zweig, /#aufheben|sperreSetzen/);
+});

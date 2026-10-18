@@ -59,7 +59,7 @@
     <span class="truncate text-base font-bold tracking-tight">{m.eigener_server_meine_server()}</span>
   </header>
 
-  <div class="flex-1 overflow-y-auto p-4 nicht-handy:p-6">
+  <div class="flex-1 overflow-y-auto p-4 nicht-handy:p-6 ios:handy:pb-[max(1.5rem,var(--safe-bottom))]">
     <!-- Die Liste holt ihre Daten über `cookieFetch` und damit immer von der
          Cloud, unabhängig vom aktiven Server. -->
     <MyInstances />

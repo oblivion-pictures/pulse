@@ -12,6 +12,7 @@
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* PrivacyInfo.xcprivacy */; };
+		A1B2C3D4E5F60718000002AA /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000002A9 /* Localizable.xcstrings */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		A1B2C3D4E5F60718293A4B61 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B60 /* InfoPlist.strings */; };
@@ -40,6 +41,7 @@
 		A1B2C3D4E5F60718000001B4 /* SpracheBildImBildProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001B5 /* SpracheBildImBildProbe.swift */; };
 		A1B2C3D4E5F6071800000187 /* SpracheKachel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071800000188 /* SpracheKachel.swift */; };
 		A1B2C3D4E5F6071800000189 /* SpracheSteuerleiste.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607180000018A /* SpracheSteuerleiste.swift */; };
+		A1B2C3D4E5F60718000002A7 /* SpracheSteuerleisteTeile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000002A8 /* SpracheSteuerleisteTeile.swift */; };
 		A1B2C3D4E5F607180000018B /* SpracheAnsichtHalter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607180000018C /* SpracheAnsichtHalter.swift */; };
 		A1B2C3D4E5F60718000001A5 /* SpracheAnsichtProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001A6 /* SpracheAnsichtProbe.swift */; };
 		A1B2C3D4E5F607180000018D /* SprachePluginProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607180000018E /* SprachePluginProbe.swift */; };
@@ -75,6 +77,8 @@
 		A1B2C3D4E5F6071800000131 /* SperrePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071800000132 /* SperrePlugin.swift */; };
 		7E11E0000000000000000070 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000051 /* ShareViewController.swift */; };
 		7E11E0000000000000000071 /* TeilenEinsammeln.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000052 /* TeilenEinsammeln.swift */; };
+		7E11E00000000000000002A2 /* TeilenDateien.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E00000000000000002A1 /* TeilenDateien.swift */; };
+		7E11E00000000000000002A4 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 7E11E00000000000000002A3 /* Localizable.xcstrings */; };
 		7E11E0000000000000000072 /* TeilenBild.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000053 /* TeilenBild.swift */; };
 		7E11E0000000000000000073 /* AppGruppe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000056 /* AppGruppe.swift */; };
 		7E11E0000000000000000074 /* TeilenAblage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000057 /* TeilenAblage.swift */; };
@@ -106,6 +110,7 @@
 		7E22E0000000000000000207 /* AppGruppe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E11E0000000000000000056 /* AppGruppe.swift */; };
 		7E22E0000000000000000220 /* WidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7E22E0000000000000000100 /* WidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7E22E0000000000000000221 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000010F /* PrivacyInfo.xcprivacy */; };
+		7E22E000000000000000022B /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 7E22E000000000000000022A /* Localizable.xcstrings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -116,6 +121,7 @@
 		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000002A9 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5E /* InfoPlist.strings */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5F /* InfoPlist.strings */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B60 /* InfoPlist.strings */ = {isa = PBXVariantGroup; children = (A1B2C3D4E5F60718293A4B5E /* InfoPlist.strings */, A1B2C3D4E5F60718293A4B5F /* InfoPlist.strings */,); name = InfoPlist.strings; sourceTree = "<group>"; };
@@ -148,6 +154,7 @@
 		A1B2C3D4E5F60718000001B5 /* SpracheBildImBildProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheBildImBildProbe.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071800000188 /* SpracheKachel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheKachel.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F607180000018A /* SpracheSteuerleiste.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheSteuerleiste.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000002A8 /* SpracheSteuerleisteTeile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheSteuerleisteTeile.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F607180000018C /* SpracheAnsichtHalter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheAnsichtHalter.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000001A6 /* SpracheAnsichtProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheAnsichtProbe.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F607180000018E /* SprachePluginProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SprachePluginProbe.swift; sourceTree = "<group>"; };
@@ -184,6 +191,8 @@
 		7E11E0000000000000000050 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7E11E0000000000000000051 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		7E11E0000000000000000052 /* TeilenEinsammeln.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenEinsammeln.swift; sourceTree = "<group>"; };
+		7E11E00000000000000002A1 /* TeilenDateien.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenDateien.swift; sourceTree = "<group>"; };
+		7E11E00000000000000002A3 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		7E11E0000000000000000053 /* TeilenBild.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenBild.swift; sourceTree = "<group>"; };
 		7E11E0000000000000000056 /* AppGruppe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGruppe.swift; sourceTree = "<group>"; };
 		7E11E0000000000000000057 /* TeilenAblage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeilenAblage.swift; sourceTree = "<group>"; };
@@ -211,6 +220,7 @@
 		7E22E0000000000000000105 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7E22E0000000000000000106 /* WidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WidgetExtension.entitlements; sourceTree = "<group>"; };
 		7E22E000000000000000010F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		7E22E000000000000000022A /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -320,6 +330,7 @@
 				A1B2C3D4E5F60718000001B5 /* SpracheBildImBildProbe.swift */,
 				A1B2C3D4E5F6071800000188 /* SpracheKachel.swift */,
 				A1B2C3D4E5F607180000018A /* SpracheSteuerleiste.swift */,
+				A1B2C3D4E5F60718000002A8 /* SpracheSteuerleisteTeile.swift */,
 				A1B2C3D4E5F607180000018C /* SpracheAnsichtHalter.swift */,
 				A1B2C3D4E5F60718000001A6 /* SpracheAnsichtProbe.swift */,
 				A1B2C3D4E5F607180000018E /* SprachePluginProbe.swift */,
@@ -363,6 +374,7 @@
 				A1B2C3D4E5F60718000001D0 /* MitteilungImVordergrund.swift */,
 				7E22E000000000000000010D /* UngelesenProbe.swift */,
 				A1B2C3D4E5F60718293A4B5D /* PrivacyInfo.xcprivacy */,
+				A1B2C3D4E5F60718000002A9 /* Localizable.xcstrings */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -382,6 +394,8 @@
 			children = (
 				7E11E0000000000000000051 /* ShareViewController.swift */,
 				7E11E0000000000000000052 /* TeilenEinsammeln.swift */,
+				7E11E00000000000000002A1 /* TeilenDateien.swift */,
+				7E11E00000000000000002A3 /* Localizable.xcstrings */,
 				7E11E0000000000000000053 /* TeilenBild.swift */,
 				7E11E0000000000000000054 /* Info.plist */,
 				7E11E0000000000000000055 /* ShareExtension.entitlements */,
@@ -412,6 +426,7 @@
 				7E22E0000000000000000105 /* Info.plist */,
 				7E22E0000000000000000106 /* WidgetExtension.entitlements */,
 				7E22E000000000000000010F /* PrivacyInfo.xcprivacy */,
+				7E22E000000000000000022A /* Localizable.xcstrings */,
 			);
 			path = WidgetExtension;
 			sourceTree = "<group>";
@@ -601,6 +616,7 @@
 				A1B2C3D4E5F60718000000C5 /* pulse-push.caf in Resources */,
 				A1B2C3D4E5F60718000000C1 /* GoogleService-Info.plist in Resources */,
 				A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy in Resources */,
+				A1B2C3D4E5F60718000002AA /* Localizable.xcstrings in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
 			);
@@ -610,6 +626,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7E11E00000000000000002A4 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -618,6 +635,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7E22E0000000000000000221 /* PrivacyInfo.xcprivacy in Resources */,
+				7E22E000000000000000022B /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -649,6 +667,7 @@
 				A1B2C3D4E5F60718000001B4 /* SpracheBildImBildProbe.swift in Sources */,
 				A1B2C3D4E5F6071800000187 /* SpracheKachel.swift in Sources */,
 				A1B2C3D4E5F6071800000189 /* SpracheSteuerleiste.swift in Sources */,
+				A1B2C3D4E5F60718000002A7 /* SpracheSteuerleisteTeile.swift in Sources */,
 				A1B2C3D4E5F607180000018B /* SpracheAnsichtHalter.swift in Sources */,
 				A1B2C3D4E5F60718000001A5 /* SpracheAnsichtProbe.swift in Sources */,
 				A1B2C3D4E5F607180000018D /* SprachePluginProbe.swift in Sources */,
@@ -715,6 +734,7 @@
 			files = (
 				7E11E0000000000000000070 /* ShareViewController.swift in Sources */,
 				7E11E0000000000000000071 /* TeilenEinsammeln.swift in Sources */,
+				7E11E00000000000000002A2 /* TeilenDateien.swift in Sources */,
 				7E11E0000000000000000072 /* TeilenBild.swift in Sources */,
 				7E11E0000000000000000073 /* AppGruppe.swift in Sources */,
 				7E11E0000000000000000074 /* TeilenAblage.swift in Sources */,

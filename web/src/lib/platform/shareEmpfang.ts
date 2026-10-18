@@ -18,31 +18,39 @@
  * Promise (`createPluginMethodWrapper` → `.then`). `hole()` fängt das still
  * ab wie jeden anderen Fehlschlag — dort gibt es dann eben nichts zu holen.
  *
+ * **Mehrere Dateien (iOS):** `getPending({mitDateien: true})` liefert statt
+ * Base64 nur das Verzeichnis (`paketId`, `dateien`); die Bytes holt der
+ * Composer erst beim Übernehmen Stück für Stück (`freigabe/freigabeDateien.ts`).
+ * Eine ältere Hülle (und Android) kennt den Parameter nicht und liefert wie
+ * früher `imageBase64` — `inhaltAusAntwort` versteht beides. Umgekehrt
+ * bedient die neue Hülle eine ältere Web-App mit dem ersten Bild als Base64.
+ *
  * Ablage: ``freigabeStore`` (importfrei, s. dort). Verbraucher ist die
  * Composer-Seite — sie leert die Freigabe, sobald sie sie in den
  * Composer übernommen hat.
  */
 import { App as CapApp } from '@capacitor/app';
-import { registerPlugin } from '@capacitor/core';
 import { isCapacitorAndroid, isCapacitorIOS } from './runtime';
-import { freigabeAnkommen } from '$lib/freigabe/freigabeStore';
-
-interface ShareReceiverPlugin {
-  getPending(): Promise<{ text?: string; imageBase64?: string; imageMime?: string }>;
-}
-
-const ShareReceiver = registerPlugin<ShareReceiverPlugin>('ShareReceiver');
+import { ShareReceiver } from './shareReceiverPlugin';
+import { freigabeAnkommen, freigabeHolen } from '$lib/freigabe/freigabeStore';
+import { inhaltAusAntwort, paketIdAusAntwort } from '$lib/freigabe/freigabeRechnung';
 
 async function hole(): Promise<void> {
   try {
-    const paket = await ShareReceiver.getPending();
-    const text = typeof paket.text === 'string' && paket.text !== '' ? paket.text : null;
-    const bild =
-      typeof paket.imageBase64 === 'string' && paket.imageBase64 !== ''
-        ? { base64: paket.imageBase64, mime: paket.imageMime ?? 'image/jpeg' }
-        : null;
-    if (!text && !bild) return;
-    freigabeAnkommen({ text, bild });
+    // `mitDateien` sagt der Hülle, dass diese Seite das Verzeichnis versteht.
+    const roh = await ShareReceiver.getPending({ mitDateien: true });
+    const inhalt = inhaltAusAntwort(roh);
+    // Ein Paket, aus dem nichts Brauchbares wurde (nur ungültige Einträge),
+    // trotzdem abschließen — sonst liegen seine Dateien bis zur Hüllen-Aufräumung.
+    const rohId = paketIdAusAntwort(roh);
+    if (rohId && rohId !== inhalt?.paketId) {
+      void ShareReceiver.abschliessen({ paketId: rohId }).catch(() => {});
+    }
+    if (!inhalt) return;
+    // Ein neues Paket ersetzt ein unübernommenes: dessen Dateien freigeben.
+    const alt = freigabeHolen()?.paketId;
+    if (alt && alt !== inhalt.paketId) void ShareReceiver.abschliessen({ paketId: alt }).catch(() => {});
+    freigabeAnkommen(inhalt);
     window.dispatchEvent(new CustomEvent('pulse-freigabe'));
   } catch {
     // Kein nativer Kontext oder Plugin fehlt (alter Bau) — bewusst still.

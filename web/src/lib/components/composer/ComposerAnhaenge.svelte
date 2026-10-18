@@ -119,7 +119,7 @@
   <Button
     variant="ghost"
     size="icon"
-    class="size-10 nicht-handy:size-9"
+    class="size-11 nicht-handy:size-9"
     aria-label={m.message_input_attach_file()}
     onclick={() => {
       // Am Handy: Auswahl-Blatt (Foto / Galerie / Dokument). Am Rechner

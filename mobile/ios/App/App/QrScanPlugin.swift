@@ -17,6 +17,11 @@ import UIKit
 /// Rückgabe: `{ code: "<Inhalt>" }` oder `{ code: null }` bei Abbruch. Ein
 /// Abbruch ist KEIN Fehler — er bedeutet „ich tippe doch", und die Eingabe
 /// daneben bleibt der vollwertige Weg.
+///
+/// Ist die Kamera-Erlaubnis verweigert oder gesperrt, zeigt die Ansicht erst
+/// einen Hinweis mit „Einstellungen öffnen" und löst danach auf mit
+/// `{ code: null, grund: "kamera_verweigert" }` — so kann die Oberfläche das
+/// vom schlichten Abbruch (ohne `grund`) unterscheiden.
 @objc(QrScanPlugin)
 public class QrScanPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "QrScanPlugin"
@@ -31,8 +36,10 @@ public class QrScanPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("keine Ansicht")
                 return
             }
-            let scanner = QrScanAnsicht { code in
-                call.resolve(["code": code as Any])
+            let scanner = QrScanAnsicht { code, grund in
+                var antwort: [String: Any] = ["code": code as Any]
+                if let grund { antwort["grund"] = grund }
+                call.resolve(antwort)
             }
             scanner.modalPresentationStyle = .fullScreen
             wurzel.present(scanner, animated: true)
@@ -55,8 +62,8 @@ public class QrScanPlugin: CAPPlugin, CAPBridgedPlugin {
                     return
                 }
                 NSLog("[PulseQr] Probe: Scanner wird gezeigt")
-                let scanner = QrScanAnsicht { code in
-                    NSLog("[PulseQr] Probe: Ergebnis %@", code ?? "nil")
+                let scanner = QrScanAnsicht { code, grund in
+                    NSLog("[PulseQr] Probe: Ergebnis %@ grund=%@", code ?? "nil", grund ?? "-")
                 }
                 scanner.modalPresentationStyle = .fullScreen
                 wurzel.present(scanner, animated: true) {
@@ -69,7 +76,9 @@ public class QrScanPlugin: CAPPlugin, CAPBridgedPlugin {
 
 /// Vollbild-Kamera, die den ersten erkannten QR-Code zurückgibt.
 final class QrScanAnsicht: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
-    private let fertig: (String?) -> Void
+    /// `(code, grund)`: `grund` nur, wenn der Abbruch eine Ursache hat
+    /// (`kamera_verweigert`).
+    private let fertig: (String?, String?) -> Void
     private let sitzung = AVCaptureSession()
     private var vorschau: AVCaptureVideoPreviewLayer?
     /// Gegen Mehrfach-Auflösung: die Abnehmer-Methode kann mehrfach feuern,
@@ -79,8 +88,11 @@ final class QrScanAnsicht: UIViewController, AVCaptureMetadataOutputObjectsDeleg
     /// Aufbau gescheitert (keine Kamera, keine Erlaubnis) — gemeldet wird das
     /// erst in `viewDidAppear`, s. dort.
     private var aufbauGescheitert = false
+    /// Die Kamera-Erlaubnis fehlt (verweigert oder durch Einschränkungen
+    /// gesperrt) — dann gibt es statt stillem Schliessen einen Hinweis.
+    private var kameraVerweigert = false
 
-    init(fertig: @escaping (String?) -> Void) {
+    init(fertig: @escaping (String?, String?) -> Void) {
         self.fertig = fertig
         super.init(nibName: nil, bundle: nil)
     }
@@ -95,6 +107,12 @@ final class QrScanAnsicht: UIViewController, AVCaptureMetadataOutputObjectsDeleg
     }
 
     private func aufbauen() {
+        let erlaubnis = AVCaptureDevice.authorizationStatus(for: .video)
+        if erlaubnis == .denied || erlaubnis == .restricted {
+            kameraVerweigert = true
+            aufbauGescheitert = true
+            return
+        }
         guard let gerät = AVCaptureDevice.default(for: .video),
               let eingang = try? AVCaptureDeviceInput(device: gerät),
               sitzung.canAddInput(eingang) else {
@@ -160,7 +178,39 @@ final class QrScanAnsicht: UIViewController, AVCaptureMetadataOutputObjectsDeleg
     /// `dismiss` die Ansicht, ebenfalls dort nachgemessen.
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if aufbauGescheitert { melden(nil) }
+        if kameraVerweigert {
+            erlaubnisHinweis()
+        } else if aufbauGescheitert {
+            melden(nil)
+        }
+    }
+
+    /// Statt wortlosem Schliessen: sagen, was fehlt, und den Weg zu den
+    /// Einstellungen anbieten. Beide Knöpfe schliessen danach den Scanner —
+    /// aus den Einstellungen kommt man ohnehin in eine neu gestartete Abfrage
+    /// zurück. Erst nach dem Erscheinen (s. `viewDidAppear`), sonst fehlte der
+    /// Alert-Präsentation der Boden.
+    private func erlaubnisHinweis() {
+        let alarm = UIAlertController(
+            title: NSLocalizedString("Kamera nicht erlaubt", comment: "QR-Scanner"),
+            message: NSLocalizedString(
+                "Pulse braucht die Kamera, um den QR-Code zu lesen. Du kannst sie in den Einstellungen erlauben — oder den Code von Hand eingeben.",
+                comment: "QR-Scanner"),
+            preferredStyle: .alert)
+        alarm.addAction(UIAlertAction(
+            title: NSLocalizedString("Einstellungen öffnen", comment: "QR-Scanner"), style: .default
+        ) { [weak self] _ in
+            if let ziel = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(ziel)
+            }
+            self?.melden(nil, grund: "kamera_verweigert")
+        })
+        alarm.addAction(UIAlertAction(
+            title: NSLocalizedString("Abbrechen", comment: "QR-Scanner abbrechen"), style: .cancel
+        ) { [weak self] _ in
+            self?.melden(nil, grund: "kamera_verweigert")
+        })
+        present(alarm, animated: true)
     }
 
     override func viewDidLayoutSubviews() {
@@ -186,7 +236,7 @@ final class QrScanAnsicht: UIViewController, AVCaptureMetadataOutputObjectsDeleg
 
     /// Einmal auflösen, Sitzung beenden, Ansicht schliessen — in dieser
     /// Reihenfolge, damit ein weiterer Treffer unterwegs nichts mehr findet.
-    private func melden(_ code: String?) {
+    private func melden(_ code: String?, grund: String? = nil) {
         if erledigt { return }
         erledigt = true
         if sitzung.isRunning {
@@ -194,7 +244,7 @@ final class QrScanAnsicht: UIViewController, AVCaptureMetadataOutputObjectsDeleg
                 sitzung.stopRunning()
             }
         }
-        let abschluss = { self.fertig(code) }
+        let abschluss = { self.fertig(code, grund) }
         if presentingViewController != nil {
             dismiss(animated: true, completion: abschluss)
         } else {

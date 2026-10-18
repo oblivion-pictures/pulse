@@ -174,12 +174,12 @@ import { currentLocale } from '$lib/i18n';
                     <button
                       {...props}
                       type="button"
-                      class="text-text-muted ml-auto rounded-full p-1 opacity-0 transition-opacity hover:bg-bg-hover hover:text-primary focus-visible:opacity-100 group-hover/msg:opacity-100"
+                      class="text-text-muted ml-auto flex items-center justify-center rounded-full p-1 opacity-0 transition-opacity hover:bg-bg-hover hover:text-primary focus-visible:opacity-100 group-hover/msg:opacity-100 handy:-my-3 handy:size-11 handy:opacity-100"
                       title={m.message_reactions_add_reaction()}
                       aria-label={m.message_reactions_add_reaction()}
                       data-testid="watch-chat-react-add"
                     >
-                      <SmilePlusIcon class="size-3.5" />
+                      <SmilePlusIcon class="size-3.5 handy:size-5" />
                     </button>
                   {/snippet}
                 </DropdownMenu.Trigger>

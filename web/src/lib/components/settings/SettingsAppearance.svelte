@@ -7,7 +7,8 @@
   import { m } from '$lib/paraglide/messages.js';
   import { changeLocale, currentLocale, availableLocales, localeLabels } from '$lib/i18n';
   import type { Locale } from '$lib/paraglide/runtime';
-  import { isElectron } from '$lib/platform/runtime';
+  import { Button } from '$lib/components/ui/button/index.js';
+  import { isCapacitorIOS, isElectron } from '$lib/platform/runtime';
 
   // „Beim Schließen beenden" (nur Desktop): lebt im Electron-Store, nicht im
   // settings-registry — der Main-Prozess liest ihn synchron im close-Handler.
@@ -29,6 +30,11 @@
   // Aktuelle Sprache — `changeLocale` lädt die Seite neu, daher reicht eine
   // einmalige Auswertung beim Render fürs Aktiv-Markieren.
   const activeLocale = currentLocale();
+  // iOS-Hülle: kein Umschalter, die App folgt der Sprache des Geräts
+  // (`i18n.ts::initLocale`). Der Knopf führt in die iOS-Einstellungen von Pulse
+  // (`app-settings:` — Capacitor reicht die Adresse ans System weiter, wie bei
+  // `HuelleMitteilungen`), wo die Sprache je App gewählt wird.
+  const sprachwahlDesGeraets = isCapacitorIOS();
 </script>
 
 <div class="flex flex-col gap-5" data-testid="settings-appearance-panel">
@@ -67,23 +73,37 @@
 
   <div class="flex flex-col gap-2">
     <span class="text-text-bright text-sm font-medium">{m.settings_appearance_language_label()}</span>
-    <p class="text-text-muted -mt-1 text-xs">{m.settings_appearance_language_hint()}</p>
-    <div class="grid grid-cols-2 gap-3">
-      {#each availableLocales as loc (loc)}
-        <button
-          type="button"
-          onclick={() => changeLocale(loc as Locale)}
-          class="rounded-2xl border p-3 text-center text-sm font-medium transition-colors {activeLocale ===
-          loc
-            ? 'border-primary bg-bg-hover text-text-bright'
-            : 'border-border text-text-base hover:bg-bg-hover'}"
-          data-testid="appearance-locale-{loc}"
-          aria-pressed={activeLocale === loc}
-        >
-          {localeLabels[loc as Locale]}
-        </button>
-      {/each}
-    </div>
+    {#if sprachwahlDesGeraets}
+      <p class="text-text-muted -mt-1 text-xs" data-testid="appearance-locale-geraet">
+        {m.settings_appearance_language_ios_hint()}
+      </p>
+      <Button
+        variant="outline"
+        class="h-12 self-start"
+        onclick={() => (window.location.href = 'app-settings:')}
+        data-testid="appearance-locale-einstellungen"
+      >
+        {m.settings_appearance_language_ios_button()}
+      </Button>
+    {:else}
+      <p class="text-text-muted -mt-1 text-xs">{m.settings_appearance_language_hint()}</p>
+      <div class="grid grid-cols-2 gap-3">
+        {#each availableLocales as loc (loc)}
+          <button
+            type="button"
+            onclick={() => changeLocale(loc as Locale)}
+            class="rounded-2xl border p-3 text-center text-sm font-medium transition-colors {activeLocale ===
+            loc
+              ? 'border-primary bg-bg-hover text-text-bright'
+              : 'border-border text-text-base hover:bg-bg-hover'}"
+            data-testid="appearance-locale-{loc}"
+            aria-pressed={activeLocale === loc}
+          >
+            {localeLabels[loc as Locale]}
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <div class="flex flex-col gap-2">

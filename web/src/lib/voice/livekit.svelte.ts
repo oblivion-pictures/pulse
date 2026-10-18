@@ -46,14 +46,12 @@ import { sounds } from '$lib/sounds/engine';
 import { toast } from 'svelte-sonner';
 import { m } from '$lib/paraglide/messages.js';
 import { acquireWakeLock } from '$lib/platform/wakeLock';
-import { istAblehnung, standMerken } from '$lib/platform/berechtigung.svelte';
 import { isIosWebKit, isMobile } from '$lib/platform/runtime';
-import { nativerSprachwegBefund } from '$lib/platform/iosSprache';
+import { nativerSprachwegBefund, sprachwegVeraltet } from '$lib/platform/iosSprache';
 import { NativerRaum } from './nativerRaum.svelte';
 import type { NutzerWahl } from './nativAbgleich';
 import type { StartAbgleich } from './startBeitritt';
 import { setVoiceActive, maybeSendAudioDiagnostic } from '$lib/platform/audioRoute';
-import { tonSystemFilterBeobachten, tonVoice } from '$lib/platform/iosTon';
 import { sidecar } from '$lib/stream/sidecar';
 import { runningStreamSlots } from '$lib/stream/state.svelte';
 
@@ -347,6 +345,23 @@ class VoiceRoom {
     return this.state === ConnectionState.Connecting || this.state === ConnectionState.SignalReconnecting;
   }
 
+  /** Welcher Weg genommen wurde — und warum — im Speicher festhalten.
+   *  **Das hat einen Grund.** Am 2026-10-10 liefen vier Messläufe unbemerkt auf
+   *  dem damaligen Web-Weg, weil ein vergessener Schalter ihn abgeschaltet
+   *  hatte; von aussen sah alles richtig aus, nur die Zahlen gehörten zu etwas
+   *  anderem. Seither sagt die App, wofür sie sich entschieden hat (`grund`,
+   *  bei einem zu alten Bau samt `fehlen`; s. `iosSpracheWeiche.ts`). */
+  #weicheMerken(weiche: ReturnType<typeof nativerSprachwegBefund>): void {
+    try {
+      localStorage.setItem(
+        'pulse.diag.weiche',
+        JSON.stringify({ zeit: new Date().toISOString(), ...weiche })
+      );
+    } catch {
+      /* Diagnose darf nie der Grund sein, dass ein Beitritt scheitert. */
+    }
+  }
+
   /** Connect to the LiveKit room backing the given voice channel.
    *  `opts.startMuted` / `opts.startDeafened` lassen den Mic beim Join aus bzw.
    *  starten deafened — genutzt vom Voice-Resume nach einem Reload, um den
@@ -356,6 +371,17 @@ class VoiceRoom {
     channelName: string,
     opts: { startMuted?: boolean; startDeafened?: boolean; micBeforeDeafen?: boolean } = {}
   ): Promise<void> {
+    // **iOS-Hülle: kein Rückfall auf die WebView** (Eigentümer-Entscheid E6).
+    // Trägt der installierte Bau den nativen Sprachweg nicht vollständig, tritt
+    // der Kanal nicht bei und sagt, was zu tun ist. Browser (auch iPhone-Safari
+    // ohne Hülle), Desktop und Android bekommen `kein-ios` und gehen den
+    // normalen Weg unten.
+    const weiche = nativerSprachwegBefund();
+    if (sprachwegVeraltet(weiche)) {
+      this.error = m.voice_ios_app_veraltet();
+      this.#weicheMerken(weiche);
+      throw new Error(this.error);
+    }
     // Mic state to restore into #micEnabledBeforeDeafen when this connect carries
     // a deafen across a channel switch (teardown wipes it) or a reload-resume
     // (opts.micBeforeDeafen — otherwise un-deafen would always stay muted).
@@ -424,25 +450,10 @@ class VoiceRoom {
     if (gen !== this.#connectGen) return;
 
     // **iOS: ab hier übernimmt die Hülle.** Alles darunter baut auf einem
-    // JS-`Room` auf, den es auf dem nativen Weg nicht gibt. Die Weiche sitzt
-    // bewusst NACH dem Token-Abruf: die Anmeldung bleibt im Web, nativ
-    // bekommt nur `wsUrl` und `token` gereicht.
-    // **Welcher Weg genommen wurde, steht im Speicher — und das hat einen
-    // Grund.** Am 2026-10-10 liefen vier Messläufe unbemerkt auf dem ALTEN
-    // Weg, weil ein vergessener Schalter ihn abgeschaltet hatte. Von aussen
-    // sah alles richtig aus; nur die Zahlen gehörten zu etwas anderem. Seither
-    // sagt die App, wofür sie sich entschieden hat — und seit dem 2026-10-11
-    // auch, WARUM (`grund`, bei einem zu alten App-Bau samt `fehlen`: welche
-    // Methoden ihm fehlen; s. `iosSpracheWeiche.ts`).
-    const weiche = nativerSprachwegBefund();
-    try {
-      localStorage.setItem(
-        'pulse.diag.weiche',
-        JSON.stringify({ zeit: new Date().toISOString(), ...weiche })
-      );
-    } catch {
-      /* Diagnose darf nie der Grund sein, dass ein Beitritt scheitert. */
-    }
+    // JS-`Room` auf, den es auf dem nativen Weg nicht gibt. Die Weiche (oben
+    // geprüft) sitzt bewusst NACH dem Token-Abruf: die Anmeldung bleibt im Web,
+    // nativ bekommt nur `wsUrl` und `token` gereicht.
+    this.#weicheMerken(weiche);
     if (weiche.nativ) {
       // `this.micEnabled` wird erst weiter unten gesetzt und trägt hier noch
       // den Stand des vorigen Kanals. Die Absicht steht in `opts`.
@@ -471,27 +482,6 @@ class VoiceRoom {
     // mode switch a head start before any track exists. No-op off Capacitor-Android;
     // cleared again in #teardown on leave.
     await setVoiceActive(true);
-    // iOS: dieselbe Regel wie oben fuer Android — LiveKit verlangt eine
-    // eingerichtete UND aktive `AVAudioSession`, bevor ein Mikrofon
-    // veroeffentlicht wird (`platform/iosTon.ts`).
-    //
-    // **Hier stand bis zum 2026-10-10 eine falsche Begruendung**, und sie
-    // kostete einen Tag: `AVAudioSession.setActive` blockiere den
-    // Hauptthread, deshalb duerfe nicht gewartet werden. Am Geraet
-    // nachgemessen trifft das nicht zu — Capacitor arbeitet Plugin-Rufe auf
-    // einer eigenen SERIELLEN Warteschlange ab (`DispatchQueue(label:
-    // "bridge")`, `CapacitorBridge.swift`), und jede einzelne Messung meldete
-    // `haupt=nein`. `setCategory` braucht 3–8 ms, `setActive(true)` 63–309 ms.
-    //
-    // Die App fror wirklich ein, nur aus einem anderen Grund: eine
-    // Rueckkopplung richtete die Session 4–10 mal pro Sekunde neu ein, und
-    // weil jene Warteschlange seriell ist, stand danach jeder Plugin-Ruf
-    // dahinter. Nicht der Hauptthread war belegt, sondern die Bruecke. Die
-    // Rueckkopplung ist seit demselben Tag an der Wurzel beseitigt
-    // (Weg-Vergleich statt Zeitfrist, s. `wegAngewandt` in `iosTon.ts`) —
-    // damit kostet dieses `await` im gemessenen schlechtesten Fall rund eine
-    // Drittelsekunde und stellt die Reihenfolge sicher, auf die es ankommt.
-    await tonVoice('sprachkanal', true);
 
     // Aufgelegt, waehrend der Ruf-Modus gesetzt wurde — gar nicht erst
     // verbinden. Ohne diesen Wachposten baut der Handschlag den Raum noch
@@ -591,12 +581,6 @@ class VoiceRoom {
       }
       try {
         await room.localParticipant.setMicrophoneEnabled(true, this.#audioCaptureDefaults());
-        // Der Zugriff hat geklappt — also liegt die Mikrofon-Erlaubnis vor.
-        // Gemerkt, damit die Vorerklärung (iOS-Punkt 36) nicht bei jedem
-        // Beitritt wiederkommt: eine WKWebView gibt über den Stand keine
-        // Auskunft, der Ausgang ist der einzige Beleg
-        // (`platform/berechtigung.svelte.ts`).
-        standMerken('mikrofon', 'erteilt');
         // Der teuerste Abbruchpunkt: hier existiert die Mikrofonspur bereits.
         // Nur zurueckkehren wuerde sie offen zuruecklassen — #abbruch nimmt sie
         // zurueck und stoppt sie, bevor der Raum getrennt wird.
@@ -612,9 +596,6 @@ class VoiceRoom {
           return;
         }
         this.micEnabled = false;
-        // Nur eine echte ABLEHNUNG wird gemerkt — ein fehlendes oder belegtes
-        // Gerät sagt über die Erlaubnis nichts.
-        if (istAblehnung(e)) standMerken('mikrofon', 'verweigert');
         // Auch hier: Override-Abweisung (LiveKit-Grant ohne Mic) klar benennen.
         this.error = this.#selfOverride().muted
           ? m.voice_admin_mute_aktiv()
@@ -793,7 +774,6 @@ class VoiceRoom {
     await raumVerwerfen(room);
     if (this.channelId === null) {
         void setVoiceActive(false);
-        void tonVoice('sprachkanal', false);
     }
   }
 
@@ -1322,7 +1302,6 @@ class VoiceRoom {
     // Android: release MODE_IN_COMMUNICATION + the comm device so the phone
     // leaves call-mode after we hang up. No-op off Capacitor-Android.
     void setVoiceActive(false);
-    void tonVoice('sprachkanal', false);
     // Wake-Lock freigeben, BEVOR die Referenz fällt — sonst bleibt das Display
     // für die restliche Sitzung an (der Griff ist dann nicht mehr erreichbar).
     this.#releaseWakeLock?.();
@@ -1419,18 +1398,6 @@ class VoiceRoom {
 }
 
 export const voice = new VoiceRoom();
-
-// **Wegwechsel ändern, WER filtert** — und das kommt von keiner Nutzeraktion:
-// es genügt, die AirPods einzusetzen. Die Hülle richtet die Session dann neu
-// ein (am Lautsprecher mit Apples Sprachverarbeitung, mit Kopfhörern im Ohr
-// auf der Hochqualitäts-Route), und der eigene Sendefilter muss neu
-// entscheiden. Ohne diesen Haken liefe danach zweimal gefiltert oder gar
-// nicht.
-//
-// Einmal je Fenster, ohne Abriss: der Rückruf prüft selbst, ob ein Raum offen
-// ist (`applyNoiseFilter` kehrt ohne Raum sofort zurück), und ausserhalb der
-// iOS-Hülle feuert er nie.
-tonSystemFilterBeobachten(() => void voice.applyNoiseFilter());
 
 // ShortcutHost feuert die globalen Voice-Shortcuts über die schlanke Registry
 // in state.svelte.ts, damit das Root-Layout dieses Modul (und mit ihm

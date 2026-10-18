@@ -1,8 +1,8 @@
 <!--
   Vorerklärung vor einem System-Berechtigungs-Dialog (iOS-Liste Punkt 36).
 
-  **Warum es diesen Zwischenschritt gibt.** Ein System-Dialog für Mitteilungen,
-  Mikrofon oder Kamera erscheint auf iOS GENAU EINMAL. Ein „nein" dort ist
+  **Warum es diesen Zwischenschritt gibt.** Ein System-Dialog für Mitteilungen
+  oder die Kamera erscheint auf iOS GENAU EINMAL. Ein „nein" dort ist
   dauerhaft — der nächste Versuch kommt ohne Dialog zurück, und der Weg zurück
   führt in die System-Einstellungen. Pulse fragte die Mitteilungs-Erlaubnis
   bisher BEIM START ab, bevor der Nutzer die App gesehen hat: der schlechteste
@@ -21,7 +21,6 @@
   import { Portal } from 'bits-ui';
   import BellIcon from '@lucide/svelte/icons/bell';
   import CameraIcon from '@lucide/svelte/icons/camera';
-  import MicIcon from '@lucide/svelte/icons/mic';
   import { Button } from '$lib/components/ui/button';
   import { m } from '$lib/paraglide/messages.js';
   import { berechtigungsblatt } from '$lib/platform/berechtigung.svelte';
@@ -35,12 +34,6 @@
           titel: m.berechtigung_mitteilungen_titel(),
           text: m.berechtigung_mitteilungen_text(),
           Symbol: BellIcon
-        };
-      case 'mikrofon':
-        return {
-          titel: m.berechtigung_mikrofon_titel(),
-          text: m.berechtigung_mikrofon_text(),
-          Symbol: MicIcon
         };
       case 'kamera':
         return {

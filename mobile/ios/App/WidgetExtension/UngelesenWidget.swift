@@ -110,6 +110,12 @@ struct UngelesenAnsicht: View {
         return Text("Stand \(angabe)")
     }
 
+    /// Als `Text` je Fall gebaut, nicht per `? :` — ein Ternary aus Literalen
+    /// wird zum `String` und bliebe unübersetzt.
+    private var rundBeschriftung: Text {
+        anzahl == 1 ? Text("1 ungelesene Nachricht") : Text("\(anzahl) ungelesene Nachrichten")
+    }
+
     private var rund: some View {
         ZStack {
             AccessoryWidgetBackground()
@@ -123,7 +129,7 @@ struct UngelesenAnsicht: View {
             }
             .padding(4)
         }
-        .accessibilityLabel(Text(anzahl == 1 ? "1 ungelesene Nachricht" : "\(anzahl) ungelesene Nachrichten"))
+        .accessibilityLabel(rundBeschriftung)
         .widgetGrund(leer: true)
     }
 }

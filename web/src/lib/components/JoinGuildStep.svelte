@@ -25,6 +25,7 @@
   import { parseJoinInput } from '$lib/guilds/joinByInvite';
   import { prepareHostJoin, joinServerByHost } from '$lib/guilds/joinByHost';
   import { m } from '$lib/paraglide/messages.js';
+  import { technischeEingabe } from '$lib/platform/technischeEingabe';
 
   let {
     onJoin,
@@ -167,6 +168,7 @@
       autocomplete="off"
       placeholder={m.create_guild_dialog_invite_placeholder()}
       data-testid="join-guild-input"
+      {...technischeEingabe()}
     />
   </div>
 

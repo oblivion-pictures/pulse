@@ -62,7 +62,7 @@ def sender(monkeypatch, _isolate_chat_settings):
     statt Firebase eine Mitschrift (token, payload, badge)."""
     gesendet: list[tuple[str, dict, int | None]] = []
 
-    def _fake_send(*, token: str, payload: dict, badge: int | None = None) -> str:
+    def _fake_send(*, token: str, payload: dict, badge: int | None = None, lokal=None) -> str:
         gesendet.append((token, payload, badge))
         return "ok"
 
@@ -500,7 +500,7 @@ async def test_gestoerter_versand_wird_mit_rueckoff_wiederholt(
     await _senden(client, sz)
     ausgaenge = ["warn", "ok"]
 
-    def _send(*, token, payload, badge=None):
+    def _send(*, token, payload, badge=None, lokal=None):
         ausgang = ausgaenge.pop(0)
         if ausgang == "ok":
             sender.append((token, payload, badge))
@@ -551,7 +551,7 @@ async def test_wiederholung_zaehlt_die_plakette_nicht_noch_einmal(
     await _senden(client, sz)
     ausgaenge = ["warn", "ok"]
 
-    def _send(*, token, payload, badge=None):
+    def _send(*, token, payload, badge=None, lokal=None):
         sender.append((token, payload, badge))
         return ausgaenge.pop(0)
 
@@ -580,7 +580,7 @@ async def test_abbruch_waehrend_des_sendens_sendet_nicht_doppelt(
     await _senden(client, sz)
     begonnen = threading.Event()
 
-    def _langsam(*, token, payload, badge=None):
+    def _langsam(*, token, payload, badge=None, lokal=None):
         begonnen.set()
         time.sleep(0.3)
         sender.append((token, payload, badge))
@@ -722,3 +722,104 @@ async def test_beleg_nur_fuer_eingerechnete_zustellungen(
     await _lesestand(client, sz, X)
     await _abarbeiten(app.state.connection_manager)
     assert len(sender) == erwartet
+
+
+# ---------------------------------------------------------------------------
+# Runde 2: „Nicht stören“, DM-Schalter, Schlüssel statt Text (iOS)
+
+
+async def _vorlieben_setzen(session_factory, uid: int, abschnitt: str, wert: dict) -> None:
+    from dcc_chat_gateway.models import UserPreference
+
+    async with session_factory() as s:
+        s.add(UserPreference(user_id=uid, section_name=abschnitt, value=wert, version=1))
+        await s.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wie", ["redis_dnd", "dauerhaft_dnd", "schalter_aus"])
+async def test_stummes_konto_bekommt_keinen_push_aber_die_plakette_zaehlt(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange, wie
+):
+    """Der ganze Weg bis Firebase: „Nicht stören“ (live oder nur dauerhaft
+    gespiegelt) und ein ausgeschalteter DM-Schalter halten den Push zurück. Der
+    Ungelesen-Zähler läuft weiter — der nächste Push trägt die richtige Zahl."""
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    uid = sz["uid_b"]
+    if wie == "redis_dnd":
+        await app.state.redis.set(f"presence:status:{uid}", "dnd")
+    elif wie == "dauerhaft_dnd":
+        await _vorlieben_setzen(session_factory, uid, "presence", {"status": "dnd"})
+    else:
+        await _vorlieben_setzen(session_factory, uid, "push", {"dm": False})
+    try:
+        await _senden(client, sz)
+        await _abarbeiten(app.state.connection_manager)
+        assert sender == []
+        assert await badgezaehler.lesen(app.state.redis, uid) == 1
+    finally:
+        await app.state.redis.delete(f"presence:status:{uid}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("abschnitt", "wert", "live"),
+    [
+        (None, None, None),  # Vorgabe: nie etwas eingestellt
+        ("push", {"dm": True}, None),
+        ("push", {"dm": "nein"}, None),  # nur ein ausdrückliches false schweigt
+        ("presence", {"status": "invisible"}, None),
+        ("presence", {"status": "dnd"}, "online"),  # der Live-Stand gewinnt
+    ],
+)
+async def test_vorgabe_und_andere_staende_senden_weiter(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange,
+    abschnitt, wert, live,
+):
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    uid = sz["uid_b"]
+    if abschnitt:
+        await _vorlieben_setzen(session_factory, uid, abschnitt, wert)
+    if live:
+        await app.state.redis.set(f"presence:status:{uid}", live)
+    try:
+        await _senden(client, sz)
+        await _abarbeiten(app.state.connection_manager)
+        assert len(sender) == 1
+    finally:
+        await app.state.redis.delete(f"presence:status:{uid}")
+
+
+@pytest.mark.asyncio
+async def test_ios_bekommt_schluessel_android_den_deutschen_text(
+    app, client, session_factory, _auth_signer, friend_pair, sender, schlange, monkeypatch
+):
+    from dcc_chat_gateway.fcm_empfaenger import faehigkeiten_merken
+    from dcc_chat_gateway.models import VoipToken
+
+    sz = await _szene(client, session_factory, _auth_signer, friend_pair, schlange)
+    uid = sz["uid_b"]
+    async with session_factory() as s:
+        s.add(FcmToken(user_id=uid, geraet_id="iphone", token=f"tok-ios-{uid}"))
+        s.add(VoipToken(user_id=uid, geraet_id="iphone", token=f"voip-{uid}"))
+        await s.commit()
+    await faehigkeiten_merken(
+        app.state.redis, user_id=uid, geraet_id="iphone", faehigkeiten=["dm_vordergrund"]
+    )
+    gesendet: dict[str, object] = {}
+
+    def _fake(*, token, payload, badge=None, lokal=None):
+        gesendet[token] = (payload["body"], lokal)
+        return "ok"
+
+    monkeypatch.setattr(fcm, "_send_one", _fake)
+    await _senden(client, sz)
+    await _senden(client, sz)
+    await _abarbeiten(app.state.connection_manager)
+    android_text, android_lokal = gesendet[f"tok-{uid}"]
+    ios_text, ios_lokal = gesendet[f"tok-ios-{uid}"]
+    assert android_lokal is None
+    assert android_text == "2 neue Nachrichten"
+    assert ios_lokal is not None
+    assert (ios_lokal.schluessel, ios_lokal.args) == ("%@ neue Nachrichten", ("2",))
+    assert ios_lokal.titel == f"u{sz['uid_a']}"

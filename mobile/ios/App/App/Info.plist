@@ -13,6 +13,11 @@
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>de</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleDisplayName</key>
         <string>Pulse</string>
 	<key>CFBundleExecutable</key>
@@ -48,7 +53,7 @@
 	     gerufen wird: ohne den Eintrag beendet iOS die App beim ersten
 	     Face-ID-Aufruf — kein Dialog, kein Fehler, Absturz. -->
 	<key>NSFaceIDUsageDescription</key>
-	<string>Pulse uses Face ID to unlock the app.</string>
+	<string>Pulse nutzt Face ID, um die App zu entsperren.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Pulse verbindet sich mit deinem Pulse-Server im Heimnetzwerk (Self-Host).</string>
 	<!-- Hintergrund-Ton: Sprachkanäle und Watch-/Stream-Ton laufen weiter,
@@ -73,7 +78,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<!-- ALLE DREI LAGEN SIND ABSICHT, und sie bedeuten NICHT, dass die App
 	     dreht. Der Riegel sitzt zur Laufzeit im AppDelegate

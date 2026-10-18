@@ -158,11 +158,9 @@ export interface SprachePlugin {
      *  Kanal. Kein eigener Befehl: der hielte jeden älteren Bau ganz vom
      *  nativen Weg fern (`SPRACHE_METHODEN`). */
     communityName?: string;
-    /** „Volle Tonqualität" (Spracheinstellungen, nur iOS): WebRTCs eigene
-     *  Verarbeitung statt Apples Voice-Processing, dazu `bitrateKbps` (der
-     *  Server-Wert, wie am Desktop). Nur an einen Bau mit Wächter geschickt
-     *  (`nativeWacheDa`); ein älterer übergeht die Felder. */
-    volleTonqualitaet?: boolean;
+    /** Der Server-Wert der Sende-Bitrate (wie am Desktop). Nur an einen Bau mit
+     *  Wächter geschickt (`nativeWacheDa`). Die Hülle liest das Feld nicht mehr
+     *  (ihr „Volle Tonqualität"-Weg ist entfernt); es bleibt für ältere Bauten. */
     bitrateKbps?: number;
     /** Diese Web-App kennt die Aktion `neuVerbinden` der nativen Ansicht —
      *  sonst zeigt deren Band statt des Knopfs „App neu starten". */
@@ -220,9 +218,8 @@ export interface NativeDiagnose {
  *
  * **Bewusst NICHT in `SprachePlugin` und damit nicht in `SPRACHE_METHODEN`.**
  * Jede Methode dort ist Bedingung für den ganzen nativen Weg: ein Bau ohne sie
- * — TestFlight 2.1 im Feld — fiele ganz auf den Web-Weg zurück, also auf
- * WebKits eigene Aufnahme mit allen Fehlern, gegen die der native Weg gebaut
- * wurde. Der Wächter ist ein Zusatz: fehlt er, läuft der Kanal wie bisher,
+ * — TestFlight 2.1 im Feld — gälte als veraltet und könnte keinem Kanal
+ * mehr beitreten. Der Wächter ist ein Zusatz: fehlt er, läuft der Kanal wie bisher,
  * nur ohne Wächter. Gefragt wird deshalb einzeln (`nativeWacheDa`), und alles,
  * was daran hängt (Beitrittston erst nach dem Mikrofon, Tonqualität), gilt
  * nur dann.
@@ -244,8 +241,8 @@ export const SPRACHE_WACHE_METHODEN: readonly string[] = ['diagnose'];
 /**
  * Bluetooth-Kopfhörer in hoher Qualität (iOS 26, `SpracheFunkHq.swift`) —
  * Schalter und Kennzeichen zugleich, aus demselben Grund wie der Wächter
- * NICHT in `SPRACHE_METHODEN`: ein älterer Bau bliebe sonst ganz beim
- * Web-Weg, statt nur ohne diesen Schalter.
+ * NICHT in `SPRACHE_METHODEN`: ein älterer Bau gälte sonst als veraltet,
+ * statt nur ohne diesen Schalter zu laufen.
  */
 export interface SpracheFunkHqPlugin {
   funkHq(o: { an: boolean }): Promise<void>;
@@ -256,8 +253,8 @@ export const SPRACHE_FUNK_HQ_METHODEN: readonly string[] = ['funkHq'];
 /**
  * Jede Methode, die die Oberfläche auf dem nativen Weg an der Hülle ruft — die
  * Liste, gegen die die Weiche den installierten Bau prüft
- * (`iosSpracheWeiche.ts`). Der Bau muss ALLE kennen, sonst bleibt es beim
- * Web-Weg: ein halber nativer Weg sieht funktionierend aus, wo er es nicht
+ * (`iosSpracheWeiche.ts`). Der Bau muss ALLE kennen, sonst gilt er als
+ * veraltet: ein halber nativer Weg sieht funktionierend aus, wo er es nicht
  * ist (so lief es mit dem Taubstellen, s. `spracheTaub`).
  *
  * **Vom Typ erzwungen vollständig.** Die Schlüssel sind genau die von

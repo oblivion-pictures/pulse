@@ -19,7 +19,7 @@ import { toast } from 'svelte-sonner';
 import { anrufAblehnen, anrufAuflegen } from '$lib/api/anrufe';
 import { m } from '$lib/paraglide/messages.js';
 import { anrufNativ, type AnrufAktion, type AnrufEndgrund } from '$lib/platform/anrufNativ';
-import { nativerAnrufwegDa } from '$lib/platform/anrufNativWeiche';
+import { anrufwegVeraltet, nativerAnrufwegDa } from '$lib/platform/anrufNativWeiche';
 import { mitFrist, SPRACHE_FRIST_SOFORT_MS } from '$lib/platform/brueckenFrist';
 import { isCapacitorAndroid, isCapacitorIOS } from '$lib/platform/runtime';
 import type { AnrufStore } from './anruf.svelte';
@@ -71,6 +71,17 @@ export async function nativBeenden(grund: AnrufEndgrund, callId?: string): Promi
   } catch (e) {
     console.warn('[anruf] native Klingel-Anzeige entfernen fehlgeschlagen', e);
   }
+}
+
+/** Veralteter iOS-Bau ohne nativen Anruf-Raum (E6): Hinweis zeigen, der Aufrufer
+ *  bricht ab. Mit `eingehendeId` (ein klingelnder Anruf) räumt es nur die
+ *  lokale Anzeige weg — den Anruf NICHT am Server ablehnen, das beendete ihn
+ *  für alle Geräte des Kontos. */
+export function veralteteHuelleMelden(eingehendeId?: string): boolean {
+  if (!anrufwegVeraltet()) return false;
+  toast.error(m.anruf_ios_app_veraltet());
+  if (eingehendeId) void nativBeenden('fehler', eingehendeId);
+  return true;
 }
 
 /**

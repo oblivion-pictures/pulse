@@ -68,6 +68,11 @@ import {
   NOTIFICATIONS_SECTION,
   type NotificationSettings
 } from '$lib/settings-registry/sections/notifications';
+import {
+  PUSH_ABSCHNITT,
+  PUSH_DM_SECTION,
+  type PushDmSettings
+} from '$lib/settings-registry/sections/pushDm';
 import { SOUNDS_SECTION } from '$lib/settings-registry/sections/sounds';
 import { LAYOUT_SECTION, type LayoutSettings } from '$lib/settings-registry/sections/layout';
 import { SHORTCUTS_SECTION } from '$lib/settings-registry/sections/shortcuts';
@@ -139,6 +144,7 @@ class SettingsStore {
   #screenShare: SectionStore<ScreenShareSettings>;
   #streamChat: SectionStore<StreamChatSettings>;
   #notifications: SectionStore<NotificationSettings>;
+  #push: SectionStore<PushDmSettings>;
   #sounds: SectionStore<SoundsSettings>;
   #shortcuts: SectionStore<ShortcutsSettings>;
   #layout: SectionStore<LayoutSettings>;
@@ -150,6 +156,7 @@ class SettingsStore {
     this.#screenShare = registerSettingsSection('screenShare', SCREEN_SHARE_SECTION);
     this.#streamChat = registerSettingsSection('streamChat', STREAM_CHAT_SECTION);
     this.#notifications = registerSettingsSection('notifications', NOTIFICATIONS_SECTION);
+    this.#push = registerSettingsSection(PUSH_ABSCHNITT, PUSH_DM_SECTION);
     this.#sounds = registerSettingsSection('sounds', SOUNDS_SECTION);
     this.#shortcuts = registerSettingsSection('shortcuts', SHORTCUTS_SECTION);
     this.#layout = registerSettingsSection('layout', LAYOUT_SECTION);
@@ -176,6 +183,12 @@ class SettingsStore {
   }
   get notifications() {
     return this.#notifications.value;
+  }
+  /** Server-gespiegelter DM-Schalter nur der Hülle (iOS/Android): Pushes ans
+   *  Telefon sendet der Server — er muss den Schalter kennen. Desktop und
+   *  Browser nutzen weiter `notifications.onDM` (lokal pro Gerät). */
+  get push() {
+    return this.#push.value;
   }
   get sounds() {
     return this.#sounds.value;
@@ -233,16 +246,10 @@ class SettingsStore {
   setSpatialMode(v: SpatialMode): void {
     this.#audio.set('spatialMode', parseSpatialMode(v));
   }
-  // Die beiden iOS-Schalter (`IosTonEinstellungen.svelte`). Bis zum
+  // Die iOS-Schalter (`IosTonEinstellungen.svelte`). Bis zum
   // 2026-10-17 wies die Komponente direkt an `settings.audio` zu — das wirkte
   // in der Sitzung, wurde aber nie gespeichert (nur `set`/`patch` lösen das
   // Speichern aus), und nach einem App-Neustart stand der Schalter wieder aus.
-  setBluetoothHq(v: boolean): void {
-    this.#audio.set('bluetoothHq', v);
-  }
-  setIosVolleTonqualitaet(v: boolean): void {
-    this.#audio.set('iosVolleTonqualitaet', v);
-  }
   setIosFunkHq(v: boolean): void {
     this.#audio.set('iosFunkHq', v);
   }
@@ -307,6 +314,9 @@ class SettingsStore {
   }
   setNotifyOnDM(v: boolean): void {
     this.#notifications.set('onDM', v);
+  }
+  setPushDm(v: boolean): void {
+    this.#push.set('dm', v);
   }
   setNotifyOnFriendRequests(v: boolean): void {
     this.#notifications.set('onFriendRequests', v);

@@ -201,7 +201,7 @@
                 <AnhangLadeknopf
                   {quelle}
                   dateiname={z.dateiname}
-                  class="text-primary hover:bg-bg-hover flex size-8 items-center justify-center rounded-full"
+                  class="text-primary hover:bg-bg-hover flex size-9 handy:size-11 items-center justify-center rounded-full"
                   aria-label={m.medien_datei_laden()}
                   data-testid={`media-archive-file-download-${z.id}`}
                 >
