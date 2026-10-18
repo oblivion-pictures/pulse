@@ -28,10 +28,21 @@
    * Dialog (`role`, `aria-modal`); der Rest der Seite wird `inert`, der Fokus
    * bleibt im Blatt (`blattAktionen.fokusFalle`). `ariaLabel` benennt den
    * Dialog; ohne ihn liest VoiceOver nur „Dialog".
+   *
+   * **Bewegung (2026-10-18):** Das Blatt schiebt sich mit der Feder von unten
+   * herein, die Abdunkelung blendet ein; Schliessen läuft umgekehrt
+   * (`blattUebergang.ts`, bei „Bewegung reduzieren“ nur eine kurze
+   * Überblendung). Warum das `{#if}` INNERHALB des `Portal` sitzt: bits-ui
+   * hängt den Inhalt per `mount()`/`unmount()` an, und `unmount` räumt ohne
+   * Ausblendung sofort ab — ein `{#if}` ausserhalb liesse nie einen
+   * `out:`-Übergang laufen. Warum `gezeigt` statt `open` im `{#if}`: ein von
+   * Anfang an offenes Blatt (`open` schon beim Anlegen wahr) bekäme sonst keinen
+   * Einblend-Übergang, denn `mount()` spielt beim ersten Aufbau keinen ab.
    */
   import { Portal } from 'bits-ui';
   import type { Snippet } from 'svelte';
   import { fokusFalle, wischen } from './blattAktionen';
+  import { abdunkelung, blattFahrt } from './blattUebergang';
 
   let {
     open,
@@ -56,12 +67,20 @@
     onClose: () => void;
     children: Snippet;
   } = $props();
+
+  // Erst nach dem Aufbau wahr (Effekte laufen danach) → der Einblend-Übergang spielt.
+  let gezeigt = $state(false);
+  $effect(() => {
+    gezeigt = open;
+  });
 </script>
 
-{#if open}
-  <Portal>
+<Portal>
+  {#if gezeigt}
+    <!-- Während des Ausblendens (`open` schon falsch) keine zweite Eingabe annehmen. -->
     <div
       class="fixed inset-0 z-50 flex flex-col justify-end"
+      class:pointer-events-none={!open}
       data-testid={testid}
       use:fokusFalle={{ onClose }}
     >
@@ -70,6 +89,8 @@
         class="absolute inset-0 bg-black/50"
         aria-label={closeLabel}
         onclick={onClose}
+        in:abdunkelung
+        out:abdunkelung
       ></button>
       <div
         class={panelClass}
@@ -79,9 +100,11 @@
         aria-label={ariaLabel}
         tabindex="-1"
         use:wischen={{ onClose }}
+        in:blattFahrt
+        out:blattFahrt
       >
         {@render children()}
       </div>
     </div>
-  </Portal>
-{/if}
+  {/if}
+</Portal>

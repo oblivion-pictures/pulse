@@ -1427,6 +1427,7 @@
   "hosting_apply_mode_vps_title": "On your own server",
   "hosting_origin_app": "Home",
   "hosting_origin_vps": "VPS",
+  "handy_dialog_schliessen": "Close",
   "hq_stream_dialog_description": "GPU Screen Recorder-based stream via MediaMTX (Pulse T3/T4).",
   "hq_stream_dialog_title": "HQ Stream",
   "hq_stream_frozen_give_up": "The picture froze repeatedly and a fresh connection did not bring it back. Close the tile and open it again to retry.",

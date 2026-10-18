@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
   import { goto } from '$app/navigation';
+  import { zurueckZu } from '$lib/navigation/zurueckZu';
   import { page } from '$app/state';
   import ChannelList from '$lib/components/ChannelList.svelte';
   import ChannelSwitcherSheet from '$lib/components/mobile/ChannelSwitcherSheet.svelte';
@@ -342,7 +343,7 @@
     messages={visibleMessages}
     onSend={(text, replyToId, attachmentIds) =>
       kanalNachrichten.sendMessage(guildId, activeChannel, text, replyToId, attachmentIds)}
-    onBack={() => goto(`/app/rooms/${guildId}`)}
+    onBack={() => zurueckZu(`/app/rooms/${guildId}`)}
     onSwitchChannel={() => (wechslerOffen = true)}
     isOwner={!!activeGuild && roles.hasGuildPermission(activeGuild.id, Perm.MANAGE_MESSAGES)}
     composerDisabled={legacyReadonly}

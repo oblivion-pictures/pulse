@@ -13,7 +13,8 @@ import { errText } from '$lib/utils/errText';
   import VolumeXIcon from '@lucide/svelte/icons/volume-x';
   import UsersIcon from '@lucide/svelte/icons/users';
   import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
-  import { goto } from '$app/navigation';
+  import { zurueckZu } from '$lib/navigation/zurueckZu';
+  import { eintrittsKlasse } from '$lib/navigation/richtung';
   import { toast } from 'svelte-sonner';
   import { voice } from '$lib/voice/livekit.svelte';
   import { settings } from '$lib/stores/settings.svelte';
@@ -32,6 +33,8 @@ import { errText } from '$lib/utils/errText';
   import type { Channel } from '$lib/api/types';
   import FieldError from './feedback/FieldError.svelte';
 
+  /** Eintritts-Animation je nach Richtung (`navigation/richtung.ts`). */
+  const eintritt = eintrittsKlasse('detail');
   let {
     channel,
     /** Handy-Klasse? Vom Mount-Punkt hereingereicht (Geraete-Trennung):
@@ -219,7 +222,7 @@ import { errText } from '$lib/utils/errText';
   onvisibilitychange={() => { if (document.visibilityState === 'hidden' && voice.pttMode) { voice.pttRelease(); pttPressed = false; } }}
 />
 
-<section class="glass-panel slide-rein relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl" data-testid="voice-channel-view">
+<section class="glass-panel {eintritt} relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl" data-testid="voice-channel-view">
   <!-- Mobil verschwindet die Kopfzeile, sobald ein Stream läuft: der Bildschirm
        gehört dann dem Video, Navigation übernimmt die Bereichs-Leiste unten.
        Zurück bleibt der Kopf für den Normalzustand (Kacheln, nicht verbunden).
@@ -240,7 +243,7 @@ import { errText } from '$lib/utils/errText';
       variant="ghost"
       size="icon"
       class="nicht-handy:hidden"
-      onclick={() => goto(`/app/rooms/${channel.guild_id}`)}
+      onclick={() => zurueckZu(`/app/rooms/${channel.guild_id}`)}
       aria-label={m.channel_list_back()}
       data-testid="voice-back-mobile"
     >

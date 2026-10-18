@@ -267,7 +267,7 @@
                Kachel nicht verbreitern, sonst zentriert das Grid sie neu und
                das Icon zittert. -->
           <span
-            class="text-text-bright w-28 text-center truncate transition-[font-weight] duration-200 ease-out {p.isSpeaking
+            class="text-text-bright w-28 text-center truncate {p.isSpeaking
               ? 'font-bold'
               : 'font-semibold'}"
             style={p.userId ? nameStyle(p.userId, guildId) : ''}
@@ -355,7 +355,7 @@
     </div>
     <div class="flex flex-col items-center gap-1 text-sm nicht-handy:text-xs">
       <span
-        class="text-text-bright w-28 text-center truncate transition-[font-weight] duration-200 ease-out {p.isSpeaking
+        class="text-text-bright w-28 text-center truncate {p.isSpeaking
           ? 'font-bold'
           : 'font-semibold'}"
         title={resolvedName}

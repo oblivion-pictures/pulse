@@ -1,4 +1,5 @@
 <script lang="ts">
+  import HandyDialog from '$lib/components/mobile/HandyDialog.svelte';
   import * as Dialog from '$lib/components/ui/dialog/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
@@ -128,12 +129,13 @@
   }
 </script>
 
-<Dialog.Root {open} onOpenChange={handleOpenChange}>
-  <Dialog.Content data-testid="rename-channel-dialog">
-    <Dialog.Header>
-      <Dialog.Title>{m.rename_channel_dialog_title()}</Dialog.Title>
-      <Dialog.Description>{m.rename_channel_dialog_description({ name: channel?.name ?? '' })}</Dialog.Description>
-    </Dialog.Header>
+<HandyDialog
+  {open}
+  onOpenChange={handleOpenChange}
+  testid="rename-channel-dialog"
+  titel={m.rename_channel_dialog_title()}
+  beschreibung={m.rename_channel_dialog_description({ name: channel?.name ?? '' })}
+>
     <form class="space-y-4" onsubmit={submit}>
       <div class="space-y-1.5">
         <FieldLabel for="rename-channel-name" required class="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
@@ -197,5 +199,4 @@
         </Button>
       </Dialog.Footer>
     </form>
-  </Dialog.Content>
-</Dialog.Root>
+</HandyDialog>

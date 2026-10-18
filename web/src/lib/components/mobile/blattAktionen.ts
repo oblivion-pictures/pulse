@@ -7,9 +7,10 @@
  * Keine Runen hier (`.ts`, nicht `.svelte.ts`).
  */
 import { imKopf, senkrecht, tempo, versatz, weg, WISCH_SCHWELLE, type Probe } from './blattWischen';
+import { FEDER } from './feder';
 import { belegen, freigeben } from './inertZaehler';
 
-const RUECKFEDERN = 'transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1)';
+const RUECKFEDERN = `transform 260ms ${FEDER}`;
 const WEGGLEITEN = 'transform 160ms ease-in';
 
 /** Ausdrückliches Kopf-/Griff-Element: dort darf der Wisch immer starten. */

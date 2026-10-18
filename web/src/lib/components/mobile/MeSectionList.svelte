@@ -13,6 +13,7 @@
    * Richtung falsch gelaufen: ein Reiter, der am Telefon nichts tun kann
    * (Bildschirm teilen, Tastenkürzel), stünde trotzdem da.
    */
+  import { eintrittsKlasse } from '$lib/navigation/richtung';
   import { goto } from '$app/navigation';
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import ImageIcon from '@lucide/svelte/icons/image';
@@ -37,6 +38,8 @@
   import type { Stand } from '$lib/platform/berechtigungRegel';
   import { mitteilungenStand } from '$lib/platform/fcm';
 
+  /** Eintritts-Animation je nach Richtung (`navigation/richtung.ts`). */
+  const eintritt = eintrittsKlasse('wurzel');
   let { aktiv = null }: { aktiv?: string | null } = $props();
 
   const tabs = getSettingsTabs();
@@ -118,7 +121,7 @@
 </script>
 
 <div
-  class="glass-panel flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:w-72 nicht-handy:flex-none nicht-handy:rounded-2xl"
+  class="glass-panel {eintritt} flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:w-72 nicht-handy:flex-none nicht-handy:rounded-2xl"
   data-testid="me-page"
 >
   <BereichsKopf titel={m.nav_tab_me()} />
@@ -150,7 +153,7 @@
       class="border-border bg-bg-input mb-4 overflow-hidden rounded-[14px] border shadow-[0_6px_14px_-8px_rgba(0,0,0,0.7)]"
     >
       <button
-        class="hover:bg-bg-hover flex min-h-12 w-full items-center gap-3 px-3 py-3 text-left transition-colors"
+        class="hover:bg-bg-hover handy-druck flex min-h-12 w-full items-center gap-3 px-3 py-3 text-left transition-colors"
         onclick={() => (medienOffen = true)}
         data-testid="me-medien-archiv"
       >
@@ -162,7 +165,7 @@
       </button>
       {#if meineServer}
         <button
-          class="hover:bg-bg-hover border-border flex min-h-12 w-full items-center gap-3 border-t px-3 py-3 text-left transition-colors"
+          class="hover:bg-bg-hover handy-druck border-border flex min-h-12 w-full items-center gap-3 border-t px-3 py-3 text-left transition-colors"
           onclick={() => goto('/app/server')}
           data-testid="me-meine-server"
         >
@@ -182,7 +185,7 @@
       {#each eintraege as eintrag, i (eintrag.id)}
         {@const Symbol = eintrag.icon}
         <button
-          class="hover:bg-bg-hover data-[active=true]:bg-[var(--accent-soft)] flex min-h-12 w-full items-center gap-3 px-3 py-3 text-left transition-colors {i >
+          class="hover:bg-bg-hover handy-druck data-[active=true]:bg-[var(--accent-soft)] flex min-h-12 w-full items-center gap-3 px-3 py-3 text-left transition-colors {i >
           0
             ? 'border-border border-t'
             : ''}"

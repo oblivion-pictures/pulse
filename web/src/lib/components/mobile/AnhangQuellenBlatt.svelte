@@ -43,7 +43,7 @@
   >
     <button
       type="button"
-      class="bg-bg-input hover:bg-bg-hover flex w-24 flex-col items-center gap-2 rounded-2xl border border-border px-2 py-4 transition-colors"
+      class="bg-bg-input hover:bg-bg-hover handy-druck flex w-24 flex-col items-center gap-2 rounded-2xl border border-border px-2 py-4 transition-colors"
       onclick={waehle(onKamera)}
       data-testid="attachment-source-camera"
     >
@@ -56,7 +56,7 @@
     </button>
     <button
       type="button"
-      class="bg-bg-input hover:bg-bg-hover flex w-24 flex-col items-center gap-2 rounded-2xl border border-border px-2 py-4 transition-colors"
+      class="bg-bg-input hover:bg-bg-hover handy-druck flex w-24 flex-col items-center gap-2 rounded-2xl border border-border px-2 py-4 transition-colors"
       onclick={waehle(onGalerie)}
       data-testid="attachment-source-gallery"
     >
@@ -69,7 +69,7 @@
     </button>
     <button
       type="button"
-      class="bg-bg-input hover:bg-bg-hover flex w-24 flex-col items-center gap-2 rounded-2xl border border-border px-2 py-4 transition-colors"
+      class="bg-bg-input hover:bg-bg-hover handy-druck flex w-24 flex-col items-center gap-2 rounded-2xl border border-border px-2 py-4 transition-colors"
       onclick={waehle(onDokument)}
       data-testid="attachment-source-document"
     >

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { eintrittsKlasse } from '$lib/navigation/richtung';
   import { untrack, type Snippet } from 'svelte';
   import { anfangsBuchstabe } from '$lib/utils/anfangsBuchstabe';
   import StatusDot from '$lib/components/ui/StatusDot.svelte';
@@ -40,6 +41,8 @@
   import { anhangKnopfSichtbar } from '$lib/attachments/anhangKnopfSichtbar';
   import { anhangBereitschaft } from '$lib/attachments/anhangBereitschaft.svelte';
 
+  /** Eintritts-Animation je nach Richtung (`navigation/richtung.ts`). */
+  const eintritt = eintrittsKlasse('detail');
   let {
     channel,
     messages,
@@ -358,7 +361,7 @@
 </script>
 
 <section
-  class="glass-panel slide-rein relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl"
+  class="glass-panel {eintritt} relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl"
   aria-label={channel ? channel.name : pm.chat_view_select_channel()}
   ondragenter={onZoneDragEnter}
   ondragover={onZoneDragOver}

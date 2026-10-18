@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
   import { goto } from '$app/navigation';
+  import { zurueckZu } from '$lib/navigation/zurueckZu';
   import { page } from '$app/state';
   import GuildRail from '$lib/components/GuildRail.svelte';
   import DMChannelList from '$lib/components/DMChannelList.svelte';
@@ -341,7 +342,7 @@
       messages={visibleMessages}
       onSend={sendMessage}
       headerKind="gruppe"
-      onBack={() => goto('/app/@me')}
+      onBack={() => zurueckZu('/app/@me')}
       cloudScoped
       showMemberList={false}
       verschluesselteAnhaenge={PRIVATE_GRUPPEN_ENABLED}
@@ -365,7 +366,7 @@
         sendReport
         headerKind="dm"
         dmPartnerId={activeDM.other_user_id}
-        onBack={() => goto('/app/@me')}
+        onBack={() => zurueckZu('/app/@me')}
         cloudScoped
         verschluesselteAnhaenge={E2E_DMS_ENABLED}
         reaktionUmschlag={E2E_DMS_ENABLED}

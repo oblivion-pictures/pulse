@@ -49,7 +49,7 @@
 
 <div class="relative">
   <button
-    class="hover:bg-bg-hover border-border bg-bg-input flex w-full items-center gap-3 rounded-[14px] border p-2.5 text-left transition-colors {aktionen.length > 0 ? 'handy:pr-14' : ''}"
+    class="hover:bg-bg-hover handy-druck border-border bg-bg-input flex w-full items-center gap-3 rounded-[14px] border p-2.5 text-left transition-colors {aktionen.length > 0 ? 'handy:pr-14' : ''}"
     onclick={() => onSelect(dm)}
     data-testid={`chat-row-${dm.id}`}
     data-unread={ungelesen}

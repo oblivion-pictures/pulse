@@ -12,6 +12,8 @@
    * auseinander, und keine bestehende Community wurde ungefragt gelistet.
    */
   import { goto } from '$app/navigation';
+  import { zurueckZu } from '$lib/navigation/zurueckZu';
+  import { eintrittsKlasse } from '$lib/navigation/richtung';
   import { onMount } from 'svelte';
   import { toast } from 'svelte-sonner';
   import { errText } from '$lib/utils/errText';
@@ -28,6 +30,8 @@
   import { m } from '$lib/paraglide/messages.js';
   import { technischeEingabe } from '$lib/platform/technischeEingabe';
 
+  /** Eintritts-Animation je nach Richtung (`navigation/richtung.ts`). */
+  const eintritt = eintrittsKlasse('detail');
   let suche = $state('');
   let kategorie = $state<string>('');
   let eintraege = $state<DirectoryEntry[]>([]);
@@ -115,7 +119,7 @@
 </script>
 
 <div
-  class="glass-panel slide-rein flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl"
+  class="glass-panel {eintritt} flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl"
   data-testid="discover-page"
 >
   <!-- Gleiche Kopfhöhe wie die anderen Bereichs-Screens (BereichsKopf:
@@ -126,7 +130,7 @@
     <div class="flex min-w-0 items-center gap-1">
       <button
         class="text-text-muted hover:text-primary -ml-2 flex min-h-12 min-w-12 items-center justify-center"
-        onclick={() => goto('/app/rooms')}
+        onclick={() => zurueckZu('/app/rooms')}
         data-testid="discover-back"
         aria-label={m.channel_list_back()}
       >

@@ -114,7 +114,7 @@
   }
 
   const ZEILE =
-    'hover:bg-bg-hover border-border bg-bg-input flex w-full items-center gap-3 rounded-[14px] border p-2.5 text-left transition-colors';
+    'hover:bg-bg-hover handy-druck border-border bg-bg-input flex w-full items-center gap-3 rounded-[14px] border p-2.5 text-left transition-colors';
   const UEBERSCHRIFT =
     'text-text-muted px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide';
 </script>
@@ -185,7 +185,7 @@
   {@const name = userCache.displayName(hit.other_user_id)}
   {@const vonMir = !!auth.user && hit.author_id === auth.user.id}
   <button
-    class="hover:bg-bg-hover border-border bg-bg-input flex w-full flex-col gap-1 rounded-[14px] border p-2.5 text-left transition-colors"
+    class="hover:bg-bg-hover handy-druck border-border bg-bg-input flex w-full flex-col gap-1 rounded-[14px] border p-2.5 text-left transition-colors"
     onclick={() => oeffneTreffer(hit)}
     data-testid={`search-row-message-${hit.message_id}`}
   >

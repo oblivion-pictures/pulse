@@ -55,7 +55,7 @@
       {istAktiv}
       ziel={bereich.id === 'rooms' ? raeumeZiel : undefined}
       zeigeBeschriftung={false}
-      class="flex min-h-12 flex-1 items-center justify-center rounded-xl py-1.5 transition-colors {istAktiv
+      class="flex min-h-12 flex-1 items-center justify-center rounded-xl py-1.5 transition-all handy:active:scale-[0.97] {istAktiv
         ? 'text-primary'
         : 'text-text-muted'}"
     />

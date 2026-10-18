@@ -42,19 +42,73 @@
    iOS-Hülle) — die Variante ist damit von selbst iOS-only. */
 @custom-variant quer-stream (&:is([data-quer-stream] *));
 
-/* Mobile Slide-Rein: Detail-Bildschirme (Chat, Community, Entdecken …)
-   schieben sich auf dem Handy von rechts rein — WhatsApp-Prinzip, als
-   einfache Mount-Animation direkt am Bildschirm (keine View-Transition-API:
-   ein onNavigate-Hook brachte in dieser App den Boot zum Absturz). Nur
-   unter md; „Bewegung reduzieren" schaltet ab. */
-@media (max-width: 767.98px) and (prefers-reduced-motion: no-preference) {
-  .slide-rein {
-    animation: 260ms ease both seitenwechsel-rein;
+/* Feder-Kurve der Handy-Bewegungen (Blatt, Rückfedern, Dialog-Blatt). Die
+   Zahlen stehen zweimal: hier für Klassen (`ease-[var(--feder)]`), in
+   `components/mobile/feder.ts` für Skripte — beide zusammen ändern. */
+:root {
+  --feder: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Druck-Zustand einer Listenzeile am Handy: sofort beim Drücken, beim
+   Loslassen blendet `transition-colors` der Zeile in ~150 ms aus. `hover:` gilt
+   am Finger nicht (Tailwind fasst es in `@media (hover: hover)`), ohne diese
+   Klasse bliebe die Zeile beim Tippen stumm. Nur Handy — Desktop unverändert.
+   Die Zeile braucht `transition-colors`; die Dauer 0 gilt nur im gedrückten
+   Zustand, der Rückweg läuft mit der Dauer der Zeile. */
+@utility handy-druck {
+  &:is(.geraet-handy *):active {
+    background-color: var(--color-bg-hover);
+    transition-duration: 0s;
   }
+}
+
+/* Mobile Seitenwechsel: Detail-Bildschirme (Chat, Community, Entdecken …)
+   schieben sich auf dem Handy von rechts rein (`slide-rein`, Vorwärts), beim
+   Zurück kommt die Elternseite von links (`slide-zurueck`, ein Stück weniger
+   weit und mit Einblenden — sie liegt „unter" der abgehenden Seite). Die
+   Bereiche der Tab-Leiste blenden beim Wechsel nur kurz ein (`bereich-blende`).
+   Welche Klasse eine Seite trägt, entscheidet `navigation/richtung.ts` beim
+   Mounten. Einfache Mount-Animationen direkt am Bildschirm (keine
+   View-Transition-API: ein onNavigate-Hook brachte in dieser App den Boot zum
+   Absturz). Nur `transform`/`opacity`. An der Geräteklasse, nicht an der
+   Fensterbreite (Geräte-Trennung). „Bewegung reduzieren": keine Bewegung,
+   nur eine kurze Überblendung. */
+@media (prefers-reduced-motion: no-preference) {
+  .geraet-handy .slide-rein {
+    animation: 350ms cubic-bezier(0.32, 0.72, 0, 1) both seitenwechsel-rein;
+  }
+  .geraet-handy .slide-zurueck {
+    /* backwards: danach kein hängendes `transform` (Containing Block). */
+    animation: 350ms cubic-bezier(0.32, 0.72, 0, 1) backwards seitenwechsel-zurueck;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .geraet-handy :is(.slide-rein, .slide-zurueck) {
+    animation: 120ms ease backwards bereich-blende-ein;
+  }
+}
+.geraet-handy .bereich-blende {
+  animation: 120ms ease backwards bereich-blende-ein;
 }
 @keyframes seitenwechsel-rein {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
+}
+@keyframes seitenwechsel-zurueck {
+  from { transform: translateX(-30%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes bereich-blende-ein {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Zurückwischen mit dem Finger (iOS-Hülle, `platform/zurueckWischen.ts`):
+   die Seitenfläche wandert per `transform`; der Schatten links davon deutet
+   die Tiefe an, wo keine echte Elternseite gerendert ist. Statisch, nicht
+   animiert. */
+.wisch-folgt {
+  box-shadow: -12px 0 28px -8px rgb(0 0 0 / 0.45);
 }
 
 /* PiP-Eckfenster (WatchBackgroundFrame, corner mode): die eigenen schwebenden
@@ -239,6 +293,12 @@
   :root[data-huelle='ios'],
   :root[data-huelle='ios'] body {
     overscroll-behavior: none;
+  }
+
+  /* iOS-Hülle: das graue Tipp-Blinken des Systems weicht den eigenen
+     Druck-Zuständen (`handy-druck`, `handy:active:scale-*`). */
+  :root[data-huelle='ios'] * {
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {

@@ -40,6 +40,7 @@ import { errText } from '$lib/utils/errText';
   import LoadingState from './feedback/LoadingState.svelte';
   import FieldError from './feedback/FieldError.svelte';
   import { emojiPickerContentProps } from './emojiPickerContent';
+  import { zahlPop } from '$lib/utils/zahlPop';
 
   // Hard cap so a viral message doesn't render a thousand-row popover.
   // Discord uses 25; we err generous because reactions are cheap to
@@ -49,7 +50,8 @@ import { errText } from '$lib/utils/errText';
   let {
     messageId,
     reactions,
-    onToggle
+    onToggle,
+    handy = false
   }: {
     /** Required for the "who reacted" popover (regular channel messages,
      *  backed by the persistent `message_reactions` table). Omit for
@@ -58,6 +60,8 @@ import { errText } from '$lib/utils/errText';
     messageId?: string;
     reactions: ReactionAggregate[];
     onToggle: (emoji: string, currentlyMine: boolean) => void;
+    /** Handy-Klasse (vom Mount-Punkt gereicht): die Zahl ploppt bei Zunahme. */
+    handy?: boolean;
   } = $props();
 
   let pickerOpen = $state(false);
@@ -169,6 +173,7 @@ import { errText } from '$lib/utils/errText';
               data-emoji={r.emoji}
               data-mine={r.me}
               aria-label={m.message_reactions_react()}
+              use:zahlPop={{ zahl: r.count, aktiv: handy }}
             >
               <span class="text-base leading-none">{r.emoji}</span>
               <span class="font-mono">{r.count}</span>
@@ -275,6 +280,7 @@ import { errText } from '$lib/utils/errText';
           data-mine={r.me}
           title={r.me ? m.message_reactions_remove_reaction() : m.message_reactions_react()}
           onclick={() => onToggle(r.emoji, r.me)}
+          use:zahlPop={{ zahl: r.count, aktiv: handy }}
         >
           <span class="text-base leading-none">{r.emoji}</span>
           <span class="font-mono">{r.count}</span>

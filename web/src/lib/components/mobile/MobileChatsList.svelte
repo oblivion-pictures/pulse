@@ -18,6 +18,7 @@
    * `NeuesGespraechDialog`) — drei unabhängige Anliegen in einer Datei waren
    * fast das Doppelte der Grössen-Grenze für Svelte-Komponenten.
    */
+  import { eintrittsKlasse } from '$lib/navigation/richtung';
   import PencilIcon from '@lucide/svelte/icons/pencil';
   import UsersIcon from '@lucide/svelte/icons/users';
   import KopfMenue from './KopfMenue.svelte';
@@ -29,6 +30,7 @@
   import NeuesGespraechDialog from './NeuesGespraechDialog.svelte';
   import NeueGruppeDialog from './NeueGruppeDialog.svelte';
   import MobileGruppenZeile from './MobileGruppenZeile.svelte';
+  import Skelettzeilen from '$lib/components/feedback/Skelettzeilen.svelte';
   import { directMessages } from '$lib/stores/directMessages.svelte';
   import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
   import { userCache } from '$lib/stores/users.svelte';
@@ -36,6 +38,8 @@
   import type { DMChannel } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
 
+  /** Eintritts-Animation je nach Richtung (`navigation/richtung.ts`). */
+  const eintritt = eintrittsKlasse('wurzel');
   let {
     onSelect,
     onSelectGruppe
@@ -81,6 +85,22 @@
     return norm.length >= 3 ? norm : null;
   });
 
+  // Skelett statt Leer-Hinweis, solange die erste Liste noch unterwegs ist.
+  // Nach 8 s gibt er auf: scheitert das Laden (offline), pulsierte er sonst
+  // ewig — dann gilt wieder der Leer-Hinweis wie vor dem Skelett.
+  let skelettAbgelaufen = $state(false);
+  $effect(() => {
+    if (directMessages.loaded) return;
+    const t = setTimeout(() => (skelettAbgelaufen = true), 8000);
+    return () => clearTimeout(t);
+  });
+  const zeigeSkelett = $derived(
+    !directMessages.loaded &&
+      !skelettAbgelaufen &&
+      directMessages.list.length === 0 &&
+      gruppen.length === 0
+  );
+
   // Namen und Bilder der Gegenüber in den Zwischenspeicher holen. Der Store
   // bündelt die Anfragen, mehrfaches Anmelden kostet nichts.
   $effect(() => {
@@ -89,7 +109,7 @@
 </script>
 
 <div
-  class="glass-panel relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl"
+  class="glass-panel {eintritt} relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl"
   data-testid="mobile-chats-list"
 >
   <BereichsKopf titel={m.nav_tab_chats()}>
@@ -109,6 +129,8 @@
   <nav class="flex flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-3">
     {#if suchbegriff}
       <MobileChatsSuche {suchbegriff} roheEingabe={suche} {onSelect} />
+    {:else if zeigeSkelett}
+      <Skelettzeilen variante="chat" anzahl={7} testId="chats-skelett" />
     {:else}
       {#if directMessages.list.length === 0 && gruppen.length === 0}
         <!-- Ein leerer Bildschirm ist eine Aufforderung, keine Stimmung. Das

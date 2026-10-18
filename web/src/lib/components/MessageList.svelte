@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick, untrack, type Snippet } from 'svelte';
   import { VList, type VListHandle } from 'virtua/svelte';
-  import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
+  import Skelettzeilen from './feedback/Skelettzeilen.svelte';
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
   import MessageItem from './MessageItem.svelte';
   import { plainifyMentions, snippet80 } from './messageRender';
@@ -371,6 +371,7 @@
     // Absenden relativ nach oben („ruckelig“). Der ID-Vergleich fängt den
     // Swap, ein Re-Pin (oben: mit Scroll-Willen-Check) glättet ihn.
     if (count !== lastCount || lastId !== lastSeenId) {
+      const vorherigeId = lastSeenId;
       const isInitialLoad = lastCount === 0;
       const gewachsen = count > lastCount;
       // "Klebt der User unten?" wird VOR dem DOM-Wachstum bestimmt (über den
@@ -397,7 +398,12 @@
       if (gewachsen && !isInitialLoad && !klebe.klebt && count > 0) {
         neueUnten += zuwachs;
       }
-      if (gewachsen && !isInitialLoad && count > 0) {
+      // Handy: nur wenn das ENDE wirklich eine neue Nachricht trägt (nicht beim
+      // Nachladen älterer Seiten, die `count` auch wachsen lassen) und die
+      // Erstladung-Sperre schon offen ist (sonst animierte der Server-Nachschlag
+      // hinter dem Skelett).
+      const handyErlaubt = !handy || (initialBereit && lastId !== vorherigeId);
+      if (gewachsen && !isInitialLoad && count > 0 && handyErlaubt) {
         markiereFrisch(messages[count - 1].nonce ?? lastId);
       }
     }
@@ -787,10 +793,11 @@
          und obenliegende Nachrichten durch (Aufnahme 2026-09-25 04:02).
          panel-solid ist 92 % deckend, der Blur frisst den Rest. -->
     <div
-      class="absolute inset-0 z-20 flex items-center justify-center bg-bg-panel backdrop-blur-2xl"
+      class="absolute inset-0 z-20 flex flex-col justify-end overflow-hidden bg-bg-panel backdrop-blur-2xl"
       data-testid="message-list-loading"
     >
-      <LoaderCircleIcon class="text-primary size-8 animate-spin" />
+      <!-- Platzhalter-Zeilen statt Spinner, am Boden wie der Verlauf selbst. -->
+      <Skelettzeilen variante="verlauf" anzahl={7} class="pb-2" />
     </div>
   {/if}
   {#if channel}

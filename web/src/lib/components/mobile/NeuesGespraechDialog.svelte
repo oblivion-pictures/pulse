@@ -8,7 +8,7 @@
    */
   import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
   import { anfangsBuchstabe } from '$lib/utils/anfangsBuchstabe';
-  import * as Dialog from '$lib/components/ui/dialog/index.js';
+  import HandyDialog from './HandyDialog.svelte';
   import { goto } from '$app/navigation';
   import { friends } from '$lib/stores/friends.svelte';
   import { directMessages } from '$lib/stores/directMessages.svelte';
@@ -54,12 +54,14 @@
   }
 </script>
 
-<Dialog.Root bind:open>
-  <Dialog.Content class="max-w-sm" data-testid="chats-new-chat-dialog">
-    <Dialog.Header>
-      <Dialog.Title>{m.chats_compose()}</Dialog.Title>
-      <Dialog.Description>{m.chats_new_chat_hint()}</Dialog.Description>
-    </Dialog.Header>
+<HandyDialog
+  {open}
+  onOpenChange={(o) => (open = o)}
+  class="max-w-sm"
+  testid="chats-new-chat-dialog"
+  titel={m.chats_compose()}
+  beschreibung={m.chats_new_chat_hint()}
+>
     <div class="flex max-h-[60vh] flex-col gap-1 overflow-y-auto">
       {#if freundeOhneChat.length === 0}
         <p class="text-text-muted px-2 py-6 text-center text-xs">
@@ -71,7 +73,7 @@
         {@const bild = safeAvatarUrl(userCache.get(f.user_id)?.avatar_url ?? null)}
         <button
           type="button"
-          class="hover:bg-bg-hover flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors"
+          class="hover:bg-bg-hover handy-druck flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors"
           onclick={() => starteDM(f.user_id)}
           data-testid={`new-chat-friend-${f.user_id}`}
         >
@@ -95,5 +97,4 @@
         </button>
       {/each}
     </div>
-  </Dialog.Content>
-</Dialog.Root>
+</HandyDialog>

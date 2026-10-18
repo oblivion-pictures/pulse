@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { afterNavigate, goto } from '$app/navigation';
+  import { zuruecksetzen } from '$lib/navigation/richtung';
   import { dev } from '$app/environment';
   import { onMount, onDestroy } from 'svelte';
   import { istInAppZiel } from '$lib/notifications/pushZiel';
@@ -210,6 +211,9 @@
   let externeLinksAbriss: () => void = () => undefined;
   // Universal Links: Chat-Adressen öffnen die App (No-op außerhalb der Hülle).
   let tiefenlinkAbriss: () => void = () => undefined;
+
+  // Die Richtung (zurück/vor) gilt nur für DIESE Navigation, s. `navigation/richtung.ts`.
+  afterNavigate(zuruecksetzen);
 
   onMount(async () => {
     viewport.init();
@@ -575,7 +579,13 @@
   <!-- `--safe-bottom: 0` IN der Zeile, wenn unter ihr Dock oder Leiste steht:
        die tragen den Home-Balken, ein Composer darüber (`MessageInput`) hätte
        ihn sonst ein zweites Mal als Leerraum. Nur iOS-Hülle am Handy. -->
+  <!-- `data-seitenflaeche`: die Fläche, die das Zurückwischen der iOS-Hülle mit
+       dem Finger mitzieht (`platform/zurueckWischen.ts`) — der Inhaltsbereich
+       ohne Tab-Leiste und Voice-Dock. Auf dem Tablet steht die Spalte links
+       IN dieser Zeile und würde mitwandern; dort bleibt die Geste ohne
+       Mitziehen. -->
   <div
+    data-seitenflaeche={lage.zeigeSpalteLinks ? undefined : ''}
     class="flex flex-1 gap-0 p-0 pt-[var(--safe-top)] ios:handy:pt-0 nicht-handy:gap-3 nicht-handy:p-3 nicht-handy:pt-3 min-h-0 {lage.zeigeDockUnten || lage.zeigeLeisteUnten ? 'ios:handy:[--safe-bottom:0px]' : ''}"
   >
     {#if lage.zeigeSpalteLinks}

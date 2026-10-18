@@ -1,4 +1,5 @@
 <script lang="ts">
+  import HandyDialog from '$lib/components/mobile/HandyDialog.svelte';
   import * as Dialog from '$lib/components/ui/dialog/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
@@ -77,12 +78,13 @@
   }
 </script>
 
-<Dialog.Root {open} onOpenChange={handleOpenChange}>
-  <Dialog.Content data-testid="create-channel-dialog">
-    <Dialog.Header>
-      <Dialog.Title>{m.create_channel_dialog_title()}</Dialog.Title>
-      <Dialog.Description>{m.create_channel_dialog_description()}</Dialog.Description>
-    </Dialog.Header>
+<HandyDialog
+  {open}
+  onOpenChange={handleOpenChange}
+  testid="create-channel-dialog"
+  titel={m.create_channel_dialog_title()}
+  beschreibung={m.create_channel_dialog_description()}
+>
     <form class="space-y-4" onsubmit={submit}>
       <div class="space-y-1.5">
         <Label class="text-muted-foreground text-xs font-semibold uppercase tracking-wide">{m.create_channel_dialog_type_label()}</Label>
@@ -150,5 +152,4 @@
         <Button type="submit" data-testid="create-channel-submit">{m.create_channel_dialog_submit()}</Button>
       </Dialog.Footer>
     </form>
-  </Dialog.Content>
-</Dialog.Root>
+</HandyDialog>

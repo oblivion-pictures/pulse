@@ -2,6 +2,21 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-18.2",
+      "date": "2026-10-18",
+      "style": "Sachlich",
+      "title": "Flüssigere Bedienung auf dem Handy",
+      "items": [
+        "Blätter von unten gleiten weich auf und zu, Formulare wie „Neue Gruppe“ öffnen sich ebenfalls als Blatt.",
+        "Zeilen und Knöpfe reagieren sichtbar auf den Finger.",
+        "Auf dem iPhone folgt die Seite beim Zurückwischen dem Finger.",
+        "Neue Nachrichten gleiten sanft ein, Reaktionen ploppen kurz auf.",
+        "Beim Laden erscheinen Platzhalter statt eines drehenden Rads.",
+        "Hinweise erscheinen auf dem iPhone oben.",
+        "Im Sprachkanal erscheinen und verschwinden Teilnehmer weich."
+      ]
+    },
+    {
       "id": "2026-10-18",
       "date": "2026-10-18",
       "style": "Sachlich",

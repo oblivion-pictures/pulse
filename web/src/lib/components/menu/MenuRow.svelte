@@ -27,10 +27,10 @@
       'focus-visible:ring-ring/50 focus-visible:ring-2 [&_svg]:shrink-0',
     variants: {
       variant: {
-        default: 'text-text-base hover:bg-bg-hover',
-        danger: 'text-destructive hover:bg-destructive/10',
+        default: 'text-text-base hover:bg-bg-hover handy-druck',
+        danger: 'text-destructive hover:bg-destructive/10 handy:active:bg-destructive/10 handy:active:duration-0',
         // Melden/eskalieren: ernst, aber nicht zerstörend.
-        warning: 'text-warning hover:bg-warning/10'
+        warning: 'text-warning hover:bg-warning/10 handy:active:bg-warning/10 handy:active:duration-0'
       },
       density: {
         // Menüs und Reiterleisten.

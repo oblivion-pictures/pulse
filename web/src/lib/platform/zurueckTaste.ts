@@ -17,6 +17,7 @@ import { page } from '$app/state';
 import { isCapacitorAndroid } from './runtime';
 import { BEREICHE } from '$lib/navigation/tabs';
 import { elterVon } from '$lib/navigation/elternRoute';
+import { markiereZurueck } from '$lib/navigation/richtung';
 
 /**
  * Die Bereichs-Wurzeln — hier beendet Zurück die Navigation.
@@ -38,6 +39,7 @@ export function registriereZurueckTaste(): void {
     const pfad = page.url.pathname;
     const elter = elterVon(pfad);
     if (elter) {
+      markiereZurueck('zurueck');
       void goto(elter, { noScroll: true });
       return;
     }

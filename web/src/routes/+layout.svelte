@@ -63,7 +63,13 @@
   navigationsHerkunftVerfolgen();
   // iOS-Hülle am <html> markiert — für CSS, das nur dort gilt (`app.css`,
   // `overscroll-behavior`). Browser, Electron und Android bleiben unmarkiert.
-  if (isCapacitorIOS()) document.documentElement.dataset.huelle = 'ios';
+  const iosHuelle = isCapacitorIOS();
+  if (iosHuelle) document.documentElement.dataset.huelle = 'ios';
+  // Meldungen in der iOS-Hülle oben (unter der Notch/Dynamic Island, über dem
+  // Inhalt): unten säßen sie auf Tab-Leiste und Tastatur. Wegwischen nach oben
+  // kommt von `svelte-sonner` selbst (Standard-Richtung der Position `top-*`).
+  // Der Abstand gilt in BEIDEN Offsets — `mobileOffset` greift nur bis 600 px.
+  const toastAbstandOben = 'calc(var(--safe-top) + 8px)';
 
   let { children } = $props();
 
@@ -244,4 +250,13 @@
      Electron-Tray. No-op im Browser. -->
 <TraySync />
 
-<Toaster position="bottom-right" richColors />
+{#if iosHuelle}
+  <Toaster
+    position="top-center"
+    offset={{ top: toastAbstandOben }}
+    mobileOffset={{ top: toastAbstandOben }}
+    richColors
+  />
+{:else}
+  <Toaster position="bottom-right" richColors />
+{/if}

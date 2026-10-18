@@ -12,7 +12,7 @@
    * Einzelspielen einer leeren Gruppe ist erlaubt (man kann später über das
    * Gruppen-Blatt noch jemanden hinzufügen), der Name ist Pflicht.
    */
-  import * as Dialog from '$lib/components/ui/dialog/index.js';
+  import HandyDialog from './HandyDialog.svelte';
   import { friends } from '$lib/stores/friends.svelte';
   import { userCache } from '$lib/stores/users.svelte';
   import { nameStyle } from '$lib/utils/nameColor';
@@ -79,12 +79,14 @@
   }
 </script>
 
-<Dialog.Root bind:open>
-  <Dialog.Content class="max-w-sm" data-testid="chats-new-group-dialog">
-    <Dialog.Header>
-      <Dialog.Title>{m.chats_new_group()}</Dialog.Title>
-      <Dialog.Description>{m.chats_new_group_hint()}</Dialog.Description>
-    </Dialog.Header>
+<HandyDialog
+  {open}
+  onOpenChange={(o) => (open = o)}
+  class="max-w-sm"
+  testid="chats-new-group-dialog"
+  titel={m.chats_new_group()}
+  beschreibung={m.chats_new_group_hint()}
+>
     <input
       type="text"
       bind:value={name}
@@ -99,7 +101,7 @@
         {@const bild = safeAvatarUrl(userCache.get(f.user_id)?.avatar_url ?? null)}
         <button
           type="button"
-          class="hover:bg-bg-hover flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors"
+          class="hover:bg-bg-hover handy-druck flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors"
           onclick={() => umschalten(f.user_id)}
           data-testid={`new-group-friend-${f.user_id}`}
           data-selected={ausgewaehlt.has(f.user_id)}
@@ -131,5 +133,4 @@
     >
       {m.chats_new_group_create()}
     </button>
-  </Dialog.Content>
-</Dialog.Root>
+</HandyDialog>

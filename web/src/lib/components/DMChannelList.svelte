@@ -99,7 +99,7 @@
          Direktnachrichten ab. -->
     {#each navButtons as btn (btn.href)}
       <button
-        class="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-base font-medium transition-colors nicht-handy:gap-2.5 nicht-handy:py-2 nicht-handy:text-sm hover:bg-bg-hover hover:text-text-bright data-[active=true]:bg-[var(--accent-soft)] data-[active=true]:font-semibold data-[active=true]:text-primary"
+        class="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-base font-medium transition-colors nicht-handy:gap-2.5 nicht-handy:py-2 nicht-handy:text-sm hover:bg-bg-hover handy-druck hover:text-text-bright data-[active=true]:bg-[var(--accent-soft)] data-[active=true]:font-semibold data-[active=true]:text-primary"
         data-active={btn.active}
         onclick={() => goto(btn.href)}
         data-testid="{btn.testid}-link"
@@ -150,7 +150,7 @@
       {@const u = userCache.get(dm.other_user_id)}
       {@const avatar = safeAvatarUrl(u?.avatar_url ?? null)}
       <button
-        class="group flex w-full items-center gap-3 rounded-xl px-3 py-4 text-left text-base font-medium transition-colors nicht-handy:gap-2.5 nicht-handy:py-2 nicht-handy:text-sm hover:bg-bg-hover hover:text-text-bright data-[active=true]:bg-[var(--accent-soft)] data-[active=true]:font-semibold data-[active=true]:text-primary"
+        class="group flex w-full items-center gap-3 rounded-xl px-3 py-4 text-left text-base font-medium transition-colors nicht-handy:gap-2.5 nicht-handy:py-2 nicht-handy:text-sm hover:bg-bg-hover handy-druck hover:text-text-bright data-[active=true]:bg-[var(--accent-soft)] data-[active=true]:font-semibold data-[active=true]:text-primary"
         data-active={activeDMId === dm.id}
         data-unread={isUnread}
         onclick={() => onSelect(dm)}
@@ -204,7 +204,7 @@
         {@const isUnread = activeDMId !== gruppe.id && readState.isUnread(gruppe.id)}
         {@const unreadCount = activeDMId !== gruppe.id ? readState.getUnreadCount(gruppe.id) : 0}
         <button
-          class="group flex w-full items-center gap-3 rounded-xl px-3 py-4 text-left text-base font-medium transition-colors nicht-handy:gap-2.5 nicht-handy:py-2 nicht-handy:text-sm hover:bg-bg-hover hover:text-text-bright data-[active=true]:bg-[var(--accent-soft)] data-[active=true]:font-semibold data-[active=true]:text-primary"
+          class="group flex w-full items-center gap-3 rounded-xl px-3 py-4 text-left text-base font-medium transition-colors nicht-handy:gap-2.5 nicht-handy:py-2 nicht-handy:text-sm hover:bg-bg-hover handy-druck hover:text-text-bright data-[active=true]:bg-[var(--accent-soft)] data-[active=true]:font-semibold data-[active=true]:text-primary"
           data-active={activeDMId === gruppe.id}
           data-unread={isUnread}
           onclick={() => (onSelectGruppe ? onSelectGruppe(gruppe.id) : goto(`/app/@me/${gruppe.id}`))}

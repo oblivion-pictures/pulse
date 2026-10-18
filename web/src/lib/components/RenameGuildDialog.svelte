@@ -1,4 +1,5 @@
 <script lang="ts">
+  import HandyDialog from '$lib/components/mobile/HandyDialog.svelte';
   import * as Dialog from '$lib/components/ui/dialog/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
@@ -54,12 +55,13 @@
   }
 </script>
 
-<Dialog.Root {open} onOpenChange={handleOpenChange}>
-  <Dialog.Content data-testid="rename-guild-dialog">
-    <Dialog.Header>
-      <Dialog.Title>{m.rename_guild_dialog_title()}</Dialog.Title>
-      <Dialog.Description>{m.rename_guild_dialog_description({ name: guild?.name ?? '' })}</Dialog.Description>
-    </Dialog.Header>
+<HandyDialog
+  {open}
+  onOpenChange={handleOpenChange}
+  testid="rename-guild-dialog"
+  titel={m.rename_guild_dialog_title()}
+  beschreibung={m.rename_guild_dialog_description({ name: guild?.name ?? '' })}
+>
     <form class="space-y-4" onsubmit={submit}>
       <div class="space-y-1.5">
         <FieldLabel for="rename-guild-name" required class="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
@@ -83,5 +85,4 @@
         </Button>
       </Dialog.Footer>
     </form>
-  </Dialog.Content>
-</Dialog.Root>
+</HandyDialog>

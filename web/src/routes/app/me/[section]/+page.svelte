@@ -14,6 +14,8 @@
    * in der Adresse einen verwirrenden Bildschirm machte.
    */
   import { goto } from '$app/navigation';
+  import { zurueckZu } from '$lib/navigation/zurueckZu';
+  import { eintrittsKlasse } from '$lib/navigation/richtung';
   import { page } from '$app/state';
   import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
   import { viewport } from '$lib/stores/viewport.svelte';
@@ -24,6 +26,8 @@
   import type { SettingsTab } from '$lib/components/SettingsDialog.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
+  /** Eintritts-Animation je nach Richtung (`navigation/richtung.ts`). */
+  const eintritt = eintrittsKlasse('detail');
   const tabs = getSettingsTabs();
 
   let sichtbar = $derived(sichtbareReiterJetzt(tabs));
@@ -43,14 +47,14 @@
 {/if}
 
 <div
-  class="glass-panel flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl"
+  class="glass-panel {eintritt} flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl"
   data-testid="me-section-page"
 >
   <header class="border-border text-text-bright flex h-14 shrink-0 items-center gap-1 border-b px-2">
     {#if viewport.isMobile}
       <button
         class="text-text-muted hover:text-primary flex min-h-12 min-w-12 items-center justify-center"
-        onclick={() => goto('/app/me')}
+        onclick={() => zurueckZu('/app/me')}
         data-testid="me-section-back"
         aria-label={m.settings_dialog_back()}
       >

@@ -9,6 +9,8 @@
    * jemand eine davon vergisst.
    */
   import { goto } from '$app/navigation';
+  import { zurueckZu } from '$lib/navigation/zurueckZu';
+  import { eintrittsKlasse } from '$lib/navigation/richtung';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import ChannelList from '$lib/components/ChannelList.svelte';
@@ -35,6 +37,8 @@
     if (guildId) void guilds.ensureChannels(guildId).catch(() => undefined);
   });
 
+  const eintritt = eintrittsKlasse('detail');
+
   function oeffneKanal(c: Channel) {
     void goto(`/app/guilds/${guildId}/channels/${c.id}`);
   }
@@ -44,7 +48,7 @@
   }
 </script>
 
-<div class="slide-rein flex h-full min-w-0 flex-1">
+<div class="{eintritt} flex h-full min-w-0 flex-1">
 <ChannelList
   {guild}
   {channels}
@@ -54,7 +58,7 @@
   onCreateClick={() => (creatingChannel = true)}
   canCreate={!!guild && roles.hasGuildPermission(guild.id, Perm.MANAGE_CHANNELS)}
   onSelectDevice={oeffneGeraet}
-  onBack={() => goto('/app/rooms')}
+  onBack={() => zurueckZu('/app/rooms')}
 />
 </div>
 

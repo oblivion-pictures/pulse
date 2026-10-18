@@ -1,4 +1,5 @@
 <script lang="ts">
+  import HandyDialog from '$lib/components/mobile/HandyDialog.svelte';
   /**
    * Per-guild nickname editor. Targets the caller (CHANGE_NICKNAME) or
    * another member (MANAGE_NICKNAMES) — the parent decides which mode
@@ -112,16 +113,13 @@
   }
 </script>
 
-<Dialog.Root {open} onOpenChange={handleOpenChange}>
-  <Dialog.Content data-testid="nickname-dialog">
-    <Dialog.Header>
-      <Dialog.Title>
-        {isSelf ? m.nickname_dialog_title_self() : m.nickname_dialog_title_other({ name: fallbackName })}
-      </Dialog.Title>
-      <Dialog.Description>
-        {m.nickname_dialog_description()}
-      </Dialog.Description>
-    </Dialog.Header>
+<HandyDialog
+  {open}
+  onOpenChange={handleOpenChange}
+  testid="nickname-dialog"
+  titel={isSelf ? m.nickname_dialog_title_self() : m.nickname_dialog_title_other({ name: fallbackName })}
+  beschreibung={m.nickname_dialog_description()}
+>
     <form class="space-y-4" onsubmit={submit}>
       <div class="space-y-1.5">
         <Label for="nickname-input" class="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
@@ -157,5 +155,4 @@
         </Button>
       </Dialog.Footer>
     </form>
-  </Dialog.Content>
-</Dialog.Root>
+</HandyDialog>

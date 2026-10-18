@@ -1427,6 +1427,7 @@
   "hosting_apply_mode_vps_title": "Auf eigenem Server",
   "hosting_origin_app": "Zuhause",
   "hosting_origin_vps": "VPS",
+  "handy_dialog_schliessen": "Schließen",
   "hq_stream_dialog_description": "GPU-Screen-Recorder-basierter Stream über MediaMTX (Pulse-T3/T4).",
   "hq_stream_dialog_title": "HQ-Stream",
   "hq_stream_frozen_give_up": "Das Bild ist mehrfach eingefroren und liess sich auch mit einer neuen Verbindung nicht wiederherstellen. Kachel schliessen und erneut oeffnen, um es noch einmal zu versuchen.",

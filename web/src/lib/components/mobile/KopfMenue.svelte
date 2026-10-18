@@ -27,7 +27,7 @@
 
 <button
   type="button"
-  class="text-text-bright hover:bg-bg-hover border-border bg-bg-input flex min-h-12 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors"
+  class="text-text-bright hover:bg-bg-hover handy-druck border-border bg-bg-input flex min-h-12 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors"
   aria-haspopup="dialog"
   onclick={() => (offen = true)}
   data-testid={testid}

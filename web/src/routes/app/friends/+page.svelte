@@ -9,6 +9,7 @@
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { eintrittsKlasse } from '$lib/navigation/richtung';
   import { page } from '$app/state';
   import GuildRail from '$lib/components/GuildRail.svelte';
   import DMChannelList from '$lib/components/DMChannelList.svelte';
@@ -37,6 +38,8 @@
 
   // Suche über die Freundesliste — nur Namen, keine Nachrichten/Kanäle; das
   // Filtern (ab 3 Zeichen, sonderzeichen-frei) macht FriendList selbst.
+  /** Eintritts-Animation je nach Richtung (`navigation/richtung.ts`). */
+  const eintritt = eintrittsKlasse('wurzel');
   let freundeSuche = $state('');
 
   /** Anfragen-Zahl fürs Menü-Badge — NUR eingehende Freundschaftsanfragen.
@@ -141,7 +144,7 @@
 {/if}
 
 <section
-  class="glass-panel flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl"
+  class="glass-panel {eintritt} flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:rounded-2xl"
   data-testid="friends-page"
 >
   <BereichsKopf titel={m.friends_page_title()}>

@@ -135,6 +135,8 @@ struct SpracheKachel: View {
                 lineWidth: teilnehmer.isSpeaking ? 2 + 4 * pegel : 0
             )
             .animation(.easeOut(duration: 0.12), value: pegel)
+            // Ring ein-/ausblenden weich (200 ms) statt hart zu kippen.
+            .animation(.easeOut(duration: 0.2), value: teilnehmer.isSpeaking)
             .allowsHitTesting(false)
     }
 

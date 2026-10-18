@@ -115,6 +115,14 @@
   const attachments = $derived(message.attachments ?? []);
   const isEdited = $derived(!!message.edited_at);
 
+  // Handy: eigene Nachricht gleitet ein (`erscheint-eigen`), eingehende blendet
+  // nur ein (`erscheint-fremd`); Desktop/Tablet behalten `erscheint`.
+  const erscheinKlasse = $derived.by(() => {
+    if (!istFrisch) return '';
+    if (!handy) return 'erscheint';
+    return istEigene ? 'erscheint-eigen' : 'erscheint-fremd';
+  });
+
   // Einladungs-Karte: erste gültige Einladung im Text (einladungsLink.ts —
   // derselbe Leser wie Beitrittsfeld, Seite und Dialog; `host=` an jeder
   // Stelle, Satzzeichen am Linkende werden abgeschnitten).
@@ -309,6 +317,7 @@
         messageId={message.verschluesselt ? undefined : message.id}
         {reactions}
         onToggle={handleToggle}
+        {handy}
       />
     {/if}
   {/if}
@@ -322,7 +331,7 @@
 
 <!-- Die Einblend-Huelle: nur transform/opacity animiert — jede Aenderung der
      Layout-Groesse wuerde virtua's Hoehenmessung kadern. -->
-<div class="nachricht-huelle {istFrisch ? 'erscheint' : ''}">
+<div class="nachricht-huelle {erscheinKlasse}">
 {#if layout === 'bubble'}
   <MessageBubbleLayout
     {message}
@@ -418,8 +427,37 @@
       transform: none;
     }
   }
+  /* Handy (Klasse kommt nur bei `handy`): eigene Nachricht 6 px hoch gleiten
+     + einblenden, eingehende nur einblenden. Feder-Kurve wie die übrigen
+     Handy-Bewegungen. */
+  .nachricht-huelle.erscheint-eigen {
+    animation: nachricht-erscheint-eigen 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .nachricht-huelle.erscheint-fremd {
+    animation: nachricht-erscheint-fremd 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  @keyframes nachricht-erscheint-eigen {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes nachricht-erscheint-fremd {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
   @media (prefers-reduced-motion: reduce) {
-    .nachricht-huelle.erscheint {
+    .nachricht-huelle.erscheint,
+    .nachricht-huelle.erscheint-eigen,
+    .nachricht-huelle.erscheint-fremd {
       animation: none;
     }
   }

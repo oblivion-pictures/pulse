@@ -11,6 +11,7 @@
    * Mitgliedschaften), und eine gemeinsame Kachelwand verwischte, auf welchem
    * Server man gerade etwas anklickt.
    */
+  import { eintrittsKlasse } from '$lib/navigation/richtung';
   import { goto } from '$app/navigation';
   import { suchnorm, namePasst } from '$lib/utils/suche';
   import { serversStore, istSichtbar } from '$lib/api/servers.svelte';
@@ -103,6 +104,8 @@
   // sagen — je Server einer und darunter nochmal der globale.
   let ueberallLeer = $derived(server.every((s) => serverGuilds.get(s.id).length === 0));
 
+  /** Eintritts-Animation je nach Richtung (`navigation/richtung.ts`). */
+  const eintritt = eintrittsKlasse('wurzel');
   // Die Kachel, deren ⋯-Blatt offen ist (ein Blatt für die ganze Seite).
   let aktionsZiel = $state<{ guild: Guild; serverId: string } | null>(null);
 
@@ -119,7 +122,7 @@
 
 </script>
 
-<div class="glass-panel flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:w-72 nicht-handy:flex-none nicht-handy:rounded-2xl" data-testid="rooms-page">
+<div class="glass-panel {eintritt} flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none nicht-handy:w-72 nicht-handy:flex-none nicht-handy:rounded-2xl" data-testid="rooms-page">
   <BereichsKopf titel={m.nav_tab_rooms()}>
     {#snippet handlung()}
       <RaeumeMenue />

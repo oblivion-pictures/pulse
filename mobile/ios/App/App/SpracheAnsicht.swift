@@ -78,6 +78,9 @@ struct SpracheAnsicht: View {
     @State private var fehler: SpracheMeldung?
     private static let bandDauer: UInt64 = 6_000_000_000
     @ObservedObject private var stand = SpracheStand.geteilt
+    /// „Bewegung reduzieren“: Kacheln werden nur noch ein- und ausgeblendet,
+    /// nicht skaliert.
+    @Environment(\.accessibilityReduceMotion) private var bewegungReduziert
     /// Trefferfläche des Schliessen-Pfeils; wächst mit der Schriftgrösse.
     @ScaledMetric(relativeTo: .headline) private var pfeilFlaeche: CGFloat = 44
 
@@ -221,8 +224,21 @@ struct SpracheAnsicht: View {
                     SpracheKachel(teilnehmer: k.teilnehmer, video: k.video,
                                   istBildschirm: k.istBildschirm,
                                   umschalten: k.eigeneKamera ? kameraUmschalten : nil)
+                        // Kommt jemand dazu oder geht, wächst die Kachel aus
+                        // 90 % ein bzw. schrumpft weg (nur Überblendung bei
+                        // „Bewegung reduzieren“).
+                        .transition(bewegungReduziert
+                            ? .opacity
+                            : .scale(scale: 0.9).combined(with: .opacity))
                 }
             }
+            // Die übrigen Kacheln rücken mit einer Feder nach, statt zu
+            // springen. Gehängt an die ID-Liste: Pegel- und Sprechwechsel
+            // ändern sie nicht und lösen keine Layout-Animation aus.
+            .animation(bewegungReduziert
+                ? .easeOut(duration: 0.2)
+                : .spring(response: 0.35, dampingFraction: 0.85),
+                value: kachelListe.map(\.id))
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
         }
