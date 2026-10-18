@@ -89,3 +89,34 @@ export function wachEntscheid(lage: Wachlage): Wachbefund {
   if (lage.pruefungLaeuft) return 'nichts';
   return 'ping-pruefen';
 }
+
+/**
+ * „Soll beim Hintergrund-Werden getrennt werden?" — der Gegenpol zu
+ * `wachEntscheid` (dort das Aufwachen, hier das Einschlafen).
+ *
+ * **Warum überhaupt trennen.** Der Server stellt DM-Push nur an Geräte OHNE
+ * offene WebSocket zu. Eine Android-WebView hält ihre Verbindung im
+ * Hintergrund aber am Leben — der Server hält uns für wach, das FCM-Bein
+ * bleibt stumm, und die Nachricht liegt laut und unsichtbar, bis die App
+ * zurückkommt. Bewusstes Schließen setzt den Server sofort in den Push-Modus
+ * (sauberes TCP-FIN, kein Ping-Timeout); beim Zurückholen weckt der
+ * isActive-Anlass (`netzwache.ts`) die Verbindungen wieder, und Gap-Fill
+ * holt Versäumtes nach.
+ *
+ * Plattform: nur die Android-Hülle. Im Browser soll der Hintergrund-Tab
+ * weiter leben (Desktop-Nutzer wollen live bleiben), und iOS friert seine
+ * Hülle im Hintergrund ohnehin ein — dort ist der Ist-Zustand Beweis genug,
+ * dass der Socket tot ist.
+ *
+ * `sperren` sind die Zustände, deren Signalisierung an derselben Leitung
+ * hängt und die deshalb weiter verbunden bleiben: laufender Sprachkanal und
+ * Anruf. Der Foreground-Service hält die App in denen ohnehin wach, und ein
+ * Klingeln/Annehmen über einen toten Socket funktioniert nicht.
+ */
+export function hintergrundTrennung(
+  huelle: boolean,
+  sperren: readonly (() => boolean)[]
+): boolean {
+  if (!huelle) return false;
+  return !sperren.some((sperre) => sperre());
+}

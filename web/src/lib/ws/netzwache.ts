@@ -28,6 +28,7 @@
 import { App as CapApp } from '@capacitor/app';
 import { isCapacitorAndroid, isCapacitorIOS } from '$lib/platform/runtime';
 import { gatewayPool } from './gateway-pool.svelte';
+import { hintergrundTrennung } from './wachentscheid';
 
 let laeuft = false;
 
@@ -49,7 +50,30 @@ export function netzwacheStarten(): void {
     // Kein `await`: der Haken darf nachträglich scharf werden, die ersten
     // Millisekunden nach dem Start deckt der normale Verbindungsaufbau ab.
     void CapApp.addListener('appStateChange', ({ isActive }) => {
-      if (isActive) wecken();
+      if (isActive) {
+        wecken();
+        return;
+      }
+      // Gegenrichtung zum Wecken: Hintergrund ⇒ Verbindungen bewusst lösen,
+      // damit der Server die Zustellung auf Push umstellt (Entscheidung in
+      // `wachentscheid.hintergrundTrennung`, Mechanik in
+      // `GatewayConnection.hintergrundTrennung`). Das Zurückholen läuft über
+      // den isActive-Anlass hier oben — kein eigener Haken nötig.
+      if (hintergrundTrennung(isCapacitorAndroid(), [...trennSperren])) {
+        gatewayPool.hintergrundTrennung();
+      }
     });
   }
+}
+
+/** Sperren gegen die Hintergrund-Trennung — Zustände, deren Signalisierung an
+ *  derselben Leitung hängt (laufender Sprachkanal, Anruf). Die Stores melden
+ *  sich hier an (`+layout.svelte` verdrahtet), weil netzwache sie nicht
+ *  importieren darf: über `gateway-pool` stünde das in einem Import-Kreis. */
+const trennSperren = new Set<() => boolean>();
+
+/** Eine Sperre anmelden; Rückgabe meldet sie wieder ab. */
+export function hintergrundTrennSperre(sperre: () => boolean): () => void {
+  trennSperren.add(sperre);
+  return () => trennSperren.delete(sperre);
 }

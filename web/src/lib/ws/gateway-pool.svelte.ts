@@ -65,6 +65,15 @@ class GatewayPool {
     this.#connections.clear();
   }
 
+  /** Alle Verbindungen für den Hintergrund lösen. Anders als `closeAll()`
+   *  (Sign-Out: Pool leeren) bleiben die Connections mit ihrem
+   *  Verbindungswillen bestehen — `alleWachPruefen` verbindet sie beim
+   *  Zurückholen der App sofort neu (Anlass: `netzwache.ts`, Entscheidung:
+   *  `wachentscheid.hintergrundTrennung`). */
+  hintergrundTrennung(): void {
+    for (const conn of this.#connections.values()) conn.hintergrundTrennung();
+  }
+
 }
 
 export const gatewayPool = new GatewayPool();

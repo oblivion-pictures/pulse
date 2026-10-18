@@ -9,6 +9,7 @@ import {
   OFFEN,
   SCHLIESST,
   VERBINDET,
+  hintergrundTrennung,
   wachEntscheid,
   type Wachlage
 } from '../src/lib/ws/wachentscheid.ts';
@@ -87,4 +88,19 @@ test('zu alt, im Update, gesperrt: kein Sofortversuch, die Staffel gilt', () => 
   }
   // Ein gewöhnlicher Abriss bekommt ihn weiter.
   assert.equal(wachEntscheid(lage({ zustand: 'closed', bereit: null })), 'sofort-verbinden');
+});
+
+// Hintergrund-Trennung (2026-10-19): Android-Hülle löst die Verbindungen im
+// Hintergrund, damit der Server auf FCM-Push umstellt — außer im Sprachkanal
+// oder Anruf, deren Signalisierung an derselben Leitung hängt.
+test('hintergrundTrennung: nur Android-Hülle, und nicht mit Sperre', () => {
+  // Browser/Tab: nie — der Desktop will im Hintergrund-Tab live bleiben.
+  assert.equal(hintergrundTrennung(false, []), false);
+  // Android-Hülle ohne Sperre: trennen, damit FCM zustellen darf.
+  assert.equal(hintergrundTrennung(true, []), true);
+  // Laufender Sprachkanal oder Anruf: Verbindung halten.
+  assert.equal(hintergrundTrennung(true, [() => true]), false);
+  assert.equal(hintergrundTrennung(true, [() => false, () => true]), false);
+  // Eine Sperre, die nur meldet, dass sie nicht greift, steht nicht im Weg.
+  assert.equal(hintergrundTrennung(true, [() => false]), true);
 });

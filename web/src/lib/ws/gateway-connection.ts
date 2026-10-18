@@ -1150,6 +1150,39 @@ export class GatewayConnection {
     this.state = 'idle';
   }
 
+  /**
+   * Verbindung für den Hintergrund lösen — das Gegenstück zu `disconnect()`
+   * mit bewusster Umkehrung: der Verbindungswille bleibt stehen
+   * (`wantConnected` an), nur der Socket geht. Der Server sieht das saubere
+   * TCP-FIN und stellt die Zustellung sofort auf Push um (das FCM-Bein feuert
+   * nur an Geräte OHNE offene Verbindung) — ohne diesen Schnitt lebt die
+   * WebView-Verbindung im Hintergrund weiter, der Server hält uns für wach,
+   * und jede Nachricht bleibt laut und unsichtbar, bis die App zurückkommt.
+   * Beim Zurückholen verbindet die Weck-Prüfung selbstständig neu
+   * (`wachEntscheid`: gewollt, kein Socket ⇒ 'sofort-verbinden'), Gap-Fill
+   * holt Versäumtes nach; Abos und Watch-Joins bleiben bewusst stehen, damit
+   * der Neuauftakt sie neu anmeldet.
+   *
+   * Der Weg geht über `_abhaengen` (Hörer ab, bevor `close()` läuft), damit
+   * das späte `close`-Ereignis `onclose` nie erreicht — sonst setzte der
+   * Backoff-Reconnect im Hintergrund wieder auf, und der ganze Zweck wäre
+   * verkehrt. Anders als bei `disconnect()` bleiben Abos, Watch-Joins und
+   * `idle` außen vor: das hier ist kein Verlust und keine Abmeldung, sondern
+   * Absicht.
+   */
+  hintergrundTrennung(): void {
+    const ws = this.ws;
+    if (ws) {
+      this._abhaengen(ws);
+      try {
+        ws.close();
+      } catch {
+        /* Der Socket konnte schon tot sein — die Absicht ist dennoch erklärt. */
+      }
+    }
+    this.state = 'closed';
+  }
+
   subscribe(channelId: string): void {
     this.subs.add(channelId);
     this._sendRaw({ op: 'subscribe', channel_id: channelId });

@@ -34,7 +34,9 @@
   import { voice } from '$lib/voice/livekit.svelte';
   import { startBeitritteAusfuehren } from '$lib/voice/startBeitritte';
   import { spracheRaumVorhalten } from '$lib/platform/spracheVorhalt';
-  import { netzwacheStarten } from '$lib/ws/netzwache';
+  import { netzwacheStarten, hintergrundTrennSperre } from '$lib/ws/netzwache';
+  import { voiceState } from '$lib/voice/state.svelte';
+  import { anrufe } from '$lib/anrufe/anruf.svelte';
   import { schriftGroesseVerfolgen } from '$lib/platform/schriftGroesse';
   import { voipTokenVerfolgen } from '$lib/platform/voipToken';
   import { schnellwahlSetzen, schnellwahlVerfolgen } from '$lib/platform/schnellwahl';
@@ -316,6 +318,11 @@
     // die nächste Backoff-Stufe zu warten (bis 300 s). Begründung und die
     // drei Anlässe: `ws/netzwache.ts`.
     netzwacheStarten();
+    // Gegenstück: App im Hintergrund ⇒ Verbindungen lösen, damit der Server
+    // DM-Push per FCM zustellt (sonst hält die WebView die Leitung offen und
+    // Nachrichten bleiben laut). Sprachkanal und Anruf sperren die Trennung —
+    // deren Signalisierung hängt an derselben Leitung.
+    hintergrundTrennSperre(() => voiceState.connected || anrufe.inAnruf);
     // Systemschriftgröße anwenden, falls die Hülle sie meldet (Punkt 38).
     schriftGroesseVerfolgen();
     // PushKit-Token anmelden, damit ein Anruf das Telefon erreicht, auch wenn
