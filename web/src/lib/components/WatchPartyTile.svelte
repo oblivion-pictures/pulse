@@ -81,6 +81,18 @@
   // (teilen sich den Slot). Die beiden Toggles schliessen sich gegenseitig.
   let chatOpen = $state(false);
   let queueOpen = $state(false);
+  // Einstellungs-Sheet (Twitch-Qualität): eigener Slot, schliesst die anderen.
+  let settingsOpen = $state(false);
+  /** Der live Player-Handle — für den Qualitäts-Sheet (getQualities/setQuality).
+   *  `handleReady` setzt ihn; der Sync-Layer behält sein eigenes Referenzmodell. */
+  let playerHandle: PlayerHandle | null = $state(null);
+  function toggleSettings(): void {
+    settingsOpen = !settingsOpen;
+    if (settingsOpen) {
+      chatOpen = false;
+      queueOpen = false;
+    }
+  }
   function toggleChat(): void {
     chatOpen = !chatOpen;
     if (chatOpen) queueOpen = false;
@@ -178,6 +190,7 @@
   }
   function handleReady(handle: PlayerHandle): void {
     controller.onReady(handle);
+    playerHandle = handle;
     // The player handle is a plain field, not reactive — assigning it does NOT
     // re-run the sync $effects below. Crucially syncHeartbeat()'s effect only
     // reads the memoized isHost/isPassive deriveds (which don't change after
@@ -382,6 +395,8 @@
   onToggleChat={toggleChat}
   {queueOpen}
   onToggleQueue={toggleQueue}
+  settingsOpen={settingsOpen}
+  onToggleSettings={toggleSettings}
   onDetach={canDetach ? handleDetach : undefined}
   onHide={canHide ? hideTile : undefined}
 >
@@ -522,6 +537,47 @@
   {/snippet}
   {#snippet queuePanel()}
     <WatchQueuePanel {channelId} {partyId} {party} onClose={() => (queueOpen = false)} />
+  {/snippet}
+  {#snippet settingsPanel()}
+    <!-- Qualitäts-Sheet: nur was der Player wirklich anbietet (Twitch-Embed).
+         Wählen ⇒ sofort umschalten, Panel zu. Lautstärke hängt an der
+         bestehenden Steuerung, nicht hier. -->
+    <div class="bg-bg-panel/95 absolute inset-0 z-10 overflow-y-auto backdrop-blur-sm">
+      <div class="flex items-center justify-between border-b border-border px-4 py-3">
+        <span class="text-sm font-semibold text-text-bright" data-testid="watch-party-settings-title">
+          {m.tile_shell_quality_title()}
+        </span>
+        <button
+          type="button"
+          class="flex size-8 items-center justify-center rounded-full bg-black/40 text-white"
+          onclick={() => (settingsOpen = false)}
+          data-testid="watch-party-settings-close"
+        >
+          <XIcon class="size-4" />
+        </button>
+      </div>
+      <ul class="p-2">
+        {#each playerHandle?.getQualities?.() ?? [] as stufe (stufe.group)}
+          {@const aktiv = playerHandle?.getQuality?.() === stufe.group}
+          <li>
+            <button
+              type="button"
+              class="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm {aktiv
+                ? 'bg-primary/15 text-text-bright'
+                : 'text-text-base hover:bg-bg-hover'}"
+              onclick={() => {
+                playerHandle?.setQuality?.(stufe.group);
+                settingsOpen = false;
+              }}
+              data-testid={`watch-party-quality-${stufe.group}`}
+            >
+              <span>{stufe.name}</span>
+              {#if aktiv}<span class="text-primary">✓</span>{/if}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </div>
   {/snippet}
 </TileShell>
 

@@ -64,7 +64,10 @@
     controlsExtra,
     chatPanel,
     chatOverlay,
-    queuePanel
+    queuePanel,
+    settingsOpen = false,
+    onToggleSettings,
+    settingsPanel
   }: TileShellProps = $props();
 
   const KindIcon = $derived(
@@ -326,6 +329,8 @@
           {onHide}
           onToggleFullscreen={toggleFs}
           {video}
+          settingsOpen={settingsOpen ?? false}
+          onToggleSettings={onToggleSettings}
         />
       {/if}
 
@@ -350,10 +355,19 @@
       {#if isFullscreen && chatOpen}
         {@render chatOverlay?.()}
       {/if}
+      {#if settingsOpen && isFullscreen && handy}
+        {@render settingsPanel?.()}
+      {/if}
       {#if chatOpen && !isFullscreen && handy}
         <!-- Mobile: Chat als Vollflächen-Overlay statt Seitenpanel. -->
         <div class="absolute inset-0 z-20">
           {@render chatPanel?.()}
+        </div>
+      {/if}
+      {#if settingsOpen && !isFullscreen && handy}
+        <!-- Mobile: Einstellungen (z. B. Twitch-Qualität) als Vollflächen-Overlay. -->
+        <div class="absolute inset-0 z-20">
+          {@render settingsPanel?.()}
         </div>
       {/if}
       {#if queueOpen && !isFullscreen && handy}

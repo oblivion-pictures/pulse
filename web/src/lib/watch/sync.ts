@@ -118,6 +118,15 @@ export interface PlayerHandle {
    *  Liefert den WERT, den der Player gerade ausspielt (Adaptive Bitrate), nicht
    *  einen Wunsch — deshalb verlässlich, anders als der deaktivierte Setter. */
   getPlaybackQuality?(): string | null;
+  /** Wählbare Qualitätsstufen des Players — OPTIONAL, heute nur Twitch
+   *  (Embed SDK `getQualities`). Die Kachel baut daraus den Einstellungs-Sheet,
+   *  wenn der Player ihn anbietet; ohne die Methoden bleibt der Zahnrad-Knopf
+   *  weg. */
+  getQualities?(): { group: string; name: string }[];
+  /** Aktuell aktive Stufe (`group`-Code aus {@link getQualities}). */
+  getQuality?(): string | undefined;
+  /** Stufe umschalten — `group` aus {@link getQualities}. */
+  setQuality?(group: string): void;
   destroy(): void;
 }
 

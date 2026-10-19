@@ -30,7 +30,8 @@
   Vollbild-Ausstieg unterscheiden sich.
 -->
 <script lang="ts">
-  import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
+  import XIcon from '@lucide/svelte/icons/x';
+  import SettingsIcon from '@lucide/svelte/icons/settings';
   import MaximizeIcon from '@lucide/svelte/icons/maximize';
   import MinusIcon from '@lucide/svelte/icons/minus';
   import PlusIcon from '@lucide/svelte/icons/plus';
@@ -63,7 +64,11 @@
     onHide,
     onToggleFullscreen,
     /** Das Video der Kachel — für das System-Bild-in-Bild. */
-    video = null
+    video = null,
+    /** Einstellungs-Sheet der Kachel (z. B. Twitch-Qualität) — ohne den Prop
+     *  bleibt der Zahnrad-Knopf weg. */
+    settingsOpen = false,
+    onToggleSettings
   }: {
     testidPrefix: string;
     isFullscreen?: boolean;
@@ -82,6 +87,8 @@
     onHide?: () => void;
     onToggleFullscreen: () => void;
     video?: HTMLVideoElement | null;
+    settingsOpen?: boolean;
+    onToggleSettings?: () => void;
   } = $props();
 
   // Am Handy wird die Lautstärke IMMER auf 5er gerastert — angezeigt UND
@@ -128,7 +135,7 @@
       ? `${testidPrefix}-fullscreen-exit-float`
       : `${testidPrefix}-close-float`}
   >
-    <ChevronLeftIcon class="size-5" />
+    <XIcon class="size-5" />
   </button>
 {/if}
 
@@ -136,12 +143,24 @@
      die Overlays für Chat und Warteschlange am Telefon zu öffnen — ohne sie
      ist deren Markup toter Code. Davor das System-Bild-in-Bild, das sich
      selbst ausblendet, wo es nicht trägt. -->
-{#if onToggleChat || onToggleQueue || video}
+{#if onToggleChat || onToggleQueue || onToggleSettings || video}
   <div
     class="absolute top-2 z-30 flex items-center gap-2 {obenKlasse} {fadeClass}"
     style="right: calc(0.5rem + {seiteRechts})"
   >
     <BildImBildKnopf {video} klasse={RUND} pipHide testid={`${testidPrefix}-pip-float`} />
+    {#if onToggleSettings}
+      <button
+        type="button"
+        class="{RUND} {settingsOpen ? '!text-primary' : ''}"
+        onclick={onToggleSettings}
+        aria-label={settingsOpen ? m.tile_shell_settings_close() : m.tile_shell_settings_open()}
+        data-pip-hide
+        data-testid={`${testidPrefix}-settings-float`}
+      >
+        <SettingsIcon class="size-5" />
+      </button>
+    {/if}
     {#if onToggleQueue}
       <button
         type="button"

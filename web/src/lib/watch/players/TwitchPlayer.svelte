@@ -91,7 +91,12 @@
         width: '100%',
         height: '100%',
         autoplay: startPlaying,
-        muted: false
+        muted: false,
+        // Twitchs eigene Bedienleiste aus — Pulse stellt die Steuerung (Host-
+        // Antreiber, Lautstärke, Vollbild) selbst; die Zuschauer haben den
+        // Klick-Fänger. Der Embed ehrt die Option nicht auf allen Oberflächen
+        // (live teils ignoriert) — schadet aber nicht.
+        controls: false
       };
       if (source.type === 'twitch_live') options.channel = source.channel;
       else {
@@ -139,6 +144,19 @@
             player?.setVolume(clamped / 100);
           },
           setMuted: (m: boolean) => player?.setMuted?.(m),
+          // Qualitäts-Stufen (Nutzerwunsch 2026-10-19: Einstellungen ohne
+          // Twitchs eigene Chrome — `controls:false` nimmt sie weg, der
+          // Einstellungs-Sheet der Kachel ersetzt sie über die Embed-API).
+          getQualities: () => {
+            const qs: Array<{ group: unknown; name: unknown }> = player?.getQualities?.() ?? [];
+            return qs.map((q) => ({ group: String(q.group), name: String(q.name) }));
+          },
+          getQuality: () => {
+            const q = player?.getQuality?.() as { group?: unknown } | string | undefined;
+            if (q === undefined || q === null) return undefined;
+            return typeof q === 'string' ? q : String(q.group);
+          },
+          setQuality: (group: string) => player?.setQuality?.(group),
           destroy: () => {
             // The Embed API has no `destroy`; clearing the container is the
             // documented teardown.

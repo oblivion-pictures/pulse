@@ -68,4 +68,10 @@ export interface TileShellProps {
   chatPanel?: Snippet;
   chatOverlay?: Snippet;
   queuePanel?: Snippet;
+  /** Einstellungs-Sheet (z. B. Twitch-Qualität): offen-Zustand, Umschalter
+   *  für den Zahnrad-Knopf der Mobil-Steuerung und der Inhalt. Ohne
+   *  `onToggleSettings` bleibt der Knopf weg. */
+  settingsOpen?: boolean;
+  onToggleSettings?: () => void;
+  settingsPanel?: Snippet;
 }
