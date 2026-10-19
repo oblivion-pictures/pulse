@@ -24,7 +24,9 @@
   Umbenennen, Umziehen und Entfernen in die Geräteansicht. Kann dieser Rechner
   nicht gesteuert werden (`steuerbar=false`, Browser oder ohne Gegenstelle),
   bleibt vom eingetragenen Zustand nur die Zeile mit dem Link — der einzige
-  Weg, eine unter Windows angelegte Zeile von hier aus wieder loszuwerden.
+  Weg, eine unter Windows angelegte Zeile von hier aus wieder loszuwerden —,
+  und das Formular zum NEU Eintragen fehlt (seit 2026-10-19; vorher bot es
+  etwa ein Mac ohne Freigabe an, und das Gerät stand danach nur offline).
 
   **Der verwaiste Zustand hat bewusst nur einen Ausgang, und der ist lokal.**
   Ist die Community weg, antwortet jede Geräte-Route mit 403 (`require_member`)
@@ -135,7 +137,10 @@
     <p class="border-border text-text-muted rounded-2xl border border-dashed p-4 text-xs">
       {m.device_settings_register_checking()}
     </p>
-  {:else}
+  {:else if steuerbar}
+    <!-- Neu eintragen nur, wo dieser Rechner sich steuern lassen KANN: ohne
+         Fähigkeit meldet er sich nie an (`ready.ts`) und stünde für alle
+         dauerhaft auf „offline" — eine Eintragung, die ins Leere läuft. -->
     <SettingsGeraeteEintragungNeu {serverId} />
   {/if}
 </div>

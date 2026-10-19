@@ -10,8 +10,10 @@
 #
 # Apple-Silicon note: install_name_tool invalidates a Mach-O's signature, and
 # arm64 SIGKILLs unsigned/invalid binaries — so every modified file is re-signed
-# ad-hoc (`codesign -s -`). That's enough to *run*; Gatekeeper still shows the
-# "unverified developer" prompt on first open (we ship unsigned by choice).
+# ad-hoc (`codesign -s -`). That's enough to *run*. For a release,
+# electron-builder re-signs the whole bundle with the Developer ID afterwards
+# (hardened runtime + notarization, `desktop/electron-builder.yml`); only a
+# build without that identity (e.g. a fork PR in mac-build.yml) ships ad-hoc.
 #
 # Usage: bundle-dylibs.sh <output-dir> <binary> [more-binaries...]
 #

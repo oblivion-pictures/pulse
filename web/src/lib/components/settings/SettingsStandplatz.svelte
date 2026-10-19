@@ -44,6 +44,7 @@
   import { MONITOR_CAPTURE_PREFIX } from '$lib/stream/settingsCatalog';
   import { isElectron } from '$lib/platform/runtime';
   import { darfStandplatzSein } from '$lib/remote/darfStandplatzSein';
+  import { stream } from '$lib/stream/state.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
   const desktop = isElectron();
@@ -96,12 +97,25 @@
     <p class="border-border text-text-muted rounded-2xl border border-dashed p-4 text-sm">
       {m.standplatz_settings_desktop_only()}
     </p>
+  {:else if !kannStandplatz && !stream.gesundheitGemessen}
+    <!-- Noch nicht gemessen (das Panel stößt die Messung beim Öffnen an, der
+         erste Ruf startet den Sidecar). Ohne diesen Zweig stünde hier für
+         einen Moment „kann nicht ferngesteuert werden" — auf einem Rechner,
+         der es sehr wohl kann. -->
+    <p
+      class="border-border text-text-muted rounded-2xl border border-dashed p-4 text-sm"
+      data-testid="standplatz-pruefung"
+    >
+      {m.standplatz_settings_checking()}
+    </p>
   {:else if !kannStandplatz}
-    <!-- Desktop, aber ohne Gegenstelle (Linux/macOS). Hier steht bewusst NUR
-         der Hinweis und die Eintragung: Profil und Freigaben richteten etwas
-         ein, das dieser Rechner nicht einloesen kann. Die Eintragung bleibt,
-         weil sie der einzige Weg ist, eine unter Windows angelegte Zeile
-         wieder loszuwerden. -->
+    <!-- Desktop, aber ohne Gegenstelle (Linux) oder ohne Systemfreigabe
+         (macOS). Hier steht bewusst NUR der Hinweis und eine schon bestehende
+         Eintragung: Profil und Freigaben richteten etwas ein, das dieser
+         Rechner nicht einloesen kann, und eine NEUE Eintragung liefe ins
+         Leere (`steuerbar={false}` blendet das Formular aus). Die bestehende
+         bleibt, weil sie der einzige Weg ist, eine unter Windows angelegte
+         Zeile wieder loszuwerden. -->
     <p class="border-border text-text-muted rounded-2xl border border-dashed p-4 text-sm">
       {m.standplatz_settings_platform_only()}
     </p>

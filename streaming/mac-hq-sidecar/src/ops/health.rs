@@ -48,10 +48,10 @@ pub fn handle(_params: Map<String, Value>) -> Result<Map<String, Value>> {
         // **Live geprueft, nicht behauptet.** Anders als unter Windows (dort
         // fest `true`, weil das Op zum Programm selbst gehoert) haengt die
         // Faehigkeit hier an Freigaben, die der Nutzer jederzeit zurueckziehen
-        // kann und die bei jedem Update erneut eingeholt werden muessen
-        // (ad-hoc-signiertes DMG). Ein festes `true` liesse einen Mac als
-        // fernsteuerbar erscheinen, dessen zugesagte Sitzung beim ersten Frame
-        // wortlos stuerbe — s. `crate::berechtigung`.
+        // kann und die ein frisch installiertes Pulse noch nicht hat (angefragt
+        // wird nur ueber `freigabe_anfragen`, nie von hier). Ein festes `true`
+        // liesse einen Mac als fernsteuerbar erscheinen, dessen zugesagte
+        // Sitzung beim ersten Frame wortlos stuerbe — s. `crate::berechtigung`.
         //
         // **BEIDE Freigaben, nicht nur die zum Einspielen.** Ohne
         // Eingabeueberwachung sieht die Wache den Host nicht mehr, der sich

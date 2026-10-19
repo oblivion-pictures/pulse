@@ -82,6 +82,17 @@ export interface PulseSidecarApi {
   /** Sitzungsende — der Sidecar gibt alles Gedrueckte frei. Ohne diesen Ruf
    *  bliebe nach einem Abbruch eine Taste gedrueckt. Idempotent. */
   remoteInputEnd?(): Promise<unknown>;
+  /** macOS: die fehlende Systemfreigabe der Fernsteuerung anfordern — der
+   *  Sidecar ruft `AXIsProcessTrustedWithOptions` mit Dialog bzw.
+   *  `IOHIDRequestAccess`; TCC nennt im Dialog „Pulse". Nur auf Klick, nie
+   *  beim Gesundheitscheck. Antwort wie `health.sidecar`: `remote_input`,
+   *  `remote_input_grund`, dazu `angefragt` (welche Freigabe gefragt wurde,
+   *  leer = keine). Fehlt in Fassungen vor 2026-10-19, deshalb optional. */
+  freigabeAnfragen?(): Promise<unknown>;
+  /** macOS: die Liste einer Systemfreigabe in den Systemeinstellungen öffnen
+   *  (`'bedienungshilfen'` | `'eingabeueberwachung'`). Fehlt in Fassungen vor
+   *  2026-10-19. */
+  freigabeEinstellungen?(einstellung: string): Promise<unknown>;
   /** Subscribe to sidecar events. Each event carries a `slot` field tagged by
    *  the main process so the renderer can route it to the right stream. Returns
    *  an unsubscribe function. */

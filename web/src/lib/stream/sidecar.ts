@@ -64,8 +64,9 @@ export interface SidecarHealth {
      *  **Windows und macOS beantworten die Frage verschieden.** Unter Windows
      *  gehört das Op zum Programm selbst, der Wert ist fest `true`. Auf macOS
      *  hängt er an zwei Systemfreigaben, die der Nutzer jederzeit zurückziehen
-     *  kann und die bei jedem Update neu einzuholen sind (ad-hoc signiertes
-     *  DMG) — dort wird bei jedem Gesundheitscheck live geprüft.
+     *  kann — dort wird bei jedem Gesundheitscheck live geprüft. (Bis zum
+     *  2026-10-19 stand hier, jedes Update koste die Freigabe: das galt für
+     *  das ad-hoc signierte DMG, nicht mehr für das Developer-ID-signierte.)
      *
      *  Der Wert reist von hier über den Stream-Token bis in die WHEP-Antwort
      *  beim Zuschauer und entscheidet dort, ob der Knopf „Fernsteuerung
@@ -346,6 +347,23 @@ export const sidecar = {
   async directStop(slot: number): Promise<unknown | null> {
     const b = bridge();
     return b ? await b.directStop(slot) : null;
+  },
+
+  /** Hat diese Desktop-App den Anfrage-Weg für die macOS-Freigaben? Fehlt in
+   *  Fassungen vor 2026-10-19 — die Web-App geht ihnen voraus. */
+  kannFreigabeAnfragen(): boolean {
+    return typeof bridge()?.freigabeAnfragen === 'function';
+  },
+  /** macOS: die erste fehlende Freigabe anfordern (Sidecar-Op
+   *  `freigabe_anfragen`). Ohne Brücke oder Methode `null`. */
+  async freigabeAnfragen(): Promise<unknown | null> {
+    const b = bridge();
+    return b?.freigabeAnfragen ? await b.freigabeAnfragen() : null;
+  },
+  /** macOS: die Liste einer Systemfreigabe öffnen. Ohne Methode `null`. */
+  async freigabeEinstellungen(einstellung: string): Promise<unknown | null> {
+    const b = bridge();
+    return b?.freigabeEinstellungen ? await b.freigabeEinstellungen(einstellung) : null;
   },
 
   /**

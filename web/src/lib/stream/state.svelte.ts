@@ -97,6 +97,12 @@ export const stream = $state({
    *  Ausschalten spurlos und niemand käme auf den Zusammenhang. Fehlt das
    *  Feld, bleibt es false. */
   hdrAvailable: false,
+  /** True, sobald `pruefeGesundheit()` einmal geantwortet hat (Erfolg,
+   *  Fehlschlag oder „kein Sidecar"). Vorher heißen die Flags oben „noch nicht
+   *  gefragt", nicht „nein" — das Panel „Remote-Rechner" zeigt bis dahin
+   *  „wird geprüft" statt „dieser Rechner kann nicht ferngesteuert werden".
+   *  Das reaktive Gegenstück zu `gesundheitTor` (dort für Wartende). */
+  gesundheitGemessen: false,
   ...freshSession(),
 });
 
@@ -235,11 +241,25 @@ export function pruefeGesundheit(): Promise<void> {
   return (gesundheitsRuf ??= frageGesundheit());
 }
 
+/**
+ * Dieselbe Messung noch einmal, auch wenn schon eine gelungen ist — für die
+ * Flags, die sich zur Laufzeit ändern können: auf dem Mac `fernsteuerbar`,
+ * sobald der Nutzer eine Systemfreigabe erteilt oder entzieht. Gerufen vom
+ * Panel „Remote-Rechner" beim Öffnen, nach „Freigabe anfordern" und bei der
+ * Rückkehr ins Fenster. Ein laufender Ruf wird abgewartet statt überholt.
+ */
+export async function pruefeGesundheitErneut(): Promise<void> {
+  await gesundheitsRuf;
+  gesundheitsRuf = null;
+  return pruefeGesundheit();
+}
+
 async function frageGesundheit(): Promise<void> {
   if (!sidecar.available()) {
     // Tor auf, obwohl nichts gemessen wurde: „kein Sidecar" ist eine Antwort.
     // Wer darauf wartet, soll weitergehen — s. `gesundheitTor.ts`.
     gesundheitTor.oeffnen();
+    stream.gesundheitGemessen = true;
     return;
   }
 
@@ -266,6 +286,8 @@ async function frageGesundheit(): Promise<void> {
     stream.tenBitAvailable = false;
     stream.hevcTenBitAvailable = false;
     stream.hdrAvailable = false;
+    stream.fernsteuerbar = false;
+    stream.fernsteuerbarGrund = '';
     stream.error = String(e);
     // Fehlschlag nicht merken — der nächste Anlass versucht es erneut.
     gesundheitsRuf = null;
@@ -274,6 +296,7 @@ async function frageGesundheit(): Promise<void> {
     // antwortet nicht — beides lässt einen Wartenden weitergehen. Ohne dieses
     // Öffnen bliebe ein Wartender für immer stehen (`gesundheitTor.ts`).
     gesundheitTor.oeffnen();
+    stream.gesundheitGemessen = true;
   }
 }
 

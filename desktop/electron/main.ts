@@ -44,6 +44,7 @@ import {
 import { playerManager, recordingDir, shadowClipPath } from './player';
 import { auftragLesen, EingabeWeiche, erfassungSchalten } from './remoteInput';
 import { RemoteEingabe } from './remoteInputHost';
+import { freigabeEinstellungAdresse } from './macFreigabe';
 import { zielFuerAblage, rolleLesen, endeAnstoss } from './ablageWeiche';
 import { migriereAufStandardAn, onSidecarEventForUpload } from './experimental-log-upload';
 import { initStore, storeGet, storeGetAll, storeSet, storeSetBatch } from './store';
@@ -1514,6 +1515,10 @@ const ALLOWED_SIDECAR_OPS = new Set([
   // fließt nur in aktiven Sitzungen); hier geht es nur um die ZULEITUNG.
   'direct_offer',
   'direct_stop',
+  // macOS-Freigaben anfordern (Bedienungshilfen / Eingabeüberwachung) — nur
+  // auf Klick im Panel „Remote-Rechner", s. `macFreigabe.ts`. Windows und
+  // Linux kennen den Op nicht und antworten mit einem Fehler.
+  'freigabe_anfragen',
 ]);
 
 /** Clamp a renderer-supplied slot to a valid stream slot (0..MAX_STREAM_SLOTS-1).
@@ -1672,6 +1677,17 @@ function wireSidecar(): void {
       remoteEingabe.frames(slot, sessionId, frames, hostAktiv === true),
   );
   ipcMain.handle('sidecar:remoteInputEnd', () => remoteEingabe.beenden());
+
+  // macOS: die Liste einer Systemfreigabe aufschlagen (Bedienungshilfen bzw.
+  // Eingabeüberwachung). Der Renderer schickt nur den Schlüssel, die Adresse
+  // steht fest in `macFreigabe.ts` — `shell.openExternal` öffnete sonst, was
+  // immer ein Renderer hineinreicht.
+  ipcMain.handle('sidecar:freigabeEinstellungen', async (_e, art: unknown) => {
+    const adresse = freigabeEinstellungAdresse(art, process.platform);
+    if (!adresse) return { ok: false, error: 'unbekannte Einstellung' };
+    await shell.openExternal(adresse);
+    return { ok: true };
+  });
 
   // Fernsteuerung, Host-Seite: dem Sidecar eines Platzes sagen, dass seine
   // Ablage-Sitzung vorbei ist. Der Renderer ruft das beim TRAEGERWECHSEL
@@ -1903,19 +1919,6 @@ function wirePlayer(): void {
   // unabhaengig vom Rest der Aufraeum-Sequenz wegrennt.
 }
 
-// ── Accessibility-Anstoss (macOS, Fernsteuerung Host-Seite) ─────────────────
-// Windows braucht keine Freigabe -- das Op gehoert dort zum Programm
-// (`win-hq-sidecar`, `health.sidecar.remote_input` steht fest). Auf dem Mac haengt
-// jede Eingabe-Injektion des Sidecars an der Bedienungshilfen-Freigabe, und
-// TCC ordnet sie dem VERANTWORTLICHEN Prozess zu, nicht dem Kindprozess: der
-// vom Hauptprozess gestartete Sidecar erbt Pulses Freigabe (gemessen,
-// `docs/plans/2026-08-23-macos-eingabe-messungen.md`, Messung 1). Der Anstoss
-// gehoert deshalb genau hierher -- nur hier heisst der Eintrag im
-// Systemdialog "Pulse" statt eines Sidecar-Binaernamens. Der Sidecar selbst
-// prueft live nur noch einmal nach, ob die geerbte Freigabe fuer IHN gilt
-// (`mac-hq-sidecar/src/berechtigung.rs`), fragt aber niemals nach -- ein
-// Sidecar, der beim Gesundheitscheck ungefragt einen Systemdialog aufwirft,
-// waere eine Zumutung.
 // Netzdiagnose für einen Self-Host-Server. Der Renderer sieht jeden
 // Fehlschlag als denselben `TypeError: Failed to fetch` — Node kann die Kette
 // einzeln abgehen (netdiag.ts). Rein lesend: der Aufruf öffnet keinen Datenweg

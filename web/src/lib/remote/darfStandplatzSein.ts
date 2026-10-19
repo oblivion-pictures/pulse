@@ -27,13 +27,19 @@
  * live meldet.
  *
  * Auf dem Mac ist das mehr als Kosmetik: die Fähigkeit ist dort
- * **wechselhaft**. Sie hängt an der Accessibility-Freigabe in den
- * Systemeinstellungen, und die wiederum an der Code-Signatur — das mac-DMG
- * ist nur ad-hoc signiert, jedes Update ändert die Signatur, und die Freigabe
- * gilt danach nicht mehr, auch wenn der Haken in den Einstellungen sichtbar
- * stehen bleibt (`desktop/electron/main.ts`). Eine feste Plattform-Abfrage
- * hätte genau den eingangs beschriebenen Fehler wiederholt: ein Rechner, der
- * sich als „bereit" meldet und jede Übernahme ins Leere laufen lässt.
+ * **wechselhaft**. Sie hängt an zwei Systemfreigaben (Bedienungshilfen und
+ * Eingabeüberwachung), die der Nutzer jederzeit zurückziehen kann und die ein
+ * frisch installiertes Pulse noch gar nicht hat (`freigabeText.ts`). Vor der
+ * Developer-ID-Signatur (Stand 2026-10-05) kam die Code-Signatur dazu: das
+ * ad-hoc signierte DMG verlor die Freigabe mit jedem Update; seither hängt sie
+ * an Team und Bundle-ID. Eine feste Plattform-Abfrage hätte genau den eingangs
+ * beschriebenen Fehler wiederholt: ein Rechner, der sich als „bereit" meldet
+ * und jede Übernahme ins Leere laufen lässt.
+ *
+ * **Der Einstieg „Remote-Rechner" fragt bewusst NICHT hier**, sondern nach der
+ * Plattform (`devices/reiterSichtbar.ts::hostPlattform`) — er ist der Ort, an
+ * dem man die fehlende Freigabe erst bekommt. Für Anmeldung und Übernahme
+ * bleibt diese Regel unverändert streng.
  *
  * Die reine Rechnung sitzt in `darfStandplatzSeinPruefung.ts` (importfrei,
  * für Nodes Testläufer); hier nur das Zusammentragen der beiden Werte.

@@ -11,6 +11,15 @@
   `settings/reiterAuswahl.svelte.ts` — sie sind mit dem Reiter hierher
   gewandert.
 
+  **Seit 2026-10-19 dazu: die Plattform kann Host sein** (Electron auf macOS
+  oder Windows, `hostPlattform`). Die gemessene Fähigkeit allein reichte nicht:
+  gemessen wird nur bei Anlässen, die den Sidecar ohnehin brauchen, und der
+  Rail-Knopf war keiner — ein frisch installierter Rechner ohne Eintragung sah
+  ihn nie. Gemessen wird jetzt beim Öffnen des Panels (kein Boot-Probe, der
+  Perf-Grund vom 2026-10-06 gilt weiter) und erneut, wenn das Fenster bei
+  offenem Panel den Fokus zurückbekommt — typischerweise nach einem Abstecher
+  in die Systemeinstellungen, um auf dem Mac eine Freigabe zu erteilen.
+
   Die Rail ist `hidden desktop:flex` — mobil hat der Einstieg (noch) keinen Ort;
   der frühere Reiter zeigte sich dort im Du-Bereich.
 -->
@@ -28,7 +37,10 @@
   import { geraetNameNormalisieren } from '$lib/devices/geraetName';
   import { rechnerName } from '$lib/devices/rechnerName.svelte';
   import { darfStandplatzSein } from '$lib/remote/darfStandplatzSein';
-  import { reiterSichtbar } from '$lib/devices/reiterSichtbar';
+  import { hostPlattform, reiterSichtbar } from '$lib/devices/reiterSichtbar';
+  import { isElectron } from '$lib/platform/runtime';
+  import { sidecar } from '$lib/stream/sidecar';
+  import { pruefeGesundheitErneut, stream } from '$lib/stream/state.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
   // Geräte aller Communitys vorladen — ohne das kennt `deviceStore.eigene()`
@@ -42,6 +54,11 @@
   const sichtbar = $derived(
     reiterSichtbar({
       kannStandplatzSein: darfStandplatzSein(),
+      hostPlattform: hostPlattform({
+        electron: isElectron(),
+        os: typeof window === 'undefined' ? undefined : window.pulse?.os,
+        sidecarBruecke: sidecar.available(),
+      }),
       hatEintragung: !!geraeteAnmeldung.fuerServer(activeServer.serverId),
       besitztGeraete: deviceStore.eigene(currentServerUserId()).length > 0,
     }),
@@ -79,6 +96,20 @@
   $effect(() => {
     void page.url;
     offen = false;
+  });
+
+  // Beim Öffnen messen — und, solange das Panel offen und dieser Rechner noch
+  // nicht fernsteuerbar ist, bei jeder Rückkehr ins Fenster erneut: wer auf dem
+  // Mac in den Systemeinstellungen den Schalter umlegt, soll das Ergebnis ohne
+  // Neustart und ohne Schließen des Panels sehen.
+  $effect(() => {
+    if (!offen || !sidecar.available()) return;
+    void pruefeGesundheitErneut();
+    const zurueck = (): void => {
+      if (!stream.fernsteuerbar) void pruefeGesundheitErneut();
+    };
+    window.addEventListener('focus', zurueck);
+    return () => window.removeEventListener('focus', zurueck);
   });
 </script>
 

@@ -56,6 +56,37 @@ unsafe extern "C" {
 #[link(name = "IOKit", kind = "framework")]
 unsafe extern "C" {
     fn IOHIDCheckAccess(request_type: c_int) -> c_int;
+    // C-`bool` (`stdbool.h`) ist ABI-gleich mit Rusts `bool` — anders als
+    // `Boolean` oben, das ein `unsigned char` ist.
+    fn IOHIDRequestAccess(request_type: c_int) -> bool;
+}
+
+// Fuer den Dialog-Schalter `kAXTrustedCheckOptionPrompt` braucht
+// `AXIsProcessTrustedWithOptions` ein CFDictionary — selbst deklariert wie
+// oben. Die Rueckruf-Tabellen werden nur per Adresse gebraucht, ihr Inhalt
+// bleibt undurchsichtig.
+#[repr(C)]
+struct Undurchsichtig([u8; 0]);
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    static kCFBooleanTrue: *const c_void;
+    static kCFTypeDictionaryKeyCallBacks: Undurchsichtig;
+    static kCFTypeDictionaryValueCallBacks: Undurchsichtig;
+    fn CFDictionaryCreate(
+        allocator: *const c_void,
+        keys: *const *const c_void,
+        values: *const *const c_void,
+        num_values: isize,
+        key_callbacks: *const Undurchsichtig,
+        value_callbacks: *const Undurchsichtig,
+    ) -> *const c_void;
+    fn CFRelease(cf: *const c_void);
+}
+
+#[link(name = "ApplicationServices", kind = "framework")]
+unsafe extern "C" {
+    static kAXTrustedCheckOptionPrompt: *const c_void;
 }
 
 const REQUEST_LISTEN_EVENT: c_int = 1;
@@ -74,11 +105,13 @@ const ACCESS_UNKNOWN: c_int = 2;
 ///
 /// **Nicht als Vorbedingung eines Abgriff-Versuchs verwenden.** Solange der
 /// Nutzer nie gefragt wurde, liefert die Abfrage `Unknown` — gefragt wird er
-/// aber erst, wenn ein Abgriff-Versuch stattfindet. Wer hiermit vorher
-/// abriegelt, baut einen Zustand, aus dem ein frisch installiertes Pulse nicht
-/// herausfindet: Verweigerung ohne Dialog, ohne Eintrag in der Liste, ohne
-/// Haken zum Setzen. Richtige Reihenfolge: erst den Abgriff erstellen, dann
-/// hiermit pruefen und bei `false` mit klarer Meldung verweigern.
+/// aber erst, wenn ein Abgriff-Versuch stattfindet oder er im Panel
+/// „Remote-Rechner" auf „Freigabe anfordern" klickt ([`anfragen`], seit
+/// 2026-10-19). Wer hiermit vorher abriegelt, baut einen Zustand, aus dem ein
+/// frisch installiertes Pulse nicht herausfindet: Verweigerung ohne Dialog,
+/// ohne Eintrag in der Liste, ohne Haken zum Setzen. Richtige Reihenfolge:
+/// erst den Abgriff erstellen, dann hiermit pruefen und bei `false` mit klarer
+/// Meldung verweigern.
 pub fn darf_mithoeren() -> bool {
     mithoeren_stand() == STAND_ERTEILT
 }
@@ -139,18 +172,100 @@ pub fn faehigkeit(einspielen: bool, mithoeren_stand: &str) -> (bool, String) {
 /// Schluessel fehlt — und dessen Vorgabe ist `false` ("By default, in the
 /// absence of this key, the user is not prompted."). Ein Sidecar, der beim
 /// Gesundheitscheck ungefragt einen Berechtigungsdialog aufwirft, waere eine
-/// Zumutung; der Anstoss dazu gehoert in den Electron-Hauptprozess (spaetere
-/// Aufgabe), NIEMALS hierher.
+/// Zumutung. Der Anstoss kommt ausschliesslich ueber [`anfragen`] (Op
+/// `freigabe_anfragen`, nur auf Nutzerklick) — NIEMALS aus dieser Abfrage.
 ///
 /// **Warum live geprueft und nicht wie unter Windows fest behauptet:** dort
 /// gehoert das Op zum Programm selbst, die Aussage `true` ist also nicht
 /// geraten. Auf dem Mac waere dasselbe falsch — die Freigabe kann der Nutzer
-/// jederzeit zurueckziehen, und sie haengt zusaetzlich an der Code-Signatur
-/// (das mac-DMG ist nur ad-hoc signiert), faellt also auch bei jedem Update
-/// weg. Ein festes `true` liesse einen Mac als fernsteuerbar erscheinen,
-/// dessen zugesagte Sitzung beim allerersten Frame wortlos stuerbe.
+/// jederzeit zurueckziehen, und ein frisch installiertes Pulse hat sie noch
+/// gar nicht. (Vor der Developer-ID-Signatur, Stand 2026-10-05, fiel sie
+/// ausserdem mit jedem Update weg, weil das DMG nur ad-hoc signiert war;
+/// seither haengt sie an Team und Bundle-ID.) Ein festes `true` liesse einen
+/// Mac als fernsteuerbar erscheinen, dessen zugesagte Sitzung beim allerersten
+/// Frame wortlos stuerbe.
 pub fn darf_einspielen() -> bool {
     unsafe { AXIsProcessTrustedWithOptions(std::ptr::null()) != 0 }
+}
+
+/// Welche Freigabe ein Klick auf „Freigabe anfordern" anfragt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Anfrage {
+    Bedienungshilfen,
+    Eingabeueberwachung,
+}
+
+impl Anfrage {
+    /// Der Name auf dem Draht — dieselben Woerter wie im `remote_input_grund`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Anfrage::Bedienungshilfen => "bedienungshilfen",
+            Anfrage::Eingabeueberwachung => "eingabeueberwachung",
+        }
+    }
+}
+
+/// Was als Naechstes anzufragen ist — **eine** Freigabe je Klick, in derselben
+/// Reihenfolge wie [`faehigkeit`] den Grund nennt. Zwei Systemdialoge auf
+/// einmal stapelten sich uebereinander, und der Nutzer wuesste nicht, welcher
+/// zu welchem Schalter gehoert; nach der ersten Freigabe misst die Oberflaeche
+/// neu und bietet den naechsten Klick an.
+///
+/// Die Eingabeueberwachung nur, solange **nie gefragt**: nach einem Nein zeigt
+/// `IOHIDRequestAccess` keinen Dialog mehr, dann bleibt nur der Weg ueber die
+/// Systemeinstellungen (`desktop/electron/macFreigabe.ts`). Die
+/// Bedienungshilfen dagegen bei jedem fehlenden Vertrauen — der Dialog kommt
+/// laut Apples Beschreibung von `kAXTrustedCheckOptionPrompt`, solange der
+/// Prozess nicht vertraut ist (am Geraet nach einem Nein noch nicht
+/// nachgesehen).
+///
+/// Rein gerechnet, aus demselben Grund wie [`faehigkeit`].
+pub fn naechste_anfrage(einspielen: bool, mithoeren_stand: &str) -> Option<Anfrage> {
+    if !einspielen {
+        return Some(Anfrage::Bedienungshilfen);
+    }
+    (mithoeren_stand == "ungefragt").then_some(Anfrage::Eingabeueberwachung)
+}
+
+/// Die naechste fehlende Freigabe anfragen — **zeigt einen Systemdialog**.
+/// Nur aus dem Op `freigabe_anfragen`, also nur auf Nutzerklick; niemals aus
+/// dem Gesundheitscheck (s. [`darf_einspielen`]).
+///
+/// TCC ordnet die Anfrage dem **verantwortlichen** Prozess zu: der Dialog
+/// nennt Pulse, nicht den Sidecar, und der Eintrag in der Liste heisst
+/// ebenfalls Pulse (Mechanismus gemessen in
+/// `docs/plans/2026-08-23-macos-eingabe-messungen.md`, Messung 1 — dort mit dem
+/// Terminal als Elternprozess).
+///
+/// Beide Aufrufe kehren zurueck, ohne auf die Antwort des Nutzers zu warten
+/// (Apples Beschreibung; ob `IOHIDRequestAccess` es wirklich tut, ist nicht
+/// gemessen — deshalb laeuft das Op ohnehin auf eigenem Faden, `main.rs`). Ob
+/// die Freigabe erteilt wurde, sagt erst die naechste Messung.
+pub fn anfragen() -> Option<Anfrage> {
+    let anfrage = naechste_anfrage(darf_einspielen(), mithoeren_stand())?;
+    match anfrage {
+        Anfrage::Bedienungshilfen => unsafe {
+            let schluessel = [kAXTrustedCheckOptionPrompt];
+            let werte = [kCFBooleanTrue];
+            let optionen = CFDictionaryCreate(
+                std::ptr::null(),
+                schluessel.as_ptr(),
+                werte.as_ptr(),
+                1,
+                &raw const kCFTypeDictionaryKeyCallBacks,
+                &raw const kCFTypeDictionaryValueCallBacks,
+            );
+            if optionen.is_null() {
+                return None;
+            }
+            let _ = AXIsProcessTrustedWithOptions(optionen);
+            CFRelease(optionen);
+        },
+        Anfrage::Eingabeueberwachung => {
+            let _ = unsafe { IOHIDRequestAccess(REQUEST_LISTEN_EVENT) };
+        }
+    }
+    Some(anfrage)
 }
 
 #[cfg(test)]
@@ -182,6 +297,33 @@ mod tests {
         assert!(
             ["granted", "denied", "ungefragt"].contains(&stand),
             "unerwarteter Stand: {stand}"
+        );
+    }
+
+    /// Eine Freigabe je Klick, Bedienungshilfen zuerst, und die
+    /// Eingabeueberwachung nur, solange macOS noch einen Dialog zeigen kann.
+    /// `anfragen` selbst wird hier nie gerufen — es zeigte auf dem
+    /// Entwicklerrechner einen echten Systemdialog.
+    #[test]
+    fn naechste_anfrage_eine_je_klick() {
+        assert_eq!(naechste_anfrage(false, "ungefragt"), Some(Anfrage::Bedienungshilfen));
+        assert_eq!(naechste_anfrage(false, STAND_ERTEILT), Some(Anfrage::Bedienungshilfen));
+        assert_eq!(naechste_anfrage(true, "ungefragt"), Some(Anfrage::Eingabeueberwachung));
+        // Nach einem Nein schweigt `IOHIDRequestAccess` — nichts anzufragen.
+        assert_eq!(naechste_anfrage(true, "denied"), None);
+        assert_eq!(naechste_anfrage(true, "unbekannt"), None);
+        assert_eq!(naechste_anfrage(true, STAND_ERTEILT), None);
+    }
+
+    /// Die Namen auf dem Draht muessen die Woerter des Grundes sein — die
+    /// Oberflaeche ordnet beides denselben Systemeinstellungen zu.
+    #[test]
+    fn anfrage_namen_passen_zum_grund() {
+        assert_eq!(faehigkeit(false, STAND_ERTEILT).1, Anfrage::Bedienungshilfen.name());
+        assert!(
+            faehigkeit(true, "denied")
+                .1
+                .starts_with(Anfrage::Eingabeueberwachung.name())
         );
     }
 

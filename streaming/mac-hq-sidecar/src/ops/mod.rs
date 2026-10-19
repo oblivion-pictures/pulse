@@ -14,6 +14,7 @@
 //! |------------------------|---------|------------------------------------------|
 //! | ablage                 | echt    | geteilte Zwischenablage (`crate::ablage`) |
 //! | health                 | echt    | Fähigkeiten + Freigaben (`berechtigung`)  |
+//! | freigabe_anfragen      | echt    | Systemdialog Bedienungshilfen/Eingabeüberwachung, nur auf Klick |
 //! | gpu_info               | Stub    | wartet auf die Metal-Geräteabfrage        |
 //! | list_monitors          | echt    | `capture::list_displays`                  |
 //! | list_windows           | echt    | `capture::list_capture_windows`           |
@@ -34,6 +35,7 @@ pub mod build_argv;
 pub mod clip_save;
 pub mod direct_offer;
 pub mod direct_stop;
+pub mod freigabe_anfragen;
 pub mod gpu_info;
 pub mod health;
 pub mod keyframe;

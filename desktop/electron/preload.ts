@@ -114,6 +114,13 @@ contextBridge.exposeInMainWorld('pulse', {
     directOffer: (slot: number, sdp: string): Promise<unknown> =>
       sidecarCall('direct_offer', { sdp }, slot),
     directStop: (slot: number): Promise<unknown> => sidecarCall('direct_stop', {}, slot),
+    /** macOS: die fehlende Systemfreigabe der Fernsteuerung anfordern (Sidecar-
+     *  Op `freigabe_anfragen`, zeigt den Dialog „Pulse"). Nur auf Klick. */
+    freigabeAnfragen: (): Promise<unknown> => sidecarCall('freigabe_anfragen'),
+    /** macOS: die Liste einer Systemfreigabe aufschlagen. Nur der Schlüssel
+     *  reist, die Adresse steht im Hauptprozess (`macFreigabe.ts`). */
+    freigabeEinstellungen: (einstellung: string): Promise<unknown> =>
+      ipcRenderer.invoke('sidecar:freigabeEinstellungen', einstellung),
 
     /** Welcher Linux-Sidecar läuft (rust) und warum — für die Anzeige im
      *  Kompatibilitäts-Tab. Eigener Kanal, kein `sidecar:call`: das ist eine

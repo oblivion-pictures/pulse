@@ -78,7 +78,7 @@ fn main() -> anyhow::Result<()> {
         let op = serde_json::from_str::<serde_json::Value>(trimmed)
             .ok()
             .and_then(|v| v.get("op").and_then(|o| o.as_str()).map(str::to_owned));
-        if op.as_deref().is_some_and(ist_aufzaehlung) {
+        if op.as_deref().is_some_and(auf_eigenem_faden) {
             let zeile = trimmed.to_string();
             let ausgang = out_tx.clone();
             if thread::Builder::new()
@@ -141,9 +141,15 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Die Ops, die `SCShareableContent`-Gesamtanschnappschuesse ziehen und darum
-/// Sekunden dauern koennen — alles, was die Eingabe einer Fernsteuerung nicht
-/// ausbremsen darf (s. der Block am Anfang der Leseschleife).
-fn ist_aufzaehlung(op: &str) -> bool {
-    matches!(op, "list_monitors" | "list_windows" | "list_application_audio")
+/// Die Ops, die Sekunden dauern koennen — alles, was die Eingabe einer
+/// Fernsteuerung nicht ausbremsen darf (s. der Block am Anfang der
+/// Leseschleife): die Auflistungen ziehen `SCShareableContent`-
+/// Gesamtanschnappschuesse, und `freigabe_anfragen` wirft einen Systemdialog
+/// auf, von dem nicht gemessen ist, ob `IOHIDRequestAccess` auf ihn wartet.
+/// (Bis zum 2026-10-19 hiess die Funktion `ist_aufzaehlung`.)
+fn auf_eigenem_faden(op: &str) -> bool {
+    matches!(
+        op,
+        "list_monitors" | "list_windows" | "list_application_audio" | "freigabe_anfragen"
+    )
 }

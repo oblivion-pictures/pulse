@@ -117,6 +117,7 @@ none.
 | Op                       | Status | Backed by                                        |
 |--------------------------|--------|--------------------------------------------------|
 | `health`                 | real   | codec probe (`caps.rs`) + TCC grants (`berechtigung.rs`) |
+| `freigabe_anfragen`      | real   | asks for the next missing TCC grant (Accessibility, then Input Monitoring) — shows a system dialog, so only on a user click |
 | `gpu_info`               | stub   | awaiting `MTLCreateSystemDefaultDevice`          |
 | `list_monitors`          | real   | `capture::list_displays`                         |
 | `list_windows`           | real   | `capture::list_capture_windows`                  |

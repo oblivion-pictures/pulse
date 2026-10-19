@@ -25,12 +25,31 @@ test('beim Mithören steht der Grund dabei, warum es abgeschaltet bleibt', () =>
   assert.match(h.erklaerung, /zurück/);
 });
 
-test('"ungefragt" bekommt den Zusatz, "denied" nicht', () => {
-  const u = freigabeHinweis('eingabeueberwachung:ungefragt');
-  const d = freigabeHinweis('eingabeueberwachung:denied');
-  assert.ok(u && d);
-  assert.match(u.erklaerung, /erst, nachdem einmal eine Sitzung versucht wurde/);
-  assert.doesNotMatch(d.erklaerung, /erst, nachdem einmal eine Sitzung versucht wurde/);
+test('"ungefragt" verweist auf die Anfrage oder das Plus, "denied" auf den Schalter', () => {
+  const mitAnfrage = freigabeHinweis('eingabeueberwachung:ungefragt', true);
+  const ohneAnfrage = freigabeHinweis('eingabeueberwachung:ungefragt', false);
+  const d = freigabeHinweis('eingabeueberwachung:denied', true);
+  assert.ok(mitAnfrage && ohneAnfrage && d);
+  assert.match(mitAnfrage.erklaerung, /Freigabe anfordern/);
+  assert.match(ohneAnfrage.erklaerung, /Plus/);
+  assert.doesNotMatch(d.erklaerung, /Freigabe anfordern|Plus/);
+});
+
+test('anfragbar nur, wo macOS noch einen Dialog zeigt', () => {
+  // Bedienungshilfen: der Dialog kommt, solange Pulse nicht vertraut ist.
+  assert.equal(freigabeHinweis('bedienungshilfen', true)?.anfragbar, true);
+  // Eingabeüberwachung: nur solange nie gefragt — nach einem Nein schweigt
+  // IOHIDRequestAccess, ein Knopf täte sichtbar nichts.
+  assert.equal(freigabeHinweis('eingabeueberwachung:ungefragt', true)?.anfragbar, true);
+  assert.equal(freigabeHinweis('eingabeueberwachung:denied', true)?.anfragbar, false);
+  // Ohne Brücke (ältere Desktop-App) nie.
+  assert.equal(freigabeHinweis('bedienungshilfen', false)?.anfragbar, false);
+});
+
+test('jede bekannte Freigabe nennt ihre Systemeinstellung', () => {
+  assert.equal(freigabeHinweis('bedienungshilfen')?.einstellung, 'bedienungshilfen');
+  assert.equal(freigabeHinweis('eingabeueberwachung:denied')?.einstellung, 'eingabeueberwachung');
+  assert.equal(freigabeHinweis('irgendwas-neues:42')?.einstellung, null);
 });
 
 test('ein unbekannter Grund wird durchgereicht, nicht verschluckt', () => {
@@ -39,10 +58,13 @@ test('ein unbekannter Grund wird durchgereicht, nicht verschluckt', () => {
   assert.match(h.erklaerung, /irgendwas-neues:42/);
 });
 
-test('jeder Hinweis nennt die Signatur-Falle', () => {
+test('kein Hinweis behauptet mehr, ein Update koste die Freigabe', () => {
+  // Bis 2026-10-19 stand hier „nach einem Update entfernen und neu setzen" —
+  // das galt für das ad-hoc signierte DMG. Mit Developer-ID-Signatur trifft es
+  // nicht mehr zu und schickte den Nutzer grundlos in die Systemeinstellungen.
   for (const g of ['bedienungshilfen', 'eingabeueberwachung:denied']) {
     const h = freigabeHinweis(g);
     assert.ok(h, g);
-    assert.match(h.erklaerung, /entfernt und neu gesetzt/, g);
+    assert.doesNotMatch(h.erklaerung, /Update|neu gesetzt/, g);
   }
 });
