@@ -456,6 +456,7 @@
           <TwitchPlayer
             source={party.source}
             autoplay={autoplay}
+            ohneChrome={handy}
             onReady={handleReady}
             onEvent={handleEvent}
           />
@@ -468,16 +469,17 @@
           />
         {/if}
       {/key}
-      <!-- Klick-Fänger: immer, für HOST und Zuschauer (Nutzerbefund
-           2026-10-19: ein Klick auf das pausierte Video ließ es wieder
-           anlaufen — YouTube/Twitch behandeln Klicks in ihrem Embed selbst).
-           Wiedergabe steuert die Kachel: Play in der Mitte, unten rechts,
-           bzw. der Host über seine Knöpfe. -->
-      <div
-        class="absolute inset-0 z-10"
-        data-testid="watch-party-viewer-lock"
-        aria-hidden="true"
-      ></div>
+      <!-- Klick-Fänger: NUR am Handy (und für YouTube-Zuschauer) — dort soll
+           Twitch/YouTube gar nichts selbst behandeln, Pulse steuert. Am PC
+           bleibt der Embed klickbar wie vor der Mobile-Arbeit
+           (Nutzerwunsch 2026-10-19: die Mobile-Änderungen nur am Handy). -->
+      {#if handy || viewerReadonly}
+        <div
+          class="absolute inset-0 z-10"
+          data-testid="watch-party-viewer-lock"
+          aria-hidden="true"
+        ></div>
+      {/if}
     </div>
   {/snippet}
   {#snippet nameExtra()}
