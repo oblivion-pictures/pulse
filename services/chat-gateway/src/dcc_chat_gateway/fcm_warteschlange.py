@@ -58,6 +58,8 @@ from typing import Any
 import dcc_chat_gateway.config as chat_config
 from dcc_chat_gateway import fcm, fcm_gelesen
 from dcc_chat_gateway.fcm_gelesen import zurueckhalten_aktiv
+from dcc_chat_gateway.models.private_gruppen import PrivateGroupMember
+from sqlalchemy import select
 
 log = logging.getLogger(__name__)
 
@@ -172,6 +174,31 @@ async def vormerken(
     Zustellungs-IDs je Empfängergerät — gegen sie prüft ``fcm_gelesen`` die
     Quittungs-Belege.
     """
+    # Persönliche Stummschaltung (Migration 0107): ein Gruppenmitglied, das
+    # die Gruppe stummgeschaltet hat, bekommt KEINEN Handy-Push mehr — der
+    # In-App-Weg (WebSocket) bleibt unberührt. Nur im Gruppen-Fall: DMs haben
+    # keinen Stumm-Merker (ihr Push hängt an der Geräte-Kette). Fail-open:
+    # eine Lesestörung sendet lieber einen Push, den man stumm geschaltet
+    # hatte, als niemals wieder welche.
+    if art == "gruppe":
+        try:
+            async with fcm.SessionLocal() as session:
+                stumm = set(
+                    (
+                        await session.execute(
+                            select(PrivateGroupMember.user_id).where(
+                                PrivateGroupMember.gruppe_id == channel_id,
+                                PrivateGroupMember.stumm.is_(True),
+                                PrivateGroupMember.user_id.in_(recipient_ids),
+                            )
+                        )
+                    ).scalars()
+                )
+            recipient_ids = set(recipient_ids) - stumm
+        except Exception:  # noqa: BLE001
+            log.warning("fcm_stumm_pruefung_fehlgeschlagen_sendet_trotzdem")
+        if not recipient_ids:
+            return
     if not recipient_ids:
         return
     # Modul-Zugriff statt ``from … import get_settings``: sonst zur Importzeit

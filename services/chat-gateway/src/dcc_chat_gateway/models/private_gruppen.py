@@ -23,7 +23,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint, func
+import sqlalchemy as sa
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from dcc_chat_gateway.db import Base, snowflake_pk
@@ -57,6 +58,10 @@ class PrivateGroupChannel(Base):
     # Muster wie ``Guild.icon_url``. Null = kein Bild, die UI zeigt die
     # Anfangsbuchstaben-Kachel.
     icon_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # EIN angehefteter Kanal-Anker (Nutzerwunsch 2026-10-19, „Nachricht
+    # anpinnen“): die kanonische ID wählt der Anpinnende — der Server sieht
+    # nur die Zeichenkette, den Inhalt kennt er nie (E2E).
+    angeheftet_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class PrivateGroupMember(Base):
@@ -79,6 +84,15 @@ class PrivateGroupMember(Base):
     beigetreten_am: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Rolle in der Gruppe (Nutzerwunsch 2026-10-19): „owner" = alle Rechte
+    # (die Zeile des Erstellers — Rückfüllung Migration 0107, Owner-Wechsel
+    # zieht sie mit, weil ersteller_id die übertragbare Rolle TRÄGT),
+    # „admin" = einladen + rauswerfen, „mitglied" = chatten. Die Rechnung
+    # „wer darf was" steht gebündelt in routes/private_gruppen (_rolle).
+    rolle: Mapped[str] = mapped_column(String(16), nullable=False, server_default="mitglied")
+    # Persönliche Stummschaltung dieser Gruppe am eigenen Gerät (Handy-Push
+    # respektiert sie, s. fcm_warteschlange). Pro Mitglied, nicht synchron.
+    stumm: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=sa.false())
 
     __table_args__ = (
         # Dieselbe Person darf nicht zweimal Mitglied sein — sonst zaehlt die

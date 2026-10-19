@@ -1562,6 +1562,14 @@ class PrivateGroupCreateIn(BaseModel):
 class PrivateGroupMemberOut(BaseModel):
     user_id: int
     beigetreten_am: datetime
+    #: „owner" / „admin" / „mitglied" — Rollen-Vertrag 2026-10-19: Owner
+    #: alle Rechte, Admin nur Einladen + Rauswerfen (Rechnung:
+    #: ``routes.private_gruppen._rolle``; die Owner-Zeile wird in Migration
+    #: 0107 rückgefüllt und bei einem Besitzerwechsel mitgezogen).
+    rolle: str = "mitglied"
+    #: Persönliche Stummschaltung dieses Mitglieds (nur für die eigene
+    #: Ansicht/Klienten relevant, Push respektiert sie serverseitig).
+    stumm: bool = False
     #: Lesestand dieses Mitglieds und Zustellstand der EIGENEN Nachrichten bei
     #: ihm (Häkchen-Treppe, ``haekchen.py``) — nur in den Lese-Antworten
     #: gefüllt, sonst null; der Klient merged vorwärts.
@@ -1589,6 +1597,9 @@ class PrivateGroupOut(BaseModel):
     created_at: datetime
     last_message_id: int | None = None
     icon_url: str | None = None
+    #: Der eine angeheftete Kanal-Anker (Zeichenkette, vom Anpinnenden
+    #: gewählt — E2E: der Server kennt nur den Anker, nicht den Text).
+    angeheftet_id: str | None = None
     members: list[PrivateGroupMemberOut]
 
     @field_serializer("id", "ersteller_id", "last_message_id")
@@ -1598,6 +1609,26 @@ class PrivateGroupOut(BaseModel):
 
 class PrivateGroupMemberAddIn(BaseModel):
     user_id: SnowflakeId
+
+
+class PrivateGroupRenameIn(BaseModel):
+    """Gruppe umbenennen (Owner) — derselbe Name-Filter wie beim Anlegen."""
+
+    name: str
+
+
+class PrivateGroupStummIn(BaseModel):
+    """Persönliche Stummschaltung einer Gruppe umschalten (jedes Mitglied
+    schaltet nur für SICH — der Push-Versand respektiert den Merker)."""
+
+    stumm: bool
+
+
+class PrivateGroupAnheftenIn(BaseModel):
+    """Nachricht anpinnen: der kanonische Anker der Nachricht (wählt der
+    Anpinnende — E2E, der Server kennt nur die Zeichenkette)."""
+
+    anker: str
 
 
 # ---------------------------------------------------------------------------

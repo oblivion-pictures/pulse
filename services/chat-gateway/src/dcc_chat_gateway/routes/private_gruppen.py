@@ -65,10 +65,13 @@ from dcc_chat_gateway.routes._deps import CloudOnly
 log = logging.getLogger(__name__)
 from dcc_chat_gateway.routes._dropbox_helpers import validate_name
 from dcc_chat_gateway.schemas import (
+    PrivateGroupAnheftenIn,
     PrivateGroupCreateIn,
     PrivateGroupMemberAddIn,
     PrivateGroupMemberOut,
     PrivateGroupOut,
+    PrivateGroupRenameIn,
+    PrivateGroupStummIn,
     SnowflakeId,
 )
 from dcc_chat_gateway.security import CurrentUser
@@ -109,6 +112,24 @@ async def _mitglieder_laden(session, gruppe_id: int) -> list[PrivateGroupMember]
     return list((await session.execute(stmt)).scalars())
 
 
+def _rolle(gruppe: PrivateGroupChannel, mitglied: PrivateGroupMember) -> str:
+    """Die effektive Rolle einer Mitgliedszeile (Rollen-Vertrag 2026-10-19):
+    „owner" schlägt immer — ``ersteller_id`` ist die übertragbare
+    Besitzerrolle und steht ÜBER der Zeilen-Rolle (ein Besitzerwechsel
+    zieht die Owner-Zeile automatisch mit, ohne dass eine zweite Stelle
+    „admin“ oder „owner“ nachziehen müsste). Die Zeilen-Rolle trägt sonst
+    „admin“ (einladen + rauswerfen) oder „mitglied“.
+    """
+    if mitglied.user_id == gruppe.ersteller_id:
+        return "owner"
+    return mitglied.rolle
+
+
+def _darf_verwalten(gruppe: PrivateGroupChannel, eigene_zeile: PrivateGroupMember) -> bool:
+    """Einladen + Rauswerfen: Owner und Admins (Nutzerwunsch 2026-10-19)."""
+    return _rolle(gruppe, eigene_zeile) in ("owner", "admin")
+
+
 def _wire(
     gruppe: PrivateGroupChannel,
     mitglieder: list[PrivateGroupMember],
@@ -125,10 +146,13 @@ def _wire(
         created_at=gruppe.created_at,
         last_message_id=gruppe.last_message_id,
         icon_url=gruppe.icon_url,
+        angeheftet_id=gruppe.angeheftet_id,
         members=[
             PrivateGroupMemberOut(
                 user_id=m.user_id,
                 beigetreten_am=m.beigetreten_am,
+                rolle=_rolle(gruppe, m),
+                stumm=m.stumm,
                 gelesen_bis=st.gelesen_bis if (st := staende.get(m.user_id)) else None,
                 zugestellt_bis=st.zugestellt_bis if st else None,
             )
@@ -309,11 +333,12 @@ async def mitglied_hinzufuegen(
     user: CurrentUser,
     request: Request,
 ) -> PrivateGroupOut:
-    gruppe, _ = await _gruppe_fuer_mitglied_laden(session, gruppe_id, user.id)
-    if gruppe.ersteller_id != user.id:
-        # Keine Rollen, keine Overwrites — aber auch keine Selbstbedienung:
-        # nur wer die Gruppe angelegt hat, darf Mitglieder hinzufuegen.
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="not_the_creator")
+    gruppe, eigene_zeile = await _gruppe_fuer_mitglied_laden(session, gruppe_id, user.id)
+    if _rolle(gruppe, eigene_zeile) not in ("owner", "admin"):
+        # Rollen-Vertrag 2026-10-19: Owner und Admins laden ein — einfache
+        # Mitglieder nicht (Nutzerwunsch: Admin-Rolle „nur einladen und
+        # rauswerfen", Mitglieder gar).
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="not_allowed")
     ziel_id = int(body.user_id)
 
     bereits = (
@@ -371,9 +396,8 @@ async def mitglied_hinzufuegen(
 async def mitglied_entfernen(
     gruppe_id: int, user_id: int, session: SessionDep, user: CurrentUser
 ) -> PrivateGroupOut | None:
-    gruppe, _ = await _gruppe_fuer_mitglied_laden(session, gruppe_id, user.id)
-    if gruppe.ersteller_id != user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="not_the_creator")
+    gruppe, eigene_zeile = await _gruppe_fuer_mitglied_laden(session, gruppe_id, user.id)
+    eigene_rolle = _rolle(gruppe, eigene_zeile)
     ziel_mitglied = (
         await session.execute(
             select(PrivateGroupMember).where(
@@ -384,6 +408,18 @@ async def mitglied_entfernen(
     ).scalar_one_or_none()
     if ziel_mitglied is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not_a_member")
+    # Rollen-Vertrag 2026-10-19: Owner wirft jeden ANDEREN raus (sich selbst
+    # nur per Verlassen), Admins nur einfache Mitglieder — nie Owner oder
+    # andere Admins. Einfache Mitglieder gar (Verlassen bleibt ihr Weg).
+    if user_id == user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="selbst_verlassen")
+    if eigene_rolle == "owner":
+        pass
+    elif eigene_rolle == "admin":
+        if _rolle(gruppe, ziel_mitglied) != "mitglied":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="not_allowed")
+    else:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="not_allowed")
 
     geloescht = await _entferne_mitglied(session, gruppe, user_id)
     if geloescht:
@@ -475,3 +511,102 @@ async def gruppen_lesestand_setzen(
             )
         except Exception:
             log.exception("gruppe_lesestand publish failed for user %s", mitglied.user_id)
+
+
+# ─── Rollen-Ära (2026-10-19): Umbenennen, Auflösen, Stumm, Anheften ─────────
+
+
+@router.put("/gruppen/{gruppe_id}/name")
+async def gruppe_umbenennen(
+    gruppe_id: int,
+    body: PrivateGroupRenameIn,
+    session: SessionDep,
+    user: CurrentUser,
+    request: Request,
+) -> PrivateGroupOut:
+    """Gruppe umbenennen — OWNER allein (Rollen-Vertrag 2026-10-19: der
+    Owner hat alle Rechte, Admins nur Einladen + Rauswerfen)."""
+    gruppe, _ = await _gruppe_fuer_mitglied_laden(session, gruppe_id, user.id)
+    if gruppe.ersteller_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="not_allowed")
+    try:
+        clean_name = validate_name(body.name, max_len=64)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    gruppe.name = clean_name
+    await session.commit()
+    mitglieder = await _mitglieder_laden(session, gruppe.id)
+    await _gruppe_neu_publizieren(request, [m.user_id for m in mitglieder], gruppe.id)
+    return _wire(gruppe, mitglieder)
+
+
+@router.delete("/gruppen/{gruppe_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def gruppe_aufloesen(
+    gruppe_id: int, session: SessionDep, user: CurrentUser, request: Request
+) -> None:
+    """Gruppe AUFLÖSEN — Owner allein. Anders als das Verlassen räumt das
+    die Gruppe für ALLE ab: Mitglieder-Zeilen und Kanal-Zeile verschwinden,
+    ``gruppe_neu`` an die (Ehemaligen-)Mitglieder lässt ihre Klienten die
+    Gruppe aus den Listen nehmen."""
+    gruppe, _ = await _gruppe_fuer_mitglied_laden(session, gruppe_id, user.id)
+    if gruppe.ersteller_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="not_allowed")
+    mitglieder = await _mitglieder_laden(session, gruppe.id)
+    empfaenger = [m.user_id for m in mitglieder]
+    await session.execute(
+        sa_delete(PrivateGroupMember).where(PrivateGroupMember.gruppe_id == gruppe_id)
+    )
+    await session.delete(gruppe)
+    await session.commit()
+    await _gruppe_neu_publizieren(request, empfaenger, gruppe_id)
+    log.info("gruppe_aufgeloest", gruppe_id=gruppe_id, user_id=user.id)
+
+
+@router.post("/gruppen/{gruppe_id}/stumm", status_code=status.HTTP_204_NO_CONTENT)
+async def stumm_setzen(
+    gruppe_id: int,
+    body: PrivateGroupStummIn,
+    session: SessionDep,
+    user: CurrentUser,
+    request: Request,
+) -> None:
+    """Persönliche Stummschaltung — jedes Mitglied schaltet nur für SICH;
+    das Handy-Bein des Push-Versands respektiert den Merker serverseitig."""
+    gruppe, eigene_zeile = await _gruppe_fuer_mitglied_laden(session, gruppe_id, user.id)
+    eigene_zeile.stumm = body.stumm
+    await session.commit()
+    await _gruppe_neu_publizieren(request, [user.id], gruppe.id)
+
+
+@router.post("/gruppen/{gruppe_id}/anheften")
+async def anheften(
+    gruppe_id: int,
+    body: PrivateGroupAnheftenIn,
+    session: SessionDep,
+    user: CurrentUser,
+    request: Request,
+) -> PrivateGroupOut:
+    """Nachricht anpinnen — jedes Mitglied (Inhalts-Feature, wie das
+    Gruppenbild). Der Anker ist die kanonische ID der Nachricht (E2E: nur
+    die Zeichenkette, nie der Inhalt)."""
+    gruppe, _ = await _gruppe_fuer_mitglied_laden(session, gruppe_id, user.id)
+    anker = body.anker.strip()
+    if not anker or len(anker) > 64:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="ungueltiger_anker")
+    gruppe.angeheftet_id = anker
+    await session.commit()
+    mitglieder = await _mitglieder_laden(session, gruppe.id)
+    await _gruppe_neu_publizieren(request, [m.user_id for m in mitglieder], gruppe.id)
+    return _wire(gruppe, mitglieder)
+
+
+@router.delete("/gruppen/{gruppe_id}/anheften")
+async def anheften_loesen(
+    gruppe_id: int, session: SessionDep, user: CurrentUser, request: Request
+) -> PrivateGroupOut:
+    gruppe, _ = await _gruppe_fuer_mitglied_laden(session, gruppe_id, user.id)
+    gruppe.angeheftet_id = None
+    await session.commit()
+    mitglieder = await _mitglieder_laden(session, gruppe.id)
+    await _gruppe_neu_publizieren(request, [m.user_id for m in mitglieder], gruppe.id)
+    return _wire(gruppe, mitglieder)
