@@ -22,7 +22,7 @@
  * 2026-08-28 FIX 4).
  */
 
-import { request } from './client';
+import { request, requestForm } from './client';
 import { serversStore } from './servers.svelte';
 import { PRIVATE_GRUPPEN_ENABLED } from '../krypto/schalter';
 
@@ -42,6 +42,9 @@ export interface PrivateGruppe {
   name: string;
   created_at: string;
   last_message_id: string | null;
+  /** Gruppenbild — Pfad `/api/chat/gruppen-icons/<id>.webp?v=<buster>` oder
+   *  null = keine (Anfangsbuchstaben-Kachel). */
+  icon_url: string | null;
   members: GruppenMitglied[];
 }
 
@@ -105,6 +108,31 @@ export const gruppenApi = {
     return request<PrivateGruppe | null>(
       `/gruppen/${encodeURIComponent(gruppeId)}/verlassen`,
       { method: 'POST' },
+      cloudRoute()
+    );
+  },
+
+  /** Gruppenbild setzen (PNG/JPEG/WebP, max 5 MB — der Server skaliert auf
+   *  256 px WebP). Antwort = die neue Gruppen-Wahrheit (wie bei den
+   *  Mitglieds-Mutationen). */
+  iconSetzen(gruppeId: string, file: File): Promise<PrivateGruppe | null> {
+    if (!PRIVATE_GRUPPEN_ENABLED) return Promise.resolve(null);
+    const form = new FormData();
+    form.append('file', file);
+    return requestForm<PrivateGruppe | null>(
+      `/gruppen/${encodeURIComponent(gruppeId)}/icon`,
+      form,
+      {},
+      cloudRoute()
+    );
+  },
+
+  /** Gruppenbild entfernen — zurück zur Anfangsbuchstaben-Kachel. */
+  async iconEntfernen(gruppeId: string): Promise<PrivateGruppe | null> {
+    if (!PRIVATE_GRUPPEN_ENABLED) return Promise.resolve(null);
+    return request<PrivateGruppe | null>(
+      `/gruppen/${encodeURIComponent(gruppeId)}/icon`,
+      { method: 'DELETE' },
       cloudRoute()
     );
   }

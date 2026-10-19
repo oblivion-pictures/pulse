@@ -1588,6 +1588,7 @@ class PrivateGroupOut(BaseModel):
     name: str
     created_at: datetime
     last_message_id: int | None = None
+    icon_url: str | None = None
     members: list[PrivateGroupMemberOut]
 
     @field_serializer("id", "ersteller_id", "last_message_id")

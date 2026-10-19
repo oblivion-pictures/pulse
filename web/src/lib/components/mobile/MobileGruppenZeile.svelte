@@ -38,12 +38,20 @@
     data-testid={`chat-row-${gruppe.id}`}
     data-unread={ungelesen}
   >
-    <span
-      class="text-text-muted flex size-[46px] shrink-0 items-center justify-center rounded-full"
-      style="background-image: linear-gradient(135deg in oklab, var(--accent-grad-from), var(--accent-grad-to));"
-    >
-      <UsersIcon class="size-5 text-white" />
-    </span>
+    {#if gruppe.icon_url}
+      <img
+        src={gruppe.icon_url}
+        alt=""
+        class="size-[46px] shrink-0 rounded-full object-cover"
+      />
+    {:else}
+      <span
+        class="text-text-muted flex size-[46px] shrink-0 items-center justify-center rounded-full"
+        style="background-image: linear-gradient(135deg in oklab, var(--accent-grad-from), var(--accent-grad-to));"
+      >
+        <UsersIcon class="size-5 text-white" />
+      </span>
+    {/if}
 
     <span class="min-w-0 flex-1">
       <span class="flex items-center gap-2">

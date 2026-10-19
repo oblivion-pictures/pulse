@@ -52,6 +52,11 @@ class PrivateGroupChannel(Base):
     # ``DirectMessageChannel.last_message_id`` (Sortierung nach Aktualitaet).
     # Erst mit Task 3 tatsaechlich gepflegt.
     last_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Gruppenbild (Nutzerwunsch 2026-10-19): Pfad unter
+    # ``/api/chat/gruppen-icons/<id>.webp?v=<cache-buster>`` — dasselbe
+    # Muster wie ``Guild.icon_url``. Null = kein Bild, die UI zeigt die
+    # Anfangsbuchstaben-Kachel.
+    icon_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class PrivateGroupMember(Base):

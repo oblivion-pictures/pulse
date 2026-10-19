@@ -36,6 +36,7 @@ from dcc_chat_gateway.routes import (
     gast,
     geraete,
     guest_links,
+    gruppen_icons,
     guild_icons,
     guild_limits,
     guild_plugins,
@@ -99,6 +100,7 @@ router.include_router(health.router)
 router.include_router(instance_membership.router)
 router.include_router(guilds.router)
 router.include_router(bans.router)
+router.include_router(gruppen_icons.router)
 router.include_router(guild_icons.router)
 router.include_router(channels.router)
 router.include_router(ablage_kanal.router)

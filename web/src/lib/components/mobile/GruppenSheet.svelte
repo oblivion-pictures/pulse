@@ -56,6 +56,7 @@
   let darfEntfernen = $derived(gruppe.ersteller_id === currentServerUserId() && istMitglied);
   let verlassenBestaetigt = $state(false);
   let amArbeiten = $state(false);
+  let iconInput = $state<HTMLInputElement | undefined>();
 
   $effect(() => {
     if (open) {
@@ -64,6 +65,37 @@
       for (const f of freundeZumHinzufuegen) userCache.queue(f.user_id);
     }
   });
+
+  /** Gruppenbild hochladen (Nutzerwunsch 2026-10-19). Antwort = neue
+   *  Gruppen-Wahrheit — derselbe Weg wie bei den Mitglieds-Mutationen. */
+  async function iconHochladen(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || amArbeiten) return;
+    amArbeiten = true;
+    try {
+      const neu = await gruppenApi.iconSetzen(gruppe.id, file);
+      if (neu) privateGruppen.upsert(neu);
+    } catch (err) {
+      aktionFehlgeschlagen(err);
+    } finally {
+      amArbeiten = false;
+    }
+  }
+
+  async function iconEntfernen() {
+    if (amArbeiten) return;
+    amArbeiten = true;
+    try {
+      const neu = await gruppenApi.iconEntfernen(gruppe.id);
+      if (neu) privateGruppen.upsert(neu);
+    } catch (err) {
+      aktionFehlgeschlagen(err);
+    } finally {
+      amArbeiten = false;
+    }
+  }
 
   async function hinzufuegen(userId: string) {
     if (amArbeiten) return;
@@ -133,10 +165,62 @@
 >
   <div class="bg-border mx-auto mb-1 mt-2 h-1 w-9 shrink-0 rounded-full"></div>
   <div class="px-4 pb-2">
-    <p class="text-text-bright truncate text-base font-bold">{gruppe.name}</p>
-    <p class="text-text-muted text-xs">
-      {m.gruppen_blatt_mitglieder({ count: gruppe.members.length })}
-    </p>
+    <div class="flex items-center gap-3">
+      <div class="shrink-0">
+        {#if gruppe.icon_url}
+          <img
+            src={gruppe.icon_url}
+            alt=""
+            class="size-14 rounded-full object-cover"
+            data-testid="group-icon"
+          />
+        {:else}
+          <span
+            class="accent-gradient flex size-14 items-center justify-center rounded-full text-lg font-bold text-white"
+            data-testid="group-icon-initials"
+          >
+            {initialen(gruppe.name)}
+          </span>
+        {/if}
+      </div>
+      <div class="min-w-0 flex-1">
+        <p class="text-text-bright truncate text-base font-bold">{gruppe.name}</p>
+        <p class="text-text-muted text-xs">
+          {m.gruppen_blatt_mitglieder({ count: gruppe.members.length })}
+        </p>
+        {#if istMitglied}
+          <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            <button
+              type="button"
+              class="text-primary hover:underline"
+              onclick={() => iconInput?.click()}
+              data-testid="group-icon-change"
+            >
+              {gruppe.icon_url
+                ? m.gruppen_bild_ersetzen()
+                : m.gruppen_bild_setzen()}
+            </button>
+            {#if gruppe.icon_url}
+              <button
+                type="button"
+                class="text-text-muted hover:text-error hover:underline"
+                onclick={iconEntfernen}
+                data-testid="group-icon-remove"
+              >
+                {m.gruppen_bild_entfernen()}
+              </button>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    </div>
+    <input
+      bind:this={iconInput}
+      type="file"
+      accept="image/png,image/jpeg,image/webp"
+      class="hidden"
+      onchange={iconHochladen}
+    />
     {#if onAnrufen && istMitglied}
       <button
         type="button"

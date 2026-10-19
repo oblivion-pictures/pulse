@@ -124,6 +124,7 @@ def _wire(
         name=gruppe.name,
         created_at=gruppe.created_at,
         last_message_id=gruppe.last_message_id,
+        icon_url=gruppe.icon_url,
         members=[
             PrivateGroupMemberOut(
                 user_id=m.user_id,

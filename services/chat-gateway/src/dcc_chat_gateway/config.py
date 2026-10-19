@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     # Guild-icon uploads (owner-only). Resized to 256px webp, served via
     # /api/chat/guild-icons/<guild_id>.webp (cache-buster ?v=… in icon_url).
     guild_icon_upload_dir: str = "./uploads/guild-icons"
+    gruppen_icon_upload_dir: str = "./uploads/gruppen-icons"
 
     # MinIO (S3-compatible) for message attachments. The split between
     # *internal* and *public* endpoints matters in prod: server-side ops
