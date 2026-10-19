@@ -26,9 +26,12 @@
 
 import { test as testAlle } from 'node:test';
 
-// Unter Windows nicht ausführbar (bash, /proc); der Installer gehört auf
+// Nur unter Linux ausführbar: das falsche `docker` liest `/proc/self/fd/0`,
+// das es unter Windows (dazu ohne bash) und macOS nicht gibt — dort blieb die
+// Herkunft leer, und „stdin war nicht das Terminal" färbte das Gate auf jedem
+// Mac rot (bis 2026-10-19 stand hier nur `win32`). Der Installer gehört auf
 // Linux-Hosts, die Prüfungen laufen in der Linux-CI.
-const test = process.platform === 'win32' ? testAlle.skip : testAlle;
+const test = process.platform === 'linux' ? testAlle : testAlle.skip;
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, chmodSync, readFileSync, existsSync } from 'node:fs';
