@@ -68,15 +68,11 @@
     source: WatchSourceTwitch | WatchSourceTwitchLive;
     /** Start playing immediately (mount-time only) — see YouTubePlayer. */
     autoplay?: boolean;
-    /** Twitchs eigene Bedienleiste aus (Mobil-Hülle: Pulse stellt Qualität/
-     *  Lautstärke selbst). Am PC bleibt die Embed-Steuerung, wie vor der
-     *  Mobile-Arbeit. */
-    ohneChrome?: boolean;
     onReady?: (handle: PlayerHandle) => void;
     onEvent?: (e: PlayerEvent) => void;
   }
 
-  let { source, autoplay = false, ohneChrome = false, onReady, onEvent }: Props = $props();
+  let { source, autoplay = false, onReady, onEvent }: Props = $props();
 
   let mount = $state<HTMLDivElement | undefined>();
   const elementId = `twitch-player-${Math.random().toString(36).slice(2)}`;
@@ -95,11 +91,7 @@
         width: '100%',
         height: '100%',
         autoplay: startPlaying,
-        muted: false,
-        // Twitchs eigene Bedienleiste aus — NUR in der Mobil-Hülle: dort
-        // stellt Pulse die Steuerung (Host-Antreiber, Lautstärke, Qualität)
-        // selbst; am PC bleibt die Embed-Steuerung wie vor der Mobile-Arbeit.
-        controls: !ohneChrome
+        muted: false
       };
       if (source.type === 'twitch_live') options.channel = source.channel;
       else {

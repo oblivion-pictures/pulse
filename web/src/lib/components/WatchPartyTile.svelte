@@ -456,7 +456,6 @@
           <TwitchPlayer
             source={party.source}
             autoplay={autoplay}
-            ohneChrome={handy}
             onReady={handleReady}
             onEvent={handleEvent}
           />
@@ -469,11 +468,12 @@
           />
         {/if}
       {/key}
-      <!-- Klick-Fänger: NUR am Handy (und für YouTube-Zuschauer) — dort soll
-           Twitch/YouTube gar nichts selbst behandeln, Pulse steuert. Am PC
-           bleibt der Embed klickbar wie vor der Mobile-Arbeit
-           (Nutzerwunsch 2026-10-19: die Mobile-Änderungen nur am Handy). -->
-      {#if handy || viewerReadonly}
+      <!-- Klick-Fänger: nur für YouTube-Zuschauer — deren Embed pausiert bei
+           Klick und läuft dem Host davon. Twitch-Embeds lassen wir durch:
+           am Handy soll Twitchs Leiste (Einstellungen, Lautstärke, Qualität)
+           per Tipp erreichbar sein (Nutzerwunsch 2026-10-19); sie fadet von
+           selbst zurück, im Ruhezustand bleibt das Bild ohne Titel/Kanal. -->
+      {#if viewerReadonly}
         <div
           class="absolute inset-0 z-10"
           data-testid="watch-party-viewer-lock"
