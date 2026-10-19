@@ -1,22 +1,21 @@
-# MediaMTX-Config für Pulse — TEMPLATE  (MediaMTX 1.18.1)
+# MediaMTX-Config für Pulse — TEMPLATE (Fassung: `infra/mediamtx-fork/Dockerfile`)
 #
 # Auth: per-Channel-HQ-Streaming via `authMethod: http` (T5a).
 #   MediaMTX delegiert *jede* Connection an den Pulse `mediamtx-auth-hook`
-#   (FastAPI, Dev: http://localhost:8005/ — siehe services/mediamtx-auth-hook/).
+#   (FastAPI, Dev: http://127.0.0.1:8005/ — siehe services/mediamtx-auth-hook/).
 #   Der Hook erlaubt:
 #     - publish nur mit gültigem Stream-Token (von media-svc ausgegeben) für den
 #       Pfad `channel-<channel_id>`,
-#     - read/playback (WHEP/HLS) anonym für `channel-*`-Pfade
+#     - read/playback (WHEP) anonym für `channel-*`-Pfade
 #       (T5a; T5b ergänzt einen Pulse-Member-Token-Check für Reads),
 #     - api/metrics/pprof (wird hier zusätzlich via authHTTPExclude ausgeschlossen).
-#   → Es gibt keine internen User mehr, keinen festen Stream-Key. Der GSR-Sidecar
-#     bekommt seine Push-URL (inkl. Token als `?pass=…` bzw.
-#     `streamid=publish:<path>:pulse:<token>`) von media-svc
+#   → Es gibt keine internen User mehr, keinen festen Stream-Key. Der Sidecar
+#     bekommt seine Push-URL (WHIP oder RTMPS, Token darin) von media-svc
 #     (`POST /channels/{id}/stream-token`).
 #
 # Vor Deploy (T5c): nur `authHTTPAddress` auf den erreichbaren Hook-Endpunkt
-#   zeigen lassen (Dev: localhost:8005 — MediaMTX läuft mit network_mode: host,
-#   localhost:8005 vom Container = Host-localhost = wo der auth-hook via uvicorn
+#   zeigen lassen (Dev: 127.0.0.1:8005 — MediaMTX läuft mit network_mode: host,
+#   127.0.0.1:8005 vom Container = Host-Loopback = wo der auth-hook via uvicorn
 #   lauscht). Sonst ist hier nichts mehr zu ersetzen.
 
 logLevel: info
@@ -46,7 +45,6 @@ rtmpsAddress: :1936
 rtmpServerCert: /certs/server.crt
 rtmpServerKey: /certs/server.key
 
-# HLS Low-Latency
 # HLS AUS (2026-08-03). Es wird auf diesem Weg von niemandem gelesen — der
 # Zuschauer kommt ueber WHEP —, und mit `PULSE_KEYFRAME_INTERVAL=0`
 # (Intra-Refresh) ist es aktiv schaedlich: HLS kann ein Segment nur an einem
@@ -61,14 +59,13 @@ rtmpServerKey: /certs/server.key
 # (Produktion hat HLS seit 2026-08-03 ebenfalls aus — hier stand laenger
 # faelschlich das Gegenteil.)
 hls: no
-hlsAddress: :8888
-hlsAlwaysRemux: yes
-hlsVariant: lowLatency
-hlsSegmentCount: 7
-hlsSegmentDuration: 200ms
-hlsPartDuration: 100ms
 
-# WebRTC / WHEP (kein Audio auf dem RTMP/FLV-Pfad wegen AAC-Limit; SRT trägt Opus)
+# MoQ (Media over QUIC) ist bei MediaMTX 1.19.1 STANDARDMÄSSIG an und belegt
+# ohne diese Zeile :8892. Kein Pulse-Client spricht MoQ — aus, wie in
+# Produktion (`infra/prod/mediamtx.yml`).
+moq: no
+
+# WebRTC / WHIP + WHEP (Opus-Ton fährt über WHIP; RTMP/FLV kann nur AAC)
 webrtc: yes
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
@@ -88,22 +85,26 @@ webrtcAdditionalHosts:
 api: yes
 apiAddress: 127.0.0.1:9997
 
-# Disable RTSP — RTMP + SRT reichen
+# RTSP aus — Eingang kommt per WHIP oder RTMPS
 rtsp: no
 
-# SRT-Ingest für Opus-Audio-Pfad (RTMP/FLV kann nur AAC)
-# Push-streamid: publish:<path>:pulse:<stream-token>
-srt: yes
-srtAddress: :8890
+# SRT aus, wie in Produktion: über UDP ohne TLS läge der Stream-Token im
+# Klartext, und media-svc gibt ohnehin nur RTMPS- oder WHIP-Adressen aus
+# (Begründung in `infra/prod/mediamtx.yml`).
+srt: no
 
 # === AUTH ===
 # HTTP-delegierte Authentifizierung an den Pulse mediamtx-auth-hook.
 authMethod: http
-authHTTPAddress: http://localhost:8005/
+authHTTPAddress: http://127.0.0.1:8005/
 authHTTPExclude:
   - action: api
   - action: metrics
   - action: pprof
+
+# Wie in Produktion gepinnt (Begründung dort): unter `authMethod: http` wird
+# die Liste nie gelesen, der Pin schützt nur gegen einen geänderten Standard.
+authInternalUsers: []
 
 paths:
   # Pulse HQ-Channel-Streams heißen `channel-<snowflake>`. Erlaubt/abgelehnt

@@ -46,7 +46,6 @@ rtmpsAddress: :1936
 rtmpServerCert: /certs/server.crt
 rtmpServerKey: /certs/server.key
 
-# HLS Low-Latency
 # HLS AUS (2026-08-03). Es wird auf diesem Weg von niemandem gelesen — der
 # Zuschauer kommt ueber WHEP —, und mit `PULSE_KEYFRAME_INTERVAL=0`
 # (Intra-Refresh) ist es aktiv schaedlich: HLS kann ein Segment nur an einem
@@ -61,14 +60,13 @@ rtmpServerKey: /certs/server.key
 # (Produktion hat HLS seit 2026-08-03 ebenfalls aus — hier stand laenger
 # faelschlich das Gegenteil.)
 hls: no
-hlsAddress: :8888
-hlsAlwaysRemux: yes
-hlsVariant: lowLatency
-hlsSegmentCount: 7
-hlsSegmentDuration: 200ms
-hlsPartDuration: 100ms
 
-# WebRTC / WHEP (kein Audio auf dem RTMP/FLV-Pfad wegen AAC-Limit; SRT trägt Opus)
+# MoQ (Media over QUIC) ist bei MediaMTX 1.19.1 STANDARDMÄSSIG an und belegt
+# ohne diese Zeile :8892. Kein Pulse-Client spricht MoQ — aus, wie in
+# Produktion (`infra/prod/mediamtx.yml`).
+moq: no
+
+# WebRTC / WHIP + WHEP (Opus-Ton fährt über WHIP; RTMP/FLV kann nur AAC)
 webrtc: yes
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
@@ -92,13 +90,13 @@ api: yes
 # (s. docker-compose.mac.yml).
 apiAddress: :9997
 
-# Disable RTSP — RTMP + SRT reichen
+# RTSP aus — Eingang kommt per WHIP oder RTMPS
 rtsp: no
 
-# SRT-Ingest für Opus-Audio-Pfad (RTMP/FLV kann nur AAC)
-# Push-streamid: publish:<path>:pulse:<stream-token>
-srt: yes
-srtAddress: :8890
+# SRT aus, wie in Produktion: über UDP ohne TLS läge der Stream-Token im
+# Klartext, und media-svc gibt ohnehin nur RTMPS- oder WHIP-Adressen aus
+# (Begründung in `infra/prod/mediamtx.yml`).
+srt: no
 
 # === AUTH ===
 # HTTP-delegierte Authentifizierung an den Pulse mediamtx-auth-hook.
@@ -111,6 +109,10 @@ authHTTPExclude:
   - action: api
   - action: metrics
   - action: pprof
+
+# Wie in Produktion gepinnt (Begründung dort): unter `authMethod: http` wird
+# die Liste nie gelesen, der Pin schützt nur gegen einen geänderten Standard.
+authInternalUsers: []
 
 paths:
   # Pulse HQ-Channel-Streams heißen `channel-<snowflake>`. Erlaubt/abgelehnt

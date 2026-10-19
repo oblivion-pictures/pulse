@@ -42,10 +42,10 @@
   import SparklesIcon from '@lucide/svelte/icons/sparkles';
   import ClipboardIcon from '@lucide/svelte/icons/clipboard';
   import CheckIcon from '@lucide/svelte/icons/check';
-  import NativeWindowPanel from '$lib/player/components/NativeWindowPanel.svelte';
   import { useNativePlayback } from '$lib/player/useNativePlayback.svelte';
   import { nativePlayerSessions } from '$lib/player/store.svelte';
   import { nativeChatRequests, nativeWindowRequests } from '$lib/player/wuensche.svelte';
+  import { fensterChat } from '$lib/player/fensterChat.svelte';
 
   let {
     channelId,
@@ -114,7 +114,7 @@
 	const hevcNativPflicht = $derived(isLinux() && hevcGesehen);
   // Dasselbe Spiel fuer die Fernsteuerbarkeit, und aus demselben Grund: sobald
   // das eigene Fenster spielt, wird `mgr` hier abgeklemmt (s. unten) — genau
-  // dann zeigt die Kachel aber das `NativeWindowPanel` mit dem Anfrage-Knopf.
+  // dann braucht aber das Fenster die Antwort fuer seinen Anfrage-Knopf.
   // Direkt gelesen waere der Wert also immer `false`, und der Knopf erschiene
   // nie. Aendern kann er sich waehrend eines Streams ohnehin nicht.
   const desktop = isElectron();
@@ -224,13 +224,15 @@
   });
 
   // Chat-Knopf im Fenster: der Hauptprozess holt die App nach vorne, hier geht
-  // der Chat auf. Ueber einen Zaehler, damit auch das zweite Druecken wirkt.
+  // der Chat auf. Ueber einen Zaehler, damit auch das zweite Druecken wirkt. Im
+  // Fenster (`hideDock`) fehlt die Kachel im Raster: dann Seitenleiste (`fensterChat`).
   let chatWunschGesehen = $state(0);
   $effect(() => {
     const n = nativeChatRequests.count(channelId, userId, streamSlot);
     if (n > chatWunschGesehen) {
       chatWunschGesehen = n;
-      chatOpen = true;
+      if (hideDock) fensterChat.oeffnen(channelId, userId);
+      else chatOpen = true;
     }
   });
 
@@ -425,10 +427,10 @@
 >
   {#snippet media()}
     {#if useNative}
-      <!-- Bild UND Ton laufen im eigenen Fenster (pulse-player). Die Kachel ist
-           dann das Cockpit: Lautstaerke/Chat liefert die TileShell, die
-           Messwerte und der Weg zurueck zum Fenster stehen im Panel. -->
-      <NativeWindowPanel session={native.session} />
+      <!-- Bild UND Ton im eigenen Fenster (pulse-player). Zu sehen nur, bis es
+           spielt — dann verlaesst die Kachel das Raster (`imFenster`), zum
+           Fenster fuehrt das Abzeichen am Teilnehmer (`FensterAbzeichen`). -->
+      <div class="h-full w-full bg-black"></div>
     {:else}
       <!-- IMMER das ganze Bild (contain) — Beschneiden ist keine Option. Mobil
            ohne schwarzen Grund: behält das Bild ein anderes Seitenformat, geht
@@ -480,8 +482,8 @@
       „Fernsteuerung anfragen" — in der BEDIENLEISTE der Kachel, nicht in der
       Platzhalter-Flaeche des Player-Fensters.
 
-      **Hier stand bis 2026-08-16 nichts**, und der Knopf sass im
-      `NativeWindowPanel` — also nur dort, wo das Player-Fenster bereits lief.
+      **Hier stand bis 2026-08-16 nichts**, und der Knopf sass im inzwischen
+      entfernten `NativeWindowPanel` — nur dort, wo das Player-Fenster schon lief.
       Der Weg zum Steuern war damit: Fenster oeffnen, zurueck ins Pulse-Fenster
       wechseln, in der Kachel klicken. Drei Schritte, von denen der erste nichts
       mit der Absicht zu tun hat: wer steuern will, will nicht erst ein Fenster.

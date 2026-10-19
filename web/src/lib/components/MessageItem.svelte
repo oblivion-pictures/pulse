@@ -15,6 +15,7 @@
   import { plainifyMentions, renderMessage } from './messageRender';
   import { m } from '$lib/paraglide/messages.js';
   import { haptikTicken } from '$lib/platform/haptik';
+  import { mitwachsen } from '$lib/utils/mitwachsen';
   import { ersteEinladungImText } from '$lib/einladung/einladungsLink';
   import { einladungsKlicksAbfangen } from '$lib/einladung/linkKlick';
   import { CLOUD_HOSTNAME } from '$lib/api/servers.svelte';
@@ -284,11 +285,13 @@
       <textarea
         bind:value={draft}
         onkeydown={onEditKey}
+        use:mitwachsen
         rows="2"
-        class="text-text-bright w-full rounded-md border border-border bg-bg-input px-2 py-1 text-[15px] outline-none focus:border-primary"
+        class="text-text-bright max-h-[60vh] w-full resize-none overflow-y-auto rounded-md border border-border bg-bg-input px-2 py-1 text-[15px] outline-none focus:border-primary"
         data-testid="message-edit-input"
       ></textarea>
-      <div class="text-text-muted mt-0.5 text-2xs">
+      <!-- Auf der eigenen (blauen) Blase wäre Grau kaum lesbar → helles Weiß. -->
+      <div class="mt-1 text-xs {layout === 'bubble' && istEigene ? 'text-white/85' : 'text-text-muted'}">
         {m.message_item_edit_hint()}
       </div>
     {:else}
@@ -342,6 +345,7 @@
     {isContinuation}
     {isGroupEnd}
     {highlight}
+    breit={editing}
     onLongPress={openSheet}
     {body}
     {actions}

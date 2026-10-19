@@ -41,6 +41,7 @@
     isContinuation = false,
     isGroupEnd = true,
     highlight = false,
+    breit = false,
     onLongPress,
     onSwipeReply,
     body,
@@ -56,6 +57,9 @@
     isContinuation?: boolean;
     isGroupEnd?: boolean;
     highlight?: boolean;
+    /** Beim Bearbeiten: Blase auf volle Höchstbreite statt nur so breit wie
+     *  ihr Inhalt — sonst bestimmt das Eingabefeld die Breite und bleibt eng. */
+    breit?: boolean;
     onLongPress: (e: PointerEvent) => void;
     /** Swipe-to-reply (P1.6, nur Touch): löst die Antwort auf diese Nachricht aus. */
     onSwipeReply: () => void;
@@ -103,12 +107,12 @@
     </span>
   {/if}
   <div
-    class="flex max-w-[78%] min-w-0 flex-col {eigen ? 'items-end' : 'items-start'}"
+    class="flex min-w-0 flex-col {breit ? 'w-[78%]' : 'max-w-[78%]'} {eigen ? 'items-end' : 'items-start'}"
     style="touch-action: pan-y"
     use:swipetoreply={{ onReply: onSwipeReply, onMove: (o) => (swipeOffset = o) }}
   >
     <div
-      class="min-w-0 px-3 py-2 {eigen
+      class="min-w-0 px-3 py-2 {breit ? 'w-full' : ''} {eigen
         ? 'accent-gradient-deep text-white'
         : 'bg-bg-input text-text-base'} {pinned ? 'ring-1 ring-primary/40' : ''}"
       class:ring-2={highlight}

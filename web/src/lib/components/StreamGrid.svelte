@@ -7,7 +7,8 @@
   floating corner window when the anchor is gone — that's how HQ streams,
   webcams, and screen share keep playing when you navigate away.
 
-  Layout: a grid of equal tiles. Detached tiles don't appear as placeholders.
+  Layout: a grid of equal tiles. Detached tiles don't appear as placeholders,
+  and neither do HQ streams playing in their own player window (`imFenster`).
 -->
 <script lang="ts">
   import VoiceParticipantStrip from './VoiceParticipantStrip.svelte';
@@ -42,15 +43,23 @@
   // (die Auto-Öffnen-Logik in VoiceChannelView überspringt den eigenen Nutzer),
   // aber wenn man seinen eigenen LIVE-Badge anklickt, öffnet sich die eigene
   // Vorschau bewusst — genau wie bei fremden Streams. `isOpen` bleibt der Gate.
+  //
+  // Ebenfalls draußen: Ströme, die im eigenen Player-Fenster laufen
+  // (`imFenster`, seit 2026-10-19). Ihre Kachel zeigte nur noch „läuft in
+  // einem separaten Fenster“ und nahm einer Watch-Party oder dem zweiten
+  // Stream daneben die halbe Fläche. Sie bleiben OFFEN (`openedTiles`) — der
+  // Player läuft unsichtbar im Host weiter und hält das Fenster —, bekommen
+  // nur keinen Anker und zählen nicht in die Spalten. Geht das Fenster zu,
+  // kippt `imFenster` zurück, und die Kachel steht wieder hier.
   let openHqTiles = $derived(
     streamPresence
       .streamsIn(channel.id)
-      .filter(
-        (s) =>
-          !detachedStreams.has(channel.id, s.user_id, s.slot) &&
-          openedTiles.isOpen('hq', channel.id, hqTileId(s.user_id, s.slot))
-      )
+      .filter((s) => !detachedStreams.has(channel.id, s.user_id, s.slot))
       .map((s) => hqTileId(s.user_id, s.slot))
+      .filter(
+        (id) =>
+          openedTiles.isOpen('hq', channel.id, id) && !hqStreamBackground.imFenster(channel.id, id)
+      )
   );
   let openScreens = $derived(
     voice.screenTracks.filter((s) => openedTiles.isOpen('screen', channel.id, s.identity))
@@ -125,9 +134,17 @@
     (cid, pid, el) => watchBackground.registerAnchor(cid, pid, el),
     (cid, pid) => watchBackground.closeParty(cid, pid)
   );
+  // Wechselt ein Strom ins Fenster, verschwindet sein Anker — und der Abbau
+  // hier schlösse die Kachel und damit das Fenster samt Stream. Im Kanal
+  // greift das ohnehin nicht (`inVoiceChannel`), die Wache sagt es trotzdem
+  // ausdrücklich: ein Fenster-Strom hängt an keinem Anker. Wer den Kanal
+  // verlässt, dem schließt der Hintergrund-Host ihn (Kanalwechsel-Effect dort,
+  // er räumt jede Kachel ohne Anker).
   const hqAnchor = makeAnchor<string>(
     (cid, uid, el) => hqStreamBackground.registerAnchor(cid, uid, el),
-    (cid, uid) => openedTiles.close('hq', cid, uid)
+    (cid, uid) => {
+      if (!hqStreamBackground.imFenster(cid, uid)) openedTiles.close('hq', cid, uid);
+    }
   );
   const lkAnchor = makeAnchor<{ identity: string; kind: 'cam' | 'screen' }>(
     (cid, key, el) =>

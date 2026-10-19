@@ -4,6 +4,8 @@ import { errText } from '$lib/utils/errText';
   import { haptikTicken } from '$lib/platform/haptik';
   import { Button } from '$lib/components/ui/button/index.js';
   import StreamGrid from './StreamGrid.svelte';
+  import StreamFensterChat from '$lib/stream/components/StreamFensterChat.svelte';
+  import { hqStreamBackground } from '$lib/stream/hqStreamBackground.svelte';
   import VoiceParticipantTile from './VoiceParticipantTile.svelte';
   import VoiceNativeAnsichtKnopf from './VoiceNativeAnsichtKnopf.svelte';
   import MemberList from './MemberList.svelte';
@@ -66,7 +68,15 @@ import { errText } from '$lib/utils/errText';
   let hasOpenParty = $derived(
     livePartyIds.some((pid) => watchBackground.isOpenParty(channel.id, pid))
   );
-  let streamViewOpen = $derived(openedTiles.hasAny(channel.id) || hasOpenParty);
+  // HQ-Ströme im eigenen Player-Fenster zählen nicht: sie belegen im Raster
+  // keinen Platz (`StreamGrid`). Ist sonst nichts offen, gehört die Fläche der
+  // Teilnehmer-Ansicht; die Ströme laufen unsichtbar im Host weiter.
+  let streamViewOpen = $derived(
+    openedTiles.hasAny(
+      channel.id,
+      (kind, id) => kind === 'hq' && hqStreamBackground.imFenster(channel.id, id)
+    ) || hasOpenParty
+  );
 
   // Channel betreten: nur bei einem ECHTEN Channel-Wechsel werden die Opens des
   // alten Channels verworfen (dessen HQ-Streams enden dann). Rückkehr in
@@ -361,8 +371,13 @@ import { errText } from '$lib/utils/errText';
     {/if}
    </div>
 
-    <!-- Rechter Slot inline (md+) — nur Mitgliederliste. Stream- und Watch-
-         Chats leben jetzt INNERHALB des jeweiligen Stream-Tiles. -->
+    <!-- Rechter Slot inline (md+) — Mitgliederliste, dazu der Chat eines
+         Streams im eigenen Player-Fenster (der hat keine Kachel, an der er
+         aufgehen könnte). Alle anderen Stream- und Watch-Chats leben
+         INNERHALB des jeweiligen Stream-Tiles. -->
+    {#if !handy}
+      <StreamFensterChat channelId={channel.id} />
+    {/if}
     {#if !handy && memberListOpen}
       <MemberList guildId={channel.guild_id} />
     {/if}

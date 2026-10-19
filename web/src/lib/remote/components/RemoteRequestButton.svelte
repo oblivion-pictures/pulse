@@ -19,10 +19,11 @@
   sichtbares Etikett — die Beschreibung steht in `title`/`aria-label` für Hover
   und Screenreader. Der wartende Zustand trägt den Host-Namen im Tooltip.
 
-  Eingehängt im `NativeWindowPanel` — der Kachel-Zustand, während das Bild im
-  eigenen Player-Fenster läuft. Das ist kein Zufall, sondern die einzige Stelle,
-  an der Fernsteuerung überhaupt gehen kann: erfasst wird IM Fenster, das
-  `<video>`-Element der Kachel kann weder Zeiger fangen noch Scancodes liefern.
+  Eingehängt in der Bedienleiste der HQ-Kachel (`WhepPlayer`, `controlsExtra`;
+  bis 2026-08-16 im inzwischen entfernten `NativeWindowPanel`). Gesteuert wird
+  trotzdem nur IM Player-Fenster: das `<video>`-Element der Kachel kann weder
+  Zeiger fangen noch Scancodes liefern — das Fenster geht auf, sobald der Host
+  zusagt.
 -->
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js';

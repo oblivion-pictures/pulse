@@ -17,6 +17,7 @@
   import UserProfilePopover from './UserProfilePopover.svelte';
   import { startUserDrag } from '$lib/voice/userDrag';
   import VoiceUserVolumeControl from './VoiceUserVolumeControl.svelte';
+  import FensterAbzeichen from './FensterAbzeichen.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
   let {
@@ -153,7 +154,7 @@
       <button
         {...props}
         type="button"
-        class="glass-panel flex flex-col items-center gap-3 rounded-2xl px-6 py-5 text-left transition-colors {p.isSpeaking
+        class="glass-panel relative flex flex-col items-center gap-3 rounded-2xl px-6 py-5 text-left transition-colors {p.isSpeaking
           ? 'bg-primary/10 ring-1 ring-primary/40'
           : ''} data-[state=open]:ring-2 data-[state=open]:ring-primary/50"
         data-testid="voice-participant"
@@ -161,6 +162,7 @@
         draggable={true}
         ondragstart={(e) => startUserDrag(e, p.userId!)}
       >
+        <FensterAbzeichen {channelId} userId={p.userId!} name={resolvedName} />
         <div class="relative">
           <!-- Glow stays mounted; opacity fades in/out so the speaker
                transition is smooth, not a hard pop. -->

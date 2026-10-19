@@ -30,7 +30,7 @@
 //
 //   Rollenverteilung auf Windows:
 //     Docker Desktop : postgres :5434, redis :6380, garage :9000
-//     nativ          : livekit :7880-7892, mediamtx :1936/8889/8890/8189/9997
+//     nativ          : livekit :7880-7892, mediamtx :1936/8889/8189/9997
 //     uv             : auth :8001, chat :8002, voice :8003, media :8004, hook :8005
 //     node           : vite :5173, electron
 //
@@ -299,13 +299,6 @@ function generateMediamtxConfig(certs) {
     `# Quelle: streaming/server/mediamtx.yml.template (LAN-IP ergänzt: ${lan})`,
     '# bei jedem dev-local-Start neu geschrieben.'
   ];
-  lines.push(
-    '',
-    '# Media over QUIC — MediaMTX-Neuheit (ab 1.19), von Pulse ungenutzt. Ohne',
-    '# eigenes Cert-Setting generiert er sich beim Start auto.crt/auto.key ins',
-    '# Arbeitsverzeichnis und belegt Port 8892 — beides nur Müll hier.',
-    'moq: no'
-  );
   fs.writeFileSync(path.join(LOCAL_DIR, 'mediamtx.yml'), [...header, ...lines].join('\n') + '\n');
 }
 
@@ -709,15 +702,15 @@ async function main() {
   // Port-Bereinigung auch für Überbleibsel, deren run.json-PID tot ist (bei
   // einem Crash überlebt der Server-Prozess den Wrapper und die bookkeeping-
   // PID zeigt ins Leere): LiveKit 7880/7881 (+UDP-Range via Parent), MediaMTX
-  // 1936/8889/8890/8189/9997. Das sind Pulse-dev-spezifische Ports — dass hier
+  // 1936/8889/8189/9997. Das sind Pulse-dev-spezifische Ports — dass hier
   // ein fremder Prozess lauscht, ist praktisch ausgeschlossen.
-  freePorts([7880, 7881, 1936, 8889, 8890, 8189, 9997]);
+  freePorts([7880, 7881, 1936, 8889, 8189, 9997]);
   info('LiveKit starten (nativ, :7880)');
   startDetached('livekit', livekit, ['--config', path.join(REPO, 'infra/livekit/livekit.yaml')], { cwd: REPO });
 
   const certs = ensureRtmpsCerts();
   generateMediamtxConfig(certs);
-  info('MediaMTX starten (nativ, :1936/:8889/:8890/:9997)');
+  info('MediaMTX starten (nativ, :1936/:8889/:9997)');
   startDetached('mediamtx', mediamtx, [path.join(LOCAL_DIR, 'mediamtx.yml')], { cwd: REPO });
 
   // `await`: erst wenn Postgres steht und Garage eingerichtet ist, geht es

@@ -8,9 +8,17 @@
   this is the only mount point of `WhepPlayer`. That's how the stream keeps
   running when you navigate to a text channel / DM — `HqStreamKeepAlive`
   keeps the WHEP connection alive in parallel.
+
+  Läuft der Stream im eigenen Player-Fenster (`hqStreamBackground.imFenster`),
+  bleibt der `WhepPlayer` hier gemountet, aber unsichtbar: er hält die
+  Fenster-Sitzung, und das Raster gibt ihm absichtlich keinen Anker mehr. Ohne
+  diesen Zweig sprang er als Eckfenster mit leerem Inhalt auf.
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { page } from '$app/state';
+  import { untrack } from 'svelte';
+  import { fensterChat } from '$lib/player/fensterChat.svelte';
   import { guilds } from '$lib/stores/guilds.svelte';
   import { openedTiles } from '$lib/stream/openedTiles.svelte';
   import { detachedStreams } from '$lib/stream/detach.svelte';
@@ -36,8 +44,12 @@
   // eigenen LIVE-Badge, wird er über `openedTiles` geöffnet und hier gerendert
   // (die eigene WHEP-Vorschau). Ohne Klick erscheint er nicht — auto-open in
   // VoiceChannelView überspringt den eigenen Nutzer.
-  let shown = $derived(
-    openedTiles
+  //
+  // `index` stapelt die Eckfenster; ein unsichtbarer Fenster-Strom nimmt
+  // keinen Stapelplatz, sonst klaffte im Eck eine Lücke.
+  let shown = $derived.by(() => {
+    let sichtbar = 0;
+    return openedTiles
       .entriesOfKind('hq')
       .map((e) => ({ tileId: e.id, channelId: e.channelId, ...parseHqTileId(e.id) }))
       .filter(
@@ -47,7 +59,11 @@
             .streamsIn(e.channelId)
             .some((s) => s.user_id === e.userId && s.slot === e.slot)
       )
-  );
+      .map((e) => {
+        const imFenster = hqStreamBackground.imFenster(e.channelId, e.tileId);
+        return { ...e, imFenster, index: imFenster ? 0 : sichtbar++ };
+      });
+  });
 
   // "Name" for a tile — suffixed " (1)" / " (2)" only when the user runs more
   // than one stream, so a single stream just shows the plain name.
@@ -84,20 +100,45 @@
     const guildId = guilds.guildIdForChannel(channelId);
     if (guildId) goto(`/app/guilds/${guildId}/channels/${channelId}`);
   }
+
+  // „Chat öffnen“ im Player-Fenster eines Fenster-Stroms: der Chat geht als
+  // Seitenleiste im Sprachkanal auf (`StreamFensterChat`). Der Hauptprozess
+  // holt die App nach vorne — steht sie gerade woanders (Textkanal, DM), käme
+  // die Seitenleiste dort nie in Sicht, also führt der Wunsch in den Kanal.
+  // Hier und nicht im `WhepPlayer`: dieser Host lebt wie die Sitzungen
+  // unabhängig von der Navigation.
+  $effect(() => {
+    const w = fensterChat.wunsch;
+    if (!w) return;
+    untrack(() => {
+      if (page.params.channelId !== w.channelId) returnTo(w.channelId);
+    });
+  });
+  // Ist das letzte Fenster des Streamers zu, verfällt der Wunsch (Begründung
+  // bei `fensterChat.aufraeumen`).
+  $effect(() => fensterChat.aufraeumen());
 </script>
 
-{#each shown as e, i (e.channelId + '::' + e.tileId)}
+{#each shown as e (e.channelId + '::' + e.tileId)}
   {@const rect = hqStreamBackground.anchorRect(e.channelId, e.tileId)}
-  <WatchBackgroundFrame {rect} index={i} onReturn={() => returnTo(e.channelId)}
-      onClose={() => openedTiles.close('hq', e.channelId, e.tileId)}>
-    <WhepPlayer
-      channelId={e.channelId}
-      userId={e.userId}
-      {handy}
-      streamSlot={e.slot}
-      name={tileName(e.channelId, e.userId, e.slot)}
-      canDetach={true}
-      canHide={true}
-    />
-  </WatchBackgroundFrame>
+  <!-- Ausblenden über die Klasse, NICHT über ein `{#if}`: ein Zweig hängte den
+       `WhepPlayer` beim Wechsel ins Fenster aus und wieder ein. Das kostete
+       seinen Zustand (u. a. den Zähler der Chat-Wünsche — der frisch
+       gemountete sähe jeden alten Wunsch als neuen) und bei jedem Wechsel
+       eine Runde durch die Sitzungs-Registry. `contents` lässt das feste
+       Rahmen-Element darunter unverändert wirken. -->
+  <div class={e.imFenster ? 'hidden' : 'contents'} data-testid="hq-bg-slot" data-im-fenster={e.imFenster}>
+    <WatchBackgroundFrame {rect} index={e.index} onReturn={() => returnTo(e.channelId)}
+        onClose={() => openedTiles.close('hq', e.channelId, e.tileId)}>
+      <WhepPlayer
+        channelId={e.channelId}
+        userId={e.userId}
+        {handy}
+        streamSlot={e.slot}
+        name={tileName(e.channelId, e.userId, e.slot)}
+        canDetach={true}
+        canHide={true}
+      />
+    </WatchBackgroundFrame>
+  </div>
 {/each}
