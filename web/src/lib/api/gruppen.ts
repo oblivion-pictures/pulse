@@ -28,6 +28,10 @@ import { PRIVATE_GRUPPEN_ENABLED } from '../krypto/schalter';
 
 interface GruppenMitglied {
   user_id: string;
+  /** „owner" / „admin" / „mitglied" — Rollen-Vertrag 2026-10-19. */
+  rolle: string;
+  /** Persönliche Stummschaltung dieses Mitglieds. */
+  stumm: boolean;
   beigetreten_am: string;
   /** Häkchen-Treppe (Migration 0101): Lesestand dieses Mitglieds und
    *  Zustellstand der EIGENEN Nachrichten bei ihm — nur in `auflisten`/
@@ -45,6 +49,8 @@ export interface PrivateGruppe {
   /** Gruppenbild — Pfad `/api/chat/gruppen-icons/<id>.webp?v=<buster>` oder
    *  null = keine (Anfangsbuchstaben-Kachel). */
   icon_url: string | null;
+  /** Der eine angeheftete Kanal-Anker (E2E: nur die Zeichenkette) oder null. */
+  angeheftet_id: string | null;
   members: GruppenMitglied[];
 }
 
@@ -132,6 +138,54 @@ export const gruppenApi = {
     if (!PRIVATE_GRUPPEN_ENABLED) return Promise.resolve(null);
     return request<PrivateGruppe | null>(
       `/gruppen/${encodeURIComponent(gruppeId)}/icon`,
+      { method: 'DELETE' },
+      cloudRoute()
+    );
+  },
+
+  /** Gruppe umbenennen — OWNER allein (Rollen-Vertrag 2026-10-19). */
+  async umbenennen(gruppeId: string, name: string): Promise<PrivateGruppe | null> {
+    if (!PRIVATE_GRUPPEN_ENABLED) return Promise.resolve(null);
+    return request<PrivateGruppe | null>(
+      `/gruppen/${encodeURIComponent(gruppeId)}/name`,
+      { method: 'PUT', body: { name } },
+      cloudRoute()
+    );
+  },
+
+  /** Gruppe AUFLÖSEN — Owner allein. 204 = für alle abgeräumt; der
+   *  Aufrufer navigiert weg und nimmt sie aus dem Store. */
+  async aufloesen(gruppeId: string): Promise<void> {
+    if (!PRIVATE_GRUPPEN_ENABLED) return;
+    await request<void>(`/gruppen/${encodeURIComponent(gruppeId)}`, { method: 'DELETE' }, cloudRoute());
+  },
+
+  /** Persönliche Stummschaltung umschalten (nur für das eigene Gerät/Geräte —
+   *  das Handy-Push-Bein respektiert den Merker serverseitig). */
+  async stummSetzen(gruppeId: string, stumm: boolean): Promise<void> {
+    if (!PRIVATE_GRUPPEN_ENABLED) return;
+    await request<void>(
+      `/gruppen/${encodeURIComponent(gruppeId)}/stumm`,
+      { method: 'POST', body: { stumm } },
+      cloudRoute()
+    );
+  },
+
+  /** Nachricht anpinnen — der kanonische Anker der Nachricht (E2E). */
+  async anheften(gruppeId: string, anker: string): Promise<PrivateGruppe | null> {
+    if (!PRIVATE_GRUPPEN_ENABLED) return Promise.resolve(null);
+    return request<PrivateGruppe | null>(
+      `/gruppen/${encodeURIComponent(gruppeId)}/anheften`,
+      { method: 'POST', body: { anker } },
+      cloudRoute()
+    );
+  },
+
+  /** Pin lösen. */
+  async anheftenLoesen(gruppeId: string): Promise<PrivateGruppe | null> {
+    if (!PRIVATE_GRUPPEN_ENABLED) return Promise.resolve(null);
+    return request<PrivateGruppe | null>(
+      `/gruppen/${encodeURIComponent(gruppeId)}/anheften`,
       { method: 'DELETE' },
       cloudRoute()
     );
