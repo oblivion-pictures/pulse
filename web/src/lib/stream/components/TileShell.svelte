@@ -24,6 +24,7 @@
   import { aufVollbildWechsel, eigenesVollbildNoetig, toggleFullscreen } from '../fullscreen';
   import { statsVisible } from '../statsVisible.svelte';
   import { querKacheln, querVollbildBeobachten } from '../querVollbildWache';
+  import { kachelVollbildLage } from '../kachelVollbildLage.svelte';
   import TileDock from './TileDock.svelte';
   import TileMobilSteuerung from '$lib/components/mobile/TileMobilSteuerung.svelte';
   import type { TileShellProps } from './tileShellProps';
@@ -177,6 +178,14 @@
       echt: (an) => (docVollbild = an)
     });
   });
+  // Der Lage-Zähler: im Vollbild darf das Gerät drehen (layoutLage lässt die
+  // Orientierungs-Sperre los) — sonst „kippt nichts", während das Vollbild
+  // hochkant eingefroren wirkt.
+  $effect(() => {
+    if (!eigenesVollbild) return;
+    kachelVollbildLage.anmelden();
+    return () => kachelVollbildLage.abmelden();
+  });
 
   // Rahmen fällt im Vollbild weg; das selbst gebaute nimmt sich die Fläche
   // selbst (`fixed inset-0`) und ist schwarz wie das echte — sonst schien quer
@@ -281,7 +290,9 @@
              iframe — dort würde der Fänger die nativen Controls blockieren. -->
         <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
         <div
-          class="absolute inset-0 cursor-pointer"
+          class={isFullscreen
+            ? 'absolute inset-0 z-20 cursor-pointer'
+            : 'absolute inset-0 cursor-pointer'}
           onclick={handleCatcherClick}
           ondblclick={handleCatcherDblClick}
           aria-hidden="true"

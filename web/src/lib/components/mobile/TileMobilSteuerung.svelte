@@ -109,11 +109,17 @@
 </script>
 
 <!-- Oben links: zurück (Kachel schliessen) beziehungsweise Vollbild verlassen.
-     Beides ist derselbe Platz, weil es dieselbe Geste ist: eine Ebene zurück. -->
+     Beides ist derselbe Platz, weil es dieselbe Geste ist: eine Ebene zurück.
+     Im Vollbild wird der Pfeil NICHT mit dem HUD gefadet — er ist der
+     Nothausgang (Nutzerbefund 2026-10-19: in der Watch-Party mit Twitch-
+     Quelle fraß der Zuschauer-Klick-Fänger die HUD-Taps auf und ohne HUD
+     blieb der Fadem unbenutzbar ⇒ „komme aus dem Vollbild nicht raus“). -->
 {#if isFullscreen ? zeigeVollbildAus : !!onHide}
   <button
     type="button"
-    class="absolute top-2 z-30 {RUND} {obenKlasse} {fadeClass}"
+    class="absolute top-2 z-30 {RUND} {obenKlasse} {isFullscreen && zeigeVollbildAus
+      ? ''
+      : fadeClass}"
     style="left: calc(0.5rem + {seiteLinks})"
     onclick={() => (isFullscreen ? onToggleFullscreen() : onHide?.())}
     aria-label={isFullscreen ? m.tile_shell_fullscreen_exit() : m.tile_shell_hide_tile()}

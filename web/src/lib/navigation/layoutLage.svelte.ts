@@ -9,6 +9,7 @@ import { page } from '$app/state';
 import { guilds } from '$lib/stores/guilds.svelte';
 import { voice } from '$lib/voice/livekit.svelte';
 import { openedTiles } from '$lib/stream/openedTiles.svelte';
+import { kachelVollbildLage } from '$lib/stream/kachelVollbildLage.svelte';
 import { huellenLage } from '$lib/platform/huellenLage.svelte';
 import { orientierungSperren } from '$lib/platform/orientation';
 import { isCapacitorIOS } from '$lib/platform/runtime';
@@ -88,14 +89,16 @@ export function layoutLage(frage: {
   // im Store schliesst handy wie desktop bereits aus, keine zweite Bedingung.
   let zeigeSpalteLinks = $derived(hydrated() && tablet());
 
-  // Mobil-Hüllen (Android und iOS): Querformat nur mit ANGEDOCKTEM Stream. Ein
-  // Stream im Popup-Eckfenster (Corner-Mode: man hat den Kanal verlassen) lockt
-  // trotzdem auf Hochformat — quer ist nur fürs Stream-Vollbild auf dem
-  // Kanal-Bildschirm gedacht. Bedingung = kanalQuerStream OHNE die
-  // Viewport-Anteile (die hängen am aktuellen Format und würden die Sperre
-  // sonst selbst blockieren: gesperrtes Hochformat ⇒ nie breit ⇒ nie frei).
+  // Mobil-Hüllen (Android und iOS): Querformat nur mit ANGEDOCKTEM Stream ODER
+  // Kachel-Vollbild. Ein Stream im Popup-Eckfenster (Corner-Mode: man hat den
+  // Kanal verlassen) lockt trotzdem auf Hochformat — quer ist nur fürs
+  // Stream-Vollbild auf dem Kanal-Bildschirm gedacht. Bedingung = kanalQuerStream
+  // OHNE die Viewport-Anteile (die hängen am aktuellen Format und würden die
+  // Sperre sonst selbst blockieren: gesperrtes Hochformat ⇒ nie breit ⇒ nie frei).
+  // Das KACHEL-VOLLBILD zählt seit 2026-10-19 mit: dort ohne Freigabe drehte
+  // das Gerät nicht (Nutzerbefund „Vollbild + kippen passiert nichts“).
   $effect(() => {
-    void orientierungSperren(!streamAngedockt);
+    void orientierungSperren(!(streamAngedockt || kachelVollbildLage.offen > 0));
   });
 
   // iOS-Hülle: Quer-/Tastatur-Lage beobachten (`huellenLage`), und die Kopfzeile
