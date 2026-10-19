@@ -14,11 +14,15 @@
     value,
     textareaEl,
     guildId,
+    /** Gruppen-Mitglieder als Vorschlagsquelle, wenn kein Guild-Kontext
+     *  vorliegt (private Gruppe) — reicht an MentionAutocomplete durch. */
+    mitglieder,
     onChange
   }: {
     value: string;
     textareaEl: HTMLTextAreaElement | undefined;
     guildId: string | null;
+    mitglieder?: Array<{ user_id: string }>;
     /** Reserved: Snowflake of the signed-in user; will be used to filter
      *  self out of the suggestion list. Accepted but ignored today. */
     currentUserId?: string | null;
@@ -134,6 +138,7 @@
   open={mentionOpen}
   query={mentionQuery}
   {guildId}
+  {mitglieder}
   onPick={(display, markup) => applyMention(display, markup)}
   onClose={() => { mentionOpen = false; }}
 />

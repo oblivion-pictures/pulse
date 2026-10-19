@@ -80,7 +80,9 @@
     /** Handy-Klasse? Vom Mount-Punkt hereingereicht (Geraete-Trennung) und
      *  an die Nachrichtenliste durchgereicht — das Profil hinter Avatar/
      *  Name oeffnet dort als Tippen-Blatt statt Rechtsklick-Karte. */
-    handy
+    handy,
+    /** Gruppen-Mitglieder als @-Vorschlagsquelle (private Gruppe). */
+    mentionMitglieder
   }: {
     channel: Channel | null;
     messages: Message[];
@@ -137,6 +139,9 @@
     onAnrufen?: () => void;
     bearbeitungErlaubt?: boolean;
     handy: boolean;
+    /** Gruppen-Mitglieder als @-Vorschlagsquelle (private Gruppe) — reicht an
+     *  den Composer durch (Mention-Popup). */
+    mentionMitglieder?: Array<{ user_id: string }>;
   } = $props();
 
   // '#'-Prefix für Guild-Channels (Screenshot-Tests + Gewohnheit), '@' für DMs,
@@ -593,6 +598,7 @@
       {attachmentsAllowed}
       {attachmentAccept}
       verschluesselt={verschluesselteAnhaenge}
+      {mentionMitglieder}
     />
   {/if}
 </section>

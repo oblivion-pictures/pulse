@@ -58,4 +58,9 @@ export interface MessageInputProps {
   /** Bindable: aktueller Zähler-Stand (0 = unterhalb der Vorwarnzone oder
    *  Limit gilt hier nicht). Nur mit `zeichenExtern` bespielt. */
   zeichenStand?: number;
+  /** Gruppen-Mitglieder als @-Vorschlagsquelle (private Gruppe): ohne Guild-
+   *  Kontext bliebe der Mention-Popup sonst ohne Vorschläge. Die Insertion
+   *  läuft wie im Guild-Chat über `<@id>`-Markup; das Rendern der Pills
+   *  übernimmt der bestehende Mention-Parse des verschlüsselten Wegs. */
+  mentionMitglieder?: Array<{ user_id: string }>;
 }

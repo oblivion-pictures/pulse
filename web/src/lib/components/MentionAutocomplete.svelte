@@ -80,6 +80,10 @@
     open,
     query,
     guildId,
+    /** Gruppen-Mitglieder (private Gruppe): die Vorschlags-Quelle, wenn kein
+     *  Guild-Kontext vorliegt (guildId null). Namen/Avatare löst die Liste
+     *  über den userCache auf — genau wie bei Guild-Mitgliedern. */
+    mitglieder,
     onPick,
     onClose
   }: {
@@ -88,6 +92,7 @@
     query: string;
     /** Null for DMs — disables role + everyone suggestions. */
     guildId: string | null;
+    mitglieder?: Array<{ user_id: string }>;
     /** Called with the human-readable display text and the raw wire markup
      *  separately so the host can show `@Username` in the textarea while
      *  still sending `<@id>` to the server. */
@@ -137,6 +142,28 @@
     if (guildId && canMentionEveryone) {
       if ('everyone'.startsWith(q)) out.push({ kind: 'everyone' });
       if ('here'.startsWith(q)) out.push({ kind: 'here' });
+    }
+
+    // Private Gruppe: Mitglieder als Vorschläge (Nutzerwunsch 2026-10-19 —
+    // „@-taggen kann man, die in der Gruppe sind"). Ohne Guild-Kontext gibt
+    // es keine Rollen und kein everyone; Gruppenmitglieder heißen durcheinander.
+    if (!guildId && mitglieder) {
+      for (const m of mitglieder) {
+        const u = userCache.get(m.user_id);
+        const label = u ? (u.display_name ?? u.username) : '…';
+        const username = u?.username ?? '';
+        if (q && !label.toLowerCase().includes(q) && !username.toLowerCase().includes(q)) {
+          continue;
+        }
+        out.push({
+          kind: 'user',
+          id: m.user_id,
+          label,
+          sub: username && username !== label ? `@${username}` : '',
+          avatar: safeAvatarUrl(u?.avatar_url),
+          color: nameColor(m.user_id)
+        });
+      }
     }
 
     if (guildId) {

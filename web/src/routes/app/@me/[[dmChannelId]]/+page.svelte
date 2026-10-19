@@ -353,6 +353,7 @@
       onToggleReaction={toggleReaction}
       onGruppenBlatt={() => (gruppenBlattOffen = true)}
       onAnrufen={() => anrufStartenFuer('gruppe')}
+      mentionMitglieder={aktiveGruppe.members}
     />
   {:else if activeDM && synthChannel}
     {#snippet leereNachrichten()}

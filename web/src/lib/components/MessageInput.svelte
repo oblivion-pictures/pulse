@@ -50,7 +50,8 @@
     attachmentAccept = '',
     verschluesselt = false,
     zeichenExtern = false,
-    zeichenStand = $bindable(0)
+    zeichenStand = $bindable(0),
+    mentionMitglieder
   }: MessageInputProps = $props();
 
   const attachmentsEnabled = $derived(channelId !== null && attachmentsAllowed);
@@ -427,6 +428,7 @@
       value={text}
       textareaEl={textarea}
       {guildId}
+      mitglieder={mentionMitglieder}
       onChange={(t) => (text = t)}
     />
     <ComposerEmojiButton onPick={insertEmoji} />
