@@ -10,6 +10,7 @@
  * Testläufer es prüfen kann. Hier hängen Stores dran, also gehört es
  * getrennt.
  */
+import { currentServerUserId } from '$lib/stores/currentServerUser';
 import { directMessages } from '$lib/stores/directMessages.svelte';
 import { friendRequests } from '$lib/stores/friendRequests.svelte';
 import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
@@ -60,10 +61,16 @@ export function ungeleseneChats(): number {
  * beiden Aufrufer von `fan_out_fcm_dm_push`). Wer das ändert, zieht BEIDE
  * Seiten nach — sonst zeigt das Icon zwei verschiedene Wahrheiten,
  * abhängig davon, ob die App gerade wach war.
+ *
+ * **Stummgeschaltete Gruppen zählen nicht** (Eigentümer-Entscheid
+ * 2026-10-19) — auch das spiegelt den Server, der für ein stummes Mitglied
+ * die Plakette nicht hochzählt (`fcm.dm_push_senden`).
  */
 export function ungeleseneNachrichten(): number {
+  const ich = currentServerUserId();
   const gruppen = privateGruppen.list.reduce(
-    (summe, g) => summe + zahlEinesGespraechs(g.id),
+    (summe, g) =>
+      privateGruppen.eigenesStumm(g, ich) ? summe : summe + zahlEinesGespraechs(g.id),
     0
   );
   return ungeleseneChats() + gruppen;

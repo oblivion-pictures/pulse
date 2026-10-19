@@ -9,7 +9,7 @@ unberührt.
 from __future__ import annotations
 
 import pytest
-from dcc_chat_gateway import fcm_stumm, push
+from dcc_chat_gateway import badgezaehler, fcm_stumm, push
 from dcc_chat_gateway import fcm_warteschlange as ws
 from dcc_chat_gateway.models import FcmToken, PrivateGroupMember
 from sqlalchemy import update
@@ -76,6 +76,8 @@ async def test_stumm_nach_dem_vormerken_haelt_den_handy_push_zurueck(
     await _abarbeiten(app.state.connection_manager)
     assert sender == []
     assert await _leer(schlange)
+    # Die stumme Gruppe hält auch die Plakette an (anders als „Nicht stören“).
+    assert not await badgezaehler.lesen(schlange, sz["uid_b"])
 
 
 @pytest.mark.asyncio
@@ -91,6 +93,7 @@ async def test_nicht_stummes_mitglied_bekommt_beide_pushes(
     await _abarbeiten(app.state.connection_manager)
     assert [t for t, _p, _b in sender] == [f"tok-{sz['uid_b']}"]
     assert web_push == [{sz["uid_b"]}]
+    assert await badgezaehler.lesen(schlange, sz["uid_b"]) == 1
 
 
 @pytest.mark.asyncio

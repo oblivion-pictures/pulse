@@ -2,6 +2,19 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-19.3",
+      "date": "2026-10-19",
+      "style": "Sachlich",
+      "title": "Gruppen-Chats und Handy",
+      "items": [
+        "Gruppen haben jetzt Rollen: Der Besitzer kann Mitglieder zu Admins machen, die ebenfalls einladen und entfernen dürfen, und den Besitz an jemand anderen übergeben.",
+        "Gruppen können ein eigenes Bild bekommen, umbenannt, aufgelöst und mit einer angehefteten Nachricht versehen werden. Mitglieder lassen sich mit @ erwähnen.",
+        "Eine Gruppe lässt sich für dich allein stummschalten: Du bekommst dann keine Mitteilungen mehr, und sie zählt nicht in die Zahl am App-Symbol.",
+        "Auf dem Handy geht ein Stream oder eine Watch-Party beim Drehen ins Vollbild, und das kleine Eckfenster lässt sich überall mit zwei Fingern vergrößern.",
+        "In der Android-App kommen Mitteilungen zuverlässig an, während die App im Hintergrund ist, und der Absender sieht die zwei Häkchen, ohne dass du die App öffnest."
+      ]
+    },
+    {
       "id": "2026-10-19.2",
       "date": "2026-10-19",
       "style": "Sachlich",

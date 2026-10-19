@@ -24,11 +24,14 @@ laufen über :func:`dcc_chat_gateway.fcm.dm_push_senden`):
   Vormerken: wer während der Wartezeit der Warteschlange stummschaltet,
   bekommt den schon vorgemerkten Push nicht mehr.
 
-**Die Plakette zählt trotzdem.** Wer stumm ist, bekommt keinen Push und damit
-keine neue Zahl am Icon (ein Push nur für die Zahl wäre eine eigene
-Nutzlast, am Gerät ungetestet). Der Ungelesen-Zähler im Server läuft aber
+**Bei den ersten beiden zählt die Plakette trotzdem.** Wer stumm ist, bekommt
+keinen Push und damit keine neue Zahl am Icon (ein Push nur für die Zahl wäre
+eine eigene Nutzlast, am Gerät ungetestet). Der Ungelesen-Zähler im Server läuft aber
 weiter (``fcm.dm_push_senden``): schaltet der Nutzer „Nicht stören“ aus, trägt
 der nächste Push die richtige Zahl, und die wache App korrigiert sie ohnehin.
+Die stummgeschaltete Gruppe zählt dagegen gar nicht (Eigentümer-Entscheid
+2026-10-19) — die App lässt sie in ihrer Zahl ebenfalls weg
+(``web/src/lib/navigation/abzeichen.svelte.ts``).
 """
 
 from __future__ import annotations
@@ -93,13 +96,11 @@ async def ohne_stumme_gruppenmitglieder(
         return user_ids
 
 
-async def stumme_konten(
-    session: Any, redis: Any, user_ids: set[int], *, gruppe_id: int | None = None
-) -> set[int]:
-    """Die Konten unter ``user_ids``, die gerade keinen DM-Push wollen.
-
-    ``gruppe_id`` nur bei einem Gruppen-Push: dann zählen auch die Mitglieder,
-    die diese Gruppe stummgeschaltet haben (:func:`stumme_gruppenmitglieder`).
+async def stumme_konten(session: Any, redis: Any, user_ids: set[int]) -> set[int]:
+    """Die Konten unter ``user_ids``, die wegen „Nicht stören“ oder des
+    DM-Schalters gerade keinen DM-Push wollen. Die stummgeschaltete Gruppe
+    prüft der Aufrufer getrennt (:func:`stumme_gruppenmitglieder`), weil sie
+    anders als diese beiden auch die Plakette anhält.
 
     Ohne Redis zählt nur die dauerhafte Spiegelung des Status. Ein Redis-Fehler
     fällt in dieselbe Richtung (der Push-Weg ist best-effort); ein
@@ -107,9 +108,6 @@ async def stumme_konten(
     """
     if not user_ids:
         return set()
-    gruppe_stumm: set[int] = set()
-    if gruppe_id is not None:
-        gruppe_stumm = await stumme_gruppenmitglieder(session, gruppe_id, user_ids)
     ids = sorted(user_ids)
     live: dict[int, str | None] = dict.fromkeys(ids)
     if redis is not None:
@@ -134,7 +132,7 @@ async def stumme_konten(
         elif abschnitt == PRESENCE_PREFERENCE_SECTION:
             dauerhaft[uid] = _status_aus(wert.get("status"))
     nicht_stoeren = {u for u in ids if (live[u] or dauerhaft.get(u)) == STATUS_DND}
-    return (schalter_aus | nicht_stoeren | gruppe_stumm) & user_ids
+    return (schalter_aus | nicht_stoeren) & user_ids
 
 
 __all__ = [

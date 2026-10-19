@@ -34,7 +34,7 @@ from dcc_chat_gateway import badgezaehler
 from dcc_chat_gateway.config import get_settings
 from dcc_chat_gateway.db import SessionLocal
 from dcc_chat_gateway.fcm_empfaenger import empfangende_geraete, ios_geraete
-from dcc_chat_gateway.fcm_stumm import stumme_konten
+from dcc_chat_gateway.fcm_stumm import stumme_gruppenmitglieder, stumme_konten
 from dcc_chat_gateway.fcm_texte import Lokal, aps_alert
 from dcc_chat_gateway.models import FcmToken
 
@@ -292,12 +292,14 @@ async def dm_push_senden(
     ``ConnectionManager.user_socket_count``; ohne ``manager`` (Tests, pfad-
     lose Aufrufe) gilt jeder Empfänger als offline.
 
-    **Wer sich Pushes verbeten hat, bekommt keinen** (:func:`stumme_konten`):
+    **Wer sich Pushes verbeten hat, bekommt keinen** (:mod:`dcc_chat_gateway.fcm_stumm`):
     „Nicht stören“, der DM-Schalter und — nur bei ``art == "gruppe"`` — die
-    stummgeschaltete Gruppe. Die Plakette zählt für ihn trotzdem
-    hoch (Begründung dort). ``lokal`` (:mod:`dcc_chat_gateway.fcm_texte`)
-    ersetzt den fertigen Text durch Schlüssel — nur für iOS-Geräte mit der
-    Zusage ``dm_vordergrund``, Android bleibt beim deutschen Text.
+    stummgeschaltete Gruppe. Bei „Nicht stören“ und dem DM-Schalter zählt
+    die Plakette trotzdem hoch (Begründung dort), bei der stummen Gruppe
+    nicht — die zählt auch die App nicht mit (``abzeichen.svelte.ts``).
+    ``lokal`` (:mod:`dcc_chat_gateway.fcm_texte`) ersetzt den fertigen Text
+    durch Schlüssel — nur für iOS-Geräte mit der Zusage ``dm_vordergrund``,
+    Android bleibt beim deutschen Text.
 
     Löst nie aus — Fehlkonfiguration und tote Tokens dürfen den
     Nachrichtenweg nie brechen. Ob ein neuer Versuch lohnt, sagt
@@ -334,15 +336,19 @@ async def dm_push_senden(
             # ein Konto hat einen Ungelesen-Stand, auch wenn Handy und Tablet
             # beide einen Push bekommen. Ohne Redis (pfadlose Aufrufe, Tests)
             # bleibt der Stand unbekannt und das Feld entfällt im Push. Auch
-            # die stummen Konten zählen (``fcm_stumm``), ihre Zahl geht nur
-            # nirgends hin.
+            # die Konten mit „Nicht stören“ oder DM-Schalter aus zählen
+            # (``fcm_stumm``), ihre Zahl geht nur nirgends hin — wer die
+            # Gruppe stummgeschaltet hat, zählt dagegen nicht.
             konten = {r.user_id for r in rows}
-            stumm = await stumme_konten(
-                session, redis, konten, gruppe_id=channel_id if art == "gruppe" else None
+            gruppe_stumm = (
+                await stumme_gruppenmitglieder(session, channel_id, konten)
+                if art == "gruppe"
+                else set()
             )
+            stumm = await stumme_konten(session, redis, konten) | gruppe_stumm
             badges = await badgezaehler.fuer_konten(
                 redis,
-                konten,
+                konten - gruppe_stumm,
                 anzahl,
                 plakette_marke,
                 marke_haltbarkeit_s=PLAKETTE_MARKE_HALTBARKEIT_S,
