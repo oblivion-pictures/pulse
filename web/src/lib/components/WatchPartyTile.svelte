@@ -83,8 +83,9 @@
   let queueOpen = $state(false);
   // Einstellungs-Sheet (Twitch-Qualität): eigener Slot, schliesst die anderen.
   let settingsOpen = $state(false);
-  /** Der live Player-Handle — für den Qualitäts-Sheet (getQualities/setQuality).
-   *  `handleReady` setzt ihn; der Sync-Layer behält sein eigenes Referenzmodell. */
+  /** Der live Player-Handle — für den Qualitäts-Sheet (getQualities/setQuality)
+   *  und Host-Lautstärke/Play-Pause. `handleReady` setzt ihn; der Sync-Layer
+   *  behält sein eigenes Referenzmodell. */
   let playerHandle: PlayerHandle | null = $state(null);
   function toggleSettings(): void {
     settingsOpen = !settingsOpen;
@@ -92,6 +93,15 @@
       chatOpen = false;
       queueOpen = false;
     }
+  }
+  // Wiedergabe (Nutzerwunsch 2026-10-19: Pause/Play am Handy). Der Host
+  // schaltet am eigenen Player — der Sync-Layer verteilt die Entscheidung an
+  // die Zuschauer. Ein Twitch-Zuschauer (nicht sync-fähig, live) steuert
+  // SEINEN Player lokal. `spielt` folgt den Player-Ereignissen (handleEvent).
+  let spielt = $state(true);
+  function togglePlay(): void {
+    if (spielt) playerHandle?.pause();
+    else playerHandle?.play();
   }
   function toggleChat(): void {
     chatOpen = !chatOpen;
@@ -202,6 +212,29 @@
     controller.syncViewer();
     // Gemerkte Lautstärke am frischen Player herstellen (s. oben).
     if (viewerReadonly) applyViewerVolume();
+    else applyHostVolume();
+  }
+
+  // Host-Lautstärke (Nutzerwunsch 2026-10-19: die Lautstärke-Pille unten
+  // links soll auch dem HOST dienen — bisher hatten nur Zuschauer eine).
+  // Rein lokal: die Lautstärke ist pro Gerät, nichts davon wird synchronisiert.
+  let hostVolume = $state(gemerkteLautstaerke);
+  function applyHostVolume(): void {
+    if (hostVolume > 0) playerHandle?.setVolume(hostVolume);
+    playerHandle?.setMuted?.(hostVolume === 0);
+  }
+  function setHostVolume(percent: number): void {
+    hostVolume = Math.max(0, Math.min(WATCH_VOLUME_MAX, percent));
+    applyHostVolume();
+    setWatchVolume(hostVolume);
+  }
+  function onHostVolume(e: Event | number): void {
+    setHostVolume(
+      typeof e === 'number' ? e : Number((e.currentTarget as HTMLInputElement).value)
+    );
+  }
+  function onHostMute(): void {
+    setHostVolume(hostVolume > 0 ? 0 : getWatchVolume() || DEFAULT_WATCH_VOLUME);
   }
   // Untertitel des Zuschauer-Players: derselbe Weg wie die Lautstärke oben —
   // `controls:0` nimmt ihm den CC-Knopf, die Kachel gibt ihn zurück. Rein
@@ -212,6 +245,10 @@
   const quality = new QualityState(controller);
 
   function handleEvent(e: PlayerEvent): void {
+    // Play/Pause-Stand für den Mobil-Knopf — egal wer gedrückt hat (Host-
+    // Aktion, Zuschauer lokal, eigenes Umschalten).
+    if (e.type === 'play') spielt = true;
+    if (e.type === 'pause') spielt = false;
     // YouTube meldet seine Untertitel-Spuren erst nach dem Wiedergabestart
     // (onApiChange) — das Control taucht also kurz nach dem Video auf.
     if (e.type === 'captions_changed') {
@@ -387,16 +424,18 @@
   testidPrefix="watch-party"
   name={sourceLabel}
   nameTestid="watch-party-source-label"
-  volume={viewerReadonly ? viewerVolume : undefined}
+  volume={viewerReadonly ? viewerVolume : hostVolume}
   volumeMax={WATCH_VOLUME_MAX}
-  onVolumeChange={viewerReadonly ? onViewerVolume : undefined}
-  onToggleMute={viewerReadonly ? onViewerMute : undefined}
+  onVolumeChange={viewerReadonly ? onViewerVolume : onHostVolume}
+  onToggleMute={viewerReadonly ? onViewerMute : onHostMute}
   {chatOpen}
   onToggleChat={toggleChat}
   {queueOpen}
   onToggleQueue={toggleQueue}
   settingsOpen={settingsOpen}
   onToggleSettings={toggleSettings}
+  onTogglePlay={isHost || !viewerReadonly ? togglePlay : undefined}
+  {spielt}
   onDetach={canDetach ? handleDetach : undefined}
   onHide={canHide ? hideTile : undefined}
 >

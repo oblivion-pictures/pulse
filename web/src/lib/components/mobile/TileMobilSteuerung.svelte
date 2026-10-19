@@ -32,6 +32,8 @@
 <script lang="ts">
   import XIcon from '@lucide/svelte/icons/x';
   import SettingsIcon from '@lucide/svelte/icons/settings';
+  import PauseIcon from '@lucide/svelte/icons/pause';
+  import PlayIcon from '@lucide/svelte/icons/play';
   import MaximizeIcon from '@lucide/svelte/icons/maximize';
   import MinusIcon from '@lucide/svelte/icons/minus';
   import PlusIcon from '@lucide/svelte/icons/plus';
@@ -68,7 +70,11 @@
     /** Einstellungs-Sheet der Kachel (z. B. Twitch-Qualität) — ohne den Prop
      *  bleibt der Zahnrad-Knopf weg. */
     settingsOpen = false,
-    onToggleSettings
+    onToggleSettings,
+    /** Wiedergabe umschalten (Watch-Party) — ohne den Prop bleibt der
+     *  Play/Pause-Knopf weg. */
+    onTogglePlay,
+    spielt = true
   }: {
     testidPrefix: string;
     isFullscreen?: boolean;
@@ -89,6 +95,8 @@
     video?: HTMLVideoElement | null;
     settingsOpen?: boolean;
     onToggleSettings?: () => void;
+    onTogglePlay?: () => void;
+    spielt?: boolean;
   } = $props();
 
   // Am Handy wird die Lautstärke IMMER auf 5er gerastert — angezeigt UND
@@ -143,24 +151,12 @@
      die Overlays für Chat und Warteschlange am Telefon zu öffnen — ohne sie
      ist deren Markup toter Code. Davor das System-Bild-in-Bild, das sich
      selbst ausblendet, wo es nicht trägt. -->
-{#if onToggleChat || onToggleQueue || onToggleSettings || video}
+{#if onToggleChat || onToggleQueue || video}
   <div
     class="absolute top-2 z-30 flex items-center gap-2 {obenKlasse} {fadeClass}"
     style="right: calc(0.5rem + {seiteRechts})"
   >
     <BildImBildKnopf {video} klasse={RUND} pipHide testid={`${testidPrefix}-pip-float`} />
-    {#if onToggleSettings}
-      <button
-        type="button"
-        class="{RUND} {settingsOpen ? '!text-primary' : ''}"
-        onclick={onToggleSettings}
-        aria-label={settingsOpen ? m.tile_shell_settings_close() : m.tile_shell_settings_open()}
-        data-pip-hide
-        data-testid={`${testidPrefix}-settings-float`}
-      >
-        <SettingsIcon class="size-5" />
-      </button>
-    {/if}
     {#if onToggleQueue}
       <button
         type="button"
@@ -188,20 +184,40 @@
   </div>
 {/if}
 
-<!-- Unten rechts: Vollbild. Im Vollbild selbst führt der Pfeil oben links
-     hinaus, hier bliebe der Knopf ohne Aufgabe. -->
-{#if !isFullscreen}
-  <button
-    type="button"
-    class="absolute bottom-2 z-20 {RUND}"
+<!-- Unten rechts: Einstellungen (Zahnrad, Nutzerwunsch 2026-10-19: „neben dem
+     Vollbild") und Vollbild — ein Cluster, ein Abstand. Im Vollbild selbst
+     führt der Pfeil oben links hinaus, hier bleibt der Knopf ohne Aufgabe; das
+     Zahnrad zeigt dann weiter (fadet mit dem HUD). -->
+{#if onToggleSettings || !isFullscreen}
+  <div
+    class="absolute bottom-2 z-20 flex items-center gap-2 {untenKlasse} {fadeClass}"
     style="right: calc(0.5rem + {seiteRechts})"
-    onclick={onToggleFullscreen}
-    aria-label={m.tile_shell_fullscreen_enter()}
-    data-pip-hide
-    data-testid={`${testidPrefix}-fullscreen-float`}
   >
-    <MaximizeIcon class="size-5" />
-  </button>
+    {#if onToggleSettings}
+      <button
+        type="button"
+        class="{RUND} {settingsOpen ? '!text-primary' : ''}"
+        onclick={onToggleSettings}
+        aria-label={settingsOpen ? m.tile_shell_settings_close() : m.tile_shell_settings_open()}
+        data-pip-hide
+        data-testid={`${testidPrefix}-settings-float`}
+      >
+        <SettingsIcon class="size-5" />
+      </button>
+    {/if}
+    {#if !isFullscreen}
+      <button
+        type="button"
+        class="{RUND}"
+        onclick={onToggleFullscreen}
+        aria-label={m.tile_shell_fullscreen_enter()}
+        data-pip-hide
+        data-testid={`${testidPrefix}-fullscreen-float`}
+      >
+        <MaximizeIcon class="size-5" />
+      </button>
+    {/if}
+  </div>
 {/if}
 
 <!-- Unten links: Lautstärke in 5er-Schritten statt Regler — ein ferner Daumen
@@ -218,6 +234,21 @@
       data-pip-hide
       data-testid={`${testidPrefix}-volume-stepper`}
     >
+      {#if onTogglePlay}
+        <button
+          type="button"
+          class="flex size-11 items-center justify-center rounded-full transition-colors hover:bg-black/65"
+          onclick={onTogglePlay}
+          aria-label={spielt ? m.tile_shell_pause() : m.tile_shell_play()}
+          data-testid={`${testidPrefix}-play-float`}
+        >
+          {#if spielt}
+            <PauseIcon class="size-4" />
+          {:else}
+            <PlayIcon class="size-4" />
+          {/if}
+        </button>
+      {/if}
       {#if onToggleMute}
         <button
           type="button"

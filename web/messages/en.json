@@ -2977,6 +2977,8 @@
   "tile_shell_settings_close": "Close settings",
   "tile_shell_settings_open": "Open settings",
   "tile_shell_quality_title": "Quality",
+  "tile_shell_pause": "Pause",
+  "tile_shell_play": "Play",
   "tile_shell_dblclick_fullscreen": "Double-click for fullscreen",
   "tile_shell_detach": "Open in own window",
   "tile_shell_enable_audio": "Enable audio",

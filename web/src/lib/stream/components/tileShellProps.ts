@@ -74,4 +74,8 @@ export interface TileShellProps {
   settingsOpen?: boolean;
   onToggleSettings?: () => void;
   settingsPanel?: Snippet;
+  /** Wiedergabe umschalten (Watch-Party) — ohne bleibt der Play/Pause-Knopf
+   *  der Mobil-Steuerung weg. `spielt` ist der angezeigte Stand. */
+  onTogglePlay?: () => void;
+  spielt?: boolean;
 }

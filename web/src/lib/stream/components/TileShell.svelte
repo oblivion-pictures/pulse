@@ -67,7 +67,9 @@
     queuePanel,
     settingsOpen = false,
     onToggleSettings,
-    settingsPanel
+    settingsPanel,
+    onTogglePlay,
+    spielt = true
   }: TileShellProps = $props();
 
   const KindIcon = $derived(
@@ -183,9 +185,11 @@
   });
   // Der Lage-Zähler: im Vollbild darf das Gerät drehen (layoutLage lässt die
   // Orientierungs-Sperre los) — sonst „kippt nichts", während das Vollbild
-  // hochkant eingefroren wirkt.
+  // hochkant eingefroren wirkt. Gilt für BEIDE Wege ins Vollbild: Kippen
+  // (eigenes) und Knopf (echtes Element-Vollbild) — der Knopf-Weg war der
+  // zweite Nutzerbefund vom 2026-10-19.
   $effect(() => {
-    if (!eigenesVollbild) return;
+    if (!isFullscreen) return;
     kachelVollbildLage.anmelden();
     return () => kachelVollbildLage.abmelden();
   });
@@ -331,6 +335,8 @@
           {video}
           settingsOpen={settingsOpen ?? false}
           onToggleSettings={onToggleSettings}
+          {onTogglePlay}
+          {spielt}
         />
       {/if}
 
