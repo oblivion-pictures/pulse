@@ -94,6 +94,17 @@ class PrivateGruppenStore {
     quittungen.gruppeSeeden(gruppe);
   }
 
+  /** Persönliche Stummschaltung lokal setzen (Antwort der Stumm-Route ist
+   *  leer — der Stand steht in der eigenen Mitgliedszeile). */
+  stummSetzen(gruppeId: string, userId: string, stumm: boolean): void {
+    const gruppe = this.byId[gruppeId];
+    if (!gruppe) return;
+    this.byId[gruppeId] = {
+      ...gruppe,
+      members: gruppe.members.map((m) => (m.user_id === userId ? { ...m, stumm } : m))
+    };
+  }
+
   entfernen(gruppeId: string): void {
     const next = { ...this.byId };
     delete next[gruppeId];

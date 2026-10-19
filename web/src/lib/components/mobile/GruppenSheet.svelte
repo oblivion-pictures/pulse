@@ -17,6 +17,9 @@
   import BottomSheet from '$lib/components/mobile/BottomSheet.svelte';
   import UserPlusIcon from '@lucide/svelte/icons/user-plus';
   import XIcon from '@lucide/svelte/icons/x';
+  import CheckIcon from '@lucide/svelte/icons/check';
+  import PencilIcon from '@lucide/svelte/icons/pencil';
+  import BellOffIcon from '@lucide/svelte/icons/bell-off';
   import PhoneIcon from '@lucide/svelte/icons/phone';
   import { friends } from '$lib/stores/friends.svelte';
   import { userCache } from '$lib/stores/users.svelte';
@@ -55,16 +58,91 @@
    *  Mitglied ist — so begrenzt es das Backend. */
   let darfEntfernen = $derived(gruppe.ersteller_id === currentServerUserId() && istMitglied);
   let verlassenBestaetigt = $state(false);
+  let aufloesenBestaetigt = $state(false);
   let amArbeiten = $state(false);
   let iconInput = $state<HTMLInputElement | undefined>();
+  /** Umbenennen (Owner): Klick auf den Namen macht ihn zum Eingabefeld. */
+  let umbenennenOffen = $state(false);
+  let neuerName = $state('');
 
   $effect(() => {
     if (open) {
       verlassenBestaetigt = false;
+      aufloesenBestaetigt = false;
       for (const mm of gruppe.members) userCache.queue(mm.user_id);
       for (const f of freundeZumHinzufuegen) userCache.queue(f.user_id);
     }
   });
+
+  /** Meine Rolle (Rollen-Vertrag 2026-10-19): owner/admin/mitglied. */
+  const eigeneRolle = $derived(
+    gruppe.members.find((mm) => mm.user_id === currentServerUserId())?.rolle ?? null
+  );
+  const istOwner = $derived(eigeneRolle === 'owner');
+  /** Einladen + Rauswerfen: Owner und Admins (einfache Mitglieder nicht). */
+  const darfVerwalten = $derived(eigeneRolle === 'owner' || eigeneRolle === 'admin');
+  /** Ein Mitglied kickt der Owner (jeden anderen) und Admins (nur
+   *  einfache Mitglieder) — dieselbe Rechnung wie im Backend. */
+  function darfKicken(zielRolle: string | undefined): boolean {
+    if (!darfVerwalten) return false;
+    if (istOwner) return true;
+    return zielRolle === 'mitglied';
+  }
+  /** Der Stumm-Merker der eigenen Zeile (persönlich, pro Gerät synchron). */
+  const ichStumm = $derived(
+    gruppe.members.find((mm) => mm.user_id === currentServerUserId())?.stumm ?? false
+  );
+
+  async function umbenennen() {
+    if (amArbeiten) return;
+    const name = neuerName.trim();
+    if (!name) return;
+    amArbeiten = true;
+    try {
+      const neu = await gruppenApi.umbenennen(gruppe.id, name);
+      if (neu) privateGruppen.upsert(neu);
+      umbenennenOffen = false;
+    } catch (err) {
+      aktionFehlgeschlagen(err);
+    } finally {
+      amArbeiten = false;
+    }
+  }
+
+  async function aufloesen() {
+    if (amArbeiten) return;
+    if (!aufloesenBestaetigt) {
+      aufloesenBestaetigt = true;
+      return;
+    }
+    amArbeiten = true;
+    try {
+      await gruppenApi.aufloesen(gruppe.id);
+      privateGruppen.entfernen(gruppe.id);
+      open = false;
+      onVerlassen?.();
+    } catch (err) {
+      aktionFehlgeschlagen(err);
+    } finally {
+      amArbeiten = false;
+      aufloesenBestaetigt = false;
+    }
+  }
+
+  async function stummUmschalten() {
+    if (amArbeiten) return;
+    const ich = currentServerUserId();
+    if (!ich) return;
+    amArbeiten = true;
+    try {
+      await gruppenApi.stummSetzen(gruppe.id, !ichStumm);
+      privateGruppen.stummSetzen(gruppe.id, ich, !ichStumm);
+    } catch (err) {
+      aktionFehlgeschlagen(err);
+    } finally {
+      amArbeiten = false;
+    }
+  }
 
   /** Gruppenbild hochladen (Nutzerwunsch 2026-10-19). Antwort = neue
    *  Gruppen-Wahrheit — derselbe Weg wie bei den Mitglieds-Mutationen. */
@@ -184,7 +262,55 @@
         {/if}
       </div>
       <div class="min-w-0 flex-1">
-        <p class="text-text-bright truncate text-base font-bold">{gruppe.name}</p>
+        {#if umbenennenOffen}
+          <!-- Umbenennen (Owner): Eingabe + Haken, Abbruch mit dem X. -->
+          <div class="flex items-center gap-2">
+            <input
+              bind:value={neuerName}
+              class="text-text-bright border-primary min-w-0 flex-1 rounded-lg border px-2 py-1 text-base font-bold outline-none"
+              maxlength="64"
+              data-testid="group-rename-input"
+            />
+            <button
+              type="button"
+              class="text-primary flex size-8 shrink-0 items-center justify-center"
+              onclick={umbenennen}
+              aria-label={m.gruppen_speichern()}
+              data-testid="group-rename-save"
+            >
+              <CheckIcon class="size-4" />
+            </button>
+            <button
+              type="button"
+              class="text-text-muted flex size-8 shrink-0 items-center justify-center"
+              onclick={() => {
+                umbenennenOffen = false;
+                aufloesenBestaetigt = false;
+              }}
+              aria-label={m.gruppen_abbrechen()}
+            >
+              <XIcon class="size-4" />
+            </button>
+          </div>
+        {:else}
+          <div class="flex items-center gap-2">
+            <p class="text-text-bright truncate text-base font-bold">{gruppe.name}</p>
+            {#if istOwner}
+              <button
+                type="button"
+                class="text-text-muted hover:text-primary shrink-0"
+                onclick={() => {
+                  neuerName = gruppe.name;
+                  umbenennenOffen = true;
+                }}
+                aria-label={m.gruppen_umbenennen()}
+                data-testid="group-rename-open"
+              >
+                <PencilIcon class="size-3.5" />
+              </button>
+            {/if}
+          </div>
+        {/if}
         <p class="text-text-muted text-xs">
           {m.gruppen_blatt_mitglieder({ count: gruppe.members.length })}
         </p>
@@ -235,6 +361,26 @@
         {m.anruf_starten()}
       </button>
     {/if}
+    {#if istMitglied}
+      <!-- Stumm: persönlich, pro Gerät synchronisiert — der Handy-Push der
+           Gruppe ruht, der Chat selbst bleibt normal. -->
+      <button
+        type="button"
+        class="hover:bg-bg-hover mt-2 flex w-full items-center justify-between rounded-xl border border-border px-3 py-2 text-sm font-semibold {ichStumm
+          ? 'text-text-bright'
+          : 'text-text-base'}"
+        onclick={stummUmschalten}
+        data-testid="group-mute"
+      >
+        <span class="flex items-center gap-2">
+          <BellOffIcon class="size-4" />
+          {m.gruppen_stumm()}
+        </span>
+        <span class={ichStumm ? 'text-primary' : 'text-text-muted'}>
+          {ichStumm ? m.gruppen_stumm_an() : m.gruppen_stumm_aus()}
+        </span>
+      </button>
+    {/if}
   </div>
 
   <ul class="flex flex-col gap-0.5 px-2">
@@ -251,7 +397,22 @@
           >
         {/if}
         <span class="truncate text-sm font-semibold" style={nameStyle(mm.user_id)}>{anzName}</span>
-        {#if darfEntfernen && mm.user_id !== currentServerUserId()}
+        {#if mm.rolle === 'owner'}
+          <span
+            class="rounded-full bg-primary/20 px-1.5 py-0.5 text-2xs font-bold text-primary"
+            data-testid={`group-member-role-${mm.user_id}`}
+          >
+            Owner
+          </span>
+        {:else if mm.rolle === 'admin'}
+          <span
+            class="rounded-full bg-bg-hover px-1.5 py-0.5 text-2xs font-bold text-text-bright"
+            data-testid={`group-member-role-${mm.user_id}`}
+          >
+            Admin
+          </span>
+        {/if}
+        {#if darfKicken(mm.rolle) && mm.user_id !== currentServerUserId()}
           <button
             type="button"
             class="text-text-muted hover:text-error ml-auto flex size-9 handy:size-11 items-center justify-center rounded-full"
@@ -266,7 +427,7 @@
     {/each}
   </ul>
 
-  {#if istMitglied && freundeZumHinzufuegen.length > 0}
+  {#if darfVerwalten && freundeZumHinzufuegen.length > 0}
     <p class="text-text-muted mt-3 px-4 pb-1 text-xs font-bold uppercase">
       {m.gruppen_blatt_hinzufuegen_kopf()}
     </p>
@@ -305,6 +466,20 @@
           ? m.gruppen_blatt_verlassen_bestaetigen()
           : m.gruppen_blatt_verlassen()}
       </button>
+      {#if istOwner}
+        <!-- Auflösen (Owner): räumt die Gruppe für ALLE ab — doppelte
+             Bestätigung wie beim Verlassen. -->
+        <button
+          type="button"
+          class="mt-2 flex min-h-11 w-full items-center justify-center rounded-xl bg-red-500/15 py-2.5 text-sm font-bold text-red-500"
+          onclick={aufloesen}
+          data-testid="group-dissolve"
+        >
+          {aufloesenBestaetigt
+            ? m.gruppen_aufloesen_bestaetigen()
+            : m.gruppen_aufloesen()}
+        </button>
+      {/if}
     </div>
   {/if}
 </BottomSheet>

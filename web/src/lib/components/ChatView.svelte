@@ -10,7 +10,9 @@
   import HashIcon from '@lucide/svelte/icons/hash';
   import AtSignIcon from '@lucide/svelte/icons/at-sign';
   import UsersIcon from '@lucide/svelte/icons/users';
+  import PinIcon from '@lucide/svelte/icons/pin';
   import PhoneIcon from '@lucide/svelte/icons/phone';
+  import { lesestandAnker } from '$lib/stores/lesestandKern';
   import ImagesIcon from '@lucide/svelte/icons/images';
   import MedienuebersichtSheet from '$lib/components/chat/MedienuebersichtSheet.svelte';
   import MessageInput, { ZEICHEN_LIMIT } from './MessageInput.svelte';
@@ -82,7 +84,9 @@
      *  Name oeffnet dort als Tippen-Blatt statt Rechtsklick-Karte. */
     handy,
     /** Gruppen-Mitglieder als @-Vorschlagsquelle (private Gruppe). */
-    mentionMitglieder
+    mentionMitglieder,
+    /** Der eine angeheftete Gruppen-Anker (E2E: nur die ID) oder null. */
+    angeheftetId = null
   }: {
     channel: Channel | null;
     messages: Message[];
@@ -142,6 +146,9 @@
     /** Gruppen-Mitglieder als @-Vorschlagsquelle (private Gruppe) — reicht an
      *  den Composer durch (Mention-Popup). */
     mentionMitglieder?: Array<{ user_id: string }>;
+    /** Der eine angeheftete Gruppen-Anker oder null (E2E-Gruppen: das Pin
+     *  hängt am Gruppen-Objekt, nicht an einer Server-Nachrichtenliste). */
+    angeheftetId?: string | null;
   } = $props();
 
   // '#'-Prefix für Guild-Channels (Screenshot-Tests + Gewohnheit), '@' für DMs,
@@ -153,6 +160,12 @@
   /** Medienübersicht (P1.7) — Knopf nur mit mindestens einem Anhang. */
   let medienOffen = $state(false);
   let hatMedien = $derived(messages.some((n) => (n.attachments ?? []).length > 0));
+  /** Die angeheftete GRUPPEN-Nachricht, wenn sie im geladenen Verlauf liegt
+   *  (E2E-Gruppen: Pin hängt als Anker an der Gruppe; liegt die Nachricht
+   *  außerhalb des Verlaufs, zeigt der Banner einen Platzhalter). */
+  let angeheftetNachricht = $derived(
+    angeheftetId ? (messages.find((n) => lesestandAnker(n) === angeheftetId) ?? null) : null
+  );
 
   // Zeichenzähler-Stand des Composers (0 = unsichtbar). Rendering in der
   // reservierten Tippanzeige-Zeile — s. `zeichenExtern` in MessageInput.
@@ -513,6 +526,23 @@
       <span class="text-text-muted text-sm">{pm.chat_view_select_channel()}</span>
     {/if}
   </header>
+
+  {#if angeheftetId}
+    <!-- Gruppen-Pin: schmaler Strip unter dem Kopf (E2E-Gruppen haben keine
+         Pin-Liste am Server-Kanal — der Anker hängt an der Gruppe). Liegt die
+         Nachricht außerhalb des geladenen Verlaufs, steht ein Platzhalter. -->
+    <div
+      class="border-border bg-bg-panel/60 text-text-muted flex items-center gap-2 border-b px-4 py-1.5 text-xs"
+      data-testid="group-pin-banner"
+    >
+      <PinIcon class="shrink-0" />
+      <span class="truncate">
+        {angeheftetNachricht
+          ? angeheftetNachricht.content.replace(/<@&?\d+>/g, '@').slice(0, 120)
+          : pm.chat_view_pin_generic()}
+      </span>
+    </div>
+  {/if}
 
   <div class="relative flex min-h-0 flex-1">
     <MessageList

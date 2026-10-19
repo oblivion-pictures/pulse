@@ -16,6 +16,8 @@
   import { directMessages } from '$lib/stores/directMessages.svelte';
   import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
   import { userCache } from '$lib/stores/users.svelte';
+  import { gruppenApi } from '$lib/api/gruppen';
+  import { lesestandAnker } from '$lib/stores/lesestandKern';
   import { messages } from '$lib/stores/messages.svelte';
   import { chatApi } from '$lib/api/chat';
   import { verlaufZustand } from '$lib/verlauf/zustand.svelte';
@@ -281,6 +283,25 @@
       console.error(e);
     }
   }
+
+  /** Anpinnen in einer PRIVATEN GRUPPE (Nutzerwunsch 2026-10-19): der Anker
+   *  hängt am Gruppen-Objekt (E2E — der Server kennt nur die Zeichenkette),
+   *  nicht an einer Server-Nachrichtenliste wie bei Guild-Kanälen. Nochmal
+   *  auf dieselbe Nachricht = lösen. */
+  async function gruppePinToggle(msg: Message) {
+    if (!aktiveGruppe) return;
+    const anker = lesestandAnker(msg);
+    try {
+      const neu =
+        aktiveGruppe.angeheftet_id === anker
+          ? await gruppenApi.anheftenLoesen(aktiveGruppe.id)
+          : await gruppenApi.anheften(aktiveGruppe.id, anker);
+      if (neu) privateGruppen.upsert(neu);
+    } catch (e) {
+      toast.error(m.pin_failed());
+      console.error(e);
+    }
+  }
 </script>
 
 <GuildRail
@@ -354,6 +375,8 @@
       onGruppenBlatt={() => (gruppenBlattOffen = true)}
       onAnrufen={() => anrufStartenFuer('gruppe')}
       mentionMitglieder={aktiveGruppe.members}
+      angeheftetId={aktiveGruppe.angeheftet_id}
+      onTogglePin={gruppePinToggle}
     />
   {:else if activeDM && synthChannel}
     {#snippet leereNachrichten()}
