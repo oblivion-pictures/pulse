@@ -123,25 +123,44 @@
     'flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors hover:bg-black/65';
 </script>
 
-<!-- Oben links: zurück (Kachel schliessen) beziehungsweise Vollbild verlassen.
-     Beides ist derselbe Platz, weil es dieselbe Geste ist: eine Ebene zurück.
-     Im Vollbild wird der Pfeil NICHT mit dem HUD gefadet — er ist der
-     Nothausgang (Nutzerbefund 2026-10-19: in der Watch-Party mit Twitch-
-     Quelle fraß der Zuschauer-Klick-Fänger die HUD-Taps auf und ohne HUD
-     blieb der Fadem unbenutzbar ⇒ „komme aus dem Vollbild nicht raus“). -->
-{#if isFullscreen ? zeigeVollbildAus : !!onHide}
+<!-- Oben links: X — eine Ebene zurück, und die Ebenen sind: Einstellungen
+     offen ⇒ nur das Rad schliessen (Nutzerbefund 2026-10-19: das X machte
+     die ganze Party zu, statt aus dem Rad heraus); sonst Vollbild verlassen
+     bzw. Kachel schliessen. Im Vollbild wird der Knopf NICHT mit dem HUD
+     gefadet — er ist der Nothausgang (Nutzerbefund 2026-10-19: in der
+     Watch-Party mit Twitch-Quelle fraß der Zuschauer-Klick-Fänger die
+     HUD-Taps auf und ohne HUD blieb der Fadem unbenutzbar ⇒ „komme aus dem
+     Vollbild nicht raus“). -->
+{#if isFullscreen ? zeigeVollbildAus || settingsOpen : !!onHide || settingsOpen}
   <button
     type="button"
-    class="absolute top-2 z-30 {RUND} {obenKlasse} {isFullscreen && zeigeVollbildAus
+    class="absolute top-2 z-30 {RUND} {obenKlasse} {settingsOpen
       ? ''
-      : fadeClass}"
+      : isFullscreen && zeigeVollbildAus
+        ? ''
+        : fadeClass}"
     style="left: calc(0.5rem + {seiteLinks})"
-    onclick={() => (isFullscreen ? onToggleFullscreen() : onHide?.())}
-    aria-label={isFullscreen ? m.tile_shell_fullscreen_exit() : m.tile_shell_hide_tile()}
+    onclick={() => {
+      if (settingsOpen) {
+        onToggleSettings?.();
+        return;
+      }
+      if (isFullscreen) onToggleFullscreen();
+      else onHide?.();
+    }}
+    aria-label={settingsOpen
+      ? m.tile_shell_settings_close()
+      : isFullscreen
+        ? m.tile_shell_fullscreen_exit()
+        : m.tile_shell_hide_tile()}
     data-pip-hide
-    data-testid={isFullscreen
-      ? `${testidPrefix}-fullscreen-exit-float`
-      : `${testidPrefix}-close-float`}
+    data-testid={
+      settingsOpen
+        ? `${testidPrefix}-settings-exit-float`
+        : isFullscreen
+          ? `${testidPrefix}-fullscreen-exit-float`
+          : `${testidPrefix}-close-float`
+    }
   >
     <XIcon class="size-5" />
   </button>
@@ -184,15 +203,33 @@
   </div>
 {/if}
 
-<!-- Unten rechts: Einstellungen (Zahnrad, Nutzerwunsch 2026-10-19: „neben dem
-     Vollbild") und Vollbild — ein Cluster, ein Abstand. Im Vollbild selbst
-     führt der Pfeil oben links hinaus, hier bleibt der Knopf ohne Aufgabe; das
-     Zahnrad zeigt dann weiter (fadet mit dem HUD). -->
-{#if onToggleSettings || !isFullscreen}
+<!-- Unten rechts: Play/Pause, Einstellungen (Zahnrad, Nutzerwunsch
+     2026-10-19: „neben dem Vollbild") und Vollbild — ein Cluster, ein
+     Abstand. Im Vollbild selbst führt der Pfeil oben links hinaus, hier
+     bleibt der Vollbild-Knopf ohne Aufgabe; Play und Zahnrad zeigen dann
+     weiter (faden mit dem HUD, der Klick-Fänger im Vollbild lässt die Taps
+     auf die Fläche kommen). -->
+{#if onTogglePlay || onToggleSettings || !isFullscreen}
   <div
     class="absolute bottom-2 z-20 flex items-center gap-2 {untenKlasse} {fadeClass}"
     style="right: calc(0.5rem + {seiteRechts})"
   >
+    {#if onTogglePlay}
+      <button
+        type="button"
+        class="{RUND}"
+        onclick={onTogglePlay}
+        aria-label={spielt ? m.tile_shell_pause() : m.tile_shell_play()}
+        data-pip-hide
+        data-testid={`${testidPrefix}-play-float`}
+      >
+        {#if spielt}
+          <PauseIcon class="size-5" />
+        {:else}
+          <PlayIcon class="size-5" />
+        {/if}
+      </button>
+    {/if}
     {#if onToggleSettings}
       <button
         type="button"
@@ -220,6 +257,22 @@
   </div>
 {/if}
 
+<!-- Mitte: großes Play, solange pausiert — der auffällige Weg zurück in die
+     Wiedergabe (Nutzerwunsch 2026-10-19: „in der Mitte und unten rechts Play
+     klicken"). Fadet NICHT: ein pausiertes Bild ohne Angebot bleibt pausiert. -->
+{#if !spielt && onTogglePlay}
+  <button
+    type="button"
+    class="absolute top-1/2 left-1/2 z-40 flex size-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
+    onclick={onTogglePlay}
+    aria-label={m.tile_shell_play()}
+    data-pip-hide
+    data-testid={`${testidPrefix}-play-center`}
+  >
+    <PlayIcon class="size-8" />
+  </button>
+{/if}
+
 <!-- Unten links: Lautstärke in 5er-Schritten statt Regler — ein ferner Daumen
      trifft zwei Knöpfe sicherer als einen Schieber. Die Stummschaltung sitzt
      als Lautsprecher IN der Pille: sie ist der einzige Weg zurück, wenn man
@@ -234,21 +287,6 @@
       data-pip-hide
       data-testid={`${testidPrefix}-volume-stepper`}
     >
-      {#if onTogglePlay}
-        <button
-          type="button"
-          class="flex size-11 items-center justify-center rounded-full transition-colors hover:bg-black/65"
-          onclick={onTogglePlay}
-          aria-label={spielt ? m.tile_shell_pause() : m.tile_shell_play()}
-          data-testid={`${testidPrefix}-play-float`}
-        >
-          {#if spielt}
-            <PauseIcon class="size-4" />
-          {:else}
-            <PlayIcon class="size-4" />
-          {/if}
-        </button>
-      {/if}
       {#if onToggleMute}
         <button
           type="button"

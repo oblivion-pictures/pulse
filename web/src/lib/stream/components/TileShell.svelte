@@ -349,8 +349,12 @@
 
       <!-- Vollbild am RECHNER: Leiste als fadendes Overlay über dem unteren
            Bildrand, das nach Inaktivität (HUD_HIDE_AFTER_MS) ausgeblendet
-           wird. Am Handy greift stattdessen die neue schwebende Steuerung. -->
-      {#if isFullscreen && !hideDock && !handy}
+           wird. Am Handy greift stattdessen die neue schwebende Steuerung.
+           IM Vollbild gilt hideDock NICHT (Nutzerbefund 2026-10-19: der
+           HQ-Stream mit eigenem Player-Fenster hatte dort GAR kein Overlay —
+           kein Ausstieg, keine Lautstärke). Unabhängig vom Vollbild bleibt
+           hideDock bestehen. -->
+      {#if isFullscreen && !handy}
         <div
           class="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/45 to-transparent pt-10 {fadeClass}"
         >

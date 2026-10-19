@@ -468,17 +468,16 @@
           />
         {/if}
       {/key}
-      {#if viewerReadonly}
-        <!-- Klick-Fänger: YouTube pausiert auch ohne sichtbare Steuerung bei
-             einem Klick aufs Video. Dieses Overlay schluckt solche Klicks, damit
-             nur der Host die Wiedergabe steuert. Vollbild bleibt über den Knopf
-             in der Leiste erreichbar. -->
-        <div
-          class="absolute inset-0 z-10"
-          data-testid="watch-party-viewer-lock"
-          aria-hidden="true"
-        ></div>
-      {/if}
+      <!-- Klick-Fänger: immer, für HOST und Zuschauer (Nutzerbefund
+           2026-10-19: ein Klick auf das pausierte Video ließ es wieder
+           anlaufen — YouTube/Twitch behandeln Klicks in ihrem Embed selbst).
+           Wiedergabe steuert die Kachel: Play in der Mitte, unten rechts,
+           bzw. der Host über seine Knöpfe. -->
+      <div
+        class="absolute inset-0 z-10"
+        data-testid="watch-party-viewer-lock"
+        aria-hidden="true"
+      ></div>
     </div>
   {/snippet}
   {#snippet nameExtra()}
