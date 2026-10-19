@@ -22,8 +22,9 @@ from dcc_chat_gateway.private_gruppen_atomar import (
 async def purge_private_group_memberships(session: AsyncSession, user_id: int) -> None:
     """Mitgliedschaften in privaten Gruppen raeumen — UND die Festlegung aus
     ``routes/private_gruppen.py`` beantworten, wenn der Geloeschte Ersteller
-    einer Gruppe war (dienstaeltestes verbleibendes Mitglied erbt; ohne
-    verbleibendes Mitglied wird die Gruppe geloescht).
+    einer Gruppe war (dienstaeltester verbleibender Admin erbt, sonst das
+    dienstaelteste Mitglied; ohne verbleibendes Mitglied wird die Gruppe
+    geloescht).
 
     **Genau diese Stelle wurde bei Migration 0063 uebersehen** — die
     Einladungs-Inbox (``community_invite_notifications``) raeumt beim Purge

@@ -76,6 +76,7 @@ export function datenDirs(dataRoot: string): NativeDataDirs {
     weedFiler: join(root, 'weed', 'filer'),
     uploadsAvatars: join(root, 'uploads', 'avatars'),
     uploadsGuildIcons: join(root, 'uploads', 'guild-icons'),
+    uploadsGruppenIcons: join(root, 'uploads', 'gruppen-icons'),
     secrets: join(root, 'jwt_keys'),
     certs: join(root, 'certs'),
     backups: join(root, 'backups'),

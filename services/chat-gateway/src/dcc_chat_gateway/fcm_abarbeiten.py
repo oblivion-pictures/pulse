@@ -120,6 +120,7 @@ async def abarbeiten(manager: Any, arbeit: str) -> None:
             plakette_marke=ablage.plakette_marke(arbeit),
             text=text,
             lokal=lokal,
+            art=offen[0].get("art", "dm"),
         )
     )
     try:

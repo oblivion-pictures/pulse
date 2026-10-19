@@ -40,10 +40,15 @@ export function netzwacheStarten(): void {
   laeuft = true;
 
   const wecken = () => gatewayPool.alleWachPruefen();
+  // Sichtbar/aktiv heisst „vorn“: das hebt zusätzlich eine
+  // Hintergrund-Trennung auf. `online` allein nicht — es feuert auch im
+  // Hintergrund und verbände dort still neu (der Server schickte dann
+  // keinen Push mehr).
+  const vorn = () => gatewayPool.alleVordergrund();
 
   window.addEventListener('online', wecken);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') wecken();
+    if (document.visibilityState === 'visible') vorn();
   });
 
   if (isCapacitorIOS() || isCapacitorAndroid()) {
@@ -51,7 +56,7 @@ export function netzwacheStarten(): void {
     // Millisekunden nach dem Start deckt der normale Verbindungsaufbau ab.
     void CapApp.addListener('appStateChange', ({ isActive }) => {
       if (isActive) {
-        wecken();
+        vorn();
         for (const haken of vordergrundHaken) haken();
         return;
       }
@@ -60,7 +65,7 @@ export function netzwacheStarten(): void {
       // damit der Server die Zustellung auf Push umstellt (Entscheidung in
       // `wachentscheid.hintergrundTrennung`, Mechanik in
       // `GatewayConnection.hintergrundTrennung`). Das Zurückholen läuft über
-      // den isActive-Anlass hier oben — kein eigener Haken nötig.
+      // den isActive- bzw. Sichtbar-Anlass (`vorn`) — kein eigener Haken nötig.
       if (hintergrundTrennung(isCapacitorAndroid(), [...trennSperren])) {
         gatewayPool.hintergrundTrennung();
       }

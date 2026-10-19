@@ -3595,5 +3595,10 @@
   "einladung_link_ungueltig": "This invitation is invalid.",
   "voice_participant_fenster_badge": "Window",
   "voice_participant_fenster_badge_title": "Playing in its own window – click to bring it to the front",
-  "voice_participant_fenster_badge_aria": "Bring the window with {name}'s stream to the front"
+  "voice_participant_fenster_badge_aria": "Bring the window with {name}'s stream to the front",
+  "gruppen_rolle_aktionen": "Manage role",
+  "gruppen_zum_admin": "Make admin",
+  "gruppen_admin_entziehen": "Remove admin",
+  "gruppen_besitz_uebertragen": "Transfer ownership",
+  "gruppen_besitz_uebertragen_bestaetigen": "Really transfer? You will become an admin."
 }

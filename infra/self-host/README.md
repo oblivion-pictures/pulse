@@ -324,6 +324,7 @@ infra/self-host/
 | `/data/garage/` | Garage S3 object store — message attachments | **YES — verlieren = alle Anhänge weg** |
 | `/data/uploads/avatars` | user avatars | yes |
 | `/data/uploads/guild-icons` | guild icons | yes |
+| `/data/uploads/gruppen-icons` | private group pictures (Cloud-only feature; the directory exists for parity) | yes |
 | `/data/backups/` | pg_dump snapshots (Phase 6 plan DE 10b) | yes |
 | `/data/certs/` | user-provided TLS cert when `PULSE_TLS_MODE=provided` | yes |
 

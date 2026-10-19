@@ -20,6 +20,7 @@ mkdir -p \
     "${DATA}/uploads" \
     "${DATA}/uploads/avatars" \
     "${DATA}/uploads/guild-icons" \
+    "${DATA}/uploads/gruppen-icons" \
     "${DATA}/pulse"
 
 chown -R pulse:pulse "${DATA}"

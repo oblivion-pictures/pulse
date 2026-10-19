@@ -184,7 +184,7 @@ export class NativeBackendManager {
     }
     if (belegt.length) throw portBelegtFehler(belegt);
 
-    for (const d of [dirs.root, dirs.redis, dirs.weedMaster, dirs.weedVolume, dirs.weedFiler, dirs.uploadsAvatars, dirs.uploadsGuildIcons, dirs.secrets, dirs.backups, dirs.run]) {
+    for (const d of [dirs.root, dirs.redis, dirs.weedMaster, dirs.weedVolume, dirs.weedFiler, dirs.uploadsAvatars, dirs.uploadsGuildIcons, dirs.uploadsGruppenIcons, dirs.secrets, dirs.backups, dirs.run]) {
       mkdirSync(d, { recursive: true });
     }
 

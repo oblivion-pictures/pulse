@@ -276,6 +276,7 @@ async def dm_push_senden(
     plakette_marke: str | None = None,
     text: str | None = None,
     lokal: Lokal | None = None,
+    art: str = "dm",
 ) -> Versand:
     """Inhaltsfreien FCM-Push an die DM-Empfänger ausliefern — SOFORT.
 
@@ -292,7 +293,8 @@ async def dm_push_senden(
     lose Aufrufe) gilt jeder Empfänger als offline.
 
     **Wer sich Pushes verbeten hat, bekommt keinen** (:func:`stumme_konten`):
-    „Nicht stören“ und der DM-Schalter. Die Plakette zählt für ihn trotzdem
+    „Nicht stören“, der DM-Schalter und — nur bei ``art == "gruppe"`` — die
+    stummgeschaltete Gruppe. Die Plakette zählt für ihn trotzdem
     hoch (Begründung dort). ``lokal`` (:mod:`dcc_chat_gateway.fcm_texte`)
     ersetzt den fertigen Text durch Schlüssel — nur für iOS-Geräte mit der
     Zusage ``dm_vordergrund``, Android bleibt beim deutschen Text.
@@ -335,7 +337,9 @@ async def dm_push_senden(
             # die stummen Konten zählen (``fcm_stumm``), ihre Zahl geht nur
             # nirgends hin.
             konten = {r.user_id for r in rows}
-            stumm = await stumme_konten(session, redis, konten)
+            stumm = await stumme_konten(
+                session, redis, konten, gruppe_id=channel_id if art == "gruppe" else None
+            )
             badges = await badgezaehler.fuer_konten(
                 redis,
                 konten,

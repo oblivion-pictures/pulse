@@ -69,10 +69,18 @@ export interface Wachlage {
   pruefungLaeuft: boolean;
   /** Abstand zur letzten Weckprüfung. */
   seitLetzterPruefungMs: number;
+  /** Ist die Verbindung bewusst für den Hintergrund gelöst
+   *  (`GatewayConnection.hintergrundTrennung`)? Dann weckt erst die Rückkehr
+   *  in den Vordergrund — ein `online` im Hintergrund nicht. */
+  imHintergrund: boolean;
 }
 
 export function wachEntscheid(lage: Wachlage): Wachbefund {
   if (!lage.gewuenscht) return 'nichts';
+  // Im Hintergrund gelöst: der Socket fehlt mit Absicht. Ein Weckanlass hier
+  // verbände still neu, der Server hielte das Gerät wieder für wach und
+  // schickte keinen Push mehr (s. `hintergrundTrennung` unten).
+  if (lage.imHintergrund) return 'nichts';
   if (ABWEISENDE_ZUSTAENDE.includes(lage.zustand)) return 'nichts';
   if (lage.seitLetzterPruefungMs < MINDESTABSTAND_MS) return 'nichts';
   // Kein Socket, oder einer im Abbau: der Abbau endet in `close` und damit im
@@ -119,4 +127,17 @@ export function hintergrundTrennung(
 ): boolean {
   if (!huelle) return false;
   return !sperren.some((sperre) => sperre());
+}
+
+/**
+ * Welchen Zustand hat eine Verbindung nach der Hintergrund-Trennung?
+ *
+ * Nur ein laufender oder stehender Socket ('open', 'connecting') wird zu
+ * 'closed'. Alles andere bleibt stehen: 'idle' ist eine absichtlich getrennte
+ * Verbindung, und die `ABWEISENDE_ZUSTAENDE` halten den Weckpfad von der
+ * Staffel fern — würden sie zu 'closed', verbände die Rückkehr in den
+ * Vordergrund sofort, und die Leiter bis 300 s wäre übersprungen.
+ */
+export function zustandImHintergrund<Z extends string>(zustand: Z): Z | 'closed' {
+  return zustand === 'open' || zustand === 'connecting' ? 'closed' : zustand;
 }

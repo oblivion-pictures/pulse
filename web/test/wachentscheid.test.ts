@@ -11,6 +11,7 @@ import {
   VERBINDET,
   hintergrundTrennung,
   wachEntscheid,
+  zustandImHintergrund,
   type Wachlage
 } from '../src/lib/ws/wachentscheid.ts';
 
@@ -20,6 +21,7 @@ const lage = (teil: Partial<Wachlage> = {}): Wachlage => ({
   bereit: GESCHLOSSEN,
   pruefungLaeuft: false,
   seitLetzterPruefungMs: 60_000,
+  imHintergrund: false,
   ...teil
 });
 
@@ -103,4 +105,38 @@ test('hintergrundTrennung: nur Android-Hülle, und nicht mit Sperre', () => {
   assert.equal(hintergrundTrennung(true, [() => false, () => true]), false);
   // Eine Sperre, die nur meldet, dass sie nicht greift, steht nicht im Weg.
   assert.equal(hintergrundTrennung(true, [() => false]), true);
+});
+
+// Nachbesserung PR #627: Die Trennung muss halten. Vorher verband ein
+// `online` im Hintergrund sofort neu (Zustand 'closed', kein Socket ⇒
+// 'sofort-verbinden'), und der Server stellte wieder keinen Push zu.
+test('im Hintergrund gelöst: kein Weckanlass verbindet, egal wie der Socket steht', () => {
+  for (const bereit of [null, GESCHLOSSEN, SCHLIESST, OFFEN, VERBINDET]) {
+    assert.equal(wachEntscheid(lage({ imHintergrund: true, bereit })), 'nichts');
+  }
+  // Wieder vorn: derselbe Zustand verbindet sofort.
+  assert.equal(wachEntscheid(lage({ imHintergrund: false, bereit: null })), 'sofort-verbinden');
+});
+
+test('Hintergrund-Zustand: nur ein laufender/stehender Socket wird zu closed', () => {
+  assert.equal(zustandImHintergrund('open'), 'closed');
+  assert.equal(zustandImHintergrund('connecting'), 'closed');
+  // Absichtlich getrennt (Self-Host) bleibt getrennt.
+  assert.equal(zustandImHintergrund('idle'), 'idle');
+  assert.equal(zustandImHintergrund('closed'), 'closed');
+  // Server-Abweisungen behalten Zustand und damit ihre Anzeige.
+  for (const z of ABWEISENDE_ZUSTAENDE) assert.equal(zustandImHintergrund(z), z);
+});
+
+test('nach dem Fortsetzen respektiert der Weckpfad die Staffel einer Abweisung', () => {
+  // Abgewiesen, in den Hintergrund, zurück: der Zustand ist erhalten, also
+  // kein Sofortversuch — die Leiter läuft weiter (Bughunt 43).
+  for (const z of ABWEISENDE_ZUSTAENDE) {
+    const zustand = zustandImHintergrund(z);
+    assert.equal(wachEntscheid(lage({ zustand, bereit: null, imHintergrund: false })), 'nichts');
+  }
+  // Ein gewöhnlich offener Socket dagegen wird nach dem Fortsetzen sofort
+  // neu verbunden.
+  const zustand = zustandImHintergrund('open');
+  assert.equal(wachEntscheid(lage({ zustand, bereit: null })), 'sofort-verbinden');
 });

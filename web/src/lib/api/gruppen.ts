@@ -26,12 +26,14 @@ import { request, requestForm } from './client';
 import { serversStore } from './servers.svelte';
 import { PRIVATE_GRUPPEN_ENABLED } from '../krypto/schalter';
 
-interface GruppenMitglied {
+export interface GruppenMitglied {
   user_id: string;
   /** „owner" / „admin" / „mitglied" — Rollen-Vertrag 2026-10-19. */
   rolle: string;
-  /** Persönliche Stummschaltung dieses Mitglieds. */
-  stumm: boolean;
+  /** Persönliche Stummschaltung — nur in der EIGENEN Zeile; die der anderen
+   *  liefert der Server nicht aus. Gelesen wird sie allein über
+   *  `privateGruppen.eigenesStumm`. */
+  stumm?: boolean | null;
   beigetreten_am: string;
   /** Häkchen-Treppe (Migration 0101): Lesestand dieses Mitglieds und
    *  Zustellstand der EIGENEN Nachrichten bei ihm — nur in `auflisten`/
@@ -46,7 +48,8 @@ export interface PrivateGruppe {
   name: string;
   created_at: string;
   last_message_id: string | null;
-  /** Gruppenbild — Pfad `/api/chat/gruppen-icons/<id>.webp?v=<buster>` oder
+  /** Gruppenbild — Pfad `/api/chat/gruppen-icons/<id>-<token>.webp` (Token
+   *  unratbar, wechselt bei jedem Upload) oder
    *  null = keine (Anfangsbuchstaben-Kachel). */
   icon_url: string | null;
   /** Der eine angeheftete Kanal-Anker (E2E: nur die Zeichenkette) oder null. */
@@ -134,7 +137,7 @@ export const gruppenApi = {
   },
 
   /** Gruppenbild entfernen — zurück zur Anfangsbuchstaben-Kachel. */
-  async iconEntfernen(gruppeId: string): Promise<PrivateGruppe | null> {
+  iconEntfernen(gruppeId: string): Promise<PrivateGruppe | null> {
     if (!PRIVATE_GRUPPEN_ENABLED) return Promise.resolve(null);
     return request<PrivateGruppe | null>(
       `/gruppen/${encodeURIComponent(gruppeId)}/icon`,
@@ -144,7 +147,7 @@ export const gruppenApi = {
   },
 
   /** Gruppe umbenennen — OWNER allein (Rollen-Vertrag 2026-10-19). */
-  async umbenennen(gruppeId: string, name: string): Promise<PrivateGruppe | null> {
+  umbenennen(gruppeId: string, name: string): Promise<PrivateGruppe | null> {
     if (!PRIVATE_GRUPPEN_ENABLED) return Promise.resolve(null);
     return request<PrivateGruppe | null>(
       `/gruppen/${encodeURIComponent(gruppeId)}/name`,
@@ -171,8 +174,35 @@ export const gruppenApi = {
     );
   },
 
+  /** Rolle eines Mitglieds setzen — Owner allein, nur „admin"/„mitglied"
+   *  (der Owner wechselt über `besitzUebertragen`). 204; der neue Stand
+   *  kommt über das Gruppen-Ereignis. */
+  async rolleSetzen(
+    gruppeId: string,
+    userId: string,
+    rolle: 'admin' | 'mitglied'
+  ): Promise<void> {
+    if (!PRIVATE_GRUPPEN_ENABLED) return;
+    await request<void>(
+      `/gruppen/${encodeURIComponent(gruppeId)}/mitglieder/${encodeURIComponent(userId)}/rolle`,
+      { method: 'PUT', body: { rolle } },
+      cloudRoute()
+    );
+  },
+
+  /** Besitz übertragen — Owner allein. Das Ziel wird Owner, der bisherige
+   *  Owner Admin. 204, Stand wie bei `rolleSetzen` über das Ereignis. */
+  async besitzUebertragen(gruppeId: string, userId: string): Promise<void> {
+    if (!PRIVATE_GRUPPEN_ENABLED) return;
+    await request<void>(
+      `/gruppen/${encodeURIComponent(gruppeId)}/besitz`,
+      { method: 'POST', body: { user_id: userId } },
+      cloudRoute()
+    );
+  },
+
   /** Nachricht anpinnen — der kanonische Anker der Nachricht (E2E). */
-  async anheften(gruppeId: string, anker: string): Promise<PrivateGruppe | null> {
+  anheften(gruppeId: string, anker: string): Promise<PrivateGruppe | null> {
     if (!PRIVATE_GRUPPEN_ENABLED) return Promise.resolve(null);
     return request<PrivateGruppe | null>(
       `/gruppen/${encodeURIComponent(gruppeId)}/anheften`,
@@ -182,7 +212,7 @@ export const gruppenApi = {
   },
 
   /** Pin lösen. */
-  async anheftenLoesen(gruppeId: string): Promise<PrivateGruppe | null> {
+  anheftenLoesen(gruppeId: string): Promise<PrivateGruppe | null> {
     if (!PRIVATE_GRUPPEN_ENABLED) return Promise.resolve(null);
     return request<PrivateGruppe | null>(
       `/gruppen/${encodeURIComponent(gruppeId)}/anheften`,

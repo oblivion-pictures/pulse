@@ -208,6 +208,7 @@ export PULSE_DATA_PATH='${PULSE_DATA_PATH:-/data}'
 # die Dirs legt 01-init-data-dirs (pulse-owned) an.
 export AVATAR_UPLOAD_DIR='${DATA}/uploads/avatars'
 export GUILD_ICON_UPLOAD_DIR='${DATA}/uploads/guild-icons'
+export GRUPPEN_ICON_UPLOAD_DIR='${DATA}/uploads/gruppen-icons'
 
 # Garage — eingebetteter S3-kompatibler Objekt-Store für Message-Attachments
 # (ersetzt MinIO). Die Schlüsseldateien heissen weiter minio.user/minio.password:

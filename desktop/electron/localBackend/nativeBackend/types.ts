@@ -20,6 +20,7 @@ export interface NativeDataDirs {
   weedFiler: string;
   uploadsAvatars: string;
   uploadsGuildIcons: string;
+  uploadsGruppenIcons: string;
   secrets: string;
   certs: string;
   backups: string;

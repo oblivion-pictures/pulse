@@ -67,6 +67,8 @@ from dcc_chat_gateway.routes import (
     presence,
     privacy,
     private_gruppen,
+    private_gruppen_lesestand,
+    private_gruppen_verwaltung,
     public_community,
     public_community_preview,
     reactions,
@@ -157,6 +159,8 @@ router.include_router(kopplung.router)
 router.include_router(kopplung_umzug.router)
 router.include_router(postfach.router)
 router.include_router(private_gruppen.router)
+router.include_router(private_gruppen_lesestand.router)
+router.include_router(private_gruppen_verwaltung.router)
 router.include_router(postfach_abholen.router)
 router.include_router(postfach_anhaenge.router)
 # Vor ``postfach_anhaenge``? Nein — die Reihenfolge ist hier egal, weil

@@ -23,8 +23,8 @@ Konto-Purge committet erst ganz am Ende, s. dessen Modul-Docstring)."""
 
 from __future__ import annotations
 
+from sqlalchemy import case, exists, select
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import exists, select
 from sqlalchemy import update as sa_update
 
 from dcc_chat_gateway.haekchen import kanaele_loeschen
@@ -51,12 +51,21 @@ async def gruppe_loeschen_wenn_leer(session, gruppe_id: int) -> bool:
     # (``haekchen.py``) — die Kaskade, die ``gruppen_lesestand`` mitnimmt,
     # erreicht sie nicht.
     await kanaele_loeschen(session, [gruppe_id])
+    # Das Gruppenbild liegt ausserhalb der DB. Spaeter-Import: das Routen-
+    # Modul importiert ``routes.private_gruppen``, und das wiederum dieses
+    # Modul. Die Datei geht VOR dem Commit des Aufrufers — rollt der zurueck,
+    # bleibt eine Gruppe ohne Bilddatei (das Bild fehlt), nie umgekehrt eine
+    # Datei ohne Gruppe.
+    from dcc_chat_gateway.routes.gruppen_icons import icon_dateien_loeschen  # noqa: PLC0415
+
+    icon_dateien_loeschen(gruppe_id)
     return True
 
 
 async def ersteller_erbe_uebertragen(session, gruppe_id: int, user_id: int) -> None:
-    """Setzt Festlegung 1 um — das dienstaelteste verbleibende Mitglied erbt
-    ``ersteller_id`` — als reines Compare-and-Swap: die ``WHERE
+    """Setzt Festlegung 1 um — der dienstaelteste verbleibende Admin erbt
+    ``ersteller_id``, ohne Admin das dienstaelteste Mitglied (Rollen-Vertrag
+    2026-10-19) — als reines Compare-and-Swap: die ``WHERE
     ersteller_id = :user_id``-Bedingung UND der Erbe-Auswahl-Subquery werden
     beim Ausfuehren FRISCH gegen die DB geprueft, nie gegen einen im
     Python-Speicher gehaltenen Wert. Ein No-Op, wenn ``user_id`` gerade gar
@@ -68,11 +77,19 @@ async def ersteller_erbe_uebertragen(session, gruppe_id: int, user_id: int) -> N
     kurzzeitig „falsche" Erbin von selbst: durchlaeuft SIE spaeter ihren
     eigenen Austritt, greift dieselbe Wache erneut — entweder findet
     ``gruppe_loeschen_wenn_leer`` dann eine wirklich leere Gruppe, oder
-    dieser Aufruf hier reicht die Rolle ein zweites Mal weiter."""
+    dieser Aufruf hier reicht die Rolle ein zweites Mal weiter.
+
+    Danach traegt die Zeile des JETZIGEN Besitzers ``rolle='owner'`` — die
+    Spalte spiegelt ``ersteller_id`` nur (Migration 0107), massgeblich bleibt
+    ``ersteller_id`` (``routes/private_gruppen.py::_rolle``)."""
     erbe = (
         select(PrivateGroupMember.user_id)
         .where(PrivateGroupMember.gruppe_id == gruppe_id)
-        .order_by(PrivateGroupMember.beigetreten_am, PrivateGroupMember.id)
+        .order_by(
+            case((PrivateGroupMember.rolle == "admin", 0), else_=1),
+            PrivateGroupMember.beigetreten_am,
+            PrivateGroupMember.id,
+        )
         .limit(1)
         .scalar_subquery()
     )
@@ -88,4 +105,24 @@ async def ersteller_erbe_uebertragen(session, gruppe_id: int, user_id: int) -> N
             ),
         )
         .values(ersteller_id=erbe)
+    )
+    await owner_zeile_nachziehen(session, gruppe_id)
+
+
+async def owner_zeile_nachziehen(session, gruppe_id: int) -> None:
+    """Setzt ``rolle='owner'`` an der Mitgliedszeile, auf die ``ersteller_id``
+    gerade zeigt — in derselben Anweisung gelesen, also nie gegen einen
+    veralteten Python-Wert. Ein No-Op, wenn diese Zeile fehlt."""
+    besitzer = (
+        select(PrivateGroupChannel.ersteller_id)
+        .where(PrivateGroupChannel.id == gruppe_id)
+        .scalar_subquery()
+    )
+    await session.execute(
+        sa_update(PrivateGroupMember)
+        .where(
+            PrivateGroupMember.gruppe_id == gruppe_id,
+            PrivateGroupMember.user_id == besitzer,
+        )
+        .values(rolle="owner")
     )

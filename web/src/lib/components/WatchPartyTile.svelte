@@ -96,8 +96,10 @@
   }
   // Wiedergabe (Nutzerwunsch 2026-10-19: Pause/Play am Handy). Der Host
   // schaltet am eigenen Player — der Sync-Layer verteilt die Entscheidung an
-  // die Zuschauer. Ein Twitch-Zuschauer (nicht sync-fähig, live) steuert
-  // SEINEN Player lokal. `spielt` folgt den Player-Ereignissen (handleEvent).
+  // die Zuschauer. Ein Twitch-Live-Zuschauer (`isPassive`, nicht sync-fähig)
+  // steuert SEINEN Player lokal; bei jeder sync-gesteuerten Quelle (YouTube,
+  // Twitch-VOD, Native) bekommt der Zuschauer den Knopf nicht — er kämpfte
+  // gegen den Host. `spielt` folgt den Player-Ereignissen (handleEvent).
   let spielt = $state(true);
   function togglePlay(): void {
     if (spielt) playerHandle?.pause();
@@ -233,8 +235,16 @@
       typeof e === 'number' ? e : Number((e.currentTarget as HTMLInputElement).value)
     );
   }
+  // Stumm wie beim Zuschauer: 0 wird gemerkt (stumm bleibt stumm), der Pegel
+  // davor steht in `volBeforeMute` — NICHT aus `getWatchVolume()` gelesen,
+  // denn das liefert nach dem Stummschalten selbst die gemerkte 0.
   function onHostMute(): void {
-    setHostVolume(hostVolume > 0 ? 0 : getWatchVolume() || DEFAULT_WATCH_VOLUME);
+    if (hostVolume > 0) {
+      volBeforeMute = hostVolume;
+      setHostVolume(0);
+    } else {
+      setHostVolume(volBeforeMute || DEFAULT_WATCH_VOLUME);
+    }
   }
   // Untertitel des Zuschauer-Players: derselbe Weg wie die Lautstärke oben —
   // `controls:0` nimmt ihm den CC-Knopf, die Kachel gibt ihn zurück. Rein
@@ -434,7 +444,7 @@
   onToggleQueue={toggleQueue}
   settingsOpen={settingsOpen}
   onToggleSettings={toggleSettings}
-  onTogglePlay={isHost || !viewerReadonly ? togglePlay : undefined}
+  onTogglePlay={isHost || isPassive ? togglePlay : undefined}
   {spielt}
   onDetach={canDetach ? handleDetach : undefined}
   onHide={canHide ? hideTile : undefined}

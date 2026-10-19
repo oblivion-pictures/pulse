@@ -1564,12 +1564,13 @@ class PrivateGroupMemberOut(BaseModel):
     beigetreten_am: datetime
     #: „owner" / „admin" / „mitglied" — Rollen-Vertrag 2026-10-19: Owner
     #: alle Rechte, Admin nur Einladen + Rauswerfen (Rechnung:
-    #: ``routes.private_gruppen._rolle``; die Owner-Zeile wird in Migration
-    #: 0107 rückgefüllt und bei einem Besitzerwechsel mitgezogen).
+    #: ``routes.private_gruppen._rolle``; „owner" ist, wer in
+    #: ``ersteller_id`` steht).
     rolle: str = "mitglied"
-    #: Persönliche Stummschaltung dieses Mitglieds (nur für die eigene
-    #: Ansicht/Klienten relevant, Push respektiert sie serverseitig).
-    stumm: bool = False
+    #: Persönliche Stummschaltung — NUR in der eigenen Zeile des Abfragenden
+    #: gefüllt, fremde Zeilen tragen null (``_wire``): wer welche Gruppe
+    #: stummschaltet, sehen die anderen Mitglieder nicht.
+    stumm: bool | None = None
     #: Lesestand dieses Mitglieds und Zustellstand der EIGENEN Nachrichten bei
     #: ihm (Häkchen-Treppe, ``haekchen.py``) — nur in den Lese-Antworten
     #: gefüllt, sonst null; der Klient merged vorwärts.
@@ -1622,6 +1623,20 @@ class PrivateGroupStummIn(BaseModel):
     schaltet nur für SICH — der Push-Versand respektiert den Merker)."""
 
     stumm: bool
+
+
+class PrivateGroupRolleIn(BaseModel):
+    """Rolle eines Mitglieds setzen (Owner). „owner" ist keine wählbare
+    Rolle — Besitz wechselt nur über ``PrivateGroupBesitzIn``."""
+
+    rolle: Literal["admin", "mitglied"]
+
+
+class PrivateGroupBesitzIn(BaseModel):
+    """Besitz an ein Mitglied übergeben (Owner); der bisherige Owner wird
+    Admin."""
+
+    user_id: SnowflakeId
 
 
 class PrivateGroupAnheftenIn(BaseModel):

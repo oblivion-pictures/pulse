@@ -7,15 +7,15 @@ Nutzerwunsch 2026-10-19 (Rollen-Struktur + „alle gängigen Funktionen"):
   hält die Rolle der ÜBRIGEN Zeilen (``admin`` = einladen + rauswerfen).
   Rückfüllung: die Zeile des aktuellen Erstellers wird ``owner``.
 - ``private_group_members.stumm``: persönliche Stummschaltung je (Mitglied,
-  Gruppe) — das Handy-Bein des Push-Versands respektiert sie
-  (``fcm_warteschlange``), die UI schaltet sie im Gruppen-Blatt um.
+  Gruppe) — Handy- und Web-Push respektieren sie (``fcm_stumm``), die UI
+  schaltet sie im Gruppen-Blatt um.
 - ``private_group_channels.angeheftet_id``: EIN angehefteter Kanal-Anker
   (die kanonische ID, die der Anpinnende wählt — sie fährt verschlüsselt in
   der Nachricht; der Server sieht nur die Zeichenkette). Alle Mitglieder
   dürfen anpinnen/lösen.
 
 Revision ID: 0107_gruppen_rollen
-Revises: 0105_geraetetoken_kette
+Revises: 0106_gruppen_icon
 Create Date: 2026-10-19 16:00:00.000000+00:00
 """
 from __future__ import annotations
@@ -37,8 +37,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.add_column(
         "private_group_members",
-        sa.Column("rolle", sa.String(length=16), nullable=False,
-                  server_default="mitglied"),
+        sa.Column("rolle", sa.String(length=16), nullable=False, server_default="mitglied"),
         schema=SCHEMA,
     )
     op.add_column(
@@ -46,7 +45,7 @@ def upgrade() -> None:
         sa.Column("stumm", sa.Boolean(), nullable=False, server_default=sa.false()),
         schema=SCHEMA,
     )
-    # Rückfüllung: die Zeile des JETZTigen Erstellers trägt die Owner-Rolle
+    # Rückfüllung: die Zeile des JETZIGEN Erstellers trägt die Owner-Rolle
     # (ersteller_id ist die übertragbare Besitzerrolle, s. Modell-Docstring).
     op.execute(
         f"UPDATE {SCHEMA}.private_group_members m"

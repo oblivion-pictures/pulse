@@ -6,11 +6,12 @@ Eine dritte Kanalart neben Community-Kanal (``Channel``) und DM
 dritte reiht sich ein — deshalb die Snowflake-ID aus demselben Generator
 (``snowflake_pk()``), nicht aus einem eigenen Zaehler.
 
-**Ohne Krypto und ohne Rechte-System.** Wer anlegt (``ersteller_id``), darf
-Mitglieder hinzufuegen und entfernen; jedes Mitglied darf selbst gehen. Keine
-Rollen, keine Overwrites — das ist der Unterschied zu einer Community und
-Absicht (Spec §9). Die drei Festlegungen, die die Spec ausdruecklich verlangt
-(Ersteller geht / letztes Mitglied geht / Blockierung sperrt das Hinzufuegen),
+**Ohne Krypto und ohne Rechte-System.** Der Besitzer (``ersteller_id``) und
+Admins duerfen Mitglieder hinzufuegen und entfernen; jedes Mitglied darf
+selbst gehen. Drei feste Rollen (``PrivateGroupMember.rolle``), keine
+Overwrites — das ist der Unterschied zu einer Community und Absicht (Spec
+§9). Die drei Festlegungen, die die Spec ausdruecklich verlangt (Ersteller
+geht / letztes Mitglied geht / Blockierung sperrt das Hinzufuegen),
 stehen mit Begruendung in ``routes/private_gruppen.py`` — hier nur die Form
 der Daten.
 
@@ -24,7 +25,16 @@ from __future__ import annotations
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from dcc_chat_gateway.db import Base, snowflake_pk
@@ -84,14 +94,15 @@ class PrivateGroupMember(Base):
     beigetreten_am: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    # Rolle in der Gruppe (Nutzerwunsch 2026-10-19): „owner" = alle Rechte
-    # (die Zeile des Erstellers — Rückfüllung Migration 0107, Owner-Wechsel
-    # zieht sie mit, weil ersteller_id die übertragbare Rolle TRÄGT),
-    # „admin" = einladen + rauswerfen, „mitglied" = chatten. Die Rechnung
-    # „wer darf was" steht gebündelt in routes/private_gruppen (_rolle).
+    # Rolle in der Gruppe (Nutzerwunsch 2026-10-19): „owner" = alle Rechte,
+    # „admin" = einladen + rauswerfen, „mitglied" = chatten. „owner" SPIEGELT
+    # nur ``ersteller_id`` (Rückfüllung Migration 0107, danach
+    # ``private_gruppen_atomar.owner_zeile_nachziehen`` bei Anlegen, Erbe und
+    # Besitz-Übergabe); massgeblich ist ``ersteller_id``. Die Rechnung „wer
+    # darf was" steht gebündelt in routes/private_gruppen (_rolle).
     rolle: Mapped[str] = mapped_column(String(16), nullable=False, server_default="mitglied")
-    # Persönliche Stummschaltung dieser Gruppe am eigenen Gerät (Handy-Push
-    # respektiert sie, s. fcm_warteschlange). Pro Mitglied, nicht synchron.
+    # Persönliche Stummschaltung dieser Gruppe (Handy- und Web-Push
+    # respektieren sie, s. fcm_stumm). Pro Mitglied, nicht synchron.
     stumm: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=sa.false())
 
     __table_args__ = (
@@ -107,7 +118,15 @@ class PrivateGroupMember(Base):
 class GruppenLesestand(Base):
     __tablename__ = "gruppen_lesestand"
 
-    gruppe_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    # Fremdschlüssel wie in Migration 0099 (``fk_gruppen_lesestand_gruppe``,
+    # CASCADE) — eine aufgelöste Gruppe nimmt die Lesestände mit.
+    gruppe_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "private_group_channels.id", ondelete="CASCADE", name="fk_gruppen_lesestand_gruppe"
+        ),
+        primary_key=True,
+    )
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     last_read_message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     gelesen_am: Mapped[datetime] = mapped_column(

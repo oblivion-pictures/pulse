@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dcc_chat_gateway import fcm_warteschlange
 from dcc_chat_gateway.config import get_settings
+from dcc_chat_gateway.fcm_stumm import ohne_stumme_gruppenmitglieder
 from dcc_chat_gateway.models import WebPushSubscription
 from dcc_chat_gateway.vapid import (
     VapidKeys,
@@ -434,7 +435,16 @@ async def fan_out_dm_push_encrypted(
         "author_name": author_name or "",
         "icon": None,
     }
-    await _fan_out_payload(recipient_ids, payload)
+    web_empfaenger = recipient_ids
+    if art == "gruppe":
+        # Wer die Gruppe stummgeschaltet hat, bekommt auch keinen Web-Push.
+        # Das Handy-Bein prüft dasselbe erst beim Senden (``fcm_stumm``).
+        from dcc_chat_gateway.routes import ws_ops as _routes_ws_ops
+
+        web_empfaenger = await ohne_stumme_gruppenmitglieder(
+            _routes_ws_ops.SessionLocal, channel_id, set(recipient_ids)
+        )
+    await _fan_out_payload(web_empfaenger, payload)
     # Nur das FCM-Bein trägt den Anhang-Hinweis: dort landet er auf einem
     # Sperrbildschirm, wo er den Unterschied macht. Der Web-Push oben bleibt
     # wie er war — er erscheint im Browser, wo die App meist ohnehin offen

@@ -35,7 +35,7 @@ import { sounds } from '$lib/sounds/engine';
 import { dispatch } from './handler-registry';
 import { bootstrapHandlersOnce } from './gateway-handlers-bootstrap';
 import { gapFillAll, gapFillChannel } from './gapFill';
-import { wachEntscheid } from './wachentscheid';
+import { wachEntscheid, zustandImHintergrund } from './wachentscheid';
 import {
   backgroundEligible,
   geraeteEligible,
@@ -165,6 +165,11 @@ export class GatewayConnection {
   private guildDeletedHooks = new Set<GuildDeletedHook>();
   private closeHooks = new Set<() => void>();
   private wantConnected = false;
+  /** Für den Hintergrund gelöst (`hintergrundTrennung`) und noch nicht
+   *  wieder vorn (`vordergrund`). Solange es steht, wählt nichts neu: kein
+   *  Backoff-Timer, kein Weckanlass, kein `connect()`, und ein schon
+   *  laufender Aufbau bricht an seiner nächsten Wartestelle ab. */
+  private hintergrund = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Läuft gerade eine Weck-Prüfung (Ping mit kurzer Frist)? */
   private wachFrist: ReturnType<typeof setTimeout> | null = null;
@@ -390,6 +395,8 @@ export class GatewayConnection {
 
   async connect(): Promise<void> {
     this.wantConnected = true;
+    // Im Hintergrund nur den Willen festhalten — `vordergrund()` verbindet.
+    if (this.hintergrund) return;
     if (this.ws && this.ws.readyState <= 1) return;
     if (this.connectPromise) return this.connectPromise;
     // Ein Socket im Abbau wird nicht übernommen, sondern abgehängt. Sonst
@@ -534,6 +541,13 @@ export class GatewayConnection {
       this.state = 'idle';
       return;
     }
+    // Ebenso die Hintergrund-Trennung: dann nicht weiter wählen. Kam die App
+    // inzwischen wieder nach vorn, steht das Flag nicht mehr, und der Aufbau
+    // läuft einfach weiter — `vordergrund()` hängt sich an ihn an.
+    if (this.hintergrund) {
+      this.state = 'closed';
+      return;
+    }
     let ws: SocketLike;
     try {
       ws = await this._openSocket(token);
@@ -553,6 +567,13 @@ export class GatewayConnection {
       // füllt die geleerten Stores mit dem alten Konto wieder auf.
       try { ws.close(); } catch { /* noop */ }
       this.state = 'idle';
+      return;
+    }
+    if (this.hintergrund) {
+      // Während der Anbahnung in den Hintergrund gegangen — der Socket
+      // stand da noch nicht in `this.ws`, die Trennung erreichte ihn nicht.
+      try { ws.close(); } catch { /* noop */ }
+      this.state = 'closed';
       return;
     }
     this.ws = ws;
@@ -1053,7 +1074,8 @@ export class GatewayConnection {
       zustand: this.state,
       bereit: this.ws ? this.ws.readyState : null,
       pruefungLaeuft: this.wachFrist !== null,
-      seitLetzterPruefungMs: Date.now() - this.letzteWachPruefung
+      seitLetzterPruefungMs: Date.now() - this.letzteWachPruefung,
+      imHintergrund: this.hintergrund
     });
     if (befund === 'nichts') return;
     this.letzteWachPruefung = Date.now();
@@ -1094,7 +1116,7 @@ export class GatewayConnection {
   }
 
   private _scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
+    if (this.reconnectTimer || this.hintergrund) return;
     const wait =
       RECONNECT_BACKOFF_MS[Math.min(this.attempt, RECONNECT_BACKOFF_MS.length - 1)];
     this.attempt += 1;
@@ -1158,19 +1180,26 @@ export class GatewayConnection {
    * nur an Geräte OHNE offene Verbindung) — ohne diesen Schnitt lebt die
    * WebView-Verbindung im Hintergrund weiter, der Server hält uns für wach,
    * und jede Nachricht bleibt laut und unsichtbar, bis die App zurückkommt.
-   * Beim Zurückholen verbindet die Weck-Prüfung selbstständig neu
-   * (`wachEntscheid`: gewollt, kein Socket ⇒ 'sofort-verbinden'), Gap-Fill
-   * holt Versäumtes nach; Abos und Watch-Joins bleiben bewusst stehen, damit
-   * der Neuauftakt sie neu anmeldet.
+   * Abos und Watch-Joins bleiben bewusst stehen, damit der Neuauftakt in
+   * `vordergrund()` sie neu anmeldet; Gap-Fill holt Versäumtes nach.
    *
-   * Der Weg geht über `_abhaengen` (Hörer ab, bevor `close()` läuft), damit
-   * das späte `close`-Ereignis `onclose` nie erreicht — sonst setzte der
-   * Backoff-Reconnect im Hintergrund wieder auf, und der ganze Zweck wäre
-   * verkehrt. Anders als bei `disconnect()` bleiben Abos, Watch-Joins und
-   * `idle` außen vor: das hier ist kein Verlust und keine Abmeldung, sondern
-   * Absicht.
+   * Damit die Trennung hält, sind ALLE Wege zurück zu: der Backoff-Timer
+   * wird gelöscht, das Flag `hintergrund` sperrt `_scheduleReconnect`,
+   * `connect()` und den Weckpfad (`wachEntscheid`, etwa bei `online`), und
+   * ein laufender `_dial` bricht an seiner nächsten Wartestelle ab. Der
+   * Socket geht über `_abhaengen` (Hörer ab, bevor `close()` läuft), damit
+   * sein spätes `close` `onclose` nie erreicht.
+   *
+   * Eine nicht gewollte Verbindung ('idle', Abmeldung, MFA) bleibt
+   * unberührt, und der Zustand wechselt nur aus 'open'/'connecting' auf
+   * 'closed' (`zustandImHintergrund`) — eine Server-Abweisung behält ihre
+   * Anzeige und ihre Staffel.
    */
   hintergrundTrennung(): void {
+    this.hintergrund = true;
+    if (!this.wantConnected) return;
+    this._stopReconnect();
+    this._stopWachFrist();
     const ws = this.ws;
     if (ws) {
       this._abhaengen(ws);
@@ -1180,7 +1209,24 @@ export class GatewayConnection {
         /* Der Socket konnte schon tot sein — die Absicht ist dennoch erklärt. */
       }
     }
-    this.state = 'closed';
+    this.state = zustandImHintergrund(this.state);
+  }
+
+  /**
+   * Die App ist wieder vorn — Gegenstück zu `hintergrundTrennung()`. Hebt die
+   * Sperre auf und prüft sofort (`wachPruefen`: gewollt, kein Socket ⇒
+   * 'sofort-verbinden'). Für eine Server-Abweisung lehnt die Prüfung den
+   * Sofortversuch ab; die Trennung hat aber deren Backoff-Timer gelöscht,
+   * also setzt die Leiter hier wieder ein — eine Stufe weiter, nicht von
+   * vorn (`attempt` bleibt stehen).
+   */
+  vordergrund(): void {
+    const warHinten = this.hintergrund;
+    this.hintergrund = false;
+    this.wachPruefen();
+    if (warHinten && this.wantConnected && !this.ws && !this.connectPromise) {
+      this._scheduleReconnect();
+    }
   }
 
   subscribe(channelId: string): void {

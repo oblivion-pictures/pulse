@@ -107,6 +107,7 @@ export function renderNativeEnv(
     // Upload-Verzeichnisse (persistente Dirs statt relativer Defaults)
     AVATAR_UPLOAD_DIR: dirs.uploadsAvatars,
     GUILD_ICON_UPLOAD_DIR: dirs.uploadsGuildIcons,
+    GRUPPEN_ICON_UPLOAD_DIR: dirs.uploadsGruppenIcons,
 
     // S3 (weed statt Garage — gleiche Env-Oberfläche)
     S3_INTERNAL_ENDPOINT: `http://127.0.0.1:${p.s3}`,

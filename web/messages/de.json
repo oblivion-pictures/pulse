@@ -3595,5 +3595,10 @@
   "einladung_link_ungueltig": "Diese Einladung ist ungültig.",
   "voice_participant_fenster_badge": "Fenster",
   "voice_participant_fenster_badge_title": "Läuft im eigenen Fenster – klicken holt es nach vorne",
-  "voice_participant_fenster_badge_aria": "Fenster mit dem Stream von {name} nach vorne holen"
+  "voice_participant_fenster_badge_aria": "Fenster mit dem Stream von {name} nach vorne holen",
+  "gruppen_rolle_aktionen": "Rolle verwalten",
+  "gruppen_zum_admin": "Zum Admin machen",
+  "gruppen_admin_entziehen": "Admin entziehen",
+  "gruppen_besitz_uebertragen": "Besitz übertragen",
+  "gruppen_besitz_uebertragen_bestaetigen": "Wirklich übertragen? Du wirst Admin."
 }

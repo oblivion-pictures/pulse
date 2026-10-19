@@ -94,6 +94,15 @@ class PrivateGruppenStore {
     quittungen.gruppeSeeden(gruppe);
   }
 
+  /** Die EIGENE Stummschaltung — die einzige Lesestelle dafür. Der Server
+   *  liefert das Flag nur in der eigenen Mitgliedszeile; fremde Zeilen
+   *  tragen keins und werden hier nie gefragt. Gegenstück zum Schreiben:
+   *  `stummSetzen`. */
+  eigenesStumm(gruppe: PrivateGruppe, ichId: string | null): boolean {
+    if (!ichId) return false;
+    return gruppe.members.find((m) => m.user_id === ichId)?.stumm ?? false;
+  }
+
   /** Persönliche Stummschaltung lokal setzen (Antwort der Stumm-Route ist
    *  leer — der Stand steht in der eigenen Mitgliedszeile). */
   stummSetzen(gruppeId: string, userId: string, stumm: boolean): void {
@@ -102,6 +111,20 @@ class PrivateGruppenStore {
     this.byId[gruppeId] = {
       ...gruppe,
       members: gruppe.members.map((m) => (m.user_id === userId ? { ...m, stumm } : m))
+    };
+  }
+
+  /** Rollen lokal nachziehen (die Rollen-Routen antworten mit 204; das
+   *  Gruppen-Ereignis bringt danach den Server-Stand und überschreibt das
+   *  hier). `aenderungen` bildet `user_id` → neue Rolle ab. */
+  rollenSetzen(gruppeId: string, aenderungen: Record<string, string>): void {
+    const gruppe = this.byId[gruppeId];
+    if (!gruppe) return;
+    this.byId[gruppeId] = {
+      ...gruppe,
+      members: gruppe.members.map((m) =>
+        m.user_id in aenderungen ? { ...m, rolle: aenderungen[m.user_id] } : m
+      )
     };
   }
 
