@@ -400,10 +400,14 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
         // Der Linux-Zwilling verankert Duplikate aus demselben Grund am
         // Zähler (`stream_controller.rs`, „Duplikate dagegen kommen aus dem
         // ZÄHLER") — dort in Bildplätzen, hier in Takten.
+        // Seit 2026-10-20 mit der Uhr als Untergrenze — warum, steht an
+        // `duplikat_pts` (Fernsteuerung: Bild und Ton liefen auseinander).
         let mut pts = if captured > 0 {
             zeitbasis::pts_aus_sekunden(elapsed)
         } else {
-            last_pts + platz.takte_je_bild()
+            let jetzt = zeitbasis::jetzt_seit_ursprung(qpc_sync.then_some(origin_qpc), started);
+            let uhr_pts = zeitbasis::pts_aus_sekunden(jetzt);
+            zeitbasis::duplikat_pts(last_pts, platz.takte_je_bild(), uhr_pts)
         };
         // Fern-Weg: höchstens ein Bild je Bildabstand — wozu, und warum die
         // Grenze ein Bildabstand ist und kein Takt, steht bei
