@@ -13,8 +13,10 @@
  * `GET /gruppen` nach; die Ereignisse `dm_lesestand`, `gruppe_lesestand` und
  * `zustellung_bestaetigt` ziehen live nach. Alles nur vorwärts.
  *
- * Geleert wird über `readState` (`clear`/`resetCacheOnly`/`forgetChannel`) —
- * dieselben Pfade wie bisher, als die Karten dort lagen.
+ * Geleert wird über `readState` (`clear` beim Abmelden, `forgetChannel` je
+ * Kanal) — dieselben Pfade wie bisher, als die Karten dort lagen. **Nicht**
+ * beim Server-Wechsel (`resetCacheOnly`): die Stände gehören zum Konto, und
+ * die Cloud liefert sie dann nicht neu (Befund 2026-10-20).
  */
 import { vorwaertsMerge } from '$lib/stores/lesestandKern';
 import type { PrivateGruppe } from '$lib/api/gruppen';

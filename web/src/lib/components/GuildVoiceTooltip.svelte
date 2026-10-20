@@ -35,6 +35,7 @@
   import { request } from '$lib/api/client';
   import { safeAvatarUrl } from '$lib/avatar';
   import { m } from '$lib/paraglide/messages.js';
+  import { fremdeZeilen, gastName, type VoiceChannelRow } from '$lib/components/guildVoiceTooltipZeilen';
 
   let {
     guildId,
@@ -50,18 +51,6 @@
     /** Untertitel (Server-Name) — gesetzt für nicht-aktive Server-Sektionen. */
     serverLabel?: string | null;
   } = $props();
-
-  type VoiceChannelRow = {
-    id: string;
-    name: string;
-    userIds: string[];
-    /** LIVE = Screen-Share ∪ HQ-Stream (gleiche Union wie `VoiceChannelMembers`). */
-    streamingUserIds: string[];
-    /** User mit Webcam an (server-seitig via LiveKit-Webhook gepflegt). */
-    camUserIds: string[];
-    /** Watch-Party-Hosts in diesem Channel (mehrere Parties möglich). */
-    partyHostUserIds: string[];
-  };
 
   let isRemote = $derived(serverId !== null && serverId !== activeServer.serverId);
 
@@ -82,31 +71,7 @@
           chatApi.guildStreamState(gid, { serverId: sid }),
           chatApi.guildWatchState(gid, { serverId: sid })
         ]);
-        const voiceByCh = new Map(vs.voice_states.map((s) => [s.channel_id, s]));
-        const hqByCh = new Map(ss.stream_states.map((s) => [s.channel_id, s.user_ids]));
-        const partyHostsByCh = new Map<string, string[]>();
-        for (const w of ws.watch_states) {
-          const arr = partyHostsByCh.get(w.channel_id) ?? [];
-          arr.push(w.state.host_user_id);
-          partyHostsByCh.set(w.channel_id, arr);
-        }
-        const rows: VoiceChannelRow[] = [];
-        for (const c of channels) {
-          if (c.type !== 1) continue;
-          const v = voiceByCh.get(c.id);
-          const userIds = v?.user_ids ?? [];
-          if (userIds.length === 0) continue;
-          rows.push({
-            id: c.id,
-            name: c.name,
-            userIds,
-            streamingUserIds: [
-              ...new Set([...(v?.streaming_user_ids ?? []), ...(hqByCh.get(c.id) ?? [])])
-            ],
-            camUserIds: v?.camera_user_ids ?? [],
-            partyHostUserIds: partyHostsByCh.get(c.id) ?? []
-          });
-        }
+        const rows = fremdeZeilen(channels, vs.voice_states, ss.stream_states, ws.watch_states);
         remoteChannels = rows;
         // Namen der fremden Server-User auflösen: deren IDs sind server-lokal,
         // also gegen DENSELBEN Server fragen (Cloud → auth-svc wie üblich).
@@ -147,7 +112,8 @@
           ...new Set([...voicePresence.streamingIn(c.id), ...streamPresence.streamersIn(c.id)])
         ],
         camUserIds: voicePresence.cameraIn(c.id),
-        partyHostUserIds: watchPartyPresence.hostIdsIn(c.id)
+        partyHostUserIds: watchPartyPresence.hostIdsIn(c.id),
+        gastNamen: voicePresence.gastNamenByChannel[c.id] ?? {}
       });
     }
     return out;
@@ -219,9 +185,7 @@
             {#each ch.userIds as id (id)}
               {@const istGast = istGastKennung(id)}
               {@const avatarUrl = istGast ? null : safeAvatarUrl(userCache.get(id)?.avatar_url)}
-              {@const display = istGast
-                ? voicePresence.gastName(ch.id, id)
-                : userCache.displayName(id)}
+              {@const display = istGast ? gastName(ch, id) : userCache.displayName(id)}
               {@const isLive = liveSet.has(id)}
               {@const isCam = camSet.has(id)}
               {@const isParty = partySet.has(id)}

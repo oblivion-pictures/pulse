@@ -146,10 +146,13 @@ class ReadState {
     this.flushPending();
     this.latestByChannel = {};
     this.lastReadByChannel = this.ladeKarte<string>(this.storageKey) ?? {};
-    // Die Stände der Gegenseite sind sessionseitig vom Server geliefert —
-    // der neue ready-Rahmen füllt sie nach (gleiches Bild wie nach einem
-    // Reload). Leeren, sonst überleben sie den Server-Wechsel (Befund 06.10.).
-    quittungen.clear();
+    // Die Häkchen-Stände (`quittungen`) bleiben stehen. Bis 2026-10-20 wurden
+    // sie hier geleert, in der Annahme, der neue ready-Rahmen fülle sie nach.
+    // Das tut er nicht: sie gehören zu Cloud-DMs und privaten Gruppen, also
+    // zum Konto, und die Cloud schickt beim Server-Wechsel keinen ready-Rahmen
+    // (`multi-server-reset.ts`, Social-Stores). Auf einem Self-Host zeigten
+    // die Direktnachrichten danach nur noch ein Häkchen. Geleert wird beim
+    // Abmelden (`clear`).
     this.mentionCountByChannel = this.ladeKarte<number>(this.mentionsKey) ?? {};
     this.unreadCountByChannel = this.ladeKarte<number>(this.unreadKey) ?? {};
     this.unreadBisByChannel = this.ladeKarte<string>(this.unreadBisKey) ?? {};
