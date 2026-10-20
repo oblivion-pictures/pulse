@@ -107,14 +107,15 @@
   {/if}
   <!-- Sprachnachricht (mobil): TIPPEN startet die Aufnahme; die Leiste
        über dem Eingabekasten bietet Fertig und Verwerfen. -->
-  {#if handy}
-    {#if aufnahme.lauf}
-      <AufnahmeLeiste
-        dauer={aufnahme.dauer}
-        onEnde={() => void aufnahme.beenden()}
-        onVerwerfen={() => aufnahme.verwerfen()}
-      />
-    {/if}
+  <!-- Rechner: die Aufnahme-Leiste über dem Kasten (Tipp-Umschalter).
+       Am Handy übernimmt die WhatsApp-Zeile IM Eingabekasten — der
+       Mikrofon-Knopf ist dort eine Halte-Taste. -->
+  {#if !handy && aufnahme.lauf}
+    <AufnahmeLeiste
+      dauer={aufnahme.dauer}
+      onEnde={() => void aufnahme.beenden()}
+      onVerwerfen={() => aufnahme.verwerfen()}
+    />
   {/if}
   <Button
     variant="ghost"
