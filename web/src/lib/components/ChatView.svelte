@@ -577,7 +577,8 @@
 
   <div class="relative flex min-h-0 flex-1">
     <MessageList
-      layout={headerKind === 'dm' ? 'bubble' : 'row'}
+      layout={headerKind === 'dm' || headerKind === 'gruppe' ? 'bubble' : 'row'}
+      mitAutor={headerKind === 'gruppe'}
       {channel}
       {messages}
       {leerHinweis}
