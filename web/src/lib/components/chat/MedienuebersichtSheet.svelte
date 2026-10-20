@@ -32,12 +32,31 @@
   let quellen = $state<Record<string, string>>({});
 
   const alleAnhaenge = $derived(messages.flatMap((n) => n.attachments ?? []));
-  const bilder = $derived(alleAnhaenge.filter((a) => (a.mime ?? '').startsWith('image/')));
-  const dateien = $derived(alleAnhaenge.filter((a) => !(a.mime ?? '').startsWith('image/')));
-  const verschluesselteDateien = $derived(dateien.filter((a) => a.verschluesselt));
+  /** Galerie (Nutzerwunsch 2026-10-19): Bilder UND Videos als Kacheln —
+   *  Videos vorher in der Dateiliste „zum Herunterladen“ war nicht das,
+   *  was man von einer Galerie erwartet. */
+  const medien = $derived(
+    alleAnhaenge.filter((a) => {
+      const mime = a.mime ?? '';
+      return mime.startsWith('image/') || mime.startsWith('video/');
+    })
+  );
+  const dateien = $derived(
+    alleAnhaenge.filter((a) => {
+      const mime = a.mime ?? '';
+      return !mime.startsWith('image/') && !mime.startsWith('video/');
+    })
+  );
+  /** Verschlüsseltes ohne Bild-Kanal (Videos + Dateien): die Bytes kommen
+   *  per Blob in eine Objekt-URL — Videos daraus direkt im Raster
+   *  abspielbar, Dateien als Download. */
+  const verschluesselteOhneBild = $derived([
+    ...dateien.filter((a) => a.verschluesselt),
+    ...medien.filter((a) => a.verschluesselt && (a.mime ?? '').startsWith('video/'))
+  ]);
 
   $effect(() => {
-    const liste = verschluesselteDateien;
+    const liste = verschluesselteOhneBild;
     if (liste.length === 0) return;
     let abgebrochen = false;
     const erzeugt: string[] = [];
@@ -91,28 +110,49 @@
     {#if alleAnhaenge.length === 0}
       <p class="text-text-muted py-6 text-center text-xs">{m.medien_leer()}</p>
     {:else}
-      {#if bilder.length > 0}
-        <p class="text-text-muted mt-2 mb-1 text-xs font-bold uppercase">{m.medien_bilder()}</p>
+      {#if medien.length > 0}
+        <p class="text-text-muted mt-2 mb-1 text-xs font-bold uppercase">{m.medien_medien()}</p>
         <div class="grid grid-cols-3 gap-1.5">
-          {#each bilder as a (a.id)}
-            <button
-              type="button"
-              class="aspect-square w-full cursor-zoom-in overflow-hidden rounded-lg border border-border"
-              onclick={() => bildOeffnen(a)}
-              aria-label={a.filename ?? m.medien_bild_oeffnen()}
-              data-testid={`media-image-${a.id}`}
-            >
-              <AutoRefreshImage
-                attachmentId={a.id}
-                src={a.thumb_url ?? a.url}
-                alt={a.filename ?? ''}
-                thumb={a.verschluesselt
-                  ? a.thumb_schluessel !== null && a.thumb_schluessel !== undefined
-                  : a.thumb_url !== null && a.thumb_url !== undefined}
-                anhang={a.verschluesselt ? a : null}
-                class="block size-full object-cover"
-              />
-            </button>
+          {#each medien as a (a.id)}
+            {@const istVideo = (a.mime ?? '').startsWith('video/')}
+            {#if istVideo}
+              <!-- Video-Kachel: echtes <video> mit Steuerung (kein <button>
+                   drumherum — die nativen Controls wären darin tot). -->
+              <div
+                class="relative aspect-square w-full overflow-hidden rounded-lg border border-border bg-black"
+                data-testid={`media-video-${a.id}`}
+              >
+                <!-- svelte-ignore a11y_media_has_caption — Nutzerwunsch-Galerie:
+                     Zugestellte Videos haben selten Untertitel; die nativen
+                     Controls bieten CC, wo der Stream einen trägt. -->
+                <video
+                  src={dateiQuelle(a) ?? a.thumb_url ?? a.url}
+                  class="block size-full object-contain"
+                  preload="metadata"
+                  playsinline
+                  controls
+                ></video>
+              </div>
+            {:else}
+              <button
+                type="button"
+                class="aspect-square relative w-full cursor-zoom-in overflow-hidden rounded-lg border border-border"
+                onclick={() => bildOeffnen(a)}
+                aria-label={a.filename ?? m.medien_bild_oeffnen()}
+                data-testid={`media-image-${a.id}`}
+              >
+                <AutoRefreshImage
+                  attachmentId={a.id}
+                  src={a.thumb_url ?? a.url}
+                  alt={a.filename ?? ''}
+                  thumb={a.verschluesselt
+                    ? a.thumb_schluessel !== null && a.thumb_schluessel !== undefined
+                    : a.thumb_url !== null && a.thumb_url !== undefined}
+                  anhang={a.verschluesselt ? a : null}
+                  class="block size-full object-cover"
+                />
+              </button>
+            {/if}
           {/each}
         </div>
       {/if}
