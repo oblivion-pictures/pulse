@@ -22,7 +22,7 @@
   import BottomSheet from '$lib/components/mobile/BottomSheet.svelte';
   import GruppenKopf from '$lib/components/mobile/GruppenKopf.svelte';
   import GruppenMitgliedZeile from '$lib/components/mobile/GruppenMitgliedZeile.svelte';
-  import UserPlusIcon from '@lucide/svelte/icons/user-plus';
+  import MailPlusIcon from '@lucide/svelte/icons/mail-plus';
   import { friends } from '$lib/stores/friends.svelte';
   import { userCache } from '$lib/stores/users.svelte';
   import { nameStyle } from '$lib/utils/nameColor';
@@ -189,7 +189,7 @@
             aria-label={m.gruppen_mitglied_hinzufuegen()}
             data-testid={`group-member-add-${f.user_id}`}
           >
-            <UserPlusIcon class="size-4" />
+            <MailPlusIcon class="size-4" />
           </button>
         </li>
       {/each}
