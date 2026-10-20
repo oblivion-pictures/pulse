@@ -59,6 +59,7 @@ export const gateway = {
   subscribe: (cid: string) => _active().subscribe(cid),
   unsubscribe: (cid: string) => _active().unsubscribe(cid),
   gapFill: (cid: string) => _active().gapFill(cid),
+  gapFillNachAbo: (cid: string) => _active().gapFillNachAbo(cid),
   // Outbound
   send: (cid: string, content: string, nonce: string, replyToId?: string | null) =>
     _active().send(cid, content, nonce, replyToId),
@@ -138,7 +139,7 @@ export function gatewayForServer(serverId: string): GatewayConnection | null {
 /**
  * Resolved die **Cloud**-Connection im Pool (nicht den aktiven Server).
  * Global-Friends Stufe 1: DMs leben in der Cloud, daher müssen DM-WS-Ops
- * (subscribe/unsubscribe/send/typing/gapFill) gegen die Cloud-Connection
+ * (subscribe/unsubscribe/send/typing/gapFill/gapFillNachAbo) gegen die Cloud-Connection
  * laufen — sonst ginge ein DM-Send bei aktivem Self-Host an den falschen
  * Server. Wirft, wenn (unerwartet) kein Cloud-Eintrag existiert; `init()`
  * garantiert ihn.
@@ -164,6 +165,7 @@ export const cloudGateway = {
   subscribe: (cid: string) => _cloud().subscribe(cid),
   unsubscribe: (cid: string) => _cloud().unsubscribe(cid),
   gapFill: (cid: string) => _cloud().gapFill(cid),
+  gapFillNachAbo: (cid: string) => _cloud().gapFillNachAbo(cid),
   send: (cid: string, content: string, nonce: string, replyToId?: string | null) =>
     _cloud().send(cid, content, nonce, replyToId),
   sendTyping: (cid: string) => _cloud().sendTyping(cid),

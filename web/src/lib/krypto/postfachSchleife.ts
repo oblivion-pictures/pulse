@@ -49,3 +49,26 @@ export async function verarbeiteMitWiederherstellung<E, R>(
   }
   return ergebnisse;
 }
+
+/**
+ * Quittiert `ids` — und kehrt auch dann normal zurueck, wenn die Quittung
+ * scheitert (Push-Bughunt 2026-10-21, Befund 1). Bis dahin warf ein
+ * gescheitertes `POST /postfach/quittung` den ganzen Abholzyklus ab: die
+ * Nachrichten lagen schon im Verlauf, erreichten aber die Anzeige nie, und der
+ * naechste Zyklus fand sie nur noch als `schonAbgelegt`. Liegen bleibt dabei
+ * nichts Gefaehrliches: was nicht quittiert ist, liefert der Server erneut,
+ * und `zustellungOeffnen` erkennt es als schon abgelegt und quittiert es dann
+ * ohne neues Entschluesseln. Importfrei wie der Rest dieser Datei.
+ */
+export async function quittungVersuchen(
+  ids: string[],
+  quittieren: (ids: string[]) => Promise<void>,
+  melde: (err: unknown) => void
+): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    await quittieren(ids);
+  } catch (err) {
+    melde(err);
+  }
+}

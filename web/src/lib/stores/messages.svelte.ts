@@ -21,6 +21,7 @@ import {
   pinsFortschreiben,
   reaktionAnwenden
 } from '$lib/nachrichten/aenderungenKern';
+import { liveBehalten } from '$lib/nachrichten/liveBehalten';
 import { ZuletztBenutzt, ohne } from '$lib/nachrichten/kanalCache';
 import { Grabsteine } from '$lib/nachrichten/grabsteine';
 
@@ -83,11 +84,16 @@ class MessageStore {
     if (m.nonce && !m.id.startsWith('tmp-')) this.confirmedNonces.add(m.nonce);
   }
 
-  setInitial(channelId: string, msgs: Message[]): void {
+  /** Setzt die Liste des Kanals neu. `liveBehalten` für ein Laden nach einem
+   *  `await`: was seither per `upsert` kam und `msgs` nicht kennt, bleibt
+   *  stehen (`nachrichten/liveBehalten.ts`); ohne die Option ersetzt `msgs`
+   *  alles — so leert `setInitial(cid, [])` den Kanal. */
+  setInitial(channelId: string, msgs: Message[], opts?: { liveBehalten?: boolean }): void {
+    const eingabe = opts?.liveBehalten ? liveBehalten(this.byChannel[channelId] ?? [], msgs) : msgs;
     // Backend returns descending; flip for chat-bottom display. Gelöschtes bleibt draußen.
     const begraben = this.grabsteine.fuer(channelId);
     const sorted = kappen(
-      [...ohneGrabsteine(msgs, begraben)].sort((a, b) => compareSnowflakeId(a.id, b.id)),
+      [...ohneGrabsteine(eingabe, begraben)].sort((a, b) => compareSnowflakeId(a.id, b.id)),
       MessageStore.CAP
     ).liste;
     this.byChannel = { ...this.byChannel, [channelId]: sorted };

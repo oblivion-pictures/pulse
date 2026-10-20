@@ -135,8 +135,13 @@
   // Mirrors the channel-page effect: when the DM id in the URL changes, load
   // messages + subscribe + leave the previous one. The DM record itself is
   // already in the store (seeded by ready / hydrate / dm_bump).
+  // Nur `dmChannelId` ist Abhängigkeit: `switchTo` liest vor dem ersten
+  // `await` `directMessages.byId`, das jede DM-Aktivität ersetzt. Jeder
+  // Neustart erhöhte den Generationszähler und ließ die laufenden Nachzüge
+  // (Sicherung, Archiv) als veraltet verfallen.
   $effect(() => {
-    void kanalWechsel.switchTo(dmChannelId);
+    const cid = dmChannelId;
+    untrack(() => void kanalWechsel.switchTo(cid));
   });
 
   // Keep the open DM at the head of the message-cache LRU so it is never

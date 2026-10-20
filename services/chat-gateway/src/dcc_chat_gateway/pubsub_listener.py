@@ -6,8 +6,8 @@ table lives in :mod:`pubsub_channel_registry`; each branch is a handler in
 :mod:`pubsub_channel_handlers`. This file now only owns:
 
 * the long-running ``while True`` polling loop,
-* the shared :meth:`_fan_out` helper (per-socket send with timeout,
-  drop-on-error), and
+* the shared :meth:`_fan_out` helper (per-socket send with timeout;
+  a socket that fails is dropped AND closed, so the client reconnects), and
 * :staticmethod:`_decode_payload` (centralised JSON+bytes decoding so a
   malformed message logs once and skips instead of killing the loop).
 
@@ -33,6 +33,32 @@ from dcc_chat_gateway import pubsub_channel_handlers  # noqa: F401
 from dcc_chat_gateway.pubsub_channel_registry import get_channel_handler
 
 log = logging.getLogger(__name__)
+
+#: Schliesscode fuer einen Socket, den ``_fan_out`` verworfen hat. Ein
+#: Standardcode („Try Again Later"), kein eigener 4xxx: der Klient muss ihn
+#: nicht unterscheiden — er landet in ``_mapCloseCode``s ``default``-Zweig
+#: (``web/src/lib/ws/gateway-connection.ts``), also Neuaufbau mit der ersten
+#: Backoff-Stufe und danach das uebliche Nachholen (Abo, ``hist_replay``,
+#: Postfach im ``ready``).
+FAN_OUT_SCHLIESSCODE = 1013
+
+#: Obergrenze fuer das Schliessen selbst. Auf einem Socket, dessen Senden eben
+#: haengen blieb, kann auch der Schliess-Rahmen haengen.
+_SCHLIESS_FRIST_S = 10.0
+
+# Laufende Schliess-Aufgaben — gehalten, damit der Garbage Collector sie nicht
+# mitten im Lauf einsammelt (asyncio haelt nur schwache Verweise auf Tasks).
+_schliess_aufgaben: set[asyncio.Task] = set()
+
+
+async def _schliessen(ws: WebSocket) -> None:
+    try:
+        await asyncio.wait_for(
+            ws.close(code=FAN_OUT_SCHLIESSCODE, reason="fan-out failed"),
+            timeout=_SCHLIESS_FRIST_S,
+        )
+    except Exception:  # noqa: BLE001 — schon zu/abgebaut, oder haengt
+        pass
 
 
 class _ListenerMixin:
@@ -69,9 +95,25 @@ class _ListenerMixin:
         results = await asyncio.gather(
             *(_send(ws) for ws in targets), return_exceptions=True
         )
-        for r in results:
-            if isinstance(r, WebSocket):
-                await self.remove_socket(r)
+        verworfen = [ws for ws, r in zip(targets, results, strict=True) if r is ws]
+        for ws in verworfen:
+            await self.remove_socket(ws)
+            # **Auch schliessen, nicht nur austragen** (Push-Bughunt, Befund 4).
+            # Bis dahin lief die Op-Schleife des Sockets weiter und
+            # beantwortete Pings: der Klient hielt die Verbindung fuer gesund
+            # und bekam nie wieder ein Ereignis, waehrend
+            # ``user_socket_count`` 0 sagte und der Server deshalb pushte —
+            # bei offener App. Als eigene Aufgabe, weil dieser Weg im
+            # Listener laeuft, der ALLE Kanaele bedient: ein haengender
+            # Schliess-Rahmen darf ihn nicht aufhalten.
+            aufgabe = asyncio.create_task(_schliessen(ws))
+            _schliess_aufgaben.add(aufgabe)
+            aufgabe.add_done_callback(_schliess_aufgaben.discard)
+        if verworfen:
+            # `warning` aus demselben Grund wie beim Reaper (``pubsub.py``):
+            # die Cloud loggt erst ab `warning`. Nur die Zahl — weder Nutzer
+            # noch Inhalt.
+            log.warning("fan_out_socket_geschlossen anzahl=%d", len(verworfen))
 
     @staticmethod
     def _decode_payload(data: object, where: str) -> Any | None:

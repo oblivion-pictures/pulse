@@ -26,9 +26,10 @@ test('aelterer Zaehler unter neuer Zustellungs-ID ist Wiedereinspiel', () => {
 });
 
 test('dieselbe Zustellungs-ID ist die eigene Wiederholung, kein Angriff', () => {
-  // Absturz-Fenster: geoeffnet, Wasserstand geschrieben, Ablegen/Quittieren
-  // nicht durch — die Zustellung bleibt im Postfach und kommt erneut. Sie
-  // muss erneut geoeffnet werden duerfen (Ablegen folgt dann), sonst haette
-  // der Schutz hier selbst Nachrichten vernichtet.
+  // Wasserstand geschrieben, die Zustellung aber nicht abgelegt (bis
+  // 2026-10-21 das Absturz-Fenster zwischen Oeffnen und Ablegen; seither
+  // schreibt erst die Ablage den Stand fest, die Regel bleibt als
+  // Sicherung) — sie kommt erneut und muss geoeffnet werden duerfen, sonst
+  // haette der Schutz hier selbst Nachrichten vernichtet.
   assert.equal(wasserstandEntscheidung(STAND, 5, 'z-42'), 'eigene_wiederholung');
 });

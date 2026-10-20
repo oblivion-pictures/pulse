@@ -5,7 +5,9 @@
  * caller that *cares* about a specific error subscribes via
  * `gateway.on()` directly (e.g. the watch-party start button surfaces
  * 4013/4014 from its own listener). Registering as a no-op here just
- * silences the "unknown op" warning.
+ * silences the "unknown op" warning. Fehler eines `subscribe` (mit
+ * `ref_op`/`channel_id`) fängt die Verbindung selbst vorher ab und abonniert
+ * neu (`GatewayConnection._aboFehlerPruefen`, `../aboWiederholung.ts`).
  */
 import { registerWsHandler } from '../handler-registry';
 

@@ -126,7 +126,8 @@ import {
   verlaufLokaleIdsFuerFramePflicht,
   verlaufBearbeitungAnwendenPflicht,
   verlaufReaktionAnwendenPflicht,
-  verlaufVerriegelt
+  verlaufVerriegelt,
+  verlaufAbgelegteNachricht
 } from '../verlauf';
 import { zyklusAuswerten } from './zyklusAuswerten';
 import { messages } from '../stores/messages.svelte';
@@ -138,7 +139,10 @@ import { kryptoAccountLaden } from './account.svelte';
 import { geraeteKennung } from './geraeteKennung';
 import { anhaengeHolen } from './anhangHolen';
 import { zustellstaendeAus } from './zustellstand';
-import { verarbeiteMitWiederherstellung } from './postfachSchleife';
+import { quittungVersuchen, verarbeiteMitWiederherstellung } from './postfachSchleife';
+import { unbekannteDmsNachladen } from './unbekannteDms';
+import type { Vormerkungen } from './gruppe/wasserstand';
+import { melde } from '../diagnose/app-diagnose';
 import { KontoSicherungFehlgeschlagen, zustellungOeffnen } from './zustellungOeffnen';
 import { mitKontosperre } from './sperren';
 import { mitNachlaufBeiWeckung } from './postfachNachlauf';
@@ -172,8 +176,8 @@ async function postfachZyklus(): Promise<Message[]> {
   // (`ws/handlers/chat.ts`/`ready.ts` haengen keine `.catch` an den
   // Ruecklauf) — ein Abholzyklus, der bei jedem Weckruf erneut denselben
   // stummen Fehler wirft, ohne dass der Nutzer je etwas davon merkt. Statt
-  // dessen: sichtbar machen (dieselbe Anzeige wie fuer Ablage-/Quittungs-
-  // Fehler unten) und wie ein leerer Zyklus zurueckgeben — der naechste
+  // dessen: sichtbar machen (dieselbe Anzeige wie fuer Ablage-Fehler
+  // unten) und wie ein leerer Zyklus zurueckgeben — der naechste
   // Weckruf versucht es erneut, s. `verlauf/zustand.svelte.ts`.
   let kennung: string;
   try {
@@ -195,7 +199,14 @@ async function postfachZyklus(): Promise<Message[]> {
     return [];
   }
 
+  // Befund 3 (Push-Bughunt 2026-10-21, s. `unbekannteDms.ts`): eine
+  // brandneue DM bekannt machen, bevor ihre erste Nachricht geöffnet wird.
+  await unbekannteDmsNachladen(zustellungen);
+
   let ident = await kryptoAccountLaden();
+  // Die Wasserstand-Vormerkungen des Gruppenwegs gelten nur für DIESEN
+  // Zyklus (`gruppe/wasserstand.ts::wirksamerStand`).
+  const vorgemerkt: Vormerkungen = new Map();
   // FIX 2 (Bughunt-Runde 3, s. Modulkopf + `postfachSchleife.ts`): laesst nur
   // die EINE Zustellung liegen, deren Konto-Sichern scheitert — `ident` wird
   // fuer die naechste Zustellung frisch aus IndexedDB geladen (der zuletzt
@@ -204,7 +215,7 @@ async function postfachZyklus(): Promise<Message[]> {
   // anderen Zustellungen dieses Zyklus laufen normal weiter.
   const ergebnisse = await verarbeiteMitWiederherstellung(
     zustellungen,
-    (z) => zustellungOeffnen(ident, z),
+    (z) => zustellungOeffnen(ident, z, vorgemerkt),
     (err) => err instanceof KontoSicherungFehlgeschlagen,
     async () => {
       ident = await kryptoAccountLaden();
@@ -232,22 +243,33 @@ async function postfachZyklus(): Promise<Message[]> {
     anzeigeReaktionen: (kanalId, id, r) => messages.setReactions(kanalId, id, r),
     anzeigeInhalt: (kanalId, id, inhalt, am) => messages.bearbeiteInhalt(kanalId, id, inhalt, am),
     anrufSchluessel: (anrufId, schluessel) => anrufe.schluesselEmpfangen(anrufId, schluessel),
-    jetzt: () => new Date().toISOString()
+    jetzt: () => new Date().toISOString(),
+    abgelegtLesen: verlaufAbgelegteNachricht
   });
 
-  if (quittierbar.length > 0) {
-    // ERST JETZT quittieren, s. Modulkopf — und mit der Quittung den
-    // Absendern melden, bis wohin ihre Nachrichten angekommen sind (doppelt
-    // grauer Haken, `zustellstand.ts`). Nur was gleich quittiert wird zählt.
-    await postfachApi.quittieren(
-      {
-        device_pubkey: kennung,
-        zustellung_ids: quittierbar,
-        zustellstaende: zustellstaendeAus(geoeffnet, new Set(quittierbar), auth.user?.id ?? null)
-      },
-      cloudRoute()
-    );
-  }
+  // ERST JETZT quittieren, s. Modulkopf — und mit der Quittung den Absendern
+  // melden, bis wohin ihre Nachrichten angekommen sind (doppelt grauer Haken,
+  // `zustellstand.ts`). Nur was gleich quittiert wird zählt. Scheitert die
+  // Quittung, kommt `anzuzeigen` trotzdem an (Befund 1, `quittungVersuchen`).
+  await quittungVersuchen(
+    quittierbar,
+    (ids) =>
+      postfachApi.quittieren(
+        {
+          device_pubkey: kennung,
+          zustellung_ids: ids,
+          zustellstaende: zustellstaendeAus(geoeffnet, new Set(ids), auth.user?.id ?? null)
+        },
+        cloudRoute()
+      ),
+    (err) => {
+      const fehler = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      console.warn('[postfach] Quittung fehlgeschlagen', { fehler });
+      melde('postfach', 'quittung_fehlgeschlagen', `Quittung fehlgeschlagen: ${fehler}`, {
+        anzahl: quittierbar.length
+      });
+    }
+  );
 
   // Bughunt Runde 36: am Zyklusende nachfüllen — der lokale Account ist hier
   // vollständig gesichert, ein frisch geladenes `Identitaet`-Objekt kann den

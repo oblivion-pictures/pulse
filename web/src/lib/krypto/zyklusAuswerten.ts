@@ -27,11 +27,20 @@
  * der Verlauf gar nicht erreichbar war (ein anderer Tab hatte seine Fassung
  * angehoben), und die Löschung oder Bearbeitung war verloren. Liegen bleibt
  * er dann für den nächsten Zyklus: eine Gruppen-Zustellung lässt sich erneut
- * öffnen, solange keine spätere derselben Sitzung den Wasserstand
- * weitergeschoben hat (`gruppe/wasserstand.ts`), ein Olm-Umschlag nicht mehr —
+ * öffnen — ihr Wasserstand wird erst festgeschrieben, wenn Ablage bzw.
+ * Anwendung gelungen sind (`festschreiben`, Push-Bughunt 2026-10-21, s.
+ * `gruppe/wasserstand.ts::wirksamerStand`) —, ein Olm-Umschlag nicht mehr:
  * dessen Sitzung ist schon weitergedreht. Den häufigsten Fall, den Riegel nach
  * einem Fassungswechsel (`verlauf/verbindung.ts`), fangen Zyklus und
  * `zustellungOeffnen.ts` schon vor dem Entschlüsseln ab.
+ *
+ * **Eine schon abgelegte Zustellung (`schonAbgelegt`) wird auch angezeigt**
+ * (Push-Bughunt 2026-10-21, Befund 1): sie liegt im Verlauf, ihre Quittung
+ * scheiterte zuletzt — oder der Zyklus brach zwischen Ablage und Anzeige ab.
+ * Bis dahin wurde sie nur noch quittiert und erschien nie. Jetzt liest der
+ * Zyklus ihren Satz (`abgelegtLesen`) und zeigt ihn, sofern die Anzeige ihn
+ * nicht schon unter derselben ID oder Identität führt — sonst zählte
+ * „ungelesen“ dieselbe Nachricht ein zweites Mal.
  *
  * Importfrei bis auf `.ts`-Pfade und Typen — die Wege kommen als Argument
  * (`ZyklusWege`), damit Nodes Testläufer den echten Ablauf prüft
@@ -73,6 +82,9 @@ export interface ZyklusWege {
   anzeigeInhalt(kanalId: string, lokaleId: string, inhalt: string, am: string): void;
   anrufSchluessel(anrufId: string, schluessel: string): void;
   jetzt(): string;
+  /** Der abgelegte Satz einer `schonAbgelegt`-Zustellung in Anzeige-Form,
+   *  `null` ohne Satz. Darf werfen (Lesefehler). */
+  abgelegtLesen(kanalId: string, id: string): Promise<Message | null>;
 }
 
 export interface ZyklusErgebnis {
@@ -108,11 +120,18 @@ export async function zyklusAuswerten(
   // abgelegte Zustellung (FIX 3, Runde 3), ein Gruppen-Verteilschlüssel
   // (Etappe G2), ein Anruf-Schlüssel und — nach ihrer Anwendung — die Frames.
   const ohneAblage: string[] = [];
+  const schonAbgelegt: { channelId: string; id: string }[] = [];
   // `ablegen` nimmt einen Kanal je Aufruf — gleich nach Kanal gruppieren.
   const nachKanal = new Map<string, KanalGruppe>();
+  // Die Wasserstände der Gruppennachrichten, je Zustellungs-ID (s. Modulkopf).
+  const festschreiben = new Map<string, () => Promise<void>>();
 
   for (const ergebnis of ergebnisse) {
     if (!ergebnis) continue;
+    if ('festschreiben' in ergebnis && ergebnis.festschreiben) {
+      const id = ergebnis.art === 'neu' ? ergebnis.nachricht.id : ergebnis.id;
+      festschreiben.set(id, ergebnis.festschreiben);
+    }
     switch (ergebnis.art) {
       case 'loeschung':
       case 'reaktion':
@@ -125,6 +144,9 @@ export async function zyklusAuswerten(
         ohneAblage.push(ergebnis.id);
         break;
       case 'schonAbgelegt':
+        schonAbgelegt.push(ergebnis);
+        ohneAblage.push(ergebnis.id);
+        break;
       case 'ohneAblage':
         ohneAblage.push(ergebnis.id);
         break;
@@ -142,6 +164,17 @@ export async function zyklusAuswerten(
     }
   }
 
+  // Ein Fehlschlag beim Festschreiben hält die Quittung nicht auf: die
+  // Nachricht liegt sicher, nur der Wiedereinspiel-Schutz bleibt für diesen
+  // Zählerstand beim alten Stand.
+  const festschreibenNach = async (id: string): Promise<void> => {
+    try {
+      await festschreiben.get(id)?.();
+    } catch (err) {
+      wege.meldeFehler(err);
+    }
+  };
+
   // ERST ablegen — quittiert wird je Kanal nur, was sicher liegt.
   const wirkung: Wirkung = { geloescht: new Set(), inhalt: new Map(), reaktionen: new Map() };
   const abgelegt = await quittierbareIds(
@@ -149,6 +182,7 @@ export async function zyklusAuswerten(
     async (kanalId, nachrichten) => {
       const grabsteine = await wege.ablegen(kanalId, nachrichten as Message[]);
       for (const id of grabsteine) wirkung.geloescht.add(id);
+      for (const n of nachrichten as Message[]) await festschreibenNach(n.id);
     },
     wege.meldeFehler
   );
@@ -161,17 +195,51 @@ export async function zyklusAuswerten(
   for (const aktion of aktionen) {
     try {
       await aktionAnwenden(aktion, wege, wirkung);
-      ohneAblage.push(aktion.id);
     } catch (err) {
       wege.meldeFehler(err);
+      continue;
     }
+    await festschreibenNach(aktion.id);
+    ohneAblage.push(aktion.id);
   }
 
+  // Erst NACH den Frames lesen: der Satz trägt dann deren Wirkung schon.
+  const nachgereicht = await abgelegteFuerAnzeige(schonAbgelegt, wege);
   return {
     geoeffnet,
-    anzuzeigen: anzeigeFassungen(geoeffnet, wirkung),
+    anzuzeigen: [...nachgereicht, ...anzeigeFassungen(geoeffnet, wirkung)],
     quittierbar: [...abgelegt, ...ohneAblage]
   };
+}
+
+/** Die Sätze der `schonAbgelegt`-Zustellungen, die die Anzeige noch nicht
+ *  führt (s. Modulkopf). Ein Lesefehler kostet nur die Anzeige, nie die
+ *  Quittung — der Satz liegt ja. */
+async function abgelegteFuerAnzeige(
+  zustellungen: { channelId: string; id: string }[],
+  wege: ZyklusWege
+): Promise<Message[]> {
+  const nachgereicht: Message[] = [];
+  for (const { channelId, id } of zustellungen) {
+    let satz: Message | null;
+    try {
+      satz = await wege.abgelegtLesen(channelId, id);
+    } catch (err) {
+      wege.meldeFehler(err);
+      continue;
+    }
+    if (!satz || satz.deleted_at) continue;
+    const kennung = satz.krypto_id;
+    const angezeigt = wege
+      .geladen(channelId)
+      .some(
+        (m) =>
+          m.id === satz.id ||
+          (kennung !== undefined && m.krypto_id === kennung && m.author_id === satz.author_id)
+      );
+    if (!angezeigt) nachgereicht.push(satz);
+  }
+  return nachgereicht;
 }
 
 async function aktionAnwenden(aktion: Aktion, wege: ZyklusWege, wirkung: Wirkung): Promise<void> {

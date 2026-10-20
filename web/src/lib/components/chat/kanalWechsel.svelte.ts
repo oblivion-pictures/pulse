@@ -119,7 +119,9 @@ export function erstelleKanalWechsel() {
           } else {
             const history = await chatApi.listMessages(target);
             if (isStale()) return;
-            messages.setInitial(target, history);
+            // `liveBehalten`: ein Push, der während des Abrufs kam, bleibt
+            // stehen (`nachrichten/liveBehalten.ts`).
+            messages.setInitial(target, history, { liveBehalten: true });
           }
         } catch (err) {
           if (isStale()) return;
@@ -142,8 +144,10 @@ export function erstelleKanalWechsel() {
         // zwischen Snapshot und serverseitiger Abo-Registrierung erzeugt nur
         // einen channel_bump. gapFillChannel liest lastPersistedId (der
         // frische Snapshot-Stand) und holt genau dieses Fenster nach; ein
-        // WS-Push, der mit dem REST rennt, dedupet über mergeGap.
-        void gateway.gapFill(target);
+        // WS-Push, der mit dem REST rennt, dedupet über mergeGap. Erst hinter
+        // der Abo-Registrierung (`gapFillNachAbo`), sonst bleibt das Fenster
+        // offen, wenn die REST-Antwort schneller ist als das Abo.
+        gateway.gapFillNachAbo(target);
         // Acknowledge unread state: the user is now looking at this channel.
         // markRead uses latestByChannel — which also reflects ids learned via
         // channel_bump while we weren't subscribed. loaded[…].id alone would
@@ -192,7 +196,12 @@ export function erstelleKanalWechsel() {
     void chatApi
       .listMessages(cid)
       .then((history) => {
-        if (untrack(() => prevChannel) === cid) messages.setInitial(cid, history);
+        // `liveBehalten`: das Abo steht nach dem Reconnect schon — ein Push
+        // während des Abrufs, den `history` noch nicht kennt, bliebe sonst
+        // weg, und anders als `switchTo` holt hier kein `gapFill` nach.
+        if (untrack(() => prevChannel) === cid) {
+          messages.setInitial(cid, history, { liveBehalten: true });
+        }
       })
       .catch(() => {
         // Best-effort: the user can navigate to retry.

@@ -36,6 +36,9 @@ import { dispatch } from './handler-registry';
 import { bootstrapHandlersOnce } from './gateway-handlers-bootstrap';
 import { gapFillAll, gapFillChannel } from './gapFill';
 import { wachEntscheid, zustandImHintergrund } from './wachentscheid';
+import { PongSchranke } from './pongSchranke';
+import { AboWiederholung } from './aboWiederholung';
+import { echterPlaner } from './nachholTakt';
 import {
   backgroundEligible,
   geraeteEligible,
@@ -207,6 +210,13 @@ export class GatewayConnection {
    */
   private _gapfillTimer: ReturnType<typeof setTimeout> | null = null;
   private _hist = new Map<string, { id: string; seq: number }>();
+  /** „Hat der Server alles bis hierher Geschickte verarbeitet?" — über die
+   *  Ping/Pong-Zählung (`pongSchranke.ts`). Je Socket. */
+  private _schranke = new PongSchranke();
+  /** Gescheiterte Abos, die neu versucht werden (`aboWiederholung.ts`). */
+  private _aboWiederholung = new AboWiederholung(echterPlaner, (cid, versuch) =>
+    this._aboErneut(cid, versuch)
+  );
 
   /** Reaktiv: erstes Hello-Frame des Servers (nur Self-Host). */
   helloMeta: HelloMeta | null = null;
@@ -586,6 +596,7 @@ export class GatewayConnection {
         this.state = 'open';
         this._readyDone = false;
         this._preReadyBuffer = [];
+        this._schranke.zuruecksetzen();
         // Bughunt Runde 13: Instanz-Capabilities nach JEDEM Dial auffrischen —
         // der ready-Rahmen trägt sie nicht, und ein Operator, der offline die
         // Limits änderte (HQ-Caps sind klientenseitig erzwungen), wurde sonst
@@ -652,6 +663,7 @@ export class GatewayConnection {
         // frame: it only arrives in response to a ping we send ≥25s post-open.
         if (op === 'pong') {
           this.lastPongAt = Date.now();
+          this._schranke.empfangen();
           return;
         }
         // Bestätigter Token-Austausch: der Server hat seinen Ablauf-Wecker
@@ -669,6 +681,9 @@ export class GatewayConnection {
           this._wendeReplayAn(evt as Extract<ServerEvent, { op: 'replay' }>);
           return;
         }
+        // Ein gescheitertes Abo wiederholen; der Rahmen läuft danach normal
+        // weiter an die Hörer.
+        if (op === 'error') this._aboFehlerPruefen(evt);
         if (firstFrame) {
           firstFrame = false;
           if (op === 'hello') {
@@ -700,18 +715,25 @@ export class GatewayConnection {
             // (Replay + REST nur für cursor-lose Kanäle, sonst REST für
             // alle) liest bewusst das FRISCHE hello, nie stale helloMeta.
             this._stopGapfillTimer();
+            // REST-Nachholen erst hinter der Pong-Schranke (`_nachAbos`): die
+            // Subscribes aus dem `open` liest der Server erst nach dem `ready`
+            // (`routes/ws.py`). Lief der REST-Abruf schon jetzt, konnte er vor
+            // dem Abo fertig sein — eine Nachricht dazwischen fiel durch REST
+            // UND Live, und die nächste Live-Nachricht setzte den Cursor
+            // dahinter. Die Kanalliste gilt ab hier: wer bis zum Pong einen
+            // Cursor bekommt, hat ihn aus einem Live-Ereignis, nicht aus dem
+            // Replay.
             if (this._hatFaehigkeit('hist_replay')) {
               // Die Cursor sind bis dahin live gelaufener Ereignisse
-              // angewachsen — der Server verarbeitet die Subscribes
-              // (gleicher Socket, FIFO) schon, also deckt das Replay die
+              // angewachsen — der Server verarbeitet `hist_replay` nach den
+              // Subscribes (gleicher Socket, FIFO), also deckt das Replay die
               // Lücke zwischen „Socket weg" und „Socket wieder an".
               this._sendHistReplay();
-              void gapFillAll(
-                [...this.subs].filter((cid) => !this._hist.has(cid)),
-                { serverId: this.serverId },
-              );
+              const ohneCursor = [...this.subs].filter((cid) => !this._hist.has(cid));
+              this._nachAbos(() => void gapFillAll(ohneCursor, { serverId: this.serverId }));
             } else {
-              void gapFillAll([...this.subs], { serverId: this.serverId });
+              const alle = [...this.subs];
+              this._nachAbos(() => void gapFillAll(alle, { serverId: this.serverId }));
             }
             return; // Hello selbst geht NICHT in den Handler-Dispatcher
           }
@@ -773,6 +795,8 @@ export class GatewayConnection {
     // bekannte-tote Verbindung einen REST-Burst losschickte.
     this._stopGapfillTimer();
     this._stopWachFrist();
+    this._schranke.zuruecksetzen();
+    this._aboWiederholung.alleVergessen();
     // Kopie, weil ein Hörer sich im Ruf abmelden darf.
     for (const h of [...this.closeHooks]) h();
     return true;
@@ -810,6 +834,57 @@ export class GatewayConnection {
    *  fresh fetch regardless of the channel's recent request state. */
   async gapFill(channelId: string): Promise<void> {
     await gapFillChannel(channelId, true, { serverId: this.serverId });
+  }
+
+  /** Nachholen direkt nach einem `subscribe` (Kanalwechsel): erst hinter der
+   *  Pong-Schranke, sonst konnte die REST-Antwort vor der Abo-Registrierung
+   *  am Server ankommen, und eine Nachricht dazwischen fiel durch beide Wege
+   *  (wie beim Neuaufbau, s. `_nachAbos`). Ohne offenen Socket sofort — der
+   *  Aufbau abonniert dann neu und holt selbst nach. */
+  gapFillNachAbo(channelId: string): void {
+    if (this._sendRaw({ op: 'ping' })) this._schranke.nach(() => void this.gapFill(channelId));
+    else void this.gapFill(channelId);
+  }
+
+  /**
+   * App wieder vorn (`netzwache.beiVordergrund`, beide Hüllen): die
+   * abonnierten Kanäle nachholen. Unter iOS bleibt die Leitung im Hintergrund
+   * offen (`wachentscheid.hintergrundTrennung`), beim Zurückkommen gibt es
+   * also kein `ready` und damit kein Nachholen — was die eingefrorene App
+   * verpasst hat, fehlte bis 2026-10-21 bis zum nächsten Neuaufbau. Hinter
+   * der Pong-Schranke: ist der Socket tot, kommt kein Pong, und der
+   * Neuaufbau holt selbst nach. Ohne offene Leitung (Android trennt im
+   * Hintergrund) tut es nichts — dort läuft der normale Aufbau.
+   */
+  nachholen(): void {
+    if (!this._readyDone || this.state !== 'open') return;
+    const kanaele = [...this.subs];
+    this._nachAbos(() => void gapFillAll(kanaele, { serverId: this.serverId }));
+  }
+
+  /** `fn` laufen lassen, sobald der Server alles bis hierher Geschickte
+   *  verarbeitet hat (`pongSchranke.ts`). Ohne offenen Socket verfällt `fn`
+   *  — der Nachfolger holt beim Aufbau selbst nach. */
+  private _nachAbos(fn: () => void): void {
+    if (this._sendRaw({ op: 'ping' })) this._schranke.nach(fn);
+  }
+
+  /** Fehlerrahmen zu einem `subscribe` eines noch gewollten Kanals: neu
+   *  versuchen (`aboWiederholung.ts`; Bezug: `routes/ws_abo_fehler.py`). */
+  private _aboFehlerPruefen(evt: ServerEvent): void {
+    const f = evt as Extract<ServerEvent, { op: 'error' }>;
+    if (f.ref_op !== 'subscribe' || typeof f.channel_id !== 'string') return;
+    if (!this.subs.has(f.channel_id)) return;
+    this._aboWiederholung.fehler(f.channel_id, f.code);
+  }
+
+  private _aboErneut(cid: string, versuch: number): void {
+    if (!this.subs.has(cid)) return;
+    if (!this._sendRaw({ op: 'subscribe', channel_id: cid })) return;
+    // Kein neuer Fehler vor dem Pong ⇒ das Abo hält; jetzt die Lücke holen.
+    this._nachAbos(() => {
+      if (this._aboWiederholung.bestaetigt(cid, versuch)) void this.gapFill(cid);
+    });
   }
 
   private _handle(evt: ServerEvent): void {
@@ -1168,6 +1243,7 @@ export class GatewayConnection {
       ws.close();
     }
     this.subs.clear();
+    this._aboWiederholung.alleVergessen();
     this.watchJoins.clear();
     this.state = 'idle';
   }
@@ -1236,6 +1312,7 @@ export class GatewayConnection {
 
   unsubscribe(channelId: string): void {
     if (!this.subs.delete(channelId)) return;
+    this._aboWiederholung.vergessen(channelId);
     this._sendRaw({ op: 'unsubscribe', channel_id: channelId });
   }
 
@@ -1334,6 +1411,8 @@ export class GatewayConnection {
   private _sendRaw(evt: ClientEvent): boolean {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(evt));
+      // Jeder Ping zählt für die Pong-Schranke, auch der Herzschlag.
+      if (evt.op === 'ping') this._schranke.gesendet();
       return true;
     }
     return false;

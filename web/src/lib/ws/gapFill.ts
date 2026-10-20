@@ -15,6 +15,11 @@
  * is released on switch-away, and `loadedChannels` short-circuits the
  * REST fetch on the way back). Safe to call right after `subscribe()`:
  * a WS push racing the REST call dedupes via `mergeGap` (id + nonce).
+ * Lückenlos ist das aber nur, wenn das Abo am Server schon steht, bevor der
+ * REST-Abruf antwortet — sonst fällt eine Nachricht dazwischen durch beide
+ * Wege. Der Neuaufbau wartet deshalb auf die Pong-Schranke
+ * (`pongSchranke.ts`, `GatewayConnection._nachAbos`); der Kanalwechsel ruft
+ * noch direkt.
  */
 import { messages } from '$lib/stores/messages.svelte';
 import { chatApi } from '$lib/api/chat';
@@ -57,7 +62,9 @@ export async function gapFillChannel(
       if (refetchOnOverflow) {
         // Channel-switch path: no page-effect reload to fall back to, so
         // adopt the latest page as the new history.
-        messages.setInitial(cid, page);
+        // `liveBehalten`: was während des Abrufs live kam, bleibt stehen
+        // (`nachrichten/liveBehalten.ts`).
+        messages.setInitial(cid, page, { liveBehalten: true });
         void verlaufSpeichern(cid, page);
         // This write leaves a HOLE in local storage: everything strictly
         // between `lastId` (the old high-water mark) and `oldestFetched`

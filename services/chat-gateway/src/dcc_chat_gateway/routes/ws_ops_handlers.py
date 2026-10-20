@@ -55,6 +55,7 @@ from dcc_chat_gateway.routes._deps import (
     parse_snowflake_int as _channel_id,
     resolve_channel_for_user,
 )
+from dcc_chat_gateway.routes.ws_abo_fehler import abo_fehler
 from dcc_chat_gateway.routes.ws_gruppen_abo import gruppen_abo_versuchen
 from dcc_chat_gateway.routes.ws_op_send import handle_send
 from dcc_chat_gateway.routes.ws_ops_registry import WSOpContext, register_ws_op
@@ -71,9 +72,7 @@ _HIST_REPLAY_THROTTLE_S = 5.0
 async def handle_subscribe(ctx: WSOpContext, msg: dict[str, Any]) -> None:
     cid_int = _channel_id(msg.get("channel_id"))
     if cid_int is None:
-        await ctx.websocket.send_json(
-            {"op": "error", "code": 4003, "msg": "channel_id required"}
-        )
+        await ctx.websocket.send_json(abo_fehler(4003, "channel_id required"))
         return
     cid = str(cid_int)
     # DM channels go through the same /ws subscribe path as guild channels —
@@ -90,9 +89,7 @@ async def handle_subscribe(ctx: WSOpContext, msg: dict[str, Any]) -> None:
             # in ``ws_gruppen_abo.py``.
             if await gruppen_abo_versuchen(ctx, session, cid_int):
                 return
-            await ctx.websocket.send_json(
-                {"op": "error", "code": 4004, "msg": "channel not accessible"}
-            )
+            await ctx.websocket.send_json(abo_fehler(4004, "channel not accessible", cid))
             return
         kind, ch = resolved
         # Text-channel subscribes get the VIEW_CHANNEL gate so silent-channel
@@ -105,7 +102,7 @@ async def handle_subscribe(ctx: WSOpContext, msg: dict[str, Any]) -> None:
             perms = await resolve_permissions(session, ctx.user, ch.guild_id, cid_int)
             if not has_permission(perms, Permissions.VIEW_CHANNEL):
                 await ctx.websocket.send_json(
-                    {"op": "error", "code": 4012, "msg": "channel not accessible"}
+                    abo_fehler(4012, "channel not accessible", cid)
                 )
                 return
     await ctx.manager.subscribe(ctx.websocket, cid)

@@ -173,7 +173,9 @@ export function erstelleDmKanalWechsel(cloudRoute: DmRoute) {
       if (isStale()) return;
       // Sofort zeigen, was lokal liegt — das ist der spürbare Gewinn von
       // C2 — bevor die Serverantwort überhaupt eingetroffen sein kann.
-      if (lokal.length > 0) messages.setInitial(cid, verlaufMergen(lokal, []));
+      if (lokal.length > 0) {
+        messages.setInitial(cid, verlaufMergen(lokal, []), { liveBehalten: true });
+      }
       if (istGruppe) {
         // **Kein Serverabruf.** Der Server sieht in einer privaten Gruppe
         // nie Klartext (Spec §9) und fuehrt dort keine `messages`-Zeile;
@@ -181,11 +183,15 @@ export function erstelleDmKanalWechsel(cloudRoute: DmRoute) {
         // IST der Verlauf — das ist keine Abkuerzung, sondern die einzige
         // Kopie. Auch der leere Fall wird gesetzt, damit der Kanal als
         // geladen gilt und der Nachfass-Effekt oben nicht anspringt.
-        messages.setInitial(cid, verlaufMergen(lokal, []));
+        messages.setInitial(cid, verlaufMergen(lokal, []), { liveBehalten: true });
       } else {
         const history = await chatApi.listMessages(cid, {}, cloudRoute);
         if (isStale()) return;
-        messages.setInitial(cid, verlaufMergen(lokal, history));
+        // `liveBehalten`: was seit dem Leeren oben per `upsert` kam (z. B. die
+        // Postfach-Abholung beim Öffnen aus einer Mitteilung), steht weder in
+        // `lokal` noch in `history` — ohne die Option verschwand es aus dem
+        // offenen Gespräch (`nachrichten/liveBehalten.ts`).
+        messages.setInitial(cid, verlaufMergen(lokal, history), { liveBehalten: true });
         void verlaufSpeichern(cid, history);
       }
     } catch (err) {
@@ -210,8 +216,9 @@ export function erstelleDmKanalWechsel(cloudRoute: DmRoute) {
     // gefragt → die fremdgesicherten Nachrichten blieben unsichtbar.
     // Fire-and-forget, deduped über die Ids, hält die Scroll-Position,
     // wirft nie (s. `sicherungKanalSeiteLaden`). Bewusst NACH dem
-    // `setInitial` oben: ein Treffer, der während des Serverabrufs
-    // einläuft, würde sonst überschrieben. Nur beim Frischladen; ein
+    // `setInitial` oben: bis 2026-10-21 überschrieb es einen Treffer, der
+    // während des Serverabrufs einlief (seit `liveBehalten` bliebe er
+    // stehen, die Reihenfolge ist geblieben). Nur beim Frischladen; ein
     // wiedergeöffneter Kanal deckt das Hochscrollen ab
     // (`verlauf/nachladen.ts`). Dynamischer Import wie in
     // `verlauf/index.ts` — die Sicherung gehört nicht in den Chat-Grundstack.
@@ -253,8 +260,9 @@ export function erstelleDmKanalWechsel(cloudRoute: DmRoute) {
     // Bughunt Runde 5: nicht nur beim Wieder-Öffnen — der Frisch-Pfad
     // friert den REST-Snapshot ein, eine DM im Fenster bis zur Abo-
     // Registrierung erzeugt nur einen dm_bump. gapFillChannel liest
-    // lastPersistedId (der frische Stand) und holt genau das Fenster.
-    if (!istGruppe) void cloudGateway.gapFill(cid);
+    // lastPersistedId (der frische Stand) und holt genau das Fenster — erst
+    // hinter der Abo-Registrierung (`gapFillNachAbo`).
+    if (!istGruppe) cloudGateway.gapFillNachAbo(cid);
     const loaded = messages.for(cid);
     // Anker = kanonische Absender-ID bei verschlüsselten Nachrichten (B3,
     // s. `lesestandKern.lesestandAnker`) — nicht die Zustellungs-ID.
@@ -281,7 +289,8 @@ export function erstelleDmKanalWechsel(cloudRoute: DmRoute) {
   // prevDM === cid bleibt) warf dieser Pfad die lokale Ansicht weg und
   // ersetzte sie durch den alten Klartext-Stand — „plötzlich andere PMs von
   // derselben Person", heilbar nur per Reload. Deshalb derselbe Merge wie in
-  // switchTo: lokal + Server.
+  // switchTo: lokal + Server, und was live während des Abrufs kam, bleibt
+  // stehen (`liveBehalten` — der Reconnect hat die Liste vorher geleert).
   function nachladenWennNoetig(cid: string) {
     if (!cid || messages.loadedChannels[cid]) return;
     if (prevDM !== cid) return;
@@ -296,7 +305,7 @@ export function erstelleDmKanalWechsel(cloudRoute: DmRoute) {
         if (untrack(() => prevDM) !== cid) return;
         const lokal = await verlaufLesen(cid, { anzahl: 50 });
         if (untrack(() => prevDM) !== cid) return;
-        messages.setInitial(cid, verlaufMergen(lokal, history));
+        messages.setInitial(cid, verlaufMergen(lokal, history), { liveBehalten: true });
         void verlaufSpeichern(cid, history);
       })
       .catch(() => {

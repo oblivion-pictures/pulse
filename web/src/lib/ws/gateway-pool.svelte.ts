@@ -80,6 +80,13 @@ class GatewayPool {
     for (const conn of this.#connections.values()) conn.vordergrund();
   }
 
+  /** App wieder vorn: abonnierte Kanäle aller offenen Verbindungen
+   *  nachholen (`GatewayConnection.nachholen`). An alle aus demselben Grund
+   *  wie `alleWachPruefen`. */
+  alleNachholen(): void {
+    for (const conn of this.#connections.values()) conn.nachholen();
+  }
+
 }
 
 export const gatewayPool = new GatewayPool();
