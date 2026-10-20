@@ -83,13 +83,13 @@
   /** Angepinnt → Nadel neben der Uhrzeit, Blase bekommt einen Hauch Ton. */
   const pinned = $derived(!!message.pinned_at);
 
-  // Die Ecke an der Sprech-Seite wird innerhalb einer Gruppe flach. Oben
-  // richtet sie sich danach, ob eine Nachricht desselben Absenders darüber
-  // steht, unten danach, ob eine darunter folgt.
+  // Die Ecke an der Sprech-Seite wird innerhalb einer Gruppe flach. WhatsApp-
+  // Radien: klein (8 px), an der Sprech-Seite innerhalb einer Gruppe 4 px —
+  // eine Gruppe liest sich als ein Block.
   let ecken = $derived(
     eigen
-      ? `border-radius: 20px ${isContinuation ? '7px' : '20px'} ${isGroupEnd ? '20px' : '7px'} 20px;`
-      : `border-radius: ${isContinuation ? '7px' : '20px'} 20px 20px ${isGroupEnd ? '20px' : '7px'};`
+      ? `border-radius: 8px ${isContinuation ? '4px' : '8px'} ${isGroupEnd ? '4px' : '8px'} 8px;`
+      : `border-radius: ${isContinuation ? '4px' : '8px'} 8px 8px ${isGroupEnd ? '8px' : '4px'};`
   );
 </script>
 
