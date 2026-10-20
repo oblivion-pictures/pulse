@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-20",
+      "date": "2026-10-20",
+      "style": "Sachlich",
+      "title": "Fernsteuerung: Bild und Ton",
+      "items": [
+        "Steuerst du einen Windows-Rechner fern, lief der Ton bisher nach einiger Zeit dem Bild davon. Das ist behoben; das Bild kommt dabei auch gleichmäßiger an."
+      ]
+    },
+    {
       "id": "2026-10-19.4",
       "date": "2026-10-19",
       "style": "Sachlich",
