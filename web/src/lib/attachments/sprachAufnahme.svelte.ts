@@ -17,6 +17,8 @@ import { isCapacitorIOS } from '$lib/platform/runtime';
 import {
   beendeAufnahme,
   brichAufnahmeAb,
+  pausiereAufnahme,
+  resumiereAufnahme,
   starteAufnahme,
   type LaufendeAufnahme
 } from './aufnahme';
@@ -26,6 +28,8 @@ export class SprachAufnahme {
   lauf: LaufendeAufnahme | undefined = $state();
   sekunden = $state(0);
   dauer = $derived(formatiereDauer(this.sekunden));
+  /** Pausiert die Aufnahme? Der Timer steht, der Recorder sammelt nicht. */
+  pausiert = $state(false);
   #timer: ReturnType<typeof setInterval> | undefined;
   #onDatei: (datei: File) => void;
 
@@ -33,14 +37,39 @@ export class SprachAufnahme {
     this.#onDatei = onDatei;
   }
 
-  #tickerStarten(): void {
-    this.sekunden = 0;
+  /** Ticker — `abNull` false beim Fortsetzen einer Pause (Stand bleibt). */
+  #tickerStarten(abNull = true): void {
+    if (abNull) this.sekunden = 0;
     this.#timer = setInterval(() => {
       if (!this.lauf) return;
       this.sekunden = Math.floor((Date.now() - this.lauf.gestartetAm) / 1000);
       // Der 300-s-Rahmen endet hier, im UI sichtbar als fertiger Entwurf.
       if (this.sekunden >= AUFGABE_MAX_SEKUNDEN) void this.beenden();
     }, 500);
+  }
+
+  #tickerStoppen(): void {
+    if (this.#timer) {
+      clearInterval(this.#timer);
+      this.#timer = undefined;
+    }
+  }
+
+  /** Pause — der Recorder sammelt nicht, die Sekunden frieren ein. */
+  pausieren(): void {
+    if (!this.lauf || this.pausiert) return;
+    pausiereAufnahme(this.lauf);
+    this.#tickerStoppen();
+    this.pausiert = true;
+  }
+
+  /** Weiter — der Start verschiebt sich um die Pausenzeit (pausiereAufnahme),
+   *  der Ticker läuft weiter ohne Reset. */
+  weiter(): void {
+    if (!this.lauf || !this.pausiert) return;
+    resumiereAufnahme(this.lauf);
+    this.#tickerStarten(false);
+    this.pausiert = false;
   }
 
   async starten(): Promise<void> {
@@ -77,6 +106,17 @@ export class SprachAufnahme {
     clearInterval(this.#timer);
     const datei = await beendeAufnahme(lauf);
     if (datei) this.#onDatei(datei);
+  }
+
+  /** Stoppt und LIEFERT die Datei zurück (Vorschau-Weg: anhören vor dem
+   *  Senden) — im Gegensatz zu `beenden`, das sie als Anhang weiterreicht.
+   *  Der Klient entscheidet, wann sie in den Anhang-Weg kommt. */
+  async dateiNehmen(): Promise<File | null> {
+    const lauf = this.lauf;
+    if (!lauf) return null;
+    this.lauf = undefined;
+    clearInterval(this.#timer);
+    return await beendeAufnahme(lauf);
   }
 
   verwerfen(): void {
