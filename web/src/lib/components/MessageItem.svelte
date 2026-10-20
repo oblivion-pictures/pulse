@@ -47,6 +47,9 @@
     /** Direktnachricht-Kontext: eine Meldung geht ans Betreiberteam statt an
      *  einen Community-Moderator (es gibt hier keinen). */
     isDirect = false,
+    /** Gruppen-Bubble-Modus (Entwurf D): Avatar links + Autorenname in der
+     *  Blase — die Bubble-Hülle wird damit für mehrköpfige Gruppen lesbar. */
+    mitAutor = false,
     /** Community-Bezug fuer das Profil hinter Avatar/Name. Fehlt in DMs. */
     guildId,
     /** Handy-Klasse? Vom Mount-Punkt hereingereicht (Geraete-Trennung) —
@@ -86,6 +89,7 @@
     canReport?: boolean;
     canReact?: boolean;
     isDirect?: boolean;
+    mitAutor?: boolean;
     guildId?: string;
     handy: boolean;
     layout?: 'row' | 'bubble';
@@ -349,6 +353,10 @@
     onLongPress={openSheet}
     {body}
     {actions}
+    {mitAutor}
+    autorName={authorName}
+    autorFarbe={authorStyle || null}
+    autorAvatar={url}
   />
 {:else}
   <MessageRowLayout

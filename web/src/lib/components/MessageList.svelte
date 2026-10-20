@@ -50,6 +50,8 @@
     /** Huelle der Nachrichten. Sprechblasen nur in privaten Gespraechen —
      *  im Kanal tragen Autorname und -farbe die Orientierung. */
     layout = 'row',
+    /** Gruppen-Bubble-Modus: Avatar + Autorenname in der Blase (Entwurf D). */
+    mitAutor = false,
     /** REST-Route fürs Nachladen: DMs laufen gegen die Cloud (siehe ChatView),
      *  Guild-Kanäle gegen den aktiven Server (leer = Default-Weiche). */
     route = {},
@@ -83,6 +85,8 @@
     channel: Channel | null;
     messages: Message[];
     layout?: 'row' | 'bubble';
+    /** Gruppen-Bubble-Modus: Avatar + Autorenname in der Blase (Entwurf D). */
+    mitAutor?: boolean;
     /** Server-local id (DMs → Cloud-id) for "is this mine?" checks. */
     myId: string | null;
     namePrefix?: string;
@@ -864,6 +868,7 @@
               isGroupEnd={item.isGroupEnd}
               istFrisch={freshKey === item.key}
               {layout}
+              mitAutor={mitAutor === true}
               istEigene={item.message.author_id === myId}
               highlight={highlightId === item.message.id}
               canEdit={canEditMessage(item.message)}
