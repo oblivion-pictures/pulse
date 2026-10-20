@@ -57,6 +57,8 @@ public class CallForegroundService extends Service {
     private static final long KLINGEL_HOECHSTENS_MS = 60_000;
     /** So viele beendete Kennungen genügen gegen verspätete Doppel-Auslöser. */
     private static final int ERLEDIGT_MERKEN = 16;
+    private static final int PI_FLAGS =
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
 
     static final String EXTRA_CALL_ID = "callId";
     static final String EXTRA_GEGENSTELLE = "gegenstelle";
@@ -95,6 +97,7 @@ public class CallForegroundService extends Service {
             if (!id.isEmpty() && (id.equals(klingelnd) || erledigt.contains(id))) return false;
             klingelnd = id;
             appKontext = ctx.getApplicationContext();
+            AnrufMarke.neu(ctx);
         }
         HAUPT.removeCallbacks(WECKER);
         HAUPT.postDelayed(WECKER, KLINGEL_HOECHSTENS_MS);
@@ -227,11 +230,9 @@ public class CallForegroundService extends Service {
         // das System ihn und zeigt eine Heads-up-Meldung (CallStyle bleibt
         // zulässig, das System merkt sich den verweigerten Wunsch).
         PendingIntent vollbild = PendingIntent.getActivity(ctx, 0,
-                zurApp(ctx, callId),
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                zurApp(ctx, callId), PI_FLAGS);
         PendingIntent annehmen = PendingIntent.getActivity(ctx, 1,
-                zurApp(ctx, callId).putExtra(EXTRA_AKTION, AKTION_ANNEHMEN),
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                zurApp(ctx, callId).putExtra(EXTRA_AKTION, AKTION_ANNEHMEN), PI_FLAGS);
         Person anrufer = new Person.Builder().setName(name).build();
         Notification n = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_pulse)
@@ -260,15 +261,15 @@ public class CallForegroundService extends Service {
         return new Intent(ctx, MainActivity.class)
                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(EXTRA_ANRUF, true)
-                .putExtra(EXTRA_CALL_ID, callId);
+                .putExtra(EXTRA_CALL_ID, callId)
+                .putExtra(AnrufMarke.EXTRA, AnrufMarke.wert(ctx));
     }
 
     private static PendingIntent ablehnen(Context ctx, String callId) {
         Intent i = new Intent(ctx, AktionsEmpfaenger.class)
                 .setAction(AKTION_ABLEHNEN)
                 .putExtra(EXTRA_CALL_ID, callId);
-        return PendingIntent.getBroadcast(ctx, AKTION_ABLEHNEN.hashCode(), i,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        return PendingIntent.getBroadcast(ctx, AKTION_ABLEHNEN.hashCode(), i, PI_FLAGS);
     }
 
     /** Ablehnen direkt aus der Notification — auch über dem Sperrbildschirm,

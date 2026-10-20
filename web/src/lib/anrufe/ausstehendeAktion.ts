@@ -55,7 +55,7 @@ export function alsAnrufAktion(roh: unknown): AktionAusDerHuelle | null {
   const callId = text(r.callId);
   if ((aktion !== 'annehmen' && aktion !== 'ablehnen') || !callId) return null;
   const ergebnis: AktionAusDerHuelle = { aktion, callId };
-  const felder: [keyof AktionAusDerHuelle, unknown][] = [
+  const felder: [Exclude<keyof AktionAusDerHuelle, 'aktion' | 'callId'>, unknown][] = [
     ['channel_id', r.channelId],
     ['anruf_art', r.anrufArt],
     ['einleiter_id', r.einleiterId],
@@ -63,7 +63,7 @@ export function alsAnrufAktion(roh: unknown): AktionAusDerHuelle | null {
   ];
   for (const [ziel, wert] of felder) {
     const t = text(wert);
-    if (t) (ergebnis as unknown as Record<string, string>)[ziel] = t;
+    if (t) ergebnis[ziel] = t;
   }
   return ergebnis;
 }

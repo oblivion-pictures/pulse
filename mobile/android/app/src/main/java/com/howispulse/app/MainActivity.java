@@ -1,17 +1,14 @@
 package com.howispulse.app;
 
 import android.Manifest;
-import android.app.DownloadManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -80,28 +77,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SystemeinstellungenPlugin.class);
         super.onCreate(savedInstanceState);
         pushKanalAnlegen();
-        // Bughunt Runde 45: Capacitor setzt KEINEN DownloadListener — ein
-        // Android-WebView wirft Downloads STILLWEGE weg (Blob-URLs aus
-        // `URL.createObjectURL` inklusive). Jeder Download-Knopf in der App
-        // (2FA-Backup-Codes, Anhänge, Ablage, .env-Export) tat auf Android
-        // schlicht nichts. Umweg über DownloadManager: Blob-URLs kann er
-        // nicht laden — dafür ist der Ersatzweg verantwortlich, alles andere
-        // (https-Presigns etc.) geht an den System-Download.
-        bridge.getWebView().setDownloadListener((url, userAgent, contentDisposition, mimeType, length) -> {
-            if (url == null || url.startsWith("blob:")) return;
-            try {
-                DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
-                if (userAgent != null) req.addRequestHeader("User-Agent", userAgent);
-                if (mimeType != null) req.setMimeType(mimeType);
-                req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "pulse-download");
-                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                if (dm != null) dm.enqueue(req);
-            } catch (Exception ignored) {
-                // Nicht abfangbar ohne Toast-Infrastruktur — besser als ein
-                // App-Crash; der Web-Seitige Fehlerpfad greift via Download-Feed.
-            }
-        });
+        bridge.getWebView().setDownloadListener(new DownloadUebergabe(this));
         speakerRouter = new SpeakerphoneRouter(this, this, ContextCompat.getMainExecutor(this));
         speakerRouter.start();
         // Querformat nur mit Stream (s. OrientationLockPlugin): Start immer
@@ -145,7 +121,9 @@ public class MainActivity extends BridgeActivity {
      * dann schon vorn, das Mikrofon darf starten. Die App erscheint über dem
      * Sperrbildschirm (Anrufmodus) — ohne Entscheidung (Vollbild, Tipp) nur,
      * solange der Anruf noch klingelt. Die Extras werden
-     * verbraucht, damit ein späteres getIntent() nicht erneut annimmt.
+     * verbraucht, damit ein späteres getIntent() nicht erneut annimmt. Ohne
+     * gültige {@link AnrufMarke} geschieht nichts: die Activity ist
+     * exportiert, der Intent könnte von einer fremden App stammen.
      */
     private void anrufAusIntent(Intent intent) {
         if (intent == null || !intent.getBooleanExtra(CallForegroundService.EXTRA_ANRUF, false)) {
@@ -153,8 +131,11 @@ public class MainActivity extends BridgeActivity {
         }
         String aktion = intent.getStringExtra(CallForegroundService.EXTRA_AKTION);
         String callId = intent.getStringExtra(CallForegroundService.EXTRA_CALL_ID);
+        String marke = intent.getStringExtra(AnrufMarke.EXTRA);
         intent.removeExtra(CallForegroundService.EXTRA_ANRUF);
         intent.removeExtra(CallForegroundService.EXTRA_AKTION);
+        intent.removeExtra(AnrufMarke.EXTRA);
+        if (!AnrufMarke.gilt(this, marke)) return;
         if (CallForegroundService.AKTION_ANNEHMEN.equals(aktion)) {
             anrufModus.an();
             CallForegroundService.entscheiden(this, aktion, callId);
@@ -207,8 +188,7 @@ public class MainActivity extends BridgeActivity {
         if (active) {
             startMicService();
         } else {
-            micStartPending = false;
-            getPreferences(MODE_PRIVATE).edit().putBoolean("micStartPending", false).apply();
+            merkeMicStartPending(false);
             stopService(new Intent(this, MicForegroundService.class));
             anrufModus.aus();
         }
@@ -292,19 +272,25 @@ public class MainActivity extends BridgeActivity {
         super.onDestroy();
     }
 
+    private boolean fehlt(String berechtigung) {
+        return ContextCompat.checkSelfPermission(this, berechtigung)
+                != PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Das Flag im Speicher und in den SharedPreferences nachziehen (siehe onCreate). */
+    private void merkeMicStartPending(boolean wert) {
+        micStartPending = wert;
+        getPreferences(MODE_PRIVATE).edit().putBoolean("micStartPending", wert).apply();
+    }
+
     private void startMicService() {
         // Ohne Mic-Permission ist ein microphone-FGS sinnlos (und würde ab API 34
         // mit SecurityException starten). Noch nicht erteilt → runtime anfragen
         // und den Start zurückstellen, bis der Grant eintrifft.
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED
-                || ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-                        != PackageManager.PERMISSION_GRANTED) {
-            micStartPending = true;
-            getPreferences(MODE_PRIVATE).edit().putBoolean("micStartPending", true).apply();
+        if (fehlt(Manifest.permission.RECORD_AUDIO) || fehlt(Manifest.permission.CAMERA)) {
+            merkeMicStartPending(true);
             List<String> need = new ArrayList<>();
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                    != PackageManager.PERMISSION_GRANTED) {
+            if (fehlt(Manifest.permission.RECORD_AUDIO)) {
                 need.add(Manifest.permission.RECORD_AUDIO);
             }
             // Kamera gleich mit anfragen: Ein Voice-Call kann sie jederzeit
@@ -312,13 +298,10 @@ public class MainActivity extends BridgeActivity {
             // Call wäre schlechter Zeitpunkt. Wer sie ablehnt, kann ohne
             // Kamera weiter telefonieren — die WebView fragt dann nur Mic
             // durch (Audio-Only-GetUserMedia braucht kein CAMERA-Grant).
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-                    != PackageManager.PERMISSION_GRANTED) {
+            if (fehlt(Manifest.permission.CAMERA)) {
                 need.add(Manifest.permission.CAMERA);
             }
-            if (Build.VERSION.SDK_INT >= 33
-                    && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                            != PackageManager.PERMISSION_GRANTED) {
+            if (Build.VERSION.SDK_INT >= 33 && fehlt(Manifest.permission.POST_NOTIFICATIONS)) {
                 need.add(Manifest.permission.POST_NOTIFICATIONS);
             }
             ActivityCompat.requestPermissions(this, need.toArray(new String[0]), REQ_VOICE_PERMS);
@@ -332,9 +315,7 @@ public class MainActivity extends BridgeActivity {
         // erfragt — ab dem zweiten Voice-Join (Mic längst erteilt) wurde sie
         // nie wieder gestellt und der laufende-Call-Hinweis blieb dauerhaft
         // unsichtbar. Jetzt eigenständig nachziehen, wenn sie fehlt.
-        if (Build.VERSION.SDK_INT >= 33
-                && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                        != PackageManager.PERMISSION_GRANTED) {
+        if (Build.VERSION.SDK_INT >= 33 && fehlt(Manifest.permission.POST_NOTIFICATIONS)) {
             ActivityCompat.requestPermissions(
                     this,
                     new String[]{Manifest.permission.POST_NOTIFICATIONS},
@@ -347,10 +328,8 @@ public class MainActivity extends BridgeActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         // Nur nachholen, wenn der Start auf den Permission-Grant gewartet hat.
         if (requestCode == REQ_VOICE_PERMS && micStartPending) {
-            micStartPending = false;
-            getPreferences(MODE_PRIVATE).edit().putBoolean("micStartPending", false).apply();
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                    == PackageManager.PERMISSION_GRANTED) {
+            merkeMicStartPending(false);
+            if (!fehlt(Manifest.permission.RECORD_AUDIO)) {
                 startFgsSicher();
             }
             // Abgewiesen → kein Service. Der WebView-getUserMedia wird ohnehin

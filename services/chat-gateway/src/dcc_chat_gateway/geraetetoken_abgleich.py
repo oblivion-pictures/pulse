@@ -2,19 +2,20 @@
 
 **Warum es diesen Lauf gibt.** FCM- und PushKit-Token tragen die Kette, unter
 der sie angemeldet wurden (Migration 0105), Web-Push-Abos ebenso (Migration
-0108), und alle fallen, wenn auth-svc deren Ende meldet (``push_widerruf.py``). Die Meldung reist über Redis Pub/Sub und
-hat zwei Lücken: Ein Ende, das während eines Neustarts dieses Dienstes kommt,
-hört niemand — das verlorene Telefon klingelte weiter. Und eine Kette, die nur
-abläuft (30 Tage ohne Rotation), meldet niemand.
+0108), und alle fallen, wenn auth-svc deren Ende meldet (``push_widerruf.py``).
+Die Meldung reist über Redis Pub/Sub und hat zwei Lücken: Ein Ende, das
+während eines Neustarts dieses Dienstes kommt, hört niemand — das verlorene
+Telefon klingelte weiter. Und eine Kette, die nur abläuft (30 Tage ohne
+Rotation), meldet niemand.
 
 **Wie.** Kurz nach dem Start (``ERSTER_LAUF_S`` — genau dann fehlen die
 Meldungen aus dem Neustart) und danach alle ``TAKT_S`` sammelt der Lauf jedes
-Paar ``(user_id, kette)`` aus diesen Tabellen (``KETTEN_TABELLEN``), fragt auth-svc, welche davon zu
-Ende sind (``dcc_shared.anmeldeketten.STAND_PFAD``), und löscht deren Zeilen
-über ``geraetetoken_loeschen`` — denselben Weg wie die Meldung. Der Lauf merkt
-sich nichts; auth-svc bleibt die einzige Quelle, und jedes Ende, das die
-Meldung verpasst, holt der nächste Lauf nach, auch eines an einer Stelle, die
-das Melden vergisst.
+Paar ``(user_id, kette)`` aus diesen Tabellen (``KETTEN_TABELLEN``), fragt
+auth-svc, welche davon zu Ende sind (``dcc_shared.anmeldeketten.STAND_PFAD``),
+und löscht deren Zeilen über ``geraetetoken_loeschen`` — denselben Weg wie
+die Meldung. Der Lauf merkt sich nichts; auth-svc bleibt die einzige Quelle,
+und jedes Ende, das die Meldung verpasst, holt der nächste Lauf nach, auch
+eines an einer Stelle, die das Melden vergisst.
 
 **Fail-open, und zwar so herum:** Ist auth-svc nicht erreichbar, antwortet es
 nicht mit 200 oder unlesbar, bleibt jede Zeile stehen. Gelöscht wird nur, was

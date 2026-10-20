@@ -42,9 +42,9 @@ async def geraetetoken_loeschen(session: Any, ende: KettenEnde) -> int:
     """Die Zeilen löschen, die zu ``ende`` gehören; liefert ihre Anzahl.
 
     ``alle``: jede Zeile des Kontos, auch die ohne Kettenvermerk (vor
-    Migration 0105 bzw. 0108 angemeldet). Sonst nur Zeilen genau dieser Ketten — eine
-    Zeile ohne Vermerk bleibt dann stehen, denn sie könnte dem Gerät gehören,
-    das gerade NICHT abgemeldet wird.
+    Migration 0105 bzw. 0108 angemeldet). Sonst nur Zeilen genau dieser Ketten
+    — eine Zeile ohne Vermerk bleibt dann stehen, denn sie könnte dem Gerät
+    gehören, das gerade NICHT abgemeldet wird.
     """
     if not ende.alle and not ende.ketten:
         return 0

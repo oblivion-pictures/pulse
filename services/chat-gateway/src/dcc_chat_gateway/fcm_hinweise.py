@@ -160,8 +160,14 @@ def erwaehnung_titel(autor: str, kanal: str | None, community: str | None) -> st
 
 
 async def _erwaehnung_senden(
-    *, user_ids: set[int], author_name: str, text: str, channel_id: int, message_id: int,
-    guild_id: int, redis: Any,
+    *,
+    user_ids: set[int],
+    author_name: str,
+    text: str,
+    channel_id: int,
+    message_id: int,
+    guild_id: int,
+    redis: Any,
 ) -> None:
     async with fcm.SessionLocal() as session:
         kanal, community = await _namen(session, channel_id, guild_id)
@@ -174,8 +180,13 @@ async def _erwaehnung_senden(
             "message_id": str(message_id),
         }
         await _senden(
-            session, redis, user_ids, payload,
-            kategorie=ERWAEHNUNG_KATEGORIE, gruppe=str(channel_id), tag=str(channel_id),
+            session,
+            redis,
+            user_ids,
+            payload,
+            kategorie=ERWAEHNUNG_KATEGORIE,
+            gruppe=str(channel_id),
+            tag=str(channel_id),
         )
 
 
@@ -196,8 +207,13 @@ def erwaehnung(
         return
     _im_hintergrund(
         _erwaehnung_senden(
-            user_ids=set(user_ids), author_name=author_name, text=text,
-            channel_id=channel_id, message_id=message_id, guild_id=guild_id, redis=redis,
+            user_ids=set(user_ids),
+            author_name=author_name,
+            text=text,
+            channel_id=channel_id,
+            message_id=message_id,
+            guild_id=guild_id,
+            redis=redis,
         )
     )
 
@@ -214,8 +230,12 @@ async def _freundschaft_senden(
     }
     async with fcm.SessionLocal() as session:
         await _senden(
-            session, redis, {recipient_id}, payload,
-            kategorie=FREUNDSCHAFT_KATEGORIE, gruppe="freundschaft",
+            session,
+            redis,
+            {recipient_id},
+            payload,
+            kategorie=FREUNDSCHAFT_KATEGORIE,
+            gruppe="freundschaft",
             tag=f"freundschaft:{actor_id}",
             lokal=Lokal(schluessel=SCHLUESSEL_FREUNDSCHAFT, titel=titel),
         )

@@ -68,9 +68,7 @@ def mitteilung(
     daten = {k: v for k, v in payload.items() if isinstance(v, str)}
     return messaging.Message(
         notification=(
-            None
-            if lokal
-            else messaging.Notification(title=payload["title"], body=payload["body"])
+            None if lokal else messaging.Notification(title=payload["title"], body=payload["body"])
         ),
         token=token,
         # Deep-Link-Daten TOP-LEVEL, nicht nur im Android-Block: nur so
@@ -114,9 +112,7 @@ def mitteilung(
         # channel_id im data-Block: das ist die Pulse-Kanalkennung für den
         # Deep-Link des Klienten, nicht der Android-Kanal.
         android=messaging.AndroidConfig(
-            notification=android_notification(
-                channel_id=ANDROID_CHANNEL_ID, tag=tag, lokal=lokal
-            ),
+            notification=android_notification(channel_id=ANDROID_CHANNEL_ID, tag=tag, lokal=lokal),
             data=daten,
         ),
     )
