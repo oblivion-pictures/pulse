@@ -1,8 +1,9 @@
 """FCM-Token-Verwaltung (Übergabe P0.1) — Anmelden und Abmelden.
 
-Die Android-App holt beim Start ein FCM-Registrierungstoken (via
-``@capacitor-firebase/messaging``) und meldet es hier an; beim Sign-Out
-trägt sie es wieder ab. Der Push-Versand selbst lebt in
+Die Handy-App holt beim Start ein FCM-Registrierungstoken (via
+``@capacitor-firebase/messaging``) und meldet es hier an, die Android-App
+samt ihren Fähigkeiten (``faehigkeiten``, s. ``fcm_empfaenger.py``); beim
+Sign-Out trägt sie es wieder ab. Der Push-Versand selbst lebt in
 :mod:`dcc_chat_gateway.fcm`.
 
 Endpunkte
@@ -18,11 +19,14 @@ degradation, s. ``fcm.ensure_fcm``).
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from dcc_chat_gateway import badgezaehler
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.fcm_empfaenger import android_faehigkeiten_merken
 from dcc_chat_gateway.models import FcmToken
 from dcc_chat_gateway.ratelimit import check as ratelimit_check
 from dcc_chat_gateway.routes import _geraetetoken as geraetetoken
@@ -36,6 +40,12 @@ class FcmTokenIn(BaseModel):
     #: Gerätelokale, persistierte Kennung des Klienten — der Upsert-Schlüssel
     #: je Gerät (Neuanmeldung upsertet die Zeile des Geräts, s. Modelldoku).
     geraet_id: str = Field(min_length=1, max_length=128)
+    #: Was der Bau von sich sagt (Push-Bughunt 2026-10-20): ``anruf_push``,
+    #: ``texte_lokal`` (``fcm_empfaenger.py``). Fehlt das Feld — ein älterer
+    #: Bau —, kann das Gerät keins von beiden; unbekannte Werte zählen nicht.
+    faehigkeiten: list[Annotated[str, Field(max_length=64)]] | None = Field(
+        default=None, max_length=8
+    )
 
 
 class FcmTokenEntfernen(BaseModel):
@@ -54,6 +64,7 @@ async def token_speichern(
     payload: FcmTokenIn,
     session: SessionDep,
     current: CurrentUser,
+    request: Request,
 ) -> Response:
     """Token dieses Geräts speichern oder auffrischen.
 
@@ -73,6 +84,12 @@ async def token_speichern(
         token=payload.token,
         konflikt_detail="fcm_token_belegt",
         kette=geraetetoken.kette_des_aufrufers(current.payload),
+    )
+    await android_faehigkeiten_merken(
+        getattr(request.app.state, "redis", None),
+        user_id=current.id,
+        geraet_id=payload.geraet_id,
+        faehigkeiten=payload.faehigkeiten,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

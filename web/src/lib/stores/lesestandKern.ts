@@ -114,3 +114,20 @@ export function startGelesenBis(z: {
   if (!z.serverStand && !z.lokalerStand) return z.letzteNachricht;
   return null;
 }
+
+/**
+ * Die Einträge einer Kanal-Karte, die `behalten` gelten lässt — für den
+ * Server-Wechsel (`readState.resetCacheOnly`): die neueste beobachtete
+ * Nachricht der Cloud-DMs und privaten Gruppen bleibt stehen, die der
+ * Community-Kanäle des alten Servers fällt.
+ */
+export function nurBehalten<T>(
+  karte: Record<string, T>,
+  behalten: (kanalId: string) => boolean
+): Record<string, T> {
+  const ergebnis: Record<string, T> = {};
+  for (const [kanalId, wert] of Object.entries(karte)) {
+    if (behalten(kanalId)) ergebnis[kanalId] = wert;
+  }
+  return ergebnis;
+}

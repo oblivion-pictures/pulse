@@ -1,11 +1,11 @@
-"""FCM-Push (Firebase Cloud Messaging) für die Android-App (Übergabe P0.1).
+"""FCM-Push (Firebase Cloud Messaging) für die Handy-Apps (Übergabe P0.1).
 
 Ein inhaltsfreier Benachrichtigungskanal neben dem Web-Push aus
 :mod:`dcc_chat_gateway.push`: eine neue DM wird als Systemmeldung auf dem
-Telefon sichtbar — auf iOS immer, auf Android nur ohne offene
-WebSocket-Verbindung (wer bekommt was: :mod:`dcc_chat_gateway.fcm_empfaenger`).
+Telefon sichtbar (wer bekommt was: :mod:`dcc_chat_gateway.fcm_empfaenger`).
 Die Nutzlast trägt deshalb nur Absendername und Kanalkennung — niemals
-Nachrichtentext (derselbe Riegel wie ``fan_out_dm_push_encrypted``).
+Nachrichtentext (derselbe Riegel wie ``fan_out_dm_push_encrypted``). Der Bau
+der Nachricht steht in :mod:`dcc_chat_gateway.fcm_nachricht`.
 
 **Einrichtung des Service-Account-Keys** (einmalig, Betreiber):
 
@@ -15,7 +15,8 @@ Nachrichtentext (derselbe Riegel wie ``fan_out_dm_push_encrypted``).
    Modus 0600) und den Pfad als ``FIREBASE_SERVICE_ACCOUNT_KEY``-Umgebungs-
    variable setzen. Neustart. Ohne die Variable (oder mit unlesbarer Datei)
    bleibt FCM aus — kein Crash, kein Ambulanz-Log je Nachricht: nur ein
-   einzelner WARNING beim ersten missglückten Initialisieren.
+   einzelner WARNING beim ersten missglückten Initialisieren; erst ein
+   Neustart versucht es wieder (:func:`ensure_fcm`).
 
 ``firebase_admin`` wird erst beim ersten Senden importiert (Muster wie
 ``pywebpush`` in ``push.py``): Boot und Tests brauchen die Bibliothek nicht.
@@ -30,12 +31,17 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, select
 
-from dcc_chat_gateway import badgezaehler
+from dcc_chat_gateway import badgezaehler, fcm_nachricht
 from dcc_chat_gateway.config import get_settings
 from dcc_chat_gateway.db import SessionLocal
-from dcc_chat_gateway.fcm_empfaenger import empfangende_geraete, ios_geraete
+from dcc_chat_gateway.fcm_empfaenger import (
+    empfangende_geraete,
+    geraetearten,
+    gruppenmitglieder,
+)
+from dcc_chat_gateway.fcm_nachricht import ANDROID_CHANNEL_ID, DM_KATEGORIE
 from dcc_chat_gateway.fcm_stumm import stumme_gruppenmitglieder, stumme_konten
-from dcc_chat_gateway.fcm_texte import Lokal, aps_alert
+from dcc_chat_gateway.fcm_texte import Lokal
 from dcc_chat_gateway.models import FcmToken
 
 # Nur für die Typangabe von ``_build_dm_message``: zur Laufzeit lädt diese
@@ -46,21 +52,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-#: Android-Benachrichtigungskanal für Push-Meldungen. Der Klient legt ihn
-#: beim App-Start an (``FirebaseMessaging.createChannel``); FCM ordnet die
-#: Meldung über ``AndroidNotification.channel_id`` dort ein.
-ANDROID_CHANNEL_ID = "messages"
-
 #: Inhaltsfreier Benachrichtigungstext — der Server kann (bei verschlüsselten
 #: DMs: soll) den Klartext nicht kennen, also steht hier nie mehr als die
 #: Kategorie.
 DM_BODY = "Neue Nachricht"
-
-#: Mitteilungs-Kategorie für DMs. Sie verbindet die Meldung mit den Aktionen,
-#: die die App registriert hat (`AppDelegate.swift` — „Antworten" mit
-#: Eingabefeld). Der Bezeichner muss dort WORTGLEICH stehen; passt er nicht,
-#: zeigt iOS die Meldung ohne Aktionen an — ohne jeden Fehler.
-DM_KATEGORIE = "dm"
 
 #: Dasselbe, wenn ein Anhang dranhängt (Eigentümer-Entscheid 2026-10-08).
 #: Der Server WEISS das — die Bezugszeilen (``dm_anhang_bezuege``) stehen in
@@ -93,17 +88,25 @@ PLAKETTE_MARKE_HALTBARKEIT_S = 24 * 60 * 60
 #: gewinnt. ``None`` heisst: nicht konfiguriert oder fehlgeschlagen (kein Push).
 _FCM_APP: Any | None = None
 
+#: Ein Initialisieren ist in diesem Prozess schon gescheitert (Bibliothek
+#: fehlt, Schlüsseldatei unbrauchbar). Ohne den Merker versuchte und loggte
+#: JEDE Nachricht es neu — der Modulkopf verspricht einen einzigen WARNING.
+_FCM_GESCHEITERT = False
+
 
 def ensure_fcm() -> Any | None:
     """Firebase-App mit Service-Account initialisieren (gecacht).
 
     Liefert ``None``, wenn ``FIREBASE_SERVICE_ACCOUNT_KEY`` nicht gesetzt ist,
     ``firebase_admin`` fehlt oder die Datei unbrauchbar ist — aufruferseitig
-    dasselbe Verhalten: kein Push, kein Fehler.
+    dasselbe Verhalten: kein Push, kein Fehler. Ein Fehlschlag wird einmal
+    geloggt und bis zum Neustart gemerkt.
     """
-    global _FCM_APP
+    global _FCM_APP, _FCM_GESCHEITERT
     if _FCM_APP is not None:
         return _FCM_APP
+    if _FCM_GESCHEITERT:
+        return None
     settings = get_settings()
     if not settings.firebase_service_account_key:
         return None
@@ -111,18 +114,24 @@ def ensure_fcm() -> Any | None:
         import firebase_admin
         from firebase_admin import credentials
     except ImportError:
-        log.error("firebase_admin nicht installiert; FCM-Push deaktiviert")
+        _FCM_GESCHEITERT = True
+        log.warning("firebase_admin nicht installiert; FCM-Push deaktiviert")
         return None
     try:
         _FCM_APP = firebase_admin.initialize_app(
             credentials.Certificate(settings.firebase_service_account_key),
             options={"httpTimeout": FCM_HTTP_TIMEOUT_S},
         )
-    except Exception:  # noqa: BLE001 — schlechter Key darf nie den Versandpfad sprengen
-        log.exception(
-            "fcm_key_unbrauchbar — Service-Account-Datei %s nicht ladbar; "
-            "FCM-Push deaktiviert",
+    except Exception as exc:  # noqa: BLE001 — schlechter Key darf nie den Versandpfad sprengen
+        _FCM_GESCHEITERT = True
+        # Nur der Typ, keine Meldung und kein Traceback: was eine Ausnahme
+        # beim Laden der Datei in ihre Meldung schreibt, sagt die Bibliothek
+        # nicht zu, und die Datei enthält den privaten Schlüssel.
+        log.warning(
+            "fcm_key_unbrauchbar — Service-Account-Datei %s nicht ladbar (%s); "
+            "FCM-Push bis zum Neustart deaktiviert",
             settings.firebase_service_account_key,
+            type(exc).__name__,
         )
         return None
     log.info("fcm_aktiviert — Service-Account-Key geladen")
@@ -131,7 +140,8 @@ def ensure_fcm() -> Any | None:
 
 def reset_fcm_cache_for_tests() -> None:
     """Prozess-Cache leeren (Tests mit wechselnden Key-Pfaden)."""
-    global _FCM_APP
+    global _FCM_APP, _FCM_GESCHEITERT
+    _FCM_GESCHEITERT = False
     if _FCM_APP is not None:
         try:
             import firebase_admin
@@ -145,115 +155,59 @@ def reset_fcm_cache_for_tests() -> None:
 def _build_dm_message(
     *, token: str, payload: dict, badge: int | None = None, lokal: Lokal | None = None
 ) -> messaging.Message:
-    """Baut die FCM-Message für eine DM (Alert + iOS-Sound + Zeitkritisch +
-    Icon-Badge + Android-Kanal + Deep-Link-Daten). Eigenständige Funktion,
-    damit der Test den echten Bau durch den firebase-Encoder schicken kann
-    (Befund 2026-10-06: messaging.ApsSound existierte nicht — nur ein echter
-    Konstruktions-Test fängt so etwas).
+    """Die FCM-Message einer DM (:func:`fcm_nachricht.dm_mitteilung`). Der Name
+    bleibt, weil die Tests den echten Bau über ihn durch den firebase-Encoder
+    schicken (Befund 2026-10-06: messaging.ApsSound existierte nicht — nur
+    ein echter Konstruktions-Test fängt so etwas).
 
     ``badge`` ist der Ungelesen-Stand des EMPFÄNGERS (s. ``badgezaehler``).
     ``None`` heisst *schweigen*: das Feld entfällt und die Zahl am Gerät
     bleibt stehen. Eine ``0`` dagegen räumt die Plakette ab — deshalb darf
     ein unbekannter Stand niemals als 0 durchgehen.
 
-    ``lokal`` (nur iOS-Geräte, s. :mod:`dcc_chat_gateway.fcm_texte`): statt
-    des fertigen Textes gehen ``loc-key``/``loc-args`` hinaus, und der
-    FCM-Block ``notification`` entfällt — er würde sich in denselben
-    ``aps.alert`` mischen, und bei einem ``loc-key`` gilt ``body`` nicht.
+    ``lokal`` (nur Geräte mit Zusage, s. :mod:`dcc_chat_gateway.fcm_texte`):
+    statt des fertigen Textes gehen Schlüssel hinaus, und der FCM-Block
+    ``notification`` entfällt.
     """
-    from firebase_admin import messaging
-
-    # Der FCM-``data``-Block ist String→String. ``payload`` trägt heute nur
-    # Strings; der Filter ist der Riegel dagegen, dass ein künftiges Feld
-    # anderen Typs hineingerät. Einmal gebaut, zweimal verwendet (top-level
-    # und im Android-Block) — die beiden müssen denselben Inhalt tragen.
-    daten = {k: v for k, v in payload.items() if isinstance(v, str)}
-    return messaging.Message(
-        notification=(
-            None
-            if lokal
-            else messaging.Notification(title=payload["title"], body=payload["body"])
-        ),
-        token=token,
-        # Deep-Link-Daten TOP-LEVEL, nicht nur im Android-Block: nur so
-        # erreichen sie auch die iOS-Hülle, deren Tap-Handler
-        # `notification.data.channel_id` liest (Befund Review 2026-10-08 —
-        # vorher öffnete ein Push-Tap am iPhone nur die App, nicht den Chat).
-        data=daten,
-        # iOS: eigener Sound (pulse-push.caf im Bundle) + zeitkritisch —
-        # durchbricht Fokus-Modi; das Zeitkritisch-Privileg vergibt der
-        # Nutzer einmalig im Systemdialog.
-        #
-        # **Die Dringlichkeit steht im `aps`-Block, nicht im Kopf.** Bis zum
-        # 2026-10-11 stand hier ein Kopf `apns-interruption-level` — einen
-        # solchen Kopf kennt APNs nicht (die Kopfzeilen sind `apns-push-type`,
-        # `apns-priority`, `apns-expiration`, `apns-topic`, `apns-collapse-id`,
-        # `apns-id`); die Ebene ist ein Feld der Nutzlast,
-        # `aps.interruption-level` (Apple, „Generating a remote
-        # notification"). Der Kopf wurde still übergangen, und keine Meldung
-        # war je zeitkritisch (Bughunt T16). Gefolgert aus der Doku, nicht am
-        # Gerät gemessen.
-        apns=messaging.APNSConfig(
-            headers={"apns-push-type": "alert"},
-            payload=messaging.APNSPayload(
-                aps=messaging.Aps(
-                    alert=aps_alert(payload, lokal),
-                    sound="pulse-push.caf",
-                    # Der Encoder lässt None-Felder weg — genau das ist hier
-                    # die Absicht, s. Docstring.
-                    badge=badge,
-                    category=DM_KATEGORIE,
-                    # Eine Gruppe je Kanal in der Mitteilungszentrale: eine
-                    # Salve aus derselben Unterhaltung stapelt sich, statt den
-                    # Sperrbildschirm mit Einzelkarten zu füllen.
-                    thread_id=payload["channel_id"],
-                    custom_data={"interruption-level": "time-sensitive"},
-                )
-            ),
-        ),
-        # channel_id im data-Block: das ist die Pulse-Kanalkennung für den
-        # Deep-Link des Klienten, nicht der Android-Kanal.
-        android=messaging.AndroidConfig(
-            notification=messaging.AndroidNotification(channel_id=ANDROID_CHANNEL_ID),
-            data=daten,
-        ),
-    )
+    return fcm_nachricht.dm_mitteilung(token=token, payload=payload, badge=badge, lokal=lokal)
 
 
 def _send_one(
     *, token: str, payload: dict, badge: int | None = None, lokal: Lokal | None = None
 ) -> str:
-    """Ein Sendeversuch. Liefert ``"ok"``, ``"dead"`` oder ``"warn"``.
+    """Ein Sendeversuch; Ausgänge und ihre Bedeutung: :func:`fcm_nachricht.senden`.
 
     ``dead`` = Token weg (App deinstalliert, rotiert) → Zeile löschen,
     damit jeder DM-Versand nicht ewig gegen eine tote Registrierung läuft.
     Niemals ``token`` oder Payload loggen.
     """
     try:
-        from firebase_admin import messaging
+        nachricht = _build_dm_message(token=token, payload=payload, badge=badge, lokal=lokal)
     except ImportError:
         log.error("firebase_admin nicht installiert; FCM-Push deaktiviert")
         return "warn"
-    try:
-        messaging.send(
-            _build_dm_message(token=token, payload=payload, badge=badge, lokal=lokal)
-        )
-        return "ok"
-    except messaging.UnregisteredError:
-        return "dead"
-    except messaging.InvalidArgumentError:
-        # Malformed token — wird nie wieder gültig.
-        return "dead"
-    except Exception:  # noqa: BLE001 — Push ist best-effort
-        log.warning("fcm_send_fehlgeschlagen")
-        return "warn"
+    return fcm_nachricht.senden(nachricht)
+
+
+async def tote_tokens_loeschen(session: Any, tokens: list[str]) -> None:
+    """FCM-Zeilen löschen, deren Token Firebase als abgemeldet meldet
+    (``"dead"``, :func:`fcm_nachricht.senden`) — für jeden Weg, der an FCM
+    sendet (DM, Erwähnung, Freundschaft, Anruf), dieselbe Regel."""
+    if not tokens:
+        return
+    # warning, nicht info: die Cloud loggt erst ab warning. Ohne Token (die
+    # sind Geheimnisse) — nur die Anzahl.
+    log.warning("fcm_token_tot — %d Token entfernt (abgemeldet)", len(tokens))
+    await session.execute(delete(FcmToken).where(FcmToken.token.in_(tokens)))
+    await session.commit()
 
 
 @dataclass(frozen=True)
 class Versand:
     """Ausgang eines Versands. ``stoerung`` = nichts ging hinaus, und ein
     späterer Versuch kann helfen (Datenbank weg, Firebase-Zeitüberschreitung
-    oder 5xx) — im Gegensatz zu „niemand zu erreichen" oder toten Tokens."""
+    oder 5xx) — im Gegensatz zu „niemand zu erreichen", toten Tokens oder
+    einer Anfrage, die Firebase als ungültig ablehnt (``"ungueltig"``)."""
 
     gesendet: int = 0
     stoerung: bool = False
@@ -285,10 +239,9 @@ async def dm_push_senden(
     Wartezeit hierher ruft. ``anzahl`` ist die Zahl der Nachrichten, für die
     diese eine Mitteilung steht (gebündelt), und zählt so oft die Plakette hoch.
 
-    Wer einen bekommt, entscheidet :func:`empfangende_geraete`: iOS-Geräte
-    immer, Android-Geräte nur ohne offene WebSocket des Kontos — wer dort
-    online ist, bekommt die Nachricht live über den WS (``dm_bump``), und eine
-    zusätzliche Systemmeldung wäre doppelt. Der Check läuft über
+    Wer einen bekommt, entscheidet :func:`empfangende_geraete`: jedes Gerät,
+    ausser einem iOS-Bau ohne die Zusage ``dm_vordergrund``, solange das Konto
+    eine wache WebSocket hat (Begründung dort). Der Check läuft über
     ``ConnectionManager.user_socket_count``; ohne ``manager`` (Tests, pfad-
     lose Aufrufe) gilt jeder Empfänger als offline.
 
@@ -297,9 +250,12 @@ async def dm_push_senden(
     stummgeschaltete Gruppe. Bei „Nicht stören“ und dem DM-Schalter zählt
     die Plakette trotzdem hoch (Begründung dort), bei der stummen Gruppe
     nicht — die zählt auch die App nicht mit (``abzeichen.svelte.ts``).
+    **Bei ``art == "gruppe"`` zählt die Mitgliedschaft JETZT**, nicht beim
+    Vormerken: wer in der Wartezeit austritt oder hinausgeworfen wird, oder
+    wessen Gruppe aufgelöst wurde, bekommt nichts mehr.
     ``lokal`` (:mod:`dcc_chat_gateway.fcm_texte`) ersetzt den fertigen Text
-    durch Schlüssel — nur für iOS-Geräte mit der Zusage ``dm_vordergrund``,
-    Android bleibt beim deutschen Text.
+    durch Schlüssel — nur für Geräte mit Zusage (iOS ``dm_vordergrund``,
+    Android ``texte_lokal``), alle anderen bekommen den deutschen Text.
 
     Löst nie aus — Fehlkonfiguration und tote Tokens dürfen den
     Nachrichtenweg nie brechen. Ob ein neuer Versuch lohnt, sagt
@@ -323,13 +279,17 @@ async def dm_push_senden(
 
     try:
         async with SessionLocal() as session:
+            if art == "gruppe":
+                recipient_ids = await gruppenmitglieder(session, channel_id, recipient_ids)
+                if not recipient_ids:
+                    return Versand()
             ergebnis = await session.execute(
                 select(FcmToken).where(FcmToken.user_id.in_(list(recipient_ids)))
             )
             alle = ergebnis.scalars().all()
             redis = getattr(manager, "redis", None)
-            ios = await ios_geraete(session, {r.user_id for r in alle}, redis)
-            rows = empfangende_geraete(alle, ios_geraete=ios, wach=wach)
+            arten = await geraetearten(session, alle, redis)
+            rows = empfangende_geraete(alle, riegel=arten.riegel, wach=wach)
             if not rows:
                 return Versand()
             # Icon-Badge: EINMAL je Konto hochzählen, nicht je Gerätezeile —
@@ -363,30 +323,15 @@ async def dm_push_senden(
                         token=r.token,
                         payload=payload,
                         badge=badges.get(r.user_id),
-                        lokal=lokal if (r.user_id, r.geraet_id) in ios else None,
+                        lokal=lokal if (r.user_id, r.geraet_id) in arten.texte_lokal else None,
                     )
                     for r in rows
                 ),
                 return_exceptions=True,
             )
-            dead_tokens = [
-                r.token
-                for r, outcome in zip(rows, results, strict=True)
-                if outcome == "dead"
-            ]
-            if dead_tokens:
-                # warning, nicht info: die Cloud loggt erst ab warning. Ohne
-                # Token (die sind Geheimnisse) — nur die Anzahl. Viele auf
-                # einmal bei sonst gesunden Sendungen deuten auf ein falsches
-                # Firebase-Projekt (Token gehört zu einem anderen).
-                log.warning(
-                    "fcm_token_tot — %d Token entfernt (abgemeldet/ungültig)",
-                    len(dead_tokens),
-                )
-                await session.execute(
-                    delete(FcmToken).where(FcmToken.token.in_(dead_tokens))
-                )
-                await session.commit()
+            await tote_tokens_loeschen(
+                session, [r.token for r, o in zip(rows, results, strict=True) if o == "dead"]
+            )
             gesendet = sum(1 for outcome in results if outcome == "ok")
             gestoert = any(o == "warn" or isinstance(o, BaseException) for o in results)
             return Versand(gesendet=gesendet, stoerung=gesendet == 0 and gestoert)
@@ -398,9 +343,11 @@ async def dm_push_senden(
 __all__ = [
     "ANDROID_CHANNEL_ID",
     "DM_BODY",
+    "DM_KATEGORIE",
     "Versand",
     "dm_push_senden",
     "ensure_fcm",
     "fan_out_fcm_dm_push",
     "reset_fcm_cache_for_tests",
+    "tote_tokens_loeschen",
 ]

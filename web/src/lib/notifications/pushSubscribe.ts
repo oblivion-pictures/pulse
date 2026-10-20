@@ -145,6 +145,28 @@ async function subscribeUser(): Promise<void> {
   });
 }
 
+/** Ein bestehendes Abo dieses Geräts dem Server erneut melden — einmal nach
+ *  dem Start der App. Der Server löscht Abos seit 2026-10-21 mit dem Ende
+ *  ihrer Anmelde-Kette (`push_widerruf.py`); der Browser hält sich danach
+ *  weiter für abonniert, und ohne diese Meldung käme nie wieder ein Push.
+ *  Die Meldung frischt zugleich die Kette auf. Fragt nie nach einer
+ *  Erlaubnis und legt kein neues Abo an; Fehler werden geschluckt. */
+export async function aboAuffrischen(): Promise<void> {
+  try {
+    if (!pushSupported() || getPushPermissionState() !== 'granted') return;
+    const reg = await getRegistration();
+    const sub = reg ? await reg.pushManager.getSubscription() : null;
+    if (!sub) return;
+    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : undefined;
+    await postPushSubscription({
+      ...serializeSubscription(sub),
+      user_agent: userAgent ? userAgent.substring(0, 256) : undefined
+    });
+  } catch {
+    /* best-effort — der Schalter in den Einstellungen bleibt der Weg zurück */
+  }
+}
+
 /** Cancel the active subscription on this device + tell the backend. Best-
  *  effort: a missing local sub (already gone) still pings the backend with
  *  the previously-known endpoint if we can recover it, but it's not an

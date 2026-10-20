@@ -16,7 +16,7 @@ import pytest
 from dcc_shared.anmeldeketten import KANAL, KettenEnde, nachricht
 from sqlalchemy import select
 
-from dcc_chat_gateway.models import FcmToken, VoipToken
+from dcc_chat_gateway.models import FcmToken, VoipToken, WebPushSubscription
 from dcc_chat_gateway.push_widerruf import geraetetoken_loeschen
 
 
@@ -94,14 +94,61 @@ async def test_ende_aller_ketten_trifft_auch_zeilen_ohne_vermerk(
 
 
 @pytest.mark.asyncio
-async def test_meldung_ueber_redis_loescht_die_zeilen(app, client, session_factory, _auth_signer):
+async def test_meldung_ueber_redis_loescht_die_zeilen(
+    app, client, session_factory, _auth_signer, caplog
+):
     uid = random.randint(40_000_001, 50_000_000)
     await _anmelden(client, _auth_signer, uid, "verloren", "kette-x")
     text = nachricht(user_id=uid, ketten=["kette-x"])
     assert text is not None
+    caplog.set_level("WARNING", logger="dcc_chat_gateway.push_widerruf")
     await app.state.redis.publish(KANAL, text)
-    for _ in range(50):
-        if (await _geraete(session_factory, uid))["fcm_tokens"] == []:
+    # Auf die Log-Zeile des Handlers warten, NICHT die Tabelle abfragen: die
+    # Test-Datenbank hängt an EINER geteilten Verbindung (``StaticPool``), und
+    # eine Lese-Sitzung, die sich schliesst, kann dabei die noch offene
+    # Transaktion des Handlers zurückrollen. Beobachtet, seit er drei Tabellen
+    # löscht: der Handler meldete gelöschte Zeilen, die Tabelle hatte sie noch.
+    for _ in range(100):
+        if f"user={uid}" in caplog.text:
             break
         await asyncio.sleep(0.05)
     assert await _geraete(session_factory, uid) == {"fcm_tokens": [], "voip_tokens": []}
+
+
+async def _web_abo(session_factory, uid: int, endpunkt: str, kette: str | None) -> None:
+    async with session_factory() as s:
+        s.add(
+            WebPushSubscription(
+                id=random.randint(1, 2**62), user_id=uid, endpoint=endpunkt,
+                p256dh="p", auth_secret="a", kette=kette,
+            )
+        )
+        await s.commit()
+
+
+async def _web_abos(session_factory, uid: int) -> list[str]:
+    async with session_factory() as s:
+        zeilen = await s.execute(
+            select(WebPushSubscription.endpoint)
+            .where(WebPushSubscription.user_id == uid)
+            .order_by(WebPushSubscription.endpoint)
+        )
+        return list(zeilen.scalars())
+
+
+@pytest.mark.asyncio
+async def test_kettenende_trifft_auch_web_push_abos(client, session_factory, _auth_signer):
+    """Push-Bughunt 2026-10-20: ein Browser, dessen Sitzung beendet wurde,
+    zeigte weiter Mitteilungen — sein Abo kannte keine Kette (Migration 0108)."""
+    uid = random.randint(50_000_001, 60_000_000)
+    await _web_abo(session_factory, uid, "https://a.example/weg", "kette-weg")
+    await _web_abo(session_factory, uid, "https://a.example/bleibt", "kette-bleibt")
+    await _web_abo(session_factory, uid, "https://a.example/alt", None)
+    async with session_factory() as s:
+        await geraetetoken_loeschen(s, KettenEnde(uid, frozenset({"kette-weg"})))
+    assert await _web_abos(session_factory, uid) == [
+        "https://a.example/alt", "https://a.example/bleibt"
+    ]
+    async with session_factory() as s:
+        await geraetetoken_loeschen(s, KettenEnde(uid, frozenset(), alle=True))
+    assert await _web_abos(session_factory, uid) == []

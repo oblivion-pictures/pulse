@@ -34,10 +34,17 @@
   import { voice } from '$lib/voice/livekit.svelte';
   import { startBeitritteAusfuehren } from '$lib/voice/startBeitritte';
   import { spracheRaumVorhalten } from '$lib/platform/spracheVorhalt';
-  import { netzwacheStarten, hintergrundTrennSperre, beiHintergrund, beiVordergrund } from '$lib/ws/netzwache';
+  import {
+    netzwacheStarten,
+    hintergrundTrennSperre,
+    trennSperrenNachpruefen,
+    beiHintergrund,
+    beiVordergrund
+  } from '$lib/ws/netzwache';
   import { voiceState } from '$lib/voice/state.svelte';
   import { anrufe } from '$lib/anrufe/anruf.svelte';
-  import { hintergrundZyklusStarten, hintergrundZyklusStoppen } from '$lib/krypto/empfangen';
+  import { hintergrundZyklusStarten, hintergrundZyklusStoppen } from '$lib/krypto/hintergrundTakt';
+  import { postfachImHintergrundAbholen } from '$lib/ws/handlers/chat';
   import { schriftGroesseVerfolgen } from '$lib/platform/schriftGroesse';
   import { voipTokenVerfolgen } from '$lib/platform/voipToken';
   import { schnellwahlSetzen, schnellwahlVerfolgen } from '$lib/platform/schnellwahl';
@@ -310,6 +317,8 @@
         : gateway.waitForReady().catch((e) => console.error('gateway ready', e))
     ]);
     hydrated = true;
+    // Bestehendes Browser-Push-Abo neu melden (`aboAuffrischen`, Grund dort).
+    void import('$lib/notifications/pushSubscribe').then((m) => m.aboAuffrischen());
 
     // Voice-Resume, danach Auto-Connect — erst nach der App-Sperre und mit
     // dem Abgleich der Hülle vorneweg; bis dahin wartet auch der Auto-Beitritt
@@ -323,12 +332,12 @@
     // DM-Push per FCM zustellt (sonst hält die WebView die Leitung offen und
     // Nachrichten bleiben laut). Sprachkanal und Anruf sperren die Trennung —
     // deren Signalisierung hängt an derselben Leitung.
-    hintergrundTrennSperre(() => voiceState.connected || anrufe.inAnruf);
-    // Im Hintergrund läuft der Postfach-Zyklus im 60-s-Takt weiter: jede
-    // Runde quittiert Zugestelltes, sodass der Absender die ✓✓ sieht, ohne
-    // dass die App geöffnet werden muss. Vordergrund: der normale Antrieb
-    // (WS-Ereignisse) übernimmt, der Takt ruht.
-    beiHintergrund(() => hintergrundZyklusStarten());
+    hintergrundTrennSperre(trennGesperrt);
+    // Im Hintergrund läuft der Postfach-Zyklus im 60-s-Takt weiter, solange
+    // das System die WebView lässt (`krypto/hintergrundTakt.ts`): jede Runde
+    // verbucht und quittiert Zugestelltes, stumm. Vordergrund: der normale
+    // Antrieb (WS-Ereignisse) übernimmt, der Takt ruht.
+    beiHintergrund(() => hintergrundZyklusStarten(postfachImHintergrundAbholen));
     beiVordergrund(() => hintergrundZyklusStoppen());
     // Systemschriftgröße anwenden, falls die Hülle sie meldet (Punkt 38).
     schriftGroesseVerfolgen();
@@ -534,6 +543,18 @@
   $effect(() => {
     const pfad = page.url.pathname;
     if (istRaumBereich(pfad)) merkeRaumPfad(pfad);
+  });
+
+  // Die Sperre gegen die Hintergrund-Trennung (`ws/netzwache.ts`): Sprachkanal
+  // oder Anruf. `inAnruf` heisst „es gibt einen Anruf" — auch einen, der hier
+  // erst klingelt (`anrufe.aktiv` steht ab `eingehend`), nicht erst einen
+  // verbundenen.
+  const trennGesperrt = (): boolean => voiceState.connected || anrufe.inAnruf;
+  // Fällt die Sperre weg, während die App hinten ist, trennt netzwache jetzt
+  // nachträglich — sonst bliebe die Leitung nach dem Auflegen im Hintergrund
+  // offen und der Server schickte keine Pushes.
+  $effect(() => {
+    if (!trennGesperrt()) untrack(trennSperrenNachpruefen);
   });
 
   // Serverseitiger Lesefortschritt (P0.2): markRead-Meldungen spiegeln in die

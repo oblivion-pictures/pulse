@@ -48,6 +48,24 @@ async def block_exists_either_way(session, a: int, b: int) -> bool:
     return (await session.execute(stmt)).first() is not None
 
 
+async def blockierte_unter(session, user_id: int, andere: set[int]) -> set[int]:
+    """Die Konten unter ``andere``, die mit ``user_id`` eine Blockierung haben —
+    in einer der beiden Richtungen, wie :func:`block_exists_either_way`, aber
+    für alle in EINER Abfrage (Gruppen-Push, Gruppenanruf)."""
+    if not andere:
+        return set()
+    ids = sorted(andere)
+    zeilen = await session.execute(
+        select(UserBlock.blocker_id, UserBlock.blocked_id).where(
+            or_(
+                and_(UserBlock.blocker_id == user_id, UserBlock.blocked_id.in_(ids)),
+                and_(UserBlock.blocked_id == user_id, UserBlock.blocker_id.in_(ids)),
+            )
+        )
+    )
+    return {blocked if blocker == user_id else blocker for blocker, blocked in zeilen.all()}
+
+
 async def shared_guild_exists(session, a: int, b: int) -> bool:
     """True if ``a`` and ``b`` are both members of at least one
     common guild."""

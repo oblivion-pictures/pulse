@@ -4,8 +4,10 @@ auth-svc meldet auf ``dcc_shared.anmeldeketten.KANAL``, dass Ketten zu Ende
 sind — Abmelden, „Sitzung beenden", Diebstahlsverdacht, Passwortwechsel,
 Passwort-Reset, Sperre. Hier fallen daraufhin die FCM- und PushKit-Token, die
 unter diesen Ketten angemeldet wurden (``fcm_tokens.kette``/``voip_tokens.kette``,
-Migration 0105). Ohne das zeigte ein verlorenes Telefon nach dem Widerruf
-weiter Banner mit Absendernamen und klingelte mit dem Namen des Anrufers.
+Migration 0105), und die Web-Push-Abos (``web_push_subscriptions.kette``,
+Migration 0108). Ohne das zeigte ein verlorenes Telefon nach dem Widerruf
+weiter Banner mit Absendernamen und klingelte mit dem Namen des Anrufers — und
+ein Browser, dessen Sitzung beendet wurde, zeigte weiter Mitteilungen.
 
 Die Meldung ist flüchtig: was während eines Neustarts kommt, hört hier
 niemand, und eine Kette, die nur abläuft, meldet niemand. Beides holt
@@ -23,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 from dcc_shared.anmeldeketten import KANAL, KettenEnde, lesen
 from sqlalchemy import delete
 
-from dcc_chat_gateway.models import FcmToken, VoipToken
+from dcc_chat_gateway.models import FcmToken, VoipToken, WebPushSubscription
 from dcc_chat_gateway.pubsub_channel_registry import register_channel_handler
 
 if TYPE_CHECKING:
@@ -31,19 +33,23 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+#: Jede Tabelle mit ``user_id`` und ``kette``, deren Zeilen mit der Kette fallen.
+#: ``geraetetoken_abgleich`` fragt dieselben Tabellen ab.
+KETTEN_TABELLEN = (FcmToken, VoipToken, WebPushSubscription)
+
 
 async def geraetetoken_loeschen(session: Any, ende: KettenEnde) -> int:
     """Die Zeilen löschen, die zu ``ende`` gehören; liefert ihre Anzahl.
 
     ``alle``: jede Zeile des Kontos, auch die ohne Kettenvermerk (vor
-    Migration 0105 angemeldet). Sonst nur Zeilen genau dieser Ketten — eine
+    Migration 0105 bzw. 0108 angemeldet). Sonst nur Zeilen genau dieser Ketten — eine
     Zeile ohne Vermerk bleibt dann stehen, denn sie könnte dem Gerät gehören,
     das gerade NICHT abgemeldet wird.
     """
     if not ende.alle and not ende.ketten:
         return 0
     anzahl = 0
-    for modell in (FcmToken, VoipToken):
+    for modell in KETTEN_TABELLEN:
         stmt = delete(modell).where(modell.user_id == ende.user_id)
         if not ende.alle:
             stmt = stmt.where(modell.kette.in_(sorted(ende.ketten)))
@@ -72,4 +78,4 @@ async def handle_ketten_ende(
         log.warning("geraetetoken_mit_kette_beendet user=%s anzahl=%d", ende.user_id, anzahl)
 
 
-__all__ = ["geraetetoken_loeschen", "handle_ketten_ende"]
+__all__ = ["KETTEN_TABELLEN", "geraetetoken_loeschen", "handle_ketten_ende"]

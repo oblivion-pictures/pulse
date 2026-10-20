@@ -18,11 +18,17 @@ import { toast } from 'svelte-sonner';
 
 import { anrufAblehnen, anrufAuflegen } from '$lib/api/anrufe';
 import { m } from '$lib/paraglide/messages.js';
-import { anrufNativ, type AnrufAktion, type AnrufEndgrund } from '$lib/platform/anrufNativ';
+import {
+  anrufAndroid,
+  anrufNativ,
+  type AnrufAktion,
+  type AnrufEndgrund
+} from '$lib/platform/anrufNativ';
 import { anrufwegVeraltet, nativerAnrufwegDa } from '$lib/platform/anrufNativWeiche';
 import { mitFrist, SPRACHE_FRIST_SOFORT_MS } from '$lib/platform/brueckenFrist';
 import { isCapacitorAndroid, isCapacitorIOS } from '$lib/platform/runtime';
 import type { AnrufStore } from './anruf.svelte';
+import { alsAnrufAktion, alsKlingelnderAnruf } from './ausstehendeAktion';
 import { ohneRaumPlan } from './ohneRaumPlan';
 
 /** Gibt es hier überhaupt eine native Anrufanzeige? An EINER Stelle, weil
@@ -126,6 +132,42 @@ export function nativAnbinden(anrufe: AnrufStore): void {
   if (!nativeHuelle()) return;
   void anrufNativ.addListener('aktion', (daten) => nativeAktionVerarbeiten(anrufe, daten));
   void nativAufnehmen(anrufe);
+  if (isCapacitorAndroid()) {
+    // Beim Start und bei jeder Rückkehr nach vorn: hat die Hülle etwas für
+    // die Seite aufbewahrt (eine Entscheidung, einen klingelnden Anruf)?
+    void ausstehendeAktionAbholen(anrufe);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') void ausstehendeAktionAbholen(anrufe);
+    });
+  }
+}
+
+/**
+ * Android: den Merkzettel der Hülle abholen (`ausstehendeAktion.ts`) — beim
+ * Start und bei jeder Rückkehr nach vorn. Eine Entscheidung aus ihrer
+ * Klingel-Meldung läuft wie das `aktion`-Ereignis (die Annahme- und
+ * Ablehnungs-Rufe an den Server leben im Klienten); ein Anruf, der dort noch
+ * klingelt, kommt im Anruf-Zustand an — ohne Ton, die Hülle klingelt schon,
+ * und ihr `ankommen` bleibt für denselben Anruf bei der einen Meldung
+ * (`AnrufPlugin.java`). Die Hülle liefert jeden Zettel nur einmal. Eine
+ * ältere Hülle kennt die Methode nicht: der Ruf wird abgelehnt, und es bleibt
+ * beim bisherigen Weg.
+ */
+async function ausstehendeAktionAbholen(anrufe: AnrufStore): Promise<void> {
+  const roh = await mitFrist(
+    anrufAndroid.ausstehendeAktion(),
+    SPRACHE_FRIST_SOFORT_MS,
+    'ausstehendeAktion'
+  ).catch(() => null);
+  const aktion = alsAnrufAktion(roh);
+  if (aktion) {
+    nativeAktionVerarbeiten(anrufe, aktion);
+    return;
+  }
+  const klingelt = alsKlingelnderAnruf(roh);
+  if (klingelt && anrufe.aktiv?.id !== klingelt.anruf.call_id) {
+    anrufe.eingehend(klingelt.anruf, klingelt.name ?? 'Pulse', { ton: false });
+  }
 }
 
 /**
@@ -138,13 +180,15 @@ function nativeAktionVerarbeiten(anrufe: AnrufStore, daten: AnrufAktion): void {
   const { aktion, callId } = daten;
   let anruf = anrufe.aktiv;
   // **Der kalt gestartete Anruf ist der Fall, der hier leicht fehlt.** Wird
-  // ein Anruf per VoIP-Push auf dem Sperrbildschirm angenommen, hat das Web
-  // nie ein `call_klingelt` gesehen: `aktiv` ist leer, und ein blosses
+  // ein Anruf per VoIP-Push auf dem Sperrbildschirm angenommen (iOS) oder auf
+  // der Klingel-Meldung der Android-Hülle, während die WebView nicht lief
+  // (`ausstehendeAktionAbholen`), hat das Web nie ein `call_klingelt`
+  // gesehen: `aktiv` ist leer, und ein blosses
   // „Kennung passt nicht" verwürfe die Annahme. Der Push trägt den Kanal
   // mit, also wird der Zustand hier nachgezogen — erst danach annehmen.
   // `anruf_art` ist `dm`/`gruppe`; bis zum 2026-10-11 stand hier ein
   // Rückfall auf das ungültige `audio` (Bughunt G3).
-  // Ohne DM-Ton: CallKit hat schon geklingelt und angenommen (A9).
+  // Ohne DM-Ton: CallKit bzw. die Hülle hat schon geklingelt (A9).
   if (!anruf && aktion === 'annehmen' && daten.channel_id) {
     anrufe.eingehend(
       {

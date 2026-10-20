@@ -24,6 +24,13 @@ import UserNotifications
 /// (Apples Doku zu `UNNotificationPresentationOptions`, nicht gemessen) — die
 /// legt im Vordergrund das Web selbst an (`badgeMelden.ts`).
 ///
+/// **Erwähnungen und Freundschaftsanfragen** (Kategorien `erwaehnung`,
+/// `freundschaft`, seit 2026-10-21, `fcm_hinweise.py`) zeigt die Oberfläche
+/// am Handy im Vordergrund NICHT selbst an — sie spielt nur einen Ton
+/// (`ws/handlers/chat.ts` `mention_added`; die In-Page-Meldung feuert nur bei
+/// verdeckter Seite). Der Banner bleibt deshalb, nur ohne `.sound` (den Ton
+/// spielt die Oberfläche schon) und ohne `.badge` (wie bei der DM).
+///
 /// Im Simulator per `simctl push` belegt: eine DM bei aktiver App antwortet
 /// SpringBoard mit Optionen 0 (kein Banner), eine andere Kategorie mit 7; im
 /// Hintergrund fragt das System gar nicht und zeigt den Banner selbst.
@@ -43,6 +50,10 @@ final class MitteilungImVordergrund: NSObject, NotificationHandlerProtocol {
     /// Mitteilungs-Kategorie der DMs — dieselbe wie `fcm.py::DM_KATEGORIE`
     /// und `AppDelegate.mitteilungsAktionenRegistrieren`.
     static let dmKategorie = "dm"
+
+    /// Kategorien, die im Vordergrund leise als Banner erscheinen — dieselben
+    /// wie `fcm_hinweise.py::ERWAEHNUNG_KATEGORIE`/`FREUNDSCHAFT_KATEGORIE`.
+    static let leiseKategorien: Set<String> = ["erwaehnung", "freundschaft"]
 
     /// Die Fähigkeit, die dieser Bau mit seinem PushKit-Token meldet
     /// (`AnrufPlugin.faehigkeiten`, Nachprüfung der Fix-Runden S2). Steht hier,
@@ -75,7 +86,10 @@ final class MitteilungImVordergrund: NSObject, NotificationHandlerProtocol {
     /// Die Regel, ohne UIKit prüfbar.
     static func optionen(_ vorschlag: UNNotificationPresentationOptions,
                          kategorie: String, aktiv: Bool) -> UNNotificationPresentationOptions {
-        (kategorie == dmKategorie && aktiv) ? [] : vorschlag
+        guard aktiv else { return vorschlag }
+        if kategorie == dmKategorie { return [] }
+        if leiseKategorien.contains(kategorie) { return vorschlag.subtracting([.sound, .badge]) }
+        return vorschlag
     }
 
     func willPresent(notification: UNNotification) -> UNNotificationPresentationOptions {

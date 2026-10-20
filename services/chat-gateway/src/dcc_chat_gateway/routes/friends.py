@@ -262,7 +262,11 @@ async def create_friend_request(
     from dcc_chat_gateway.push import fan_out_friend_push
 
     await fan_out_friend_push(
-        recipient_id=target, actor_name=current.username, kind="friend_request"
+        recipient_id=target,
+        actor_name=current.username,
+        kind="friend_request",
+        actor_id=current.id,
+        redis=getattr(request.app.state, "redis", None),
     )
     return out
 

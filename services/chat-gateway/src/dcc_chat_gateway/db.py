@@ -20,7 +20,10 @@ _pool_kwargs: dict = (
     if "asyncpg" in _db_url
     else {}
 )
-engine = create_async_engine(_db_url, echo=False, **_pool_kwargs)
+# ``hide_parameters``: eine Datenbank-Ausnahme trägt sonst die gebundenen
+# Parameter in ihrer Meldung (``[parameters: ...]``), und die landet im Log —
+# hier etwa FCM-/PushKit-Token und Web-Push-Schlüssel.
+engine = create_async_engine(_db_url, echo=False, hide_parameters=True, **_pool_kwargs)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 metadata = MetaData(schema=_settings.database_schema)
 

@@ -15,13 +15,23 @@
  * Ziel — für die Pushes, die der Server heute schickt (DM, private Gruppe),
  * ist das das richtige.
  *
+ * **Zwei Meldungsarten ohne DM-Bezug** (2026-10-20, der Server schickt sie
+ * künftig): `type: "erwaehnung"` (`guild_id`, `channel_id`, `message_id`)
+ * führt in den Kanal der Community, `type: "freundschaft"` (`user_id`) in den
+ * Freunde-Bereich. Einen Sprung zur erwähnten Nachricht gibt es noch nicht —
+ * die Kanal-Route kennt keinen Parameter dafür; man landet am Ende des
+ * Kanals. Jeder andere Typ (auch ein unbekannter) läuft wie bisher über
+ * `channel_id`.
+ *
  * Importfrei und damit prüfbar (s. die `pnpm test:unit`-Falle in CLAUDE.md).
  */
 
 export interface MitteilungsZiel {
   /** Der Pfad, der geöffnet wird. */
   pfad: string;
-  kanalId: string;
+  /** `null` bei einem Ziel ohne Unterhaltung (Freundschaftsanfrage) — dorthin
+   *  gibt es keine Banner-Antwort. */
+  kanalId: string | null;
   /** Wird die Antwort aus dem Banner auf DIESER Seite gesendet? Nur die
    *  DM-Seite tut das (`bannerAntwort.svelte.ts`); anderswo wird sie zum
    *  Entwurf im Eingabefeld des Kanals. */
@@ -37,6 +47,9 @@ export function mitteilungsZiel(
     const wert = (daten as Record<string, unknown>)[name];
     return typeof wert === 'string' || typeof wert === 'number' ? String(wert) : '';
   };
+  if (feld('type') === 'freundschaft') {
+    return { pfad: '/app/friends', kanalId: null, antwortWirdGesendet: false };
+  }
   const kanalId = feld('channel_id');
   if (!kanalId) return null;
   const gilde = feld('guild_id') || gildeVon(kanalId);
@@ -47,5 +60,8 @@ export function mitteilungsZiel(
       antwortWirdGesendet: false
     };
   }
+  // Eine Erwähnung ohne bekannte Community hat kein sinnvolles Ziel — der
+  // Rückfall auf `/app/@me` gälte einer DM, die es nicht gibt.
+  if (feld('type') === 'erwaehnung') return null;
   return { pfad: `/app/@me/${kanalId}`, kanalId, antwortWirdGesendet: true };
 }

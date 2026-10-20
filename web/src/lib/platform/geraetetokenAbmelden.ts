@@ -16,11 +16,17 @@
  *
  * `bearer` muss der CLOUD-Token sein — FCM- und VoIP-Token liegen immer dort
  * (Bughunt T2), auch wenn gerade ein Self-Host aktiv ist.
+ *
+ * Auf beiden Wegen räumt es auch die zugestellten System-Meldungen ab
+ * (2026-10-20, `zugestellteMeldungen.ts`): sie gehören dem Konto, das geht,
+ * und blieben sonst in der Mitteilungszentrale stehen.
  */
 import { abmeldeFcmToken } from './fcm';
 import { voipTokenAbmelden } from './voipToken';
+import { alleZugestelltenMeldungenEntfernen } from './zugestellteMeldungen';
 
 export function geraetetokenAbmelden(bearer: string | undefined): void {
   void abmeldeFcmToken(bearer);
   void voipTokenAbmelden(bearer);
+  void alleZugestelltenMeldungenEntfernen();
 }

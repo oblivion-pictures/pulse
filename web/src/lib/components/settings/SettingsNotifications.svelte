@@ -35,16 +35,16 @@
   // Track whether we're on Electron — push uses native IPC there, the
   // browser-push toggle is hidden.
   const electron = isElectron();
-  // In der iOS-Hülle gibt es keinen Web-Push, sondern die System-Erlaubnis —
-  // eigener Abschnitt statt „nicht unterstützt" (iOS-Bughunt 2, F3).
-  const iosHuelle = isCapacitorIOS();
-  // In der Hülle (iOS und Android) kommen Mitteilungen als Push vom Server. Die
-  // Schalter „Bei Erwähnungen" und „Bei Freundschaftsanfragen" steuern nur den
-  // Seiten-Weg (`inPage.ts`, Browser-Notification), den es dort nicht gibt —
+  // In der Hülle (iOS und Android) gibt es keinen Web-Push, sondern die
+  // System-Erlaubnis — eigener Abschnitt statt „nicht unterstützt"
+  // (iOS-Bughunt 2, F3; Android seit 2026-10-20). Mitteilungen kommen dort
+  // als Push vom Server. Die Schalter „Bei Erwähnungen" und „Bei
+  // Freundschaftsanfragen" steuern nur den Seiten-Weg (`inPage.ts`,
+  // Browser-Notification), den es dort nicht gibt —
   // sie blieben ohne Wirkung und sind ausgeblendet. Der DM-Schalter bleibt.
-  const huelle = iosHuelle || isCapacitorAndroid();
+  const huelle = isCapacitorIOS() || isCapacitorAndroid();
   // Die Erlaubnis-Zeile der Seite (Notification-API) entfällt in Electron
-  // (native IPC) und in der Hülle (iOS: System-Erlaubnis, eigener Abschnitt).
+  // (native IPC) und in der Hülle (System-Erlaubnis, eigener Abschnitt).
   const seitenErlaubnisZeigen = !electron && !huelle;
 
   async function requestNotifyPermission() {
@@ -127,7 +127,7 @@
     </p>
   </div>
 
-  {#if iosHuelle}
+  {#if huelle}
     <HuelleMitteilungen />
   {:else if !electron}
     <section class="flex flex-col gap-2 rounded-2xl border border-border bg-bg-input/40 p-4">

@@ -42,6 +42,8 @@ import java.util.List;
  *  - SpeakerphoneRouter: zwingt die WebRTC-Wiedergabe auf den lauten Medien-
  *    Lautsprecher statt die Hörmuschel (Chromium setzt bei aktivem WebRTC den
  *    Audio-Modus auf MODE_IN_COMMUNICATION → Android routet sonst auf earpiece).
+ *  - Anrufmodus ({@link AnrufModus}): über dem Sperrbildschirm, solange ein
+ *    Anruf aus der Klingel-Meldung klingelt bzw. angenommen wird.
  *
  * Bewusst NICHT: webView.onPause()/pauseTimers() — der WebView muss im
  * Hintergrund weiterlaufen, sonst stoppt der getUserMedia/LiveKit-Stream sowieso.
@@ -50,6 +52,8 @@ import java.util.List;
 public class MainActivity extends BridgeActivity {
 
     private static final int REQ_VOICE_PERMS = 9473;
+
+    private final AnrufModus anrufModus = new AnrufModus(this);
 
     private SpeakerphoneRouter speakerRouter;
 
@@ -73,6 +77,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AnrufPlugin.class);
         registerPlugin(VideoCapturePlugin.class);
         registerPlugin(VoicePlugin.class);
+        registerPlugin(SystemeinstellungenPlugin.class);
         super.onCreate(savedInstanceState);
         pushKanalAnlegen();
         // Bughunt Runde 45: Capacitor setzt KEINEN DownloadListener — ein
@@ -103,6 +108,7 @@ public class MainActivity extends BridgeActivity {
         // hochkant — das Web gibt die Sperre frei, sobald ein Stream läuft.
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
         shareAusIntent(getIntent());
+        anrufAusIntent(getIntent());
     }
 
     /**
@@ -116,8 +122,8 @@ public class MainActivity extends BridgeActivity {
     private void pushKanalAnlegen() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationChannel ch = new NotificationChannel(
-                "messages", "Nachrichten", NotificationManager.IMPORTANCE_HIGH);
-        ch.setDescription("Direktnachrichten und Erwähnungen");
+                "messages", getString(R.string.kanal_nachrichten), NotificationManager.IMPORTANCE_HIGH);
+        ch.setDescription(getString(R.string.kanal_nachrichten_info));
         ch.enableVibration(true);
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm != null) nm.createNotificationChannel(ch);
@@ -129,6 +135,32 @@ public class MainActivity extends BridgeActivity {
         setIntent(intent);
         // singleTask: ein Share in die laufende App kommt hier an.
         shareAusIntent(intent);
+        anrufAusIntent(intent);
+    }
+
+    /**
+     * Intent aus der Anruf-Meldung ({@link CallForegroundService}): Full-Screen-
+     * Intent, Tipp auf die Meldung oder „Annehmen". Annehmen geht als
+     * Entscheidung an die WebView bzw. auf den Merkzettel — die Activity ist
+     * dann schon vorn, das Mikrofon darf starten. Die App erscheint über dem
+     * Sperrbildschirm (Anrufmodus) — ohne Entscheidung (Vollbild, Tipp) nur,
+     * solange der Anruf noch klingelt. Die Extras werden
+     * verbraucht, damit ein späteres getIntent() nicht erneut annimmt.
+     */
+    private void anrufAusIntent(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra(CallForegroundService.EXTRA_ANRUF, false)) {
+            return;
+        }
+        String aktion = intent.getStringExtra(CallForegroundService.EXTRA_AKTION);
+        String callId = intent.getStringExtra(CallForegroundService.EXTRA_CALL_ID);
+        intent.removeExtra(CallForegroundService.EXTRA_ANRUF);
+        intent.removeExtra(CallForegroundService.EXTRA_AKTION);
+        if (CallForegroundService.AKTION_ANNEHMEN.equals(aktion)) {
+            anrufModus.an();
+            CallForegroundService.entscheiden(this, aktion, callId);
+        } else if (CallForegroundService.klingelt()) {
+            anrufModus.an();
+        }
     }
 
     /** ACTION_SEND (Übergabe P1.8, Share-Target): EXTRA_TEXT und/oder
@@ -178,6 +210,7 @@ public class MainActivity extends BridgeActivity {
             micStartPending = false;
             getPreferences(MODE_PRIVATE).edit().putBoolean("micStartPending", false).apply();
             stopService(new Intent(this, MicForegroundService.class));
+            anrufModus.aus();
         }
     }
 
@@ -195,6 +228,11 @@ public class MainActivity extends BridgeActivity {
         } catch (SecurityException | IllegalStateException ignored) {
             // Activity nicht RESUMED / FGS-Restriktion — bewusst schlucken.
         }
+        // Nach einer Annahme über dem Sperrbildschirm darf die App erst jetzt
+        // wieder dahinter verschwinden: der Start des Mikrofon-Dienstes oben
+        // braucht eine sichtbare Activity, hinter dem Sperrbildschirm wäre er
+        // verweigert worden.
+        anrufModus.aus();
     }
 
     @Override
@@ -207,8 +245,11 @@ public class MainActivity extends BridgeActivity {
         // gesperrt mit Stream → Leisten bleiben weg).
         wendeLeistenAn(getResources().getConfiguration().orientation);
         // App sichtbar → das Web-Overlay zeigt den Anruf, die Sperrbildschirm-
-        // Notification ist redundant (No-op, wenn nichts klingelt).
-        CallForegroundService.beenden(this);
+        // Notification ist redundant (No-op, wenn nichts klingelt). Nicht im
+        // Anrufmodus: dann kam die App eben ÜBER die Meldung nach vorn, die
+        // Seite lädt womöglich noch — der Klingelton läuft weiter, bis das Web
+        // annimmt/ablehnt (AnrufPlugin.beenden) oder der Wecker ihn beendet.
+        if (!anrufModus.istAn()) CallForegroundService.beenden(this);
     }
 
     /**
@@ -240,6 +281,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        anrufModus.freigeben();
         if (speakerRouter != null) {
             speakerRouter.stop();
             speakerRouter = null;

@@ -499,6 +499,24 @@
         }
       }
     },
+    "Möchte mit dir befreundet sein": {
+      "comment": "Push-Text, vom Server als loc-key geschickt (services/chat-gateway fcm_texte.py): Schlüssel = deutscher Text, Rückfall für Bauten ohne Übersetzung",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Möchte mit dir befreundet sein"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wants to be your friend"
+          }
+        }
+      }
+    },
     "Nachricht": {
       "comment": "Pulse-App (Entwicklungssprache Deutsch)",
       "extractionState": "manual",

@@ -149,3 +149,37 @@ export const ANRUF_RAUM_METHODEN: readonly string[] = Object.keys({
 } satisfies Record<keyof AnrufNativPlugin, true>);
 
 export const anrufNativ = registerPlugin<AnrufNativPlugin>('Anruf');
+
+/** Eine Entscheidung, die die Android-Hülle aufbewahrt hat: „Annehmen" oder
+ *  „Ablehnen" auf ihrer Klingel-Meldung, während die WebView nicht lief. Ohne
+ *  aufbewahrte Entscheidung ein leeres Objekt. */
+export interface AusstehendeAnrufAktion {
+  aktion?: 'annehmen' | 'ablehnen';
+  callId?: string;
+  anrufArt?: string;
+  channelId?: string;
+  einleiterId?: string;
+  einleiterName?: string;
+}
+
+/**
+ * Was **nur die Android-Hülle** am `Anruf`-Plugin anbietet.
+ *
+ * **Bewusst NICHT in `AnrufNativPlugin`:** dessen Schlüssel sind per Typ die
+ * Liste `ANRUF_RAUM_METHODEN`, gegen die die iOS-Weiche den installierten Bau
+ * prüft — eine Android-Methode dort liesse jede iOS-Hülle als „veraltet"
+ * gelten. Dieselbe Registrierung (`anrufNativ`), nur anders angesehen; eine
+ * zweite `registerPlugin('Anruf')` wäre genau der Fehler, den diese Datei
+ * verhindert (Modulkopf).
+ *
+ * Eine ältere Hülle kennt beide Methoden nicht — der Kern lehnt den Ruf dann
+ * sofort ab (`huelleKann.ts`). Die Aufrufer fangen das.
+ */
+export interface AnrufAndroidZusatz {
+  /** Was die Hülle kann (`anruf_push`, `texte_lokal`) — für `POST /fcm/token`. */
+  faehigkeiten(): Promise<{ faehigkeiten?: unknown }>;
+  /** Die aufbewahrte Entscheidung abholen; liefert sie einmal und löscht sie. */
+  ausstehendeAktion(): Promise<AusstehendeAnrufAktion>;
+}
+
+export const anrufAndroid = anrufNativ as unknown as AnrufAndroidZusatz;

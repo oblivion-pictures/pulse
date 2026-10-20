@@ -23,6 +23,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 # it) keep working after the Schritt-2 split. The actual op handlers now
 # import ``SessionLocal`` directly from ``dcc_chat_gateway.db`` in their own
 # modules; tests patch every module that holds a reference.
+from dcc_chat_gateway import presence_schonfrist
 from dcc_chat_gateway.db import SessionLocal  # noqa: F401
 
 # Import for side-effects: each handler in this module registers itself with
@@ -233,13 +234,11 @@ async def run_session_op_loop(
             log.exception("remote cleanup_on_disconnect failed for user=%s", user.id)
         await manager.remove_socket(websocket)
         if manager.user_socket_count(user.id) == 0:
-            try:
-                await manager.broadcast_presence_update(str(user.id), online=False)
-            except Exception:  # noqa: BLE001
-                log.exception(
-                    "broadcast_presence_update(online=False) failed for user=%s",
-                    user.id,
-                )
+            # Mit Schonfrist: ein App-Wechsel am Handy trennt und verbindet
+            # binnen Sekunden neu, und die Freunde sahen das Konto bei jedem
+            # davon flackern (``presence_schonfrist.py``). Nur die Meldung
+            # wartet — der Abbau hier darüber und darunter bleibt sofort.
+            presence_schonfrist.offline_melden(manager, user.id)
         # If this was the user's last open socket, drop their self-mute
         # state. Without this, ``voice:user_state:<id>`` lingers for the
         # full 6h TTL and the user keeps appearing as muted to everyone

@@ -27,7 +27,8 @@ test('D1: jeder Weg von aussen meldet sich als „von aussen" an', () => {
   for (const pfad of [
     'src/lib/platform/universalLinks.ts',
     'src/lib/platform/schnellwahl.ts',
-    'src/lib/platform/fcm.ts',
+    // Der Tipp-Hörer der Push-Meldungen steht seit 2026-10-20 dort (aus fcm.ts).
+    'src/lib/platform/mitteilungsTipp.ts',
     'src/lib/notifications/inPage.ts'
   ]) {
     const quelle = lies(pfad);

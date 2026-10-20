@@ -55,7 +55,9 @@ export function netzwacheStarten(): void {
     // Kein `await`: der Haken darf nachträglich scharf werden, die ersten
     // Millisekunden nach dem Start deckt der normale Verbindungsaufbau ab.
     void CapApp.addListener('appStateChange', ({ isActive }) => {
+      imHintergrund = !isActive;
       if (isActive) {
+        nachpruefungAbbrechen();
         vorn();
         for (const haken of vordergrundHaken) haken();
         return;
@@ -78,6 +80,45 @@ export function netzwacheStarten(): void {
  *  sich hier an (`+layout.svelte` verdrahtet), weil netzwache sie nicht
  *  importieren darf: über `gateway-pool` stünde das in einem Import-Kreis. */
 const trennSperren = new Set<() => boolean>();
+
+/** Steht die App laut letztem `appStateChange` im Hintergrund? Nur die Hüllen
+ *  melden das; im Browser bleibt es `false`. */
+let imHintergrund = false;
+let nachpruefWecker: ReturnType<typeof setTimeout> | null = null;
+
+/** Wartezeit vor dem nachträglichen Trennen, danach wird die Sperre erneut
+ *  gefragt. Vorsicht gegen ein kurzes „nicht verbunden" mitten im Gespräch —
+ *  der LiveKit-Zustand kennt das beim Wiederverbinden der Medien (s. die
+ *  Rückstufung in `app/+layout.svelte`); ob die Sperre es ebenso sieht, ist
+ *  nicht nachgeprüft. Die Zahl ist geschätzt, nicht gemessen. */
+const NACHPRUEF_MS = 3_000;
+
+function nachpruefungAbbrechen(): void {
+  if (nachpruefWecker !== null) {
+    clearTimeout(nachpruefWecker);
+    nachpruefWecker = null;
+  }
+}
+
+/**
+ * Eine Sperre ist eben weggefallen — wenn die App hinten steht, jetzt
+ * nachträglich trennen. Bis zum 2026-10-20 wurde nur im Moment des
+ * Hintergrund-Werdens entschieden: wer mit laufendem Sprachkanal oder Anruf
+ * in den Hintergrund ging und dort auflegte, behielt die Leitung offen, und
+ * der Server hielt das Gerät für wach — keine Pushes, bis die App wieder vorn
+ * war. Gerufen von `app/+layout.svelte`, sobald die Sperren-Bedingung dort
+ * auf „frei" springt; die Entscheidung bleibt `hintergrundTrennung`, geprüft
+ * erst nach `NACHPRUEF_MS`.
+ */
+export function trennSperrenNachpruefen(): void {
+  if (!imHintergrund || nachpruefWecker !== null) return;
+  nachpruefWecker = setTimeout(() => {
+    nachpruefWecker = null;
+    if (imHintergrund && hintergrundTrennung(isCapacitorAndroid(), [...trennSperren])) {
+      gatewayPool.hintergrundTrennung();
+    }
+  }, NACHPRUEF_MS);
+}
 
 /** Eine Sperre anmelden; Rückgabe meldet sie wieder ab. */
 export function hintergrundTrennSperre(sperre: () => boolean): () => void {

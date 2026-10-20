@@ -103,8 +103,9 @@ async def abarbeiten(manager: Any, arbeit: str) -> None:
         await ablage.abschliessen(redis, arbeit)
         return
     titel, text, hat_anhang = buendel_mitteilung(offen)
-    # Dieselbe Mitteilung als Schlüssel — nur iOS-Geräte bekommen sie
-    # (``fcm_texte``); Android bleibt beim fertigen deutschen Text.
+    # Dieselbe Mitteilung als Schlüssel — nur Geräte mit Zusage bekommen sie
+    # (iOS ``dm_vordergrund``, Android ``texte_lokal``; ``fcm_texte``), alle
+    # anderen den fertigen deutschen Text.
     lokal = fcm_texte.lokal_aus(_autoren(offen), len(offen), hat_anhang)
     # Der Versand läuft abgeschirmt: ``asyncio.to_thread`` lässt sich nicht
     # abbrechen, der Push ginge beim Herunterfahren also trotzdem hinaus —
