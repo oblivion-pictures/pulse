@@ -120,6 +120,13 @@ public class CallForegroundService extends Service {
         return true;
     }
 
+    /** Klingelt gerade genau dieser Anruf (oder einer ohne Kennung)? */
+    static boolean klingeltFuer(String callId) {
+        synchronized (SPERRE) {
+            return klingelnd != null && (klingelnd.isEmpty() || klingelnd.equals(callId));
+        }
+    }
+
     /** Klingelt gerade ein Anruf (gleich welcher)? */
     static boolean klingelt() {
         synchronized (SPERRE) {
@@ -229,7 +236,11 @@ public class CallForegroundService extends Service {
         // NotificationManager.canUseFullScreenIntent(); fehlt sie, entfernt
         // das System ihn und zeigt eine Heads-up-Meldung (CallStyle bleibt
         // zulässig, das System merkt sich den verweigerten Wunsch).
-        PendingIntent vollbild = PendingIntent.getActivity(ctx, 0,
+        // Request-Code NOTIF_ID, nicht 0: MicForegroundService legt mit 0 einen
+        // PendingIntent auf dieselbe Activity an — gleicher Code und gleicher
+        // Intent-Filter ergäben denselben Datensatz, und UPDATE_CURRENT
+        // schriebe die Anruf-Extras in die Mikrofon-Meldung.
+        PendingIntent vollbild = PendingIntent.getActivity(ctx, NOTIF_ID,
                 zurApp(ctx, callId), PI_FLAGS);
         PendingIntent annehmen = PendingIntent.getActivity(ctx, 1,
                 zurApp(ctx, callId).putExtra(EXTRA_AKTION, AKTION_ANNEHMEN), PI_FLAGS);

@@ -69,13 +69,15 @@ export class AnrufSchluesselBund {
   }
 
   /** Nach der Annahme auf den Schlüssel des Anrufers warten — `null` nach
-   *  der Frist (fail-closed). Stösst vorher die Postfach-Abholung an
-   *  (bestehender Einstiegspunkt, dynamisch importiert — der WS-Weckruf
-   *  `postfach_neu` hat sie meist schon angestossen; hier doppelt sich
-   *  nichts, der Nachlauf dedupliziert). */
+   *  der Frist (fail-closed). Stösst vorher die Postfach-Abholung an, über
+   *  den Anzeige-Weg (dynamisch importiert — der WS-Weckruf `postfach_neu`
+   *  hat sie meist schon angestossen; hier doppelt sich nichts, der Nachlauf
+   *  dedupliziert). Bis 2026-10-21 holte diese Stelle selbst ab und warf das
+   *  Ergebnis weg: startete sie den Zyklus, fehlten alle darin abgeholten
+   *  Nachrichten in der Anzeige (s. `postfachAbholenAusDerApp`). */
   abwarten(anrufId: string): Promise<string | null> {
-    void import('$lib/krypto/empfangen')
-      .then(({ postfachAbholenUndEntschluesseln }) => postfachAbholenUndEntschluesseln())
+    void import('$lib/ws/handlers/chat')
+      .then(({ postfachAbholenAusDerApp }) => postfachAbholenAusDerApp())
       .catch(() => {});
     return warteAufAnrufSchluessel(() => this.holen(anrufId));
   }

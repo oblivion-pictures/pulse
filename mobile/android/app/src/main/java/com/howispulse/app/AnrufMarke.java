@@ -34,6 +34,13 @@ final class AnrufMarke {
         prefs(ctx).edit().putString(MARKE, hex.toString()).apply();
     }
 
+    /** Nach einem „annehmen" ungültig machen: baut Android die Activity nach
+     *  einem Prozess-Ende mit ihrem ursprünglichen Intent neu auf, darf
+     *  derselbe Intent nicht ein zweites Mal annehmen. */
+    static void verbrauchen(Context ctx) {
+        prefs(ctx).edit().remove(MARKE).apply();
+    }
+
     static String wert(Context ctx) {
         return prefs(ctx).getString(MARKE, "");
     }

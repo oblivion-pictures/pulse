@@ -79,6 +79,20 @@ export function postfachImHintergrundAbholen(): void {
 }
 
 /**
+ * Abholen aus der App heraus, ohne eigenen Abo-Blick — derselbe Anzeige-Weg
+ * wie der Weckruf, mit Ton und Meldung. Für Aufrufer ausserhalb der
+ * WS-Handler (Annehmen eines Anrufs, `anrufe/anrufSchluesselweg.ts`).
+ * **Nie `postfachAbholenUndEntschluesseln` direkt:** ein Zyklus gibt sein
+ * Ergebnis nur dem zurück, der ihn startete (`krypto/postfachNachlauf.ts`) —
+ * startet ihn ein anderer, liegen die Nachrichten abgelegt und quittiert im
+ * Verlauf, erscheinen aber nicht im offenen Gespräch und zählen nicht als
+ * ungelesen (Test: `push-bughunt-verdrahtung`).
+ */
+export function postfachAbholenAusDerApp(): void {
+  postfachAbholenUndAnzeigen(weckrufAboBlick ?? (() => false));
+}
+
+/**
  * Holt offene Postfach-Zustellungen ab, entschluesselt sie und zeigt sie an
  * — geteilt zwischen den Ausloesern (Bughunt-Runde 3, FIX 1): dem `postfach_
  * neu`-Weckruf hier unten UND `ws/handlers/ready.ts` (jeder Connect/Reconnect

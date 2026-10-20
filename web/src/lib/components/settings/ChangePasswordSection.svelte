@@ -44,11 +44,14 @@
     try {
       await changePassword(current, next);
       // Dieses Gerät hat jetzt eine neue Anmelde-Kette, die alte ist am Server
-      // gelöscht — beide Gerätetoken ziehen mit (S3 für PushKit, Nachtrag zu
-      // C2 für FCM). Sonst hingen sie an der alten, und der Abgleich des
-      // Servers löschte sie als beendet. Ausserhalb der Hülle ein No-op.
+      // gelöscht — alle Gerätetoken ziehen mit (S3 für PushKit, Nachtrag zu
+      // C2 für FCM, seit Migration 0108 auch das Browser-Push-Abo). Sonst
+      // hingen sie an der alten, und der Abgleich des Servers löschte sie als
+      // beendet. VoIP und FCM sind ausserhalb der Hülle ein No-op, das
+      // Browser-Abo ohne erteilte Erlaubnis.
       void import('$lib/platform/voipToken').then((m) => m.voipTokenNachmelden());
       void import('$lib/platform/fcm').then((m) => m.fcmTokenNachmelden());
+      void import('$lib/notifications/pushSubscribe').then((m) => m.aboAuffrischen());
       // Archiv-Schlüssel unter das neue Passwort neu wickeln (Übergabe §5) —
       // best-effort: schlägt es fehl, öffnet der nächste Login den alten
       // Wrap nicht und das Archiv richtet sich neu ein (Verlust nur lokal).

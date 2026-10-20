@@ -47,7 +47,13 @@ public class PushDienst extends MessagingService {
             }
         } else if ("abbruch".equals(art)) {
             AnrufSpeicher.vergessen(this, callId, false);
-            if (CallForegroundService.beendenFuer(this, callId)) {
+            // Den Anrufmodus nur abschalten, wenn der Anruf hier noch klingelte.
+            // Nach einer Annahme HIER klingelt nichts mehr, aber der Modus muss
+            // bleiben, bis das Mikrofon läuft (wie GRUND_HIER_ANGENOMMEN in
+            // AnrufPlugin.beenden) — sonst fällt die App hinter den
+            // Sperrbildschirm, und der Mikrofon-Dienst darf nicht mehr starten.
+            boolean klingelteHier = CallForegroundService.klingeltFuer(callId);
+            if (CallForegroundService.beendenFuer(this, callId) && klingelteHier) {
                 AnrufModus.beendenVonAussen();
             }
         }

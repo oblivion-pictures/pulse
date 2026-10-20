@@ -90,6 +90,15 @@ final class AnrufSpeicher {
         setzeWennDa(ziel, "einleiter_name", p.getString(EINLEITER_NAME, null));
     }
 
+    /** Klingelt ein Anruf aus dem Push, den die Web-App noch nicht abgeholt
+     *  hat (Zettel ohne Entscheidung, nicht abgelaufen)? */
+    static synchronized boolean wartetAufWeb(Context ctx) {
+        SharedPreferences p = prefs(ctx);
+        long alter = System.currentTimeMillis() - p.getLong(ZEIT, 0);
+        return p.getString(CALL_ID, null) != null && p.getString(AKTION, null) == null
+                && alter >= 0 && alter < KLINGELN_GUELTIG_MS;
+    }
+
     /** Einmal abholen: liefert den Zettel (leer, wenn keiner da oder er
      *  abgelaufen ist) und löscht ihn. */
     static synchronized JSObject abholen(Context ctx) {

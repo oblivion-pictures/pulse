@@ -11,7 +11,7 @@
  * push code path is easy to delete-and-replace later if we change provider.
  */
 
-import { request, ApiError } from '$lib/api/client';
+import { request, ApiError, type RequestRoute } from '$lib/api/client';
 
 type VapidKey = { public_key: string };
 
@@ -34,9 +34,9 @@ type PushSubscriptionPayload = {
  * configured. We surface that as `null` so the caller can render a friendly
  * "not configured on this server" hint without inspecting status codes.
  */
-export async function fetchVapidPublicKey(): Promise<string | null> {
+export async function fetchVapidPublicKey(route: RequestRoute = {}): Promise<string | null> {
   try {
-    const r = await request<VapidKey>('/notifications/vapid-public-key');
+    const r = await request<VapidKey>('/notifications/vapid-public-key', {}, route);
     return r.public_key;
   } catch (e) {
     if (e instanceof ApiError && e.status === 503) return null;
@@ -44,8 +44,11 @@ export async function fetchVapidPublicKey(): Promise<string | null> {
   }
 }
 
-export async function postPushSubscription(p: PushSubscriptionPayload): Promise<void> {
-  await request<void>('/notifications/subscribe', { method: 'POST', body: p });
+export async function postPushSubscription(
+  p: PushSubscriptionPayload,
+  route: RequestRoute = {}
+): Promise<void> {
+  await request<void>('/notifications/subscribe', { method: 'POST', body: p }, route);
 }
 
 /**

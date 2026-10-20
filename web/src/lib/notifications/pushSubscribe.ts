@@ -14,6 +14,7 @@
 
 import { isElectron, isCapacitorAndroid } from '$lib/platform/runtime';
 import { base64UrlDecode, base64UrlEncode } from '$lib/utils/base64url';
+import { serversStore } from '$lib/api/servers.svelte';
 import {
   fetchVapidPublicKey,
   postPushSubscription,
@@ -150,21 +151,36 @@ async function subscribeUser(): Promise<void> {
  *  ihrer Anmelde-Kette (`push_widerruf.py`); der Browser hält sich danach
  *  weiter für abonniert, und ohne diese Meldung käme nie wieder ein Push.
  *  Die Meldung frischt zugleich die Kette auf. Fragt nie nach einer
- *  Erlaubnis und legt kein neues Abo an; Fehler werden geschluckt. */
+ *  Erlaubnis und legt kein neues Abo an; Fehler werden geschluckt.
+ *
+ *  Gemeldet wird an den Server, mit dessen VAPID-Schlüssel das Abo angelegt
+ *  wurde — gesucht unter dem aktiven Server und der Cloud. Nicht einfach an
+ *  den aktiven: ein Cloud-Abo, das nach einem Wechsel auf einen Self-Host
+ *  dort landete, lehnte der Push-Dienst bei jedem Versand ab (falscher
+ *  Schlüssel, kein 404/410) — die Zeile bliebe für immer stehen, jeder Push
+ *  hinterliesse eine Warnung im Log, und das Cloud-Abo bliebe gelöscht. */
 export async function aboAuffrischen(): Promise<void> {
   try {
     if (!pushSupported() || getPushPermissionState() !== 'granted') return;
     const reg = await getRegistration();
     const sub = reg ? await reg.pushManager.getSubscription() : null;
-    if (!sub) return;
+    const schluessel = sub?.options?.applicationServerKey;
+    if (!sub || !schluessel) return;
     const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : undefined;
-    await postPushSubscription({
-      ...serializeSubscription(sub),
-      user_agent: userAgent ? userAgent.substring(0, 256) : undefined
-    });
+    for (const route of [{}, { serverId: serversStore.cloudId() }]) {
+      const vapid = await fetchVapidPublicKey(route).catch(() => null);
+      if (!vapid || !gleicheBytes(new Uint8Array(schluessel), base64UrlDecode(vapid))) continue;
+      const agent = userAgent ? userAgent.substring(0, 256) : undefined;
+      await postPushSubscription({ ...serializeSubscription(sub), user_agent: agent }, route);
+      return;
+    }
   } catch {
     /* best-effort — der Schalter in den Einstellungen bleibt der Weg zurück */
   }
+}
+
+function gleicheBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
 }
 
 /** Cancel the active subscription on this device + tell the backend. Best-

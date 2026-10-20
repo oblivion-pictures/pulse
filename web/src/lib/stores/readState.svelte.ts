@@ -261,16 +261,24 @@ class ReadState {
    *
    *  Reicht der Stand bis zur jüngsten hier GEZÄHLTEN Nachricht, fällt auch
    *  der Zähler (Befund 2026-10-10): wer am Handy liest, sah am Rechner bis
-   *  dahin den Fettdruck verschwinden, die rote Zahl aber stehen bleiben. */
+   *  dahin den Fettdruck verschwinden, die rote Zahl aber stehen bleiben.
+   *  Reicht er bis zur gezählten oder jüngsten bekannten Nachricht, räumen
+   *  auch die Lese-Haken (`beimLesen`) die zugestellten Meldungen weg —
+   *  gelesen am Rechner heisst: keine Meldung mehr am Handy. */
   seedOwnLesestand(channelId: string, messageId: string): void {
     this.lastReadByChannel = {
       ...this.lastReadByChannel,
       [channelId]: vorwaertsMerge(this.lastReadByChannel[channelId], messageId)
     };
     const gezaehltBis = this.unreadBisByChannel[channelId];
-    if (gezaehltBis && istGelesenBis(messageId, gezaehltBis) === true) {
+    const bisGezaehlt = !!gezaehltBis && istGelesenBis(messageId, gezaehltBis) === true;
+    if (bisGezaehlt) {
       this.clearMentions(channelId);
       this.clearUnread(channelId);
+    }
+    const juengste = this.latestByChannel[channelId];
+    if (bisGezaehlt || (!!juengste && istGelesenBis(messageId, juengste) === true)) {
+      for (const haken of this.leseHaken) haken(channelId);
     }
   }
 

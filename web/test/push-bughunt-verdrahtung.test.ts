@@ -89,3 +89,28 @@ test('Befund 12: am Handy gibt es den knappen Toast, oben', () => {
   assert.doesNotMatch(meldung, /!viewport\.isMobile/);
   assert.match(meldung, /viewport\.isMobile \? \{ position: 'top-center' as const \} : \{\}/);
 });
+
+test('Nur der Anzeige-Weg holt das Postfach ab (Bughunt 2, Web-Befund 1)', async () => {
+  // `mitNachlaufBeiWeckung` gibt das Ergebnis eines Zyklus nur dem zurück, der
+  // ihn startete. Startet ein anderer Aufrufer den Zyklus, sind die Nachrichten
+  // abgeholt, abgelegt und quittiert, erscheinen aber nicht im offenen
+  // Gespräch und zählen nicht als ungelesen — so geschehen im Hintergrund-Takt
+  // (bis 2026-10-20) und beim Annehmen eines Anrufs (`anrufSchluesselweg.ts`).
+  const { readdirSync, statSync } = await import('node:fs');
+  const { join, relative } = await import('node:path');
+  const wurzel = new URL('../src/', import.meta.url).pathname;
+  const dateien: string[] = [];
+  const gehe = (ordner: string): void => {
+    for (const name of readdirSync(ordner)) {
+      const pfad = join(ordner, name);
+      if (statSync(pfad).isDirectory()) gehe(pfad);
+      else if (/\.(ts|svelte)$/.test(name)) dateien.push(pfad);
+    }
+  };
+  gehe(wurzel);
+  const aufrufer = dateien
+    .filter((pfad) => /postfachAbholenUndEntschluesseln\(\)/.test(readFileSync(pfad, 'utf8')))
+    .map((pfad) => relative(wurzel, pfad))
+    .sort();
+  assert.deepEqual(aufrufer, ['lib/ws/handlers/chat.ts']);
+});

@@ -35,8 +35,10 @@ Senden der Nachricht nicht auf Firebase wartet.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 from collections.abc import Coroutine
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from sqlalchemy import select
@@ -54,6 +56,15 @@ log = logging.getLogger(__name__)
 #: die Aktion „Antworten“, die verschlüsselt als DM sendet.
 ERWAEHNUNG_KATEGORIE = "erwaehnung"
 FREUNDSCHAFT_KATEGORIE = "freundschaft"
+
+#: Eigener, begrenzter Pool für den (synchronen) Firebase-Versand. Eine
+#: ``@everyone``-Erwähnung trifft jedes Mitglied mit Sicht auf den Kanal; über
+#: ``asyncio.to_thread`` belegte sie den Standard-Pool, aus dem auch der
+#: DM-Versand schöpft, und reihte jede weitere Sendung dahinter ein. So
+#: bleiben es höchstens acht Threads, gleich wie viele Erwähnungen laufen
+#: (Grenze im DM-Weg: ``fcm_abarbeiten.GLEICHZEITIG``; Anrufe haben ihren
+#: eigenen Pool in ``anruf_push_fcm``).
+_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="fcm-hinweise")
 
 #: Starke Verweise auf laufende Sendungen (sonst darf der Ereignis-Loop eine
 #: Aufgabe mitten im Lauf einsammeln).
@@ -123,16 +134,20 @@ async def _senden(
     if not zeilen:
         return 0
     arten = await geraetearten(session, zeilen, redis)
+    loop = asyncio.get_running_loop()
     ergebnisse = await asyncio.gather(
         *(
-            asyncio.to_thread(
-                _send_one,
-                token=z.token,
-                payload=payload,
-                lokal=lokal if (z.user_id, z.geraet_id) in arten.texte_lokal else None,
-                kategorie=kategorie,
-                gruppe=gruppe,
-                tag=tag,
+            loop.run_in_executor(
+                _POOL,
+                functools.partial(
+                    _send_one,
+                    token=z.token,
+                    payload=payload,
+                    lokal=lokal if (z.user_id, z.geraet_id) in arten.texte_lokal else None,
+                    kategorie=kategorie,
+                    gruppe=gruppe,
+                    tag=tag,
+                ),
             )
             for z in zeilen
         ),
