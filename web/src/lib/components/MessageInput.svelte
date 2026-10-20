@@ -19,6 +19,8 @@
   import { dateienAusEinfuegen } from '$lib/attachments/eingefuegteDateien';
   import { SprachAufnahme } from '$lib/attachments/sprachAufnahme.svelte';
   import Trash2Icon from '@lucide/svelte/icons/trash-2';
+  import PauseIcon from '@lucide/svelte/icons/pause';
+  import PlayIcon from '@lucide/svelte/icons/play';
   import { DateiZiehZone } from '$lib/attachments/dateiZiehen.svelte';
   import type { MessageInputProps } from './composer/messageInputProps';
   import { guilds } from '$lib/stores/guilds.svelte';
@@ -237,58 +239,9 @@
   // die fertige Datei läuft durch denselben Anhang-Weg wie eine gewählte.
   const aufnahme = new SprachAufnahme((datei) => addFiles([datei]));
 
-  // ── Sprachaufnahme WhatsApp-Stil (Nutzerwunsch 2026-10-19) ────────────────
-  // Am Handy: Mikrofon HALTEN startet, nach links wischen bricht ab,
-  // LOSLASSEN sendet die fertige Sprachnachricht sofort (ohne extra Tipp).
-  // Am Rechner bleibt der Tipp-Umschalter mit der Aufnahme-Leiste.
-  const WISCH_CANCEL_PX = 120;
-  /** Start-X des haltenden Fingers — null, wenn gerade nicht gehalten wird. */
-  let haltenX = $state<number | null>(null);
-  /** Wie weit der Finger nach links gezogen hat (px). */
-  let wischVersetzt = $state(0);
-  /** Kurze Sperre: der Klick NACH dem Loslassen darf keine neue Aufnahme
-   *  starten (Pointerup → Click feuert danach noch einmal). */
-  let halteSperreBis = 0;
-
   async function aufnahmeStart(): Promise<void> {
-    // Am Handy startet das HALTEN (haltenStart), nicht der Tipp — der Klick
-    // nach dem Loslassen würde sonst sofort eine neue Aufnahme öffnen.
-    if (viewport.istHandy && Date.now() < halteSperreBis) return;
     if (!channelId || !attachmentsAllowed) return;
     await aufnahme.starten();
-  }
-
-  function haltenStart(e: PointerEvent): void {
-    if (!viewport.istHandy || Date.now() < halteSperreBis || aufnahme.lauf) return;
-    if (!channelId || !attachmentsAllowed) return;
-    haltenX = e.clientX;
-    wischVersetzt = 0;
-    void aufnahmeStart();
-  }
-
-  function haltenBewegen(e: PointerEvent): void {
-    if (haltenX === null || !aufnahme.lauf) return;
-    wischVersetzt = Math.max(0, haltenX - e.clientX);
-  }
-
-  function haltenEnde(e: PointerEvent): void {
-    if (haltenX === null) return;
-    const wisch = haltenX - e.clientX;
-    const abbrechen = wisch >= WISCH_CANCEL_PX;
-    haltenX = null;
-    wischVersetzt = 0;
-    halteSperreBis = Date.now() + 400;
-    if (!aufnahme.lauf) return;
-    if (abbrechen) {
-      aufnahme.verwerfen();
-      return;
-    }
-    // Loslassen = senden: die Aufnahme endet und die fertige Sprachnachricht
-    // geht denselben Weg wie ein Anhang — direkt abgeschickt, ohne extra Tipp.
-    void (async () => {
-      await aufnahme.beenden();
-      fire();
-    })();
   }
 
   const onPaste = (e: ClipboardEvent) => {
@@ -406,10 +359,6 @@
   });
 </script>
 
-<!-- Sprachaufnahme WhatsApp-Stil: die Zeigerzüge laufen am Fenster, weil der
-     Finger weit über den Mikrofon-Knopf hinaus zieht (Abbruch-Zone links). -->
-<svelte:window onpointermove={haltenBewegen} onpointerup={haltenEnde} onpointercancel={haltenEnde} />
-
 <form
   class="px-2 pt-2 pb-[calc(1.25rem+var(--safe-bottom))] nicht-handy:px-2 nicht-handy:pb-2"
   ondragenter={ziehen.enter}
@@ -458,23 +407,50 @@
 
          `leading-6` macht es exakt statt nur ungefähr: die Zeile füllt den
          Kasten vollständig aus und sitzt zwangsläufig mittig. -->
-    {#if viewport.istHandy && aufnahme.lauf}
-      <!-- Sprachaufnahme WhatsApp-Stil: roter Timer, nach links wischen
-           (Mülleimer blendet ein) bricht ab, LOSLASSEN sendet direkt. -->
-      <div class="flex min-h-11 w-full items-center gap-2" data-testid="aufnahme-halten">
-        <span class="text-error flex items-center gap-1.5 text-sm font-semibold tabular-nums" data-testid="aufnahme-zeit">
+    {#if aufnahme.lauf}
+      <!-- Sprachaufnahme (Nutzerwunsch 2026-10-19): Verwerfen links,
+           Pause/Weiter neben der Zeit, rotes Stop rechts — Stop beendet und
+           sendet die Sprachnachricht direkt. Handy und Rechner. -->
+      <div class="flex min-h-11 w-full items-center gap-2" data-testid="aufnahme-leiste">
+        <button
+          type="button"
+          class="text-error flex size-9 shrink-0 items-center justify-center rounded-full"
+          onclick={() => aufnahme.verwerfen()}
+          aria-label={m.message_input_recording_discard()}
+          data-testid="aufnahme-verwerfen"
+        >
+          <Trash2Icon class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="text-primary flex size-9 handy:size-11 shrink-0 items-center justify-center rounded-full"
+          onclick={() => (aufnahme.pausiert ? aufnahme.weiter() : aufnahme.pausieren())}
+          aria-label={aufnahme.pausiert ? m.message_input_recording_weiter() : m.message_input_recording_pause()}
+          data-testid="aufnahme-pause"
+        >
+          {#if aufnahme.pausiert}
+            <PlayIcon class="size-5" />
+          {:else}
+            <PauseIcon class="size-5" />
+          {/if}
+        </button>
+        <span
+          class="text-error flex items-center gap-1.5 text-sm font-semibold tabular-nums"
+          data-testid="aufnahme-zeit"
+        >
           <span class="size-2 animate-pulse rounded-full bg-red-500"></span>
           {aufnahme.dauer}
         </span>
-        <span
-          class="text-error ml-auto flex items-center gap-1 transition-opacity"
-          style="opacity: {Math.min(1, wischVersetzt / 80)}"
+        <span class="flex-1"></span>
+        <button
+          type="button"
+          class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-red-500 shadow-[0_2px_10px_rgba(239,68,68,0.5)]"
+          onclick={() => void aufnahme.beenden().then(() => fire())}
+          aria-label={m.message_input_recording_stop()}
+          data-testid="aufnahme-stop"
         >
-          <Trash2Icon class="size-5" />
-        </span>
-      </div>
-      <div class="text-text-muted w-full pb-1 text-center text-2xs">
-        ‹ Nach links wischen zum Abbrechen · Loslassen sendet
+          <span class="block size-3.5 rounded-[2px] bg-white"></span>
+        </button>
       </div>
     {:else}
       <textarea
@@ -506,16 +482,11 @@
         onChange={(t) => (text = t)}
       />
       <ComposerEmojiButton onPick={insertEmoji} />
-      <span
-        class="contents {viewport.istHandy ? '' : 'inline-block'}" role="presentation"
-        onpointerdown={haltenStart}
-      >
-        <ComposerSendButton
-          disabled={sendDisabled}
-          mikro={!eingabeFokus && !aufnahme.lauf && text.trim().length === 0 && anhaenge.zeilen.length === 0}
-          onMikrofon={aufnahmeStart}
-        />
-      </span>
+      <ComposerSendButton
+        disabled={sendDisabled}
+        mikro={!eingabeFokus && !aufnahme.lauf && text.trim().length === 0 && anhaenge.zeilen.length === 0}
+        onMikrofon={aufnahmeStart}
+      />
     {/if}
   </div>
 
