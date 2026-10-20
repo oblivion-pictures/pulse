@@ -334,11 +334,14 @@ pub fn run(params: StartParams, stop_rx: Receiver<()>, codec: VideoCodec) -> Res
         // Duplikate (`captured == 0`) kommen aus dem ZAEHLER: sie haben keine
         // eigene Aufnahmezeit, `newest_qpc` steht still. In Takten waere die
         // Monotonie-Untergrenze nur 11 us — ein Standbild schrumpfte damit im
-        // Strom zusammen. Ausfuehrlich an derselben Stelle in `pipeline_hw`.
+        // Strom zusammen. Ausfuehrlich an derselben Stelle in `pipeline_hw`,
+        // ebenso warum die Uhr die Untergrenze ist (`duplikat_pts`).
         let mut pts = if captured > 0 {
             zeitbasis::pts_aus_sekunden(elapsed)
         } else {
-            last_pts + zeitbasis::takte_je_bild(fps)
+            let jetzt = zeitbasis::jetzt_seit_ursprung(qpc_sync.then_some(origin_qpc), started);
+            let uhr_pts = zeitbasis::pts_aus_sekunden(jetzt);
+            zeitbasis::duplikat_pts(last_pts, zeitbasis::takte_je_bild(fps), uhr_pts)
         };
         if pts <= last_pts {
             pts = last_pts + 1;
