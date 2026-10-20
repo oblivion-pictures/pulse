@@ -351,7 +351,7 @@
     </section>
   {:else if aktiveGruppe && synthChannel}
     <!-- Dieselbe Ansicht wie bei einer DM, nur mit anderer Huelle im Kopf und
-         Zeilen- statt Sprechblasen-Darstellung. Eine eigene Gruppen-Ansicht
+         Absender in der Sprechblase (`mitAutor`). Eine eigene Gruppen-Ansicht
          daneben haette Anhaenge, Antworten, Reaktionen und das Aktionsblatt
          still verloren. Eine private Gruppe ist von Geburt an verschluesselt
          (Spec §9) — dieselben Umschlaege wie der DM-Zweig, nur durch den

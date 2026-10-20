@@ -2,6 +2,19 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-21",
+      "date": "2026-10-21",
+      "style": "Sachlich",
+      "title": "Gruppen, Sprachnachrichten und Medien",
+      "items": [
+        "Sprachnachrichten lassen sich während der Aufnahme pausieren und vor dem Senden anhören oder verwerfen.",
+        "In einer Gruppe öffnen Name oder Bild oben die Gruppendetails, der Anruf sitzt oben rechts. Das Gruppenbild tauschst du direkt am Kreis, und Mitgliedern, mit denen du noch nicht befreundet bist, schickst du aus der Mitgliederliste eine Freundschaftsanfrage.",
+        "Die Medienübersicht einer Gruppe zeigt Bilder und Videos als Kacheln. Ein Video öffnet sich groß, du kannst durch alle Videos der Gruppe blättern.",
+        "Gruppen zeigen Nachrichten jetzt wie Direktnachrichten als Sprechblasen, mit Bild und Name des Absenders.",
+        "Im Sprachkanal stehen die Teilnehmer als Kacheln in der Kanalleiste; wer spricht, ist hervorgehoben."
+      ]
+    },
+    {
       "id": "2026-10-20.2",
       "date": "2026-10-20",
       "style": "Sachlich",
