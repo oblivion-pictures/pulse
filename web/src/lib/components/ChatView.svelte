@@ -105,9 +105,10 @@
     /** 'dm' swaps the # for an @-style icon and prefixes names with @.
      *  'gruppe' ist eine private Gruppe (Etappe G): eigenes Zeichen, kein
      *  Namenspraefix (der Gruppenname ist kein Kanalname und keine Person)
-     *  und Zeilen- statt Sprechblasen-Darstellung — Sprechblasen sind fuer
-     *  DMs vorgesehen (intern/docs/wissen/mobile-geraeteklassen.md, „Sprechblasen nur in DMs"), und bei mehr
-     *  als zwei Beteiligten traegt der Autorname die Aussage. */
+     *  und Sprechblasen wie in der DM, aber mit Bild und Name des Absenders
+     *  in der Blase (`mitAutor`) — bei mehr als zwei Beteiligten traegt der
+     *  Autorname die Aussage (intern/docs/wissen/mobile-geraeteklassen.md,
+     *  „Sprechblasen in DMs und privaten Gruppen"). */
     headerKind?: 'channel' | 'dm' | 'gruppe';
     onBack?: () => void;
     onSwitchChannel?: () => void;
