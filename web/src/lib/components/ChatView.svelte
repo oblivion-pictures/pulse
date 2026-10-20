@@ -450,7 +450,10 @@
       {#if headerKind === 'gruppe' && handy && onGruppenBlatt}
         <!-- Gruppe: Name/Bild oben links ÖFFNET DAS GRUPPEN-BLATT (Mitglieder,
              Einstellungen) — der Kanal-Wechsler ist am Handy über Home/Tab-Bar
-             erreichbar und steht hier nicht im Weg (Nutzerwunsch 2026-10-19). -->
+             erreichbar und steht hier nicht im Weg (Nutzerwunsch 2026-10-19).
+             Kein Chevron daneben: Name/Bild allein sind der Griff (der Pfeil
+             wurde als separater Ausklapp-Knopf gelesen und störte neben der
+             Galerie). -->
         <button
           class="flex min-h-12 min-w-0 flex-1 items-center gap-1 text-left"
           onclick={onGruppenBlatt}
@@ -458,7 +461,6 @@
           aria-label={pm.gruppen_blatt_oeffnen()}
         >
           <ChannelHeading name={channel.name} topic={channel.topic} nameStyle={''} />
-          <ChevronDownIcon class="text-text-muted size-4 shrink-0" />
         </button>
       {:else if onSwitchChannel && handy}
         <!-- Der Titel ist der Kanal-Wechsler (Entwurf 5c). Das Blatt von unten
@@ -472,7 +474,7 @@
           <ChannelHeading
             name={channel.name}
             topic={channel.topic}
-            nameStyle={channelNameStyle(channel)}
+            nameStyle={headerKind === 'channel' ? channelNameStyle(channel) : ''}
           />
           <ChevronDownIcon class="text-text-muted size-4 shrink-0" />
         </button>
