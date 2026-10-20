@@ -1,13 +1,14 @@
 /**
- * Sprachnachricht im Verfasser (P0.3, UI 2026-09-11 überarbeitet): TIPPEN
- * statt halten. Ein Tap auf das Mikrofon startet; die Aufnahme-Leiste über dem
- * Eingabekasten bietet „Fertig" und „Verwerfen" (✕ rechts). Keine Halte-Geste
- * mehr: Der Layout-Shift- und Pointercancel-Zirkus aus der ersten Fassung
- * entfiel mit ihr (Testrunde 2026-09-11).
+ * Sprachnachricht im Verfasser (P0.3; UI 2026-09-11 auf Tippen umgestellt,
+ * 2026-10-20 um Pause und Vorhören erweitert). Ein Tipp auf das Mikrofon
+ * startet; die Leiste IM Eingabekasten (`SprachnachrichtLeiste.svelte`)
+ * bietet Verwerfen, Pause/Weiter und Stopp. Stopp führt in die VORSCHAU:
+ * anhören, verwerfen oder senden. Erst „Senden" gibt die Datei heraus
+ * (`vorschauNehmen`), und der Verfasser schickt sie durch denselben
+ * Anhang-Weg wie eine gewählte Datei.
  *
- * Hier stehen Zustand und Sekunden-Ticker der laufenden Aufnahme. Die fertige
- * Datei geht an `onDatei` — im Verfasser derselbe Anhang-Weg wie eine
- * gewählte Datei.
+ * Hier stehen Zustand, Sekunden-Ticker und die Vorschau-Datei samt
+ * Objekt-URL; das Abspielen selbst gehört der Leiste.
  */
 import { toast } from 'svelte-sonner';
 import { m } from '$lib/paraglide/messages.js';
@@ -18,58 +19,56 @@ import {
   beendeAufnahme,
   brichAufnahmeAb,
   pausiereAufnahme,
-  resumiereAufnahme,
+  setzeAufnahmeFort,
   starteAufnahme,
   type LaufendeAufnahme
 } from './aufnahme';
 import { AUFGABE_MAX_SEKUNDEN, formatiereDauer } from './aufnahmeKern';
 
+/** Eine beendete Aufnahme, die auf „Senden" oder „Verwerfen" wartet. */
+export interface SprachVorschau {
+  datei: File;
+  /** Objekt-URL zum Anhören — `vorschauNehmen`/`verwerfen` geben sie frei. */
+  url: string;
+  sekunden: number;
+}
+
 export class SprachAufnahme {
   lauf: LaufendeAufnahme | undefined = $state();
   sekunden = $state(0);
   dauer = $derived(formatiereDauer(this.sekunden));
-  /** Pausiert die Aufnahme? Der Timer steht, der Recorder sammelt nicht. */
+  /** Pausiert: der Recorder sammelt nicht, die Sekunden stehen. */
   pausiert = $state(false);
+  vorschau: SprachVorschau | null = $state(null);
   #timer: ReturnType<typeof setInterval> | undefined;
-  #onDatei: (datei: File) => void;
+  /** Zählt Verwerfen-Aufrufe: ein Stopp, dessen Datei erst nach einem
+   *  Verwerfen fertig wird (Gesprächswechsel), legt keine Vorschau mehr an. */
+  #verworfen = 0;
 
-  constructor(onDatei: (datei: File) => void) {
-    this.#onDatei = onDatei;
-  }
-
-  /** Ticker — `abNull` false beim Fortsetzen einer Pause (Stand bleibt). */
-  #tickerStarten(abNull = true): void {
-    if (abNull) this.sekunden = 0;
+  #tickerStarten(): void {
     this.#timer = setInterval(() => {
       if (!this.lauf) return;
+      // `gestartetAm` ist um die Pausen verschoben (`setzeAufnahmeFort`),
+      // deshalb zählt diese Differenz nur die aufgenommene Zeit.
       this.sekunden = Math.floor((Date.now() - this.lauf.gestartetAm) / 1000);
-      // Der 300-s-Rahmen endet hier, im UI sichtbar als fertiger Entwurf.
-      if (this.sekunden >= AUFGABE_MAX_SEKUNDEN) void this.beenden();
+      // Der 300-s-Rahmen endet hier, im UI sichtbar als fertige Vorschau.
+      if (this.sekunden >= AUFGABE_MAX_SEKUNDEN) void this.zurVorschau();
     }, 500);
   }
 
   #tickerStoppen(): void {
-    if (this.#timer) {
-      clearInterval(this.#timer);
-      this.#timer = undefined;
-    }
+    clearInterval(this.#timer);
+    this.#timer = undefined;
   }
 
-  /** Pause — der Recorder sammelt nicht, die Sekunden frieren ein. */
-  pausieren(): void {
-    if (!this.lauf || this.pausiert) return;
-    pausiereAufnahme(this.lauf);
-    this.#tickerStoppen();
-    this.pausiert = true;
-  }
-
-  /** Weiter — der Start verschiebt sich um die Pausenzeit (pausiereAufnahme),
-   *  der Ticker läuft weiter ohne Reset. */
-  weiter(): void {
-    if (!this.lauf || !this.pausiert) return;
-    resumiereAufnahme(this.lauf);
-    this.#tickerStarten(false);
+  /** Nimmt die laufende Aufnahme aus dem Zustand — gemeinsamer Anfang von
+   *  Stopp und Verwerfen. */
+  #laufLoesen(): LaufendeAufnahme | undefined {
+    const lauf = this.lauf;
+    this.lauf = undefined;
     this.pausiert = false;
+    this.#tickerStoppen();
+    return lauf;
   }
 
   async starten(): Promise<void> {
@@ -96,34 +95,57 @@ export class SprachAufnahme {
       toast.error(m.message_input_mikrofon_fehler());
       return;
     }
+    this.sekunden = 0;
     this.#tickerStarten();
   }
 
-  async beenden(): Promise<void> {
-    const lauf = this.lauf;
+  pausieren(): void {
+    if (!this.lauf || this.pausiert) return;
+    pausiereAufnahme(this.lauf);
+    this.#tickerStoppen();
+    this.pausiert = true;
+  }
+
+  weiter(): void {
+    if (!this.lauf || !this.pausiert) return;
+    setzeAufnahmeFort(this.lauf);
+    this.#tickerStarten();
+    this.pausiert = false;
+  }
+
+  /** Stopp: die Aufnahme endet und wartet als Vorschau auf Freigabe. Eine zu
+   *  kurze Aufnahme (`beendeAufnahme` → null) verschwindet still, wie vorher
+   *  beim sofortigen Loslassen. */
+  async zurVorschau(): Promise<void> {
+    const lauf = this.#laufLoesen();
     if (!lauf) return;
-    this.lauf = undefined;
-    clearInterval(this.#timer);
+    const sekunden = this.sekunden;
+    const stand = this.#verworfen;
     const datei = await beendeAufnahme(lauf);
-    if (datei) this.#onDatei(datei);
+    if (!datei || stand !== this.#verworfen) return;
+    this.#vorschauLeeren();
+    this.vorschau = { datei, url: URL.createObjectURL(datei), sekunden };
   }
 
-  /** Stoppt und LIEFERT die Datei zurück (Vorschau-Weg: anhören vor dem
-   *  Senden) — im Gegensatz zu `beenden`, das sie als Anhang weiterreicht.
-   *  Der Klient entscheidet, wann sie in den Anhang-Weg kommt. */
-  async dateiNehmen(): Promise<File | null> {
-    const lauf = this.lauf;
-    if (!lauf) return null;
-    this.lauf = undefined;
-    clearInterval(this.#timer);
-    return await beendeAufnahme(lauf);
+  /** „Senden": gibt die Datei heraus und räumt die Vorschau ab. */
+  vorschauNehmen(): File | null {
+    const datei = this.vorschau?.datei ?? null;
+    this.#vorschauLeeren();
+    return datei;
   }
 
+  /** Verwirft, was gerade da ist — laufende Aufnahme UND Vorschau. Auch der
+   *  Aufräumweg beim Gesprächswechsel: eine Aufnahme aus Gespräch A darf
+   *  nicht in Gespräch B landen. */
   verwerfen(): void {
-    const lauf = this.lauf;
-    if (!lauf) return;
-    this.lauf = undefined;
-    clearInterval(this.#timer);
-    brichAufnahmeAb(lauf);
+    this.#verworfen++;
+    const lauf = this.#laufLoesen();
+    if (lauf) brichAufnahmeAb(lauf);
+    this.#vorschauLeeren();
+  }
+
+  #vorschauLeeren(): void {
+    if (this.vorschau) URL.revokeObjectURL(this.vorschau.url);
+    this.vorschau = null;
   }
 }

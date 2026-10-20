@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
-   * Medienübersicht pro Chat (Übergabe P1.7): alle Bilder und Dateien der
-   * geladenen Unterhaltung in einem Blatt — Bilderraster oben, Dateiliste
-   * darunter, Klick öffnet Lightbox bzw. Download.
+   * Medienübersicht pro Chat (Übergabe P1.7): alle Bilder, Videos und Dateien
+   * der geladenen Unterhaltung in einem Blatt — Raster aus Bildern und Videos
+   * oben, Dateiliste darunter. Ein Bild öffnet die Lightbox, ein Video den
+   * `MedienVideoBetrachter`, eine Datei den Download.
    *
    * Die Daten kommen aus dem NACHRICHTEN-Store (nicht aus IndexedDB): das
    * Blatt zeigt genau den Verlauf, den der Chat ohnehin kennt — ältere
@@ -15,7 +16,9 @@
   import AutoRefreshImage from '$lib/components/AutoRefreshImage.svelte';
   import Lightbox from '$lib/components/Lightbox.svelte';
   import AnhangLadeknopf from '$lib/components/AnhangLadeknopf.svelte';
+  import MedienVideoBetrachter from './MedienVideoBetrachter.svelte';
   import FileIcon from '@lucide/svelte/icons/file';
+  import PlayIcon from '@lucide/svelte/icons/play';
   import DownloadIcon from '@lucide/svelte/icons/download';
   import type { Attachment, Message } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
@@ -32,61 +35,21 @@
   let quellen = $state<Record<string, string>>({});
 
   const alleAnhaenge = $derived(messages.flatMap((n) => n.attachments ?? []));
-  /** Galerie (Nutzerwunsch 2026-10-19): Bilder UND Videos als Kacheln —
-   *  Videos vorher in der Dateiliste „zum Herunterladen“ war nicht das,
-   *  was man von einer Galerie erwartet. */
-  const medien = $derived(
-    alleAnhaenge.filter((a) => {
-      const mime = a.mime ?? '';
-      return mime.startsWith('image/') || mime.startsWith('video/');
-    })
-  );
-  const dateien = $derived(
-    alleAnhaenge.filter((a) => {
-      const mime = a.mime ?? '';
-      return !mime.startsWith('image/') && !mime.startsWith('video/');
-    })
-  );
-  /** Verschlüsseltes ohne Bild-Kanal (Videos + Dateien): die Bytes kommen
-   *  per Blob in eine Objekt-URL — Videos daraus direkt im Raster
-   *  abspielbar, Dateien als Download. */
-  const verschluesselteOhneBild = $derived([
-    ...dateien.filter((a) => a.verschluesselt),
-    ...medien.filter((a) => a.verschluesselt && (a.mime ?? '').startsWith('video/'))
-  ]);
-  /** Nur die Videos, in Reihenfolge — der Vollbild-Player blättert darin
-   *  (Nutzerwunsch 2026-10-19: Video antippen → groβ, hin- und herblättern
-   *  wie bei WhatsApp). */
-  const videos = $derived(medien.filter((a) => (a.mime ?? '').startsWith('video/')));
-  const videoPosition = $derived(new Map(videos.map((v, i) => [v.id, i])));
-
-  let videoViewer = $state<number | null>(null);
-  let wischStart = $state<number | null>(null);
-
-  function videoOeffnen(index: number): void {
-    if (index === undefined || index === null) return;
-    videoViewer = index;
-  }
-  function videoViewerZu(): void {
-    videoViewer = null;
-  }
-  function videoBlaettern(delta: number): void {
-    if (videoViewer === null || videos.length === 0) return;
-    videoViewer = (((videoViewer + delta) % videos.length) + videos.length) % videos.length;
-  }
-  function viewerZeigerRunter(e: PointerEvent): void {
-    wischStart = e.clientX;
-  }
-  function viewerZeigerHoch(e: PointerEvent): void {
-    if (wischStart === null) return;
-    const dx = e.clientX - wischStart;
-    wischStart = null;
-    if (dx <= -60) videoBlaettern(1);
-    else if (dx >= 60) videoBlaettern(-1);
-  }
+  const istVideo = (a: Attachment): boolean => (a.mime ?? '').startsWith('video/');
+  const istMedium = (a: Attachment): boolean =>
+    (a.mime ?? '').startsWith('image/') || istVideo(a);
+  /** Galerie (Nutzerwunsch 2026-10-19): Bilder UND Videos als Kacheln — ein
+   *  Video als Datei „zum Herunterladen“ war nicht, was man von einer Galerie
+   *  erwartet. */
+  const medien = $derived(alleAnhaenge.filter(istMedium));
+  const dateien = $derived(alleAnhaenge.filter((a) => !istMedium(a)));
+  const verschluesselteDateien = $derived(dateien.filter((a) => a.verschluesselt));
+  /** Die Videos in Verlaufsreihenfolge — der Betrachter blättert darin. */
+  const videos = $derived(medien.filter(istVideo));
+  let videoIndex = $state<number | null>(null);
 
   $effect(() => {
-    const liste = verschluesselteOhneBild;
+    const liste = verschluesselteDateien;
     if (liste.length === 0) return;
     let abgebrochen = false;
     const erzeugt: string[] = [];
@@ -144,27 +107,38 @@
         <p class="text-text-muted mt-2 mb-1 text-xs font-bold uppercase">{m.medien_medien()}</p>
         <div class="grid grid-cols-3 gap-1.5">
           {#each medien as a (a.id)}
-            {@const istVideo = (a.mime ?? '').startsWith('video/')}
-            {#if istVideo}
-              <!-- Video-Kachel: Vorschau + Play-Zeichen, Antippen öffnet den
-                   Vollbild-Player (Nutzerwunsch 2026-10-19). -->
+            {#if istVideo(a)}
+              <!-- Video-Kachel: Vorschaubild (verschlüsselt) bzw. erster Frame
+                   (Klartext) mit Abspiel-Zeichen; die Bytes holt erst der
+                   Betrachter. -->
               <button
                 type="button"
                 class="relative aspect-square w-full cursor-pointer overflow-hidden rounded-lg border border-border bg-black"
-                onclick={() => videoOeffnen(videoPosition.get(a.id) ?? 0)}
+                onclick={() => (videoIndex = videos.indexOf(a))}
                 aria-label={a.filename ?? m.medien_bild_oeffnen()}
                 data-testid={`media-video-${a.id}`}
               >
-                <video
-                  src={dateiQuelle(a) ?? a.thumb_url ?? a.url}
-                  class="block size-full object-cover opacity-80"
-                  preload="metadata"
-                  muted
-                  playsinline
-                ></video>
+                {#if !a.verschluesselt}
+                  <video
+                    src={a.url}
+                    class="block size-full object-cover opacity-80"
+                    preload="metadata"
+                    muted
+                    playsinline
+                  ></video>
+                {:else if a.thumb_schluessel}
+                  <AutoRefreshImage
+                    attachmentId={a.id}
+                    src={a.url}
+                    alt=""
+                    thumb
+                    anhang={a}
+                    class="block size-full object-cover opacity-80"
+                  />
+                {/if}
                 <span class="absolute inset-0 flex items-center justify-center" aria-hidden="true">
                   <span class="flex size-9 items-center justify-center rounded-full bg-black/60 text-white">
-                    ▶
+                    <PlayIcon class="size-4 fill-current" />
                   </span>
                 </span>
               </button>
@@ -238,55 +212,4 @@
   />
 {/if}
 
-{#if videoViewer !== null && videos[videoViewer]}
-  {@const a = videos[videoViewer]}
-  <!-- Vollbild-Player (Nutzerwunsch 2026-10-19): Video antippen → groβ,
-       mit Pfeilen oder Wischen durch die Videos der Gruppe. -->
-  <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events a11y_interactive_supports_focus a11y_media_has_caption -->
-  <div
-    class="fixed inset-0 z-50 flex flex-col bg-black"
-    data-testid="medien-video-viewer"
-    tabindex="-1"
-    role="dialog"
-    onpointerdown={viewerZeigerRunter}
-    onpointerup={viewerZeigerHoch}
-  >
-    <div class="flex items-center justify-between px-4 py-3">
-      <span class="min-w-0 flex-1 truncate text-sm text-white/80">{a.filename ?? ''}</span>
-      <span class="text-xs text-white/60">{videoViewer + 1}/{videos.length}</span>
-    </div>
-    <div class="flex min-h-0 flex-1 items-center justify-center">
-      <!-- svelte-ignore a11y_media_has_caption -->
-      <video
-        src={dateiQuelle(a) ?? a.url}
-        class="max-h-full max-w-full"
-        controls
-        autoplay
-        playsinline
-      ></video>
-    </div>
-    <div class="flex items-center justify-between px-6 pb-[calc(var(--safe-bottom,0px)+12px)] pt-2 text-white">
-      <button
-        type="button"
-        class="flex size-11 items-center justify-center rounded-full bg-white/10"
-        onclick={() => videoBlaettern(-1)}
-        disabled={videoViewer === 0}
-        aria-label="Vorheriges Video"
-        data-testid="video-viewer-prev"
-      >
-        ‹
-      </button>
-      <span class="text-xs text-white/60">{videoViewer + 1} / {videos.length}</span>
-      <button
-        type="button"
-        class="flex size-11 items-center justify-center rounded-full bg-white/10"
-        onclick={() => videoBlaettern(1)}
-        disabled={videoViewer === videos.length - 1}
-        aria-label="Nächstes Video"
-        data-testid="video-viewer-next"
-      >
-        ›
-      </button>
-    </div>
-  </div>
-{/if}
+<MedienVideoBetrachter {videos} bind:index={videoIndex} />

@@ -31,7 +31,11 @@ function besterMime(): string | undefined {
 export interface LaufendeAufnahme {
   recorder: MediaRecorder;
   stream: MediaStream;
+  /** Start der Aufnahme, um jede Pause nach hinten verschoben — die
+   *  Differenz zu „jetzt" ist damit die aufgenommene Zeit. */
   gestartetAm: number;
+  /** Beginn der laufenden Pause, sonst undefined. */
+  pausiertSeit?: number;
   teile: Blob[];
   wecker: ReturnType<typeof setTimeout>;
   /** Stoppt die Aufnahme — derselbe Pfad für Loslassen und 300-s-Wecker. */
@@ -68,10 +72,12 @@ export function beendeAufnahme(lauf: LaufendeAufnahme): Promise<File | null> {
   clearTimeout(lauf.wecker);
   const mime = audioMimeBereinigen(lauf.recorder.mimeType);
   const gestartet = lauf.gestartetAm;
+  // Endet die Aufnahme in einer Pause, zählt die Pause nicht mit.
+  const ende = lauf.pausiertSeit ?? Date.now();
   return new Promise((resolve) => {
-    lauf.recorder.onstop = () => {
+    const fertig = () => {
       lauf.stream.getTracks().forEach((t) => t.stop());
-      const dauerSek = (Date.now() - gestartet) / 1000;
+      const dauerSek = (ende - gestartet) / 1000;
       if (lauf.teile.length === 0 || dauerSek < 0.5) {
         resolve(null);
         return;
@@ -84,6 +90,14 @@ export function beendeAufnahme(lauf: LaufendeAufnahme): Promise<File | null> {
       aufnahmeDauerRegister.set(datei, dauerSek);
       resolve(datei);
     };
+    // Schon gestoppt: der 300-s-Wecker kam dem Ticker zuvor. `onstop` käme
+    // nie mehr; die Teile sind da, weil der Ticker erst bis zu einem Takt
+    // (500 ms) nach dem Wecker hier ankommt.
+    if (lauf.recorder.state === 'inactive') {
+      fertig();
+      return;
+    }
+    lauf.recorder.onstop = fertig;
     lauf.stoppen();
   });
 }
@@ -94,4 +108,24 @@ export function brichAufnahmeAb(lauf: LaufendeAufnahme): void {
   lauf.recorder.onstop = null;
   lauf.stoppen();
   lauf.stream.getTracks().forEach((t) => t.stop());
+}
+
+/** Pause: der Recorder hält an, der 300-s-Wecker auch — eine Pause zählt
+ *  nicht gegen den Rahmen. */
+export function pausiereAufnahme(lauf: LaufendeAufnahme): void {
+  if (lauf.recorder.state !== 'recording') return;
+  lauf.recorder.pause();
+  clearTimeout(lauf.wecker);
+  lauf.pausiertSeit = Date.now();
+}
+
+/** Weiter: der Start rückt um die Pausenlänge nach, der Wecker bekommt die
+ *  verbliebene Zeit. */
+export function setzeAufnahmeFort(lauf: LaufendeAufnahme): void {
+  if (lauf.recorder.state !== 'paused' || lauf.pausiertSeit === undefined) return;
+  lauf.gestartetAm += Date.now() - lauf.pausiertSeit;
+  lauf.pausiertSeit = undefined;
+  const rest = AUFGABE_MAX_SEKUNDEN * 1000 - (Date.now() - lauf.gestartetAm);
+  lauf.wecker = setTimeout(() => lauf.stoppen(), Math.max(0, rest));
+  lauf.recorder.resume();
 }

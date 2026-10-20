@@ -18,10 +18,7 @@
   import { VerfasserAnhaenge } from '$lib/attachments/verfasserZeilen.svelte';
   import { dateienAusEinfuegen } from '$lib/attachments/eingefuegteDateien';
   import { SprachAufnahme } from '$lib/attachments/sprachAufnahme.svelte';
-  import Trash2Icon from '@lucide/svelte/icons/trash-2';
-  import SendHorizontalIcon from '@lucide/svelte/icons/send-horizontal';
-  import PauseIcon from '@lucide/svelte/icons/pause';
-  import PlayIcon from '@lucide/svelte/icons/play';
+  import SprachnachrichtLeiste from './composer/SprachnachrichtLeiste.svelte';
   import { DateiZiehZone } from '$lib/attachments/dateiZiehen.svelte';
   import type { MessageInputProps } from './composer/messageInputProps';
   import { guilds } from '$lib/stores/guilds.svelte';
@@ -112,7 +109,13 @@
   const kanalSchluessel = $derived(channelId);
   $effect(() => {
     void kanalSchluessel; // track so the cleanup runs whenever the channel changes
-    return () => anhaenge.alleAbbrechen();
+    return () => {
+      anhaenge.alleAbbrechen();
+      // Eine Sprachnachricht (laufend oder in der Vorschau) gehört zum
+      // verlassenen Gespräch — sonst ginge sie im nächsten raus.
+      aufnahme.verwerfen();
+      sprachnachrichtWartet = false;
+    };
   });
 
   // Drag&drop file upload. In the Electron desktop app the sandboxed renderer
@@ -236,65 +239,24 @@
 
   const removeAttachment = (localId: string) => anhaenge.entfernen(localId);
 
-  // Sprachnachricht (P0.3): Zustand und Ticker in `sprachAufnahme.svelte.ts`;
-  // die fertige Datei läuft durch denselben Anhang-Weg wie eine gewählte.
-  const aufnahme = new SprachAufnahme((datei) => addFiles([datei]));
+  // Sprachnachricht (P0.3): Zustand, Ticker und Vorschau in
+  // `sprachAufnahme.svelte.ts`, die Leiste in `SprachnachrichtLeiste.svelte`.
+  const aufnahme = new SprachAufnahme();
 
-  // ── Vorschau der beendeten Sprachnachricht (anhören vor dem Senden) ───────
-  /** Die fertige Aufnahme samt Objekt-URL fürs Anhören — null = keine da. */
-  let vorschau = $state<{ datei: File; url: string; dauer: number } | null>(null);
-  let vorschauSpielt = $state(false);
-  let vorschauPosition = $state(0);
-  // Nicht-reaktiv: das Audio-Element selbst, nur seine Lage wird angezeigt.
-  let vorschauAudio: HTMLAudioElement | null = null;
-
-  /** Stop → Vorschau: die Datei kommt NICHT über onDatei (der würde sie als
-   *  Anhang durchreichen) — sie wartet in der Vorschau auf Freigabe. */
-  async function vorschauOeffnen(): Promise<void> {
-    const datei = await aufnahme.dateiNehmen();
-    if (!datei) return;
-    if (vorschau) URL.revokeObjectURL(vorschau.url);
-    vorschau = { datei, url: URL.createObjectURL(datei), dauer: aufnahme.sekunden };
-    vorschauSpielt = false;
-    vorschauPosition = 0;
-    vorschauAudio?.pause();
-    vorschauAudio = new Audio(vorschau.url);
-    vorschauAudio.ontimeupdate = () => (vorschauPosition = vorschauAudio?.currentTime ?? 0);
-    vorschauAudio.onended = () => (vorschauSpielt = false);
+  /** „Senden" in der Vorschau: die Datei läuft durch denselben Anhang-Weg wie
+   *  eine gewählte und geht raus, sobald ihr Upload fertig ist. Sofort `fire()`
+   *  ginge nicht — solange der Upload läuft, sperrt `sendDisabled`. Scheitert
+   *  der Upload, bleibt die Fehlerkachel mit ihrem Wiederholen stehen. */
+  let sprachnachrichtWartet = $state(false);
+  function sprachnachrichtSenden(datei: File): void {
+    addFiles([datei]);
+    sprachnachrichtWartet = true;
   }
-
-  function vorschauUmschalten(): void {
-    if (!vorschauAudio) {
-      void vorschauOeffnen();
-      return;
-    }
-    if (vorschauSpielt) vorschauAudio.pause();
-    else void vorschauAudio.play().catch(() => (vorschauSpielt = false));
-    vorschauSpielt = !vorschauSpielt;
-  }
-
-  function vorschauVerwerfen(): void {
-    vorschauAudio?.pause();
-    vorschauAudio = null;
-    if (vorschau) URL.revokeObjectURL(vorschau.url);
-    vorschau = null;
-    vorschauSpielt = false;
-    vorschauPosition = 0;
-  }
-
-  function vorschauSenden(): void {
-    if (!vorschau) return;
-    vorschauAudio?.pause();
-    vorschauAudio = null;
-    addFiles([vorschau.datei]);
-    URL.revokeObjectURL(vorschau.url);
-    vorschau = null;
-    vorschauSpielt = false;
-    vorschauPosition = 0;
-    fire();
-  }
-
-  const sekundenAlsZeit = (s: number): string => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  $effect(() => {
+    if (!sprachnachrichtWartet || anhaenge.laeuftNoch) return;
+    sprachnachrichtWartet = false;
+    if (!anhaenge.hatFehler) fire();
+  });
 
   async function aufnahmeStart(): Promise<void> {
     if (!channelId || !attachmentsAllowed) return;
@@ -422,8 +384,11 @@
   ondragover={ziehen.over}
   ondragleave={ziehen.leave}
   ondrop={ziehen.drop}
+  onsubmit={(e) => {
+    e.preventDefault();
+    fire();
+  }}
 >
-
   {#if replyTo}
     <ComposerReplyBanner {replyTo} onCancel={onCancelReply} />
   {/if}
@@ -450,7 +415,6 @@
       handy={viewport.istHandy}
       {channelId}
       accept={attachmentAccept}
-      {aufnahme}
       onDateien={addFiles}
       {onSend}
     />
@@ -464,96 +428,8 @@
 
          `leading-6` macht es exakt statt nur ungefähr: die Zeile füllt den
          Kasten vollständig aus und sitzt zwangsläufig mittig. -->
-    {#if aufnahme.lauf}
-      <!-- Sprachaufnahme (Nutzerwunsch 2026-10-19): Verwerfen links,
-           Pause/Weiter neben der Zeit, rotes Stop rechts — Stop beendet und
-           sendet die Sprachnachricht direkt. Handy und Rechner. -->
-      <div class="flex min-h-11 w-full items-center gap-2" data-testid="aufnahme-leiste">
-        <button
-          type="button"
-          class="text-error flex size-9 shrink-0 items-center justify-center rounded-full"
-          onclick={() => aufnahme.verwerfen()}
-          aria-label={m.message_input_recording_discard()}
-          data-testid="aufnahme-verwerfen"
-        >
-          <Trash2Icon class="size-5" />
-        </button>
-        <button
-          type="button"
-          class="text-primary flex size-9 handy:size-11 shrink-0 items-center justify-center rounded-full"
-          onclick={() => (aufnahme.pausiert ? aufnahme.weiter() : aufnahme.pausieren())}
-          aria-label={aufnahme.pausiert ? m.message_input_recording_weiter() : m.message_input_recording_pause()}
-          data-testid="aufnahme-pause"
-        >
-          {#if aufnahme.pausiert}
-            <PlayIcon class="size-5" />
-          {:else}
-            <PauseIcon class="size-5" />
-          {/if}
-        </button>
-        <span
-          class="text-error flex items-center gap-1.5 text-sm font-semibold tabular-nums"
-          data-testid="aufnahme-zeit"
-        >
-          <span class="size-2 animate-pulse rounded-full bg-red-500"></span>
-          {aufnahme.dauer}
-        </span>
-        <span class="flex-1"></span>
-        <button
-          type="button"
-          class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-red-500 shadow-[0_2px_10px_rgba(239,68,68,0.5)]"
-          onclick={() => void vorschauOeffnen()}
-          aria-label={m.message_input_recording_stop()}
-          data-testid="aufnahme-stop"
-        >
-          <span class="block size-3.5 rounded-[2px] bg-white"></span>
-        </button>
-      </div>
-    {:else if vorschau}
-      <!-- Vorschau: anhören, verwerfen oder senden (Nutzerwunsch
-           2026-10-19 — erst hören, dann geht die Sprachnachricht raus). -->
-      <div class="flex min-h-11 w-full items-center gap-2" data-testid="sprachvorschau">
-        <button
-          type="button"
-          class="text-error flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-bg-hover"
-          onclick={vorschauVerwerfen}
-          aria-label={m.message_input_recording_discard()}
-          data-testid="sprachvorschau-verwerfen"
-        >
-          <Trash2Icon class="size-5" />
-        </button>
-        <button
-          type="button"
-          class="text-primary flex size-10 shrink-0 items-center justify-center rounded-full bg-bg-input"
-          onclick={vorschauUmschalten}
-          aria-label={vorschauSpielt ? m.message_input_recording_pause() : m.message_input_recording_play()}
-          data-testid="sprachvorschau-play"
-        >
-          {#if vorschauSpielt}
-            <PauseIcon class="size-5" />
-          {:else}
-            <PlayIcon class="size-5" />
-          {/if}
-        </button>
-        <div class="bg-bg-input h-1.5 min-w-0 flex-1 overflow-hidden rounded-full">
-          <div
-            class="bg-primary h-full rounded-full transition-[width] duration-150"
-            style="width: {(vorschauPosition / Math.max(1, vorschau.dauer)) * 100}%"
-          ></div>
-        </div>
-        <span class="text-text-muted shrink-0 font-mono text-2xs tabular-nums">
-          {sekundenAlsZeit(vorschauPosition)} / {sekundenAlsZeit(vorschau.dauer)}
-        </span>
-        <button
-          type="button"
-          class="text-primary hover:bg-bg-hover flex size-9 shrink-0 items-center justify-center rounded-full"
-          onclick={vorschauSenden}
-          aria-label={m.kamera_senden()}
-          data-testid="sprachvorschau-senden"
-        >
-          <SendHorizontalIcon class="size-5" />
-        </button>
-      </div>
+    {#if aufnahme.lauf || aufnahme.vorschau}
+      <SprachnachrichtLeiste {aufnahme} onSenden={sprachnachrichtSenden} />
     {:else}
       <textarea
         bind:this={textarea}

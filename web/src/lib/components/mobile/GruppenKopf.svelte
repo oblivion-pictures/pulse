@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
-   * Kopf des Gruppen-Blatts — Bild, Name (Owner: umbenennen), Bild setzen/
-   * entfernen, Gruppenanruf und die eigene Stummschaltung.
+   * Kopf des Gruppen-Blatts — Bild (antippen: setzen/ersetzen, ✕: entfernen),
+   * Name (Owner: umbenennen) und die eigene Stummschaltung. Der Gruppenanruf
+   * sitzt seit 2026-10-20 oben im Chat-Kopf (`ChatView`), nicht mehr hier.
    *
    * Mutationen laufen über `ausfuehren` aus dem Blatt (eine zur Zeit, Fehler
    * als Hinweis). Antwortet die Route mit der Gruppe, ist das die neue
@@ -12,7 +13,6 @@
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import PencilIcon from '@lucide/svelte/icons/pencil';
   import BellOffIcon from '@lucide/svelte/icons/bell-off';
-  import PhoneIcon from '@lucide/svelte/icons/phone';
   import { gruppenApi, type PrivateGruppe } from '$lib/api/gruppen';
   import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
   import { m } from '$lib/paraglide/messages.js';
@@ -23,7 +23,6 @@
     istMitglied,
     istOwner,
     ausfuehren,
-    onAnrufen,
     onUmbenennenAbbruch
   }: {
     gruppe: PrivateGruppe;
@@ -31,8 +30,6 @@
     istMitglied: boolean;
     istOwner: boolean;
     ausfuehren: (fn: () => Promise<void>) => Promise<void>;
-    /** Gruppenanruf starten — das Blatt schließt sich dabei selbst. */
-    onAnrufen?: () => void;
     /** Abbruch des Umbenennens nimmt auch eine offene Auflösen-Bestätigung zurück. */
     onUmbenennenAbbruch: () => void;
   } = $props();
@@ -77,17 +74,27 @@
       if (neu) privateGruppen.upsert(neu);
     });
   }
+
+  function iconEntfernen() {
+    void ausfuehren(async () => {
+      const neu = await gruppenApi.iconEntfernen(gruppe.id);
+      if (neu) privateGruppen.upsert(neu);
+    });
+  }
 </script>
 
 <div class="flex items-center gap-3">
-  <div class="shrink-0">
+  <div class="relative shrink-0">
     <!-- Tipp auf den Kreis = Bild wählen (Nutzerwunsch 2026-10-19); der
-         Pfeil unten rechts zeigt, dass hier etwas zu holen ist. Die
-         Text-Links (setzen/ersetzen/entfernen) sind bewusst weg. -->
+         Pfeil unten rechts zeigt, dass hier etwas zu holen ist, das ✕ oben
+         rechts nimmt ein gesetztes Bild wieder weg. Die Text-Links darunter
+         sind bewusst weg. Beides nur für Mitglieder — dieselbe Grenze wie
+         beim Server (`gruppen_icons.py`). -->
     <button
       type="button"
-      class="relative block cursor-pointer rounded-full"
+      class="relative block rounded-full {istMitglied ? 'cursor-pointer' : 'cursor-default'}"
       onclick={() => iconInput?.click()}
+      disabled={!istMitglied}
       aria-label={gruppe.icon_url ? m.gruppen_bild_ersetzen() : m.gruppen_bild_setzen()}
       data-testid="group-icon-change"
     >
@@ -101,13 +108,28 @@
           {gruppe.name.slice(0, 1).toUpperCase()}
         </span>
       {/if}
-      <span
-        class="bg-bg-input ring-border text-text-muted absolute -right-0.5 -bottom-0.5 flex size-5 items-center justify-center rounded-full ring-2"
-        aria-hidden="true"
-      >
-        <ChevronRightIcon class="size-3" />
-      </span>
+      {#if istMitglied}
+        <span
+          class="bg-bg-input ring-border text-text-muted absolute -right-0.5 -bottom-0.5 flex size-5 items-center justify-center rounded-full ring-2"
+          aria-hidden="true"
+        >
+          <ChevronRightIcon class="size-3" />
+        </span>
+      {/if}
     </button>
+    {#if istMitglied && gruppe.icon_url}
+      <button
+        type="button"
+        class="bg-bg-input ring-border text-text-muted hover:text-error absolute -top-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full ring-2 before:absolute before:-inset-3 before:content-['']"
+        onclick={iconEntfernen}
+        aria-label={m.gruppen_bild_entfernen()}
+        data-testid="group-icon-remove"
+      >
+        <!-- Sichtbar 20 px, greifbar 44 px (`before:-inset-3`): sonst wäre das
+             ✕ am Handy kaum zu treffen. -->
+        <XIcon class="size-3" />
+      </button>
+    {/if}
   </div>
   <div class="min-w-0 flex-1">
     {#if umbenennenOffen}
@@ -171,17 +193,6 @@
   class="hidden"
   onchange={iconHochladen}
 />
-{#if onAnrufen && istMitglied}
-  <button
-    type="button"
-    class="text-primary hover:bg-bg-hover mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2 text-sm font-semibold"
-    onclick={onAnrufen}
-    data-testid="group-call-button"
-  >
-    <PhoneIcon class="size-4" />
-    {m.anruf_starten()}
-  </button>
-{/if}
 {#if istMitglied}
   <!-- Stumm: persönlich, pro Gerät synchronisiert — der Handy-Push der
        Gruppe ruht, der Chat selbst bleibt normal. -->
