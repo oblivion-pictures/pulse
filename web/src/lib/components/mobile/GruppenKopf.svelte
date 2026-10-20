@@ -110,7 +110,7 @@
       {/if}
       {#if istMitglied}
         <span
-          class="bg-bg-input ring-border text-text-muted absolute -right-0.5 -bottom-0.5 flex size-5 items-center justify-center rounded-full ring-2"
+          class="bg-bg-panel ring-border text-text-muted absolute -right-0.5 -bottom-0.5 flex size-5 items-center justify-center rounded-full ring-2"
           aria-hidden="true"
         >
           <ChevronRightIcon class="size-3" />
@@ -120,7 +120,7 @@
     {#if istMitglied && gruppe.icon_url}
       <button
         type="button"
-        class="bg-bg-input ring-border text-text-muted hover:text-error absolute -top-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full ring-2 before:absolute before:-inset-3 before:content-['']"
+        class="bg-bg-panel ring-border text-text-muted hover:text-destructive absolute -top-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full ring-2 before:absolute before:-inset-3 before:content-['']"
         onclick={iconEntfernen}
         aria-label={m.gruppen_bild_entfernen()}
         data-testid="group-icon-remove"

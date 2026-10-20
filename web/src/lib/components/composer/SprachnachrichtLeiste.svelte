@@ -63,7 +63,7 @@
   <div class="flex min-h-11 w-full items-center gap-2 nicht-handy:min-h-9" data-testid="aufnahme-leiste">
     <button
       type="button"
-      class="text-error hover:bg-bg-hover flex size-11 shrink-0 items-center justify-center rounded-full nicht-handy:size-9"
+      class="text-destructive hover:bg-bg-hover flex size-11 shrink-0 items-center justify-center rounded-full nicht-handy:size-9"
       onclick={() => aufnahme.verwerfen()}
       aria-label={m.message_input_recording_discard()}
       data-testid="aufnahme-verwerfen"
@@ -86,10 +86,10 @@
       {/if}
     </button>
     <span
-      class="text-error flex items-center gap-1.5 text-sm font-semibold tabular-nums"
+      class="text-destructive flex items-center gap-1.5 text-sm font-semibold tabular-nums"
       data-testid="aufnahme-zeit"
     >
-      <span class="bg-error size-2 rounded-full {aufnahme.pausiert ? '' : 'animate-pulse'}"></span>
+      <span class="bg-destructive size-2 rounded-full {aufnahme.pausiert ? '' : 'animate-pulse'}"></span>
       {aufnahme.dauer}
     </span>
     <span class="flex-1"></span>
@@ -97,7 +97,7 @@
          gut zu sehen, deshalb hier kein Theme-Wert. -->
     <button
       type="button"
-      class="bg-error shadow-error/50 flex size-11 shrink-0 items-center justify-center rounded-lg shadow-md nicht-handy:size-9"
+      class="bg-destructive shadow-destructive/50 flex size-11 shrink-0 items-center justify-center rounded-lg shadow-md nicht-handy:size-9"
       onclick={() => void aufnahme.zurVorschau()}
       aria-label={m.message_input_recording_stop()}
       data-testid="aufnahme-stop"
@@ -110,7 +110,7 @@
   <div class="flex min-h-11 w-full items-center gap-2 nicht-handy:min-h-9" data-testid="sprachvorschau">
     <button
       type="button"
-      class="text-error hover:bg-bg-hover flex size-11 shrink-0 items-center justify-center rounded-full nicht-handy:size-9"
+      class="text-destructive hover:bg-bg-hover flex size-11 shrink-0 items-center justify-center rounded-full nicht-handy:size-9"
       onclick={() => aufnahme.verwerfen()}
       aria-label={m.message_input_recording_discard()}
       data-testid="sprachvorschau-verwerfen"

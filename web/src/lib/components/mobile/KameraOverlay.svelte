@@ -933,7 +933,7 @@
           class="absolute left-1/2 top-[30px] ios:top-[calc(30px+var(--safe-top))] z-20 flex -translate-x-1/2 items-center gap-2.5 rounded-full border border-white/10 bg-black/50 px-4 py-1.5 shadow-[0_0_24px_rgba(37,99,235,0.35)] backdrop-blur-md"
           data-testid="camera-overlay-timer"
         >
-          <span class="bg-error size-2.5 animate-pulse rounded-full shadow-[0_0_8px_rgba(239,68,68,0.9)]"></span>
+          <span class="bg-destructive size-2.5 animate-pulse rounded-full shadow-[0_0_8px_rgba(239,68,68,0.9)]"></span>
           <span class="text-sm font-semibold text-white tabular-nums">
             {formatiereDauer(rekordSekunden)}
           </span>
@@ -947,7 +947,7 @@
           <div class="flex items-center justify-center">
             <button
               type="button"
-              class="bg-error flex size-20 items-center justify-center rounded-full border-4 border-white/90 shadow-[0_0_36px_rgba(37,99,235,0.7)] transition-transform active:scale-95"
+              class="bg-destructive flex size-20 items-center justify-center rounded-full border-4 border-white/90 shadow-[0_0_36px_rgba(37,99,235,0.7)] transition-transform active:scale-95"
               onclick={() => rekorder?.stop()}
               data-testid="camera-stop"
               aria-label={m.kamera_aufnahme_stoppen()}
