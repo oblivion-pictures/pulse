@@ -1226,7 +1226,7 @@
   "ablage_kanal_senden_niemand_erreichbar": "Niemand mit Sicht auf diesen Kanal hat ein Gerät, das verschlüsselte Nachrichten empfangen kann.",
   "ablage_kanal_senden_ohne_anhaenge": "In Ablage-Kanälen sind Anhänge noch nicht möglich.",
   "gruppen_aktion_fehlgeschlagen": "Aktion fehlgeschlagen",
-  "gruppen_blatt_hinzufuegen_kopf": "Freunde hinzufügen",
+  "gruppen_blatt_hinzufuegen_kopf": "Einladen",
   "gruppen_blatt_mitglieder": "{count} Mitglieder",
   "gruppen_bild_setzen": "Bild setzen",
   "gruppen_bild_ersetzen": "Bild ersetzen",
