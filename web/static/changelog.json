@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-20.2",
+      "date": "2026-10-20",
+      "style": "Sachlich",
+      "title": "Gäste und Häkchen",
+      "items": [
+        "Steht in der Vorschau eines anderen Servers ein Gast im Sprachkanal, erscheint jetzt sein Name statt einer Nummer. Und nach einem Serverwechsel zeigen deine Direktnachrichten wieder beide Häkchen für „gelesen“."
+      ]
+    },
+    {
       "id": "2026-10-20",
       "date": "2026-10-20",
       "style": "Sachlich",
