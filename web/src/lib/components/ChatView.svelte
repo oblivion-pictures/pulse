@@ -510,7 +510,10 @@
           <UsersIcon class="text-text-muted size-4" />
         </Button>
       {/if}
-      {#if hatMedien}
+      {#if hatMedien || headerKind === 'gruppe'}
+        <!-- Gruppen: der Galerie-Knopf steht IMMER (Nutzerwunsch 2026-10-19)
+             — ohne Anhang im geladenen Verlauf zeigte sich er nie und die
+             Galerie wäre nicht auffindbar. Leeres Blatt sagt es dann. -->
         <Button
           variant="ghost"
           size="icon"
