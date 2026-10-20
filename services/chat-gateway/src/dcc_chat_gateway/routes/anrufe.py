@@ -25,7 +25,11 @@ from sqlalchemy import select
 
 from dcc_chat_gateway import anruf_push
 from dcc_chat_gateway.db import SessionDep
-from dcc_chat_gateway.friend_helpers import block_exists_either_way, friendship_exists
+from dcc_chat_gateway.friend_helpers import (
+    block_exists_either_way,
+    blockierte_unter,
+    friendship_exists,
+)
 from dcc_chat_gateway.models import (
     Anruf,
     ART_DM,
@@ -102,7 +106,16 @@ async def anruf_starten(
         mitglieder = list(rows.scalars().all())
         if current.id not in mitglieder:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="gruppe_not_found")
+        # Wer den Anrufer blockiert hat oder von ihm blockiert ist, wird NICHT
+        # angeklingelt — weder über die WebSocket noch per Push (Eigentümer-
+        # Entscheid 2026-10-20). Bis dahin klingelte ein Gruppenanruf bei
+        # jemandem, den man blockiert hat, auch bei geschlossener App. Nur das
+        # Klingeln entfällt: als Gruppenmitglied zählt er weiter zu den
+        # Teilnehmern (``_teilnehmer``) und bekommt die späteren Ereignisse
+        # des Anrufs (Annahme, Ende) wie bisher.
         andere = [uid for uid in mitglieder if uid != current.id]
+        blockiert = await blockierte_unter(session, current.id, set(andere))
+        andere = [uid for uid in andere if uid not in blockiert]
 
     anruf = Anruf(
         id=next_id(),
@@ -124,13 +137,15 @@ async def anruf_starten(
             einleiter_id=str(current.id),
         ),
     )
-    # VoIP-Push an alle iOS-Geräte der Gerufenen (Punkt 40). Ohne ihn
-    # erreicht ein Anruf nur, wer eine offene Verbindung hat — wer das Telefon
-    # in der Tasche hat, verpasst ihn, ohne dass irgendwo etwas schiefgeht
-    # (Begründung im Kopf von ``apns_voip.py``, warum ohne Frische-Prüfung im
-    # Kopf von ``anruf_push.py``). Gesendet wird im Hintergrund — die Antwort
-    # mit der Kennung wartet nicht auf Apple (T17). Fail-open: ohne
-    # APNs-Schlüssel passiert hier nichts.
+    # Push an alle Geräte der Gerufenen: VoIP an iOS (Punkt 40), ein
+    # FCM-Datenpush an Android-Bauten mit ``anruf_push``. Ohne ihn erreicht
+    # ein Anruf nur, wer eine offene Verbindung hat — wer das Telefon in der
+    # Tasche hat, verpasst ihn, ohne dass irgendwo etwas schiefgeht
+    # (Begründung im Kopf von ``apns_voip.py``, warum ohne Frische-Prüfung und
+    # wer trotzdem keinen bekommt — „Nicht stören“, stumme Gruppe — im Kopf
+    # von ``anruf_push.py``). Gesendet wird im Hintergrund — die Antwort mit
+    # der Kennung wartet nicht auf Apple (T17). Fail-open: ohne APNs- und
+    # Firebase-Schlüssel passiert hier nichts.
     await anruf_push.klingeln(
         session=session,
         **_push_umfeld(request),

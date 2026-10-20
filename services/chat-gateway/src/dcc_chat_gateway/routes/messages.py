@@ -342,6 +342,7 @@ async def post_message(
             channel_id=channel_id,
             message_id=msg.id,
             guild_id=guild_id_for_mentions,
+            redis=getattr(request.app.state, "redis", None),
         )
     mgr = getattr(request.app.state, "connection_manager", None)
     if mgr is not None:
@@ -589,7 +590,11 @@ async def edit_message(
             guild_id=guild_id_for_mentions,
             author_id=current.id,
         )
-        if notified:
+        # Wie beim Senden (Bughunt Runde 19, s. ``post_message``): nur
+        # Community-Kanäle. In einer DM trug dieser Push sonst den KLARTEXT
+        # der bearbeiteten Nachricht zum Push-Dienst — der DM-Push sagt nur
+        # „Neue Direktnachricht“ (Push-Bughunt 2026-10-20).
+        if notified and kind == "guild":
             await fan_out_mention_push(
                 user_ids=notified,
                 author_name=current.username,
@@ -597,6 +602,7 @@ async def edit_message(
                 channel_id=msg.channel_id,
                 message_id=msg.id,
                 guild_id=guild_id_for_mentions,
+                redis=getattr(request.app.state, "redis", None),
             )
     msg.reactions = reactions  # type: ignore[attr-defined]
     msg.attachments = attachments  # type: ignore[attr-defined]

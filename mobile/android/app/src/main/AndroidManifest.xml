@@ -17,12 +17,13 @@
         android:theme="@style/AppTheme">
 
         <!-- FCM-Push-Optik: ohne diese Meta-Daten zeigt Android im
-             Benachrichtigungsbalken den Roboter-Standard. Die kleine
-             Statusleisten-Optik muss einflächig sein — das Launch-Icon geht
-             zur Not, der Akzent färbt die Karte. -->
+             Benachrichtigungsbalken den Roboter-Standard. Das Statusleisten-
+             Symbol muss einfarbig auf transparentem Grund sein (Android
+             wertet nur den Alphakanal aus) — das adaptive Launch-Icon wurde
+             dort zum weißen Klecks. Der Akzent färbt die Karte. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@mipmap/ic_launcher" />
+            android:resource="@drawable/ic_stat_pulse" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/push_akzent" />
@@ -89,11 +90,29 @@
             android:foregroundServiceType="phoneCall"
             android:exported="false" />
 
-        <!-- Annehmen/Ablehnen direkt aus der Notification, auch über dem
-             Sperrbildschirm (entscheidet zurück an die WebView). -->
+        <!-- Ablehnen direkt aus der Notification, auch über dem
+             Sperrbildschirm (entscheidet zurück an die WebView). Annehmen
+             öffnet die MainActivity. -->
         <receiver
             android:name=".CallForegroundService$AktionsEmpfaenger"
             android:exported="false" />
+
+        <!-- FCM-Empfang: PushDienst erbt vom Plugin-Dienst und fängt die
+             Anruf-Datenpushes ab (klingeln auch ohne laufende WebView); alles
+             andere reicht er an das Plugin weiter. Der Plugin-Eintrag wird
+             entfernt, sonst gäbe es zwei Empfänger für MESSAGING_EVENT —
+             Firebase stellt nur einem zu, welchem, entschiede die
+             Paketauflösung. -->
+        <service
+            android:name="io.capawesome.capacitorjs.plugins.firebase.messaging.MessagingService"
+            tools:node="remove" />
+        <service
+            android:name=".PushDienst"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
     </application>
 
     <!-- Permissions -->
@@ -115,9 +134,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Anrufe-Epic E: eingehende Anrufe über dem Sperrbildschirm.
          USE_FULL_SCREEN_INTENT startet bei Sperrbildschirm die MainActivity im
-         Vollbild; FOREGROUND_SERVICE_PHONE_CALL + MANAGE_OWN_CALLS sind die
+         Vollbild (ab Android 14 vom Nutzer entziehbar, dann Heads-up);
+         FOREGROUND_SERVICE_PHONE_CALL + MANAGE_OWN_CALLS sind die
          Voraussetzung für den phoneCall-FGS (CallStyle-Notification, ab API 34
-         typpflichtig). -->
+         typpflichtig) — auch beim Start aus einem Anruf-Push (PushDienst). -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />

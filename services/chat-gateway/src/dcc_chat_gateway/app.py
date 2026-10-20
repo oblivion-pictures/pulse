@@ -12,7 +12,7 @@ from fastapi import FastAPI, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 
-from dcc_chat_gateway import fcm_abarbeiten, s3
+from dcc_chat_gateway import fcm_abarbeiten, presence_schonfrist, s3
 from dcc_chat_gateway.cleanup import cleanup_loop as push_cleanup_loop
 from dcc_chat_gateway.cloud_policy_poller import cloud_policy_poller_loop
 from dcc_chat_gateway.config import get_settings
@@ -288,6 +288,8 @@ async def lifespan(app: FastAPI):
                 exc = None if task.cancelled() else task.exception()
                 if exc is not None:
                     log.debug("shutdown: background task %s ended with %r", task.get_name(), exc)
+            # Offline-Meldungen in ihrer Schonfrist: der Manager geht jetzt zu.
+            await presence_schonfrist.alle_abbrechen()
             if manager is not None:
                 await manager.stop()
             if redis is not None:
@@ -308,12 +310,13 @@ async def lifespan(app: FastAPI):
         from dcc_chat_gateway import voice_evict
 
         await voice_evict.shutdown_client()
-        # VoIP-Pushes, die noch unterwegs sind (Hintergrund-Sendungen aus
-        # ``anruf_push``), dürfen ausfliegen — kurz; dann der gemeinsame
-        # HTTP/2-Klient zu Apple.
-        from dcc_chat_gateway import anruf_push, apns_voip
+        # Anruf-Pushes und Handy-Hinweise, die noch unterwegs sind
+        # (Hintergrund-Sendungen aus ``anruf_push``/``fcm_hinweise``), dürfen
+        # ausfliegen — kurz; dann der gemeinsame HTTP/2-Klient zu Apple.
+        from dcc_chat_gateway import anruf_push, apns_voip, fcm_hinweise
 
         await anruf_push.hintergrund_abwarten(frist_s=2.0)
+        await fcm_hinweise.hintergrund_abwarten(frist_s=2.0)
         await apns_voip.schliessen()
 
 

@@ -368,6 +368,7 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
             channel_id=cid_int,
             message_id=persisted.id,
             guild_id=guild_id_for_bump,
+            redis=getattr(manager, "redis", None),
         )
     # Mirror routes/messages.py: lightweight global bump so clients NOT
     # subscribed to this channel can flag it as unread. Guild channels

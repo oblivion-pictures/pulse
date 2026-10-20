@@ -3589,6 +3589,7 @@
   "settings_mitteilungen_huelle_offen": "Pulse can't send you notifications yet. Your device will ask for permission once.",
   "settings_mitteilungen_huelle_erteilt": "Allowed — you'll get a notification when a message arrives for you.",
   "settings_mitteilungen_huelle_verweigert": "Turned off. You can only turn them on in the iOS settings.",
+  "settings_mitteilungen_huelle_verweigert_android": "Turned off. You can only turn them on in the Android settings (Apps → Pulse → Notifications).",
   "settings_mitteilungen_huelle_einstellungen": "Open Settings",
   "zeilen_menue_oeffnen": "More actions",
   "zeilen_menue_schliessen": "Close",

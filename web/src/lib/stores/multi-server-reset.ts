@@ -22,7 +22,9 @@
  *  - `readState.resetCacheOnly()` — der localStorage-Inhalt ist `userId`-keyed
  *    (`pulse.readState.<uid>`), nicht server-keyed. Beim Switch wollen wir die
  *    persistierten Read-Marks **nicht** wegwerfen. Geleert wird deshalb nur
- *    `latestByChannel` (die Sitzungsbeobachtung); die persistierten Karten
+ *    `latestByChannel` (die Sitzungsbeobachtung), und auch das nur für die
+ *    Kanäle des alten Servers — DMs und private Gruppen bleiben (2026-10-20,
+ *    Begründung an `resetCacheOnly`); die persistierten Karten
  *    werden aus dem Speicher **neu eingelesen** statt auf `{}` gesetzt — sonst
  *    schriebe der nächste `markRead` den kontoweiten Eintrag aus einer leeren
  *    Karte heraus fort und löschte den Lesestand aller anderen Server
@@ -87,8 +89,13 @@ import { schirmWarten } from '$lib/devices/schirme.svelte';
 export function resetServerScopedStores(): void {
   guilds.clear();
   messages.clear();
-  // readState: nur Memory-Cache, localStorage bleibt (userId-keyed).
-  readState.resetCacheOnly();
+  // readState: nur Memory-Cache, localStorage bleibt (userId-keyed). Die
+  // Kanäle des Kontos (Cloud-DMs, private Gruppen) behalten ihre neueste
+  // Nachricht — die Cloud schickt beim Wechsel keinen ready-Rahmen nach.
+  // Beim Abmelden räumt danach `readState.clear()` alles ab.
+  readState.resetCacheOnly(
+    (kanalId) => kanalId in directMessages.byId || privateGruppen.istGruppe(kanalId)
+  );
   roles.clear();
   guildSounds.clear();
   channelPermissions.clear();

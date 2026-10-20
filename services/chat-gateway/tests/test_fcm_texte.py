@@ -74,9 +74,23 @@ def test_jeder_schluessel_steht_in_der_app_uebersetzt():
     schluessel = [
         v for k, v in vars(fcm_texte).items() if k.startswith("SCHLUESSEL_") and isinstance(v, str)
     ]
-    assert len(schluessel) == 6
+    assert len(schluessel) == 7
     for s in schluessel:
         assert set(texte[s]["localizations"]) >= {"de", "en"}, s
+
+
+def test_jeder_schluessel_hat_eine_android_ressource():
+    """Android bekommt Ressourcennamen statt der iOS-Schlüssel
+    (``texte_lokal``). Fehlt einer in der Zuordnung, schlüge der Bau der
+    Nachricht fehl — und die Android-App muss jeden Namen tragen."""
+    schluessel = {
+        v for k, v in vars(fcm_texte).items() if k.startswith("SCHLUESSEL_") and isinstance(v, str)
+    }
+    assert set(fcm_texte.ANDROID_RESSOURCEN) == schluessel
+    assert set(fcm_texte.ANDROID_RESSOURCEN.values()) == {
+        "push_neue_nachricht", "push_anhang", "push_anzahl", "push_zwei", "push_drei",
+        "push_weitere", "push_freundschaft",
+    }
 
 
 def _kodiere(msg):

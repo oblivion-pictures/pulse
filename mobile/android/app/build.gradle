@@ -13,8 +13,8 @@ android {
         applicationId "com.howispulse.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 4
-        versionName "1.3"
+        versionCode 5
+        versionName "1.4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -46,6 +46,13 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+    // PushDienst erbt vom FCM-Dienst des Plugins @capacitor-firebase/messaging;
+    // dessen Abhängigkeit auf firebase-messaging ist dort nur `implementation`,
+    // also für dieses Modul unsichtbar. compileOnly macht die Klassen zum
+    // Übersetzen sichtbar, ohne etwas ins APK zu legen — zur Laufzeit liefert
+    // sie weiter das Plugin. Version wie im Plugin (dessen build.gradle:
+    // firebaseMessagingVersion, Vorgabe 25.0.1).
+    compileOnly "com.google.firebase:firebase-messaging:${rootProject.ext.has('firebaseMessagingVersion') ? rootProject.ext.firebaseMessagingVersion : '25.0.1'}"
     // Nativer Voice-Motor (intern/docs/UEBERGABE-MOBILE-VOICE-NATIV.md) — Version
     // gepinnt gemäß Übergabe §5 Punkt 6. Zieht libwebrtc + OkHttp transitiv.
     implementation 'io.livekit:livekit-android:2.29.0'

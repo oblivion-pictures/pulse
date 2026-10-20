@@ -22,7 +22,7 @@
  */
 
 import { compareSnowflakeId } from '$lib/utils/snowflake';
-import { istGelesenBis, vorwaertsMerge } from '$lib/stores/lesestandKern';
+import { istGelesenBis, nurBehalten, vorwaertsMerge } from '$lib/stores/lesestandKern';
 import { quittungen } from '$lib/stores/quittungen.svelte';
 
 const STORAGE_PREFIX = 'pulse.readState.';
@@ -141,10 +141,19 @@ class ReadState {
    * das vollständige Kontobild — derselbe Zustand wie nach einem Neuladen der
    * Seite. Nur `latestByChannel` wird wirklich geleert; das ist der einzige
    * Teil, der pro Sitzung neu beobachtet wird (und nie persistiert).
+   *
+   * **Und auch der nur für die Kanäle des alten Servers** (2026-10-20):
+   * `behalten` nennt die Kanäle, die zum Konto gehören — Cloud-DMs und
+   * private Gruppen (`multi-server-reset.ts`). Deren neueste Nachricht kommt
+   * aus dem Cloud-ready-Rahmen (iOS-Saat in `ready.ts`) oder aus dieser
+   * Sitzung, und die Cloud schickt beim Server-Wechsel keinen neuen — derselbe
+   * Grund wie bei den Häkchen unten. Geleert fiel `isUnread` für sie auf
+   * `false`, und die Plakette (`abzeichen.svelte.ts`, Rückfall „mindestens
+   * eins") sank, ohne dass etwas gelesen war.
    */
-  resetCacheOnly(): void {
+  resetCacheOnly(behalten: (kanalId: string) => boolean = () => false): void {
     this.flushPending();
-    this.latestByChannel = {};
+    this.latestByChannel = nurBehalten(this.latestByChannel, behalten);
     this.lastReadByChannel = this.ladeKarte<string>(this.storageKey) ?? {};
     // Die Häkchen-Stände (`quittungen`) bleiben stehen. Bis 2026-10-20 wurden
     // sie hier geleert, in der Annahme, der neue ready-Rahmen fülle sie nach.
@@ -212,6 +221,7 @@ class ReadState {
    *  (`serverSync`-Haken, installiert von `api/lesestand.ts`) — dort ist
    *  die geräteübergreifende Wahrheit. */
   markRead(channelId: string, messageId?: string): void {
+    for (const haken of this.leseHaken) haken(channelId);
     const target = messageId ?? this.latestByChannel[channelId];
     if (!target) {
       // No new message id but we still want the badges to clear on focus
@@ -228,6 +238,15 @@ class ReadState {
     }
     this.clearMentions(channelId);
     this.clearUnread(channelId);
+  }
+
+  /** Haken „dieser Kanal wurde gelesen" — bei JEDEM `markRead`, auch ohne
+   *  Fortschritt. Heute: die zugestellten System-Meldungen des Kanals
+   *  wegräumen (`platform/zugestellteMeldungen.ts`, eingehängt von `fcm.ts`). */
+  private leseHaken = new Set<(channelId: string) => void>();
+  beimLesen(haken: (channelId: string) => void): () => void {
+    this.leseHaken.add(haken);
+    return () => this.leseHaken.delete(haken);
   }
 
   /** Hook für den Server-Reporter (`api/lesestand.ts`); null = nur lokal. */

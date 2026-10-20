@@ -48,6 +48,7 @@ from sqlalchemy import exists, func, select
 import dcc_chat_gateway.config as chat_config
 from dcc_chat_gateway import ratelimit
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.friend_helpers import blockierte_unter
 from dcc_chat_gateway.models import DeviceKeyBundle, DmNutzlast, DmZustellung
 from dcc_chat_gateway.postfach_anhaenge import bezuege_anlegen, binde_anhaenge
 from dcc_chat_gateway.push import fan_out_dm_push_encrypted
@@ -408,6 +409,12 @@ async def postfach_einliefern(
     # „Neue Direktnachricht" an, zählte die Plakette hoch, und der Tipp fand unter
     # ``/app/@me`` keine DM. Ob er eine eigene Mitteilung bekommen soll, ist
     # eine Produktfrage. Der Weckruf oben bleibt.
+    # In einer Gruppe weckt ein blockierter (oder blockierender) Absender
+    # niemanden: zugestellt wird oben trotzdem — die App klappt die Nachricht
+    # ein —, aber Banner und Plakette entfallen (Push-Bughunt 2026-10-20).
+    # Eine DM erreicht diese Stelle mit Blockierung gar nicht (Kanalzugang).
+    if push_empfaenger and body.benachrichtigen and not (zugriff.ist_dm or zugriff.ist_ablage):
+        push_empfaenger -= await blockierte_unter(session, user.id, push_empfaenger)
     if push_empfaenger and body.benachrichtigen and not zugriff.ist_ablage:
         await fan_out_dm_push_encrypted(
             recipient_ids=push_empfaenger,

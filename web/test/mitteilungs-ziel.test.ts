@@ -40,3 +40,36 @@ test('ohne Kanal kein Ziel; Unsinn in der Nutzlast fällt heraus', () => {
   assert.equal(mitteilungsZiel({ channel_id: { x: 1 } }, keineGilde), null);
   assert.equal(mitteilungsZiel({ channel_id: '42', guild_id: '' }, keineGilde)?.pfad, '/app/@me/42');
 });
+
+test('Erwähnung: in den Kanal der Community, die Antwort nur als Entwurf', () => {
+  const daten = { type: 'erwaehnung', guild_id: '9', channel_id: '42', message_id: '77' };
+  assert.deepEqual(mitteilungsZiel(daten, keineGilde), {
+    pfad: '/app/guilds/9/channels/42',
+    kanalId: '42',
+    antwortWirdGesendet: false
+  });
+  // Ohne guild_id hilft das Wissen des Klienten.
+  assert.equal(
+    mitteilungsZiel({ type: 'erwaehnung', channel_id: '42' }, () => '7')?.pfad,
+    '/app/guilds/7/channels/42'
+  );
+});
+
+test('Erwähnung ohne bekannte Community: kein Ziel statt einer DM, die es nicht gibt', () => {
+  assert.equal(mitteilungsZiel({ type: 'erwaehnung', channel_id: '42' }, keineGilde), null);
+});
+
+test('Freundschaftsanfrage: in den Freunde-Bereich, ohne Kanal', () => {
+  assert.deepEqual(mitteilungsZiel({ type: 'freundschaft', user_id: '5' }, keineGilde), {
+    pfad: '/app/friends',
+    kanalId: null,
+    antwortWirdGesendet: false
+  });
+});
+
+test('Unbekannter Typ: wie bisher über channel_id', () => {
+  assert.equal(
+    mitteilungsZiel({ type: 'irgendwas', channel_id: '42' }, keineGilde)?.pfad,
+    '/app/@me/42'
+  );
+});

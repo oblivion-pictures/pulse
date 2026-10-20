@@ -1,7 +1,27 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Pulse</string>
-    <string name="title_activity_main">Pulse</string>
-    <string name="package_name">com.howispulse.app</string>
-    <string name="custom_url_scheme">com.howispulse.app</string>
+    <string name="app_name" translatable="false">Pulse</string>
+    <string name="title_activity_main" translatable="false">Pulse</string>
+    <string name="package_name" translatable="false">com.howispulse.app</string>
+    <string name="custom_url_scheme" translatable="false">com.howispulse.app</string>
+
+    <!-- System-Push (FCM): der Server schickt die Namen als title_loc_key /
+         body_loc_key, Android setzt die Texte in der Gerätesprache ein.
+         Englisch ist der Rückfall, Deutsch steht in values-de. Namen nur
+         zusammen mit dem Server (chat-gateway) ändern. -->
+    <string name="push_neue_nachricht">New message</string>
+    <string name="push_anhang">Sent you an attachment</string>
+    <string name="push_anzahl">%1$s new messages</string>
+    <string name="push_zwei">%1$s and %2$s</string>
+    <string name="push_drei">%1$s, %2$s and %3$s</string>
+    <string name="push_weitere">%1$s, %2$s and %3$s more</string>
+    <string name="push_freundschaft">Wants to be your friend</string>
+
+    <!-- Anruf-Meldung (CallForegroundService) und Mitteilungskanäle -->
+    <string name="anruf_eingehend">Incoming call</string>
+    <string name="anruf_unbekannt">Unknown</string>
+    <string name="kanal_anrufe">Incoming calls</string>
+    <string name="kanal_anrufe_info">Rings for incoming calls, also on the lock screen</string>
+    <string name="kanal_nachrichten">Messages</string>
+    <string name="kanal_nachrichten_info">Direct messages and mentions</string>
 </resources>

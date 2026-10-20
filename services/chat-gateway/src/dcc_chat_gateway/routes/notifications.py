@@ -28,6 +28,7 @@ from dcc_chat_gateway import ratelimit
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.models import WebPushSubscription
 from dcc_chat_gateway.push import ensure_vapid
+from dcc_chat_gateway.routes._geraetetoken import kette_des_aufrufers
 from dcc_chat_gateway.security import CurrentUser
 from dcc_chat_gateway.snowflake import next_id
 
@@ -192,10 +193,15 @@ async def subscribe(
             )
         )
     ).scalar_one_or_none()
+    # Die Anmelde-Kette dieses Aufrufs (Migration 0108): endet sie, fällt das
+    # Abo (``push_widerruf.py``). Die jüngste Anmeldung gewinnt — wie bei den
+    # Gerätetoken (``_geraetetoken.upsert``).
+    kette = kette_des_aufrufers(current.payload)
     if existing is not None:
         existing.p256dh = payload.keys.p256dh
         existing.auth_secret = payload.keys.auth
         existing.user_agent = payload.user_agent
+        existing.kette = kette
     else:
         session.add(
             WebPushSubscription(
@@ -205,6 +211,7 @@ async def subscribe(
                 p256dh=payload.keys.p256dh,
                 auth_secret=payload.keys.auth,
                 user_agent=payload.user_agent,
+                kette=kette,
             )
         )
     try:

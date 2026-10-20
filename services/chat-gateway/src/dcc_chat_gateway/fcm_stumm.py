@@ -2,7 +2,10 @@
 die stummgeschaltete Gruppe.
 
 Drei Gründe, einem Konto KEINEN DM-Push zu schicken (iOS und Android, beide
-laufen über :func:`dcc_chat_gateway.fcm.dm_push_senden`):
+laufen über :func:`dcc_chat_gateway.fcm.dm_push_senden`). „Nicht stören“ gilt
+auch für Anrufe, Erwähnungen und Freundschaftsanfragen
+(:func:`nicht_stoeren_konten`), die Gruppen-Stummschaltung auch für
+Gruppenanrufe (``anruf_push``):
 
 * **Nicht stören.** Der Presence-Status ``dnd`` — Live-Stand in Redis
   (``presence:status:<id>``, 24 h), sonst die dauerhafte Spiegelung in
@@ -96,19 +99,12 @@ async def ohne_stumme_gruppenmitglieder(
         return user_ids
 
 
-async def stumme_konten(session: Any, redis: Any, user_ids: set[int]) -> set[int]:
-    """Die Konten unter ``user_ids``, die wegen „Nicht stören“ oder des
-    DM-Schalters gerade keinen DM-Push wollen. Die stummgeschaltete Gruppe
-    prüft der Aufrufer getrennt (:func:`stumme_gruppenmitglieder`), weil sie
-    anders als diese beiden auch die Plakette anhält.
-
-    Ohne Redis zählt nur die dauerhafte Spiegelung des Status. Ein Redis-Fehler
-    fällt in dieselbe Richtung (der Push-Weg ist best-effort); ein
-    Datenbankfehler wirft weiter — der Aufrufer plant den Versuch dann neu ein.
-    """
-    if not user_ids:
-        return set()
-    ids = sorted(user_ids)
+async def _status_und_schalter(
+    session: Any, redis: Any, ids: list[int]
+) -> tuple[set[int], set[int]]:
+    """``(nicht_stoeren, dm_schalter_aus)`` unter ``ids`` — eine Redis- und
+    eine Datenbankabfrage für beide. Regeln und Fehlerrichtung:
+    :func:`stumme_konten`."""
     live: dict[int, str | None] = dict.fromkeys(ids)
     if redis is not None:
         try:
@@ -132,11 +128,53 @@ async def stumme_konten(session: Any, redis: Any, user_ids: set[int]) -> set[int
         elif abschnitt == PRESENCE_PREFERENCE_SECTION:
             dauerhaft[uid] = _status_aus(wert.get("status"))
     nicht_stoeren = {u for u in ids if (live[u] or dauerhaft.get(u)) == STATUS_DND}
+    return nicht_stoeren, schalter_aus
+
+
+async def stumme_konten(session: Any, redis: Any, user_ids: set[int]) -> set[int]:
+    """Die Konten unter ``user_ids``, die wegen „Nicht stören“ oder des
+    DM-Schalters gerade keinen DM-Push wollen. Die stummgeschaltete Gruppe
+    prüft der Aufrufer getrennt (:func:`stumme_gruppenmitglieder`), weil sie
+    anders als diese beiden auch die Plakette anhält.
+
+    Ohne Redis zählt nur die dauerhafte Spiegelung des Status. Ein Redis-Fehler
+    fällt in dieselbe Richtung (der Push-Weg ist best-effort); ein
+    Datenbankfehler wirft weiter — der Aufrufer plant den Versuch dann neu ein.
+    """
+    if not user_ids:
+        return set()
+    nicht_stoeren, schalter_aus = await _status_und_schalter(session, redis, sorted(user_ids))
     return (schalter_aus | nicht_stoeren) & user_ids
+
+
+async def nicht_stoeren_konten(session: Any, redis: Any, user_ids: set[int]) -> set[int]:
+    """Nur „Nicht stören“, ohne den DM-Schalter — für die Pushes, die keine DM
+    sind: Anrufe (``anruf_push``), Erwähnungen und Freundschaftsanfragen
+    (``fcm_hinweise``). Gleiche Quellen und Fehlerrichtung wie
+    :func:`stumme_konten`."""
+    if not user_ids:
+        return set()
+    nicht_stoeren, _ = await _status_und_schalter(session, redis, sorted(user_ids))
+    return nicht_stoeren & user_ids
+
+
+async def anruf_stumme_konten(
+    session: Any, redis: Any, user_ids: set[int], *, gruppe_id: int | None
+) -> set[int]:
+    """Bei wem ein Anruf NICHT per Push klingelt (``anruf_push.klingeln``):
+    „Nicht stören“ und — bei einem Gruppenanruf (``gruppe_id``) — wer die
+    Gruppe stummgeschaltet hat. Der DM-Schalter gilt für Anrufe nicht. Wirft
+    bei einem Datenbankfehler weiter."""
+    stumm = await nicht_stoeren_konten(session, redis, user_ids)
+    if gruppe_id is not None:
+        stumm |= await stumme_gruppenmitglieder(session, gruppe_id, user_ids)
+    return stumm
 
 
 __all__ = [
     "PUSH_ABSCHNITT",
+    "anruf_stumme_konten",
+    "nicht_stoeren_konten",
     "ohne_stumme_gruppenmitglieder",
     "stumme_gruppenmitglieder",
     "stumme_konten",

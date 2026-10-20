@@ -1,6 +1,6 @@
 <!--
-  Mitteilungen in der iOS-Hülle — Stand und der Weg, sie später zu erlauben
-  (iOS-Bughunt 2, F3).
+  Mitteilungen in der Hülle (iOS, seit 2026-10-20 auch Android) — Stand und
+  der Weg, sie später zu erlauben (iOS-Bughunt 2, F3).
 
   **Warum es diesen Abschnitt gibt.** Die Einstellungen kannten nur Web-Push,
   und den gibt es in der WKWebView nicht: die Seite meldete „nicht
@@ -14,6 +14,11 @@
   die iOS-Einstellungen der App (`app-settings:` — Capacitor reicht eine
   fremde Adresse ans System weiter, `WebViewDelegationHandler`; im Simulator
   nicht ausgelöst); erteilt → nur der Stand.
+
+  Android: derselbe Abschnitt; „verweigert" öffnet die Mitteilungs-
+  Einstellungen über das Plugin der Hülle (`systemeinstellungen.ts`). Kennt
+  die installierte Hülle es nicht, bleibt der Knopf weg — der Text sagt
+  dann, wo man es findet.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -21,6 +26,20 @@
   import { Button } from '$lib/components/ui/button/index.js';
   import type { Stand } from '$lib/platform/berechtigungRegel';
   import { mitteilungenJetztErlauben, mitteilungenStand } from '$lib/platform/fcm';
+  import { isCapacitorAndroid } from '$lib/platform/runtime';
+  import {
+    mitteilungenOeffnenMoeglich,
+    mitteilungsEinstellungenOeffnen
+  } from '$lib/platform/systemeinstellungen';
+
+  const android = isCapacitorAndroid();
+  // Ohne Weg in die Einstellungen (ältere Android-Hülle) kein Knopf.
+  const einstellungenKnopf = !android || mitteilungenOeffnenMoeglich();
+
+  function einstellungenOeffnen(): void {
+    if (android) void mitteilungsEinstellungenOeffnen();
+    else window.location.href = 'app-settings:';
+  }
 
   let stand = $state<Stand | null>(null);
   let busy = $state(false);
@@ -31,7 +50,7 @@
 
   onMount(() => {
     void auffrischen();
-    // Aus den iOS-Einstellungen zurück: der Stand kann sich dort geändert haben.
+    // Aus den System-Einstellungen zurück: der Stand kann sich dort geändert haben.
     const beiSichtbar = () => {
       if (document.visibilityState === 'visible') void auffrischen();
     };
@@ -54,7 +73,9 @@
       case 'erteilt':
         return m.settings_mitteilungen_huelle_erteilt();
       case 'verweigert':
-        return m.settings_mitteilungen_huelle_verweigert();
+        return android
+          ? m.settings_mitteilungen_huelle_verweigert_android()
+          : m.settings_mitteilungen_huelle_verweigert();
       case 'offen':
         return m.settings_mitteilungen_huelle_offen();
       default:
@@ -78,12 +99,8 @@
         <Button onclick={erlauben} disabled={busy} class="h-12 shrink-0">
           {busy ? '…' : m.berechtigung_weiter()}
         </Button>
-      {:else if stand === 'verweigert'}
-        <Button
-          variant="outline"
-          class="h-12 shrink-0"
-          onclick={() => (window.location.href = 'app-settings:')}
-        >
+      {:else if stand === 'verweigert' && einstellungenKnopf}
+        <Button variant="outline" class="h-12 shrink-0" onclick={einstellungenOeffnen}>
           {m.settings_mitteilungen_huelle_einstellungen()}
         </Button>
       {/if}

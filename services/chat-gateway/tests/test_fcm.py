@@ -2,7 +2,7 @@
 
 Abgedeckt sind die drei Pflichte der Aufgabe — Token-Speichern (Upsert +
 Token-Übernahme durch ein anderes Konto), Drossel und Auth — plus das
-inhaltsfreie Push-Bein: Offline-Gate, graceful degradation ohne
+inhaltsfreie Push-Bein: wer ihn bekommt, graceful degradation ohne
 Service-Account-Key und Aufräumen toter Tokens.
 """
 
@@ -141,9 +141,13 @@ def _fcm_sender(monkeypatch):
     return sent
 
 
-async def test_push_nur_an_offline_empfaenger(
+async def test_android_bekommt_den_push_auch_bei_wacher_verbindung(
     client, session_factory, _fcm_sender
 ):
+    """Push-Bughunt 2026-10-20: bis dahin bekam ein Android-Gerät keinen Push,
+    sobald IRGENDEIN Gerät des Kontos verbunden war (Rechner, Browser-Tab).
+    Jetzt beide — ob er wirklich hinausgeht, entscheidet die Warteschlange
+    (Lesebeleg), nicht die Verbindung."""
     import dcc_chat_gateway.fcm as fcm_mod
 
     async with session_factory() as s:
@@ -157,12 +161,10 @@ async def test_push_nur_an_offline_empfaenger(
         channel_id=42,
         manager=_ManagerStub({222: 2}),
     )
-    assert n == 1
-    # Nur der Offline-Empfänger; Nutzlast inhaltsfrei (Absender + Kanal, nie Text).
-    assert len(_fcm_sender) == 1
-    tok, payload = _fcm_sender[0]
-    assert tok == "tok-offline"
-    assert payload == {
+    assert n == 2
+    assert sorted(tok for tok, _p in _fcm_sender) == ["tok-offline", "tok-online"]
+    # Nutzlast inhaltsfrei (Absender + Kanal, nie Text).
+    assert _fcm_sender[0][1] == {
         "type": "dm",
         "title": "Anna",
         "body": fcm_mod.DM_BODY,
@@ -225,8 +227,8 @@ async def test_ios_geraet_bekommt_den_push_trotz_frischer_websocket(
     """Ein eben weggestecktes iPhone hält bis zu 95 s eine „frische"
     Verbindung, deren JS schon eingefroren ist. Bisher fiel die DM dann ohne
     Mitteilung durch. iOS-Geräte (erkannt am PushKit-Token desselben Geräts,
-    mit der Fähigkeit ``dm_vordergrund``) bekommen den Push jetzt immer,
-    Android-Geräte desselben Kontos nicht."""
+    mit der Fähigkeit ``dm_vordergrund``) bekommen den Push jetzt immer —
+    und seit dem Push-Bughunt 2026-10-20 auch Android-Geräte."""
     import dcc_chat_gateway.fcm as fcm_mod
 
     async with session_factory() as s:
@@ -242,8 +244,8 @@ async def test_ios_geraet_bekommt_den_push_trotz_frischer_websocket(
         channel_id=42,
         manager=_ManagerStub({555: 1}, redis=app.state.redis),
     )
-    assert n == 1
-    assert [tok for tok, _p in _fcm_sender] == ["tok-iphone"]
+    assert n == 2
+    assert sorted(tok for tok, _p in _fcm_sender) == ["tok-iphone", "tok-pixel"]
 
 
 async def test_aelterer_ios_bau_ohne_faehigkeit_bleibt_beim_alten_riegel(
@@ -313,8 +315,8 @@ async def test_ohne_websocket_bekommen_beide_geraete_den_push(
 
 
 def test_auswahl_regel_ohne_datenbank():
-    """Die Regel selbst: iOS immer, alles andere nur ohne wache Verbindung.
-    Ein VoIP-Token eines ANDEREN Geräts macht ein Gerät nicht zum iOS-Gerät."""
+    """Die Regel selbst: jedes Gerät, nur ein iOS-Bau ohne Zusage (``riegel``)
+    hängt an der wachen Verbindung seines Kontos."""
     from types import SimpleNamespace
 
     from dcc_chat_gateway.fcm_empfaenger import empfangende_geraete
@@ -322,9 +324,10 @@ def test_auswahl_regel_ohne_datenbank():
     zeilen = [
         SimpleNamespace(user_id=1, geraet_id="ios", token="a"),
         SimpleNamespace(user_id=1, geraet_id="android", token="b"),
-        SimpleNamespace(user_id=2, geraet_id="android", token="c"),
+        SimpleNamespace(user_id=1, geraet_id="ios-alt", token="c"),
+        SimpleNamespace(user_id=2, geraet_id="ios-alt", token="d"),
     ]
     gewaehlt = empfangende_geraete(
-        zeilen, ios_geraete={(1, "ios"), (2, "ios")}, wach=lambda uid: uid == 1
+        zeilen, riegel={(1, "ios-alt"), (2, "ios-alt")}, wach=lambda uid: uid == 1
     )
-    assert [z.token for z in gewaehlt] == ["a", "c"]
+    assert [z.token for z in gewaehlt] == ["a", "b", "d"]

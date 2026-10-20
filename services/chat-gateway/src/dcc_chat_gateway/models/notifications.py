@@ -47,6 +47,10 @@ class WebPushSubscription(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    #: Anmelde-Kette, unter der der Browser das Abo angelegt oder zuletzt
+    #: aufgefrischt hat (Migration 0108, wie ``FcmToken.kette``). Endet sie,
+    #: fällt die Zeile (``push_widerruf.py``). ``NULL``: vorher angelegt.
+    kette: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         Index("ix_web_push_subscriptions_user", "user_id"),
@@ -60,9 +64,11 @@ class WebPushSubscription(Base):
 
 
 class FcmToken(Base):
-    """Ein FCM-Registrierungstoken eines Android-Geräts (Übergabe P0.1).
+    """Ein FCM-Registrierungstoken eines Handys (Übergabe P0.1) — Android und,
+    seit der iOS-App, auch iOS; welche Plattform, verrät erst eine
+    ``VoipToken``-Zeile desselben Geräts (``fcm_empfaenger.py``).
 
-    Schlüssel ``(user_id, geraet_id)``: ein Konto kann mehrere Android-Geräte
+    Schlüssel ``(user_id, geraet_id)``: ein Konto kann mehrere Geräte
     führen, jedes mit eigenem Token; eine erneute App-Anmeldung upsertet die
     Zeile ihres Geräts, statt Zeilen zu vervielfachen. ``token`` ist zusätzlich
     UNIQUE — ein physischer FCM-Token gehört zu genau einem Konto; übernimmt

@@ -258,5 +258,14 @@
     richColors
   />
 {:else}
-  <Toaster position="bottom-right" richColors />
+  <!-- Der obere Abstand gilt nur für Meldungen, die selbst `top-*` wählen —
+       die knappe Nachrichten-Meldung am Handy (`postfachBenachrichtigung.ts`,
+       `neueNachrichtToast`), damit sie in der Android-Hülle unter der
+       Statusleiste steht. Alle anderen bleiben unten rechts. -->
+  <Toaster
+    position="bottom-right"
+    offset={{ top: toastAbstandOben }}
+    mobileOffset={{ top: toastAbstandOben }}
+    richColors
+  />
 {/if}

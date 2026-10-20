@@ -1,15 +1,15 @@
 """Gerätetoken gegen die Anmelde-Ketten am auth-svc abgleichen (Nachtrag zu C2).
 
 **Warum es diesen Lauf gibt.** FCM- und PushKit-Token tragen die Kette, unter
-der sie angemeldet wurden (Migration 0105), und fallen, wenn auth-svc deren
-Ende meldet (``push_widerruf.py``). Die Meldung reist über Redis Pub/Sub und
+der sie angemeldet wurden (Migration 0105), Web-Push-Abos ebenso (Migration
+0108), und alle fallen, wenn auth-svc deren Ende meldet (``push_widerruf.py``). Die Meldung reist über Redis Pub/Sub und
 hat zwei Lücken: Ein Ende, das während eines Neustarts dieses Dienstes kommt,
 hört niemand — das verlorene Telefon klingelte weiter. Und eine Kette, die nur
 abläuft (30 Tage ohne Rotation), meldet niemand.
 
 **Wie.** Kurz nach dem Start (``ERSTER_LAUF_S`` — genau dann fehlen die
 Meldungen aus dem Neustart) und danach alle ``TAKT_S`` sammelt der Lauf jedes
-Paar ``(user_id, kette)`` aus beiden Tabellen, fragt auth-svc, welche davon zu
+Paar ``(user_id, kette)`` aus diesen Tabellen (``KETTEN_TABELLEN``), fragt auth-svc, welche davon zu
 Ende sind (``dcc_shared.anmeldeketten.STAND_PFAD``), und löscht deren Zeilen
 über ``geraetetoken_loeschen`` — denselben Weg wie die Meldung. Der Lauf merkt
 sich nichts; auth-svc bleibt die einzige Quelle, und jedes Ende, das die
@@ -21,13 +21,15 @@ nicht mit 200 oder unlesbar, bleibt jede Zeile stehen. Gelöscht wird nur, was
 auth-svc ausdrücklich als beendet nennt — und das tut es nur für Konten, die
 es kennt (Begründung in ``dcc_shared.anmeldeketten``).
 
-**Zeilen ohne Kette** (vor Migration 0105 angemeldet) fasst der Lauf nicht an;
-er fragt gar nicht nach ihnen. Sie bekommen ihre Kette beim nächsten
-App-Start.
+**Zeilen ohne Kette** (vor Migration 0105 bzw. 0108 angemeldet) fasst der
+Lauf nicht an; er fragt gar nicht nach ihnen. Gerätetoken bekommen ihre Kette
+beim nächsten App-Start, Web-Push-Abos beim nächsten Anlegen oder Auffrischen
+(``POST /notifications/subscribe``).
 
 **Self-Host.** Die App meldet ihre Gerätetoken an die Cloud
-(``platform/fcm.ts``/``voipToken.ts``: ``cloud()``) — auf einem Self-Host gibt
-es im Regelfall keine Zeile mit Kette, und der Lauf fragt nichts. Kommt doch
+(``platform/fcm.ts``/``voipToken.ts``: ``cloud()``), und ein Web-Push-Abo am
+Self-Host entsteht mit dessen Sitzungs-Token — auf einem Self-Host gibt es im
+Regelfall keine Zeile mit Kette, und der Lauf fragt nichts. Kommt doch
 eine vor, stammt die Kette aus einem Zugriffs-Token, das dieser Dienst gegen
 die JWKS SEINES auth-svc geprüft hat (``AUTH_JWKS_URL``), und genau das fragt
 er (``AUTH_SVC_URL``). Die Sitzungs-Token des Self-Hosts tragen keine Kette.
@@ -55,8 +57,7 @@ from dcc_shared.anmeldeketten import (
 from sqlalchemy import select
 
 from dcc_chat_gateway import config as _config
-from dcc_chat_gateway.models import FcmToken, VoipToken
-from dcc_chat_gateway.push_widerruf import geraetetoken_loeschen
+from dcc_chat_gateway.push_widerruf import KETTEN_TABELLEN, geraetetoken_loeschen
 
 log = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ _ZEITLIMIT_S = 10.0
 
 async def _paare(session: Any) -> list[Paar]:
     paare: set[Paar] = set()
-    for modell in (FcmToken, VoipToken):
+    for modell in KETTEN_TABELLEN:
         zeilen = await session.execute(
             select(modell.user_id, modell.kette).where(modell.kette.is_not(None)).distinct()
         )

@@ -41,8 +41,9 @@ beim Vormerken: der Push geht sofort hinaus, wie vor der Änderung.
 
 **Grenzen, bewusst:** Das Lua-Skript bildet Schlüssel zur Laufzeit — das
 geht auf einem einzelnen Redis (so betreibt Pulse ihn), nicht im Cluster.
-Ob ein Android-Gerät wach ist, prüft weiter ``fan_out_fcm_dm_push`` beim
-Senden über die Sockets DIESES Prozesses; liefe der chat-gateway je in
+Ob ein iOS-Bau ohne die Zusage ``dm_vordergrund`` wach ist (nur für den
+gilt die Socket-Frage noch, ``fcm_empfaenger``), prüft ``dm_push_senden``
+beim Senden über die Sockets DIESES Prozesses; liefe der chat-gateway je in
 mehreren Prozessen, könnte ein anderer den Eintrag abarbeiten als der, an
 dem die Sockets hängen.
 """

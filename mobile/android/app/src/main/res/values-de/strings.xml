@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <!-- Deutsche Texte; Englisch und die Erklärung stehen in values/strings.xml. -->
+    <string name="push_neue_nachricht">Neue Nachricht</string>
+    <string name="push_anhang">Hat dir einen Anhang geschickt</string>
+    <string name="push_anzahl">%1$s neue Nachrichten</string>
+    <string name="push_zwei">%1$s und %2$s</string>
+    <string name="push_drei">%1$s, %2$s und %3$s</string>
+    <string name="push_weitere">%1$s, %2$s und %3$s weitere</string>
+    <string name="push_freundschaft">Möchte mit dir befreundet sein</string>
+
+    <string name="anruf_eingehend">Eingehender Anruf</string>
+    <string name="anruf_unbekannt">Unbekannt</string>
+    <string name="kanal_anrufe">Eingehende Anrufe</string>
+    <string name="kanal_anrufe_info">Klingelt bei eingehenden Anrufen, auch auf dem Sperrbildschirm</string>
+    <string name="kanal_nachrichten">Nachrichten</string>
+    <string name="kanal_nachrichten_info">Direktnachrichten und Erwähnungen</string>
+</resources>

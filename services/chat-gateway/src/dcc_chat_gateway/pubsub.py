@@ -931,8 +931,10 @@ class ConnectionManager(
                     pass
                 await self.remove_socket(ws)
                 # Presence-Korrektur: war das der letzte Socket des Nutzers,
-                # müssen die Peers das offline sehen (derselbe Broadcast wie
-                # im regulären Disconnect-Pfad, s. ws_ops.py).
+                # müssen die Peers das offline sehen. Sofort, anders als der
+                # reguläre Trennpfad (``ws_ops.py``, Schonfrist in
+                # ``presence_schonfrist.py``): hier war das Konto schon
+                # SOCKET_STALE_SEKUNDEN ohne Lebenszeichen.
                 if nutzer is not None and self.user_socket_count(nutzer.id) == 0:
                     try:
                         await self.broadcast_presence_update(str(nutzer.id), online=False)
