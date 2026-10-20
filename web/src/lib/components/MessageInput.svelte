@@ -18,6 +18,7 @@
   import { VerfasserAnhaenge } from '$lib/attachments/verfasserZeilen.svelte';
   import { dateienAusEinfuegen } from '$lib/attachments/eingefuegteDateien';
   import { SprachAufnahme } from '$lib/attachments/sprachAufnahme.svelte';
+  import Trash2Icon from '@lucide/svelte/icons/trash-2';
   import { DateiZiehZone } from '$lib/attachments/dateiZiehen.svelte';
   import type { MessageInputProps } from './composer/messageInputProps';
   import { guilds } from '$lib/stores/guilds.svelte';
@@ -235,9 +236,59 @@
   // Sprachnachricht (P0.3): Zustand und Ticker in `sprachAufnahme.svelte.ts`;
   // die fertige Datei läuft durch denselben Anhang-Weg wie eine gewählte.
   const aufnahme = new SprachAufnahme((datei) => addFiles([datei]));
+
+  // ── Sprachaufnahme WhatsApp-Stil (Nutzerwunsch 2026-10-19) ────────────────
+  // Am Handy: Mikrofon HALTEN startet, nach links wischen bricht ab,
+  // LOSLASSEN sendet die fertige Sprachnachricht sofort (ohne extra Tipp).
+  // Am Rechner bleibt der Tipp-Umschalter mit der Aufnahme-Leiste.
+  const WISCH_CANCEL_PX = 120;
+  /** Start-X des haltenden Fingers — null, wenn gerade nicht gehalten wird. */
+  let haltenX = $state<number | null>(null);
+  /** Wie weit der Finger nach links gezogen hat (px). */
+  let wischVersetzt = $state(0);
+  /** Kurze Sperre: der Klick NACH dem Loslassen darf keine neue Aufnahme
+   *  starten (Pointerup → Click feuert danach noch einmal). */
+  let halteSperreBis = 0;
+
   async function aufnahmeStart(): Promise<void> {
+    // Am Handy startet das HALTEN (haltenStart), nicht der Tipp — der Klick
+    // nach dem Loslassen würde sonst sofort eine neue Aufnahme öffnen.
+    if (viewport.istHandy && Date.now() < halteSperreBis) return;
     if (!channelId || !attachmentsAllowed) return;
     await aufnahme.starten();
+  }
+
+  function haltenStart(e: PointerEvent): void {
+    if (!viewport.istHandy || Date.now() < halteSperreBis || aufnahme.lauf) return;
+    if (!channelId || !attachmentsAllowed) return;
+    haltenX = e.clientX;
+    wischVersetzt = 0;
+    void aufnahmeStart();
+  }
+
+  function haltenBewegen(e: PointerEvent): void {
+    if (haltenX === null || !aufnahme.lauf) return;
+    wischVersetzt = Math.max(0, haltenX - e.clientX);
+  }
+
+  function haltenEnde(e: PointerEvent): void {
+    if (haltenX === null) return;
+    const wisch = haltenX - e.clientX;
+    const abbrechen = wisch >= WISCH_CANCEL_PX;
+    haltenX = null;
+    wischVersetzt = 0;
+    halteSperreBis = Date.now() + 400;
+    if (!aufnahme.lauf) return;
+    if (abbrechen) {
+      aufnahme.verwerfen();
+      return;
+    }
+    // Loslassen = senden: die Aufnahme endet und die fertige Sprachnachricht
+    // geht denselben Weg wie ein Anhang — direkt abgeschickt, ohne extra Tipp.
+    void (async () => {
+      await aufnahme.beenden();
+      fire();
+    })();
   }
 
   const onPaste = (e: ClipboardEvent) => {
@@ -355,14 +406,18 @@
   });
 </script>
 
+<!-- Sprachaufnahme WhatsApp-Stil: die Zeigerzüge laufen am Fenster, weil der
+     Finger weit über den Mikrofon-Knopf hinaus zieht (Abbruch-Zone links). -->
+<svelte:window onpointermove={haltenBewegen} onpointerup={haltenEnde} onpointercancel={haltenEnde} />
+
 <form
   class="px-2 pt-2 pb-[calc(1.25rem+var(--safe-bottom))] nicht-handy:px-2 nicht-handy:pb-2"
   ondragenter={ziehen.enter}
   ondragover={ziehen.over}
   ondragleave={ziehen.leave}
   ondrop={ziehen.drop}
-  onsubmit={(e) => { e.preventDefault(); fire(); }}
 >
+
   {#if replyTo}
     <ComposerReplyBanner {replyTo} onCancel={onCancelReply} />
   {/if}
@@ -403,40 +458,65 @@
 
          `leading-6` macht es exakt statt nur ungefähr: die Zeile füllt den
          Kasten vollständig aus und sitzt zwangsläufig mittig. -->
-    <textarea
-      bind:this={textarea}
-      rows="1"
-      enterkeyhint={viewport.istHandy ? 'enter' : undefined}
-      bind:value={text}
-      onkeydown={onKeydown}
-      oninput={() => { mentionOverlay?.update(); if (text.trim()) onTyping?.(); }}
-      onkeyup={onMentionSync}
-      onclick={onMentionSync}
-      onpaste={onPaste}
-      onblur={() => {
-        mentionOverlay?.close();
-        eingabeFokus = false;
-      }}
-      onfocus={() => (eingabeFokus = true)}
-      placeholder={effectivePlaceholder}
-      {disabled}
-      class="text-text-bright placeholder:text-text-muted max-h-40 min-h-11 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-2.5 text-base nicht-handy:text-[15px] leading-6 outline-none disabled:cursor-not-allowed disabled:opacity-60 nicht-handy:min-h-9 nicht-handy:py-1.5"
-      data-testid="message-input"
-    ></textarea>
-    <MentionTriggerOverlay
-      bind:this={mentionOverlay}
-      value={text}
-      textareaEl={textarea}
-      {guildId}
-      mitglieder={mentionMitglieder}
-      onChange={(t) => (text = t)}
-    />
-    <ComposerEmojiButton onPick={insertEmoji} />
-    <ComposerSendButton
-      disabled={sendDisabled}
-      mikro={!eingabeFokus && !aufnahme.lauf && text.trim().length === 0 && anhaenge.zeilen.length === 0}
-      onMikrofon={aufnahmeStart}
-    />
+    {#if viewport.istHandy && aufnahme.lauf}
+      <!-- Sprachaufnahme WhatsApp-Stil: roter Timer, nach links wischen
+           (Mülleimer blendet ein) bricht ab, LOSLASSEN sendet direkt. -->
+      <div class="flex min-h-11 w-full items-center gap-2" data-testid="aufnahme-halten">
+        <span class="text-error flex items-center gap-1.5 text-sm font-semibold tabular-nums" data-testid="aufnahme-zeit">
+          <span class="size-2 animate-pulse rounded-full bg-red-500"></span>
+          {aufnahme.dauer}
+        </span>
+        <span
+          class="text-error ml-auto flex items-center gap-1 transition-opacity"
+          style="opacity: {Math.min(1, wischVersetzt / 80)}"
+        >
+          <Trash2Icon class="size-5" />
+        </span>
+      </div>
+      <div class="text-text-muted w-full pb-1 text-center text-2xs">
+        ‹ Nach links wischen zum Abbrechen · Loslassen sendet
+      </div>
+    {:else}
+      <textarea
+        bind:this={textarea}
+        rows="1"
+        enterkeyhint={viewport.istHandy ? 'enter' : undefined}
+        bind:value={text}
+        onkeydown={onKeydown}
+        oninput={() => { mentionOverlay?.update(); if (text.trim()) onTyping?.(); }}
+        onkeyup={onMentionSync}
+        onclick={onMentionSync}
+        onpaste={onPaste}
+        onblur={() => {
+          mentionOverlay?.close();
+          eingabeFokus = false;
+        }}
+        onfocus={() => (eingabeFokus = true)}
+        placeholder={effectivePlaceholder}
+        {disabled}
+        class="text-text-bright placeholder:text-text-muted max-h-40 min-h-11 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-2.5 text-base nicht-handy:text-[15px] leading-6 outline-none disabled:cursor-not-allowed disabled:opacity-60 nicht-handy:min-h-9 nicht-handy:py-1.5"
+        data-testid="message-input"
+      ></textarea>
+      <MentionTriggerOverlay
+        bind:this={mentionOverlay}
+        value={text}
+        textareaEl={textarea}
+        {guildId}
+        mitglieder={mentionMitglieder}
+        onChange={(t) => (text = t)}
+      />
+      <ComposerEmojiButton onPick={insertEmoji} />
+      <span
+        class="contents {viewport.istHandy ? '' : 'inline-block'}" role="presentation"
+        onpointerdown={haltenStart}
+      >
+        <ComposerSendButton
+          disabled={sendDisabled}
+          mikro={!eingabeFokus && !aufnahme.lauf && text.trim().length === 0 && anhaenge.zeilen.length === 0}
+          onMikrofon={aufnahmeStart}
+        />
+      </span>
+    {/if}
   </div>
 
   {#if !zeichenExtern && limitAktiv && zeichen >= ZEICHEN_WARN_AB}
