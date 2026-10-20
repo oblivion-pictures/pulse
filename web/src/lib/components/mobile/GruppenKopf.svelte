@@ -9,6 +9,7 @@
    */
   import XIcon from '@lucide/svelte/icons/x';
   import CheckIcon from '@lucide/svelte/icons/check';
+  import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import PencilIcon from '@lucide/svelte/icons/pencil';
   import BellOffIcon from '@lucide/svelte/icons/bell-off';
   import PhoneIcon from '@lucide/svelte/icons/phone';
@@ -76,27 +77,37 @@
       if (neu) privateGruppen.upsert(neu);
     });
   }
-
-  function iconEntfernen() {
-    void ausfuehren(async () => {
-      const neu = await gruppenApi.iconEntfernen(gruppe.id);
-      if (neu) privateGruppen.upsert(neu);
-    });
-  }
 </script>
 
 <div class="flex items-center gap-3">
   <div class="shrink-0">
-    {#if gruppe.icon_url}
-      <img src={gruppe.icon_url} alt="" class="size-14 rounded-full object-cover" data-testid="group-icon" />
-    {:else}
+    <!-- Tipp auf den Kreis = Bild wählen (Nutzerwunsch 2026-10-19); der
+         Pfeil unten rechts zeigt, dass hier etwas zu holen ist. Die
+         Text-Links (setzen/ersetzen/entfernen) sind bewusst weg. -->
+    <button
+      type="button"
+      class="relative block cursor-pointer rounded-full"
+      onclick={() => iconInput?.click()}
+      aria-label={gruppe.icon_url ? m.gruppen_bild_ersetzen() : m.gruppen_bild_setzen()}
+      data-testid="group-icon-change"
+    >
+      {#if gruppe.icon_url}
+        <img src={gruppe.icon_url} alt="" class="size-14 rounded-full object-cover" data-testid="group-icon" />
+      {:else}
+        <span
+          class="accent-gradient flex size-14 items-center justify-center rounded-full text-lg font-bold text-white"
+          data-testid="group-icon-initials"
+        >
+          {gruppe.name.slice(0, 1).toUpperCase()}
+        </span>
+      {/if}
       <span
-        class="accent-gradient flex size-14 items-center justify-center rounded-full text-lg font-bold text-white"
-        data-testid="group-icon-initials"
+        class="bg-bg-input ring-border text-text-muted absolute -right-0.5 -bottom-0.5 flex size-5 items-center justify-center rounded-full ring-2"
+        aria-hidden="true"
       >
-        {gruppe.name.slice(0, 1).toUpperCase()}
+        <ChevronRightIcon class="size-3" />
       </span>
-    {/if}
+    </button>
   </div>
   <div class="min-w-0 flex-1">
     {#if umbenennenOffen}
@@ -151,28 +162,6 @@
     <p class="text-text-muted text-xs">
       {m.gruppen_blatt_mitglieder({ count: gruppe.members.length })}
     </p>
-    {#if istMitglied}
-      <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-        <button
-          type="button"
-          class="text-primary hover:underline"
-          onclick={() => iconInput?.click()}
-          data-testid="group-icon-change"
-        >
-          {gruppe.icon_url ? m.gruppen_bild_ersetzen() : m.gruppen_bild_setzen()}
-        </button>
-        {#if gruppe.icon_url}
-          <button
-            type="button"
-            class="text-text-muted hover:text-error hover:underline"
-            onclick={iconEntfernen}
-            data-testid="group-icon-remove"
-          >
-            {m.gruppen_bild_entfernen()}
-          </button>
-        {/if}
-      </div>
-    {/if}
   </div>
 </div>
 <input
