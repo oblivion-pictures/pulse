@@ -171,7 +171,9 @@ async def geraetearten(session: Any, zeilen: Iterable[Any], redis: Any) -> Gerae
             log.warning("voip_faehigkeit_lesen_fehlgeschlagen")
     android = await android_faehigkeiten(redis, paare - ios)
     android_lokal = {p for p, f in android.items() if TEXTE_LOKAL in f}
-    return Geraetearten(riegel=frozenset(ios - zusage), texte_lokal=frozenset(zusage | android_lokal))
+    return Geraetearten(
+        riegel=frozenset(ios - zusage), texte_lokal=frozenset(zusage | android_lokal)
+    )
 
 
 def empfangende_geraete(
