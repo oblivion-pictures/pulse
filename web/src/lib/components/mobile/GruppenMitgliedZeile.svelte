@@ -14,6 +14,7 @@
   import UserPlusIcon from '@lucide/svelte/icons/user-plus';
   import CheckIcon from '@lucide/svelte/icons/check';
   import { friends } from '$lib/stores/friends.svelte';
+  import { friendRequests } from '$lib/stores/friendRequests.svelte';
   import { friendsApi } from '$lib/api/friends';
   import { toast } from 'svelte-sonner';
   import { userCache } from '$lib/stores/users.svelte';
@@ -49,8 +50,12 @@
   /** Noch kein Freund? Dann bietet die Zeile die Freundschaftsanfrage an
    *  (Nutzerwunsch 2026-10-19) — gruppenunabhängig, Freundschaft ist eine
    *  Sache zwischen zwei Konten. */
-  const istFreund = $derived(friends.list.some((f) => f.user_id === mm.user_id));
-  let angefragt = $state(false);
+  const istFreund = $derived(friends.has(mm.user_id));
+  /** Hier gerade angefragt oder schon vorher (offene ausgehende Anfrage). */
+  let hierAngefragt = $state(false);
+  const angefragt = $derived(
+    hierAngefragt || friendRequests.outgoingList.some((r) => r.receiver_id === mm.user_id)
+  );
   let aktionenOffen = $state(false);
   let besitzBestaetigt = $state(false);
 
@@ -58,7 +63,7 @@
     if (angefragt) return;
     void ausfuehren(async () => {
       await friendsApi.sendFriendRequest(mm.user_id);
-      angefragt = true;
+      hierAngefragt = true;
       toast.success(m.add_friend_request_sent());
     });
   }
@@ -158,7 +163,7 @@
             : ''}"
           disabled={angefragt}
           onclick={anfragen}
-          aria-label={m.add_friend_request_sent()}
+          aria-label={angefragt ? m.add_friend_relation_request_pending() : m.gruppen_freund_anfragen()}
           data-testid={`group-member-addfriend-${mm.user_id}`}
         >
           {#if angefragt}

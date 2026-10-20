@@ -294,8 +294,9 @@
         class="text-text-bright max-h-[60vh] w-full resize-none overflow-y-auto rounded-md border border-border bg-bg-input px-2 py-1 text-[15px] outline-none focus:border-primary"
         data-testid="message-edit-input"
       ></textarea>
-      <!-- Auf der eigenen (blauen) Blase wäre Grau kaum lesbar → helles Weiß. -->
-      <div class="mt-1 text-xs {layout === 'bubble' && istEigene ? 'text-white/85' : 'text-text-muted'}">
+      <!-- Auf der eigenen Blase im dunklen Erscheinungsbild helles Weiß (Grau
+           läge auf dem dunklen Blau zu matt), im hellen das normale Grau. -->
+      <div class="text-text-muted mt-1 text-xs {layout === 'bubble' && istEigene ? 'dark:text-white/85' : ''}">
         {m.message_item_edit_hint()}
       </div>
     {:else}

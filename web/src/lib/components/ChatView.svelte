@@ -516,8 +516,11 @@
       {/if}
       {#if hatMedien || headerKind === 'gruppe'}
         <!-- Gruppen: der Galerie-Knopf steht IMMER (Nutzerwunsch 2026-10-19)
-             — ohne Anhang im geladenen Verlauf zeigte sich er nie und die
-             Galerie wäre nicht auffindbar. Leeres Blatt sagt es dann. -->
+             — ohne Anhang im geladenen Verlauf zeigte er sich nie, und die
+             Galerie war nicht auffindbar. Ein leeres Blatt sagt es dann.
+             `text-text-bright` statt des sonst üblichen Graus: die beiden
+             Kopf-Symbole sollen hervortreten (fast weiß im dunklen, fast
+             schwarz im hellen Erscheinungsbild). -->
         <Button
           variant="ghost"
           size="icon"
@@ -526,7 +529,7 @@
           aria-label={pm.medien_titel()}
           data-testid="media-sheet-toggle"
         >
-          <ImagesIcon class="size-4 text-white" />
+          <ImagesIcon class="text-text-bright size-4" />
         </Button>
       {/if}
       {#if (headerKind === 'dm' || headerKind === 'gruppe') && onAnrufen}
@@ -540,7 +543,7 @@
           aria-label={pm.anruf_starten()}
           data-testid={headerKind === 'dm' ? 'dm-call-button' : 'group-call-button'}
         >
-          <PhoneIcon class="size-4 text-white" />
+          <PhoneIcon class="text-text-bright size-4" />
         </Button>
       {/if}
       {#if showMemberList}

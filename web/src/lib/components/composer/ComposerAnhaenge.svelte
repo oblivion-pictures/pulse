@@ -1,16 +1,15 @@
 <script lang="ts">
   // Die Anhang-Eingänge des Verfassers: Datei-Dialog, Büroklammer-Knopf und —
-  // nur am Handy — Galerie, Aufnahme-Leiste, Quellen-Blatt und Kamera.
+  // nur am Handy — Galerie, Quellen-Blatt und Kamera. Die Sprachnachricht hat
+  // ihre eigene Leiste im Eingabekasten (`SprachnachrichtLeiste.svelte`).
   // Welche Dateien daraus werden, entscheidet der Verfasser (`onDateien`).
   import { Button } from '$lib/components/ui/button/index.js';
   import PaperclipIcon from '@lucide/svelte/icons/paperclip';
-  import AufnahmeLeiste from '$lib/components/mobile/AufnahmeLeiste.svelte';
   import AnhangQuellenBlatt from '$lib/components/mobile/AnhangQuellenBlatt.svelte';
   import KameraOverlay from '$lib/components/mobile/KameraOverlay.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { toast } from 'svelte-sonner';
   import { startUploadVerschluesselt } from '$lib/attachments/uploadVerschluesselt';
-  import type { SprachAufnahme } from '$lib/attachments/sprachAufnahme.svelte';
   import type { AnhangAngabe } from '$lib/krypto/nachrichtNutzlast';
   import { haptikTicken } from '$lib/platform/haptik';
 
@@ -19,7 +18,6 @@
     handy,
     channelId,
     accept,
-    aufnahme,
     onDateien,
     onSend
   }: {
@@ -28,7 +26,6 @@
     handy: boolean;
     channelId: string | null;
     accept: string;
-    aufnahme: SprachAufnahme;
     onDateien: (files: FileList | File[]) => void;
     onSend: (text: string, attachmentIds: string[], anhaenge: AnhangAngabe[]) => void;
   } = $props();
@@ -103,18 +100,6 @@
       onchange={onFilePick}
       class="sr-only"
       data-testid="attachment-gallery-input"
-    />
-  {/if}
-  <!-- Sprachnachricht (mobil): TIPPEN startet die Aufnahme; die Leiste
-       über dem Eingabekasten bietet Fertig und Verwerfen. -->
-  <!-- Rechner: die Aufnahme-Leiste über dem Kasten (Tipp-Umschalter).
-       Am Handy übernimmt die WhatsApp-Zeile IM Eingabekasten — der
-       Mikrofon-Knopf ist dort eine Halte-Taste. -->
-  {#if !handy && aufnahme.lauf}
-    <AufnahmeLeiste
-      dauer={aufnahme.dauer}
-      onEnde={() => void aufnahme.beenden()}
-      onVerwerfen={() => aufnahme.verwerfen()}
     />
   {/if}
   <Button

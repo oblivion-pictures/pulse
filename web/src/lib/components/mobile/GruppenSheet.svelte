@@ -14,7 +14,7 @@
    * eigenen Freunde. Einladen und Rauswerfen dürfen Owner und Admins, die
    * Rollen verwaltet allein der Owner (Rollen-Vertrag 2026-10-19).
    *
-   * Aufgeteilt: Kopf (Bild, Name, Anruf, Stumm) in `GruppenKopf.svelte`,
+   * Aufgeteilt: Kopf (Bild, Name, Stumm) in `GruppenKopf.svelte`,
    * eine Mitgliederzeile samt Rollen-Aktionen in `GruppenMitgliedZeile.svelte`.
    * Die Sperre „eine Mutation zur Zeit" und der Fehler-Hinweis bleiben hier
    * (`ausfuehren`) und gelten für alle drei.
@@ -35,15 +35,12 @@
   let {
     gruppe,
     open = $bindable(false),
-    onVerlassen,
-    onAnrufen
+    onVerlassen
   }: {
     gruppe: PrivateGruppe;
     open?: boolean;
     /** Nach dem Verlassen — der Aufrufer navigiert weg (Kanal existiert dann nicht mehr). */
     onVerlassen?: () => void;
-    /** Gruppenanruf starten (Anrufe-Epic D). */
-    onAnrufen?: () => void;
   } = $props();
 
   let freundeZumHinzufuegen = $derived(
@@ -146,12 +143,6 @@
       {istMitglied}
       {istOwner}
       {ausfuehren}
-      onAnrufen={onAnrufen
-        ? () => {
-            open = false;
-            onAnrufen();
-          }
-        : undefined}
       onUmbenennenAbbruch={() => (aufloesenBestaetigt = false)}
     />
   </div>

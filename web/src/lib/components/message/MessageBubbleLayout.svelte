@@ -1,16 +1,19 @@
 <script lang="ts">
   /**
-   * Die Sprechblasen-Hülle: eigene Nachrichten rechts im Akzent-Verlauf,
-   * fremde links auf der Eingabefeld-Fläche.
+   * Die Sprechblasen-Hülle (Entwurf D, 2026-10-20): eigene Nachrichten rechts
+   * in einer blau getönten Blase, fremde links auf der Panel-Fläche. Beide
+   * Farben kommen aus den Theme-Variablen (`--brand`, `--panel`), damit die
+   * Blasen im hellen und im dunklen Erscheinungsbild tragen.
    *
-   * **Nur für private Gespräche.** In einem Community-Kanal reden mehrere
-   * durcheinander, dort tragen Autorname und -farbe die Orientierung — Blasen
-   * würden dort schaden. Wer den Bildschirm wechselt, wechselt deshalb die
+   * **Nur für private Gespräche** — DMs und private Gruppen. In einem
+   * Community-Kanal reden viele durcheinander, dort tragen Autorname und
+   * -farbe die Orientierung. Wer den Bildschirm wechselt, wechselt deshalb die
    * Hülle, nicht den Inhalt: Bearbeiten, Anhänge, Reaktionen, Melden und das
    * Aktionsblatt kommen unverändert aus `MessageItem` herein.
    *
-   * Kein Avatar in der Unterhaltung — mit wem man schreibt, steht im Kopf des
-   * Bildschirms.
+   * In einer DM kein Avatar — mit wem man schreibt, steht im Kopf. In einer
+   * Gruppe (`mitAutor`) stehen Bild und Name des Absenders an der ersten
+   * Blase seiner Folge.
    *
    * **Die Uhrzeit sitzt IN der Blase** (Entwurf 7a), unten an ihrer Kante,
    * und nur am Ende einer Gruppe. Zuerst stand sie darunter — bei einem
@@ -18,9 +21,9 @@
    * eigene Gruppe, und es standen vier Zeitzeilen zwischen vier Sätzen. Der
    * Blick blieb an den Zahlen hängen statt am Text.
    *
-   * Ecken nach dem Entwurf: aussen 20 px, an der Sprech-Seite innerhalb einer
-   * Gruppe 7 px — dadurch liest sich eine Gruppe als ein Block statt als
-   * Kette einzelner Kissen.
+   * Ecken: aussen 8 px, an der Sprech-Seite innerhalb einer Folge 4 px —
+   * dadurch liest sich eine Folge als ein Block statt als Kette einzelner
+   * Kissen.
    */
   import type { Snippet } from 'svelte';
   import { longpress } from '$lib/utils/longpress';
@@ -42,8 +45,7 @@
     isGroupEnd = true,
     highlight = false,
     breit = false,
-    /** Gruppen-Modus (Nutzerwunsch 2026-10-19, Entwurf D): Avatar links,
-     *  Autorenname in der Blase, Soft-Tönung statt Voll-Gradierung. */
+    /** Gruppen-Modus: Avatar links, Autorenname in der Blase. */
     mitAutor = false,
     autorName,
     autorFarbe,
@@ -83,9 +85,9 @@
   /** Angepinnt → Nadel neben der Uhrzeit, Blase bekommt einen Hauch Ton. */
   const pinned = $derived(!!message.pinned_at);
 
-  // Die Ecke an der Sprech-Seite wird innerhalb einer Gruppe flach. WhatsApp-
-  // Radien: klein (8 px), an der Sprech-Seite innerhalb einer Gruppe 4 px —
-  // eine Gruppe liest sich als ein Block.
+  // Die Ecke an der Sprech-Seite wird innerhalb einer Folge flacher. Oben
+  // richtet sie sich danach, ob eine Nachricht desselben Absenders darüber
+  // steht, unten danach, ob eine darunter folgt.
   let ecken = $derived(
     eigen
       ? `border-radius: 8px ${isContinuation ? '4px' : '8px'} ${isGroupEnd ? '4px' : '8px'} 8px;`
@@ -103,7 +105,7 @@
   use:longpress={{ onLongPress }}
 >
   <!-- Avatar-Spalte (nur Gruppen-Modus, nur fremde): auf Fortsetzungs-Zeilen
-       unsichtbar gestellt, damit der Block links bündig bleibt. -->
+       bleibt sie leer stehen, damit der Block links bündig bleibt. -->
   {#if mitAutor && !eigen}
     <span class="w-9 shrink-0 self-end">
       {#if !isContinuation}
@@ -140,8 +142,8 @@
   >
     <div
       class="min-w-0 px-3 py-2 {breit ? 'w-full' : ''} {eigen
-        ? 'border border-[rgba(59,130,246,0.3)] bg-[rgba(59,130,246,0.16)] text-text-bright'
-        : 'border border-border bg-[rgba(255,255,255,0.045)] text-text-base'} {pinned ? 'ring-1 ring-primary/40' : ''}"
+        ? 'border-brand/30 bg-brand/16 text-text-bright border'
+        : 'bg-bg-chat text-text-base border border-border'} {pinned ? 'ring-1 ring-primary/40' : ''}"
       class:ring-2={highlight}
       class:ring-primary={highlight}
       style={ecken}
@@ -157,13 +159,11 @@
       {/if}
       {@render body()}
       {#if isGroupEnd}
-        <!-- Rechtsbündig unter dem Text, in der Blase. Beim eigenen Verlauf
-             gedämpftes Weiss statt der Grauton-Variable — auf Blau wäre Grau
-             nicht lesbar. -->
+        <!-- Rechtsbündig unter dem Text, in der Blase. Auf der eigenen Blase
+             im dunklen Erscheinungsbild gedämpftes Weiss (Grau läge auf dem
+             dunklen Blau zu matt), im hellen das normale Grau. -->
         <span
-          class="mt-0.5 block text-right text-2xs leading-none {eigen
-            ? 'text-white/70'
-            : 'text-text-muted'}"
+          class="text-text-muted mt-0.5 block text-right text-2xs leading-none {eigen ? 'dark:text-white/70' : ''}"
         >
           {#if pinned}
             <PinIcon

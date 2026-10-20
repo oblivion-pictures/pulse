@@ -16,7 +16,8 @@
 
   let {
     stufe,
-    /** Auf der eigenen (blauen) Sprechblase: gedämpftes Weiss statt Grau. */
+    /** Auf der eigenen (blau getönten) Sprechblase: im dunklen
+     *  Erscheinungsbild gedämpftes Weiss statt Grau. */
     aufBlase = false
   }: { stufe: HaekchenStufe; aufBlase?: boolean } = $props();
 
@@ -28,11 +29,11 @@
     nicht_zugestellt: m.message_haekchen_nicht_zugestellt
   };
   const text = $derived(BESCHRIFTUNG[stufe]());
-  const grau = $derived(aufBlase ? 'text-white/55' : 'text-text-muted');
+  const grau = $derived(aufBlase ? 'text-text-muted dark:text-white/55' : 'text-text-muted');
   // Das Blau darf die Zeilenfarbe brechen — es ist genau das Signal (Befund
   // 05.10.). Ausserhalb der Blase im hellen Erscheinungsbild dunkler: das
   // Hellblau lag auf Weiss bei rund 2:1 und war kaum zu sehen.
-  const blau = $derived(aufBlase ? 'text-[#7dd3fc]' : 'text-sky-600 dark:text-[#53bdeb]');
+  const blau = $derived(aufBlase ? 'text-sky-600 dark:text-[#7dd3fc]' : 'text-sky-600 dark:text-[#53bdeb]');
 </script>
 
 <!-- Entwurf 1a (2026-10-10, gewählt aus vier Varianten im echten Layout). -->
