@@ -398,7 +398,9 @@
       {pm.message_input_drop_files_hint()}
     </div>
   {/if}
-  <header class="flex h-14 items-center gap-2.5 px-3 nicht-handy:px-5">
+  <!-- Geschlossene Kopfleiste (Entwurf D): eigener Grund + Trennlinie nach
+       unten, damit sich der Chat-Körper klar darunter absetzt. -->
+  <header class="bg-popover border-border flex h-14 items-center gap-2.5 border-b px-3 nicht-handy:px-5">
     {#if channel}
       <!-- Zurueck-Pfeil nur auf dem Handy: dort ist der Chat ein
            aufgeschobener Bildschirm ueber seiner Liste. Ab `md` steht die
@@ -524,7 +526,7 @@
           aria-label={pm.medien_titel()}
           data-testid="media-sheet-toggle"
         >
-          <ImagesIcon class="text-text-muted size-4" />
+          <ImagesIcon class="size-4 text-white" />
         </Button>
       {/if}
       {#if (headerKind === 'dm' || headerKind === 'gruppe') && onAnrufen}
@@ -538,7 +540,7 @@
           aria-label={pm.anruf_starten()}
           data-testid={headerKind === 'dm' ? 'dm-call-button' : 'group-call-button'}
         >
-          <PhoneIcon class="text-text-muted size-4" />
+          <PhoneIcon class="size-4 text-white" />
         </Button>
       {/if}
       {#if showMemberList}
