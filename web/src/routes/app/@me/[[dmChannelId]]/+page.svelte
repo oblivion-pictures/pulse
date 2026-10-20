@@ -376,6 +376,7 @@
       onAnrufen={() => anrufStartenFuer('gruppe')}
       mentionMitglieder={aktiveGruppe.members}
       angeheftetId={aktiveGruppe.angeheftet_id}
+      kopfBild={aktiveGruppe.icon_url}
       onTogglePin={gruppePinToggle}
     />
   {:else if activeDM && synthChannel}
@@ -427,6 +428,5 @@
     gruppe={aktiveGruppe}
     bind:open={gruppenBlattOffen}
     onVerlassen={() => goto('/app/@me')}
-    onAnrufen={() => anrufStartenFuer('gruppe')}
   />
 {/if}

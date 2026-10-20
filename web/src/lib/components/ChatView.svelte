@@ -86,7 +86,9 @@
     /** Gruppen-Mitglieder als @-Vorschlagsquelle (private Gruppe). */
     mentionMitglieder,
     /** Der eine angeheftete Gruppen-Anker (E2E: nur die ID) oder null. */
-    angeheftetId = null
+    angeheftetId = null,
+    /** Das Gruppenbild für den Kopf (private Gruppe) oder null. */
+    kopfBild = null
   }: {
     channel: Channel | null;
     messages: Message[];
@@ -149,6 +151,8 @@
     /** Der eine angeheftete Gruppen-Anker oder null (E2E-Gruppen: das Pin
      *  hängt am Gruppen-Objekt, nicht an einer Server-Nachrichtenliste). */
     angeheftetId?: string | null;
+    /** Das Gruppenbild für den Kopf (private Gruppe) oder null. */
+    kopfBild?: string | null;
   } = $props();
 
   // '#'-Prefix für Guild-Channels (Screenshot-Tests + Gewohnheit), '@' für DMs,
@@ -434,11 +438,29 @@
       {:else if headerKind === 'dm'}
         <AtSignIcon class="text-primary size-5 shrink-0" />
       {:else if headerKind === 'gruppe'}
-        <UsersIcon class="text-primary size-5 shrink-0" />
+        {#if kopfBild}
+          <!-- Das Gruppenbild als Kopf-Profil (Nutzerwunsch 2026-10-19). -->
+          <img src={kopfBild} alt="" class="size-[30px] shrink-0 rounded-full object-cover" />
+        {:else}
+          <UsersIcon class="text-primary size-5 shrink-0" />
+        {/if}
       {:else}
         <HashIcon class="text-primary size-5 shrink-0" />
       {/if}
-      {#if onSwitchChannel && handy}
+      {#if headerKind === 'gruppe' && handy && onGruppenBlatt}
+        <!-- Gruppe: Name/Bild oben links ÖFFNET DAS GRUPPEN-BLATT (Mitglieder,
+             Einstellungen) — der Kanal-Wechsler ist am Handy über Home/Tab-Bar
+             erreichbar und steht hier nicht im Weg (Nutzerwunsch 2026-10-19). -->
+        <button
+          class="flex min-h-12 min-w-0 flex-1 items-center gap-1 text-left"
+          onclick={onGruppenBlatt}
+          data-testid="group-sheet-open-name"
+          aria-label={pm.gruppen_blatt_oeffnen()}
+        >
+          <ChannelHeading name={channel.name} topic={channel.topic} nameStyle={''} />
+          <ChevronDownIcon class="text-text-muted size-4 shrink-0" />
+        </button>
+      {:else if onSwitchChannel && handy}
         <!-- Der Titel ist der Kanal-Wechsler (Entwurf 5c). Das Blatt von unten
              ersetzt den seitlichen Drawer; hier ist der Griff dazu. -->
         <button
@@ -474,7 +496,9 @@
           onSprung={(id) => jumpToMessage?.(id)}
         />
       {/if}
-      {#if headerKind === 'gruppe' && onGruppenBlatt}
+      {#if headerKind === 'gruppe' && onGruppenBlatt && !handy}
+        <!-- Am Rechner bleibt der Knopf (das Blatt unten ist ein Handy-Muster);
+             am Handy öffnet der Name/Kopf oben links (siehe dort). -->
         <Button
           variant="ghost"
           size="icon"
@@ -498,14 +522,16 @@
           <ImagesIcon class="text-text-muted size-4" />
         </Button>
       {/if}
-      {#if headerKind === 'dm' && onAnrufen}
+      {#if (headerKind === 'dm' || headerKind === 'gruppe') && onAnrufen}
+        <!-- Anruf oben rechts — auch für die Gruppe (Nutzerwunsch
+             2026-10-19: der Anruf-Knopf gehört in den Kopf, nicht ins Blatt). -->
         <Button
           variant="ghost"
           size="icon"
           class="ml-auto handy:size-11"
           onclick={onAnrufen}
           aria-label={pm.anruf_starten()}
-          data-testid="dm-call-button"
+          data-testid={headerKind === 'dm' ? 'dm-call-button' : 'group-call-button'}
         >
           <PhoneIcon class="text-text-muted size-4" />
         </Button>
