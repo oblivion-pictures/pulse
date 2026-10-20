@@ -176,7 +176,7 @@
       {#if darfKicken && !istIch}
         <button
           type="button"
-          class="text-text-muted hover:text-error flex size-9 handy:size-11 items-center justify-center rounded-full"
+          class="text-text-muted hover:text-destructive flex size-9 handy:size-11 items-center justify-center rounded-full"
           onclick={entfernen}
           aria-label={m.gruppen_mitglied_entfernen()}
           data-testid={`group-member-remove-${mm.user_id}`}
