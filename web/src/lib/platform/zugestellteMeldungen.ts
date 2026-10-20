@@ -10,7 +10,9 @@
  * **Angestossen von `readState.markRead`** (Haken `beimLesen`, eingehängt in
  * `fcm.ts::installiereFcmPush`): das ist der eine Punkt, an dem „gelesen"
  * entsteht — Öffnen eines Kanals, eine neue Nachricht im offenen Gespräch,
- * „Als gelesen markieren".
+ * „Als gelesen markieren". Gelesen auf einem ANDEREN Gerät kommt über
+ * `readState.seedOwnLesestand` an denselben Haken (seit 2026-10-21; vorher
+ * räumte nur das Lesen auf diesem Gerät ab).
  *
  * **Entprellt:** `markRead` feuert beim Lesen oft mehrmals kurz hintereinander;
  * die Kanäle werden gesammelt und einmal je `ENTPRELL_MS` an die Hülle

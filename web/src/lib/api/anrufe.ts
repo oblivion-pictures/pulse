@@ -1,6 +1,6 @@
 import { request } from './client';
 import { serversStore } from './servers.svelte';
-import { isCapacitorIOS } from '$lib/platform/runtime';
+import { isCapacitorAndroid, isCapacitorIOS } from '$lib/platform/runtime';
 import { pushGeraetId } from '$lib/platform/geraeteKennungPush';
 
 /**
@@ -24,7 +24,10 @@ function cloudRoute(): { serverId?: string } {
 }
 
 /**
- * Welches Gerät hier handelt — nur auf iOS, wo es einen VoIP-Token gibt.
+ * Welches Gerät hier handelt — in beiden Hüllen, die per Push klingeln (iOS
+ * über VoIP, Android über FCM; seit 2026-10-21 auch Android: ohne Kennung
+ * bekam das annehmende Android-Gerät 2 s später seinen eigenen Abbruch-Push,
+ * der den Anrufmodus abschaltete, bevor das Mikrofon lief).
  *
  * **Damit der Server diesem Gerät keinen Abbruch-Push schickt.** Hier ist der
  * Anruf schon zu (abgelehnt, aufgelegt) oder läuft (angenommen); ein Push
@@ -32,10 +35,10 @@ function cloudRoute(): { serverId?: string } {
  * genau so ein Push bringt iOS dazu, die App zu beenden und irgendwann keine
  * VoIP-Pushes mehr zuzustellen (Bughunt 2026-10-11, K3;
  * `services/chat-gateway/.../anruf_push.py`). Dieselbe Kennung, mit der das
- * Gerät seinen Token angemeldet hat (`voipToken.ts`).
+ * Gerät seinen Token angemeldet hat (`voipToken.ts`, `fcm.ts`).
  */
 function handelndesGeraet(): { body?: { geraet_id: string } } {
-  return isCapacitorIOS() ? { body: { geraet_id: pushGeraetId() } } : {};
+  return isCapacitorIOS() || isCapacitorAndroid() ? { body: { geraet_id: pushGeraetId() } } : {};
 }
 
 /** Für den Abmelde-Pfad: dort ist der Zugangstoken schon gelöscht, wenn der

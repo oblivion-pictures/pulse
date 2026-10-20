@@ -137,6 +137,7 @@ public class MainActivity extends BridgeActivity {
         intent.removeExtra(AnrufMarke.EXTRA);
         if (!AnrufMarke.gilt(this, marke)) return;
         if (CallForegroundService.AKTION_ANNEHMEN.equals(aktion)) {
+            AnrufMarke.verbrauchen(this);
             anrufModus.an();
             CallForegroundService.entscheiden(this, aktion, callId);
         } else if (CallForegroundService.klingelt()) {
@@ -229,7 +230,13 @@ public class MainActivity extends BridgeActivity {
         // Anrufmodus: dann kam die App eben ÜBER die Meldung nach vorn, die
         // Seite lädt womöglich noch — der Klingelton läuft weiter, bis das Web
         // annimmt/ablehnt (AnrufPlugin.beenden) oder der Wecker ihn beendet.
-        if (!anrufModus.istAn()) CallForegroundService.beenden(this);
+        // Ebenso, solange ein Anruf aus dem Push noch nicht beim Web ist: das
+        // Overlay entsteht erst beim Abholen des Zettels und klingelt selbst
+        // nicht („die Hülle klingelt schon“, anrufHuelle.ts) — beendet man
+        // hier, stünde der Anruf nach dem Öffnen über das App-Symbol stumm da.
+        if (!anrufModus.istAn() && !AnrufSpeicher.wartetAufWeb(this)) {
+            CallForegroundService.beenden(this);
+        }
     }
 
     /**

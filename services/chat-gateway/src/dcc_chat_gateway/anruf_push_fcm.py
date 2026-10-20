@@ -23,7 +23,9 @@ Tote Tokens fallen wie im DM-Weg (``fcm.tote_tokens_loeschen``).
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from sqlalchemy import select
@@ -37,6 +39,12 @@ log = logging.getLogger("dcc_chat_gateway.anruf_push")
 #: So lange hält FCM einen Anruf-Push zu, so lange klingelt auch der Klient
 #: (sein 45-s-Wecker).
 ANRUF_TTL_S = 45
+#: Eigener Pool für den (synchronen) Firebase-Versand der Anrufe. Über
+#: ``asyncio.to_thread`` stünde ein Anruf im Standard-Pool hinter jeder
+#: laufenden DM- oder Erwähnungs-Sendung — eine ``@everyone``-Erwähnung in
+#: einer großen Community reiht Hunderte Aufträge ein, und der Anruf klingelte
+#: erst, wenn seine 45 s schon fast um sind.
+_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="anruf-fcm")
 
 
 def verfuegbar() -> bool:
@@ -77,8 +85,12 @@ async def senden(tokens: list[str], nutzlast: dict[str, str], session_factory: A
     if not tokens or not verfuegbar():
         return
     daten = {"type": "anruf", **{k: str(v) for k, v in nutzlast.items()}}
+    loop = asyncio.get_running_loop()
     ergebnisse = await asyncio.gather(
-        *(asyncio.to_thread(_send_one, token=t, daten=daten) for t in tokens),
+        *(
+            loop.run_in_executor(_POOL, functools.partial(_send_one, token=t, daten=daten))
+            for t in tokens
+        ),
         return_exceptions=True,
     )
     tote = [t for t, ausgang in zip(tokens, ergebnisse, strict=True) if ausgang == "dead"]
