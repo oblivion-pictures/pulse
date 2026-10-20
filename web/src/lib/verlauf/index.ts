@@ -62,6 +62,8 @@ import { istLokalerKanal } from './kanalArt';
 import type { Message } from '$lib/api/types';
 
 export { VerlaufSpeichernFehlgeschlagen };
+// Ein einzelner abgelegter Satz für den Abholzyklus (Push-Bughunt 2026-10-21).
+export { verlaufAbgelegteNachricht } from './abgelegtLesen';
 export { verlaufKanalVergessen };
 export { hatServerVerlauf } from './kanalArt';
 export {

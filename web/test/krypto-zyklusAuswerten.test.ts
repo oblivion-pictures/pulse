@@ -69,7 +69,9 @@ function wege(start: { verlauf?: Satz[]; geladen?: Message[]; fehlschlag?: strin
     anzeigeReaktionen: () => {},
     anzeigeInhalt: () => {},
     anrufSchluessel: (anrufId) => aufrufe.push(`anruf ${anrufId}`),
-    jetzt: () => '2026-10-12T01:00:00Z'
+    jetzt: () => '2026-10-12T01:00:00Z',
+    // `schonAbgelegt` kommt in diesen Fällen nicht vor (s. `postfach-ankunft`).
+    abgelegtLesen: async () => null
   };
   return w;
 }

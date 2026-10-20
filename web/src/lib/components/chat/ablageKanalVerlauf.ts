@@ -66,5 +66,7 @@ export async function ladeAblageKanalVerlauf(kanalId: string): Promise<void> {
   const ausLaufwerk = vomLaufwerk
     ? vomLaufwerk.nachrichten.map((n) => ausAblageNachricht(kanalId, n))
     : [];
-  messages.setInitial(kanalId, verlaufMergen(lokal, ausLaufwerk));
+  // Nach zwei `await`s: was seither live kam, bleibt stehen
+  // (`nachrichten/liveBehalten.ts`).
+  messages.setInitial(kanalId, verlaufMergen(lokal, ausLaufwerk), { liveBehalten: true });
 }

@@ -208,13 +208,18 @@ async def postfach_quittung(
             )
         )
 
-        await session.commit()
-
     # Doppelt grauer Haken (Migration 0101): die Stände, die der Klient zu
     # DIESER Quittung meldet, dauerhaft ablegen — erlaubt sind nur Paare, deren
     # Umschläge gerade wirklich quittiert wurden. Danach je Absender ein
     # Ereignis mit dem geltenden Stand (best-effort, Muster wie die anderen
     # Publishes); wer beim Abholen offline war, liest ihn aus dem ready-Rahmen.
+    #
+    # **Löschung und Stände in EINEM Commit** (Push-Bughunt 2026-10-21): bis
+    # dahin stand ein ``commit`` eingerückt in der Nutzlast-Schleife oben —
+    # warf ``zustellstaende_speichern`` danach, antwortete die Route 500,
+    # obwohl die Zustellungen schon gelöscht waren. Jetzt rollt der Fehler die
+    # Löschung mit zurück, und der Klient bekommt sie beim nächsten Abholen
+    # wieder (Test: ``test_postfach_quittung_transaktion.py``).
     geltend = await zustellstaende_speichern(
         session,
         user.id,

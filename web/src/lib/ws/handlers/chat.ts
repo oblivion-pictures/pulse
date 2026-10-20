@@ -34,6 +34,7 @@ import { registerWsHandler } from '../handler-registry';
 import { serversStore } from '$lib/api/servers.svelte';
 import { dispatchingServerId } from '$lib/ws/gateway-connection';
 import { isRecentMention, markRecentMention } from './_mentionSuppression';
+import { bumpNachschauen, postfachWiederholerErzeugen } from './nachholNetz';
 import { page } from '$app/state';
 import { mitteilungsAnlassMelden } from '$lib/platform/mitteilungsAnlass';
 import type { HandlerContext } from './context';
@@ -92,6 +93,12 @@ export function postfachAbholenAusDerApp(): void {
   postfachAbholenUndAnzeigen(weckrufAboBlick ?? (() => false));
 }
 
+/** Nach einem gescheiterten Zyklus (nicht stumm) erneut über den Anzeige-Weg
+ *  abholen: 2 s, 5 s, 15 s, dann bis zum nächsten Auslöser Ruhe
+ *  (`../nachholTakt.ts`). Bis 2026-10-21 holte im Vordergrund erst das
+ *  nächste `postfach_neu`/`ready` wieder ab. */
+const postfachWiederholung = postfachWiederholerErzeugen(() => postfachAbholenAusDerApp());
+
 /**
  * Holt offene Postfach-Zustellungen ab, entschluesselt sie und zeigt sie an
  * — geteilt zwischen den Ausloesern (Bughunt-Runde 3, FIX 1): dem `postfach_
@@ -147,6 +154,7 @@ export function postfachAbholenUndAnzeigen(
     // ein Weckruf an eine Runde des Hintergrund-Takts haengt; die App ist
     // dann hinten, und gezaehlt wird so oder so.
     .then((neue) => {
+      postfachWiederholung.erfolgreich();
       if (verbucht.has(neue)) return;
       verbucht.add(neue);
       zustellungenVerbuchen(neue, istAboniert, { stumm });
@@ -157,6 +165,8 @@ export function postfachAbholenUndAnzeigen(
       console.warn('[postfach] Abholen fehlgeschlagen', {
         fehler: err instanceof Error ? `${err.name}: ${err.message}` : String(err)
       });
+      // Der Hintergrund-Takt (`stumm`) hat seinen eigenen 60-s-Rhythmus.
+      if (!stumm) postfachWiederholung.fehlgeschlagen();
     })
     // **Ganz am Ende der Kette, nicht früher.** Ab hier darf der Klient seine
     // Ungelesen-Zahl an den Server melden (s. `platform/badgeDrossel.ts`) —
@@ -244,9 +254,11 @@ export function register(ctx: HandlerContext): void {
       readState.recordSeen(evt.channel_id, evt.message_id);
       // If we're currently viewing this channel the message op already
       // ran the markRead — but in case the bump arrived first, do it
-      // again here. markRead is idempotent.
+      // again here. markRead is idempotent. Ob die Nachricht selbst
+      // angekommen ist, prüft `bumpNachschauen` nach der Frist (`../bumpWache.ts`).
       if (ctx.subs.has(evt.channel_id)) {
         readState.markRead(evt.channel_id, evt.message_id);
+        bumpNachschauen(evt.channel_id, evt.message_id);
       } else {
         readState.incUnread(evt.channel_id, evt.message_id);
         if (!isRecentMention(evt.message_id) && !isDnd() && !serverStumm()) {
@@ -276,6 +288,7 @@ export function register(ctx: HandlerContext): void {
     if (evt.author_id !== me) {
       readState.recordSeen(evt.channel_id, evt.message_id);
       const offen = ctx.subs.has(evt.channel_id);
+      if (offen) bumpNachschauen(evt.channel_id, evt.message_id);
       if (offen && siehtHin()) {
         // Already viewing this DM — mark read, no toast.
         readState.markRead(evt.channel_id, evt.message_id);

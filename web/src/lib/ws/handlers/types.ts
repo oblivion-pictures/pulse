@@ -543,7 +543,9 @@ export type ServerEvent =
   // Gestempelte Kanal-Ereignisse (message/message_update/message_delete/
   // reaction_add/reaction_remove/pin_update) tragen Cursor fuer den
   // Wiederanschluss; Client merkt sich das Hoechstwasser pro Kanal.
-  | { op: 'error'; code: number; msg: string };
+  // `ref_op`/`channel_id` nur an Fehlern eines `subscribe` (Server:
+  // `routes/ws_abo_fehler.py`) — Grundlage der Abo-Wiederholung.
+  | { op: 'error'; code: number; msg: string; ref_op?: string; channel_id?: string };
 
 /** Cursor-Stempel auf dauerhaften Chat-Ereignissen (Server: `_hist_stempeln`).
  *  `hist` = Redis-Stream-Eintrag-ID, `seq` = lückenloser Kanal-Zähler. */

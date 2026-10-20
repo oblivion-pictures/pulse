@@ -91,6 +91,33 @@ export interface PostfachZustellung {
   created_at?: string;
 }
 
+/**
+ * Frist für Abholen und Quittieren (Push-Bughunt 2026-10-21, Befund 4). Ohne
+ * sie hing eine Anfrage nach einem Netzwechsel unter Umständen so lange, wie
+ * das Betriebssystem die tote Verbindung offen hält — und mit ihr jeder
+ * weitere Abholzyklus, denn ein Weckruf wartet auf den laufenden
+ * (`krypto/postfachNachlauf.ts`): bis zum Neuladen kam nichts mehr an.
+ *
+ * Warum 30 s: eine Abholung trägt gewöhnlich Kilobytes (Anhänge reisen
+ * getrennt), ein einzelner Umschlag höchstens 256 KiB. 30 s reichen auch über
+ * eine langsame Mobilverbindung für ein, zwei Megabyte, und länger soll ein
+ * hängender Lauf die nächsten Weckrufe nicht aufhalten. Läuft die Frist ab,
+ * wirft die Anfrage: ein Abholen bricht den Zyklus ab (der nächste Auslöser
+ * startet einen frischen), eine Quittung bleibt offen und wird beim nächsten
+ * Zyklus nachgeholt (`krypto/empfangen.ts`).
+ */
+export const POSTFACH_FRIST_MS = 30_000;
+
+/** Das Abbruchsignal zur Frist. `AbortSignal.timeout` fehlt in alten
+ *  Android-WebViews (Chromium vor 103; die App läuft ab Android 7) — dort
+ *  dieselbe Frist von Hand, sonst würfe JEDE Abholung. */
+function fristSignal(): AbortSignal {
+  if (typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(POSTFACH_FRIST_MS);
+  const steuerung = new AbortController();
+  setTimeout(() => steuerung.abort(), POSTFACH_FRIST_MS);
+  return steuerung.signal;
+}
+
 export const postfachApi = {
   /** Liefert einen oder mehrere Umschlaege in einem DM-Kanal ein.
    *  `undefined`, wenn der Server mit einem koerperlosen 2xx (204) antwortet
@@ -130,7 +157,11 @@ export const postfachApi = {
     body: { device_pubkey: string },
     route: { serverId?: string } = {}
   ): Promise<PostfachZustellung[]> {
-    return request<PostfachZustellung[]>('/postfach/abholen', { method: 'POST', body }, route);
+    return request<PostfachZustellung[]>(
+      '/postfach/abholen',
+      { method: 'POST', body, signal: fristSignal() },
+      route
+    );
   },
 
   /** Loescht die genannten Zustellungen des genannten Geraets — erst
@@ -145,7 +176,11 @@ export const postfachApi = {
     },
     route: { serverId?: string } = {}
   ): Promise<void> {
-    return request<void>('/postfach/quittung', { method: 'POST', body }, route);
+    return request<void>(
+      '/postfach/quittung',
+      { method: 'POST', body, signal: fristSignal() },
+      route
+    );
   },
 
   /**

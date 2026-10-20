@@ -14,11 +14,14 @@
  *   sichern; enthaelt der Klartext einen Gruppen-Verteilschluessel, wird er
  *   dort abgelegt und die Zustellung ist `ohneAblage` quittierbar;
  * * alles Unlesbare -> `null`, die Zustellung bleibt liegen;
+ * * eine Olm-Nachricht in einem lokal unbekannten Kanal -> `null`, ohne die
+ *   Sitzung zu sichern (Push-Bughunt 2026-10-21, Befund 3, s. unten);
  * * ein Verlauf, der nicht ablegen kann (Riegel nach einem Fassungswechsel,
  *   `verlauf/verbindung.ts`, oder nicht lesbar) -> `null`, VOR jedem
  *   Entschlüsseln (Gegenprüfung 2026-10-12, R3).
  */
-import type { Message } from '../api/types';
+import type { ZustellungOffenErgebnis } from './zustellungOffenErgebnis';
+import type { Vormerkungen } from './gruppe/wasserstand';
 import type { Identitaet } from '../../../../krypto/pulse-krypto/pkg/pulse_krypto.js';
 import { Umschlag } from '../../../../krypto/pulse-krypto/pkg/pulse_krypto.js';
 import { directMessages } from '../stores/directMessages.svelte';
@@ -37,6 +40,7 @@ import {
 } from './nachrichtNutzlast';
 import { baueEmpfangeneNachricht } from './empfangeneNachricht';
 import { absenderErmitteln } from './absenderErmitteln';
+import { absenderAngabeGefaelscht } from './olmAbsenderAngabe';
 import { oeffneMitRueckfall } from './sitzungsRueckfall';
 import { absenderBinden } from './empfangsbindung';
 import { PRIVATE_GRUPPEN_ENABLED } from './schalter';
@@ -47,6 +51,8 @@ import {
   verteilschluesselAufnehmen
 } from './gruppe/empfangen';
 import { melde } from '../diagnose/app-diagnose';
+import { leseVerteilNutzlast } from './gruppe/gruppenNutzlast';
+import { istLokalerKanal } from '../verlauf/kanalArt';
 
 /**
  * Zählt erfolglose Öffnungsversuche je Zustellung — dauerhaft, im
@@ -92,68 +98,15 @@ function versuchZaehlen(id: string): number {
  * Klasse statt eines rohen Fehlers: der Catch-Block unten muss sie von einem
  * gewoehnlichen Entschluesselungsfehler (unlesbarer Umschlag — dort bleibt
  * die Zustellung einfach liegen, der Zyklus laeuft normal weiter)
- * unterscheiden koennen.
+ * unterscheiden koennen. Seit 2026-10-21 auch fuer einen Sitzungsaufbau,
+ * dessen Sitzung bewusst NICHT gesichert wird, weil der Kanal lokal noch
+ * unbekannt ist (Befund 3, s. unten) — `ident` ist dann ebenso veraendert.
  */
 export class KontoSicherungFehlgeschlagen extends Error {}
 
-/** Ergebnis eines Oeffnungsversuchs:
- *  * `neu` — frisch entschluesselte Nachricht, muss noch abgelegt werden;
- *  * `schonAbgelegt` — war schon einmal entschluesselt und abgelegt, braucht
- *    nur noch die (bislang fehlgeschlagene) Quittung (Bughunt-Runde 3,
- *    FIX 3, s. `empfangen.ts`-Modulkopf);
- *  * `ohneAblage` — erfolgreich verarbeitet, aber es gibt nichts anzuzeigen
- *    und nichts abzulegen: ein Gruppen-Verteilschluessel (Etappe G2, s.
- *    `gruppe/empfangen.ts`). Er ist in dem Moment sicher verwahrt, in dem
- *    seine eingehende Sitzung in IndexedDB liegt — die Quittung darf also
- *    direkt folgen.
- *
- *  `null`, wenn die Zustellung liegen bleiben muss. */
-export type ZustellungOffenErgebnis =
-  | { art: 'neu'; nachricht: Message }
-  | { art: 'schonAbgelegt'; channelId: string; id: string }
-  | { art: 'ohneAblage'; id: string }
-  | {
-      art: 'loeschung';
-      id: string;
-      channelId: string;
-      nachrichtId: string;
-      /** Wer den Frame geschickt hat — nur seine eigenen Sätze darf er löschen
-       *  (s. `loeschZiel.ts`). */
-      absenderUserId: string;
-    }
-  /** Reaktions-Umschlag (P1.5): `ziel` ist die KANONISCHE ID der Nachricht,
-   *  `autorId` der Sitzungs-Partner, der reagiert hat. Der Aufrufer wendet
-   *  ihn lokal an und quittiert direkt — nichts abzulegen. */
-  | {
-      art: 'reaktion';
-      id: string;
-      channelId: string;
-      autorId: string;
-      ziel: string;
-      emoji: string;
-      entfernen: boolean;
-    }
-  /** Bearbeitungs-Umschlag: `autorId` ist der Absender — nur seine eigenen
-   *  Sätze darf er umschreiben (s. `empfangen.ts`). */
-  | {
-      art: 'bearbeitung';
-      id: string;
-      channelId: string;
-      autorId: string;
-      ziel: string;
-      inhalt: string;
-    }
-  /** Anruf-Schluessel-Frame (E2EE-Anrufe): `anrufId` + LiveKit-E2EE-Schluessel
-   *  (`schluessel`, 32 Bytes base64). Der Aufrufer reicht beides an den
-   *  Anruf-Store weiter und quittiert direkt — nichts abzulegen. */
-  | {
-      art: 'anrufSchluessel';
-      id: string;
-      channelId: string;
-      autorId: string;
-      anrufId: string;
-      schluessel: string;    }
-  | null;
+// Der Ergebnistyp liegt seit 2026-10-21 nebenan (Groessen-Policy); die
+// Aufrufer importieren ihn weiter von hier.
+export type { ZustellungOffenErgebnis };
 
 /** Die Nachricht einer erfolgreich geoeffneten Zustellung — `null`, wenn der
  *  Absender nicht ermittelbar ist: der Server liefert keinen
@@ -164,7 +117,10 @@ export type ZustellungOffenErgebnis =
  *  `empfangen.ts`-Modulkopf „unlesbar"). */
 export async function zustellungOeffnen(
   ident: Identitaet,
-  z: PostfachZustellung
+  z: PostfachZustellung,
+  /** Die Wasserstand-Vormerkungen DIESES Abholzyklus (Gruppenweg, s.
+   *  `gruppe/wasserstand.ts::wirksamerStand`). */
+  vorgemerkt: Vormerkungen
 ): Promise<ZustellungOffenErgebnis> {
   // FIX 3 (Bughunt-Runde 3) — ZUERST pruefen, noch vor jeder Sitzungssperre
   // und jedem Entschluesseln: liegt der Klartext schon lokal, braucht es
@@ -197,7 +153,8 @@ export async function zustellungOeffnen(
     // `gruppe/empfangen.ts` — inklusive 'verworfen' => {art:'ohneAblage'}
     // (Wiedereinspiel, fremde Absender-Angabe): quittierbar, sonst versucht
     // der naechste Zyklus denselben Angriff wieder zu oeffnen.
-    return oeffneGruppennachricht(z);  }
+    return oeffneGruppennachricht(z, vorgemerkt);
+  }
 
   const absenderUserId = absenderErmitteln(
     z.absender_user_id,
@@ -279,6 +236,27 @@ export async function zustellungOeffnen(
       }
       const sitzung = geoeffnet.sitzung;
       const klartextBytes = geoeffnet.klartext;
+      // **Kanal unbekannt → nichts sichern, liegen lassen** (Push-Bughunt
+      // 2026-10-21, Befund 3). Bis dahin wurde die Sitzung hier gesichert und
+      // die Ablage scheiterte danach (`verlaufSpeichernPflicht` legt nur in
+      // einem lokal bekannten Kanal ab) — die Zustellung blieb liegen, liess
+      // sich aber nie wieder öffnen (die Sitzung war schon über sie hinaus),
+      // und die Nachricht fehlte nach dem nächsten Neuladen. Geprüft wird
+      // NACH dem Entschlüsseln, weil erst der Klartext sagt, ob überhaupt
+      // abgelegt wird: Verteilschlüssel und Aktions-Frames laufen wie bisher.
+      // Ohne Sichern bleibt die gespeicherte Sitzung beim alten Stand, der
+      // nächste Zyklus öffnet dieselbe Zustellung erneut. Eine BRANDNEUE DM
+      // kennt der Zyklus vorher schon: `empfangen.ts::unbekannteDmsNachladen`.
+      if (
+        !istLokalerKanal(z.channel_id) &&
+        mussAbgelegtWerden(z, klartextBytes, absenderUserId)
+      ) {
+        // Ein Sitzungsaufbau hat `ident` schon verändert (Einmalschlüssel
+        // verbraucht) — derselbe Fall wie ein gescheitertes Konto-Sichern:
+        // `postfachZyklus` lädt `ident` frisch, bevor es weitergeht.
+        if (geoeffnet.neu) throw new KontoSicherungFehlgeschlagen('Kanal lokal unbekannt');
+        return null;
+      }
       if (!geoeffnet.neu) {
         // Sichern VOR dem Quittieren — s. `empfangen.ts`-Modulkopf.
         await sitzungSichern(z.channel_id, z.absender_device_pubkey, sitzung);
@@ -326,45 +304,18 @@ export async function zustellungOeffnen(
       // (Loeschung/Reaktion/Bearbeitung) teilt er sich EBENFALLS mit dem
       // Megolm-Weg — dieselbe Funktion, dieselbe Bedeutung auf beiden Wegen.
       const gelesen = leseNachrichtNutzlast(klartextBytes);
-      // **Absender-Bindung (Bughunt 2026-09-23):** die Nutzlast nennt ihr
-      // Geraet; die Metadaten (`z.absender_device_pubkey`) setzt der Server
-      // frei. Stimmen sie nicht, ist einer der beiden verdreht — genau die
-      // Zuschreibungs-Faelschung, gegen die das Feld existiert. Verworfen
-      // und quittierbar ('ohneAblage'), sonst bliebe sie fuer immer liegen
-      // und wuerde jeden Abholzyklus erneut versuchen.
-      if (gelesen.absenderGeraet !== null && gelesen.absenderGeraet !== z.absender_device_pubkey) {
-        console.warn('[postfach] Nachricht mit fremder Absender-Angabe verworfen', {
-          nutzlast: gelesen.absenderGeraet,
-          zustellung: z.absender_device_pubkey
-        });
-        return { art: 'ohneAblage', id: z.id };
-      }
-      // **Zweiter Bughunt-Lauf (2026-09-23): dasselbe für das KONTO.** Der
-      // Geräte-Check oben fängt den bösartigen Server — aber ein bösartiges
-      // MITGLIED kann in seiner Nutzlast `absenderNutzer` auf ein fremdes
-      // Konto setzen (eigenes Gerät = Metadaten passt!) und sich so eine
-      // Zuschreibung erschreiben; schlimmer: einen Lösch-Frame mit fremder
-      // Nutzer-ID, den `loeschZiel` als berechtigt einstuft. `absender_user_id`
-      // füllt der Server aus dem Login — die Diskrepanz ist also immer eine
-      // Fälschung. Nutzlasten ohne das Feld (Legacy) fallen durch zum Fallback.
-      if (
-        gelesen.absenderNutzer !== null &&
-        z.absender_user_id !== null &&
-        gelesen.absenderNutzer !== z.absender_user_id
-      ) {
-        console.warn('[postfach] Nachricht mit fremder Absender-Konto-Angabe verworfen', {
-          nutzlast: gelesen.absenderNutzer,
-          zustellung: z.absender_user_id
-        });
-        return { art: 'ohneAblage', id: z.id };
-      }
+      // Absender-Bindung (Geraet UND Konto): `olmAbsenderAngabe.ts`. Verworfen
+      // und quittierbar ('ohneAblage'), sonst bliebe die Faelschung fuer immer
+      // liegen und wuerde jeden Abholzyklus erneut versucht.
+      if (absenderAngabeGefaelscht(z, gelesen)) return { art: 'ohneAblage', id: z.id };
       // Zuschreibung aus der authentisierten Nutzlast, wo vorhanden; erst
       // das Fehlen (Sender vor der Aenderung) faellt auf die Metadaten
       // und den DM-Rueckfall (`absenderErmitteln`) zurueck.
       const zuschreibung = gelesen.absenderNutzer ?? absenderUserId;
       const rahmen = rahmenAusNutzlast(gelesen, z.id, z.channel_id, zuschreibung);
       if (rahmen) return rahmen;
-      return { art: 'neu', nachricht: baueEmpfangeneNachricht(z, zuschreibung, gelesen) };    } catch (err) {
+      return { art: 'neu', nachricht: baueEmpfangeneNachricht(z, zuschreibung, gelesen) };
+    } catch (err) {
       if (err instanceof KontoSicherungFehlgeschlagen) {
         // Weiterreichen, NICHT hier verschlucken — `postfachZyklus` laesst
         // NUR diese eine Zustellung liegen (FIX 2, Runde 3), sonst friert die
@@ -402,4 +353,19 @@ export async function zustellungOeffnen(
       return null;
     }
   });
+}
+
+/** Ob ein Olm-Klartext eine Nachricht ist, die abgelegt werden muss — weder
+ *  Verteilschlüssel noch Aktions-Frame (Befund 3 oben). Nur gelesen, nichts
+ *  angezeigt; der Verteilschlüssel wird wie im Ablauf oben zuerst geprüft
+ *  (Reihenfolge: `gruppe/gruppenNutzlast.ts`-Modulkopf). */
+function mussAbgelegtWerden(
+  z: PostfachZustellung,
+  klartext: Uint8Array,
+  absender: string
+): boolean {
+  if ((PRIVATE_GRUPPEN_ENABLED || ABLAGE_KANAL_ENABLED) && leseVerteilNutzlast(klartext)) {
+    return false;
+  }
+  return rahmenAusNutzlast(leseNachrichtNutzlast(klartext), z.id, z.channel_id, absender) === null;
 }

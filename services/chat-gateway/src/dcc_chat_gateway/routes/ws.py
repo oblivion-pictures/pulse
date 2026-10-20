@@ -99,7 +99,11 @@ _MAX_NONCE_LEN = 64
 # Die Gegenstuecke stehen in ``web/src/lib/api/constants.ts`` (``WS_CLOSE``)
 # und muessen synchron bleiben. Belegte Schliesscodes des Gateways:
 # 4001 (Token), 4009 (zu viele Verbindungen), 4046 (JWKS kalt),
-# 4070/4071 (hier). Fehler-FRAMES sind ein anderer Kanal und duerfen sich mit
+# 4070/4071 (hier). Dazu zwei Standardcodes, die im Klienten bewusst in den
+# ``default``-Zweig (neu verbinden) fallen und deshalb kein Gegenstueck haben:
+# 1001 (Reaper fuer stumme Sockets, ``pubsub.py``) und 1013 (Senden beim
+# Auffaechern gescheitert, ``pubsub_listener.FAN_OUT_SCHLIESSCODE``).
+# Fehler-FRAMES sind ein anderer Kanal und duerfen sich mit
 # Schliesscodes ueberschneiden (4001–4017, 4040–4044, 4050–4062, 4290) — sie
 # laufen nie durch ``_mapCloseCode``. Die Geraete-Codes 4060–4062 (4062 seit
 # 2026-10-16: „Geraet sichtbar, aber nicht freigegeben") stehen im Klienten als

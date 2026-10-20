@@ -208,8 +208,9 @@ export async function gruppenWasserstandLesen(
 }
 
 /** Hebt den Wasserstand nach dem ersten sauberen Öffnen einer Nachricht.
- *  Wird von `oeffneGruppennachricht` VOR dem Sichern der Sitzung gerufen —
- *  beides gehört zu derselben Zustellung. */
+ *  Seit 2026-10-21 erst nach deren gelungener Ablage bzw. Anwendung — über
+ *  den `festschreiben`-Griff, den `oeffneGruppennachricht` mitgibt (s.
+ *  `wasserstand.ts::wirksamerStand`). */
 export async function gruppenWasserstandMerken(
   kanalId: string,
   geraetePubkey: string,

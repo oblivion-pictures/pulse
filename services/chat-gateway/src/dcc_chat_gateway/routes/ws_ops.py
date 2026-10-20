@@ -37,6 +37,8 @@ from dcc_chat_gateway.routes import (
     ws_remote_teardown,
     ws_watch,
 )
+from dcc_chat_gateway.routes._deps import parse_snowflake_int
+from dcc_chat_gateway.routes.ws_abo_fehler import abo_fehler
 from dcc_chat_gateway.routes.ws_ops_registry import WSOpContext, get_handler
 from dcc_chat_gateway.routes.ws_token_renewal import TokenExpiryWatch
 from dcc_chat_gateway.security import AuthenticatedUser
@@ -179,10 +181,16 @@ async def run_session_op_loop(
                     msg.get("op"),
                     user.id,
                 )
-                try:
-                    await websocket.send_json(
-                        {"op": "error", "code": 5000, "msg": "internal server error"}
+                fehler: dict = {"op": "error", "code": 5000, "msg": "internal server error"}
+                if op == "subscribe":
+                    # Mit Bezug, damit der Klient genau diesen Kanal neu
+                    # abonniert (``ws_abo_fehler.py``).
+                    cid_int = parse_snowflake_int(msg.get("channel_id"))
+                    fehler = abo_fehler(
+                        5000, "internal server error", None if cid_int is None else str(cid_int)
                     )
+                try:
+                    await websocket.send_json(fehler)
                 except Exception:  # noqa: BLE001
                     pass
             finally:

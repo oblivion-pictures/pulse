@@ -40,7 +40,13 @@ import {
   gruppenWasserstandLesen,
   gruppenWasserstandMerken
 } from './gruppenSitzungen';
-import { wasserstandEntscheidung } from './wasserstand';
+import {
+  wasserstandEntscheidung,
+  wirksamerStand,
+  vormerkSchluessel,
+  type Vormerkungen,
+  type Wasserstand
+} from './wasserstand';
 import { kanalLaufwerkSchluesselSichern } from '../../ablage/kanalLaufwerkSchluessel';
 import { verlaufVerriegelt } from '../../verlauf';
 
@@ -131,9 +137,14 @@ export async function verteilschluesselAufnehmen(
  * geoeffneten Nachricht wird je Sitzung als Wasserstand gemerkt; ein
  * Geheimtext auf oder unter dem Stand unter NEUER Zustellungs-ID ist ein
  * Wiedereinspiel (der Server war es, der Zustellungs-IDs vergibt) und wird
- * verworfen. Dieselbe ID heisst eigene Wiederholung (Absturz-Fenster
- * zwischen Oeffnen und Ablegen) und wird gefahrlos erneut geoeffnet — s.
- * `wasserstand.ts`.
+ * verworfen. Dieselbe ID heisst eigene Wiederholung und wird gefahrlos
+ * erneut geoeffnet — s. `wasserstand.ts`. **Festgeschrieben wird der Stand
+ * erst nach der gelungenen Ablage** (Push-Bughunt 2026-10-21, Befund 2):
+ * hier wird er fuer den laufenden Zyklus nur vorgemerkt (`vorgemerkt`), das
+ * Ergebnis traegt `festschreiben`, und `zyklusAuswerten.ts` ruft es, sobald
+ * die Nachricht liegt bzw. der Frame angewandt ist. Begruendung, auch warum
+ * diese Variante und nicht „Kanal vorher pruefen": `wasserstand.ts::
+ * wirksamerStand`.
  *
  * **Zuschreibung aus der NUTZLAST** (`absenderNutzer`), sobald sie sie
  * traegt: die Metadaten setzt der Server frei, die Nutzlast ist gegen die
@@ -150,7 +161,8 @@ export async function verteilschluesselAufnehmen(
  * muss darin keinen Unterschied mehr sehen.
  */
 export async function oeffneGruppennachricht(
-  z: PostfachZustellung
+  z: PostfachZustellung,
+  vorgemerkt: Vormerkungen
 ): Promise<ZustellungOffenErgebnis | null> {
   const huelle = leseGruppenhuelle(z.daten);
   if (!huelle || z.absender_user_id === null) return null;
@@ -165,10 +177,7 @@ export async function oeffneGruppennachricht(
 
   // Der Riegel (Gegenprüfung 2026-10-12, R3, `verlauf/verbindung.ts`), VOR
   // dem Entschlüsseln: kann der Verlauf nicht ablegen, bleibt die Zustellung
-  // unangetastet liegen — kein Ratchet gesichert, kein Wasserstand gehoben.
-  // Sonst wiese der nächste Tab sie als Wiedereinspiel ab, sobald eine
-  // spätere Nachricht derselben Sitzung den Wasserstand weitergeschoben hat
-  // (`wasserstand.ts`).
+  // unangetastet liegen — kein Ratchet gesichert, nichts vorgemerkt.
   if (verlaufVerriegelt()) return null;
 
   let geoeffnet: { klartext(): Uint8Array; zaehler(): number };
@@ -180,10 +189,10 @@ export async function oeffneGruppennachricht(
     return null;
   }
 
-  const stand = await gruppenWasserstandLesen(
-    z.channel_id,
-    z.absender_device_pubkey,
-    huelle.sitzung
+  const schluessel = vormerkSchluessel(z.channel_id, z.absender_device_pubkey, huelle.sitzung);
+  const stand = wirksamerStand(
+    await gruppenWasserstandLesen(z.channel_id, z.absender_device_pubkey, huelle.sitzung),
+    vorgemerkt.get(schluessel)
   );
   const entscheidung = wasserstandEntscheidung(stand, geoeffnet.zaehler(), z.id);
   if (entscheidung === 'wiedereinspiel') {
@@ -228,20 +237,29 @@ export async function oeffneGruppennachricht(
     return { art: 'ohneAblage', id: z.id };
   }
 
-  // Sichern VOR der Quittung — der Ratchet ist weitergedreht. Der
-  // Wasserstand wandert mit: erst nach beiden ist die Nachricht „gesehen".
+  // Sichern VOR der Quittung — der Ratchet ist weitergedreht (Megolm öffnet
+  // ältere Zähler trotzdem erneut, s. `wasserstand.ts`). Der Wasserstand wird
+  // nur vorgemerkt; fest wird er erst mit der Ablage (s. oben, `festschreiben`).
   await gruppenempfangSichern(z.channel_id, z.absender_device_pubkey, huelle.sitzung, empfang);
-  if (entscheidung === 'ok') {
+  const neuerStand: Wasserstand = { zaehler: geoeffnet.zaehler(), zustellung: z.id };
+  if (entscheidung === 'ok') vorgemerkt.set(schluessel, neuerStand);
+  const festschreiben = async (): Promise<void> => {
+    // Nur heben, nie senken: Frames werden nach den Nachrichten festgeschrieben
+    // und können einen kleineren Zähler tragen als eine Nachricht desselben
+    // Zyklus.
+    const jetzt = await gruppenWasserstandLesen(
+      z.channel_id,
+      z.absender_device_pubkey,
+      huelle.sitzung
+    );
+    if (jetzt && jetzt.zaehler >= neuerStand.zaehler) return;
     await gruppenWasserstandMerken(
       z.channel_id,
       z.absender_device_pubkey,
       huelle.sitzung,
-      {
-        zaehler: geoeffnet.zaehler(),
-        zustellung: z.id
-      }
+      neuerStand
     );
-  }
+  };
 
   // Dieselbe Umsetzung in die Anzeige-Form wie im Olm-Weg, s.
   // `../empfangeneNachricht.ts` — dort stehen auch die Gruende fuer die
@@ -249,5 +267,16 @@ export async function oeffneGruppennachricht(
   // authentisierten Nutzlast, wo sie vorhanden ist (s. oben).
   const absenderUserId = gelesen.absenderNutzer ?? autorId;
   const rahmen = rahmenAusNutzlast(gelesen, z.id, z.channel_id, absenderUserId);
-  if (rahmen) return rahmen;
-  return { art: 'neu', nachricht: baueEmpfangeneNachricht(z, absenderUserId, gelesen) };}
+  if (rahmen?.art === 'ohneAblage' || rahmen?.art === 'anrufSchluessel') {
+    // Gleich quittiert, ohne Ablage oder Anwendung im Verlauf, auf die zu
+    // warten wäre — der Stand wandert wie vor 2026-10-21 sofort mit.
+    if (entscheidung === 'ok') await festschreiben();
+    return rahmen;
+  }
+  if (rahmen) return { ...rahmen, festschreiben };
+  return {
+    art: 'neu',
+    nachricht: baueEmpfangeneNachricht(z, absenderUserId, gelesen),
+    festschreiben
+  };
+}

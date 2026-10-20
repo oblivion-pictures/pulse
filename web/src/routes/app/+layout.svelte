@@ -44,7 +44,7 @@
   import { voiceState } from '$lib/voice/state.svelte';
   import { anrufe } from '$lib/anrufe/anruf.svelte';
   import { hintergrundZyklusStarten, hintergrundZyklusStoppen } from '$lib/krypto/hintergrundTakt';
-  import { postfachImHintergrundAbholen } from '$lib/ws/handlers/chat';
+  import { postfachAbholenAusDerApp, postfachImHintergrundAbholen } from '$lib/ws/handlers/chat';
   import { schriftGroesseVerfolgen } from '$lib/platform/schriftGroesse';
   import { voipTokenVerfolgen } from '$lib/platform/voipToken';
   import { schnellwahlSetzen, schnellwahlVerfolgen } from '$lib/platform/schnellwahl';
@@ -338,7 +338,16 @@
     // verbucht und quittiert Zugestelltes, stumm. Vordergrund: der normale
     // Antrieb (WS-Ereignisse) übernimmt, der Takt ruht.
     beiHintergrund(() => hintergrundZyklusStarten(postfachImHintergrundAbholen));
-    beiVordergrund(() => hintergrundZyklusStoppen());
+    beiVordergrund(() => {
+      hintergrundZyklusStoppen();
+      // Und einmal nachholen: unter iOS bleibt die Leitung im Hintergrund
+      // offen, beim Zurückkommen gibt es kein `ready` — weder Postfach noch
+      // Kanäle wurden sonst abgeholt. Doppelt mit einem `ready` ist harmlos
+      // (Postfach: ein Zyklus samt Nachlauf, `krypto/postfachNachlauf.ts`;
+      // Kanäle: Abgleich über die ID, `gapFill.ts`).
+      postfachAbholenAusDerApp();
+      gatewayPool.alleNachholen();
+    });
     // Systemschriftgröße anwenden, falls die Hülle sie meldet (Punkt 38).
     schriftGroesseVerfolgen();
     // PushKit-Token anmelden, damit ein Anruf das Telefon erreicht, auch wenn
