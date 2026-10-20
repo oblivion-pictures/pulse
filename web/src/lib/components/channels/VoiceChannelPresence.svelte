@@ -104,7 +104,14 @@
         : uid === myId
           ? 'self' // own preview tile uses the 'self' sentinel id (StreamGrid)
           : voice.cameraTracks.find((ct) => userIdFromIdentity(ct.identity) === uid)?.identity}
-    <div class="ml-4 flex flex-col" data-testid="voice-presence-list" data-channel-id={channel.id}>
+    <!-- py-1: dem Sprech-Ping (Avatare, zwei animierte Ringe) einen Hauch
+         Raum geben — ohne ihn guckte der erste Kachel-Rand oben in den
+         Kanalnamen (Nutzerbefund 2026-10-19 „steht oben rein“). -->
+    <div
+      class="ml-4 flex flex-col gap-0.5 py-1"
+      data-testid="voice-presence-list"
+      data-channel-id={channel.id}
+    >
       <VoiceChannelMembers
         userIds={members}
         channelId={channel.id}
