@@ -54,6 +54,36 @@
     ...dateien.filter((a) => a.verschluesselt),
     ...medien.filter((a) => a.verschluesselt && (a.mime ?? '').startsWith('video/'))
   ]);
+  /** Nur die Videos, in Reihenfolge — der Vollbild-Player blättert darin
+   *  (Nutzerwunsch 2026-10-19: Video antippen → groβ, hin- und herblättern
+   *  wie bei WhatsApp). */
+  const videos = $derived(medien.filter((a) => (a.mime ?? '').startsWith('video/')));
+  const videoPosition = $derived(new Map(videos.map((v, i) => [v.id, i])));
+
+  let videoViewer = $state<number | null>(null);
+  let wischStart = $state<number | null>(null);
+
+  function videoOeffnen(index: number): void {
+    if (index === undefined || index === null) return;
+    videoViewer = index;
+  }
+  function videoViewerZu(): void {
+    videoViewer = null;
+  }
+  function videoBlaettern(delta: number): void {
+    if (videoViewer === null || videos.length === 0) return;
+    videoViewer = (((videoViewer + delta) % videos.length) + videos.length) % videos.length;
+  }
+  function viewerZeigerRunter(e: PointerEvent): void {
+    wischStart = e.clientX;
+  }
+  function viewerZeigerHoch(e: PointerEvent): void {
+    if (wischStart === null) return;
+    const dx = e.clientX - wischStart;
+    wischStart = null;
+    if (dx <= -60) videoBlaettern(1);
+    else if (dx >= 60) videoBlaettern(-1);
+  }
 
   $effect(() => {
     const liste = verschluesselteOhneBild;
@@ -116,23 +146,28 @@
           {#each medien as a (a.id)}
             {@const istVideo = (a.mime ?? '').startsWith('video/')}
             {#if istVideo}
-              <!-- Video-Kachel: echtes <video> mit Steuerung (kein <button>
-                   drumherum — die nativen Controls wären darin tot). -->
-              <div
-                class="relative aspect-square w-full overflow-hidden rounded-lg border border-border bg-black"
+              <!-- Video-Kachel: Vorschau + Play-Zeichen, Antippen öffnet den
+                   Vollbild-Player (Nutzerwunsch 2026-10-19). -->
+              <button
+                type="button"
+                class="relative aspect-square w-full cursor-pointer overflow-hidden rounded-lg border border-border bg-black"
+                onclick={() => videoOeffnen(videoPosition.get(a.id) ?? 0)}
+                aria-label={a.filename ?? m.medien_bild_oeffnen()}
                 data-testid={`media-video-${a.id}`}
               >
-                <!-- svelte-ignore a11y_media_has_caption — Nutzerwunsch-Galerie:
-                     Zugestellte Videos haben selten Untertitel; die nativen
-                     Controls bieten CC, wo der Stream einen trägt. -->
                 <video
                   src={dateiQuelle(a) ?? a.thumb_url ?? a.url}
-                  class="block size-full object-contain"
+                  class="block size-full object-cover opacity-80"
                   preload="metadata"
+                  muted
                   playsinline
-                  controls
                 ></video>
-              </div>
+                <span class="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+                  <span class="flex size-9 items-center justify-center rounded-full bg-black/60 text-white">
+                    ▶
+                  </span>
+                </span>
+              </button>
             {:else}
               <button
                 type="button"
@@ -201,4 +236,57 @@
     filename={lightboxAnhang.filename}
     anhang={lightboxAnhang.verschluesselt ? lightboxAnhang : null}
   />
+{/if}
+
+{#if videoViewer !== null && videos[videoViewer]}
+  {@const a = videos[videoViewer]}
+  <!-- Vollbild-Player (Nutzerwunsch 2026-10-19): Video antippen → groβ,
+       mit Pfeilen oder Wischen durch die Videos der Gruppe. -->
+  <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events a11y_interactive_supports_focus a11y_media_has_caption -->
+  <div
+    class="fixed inset-0 z-50 flex flex-col bg-black"
+    data-testid="medien-video-viewer"
+    tabindex="-1"
+    role="dialog"
+    onpointerdown={viewerZeigerRunter}
+    onpointerup={viewerZeigerHoch}
+  >
+    <div class="flex items-center justify-between px-4 py-3">
+      <span class="min-w-0 flex-1 truncate text-sm text-white/80">{a.filename ?? ''}</span>
+      <span class="text-xs text-white/60">{videoViewer + 1}/{videos.length}</span>
+    </div>
+    <div class="flex min-h-0 flex-1 items-center justify-center">
+      <!-- svelte-ignore a11y_media_has_caption -->
+      <video
+        src={dateiQuelle(a) ?? a.url}
+        class="max-h-full max-w-full"
+        controls
+        autoplay
+        playsinline
+      ></video>
+    </div>
+    <div class="flex items-center justify-between px-6 pb-[calc(var(--safe-bottom,0px)+12px)] pt-2 text-white">
+      <button
+        type="button"
+        class="flex size-11 items-center justify-center rounded-full bg-white/10"
+        onclick={() => videoBlaettern(-1)}
+        disabled={videoViewer === 0}
+        aria-label="Vorheriges Video"
+        data-testid="video-viewer-prev"
+      >
+        ‹
+      </button>
+      <span class="text-xs text-white/60">{videoViewer + 1} / {videos.length}</span>
+      <button
+        type="button"
+        class="flex size-11 items-center justify-center rounded-full bg-white/10"
+        onclick={() => videoBlaettern(1)}
+        disabled={videoViewer === videos.length - 1}
+        aria-label="Nächstes Video"
+        data-testid="video-viewer-next"
+      >
+        ›
+      </button>
+    </div>
+  </div>
 {/if}
