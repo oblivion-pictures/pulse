@@ -170,8 +170,9 @@ export function nativeComponents(
       PULSE_VIDEO_REORDER_BUFFER: '128',
       PULSE_AUDIO_REORDER_BUFFER: '4',
       PULSE_AUDIO_NACK: '1',
-      // Patch 0011: wirkt erst ab Fork-Tag pulse11, am gepinnten pulse9 harmlos.
-      PULSE_AUDIO_RED: '1',
+      // OFFEN: PULSE_AUDIO_RED (Patch 0011) steht hier noch NICHT; `bauen.sh`
+      // baut den Fork mit allen Patches, der Schalter wuerde sofort wirken.
+      // Zusammen mit dem Tag-Wechsel auf pulse11 setzen, nach dem Handtest.
       PULSE_FLEXFEC: '1',
       PULSE_FLEXFEC_MEDIA: '10',
       PULSE_FLEXFEC_FEC: '2',

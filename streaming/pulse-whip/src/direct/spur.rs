@@ -4,8 +4,8 @@
 //! **Warum getrennt vom Sender** ([`super`]): das sind die RECHNUNGEN und
 //! Behälter — der Sender selbst ist Lebensdauer, Aushandlung und PC. Die
 //! Stücke hier sind die, die der WHIP-Sender der Sidecars seit je
-//! mitführt (`Bildspur`, `dauer_fuer_takte` dort); sie stehen hier einmal
-//! statt ein zweites Mal je Weg.
+//! mitführt (`Bildspur` dort); sie stehen hier einmal statt ein zweites Mal
+//! je Weg. (Die Ton-Rechnung rundet inzwischen selbst, in `ton.rs`.)
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -16,11 +16,12 @@ use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 use crate::av1::SpurZustand;
 use crate::pacer;
 
-/// Eine Dauer, aus der webrtc-rs **genau** `takte` RTP-Takte macht. Dieselbe
-/// Falle wie im WHIP-Sender (`dauer_fuer_takte` dort): `as u32` schneidet ab,
-/// 1/30 s mal 90000 ergibt in f64 2999,999… und daraus wird 2999 — 20 ms je
-/// Minute Wanderung, ohne dass ein Fehler auftaucht. Die halbe Takt-Zugabe
-/// ist dort gemessen und begründet; hier gilt dieselbe Rechnung für den Ton.
+/// Eine Dauer, aus der webrtc-rs **genau** `takte` RTP-Takte macht. `as u32`
+/// schneidet ab, 1/30 s mal 90000 ergibt in f64 2999,999… und daraus wird
+/// 2999 — 20 ms je Minute Wanderung, ohne dass ein Fehler auftaucht. Die
+/// halbe Takt-Zugabe stammt aus der früheren `dauer_fuer_takte` des
+/// WHIP-Senders (gemessen und begründet im Commit 06b9c905d, Git-Verlauf;
+/// `git log -S dauer_fuer_takte`); die Funktion selbst ist dort entfallen.
 pub fn dauer_fuer_takte(takte: u32, uhr: u32) -> Duration {
     let ns = (f64::from(takte) + 0.5) * 1e9 / f64::from(uhr);
     Duration::from_nanos(ns.round() as u64)

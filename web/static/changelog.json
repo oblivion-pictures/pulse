@@ -2,15 +2,6 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
-      "id": "2026-10-21.4",
-      "date": "2026-10-21",
-      "style": "Sachlich",
-      "title": "Ton",
-      "items": [
-        "Wackelt die Leitung zwischen dem streamenden Rechner und dem Server, gehen einzelne Tonaussetzer nicht mehr verloren: Jedes Tonstück trägt eine Kopie der vorigen mit, und der Server setzt Fehlendes daraus wieder ein. Das wirkt, sobald auch der Server auf dem neuen Stand ist. Bei Pulse selbst folgt das in Kürze, eigene Heimserver brauchen dafür ihr Update."
-      ]
-    },
-    {
       "id": "2026-10-21.3",
       "date": "2026-10-21",
       "style": "Sachlich",
