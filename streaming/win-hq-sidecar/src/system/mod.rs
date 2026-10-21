@@ -5,5 +5,6 @@ pub mod app_name;
 pub mod audio_sessions;
 pub mod codec_probe;
 pub mod dxgi;
+pub mod gpu_lage;
 pub mod hdr;
 pub mod prioritaet;
