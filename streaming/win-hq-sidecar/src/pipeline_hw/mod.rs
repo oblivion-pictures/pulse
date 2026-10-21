@@ -275,6 +275,10 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
     // einen toten Prozess statt einer Fehlermeldung). Am Binding gilt die
     // Zusage für JEDEN Ausgang, auch für später hinzukommende.
     let mut capture = std::mem::ManuallyDrop::new(capture);
+    // Erst hier, wo nichts mehr an einen anderen Weg abgibt: vorher gemeldet,
+    // hielte die Liste ein verworfenes Gerät am Leben und gäbe IHM den
+    // Vorrang. Dasselbe Gerät trägt Skalierer und Encoder.
+    crate::system::prioritaet::geraet(hw.device(), "Aufnahme+Encoder (D3D11)");
     // `_hw`: wird ab hier nicht mehr gelesen, muss aber gebunden bleiben —
     // der Pool trägt die Frames, die noch durch den Loop laufen.
     let _hw = std::mem::ManuallyDrop::new(hw);

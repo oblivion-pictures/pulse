@@ -123,6 +123,11 @@ impl Anpassung {
         self.fenster_start = None;
         self.ruhige_fenster = 0;
     }
+
+    /// Der eingestellte Wert ohne das, was die Regelung draufgelegt hat.
+    pub(super) fn basis(&self) -> Duration {
+        self.basis
+    }
 }
 
 impl Ausgabetakt {
