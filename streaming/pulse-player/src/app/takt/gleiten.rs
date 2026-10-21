@@ -44,6 +44,18 @@
 //! symmetrisch in beide Richtungen bleibt das Nachziehen, was es war: die
 //! Korrektur fuer Bilder, die schneller kommen, als der Anker erlaubt.
 //!
+//! ## Nur waehrend einer Fernsteuerung
+//!
+//! **Eigentuemer-Entscheid 2026-10-21:** die Aenderungen dieses Tages sollen
+//! das Zusehen nicht beruehren. Gleiten gibt es deshalb nur in der
+//! geglaetteten Betriebsart der Fernsteuerung (Haken „Bild sofort zeigen"
+//! aus); beim Zusehen springt der Regler wie vorher ueber
+//! `vorhalt_anwenden`, samt Ruck. Die Weiche steht in
+//! [`super::anpassung`] und nicht hier — dieses Modul gleitet, wohin es
+//! geschickt wird. Dass es beim Zusehen ebenso helfen wuerde, ist gefolgert,
+//! nicht gemessen; der Test `beim_zusehen_springt_der_regler_wie_vorher`
+//! haelt die Grenze fest.
+//!
 //! ## Was NICHT gleitet
 //!
 //! Alles, was jemand ausloest, gilt sofort: ein von Hand gesetzter Wert
@@ -181,6 +193,16 @@ mod tests {
         (termine, uebersprungen, hoechster)
     }
 
+    /// Gleiten gilt nur waehrend einer Fernsteuerung in der geglaetteten
+    /// Betriebsart (Modulkopf) — dort, und nur dort, regelt der Regler mit.
+    fn fern_geglaettet() -> Ausgabetakt {
+        let mut takt = Ausgabetakt::neu(30);
+        takt.fern_sofort_setzen(false);
+        takt.fernsteuerung(true);
+        assert_eq!(takt.vorhalt_ms(), 30);
+        takt
+    }
+
     /// Zwei aufeinanderfolgende Termine liegen nie mehr als 2 ms neben dem
     /// Bildabstand.
     fn kein_sprung(termine: &[Instant]) {
@@ -204,7 +226,7 @@ mod tests {
     /// (uebersprungen > 0), und das naechste steht den ganzen neuen Vorhalt.
     #[test]
     fn eine_reglerstufe_hin_und_zurueck_ruckt_nicht() {
-        let mut takt = Ausgabetakt::neu(30);
+        let mut takt = fern_geglaettet();
         // Im ersten Fenster (0-2 s) 20 zu spaete Bilder → 10/s → Ziel 45.
         // Danach Ruhe; nach drei ruhigen Fenstern geht es auf 30 zurueck.
         let (termine, uebersprungen, hoechster) = lauf(
@@ -224,6 +246,27 @@ mod tests {
             "jedes Bild muss gezeigt worden sein oder noch auf seinen Termin warten"
         );
         kein_sprung(&termine);
+    }
+
+    /// **Die Gegenrichtung: beim Zusehen springt der Regler wie vor dem
+    /// 2026-10-21.** Derselbe Lauf ohne Fernsteuerung verliert Bild-Termine —
+    /// das ist der alte Ruck, und er ist dort gewollt (Modulkopf). Faellt
+    /// dieser Test, gleitet der Regler auch beim Zusehen, und das hat der
+    /// Eigentuemer ausdruecklich nicht gewollt.
+    #[test]
+    fn beim_zusehen_springt_der_regler_wie_vorher() {
+        let mut takt = Ausgabetakt::neu(30);
+        let (_, uebersprungen, hoechster) = lauf(
+            &mut takt,
+            60 * 12,
+            |k| if k == 60 { 20 } else { 0 },
+            |_| Duration::ZERO,
+            |_, _| {},
+        );
+        assert_eq!(hoechster, 45, "der Regler muss wirklich auf 45 gegangen sein");
+        assert_eq!(takt.vorhalt_ziel_ms(), 30, "und wieder zurueck");
+        assert_eq!(takt.regler_stufen(), 2);
+        assert!(uebersprungen > 0, "beim Zusehen setzt eine Stufe den Anker zurueck");
     }
 
     /// **Senken auf einer schwankenden Leitung.** Nur jedes zwanzigste Bild

@@ -1,4 +1,4 @@
-//! Vorrang beim Streamen: Prozess-, Faden- und GPU-Priorität.
+//! Vorrang während einer Fernsteuerung: Prozess-, Faden- und GPU-Priorität.
 //!
 //! **Anlass** (Messung 2026-10-21, Sender: Windows-Rechner einer Medienfirma
 //! mit RTX 2080, `hevc_nvenc`, zwei Bildschirme in Fernsteuerung): `[diag]
@@ -56,11 +56,18 @@
 //!   nicht auf diesen Prozess; ungemessen.
 //! * **REALTIME** und **`HIGH_PRIORITY_CLASS`** — s. 1 und 3.
 //!
-//! **Zuordnung: nur während des Streamens.** [`streamen`] hebt beim Start
-//! des Pipeline-Fadens an, der Wächter setzt Prozess- und GPU-Klasse beim Ende
-//! auf den vorigen Stand zurück — wie Sunshines `streaming_will_stop`. Im
-//! Server-Weg endet der Prozess ohnehin nach `stop`; im Direktmodus lebt er im
+//! **Zuordnung: nur während einer Fernsteuerung** (Eigentümer-Entscheid
+//! 2026-10-21: die Änderungen dieses Tages sollen das normale Streamen nicht
+//! berühren). [`streamen`] legt beim Start des Pipeline-Fadens nur den Wächter
+//! an; gehoben wird erst, wenn [`abgleichen`] — je Takt aus allen drei
+//! Pipeline-Schleifen gerufen — eine laufende Fernsteuerung sieht, und mit
+//! ihrem Ende wieder auf den vorigen Stand gesenkt. Der Wächter senkt beim
+//! Stream-Ende auch dann, wenn die Fernsteuerung noch lief — wie Sunshines
+//! `streaming_will_stop`. Im Direktmodus lebt der Prozess danach im
 //! Wartezustand weiter und soll dort nicht bevorzugt laufen.
+//!
+//! **Jeder Bildschirm ist ein eigener Sidecar-Prozess**, die Klassen hier sind
+//! also je Strom und brauchen keine Zählung über mehrere Pipelines.
 //!
 //! **Fail-soft:** jeder Schritt meldet Ergebnis und Fehlercode; keiner kann
 //! den Start verhindern.
@@ -74,19 +81,14 @@
 use std::sync::Mutex;
 
 use windows::Wdk::Graphics::Direct3D::{
-    D3DKMT_CLOSEADAPTER, D3DKMT_OPENADAPTERFROMLUID, D3DKMT_QUERYADAPTERINFO,
-    D3DKMT_SCHEDULINGPRIORITYCLASS, D3DKMT_SCHEDULINGPRIORITYCLASS_HIGH, D3DKMT_WDDM_2_7_CAPS,
-    D3DKMTCloseAdapter, D3DKMTGetProcessSchedulingPriorityClass, D3DKMTOpenAdapterFromLuid,
-    D3DKMTQueryAdapterInfo, D3DKMTSetProcessSchedulingPriorityClass, KMTQAITYPE_WDDM_2_7_CAPS,
+    D3DKMT_SCHEDULINGPRIORITYCLASS, D3DKMT_SCHEDULINGPRIORITYCLASS_HIGH,
+    D3DKMTGetProcessSchedulingPriorityClass, D3DKMTSetProcessSchedulingPriorityClass,
 };
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_NOT_ALL_ASSIGNED, GetLastError, HANDLE, LUID, NTSTATUS,
 };
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
-use windows::Win32::Graphics::Dxgi::{
-    DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_QUERY_VIDEO_MEMORY_INFO, IDXGIAdapter, IDXGIAdapter3,
-    IDXGIDevice,
-};
+use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::Win32::Security::{
     AdjustTokenPrivileges, LUID_AND_ATTRIBUTES, LookupPrivilegeValueW, SE_INC_BASE_PRIORITY_NAME,
     SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
@@ -94,106 +96,115 @@ use windows::Win32::Security::{
 use windows::Win32::System::Threading::{
     ABOVE_NORMAL_PRIORITY_CLASS, GetCurrentProcess, GetCurrentThread, GetPriorityClass,
     OpenProcessToken, PROCESS_CREATION_FLAGS, SetPriorityClass, SetThreadPriority,
-    THREAD_PRIORITY_ABOVE_NORMAL,
+    THREAD_PRIORITY_ABOVE_NORMAL, THREAD_PRIORITY_NORMAL,
 };
 use windows::core::{Interface, PCWSTR};
+
+use super::gpu_lage;
 
 /// `0` schaltet das ganze Modul ab (A/B-Vergleich), Vorgabe an.
 pub const UMGEBUNG: &str = "PULSE_HQ_PRIORITAET";
 /// Höchstwert von `SetGPUThreadPriority` (Bereich -7..=7), wie Sunshine.
 const GPU_FADEN: i32 = 7;
 
-/// GPU-Klasse vor dem Anheben — gesetzt, sobald [`geraet`] sie gehoben hat.
-/// Ein Wert je Prozess, weil die Klasse am Prozess hängt; der Wächter aus
-/// [`streamen`] nimmt ihn beim Ende heraus und setzt zurück.
-static GPU_VORHER: Mutex<Option<D3DKMT_SCHEDULINGPRIORITYCLASS>> = Mutex::new(None);
+/// Was gerade gehoben ist und wie es vorher war — ein Stand je Prozess, weil
+/// Prozess- und GPU-Klasse am Prozess hängen.
+struct Zustand {
+    gehoben: bool,
+    recht_gemeldet: bool,
+    cpu_vorher: Option<u32>,
+    gpu_vorher: Option<D3DKMT_SCHEDULINGPRIORITYCLASS>,
+    /// Die Geräte, die [`geraet`] gemeldet hat; `SetGPUThreadPriority` hängt
+    /// am Gerät und wird mit der Fernsteuerung an- und abgeschaltet.
+    geraete: Vec<Geraet>,
+}
+
+struct Geraet {
+    dxgi: IDXGIDevice,
+    wofuer: &'static str,
+}
+
+// SAFETY: D3D11-Geräte sind frei-fädig, solange sie nicht mit
+// `D3D11_CREATE_DEVICE_SINGLETHREADED` angelegt wurden — die Aufnahme-Geräte
+// entstehen in `vendor/windows-capture/src/d3d11.rs` nur mit `BGRA_SUPPORT` —,
+// und `SetGPUThreadPriority` ist eine Methode des Geräts, nicht seines
+// Kontexts. Gemeldet wird teils vom Aufnahme-Faden (D3D12-Weg), geschaltet
+// vom Pipeline-Faden.
+unsafe impl Send for Geraet {}
+
+static ZUSTAND: Mutex<Zustand> = Mutex::new(Zustand {
+    gehoben: false,
+    recht_gemeldet: false,
+    cpu_vorher: None,
+    gpu_vorher: None,
+    geraete: Vec::new(),
+});
 
 fn an() -> bool {
     crate::env::flag_default_on(UMGEBUNG)
 }
 
-/// Wächter aus [`streamen`]: setzt beim Fallenlassen zurück.
+/// Wächter aus [`streamen`]: senkt beim Fallenlassen, falls noch gehoben.
 #[must_use = "beim Fallenlassen wird die Priorität zurückgesetzt"]
-pub struct Vorrang {
-    cpu_vorher: Option<u32>,
-}
+pub struct Vorrang(());
 
-/// Prozess und aufrufenden Faden anheben. Auf dem Pipeline-Faden rufen — er
-/// ist zugleich der Taktfaden. `None`, wenn per [`UMGEBUNG`] abgeschaltet.
+/// Wächter für die Dauer eines Stroms anlegen. Auf dem Pipeline-Faden rufen —
+/// er ist zugleich der Taktfaden, und [`abgleichen`] hebt den RUFENDEN Faden.
+/// `None`, wenn per [`UMGEBUNG`] abgeschaltet.
 pub fn streamen() -> Option<Vorrang> {
     if !an() {
         eprintln!("[prioritaet] aus ({UMGEBUNG}=0): Prozess, Faden und GPU bleiben auf Normal");
         return None;
     }
-    eprintln!("[prioritaet] Recht SeIncreaseBasePriority: {}", recht_einschalten());
-    // SAFETY: Pseudo-Handles des eigenen Prozesses/Fadens, nie ungültig.
-    let vorher = unsafe { GetPriorityClass(GetCurrentProcess()) };
-    let cpu_vorher = match unsafe { SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS) } {
-        Ok(()) => {
-            eprintln!("[prioritaet] Prozess: ABOVE_NORMAL (vorher {}) ok", klasse(vorher));
-            (vorher != 0).then_some(vorher)
-        }
-        Err(e) => {
-            eprintln!("[prioritaet] Prozess: ABOVE_NORMAL fehlgeschlagen: {}", fehler(&e));
-            None
-        }
-    };
-    match unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL) } {
-        Ok(()) => eprintln!("[prioritaet] Taktfaden: ABOVE_NORMAL ok"),
-        Err(e) => eprintln!("[prioritaet] Taktfaden: ABOVE_NORMAL fehlgeschlagen: {}", fehler(&e)),
-    }
-    Some(Vorrang { cpu_vorher })
+    eprintln!("[prioritaet] bereit: angehoben wird nur während einer Fernsteuerung");
+    Some(Vorrang(()))
 }
 
 impl Drop for Vorrang {
     fn drop(&mut self) {
-        if let Some(alt) = self.cpu_vorher {
-            let r = unsafe { SetPriorityClass(GetCurrentProcess(), PROCESS_CREATION_FLAGS(alt)) };
-            eprintln!("[prioritaet] zurück: Prozess {} {}", klasse(alt), ergebnis(r));
+        let Ok(mut z) = ZUSTAND.lock() else { return };
+        if z.gehoben {
+            senken(&mut z, "Stream-Ende");
         }
-        let gpu = GPU_VORHER.lock().ok().and_then(|mut g| g.take());
-        if let Some(alt) = gpu {
-            let st = unsafe { D3DKMTSetProcessSchedulingPriorityClass(GetCurrentProcess(), alt) };
-            eprintln!("[prioritaet] zurück: GPU-Klasse {} {}", gpu_klasse(alt), nt(st));
-        }
+        z.geraete.clear();
     }
 }
 
-/// GPU-Stufe für ein D3D11-Gerät: Planungsklasse des Prozesses (einmal je
-/// Strom), `SetGPUThreadPriority` am Gerät, dazu HAGS und Grafikspeicher in
-/// die Logzeile — beides Kandidaten für die Ursache des Hängers.
-pub fn geraet(device: &ID3D11Device, wofuer: &str) {
+/// Je Takt aus den Pipeline-Schleifen (`pipeline_hw`, `pipeline_d3d12`,
+/// `cpu_pipeline`), **nur auf dem Pipeline-Faden**: hebt mit dem Beginn einer
+/// Fernsteuerung an und senkt mit ihrem Ende. Ohne Wechsel ein Vergleich.
+pub fn abgleichen() {
     if !an() {
         return;
     }
-    gpu_klasse_heben();
-    let dxgi: IDXGIDevice = match device.cast() {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("[prioritaet] Gerät {wofuer}: kein IDXGIDevice: {}", fehler(&e));
-            return;
-        }
-    };
-    let faden = unsafe { dxgi.SetGPUThreadPriority(GPU_FADEN) };
-    let adapter = unsafe { dxgi.GetAdapter() }.ok();
-    let desc = adapter.as_ref().and_then(|a| unsafe { a.GetDesc() }.ok());
-    let hags = match desc.as_ref().and_then(|d| hags(d.AdapterLuid)) {
-        Some(true) => "an",
-        Some(false) => "aus",
-        None => "unbekannt",
-    };
-    let speicher = adapter.as_ref().and_then(grafikspeicher).unwrap_or_else(|| "unbekannt".into());
-    eprintln!(
-        "[prioritaet] Gerät {wofuer}: SetGPUThreadPriority({GPU_FADEN}) {}; HAGS {hags}; Grafikspeicher {speicher}",
-        ergebnis(faden),
-    );
+    let fern = crate::remote_input::fern_aktiv();
+    let Ok(mut z) = ZUSTAND.lock() else { return };
+    if fern == z.gehoben {
+        return;
+    }
+    if fern { heben(&mut z) } else { senken(&mut z, "Fernsteuerung beendet") }
 }
 
-fn gpu_klasse_heben() {
-    let Ok(mut vorher) = GPU_VORHER.lock() else { return };
-    if vorher.is_some() {
-        return; // in diesem Strom schon gehoben
+fn heben(z: &mut Zustand) {
+    z.gehoben = true;
+    if !z.recht_gemeldet {
+        z.recht_gemeldet = true;
+        eprintln!("[prioritaet] Recht SeIncreaseBasePriority: {}", recht_einschalten());
     }
+    // SAFETY: Pseudo-Handles des eigenen Prozesses/Fadens, nie ungültig.
+    let vorher = unsafe { GetPriorityClass(GetCurrentProcess()) };
+    z.cpu_vorher = match unsafe { SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS) } {
+        Ok(()) => {
+            eprintln!("[prioritaet] Fernsteuerung: Prozess ABOVE_NORMAL (vorher {}) ok", klasse(vorher));
+            (vorher != 0).then_some(vorher)
+        }
+        Err(e) => {
+            eprintln!("[prioritaet] Fernsteuerung: Prozess ABOVE_NORMAL fehlgeschlagen: {}", fehler(&e));
+            None
+        }
+    };
+    let faden = unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL) };
+    eprintln!("[prioritaet] Fernsteuerung: Taktfaden ABOVE_NORMAL {}", ergebnis(faden));
     let mut alt = D3DKMT_SCHEDULINGPRIORITYCLASS::default();
     // SAFETY: Pseudo-Handle des eigenen Prozesses; `alt` ist ein gültiges Ziel.
     let gelesen = unsafe { D3DKMTGetProcessSchedulingPriorityClass(GetCurrentProcess(), &mut alt) };
@@ -201,10 +212,66 @@ fn gpu_klasse_heben() {
         D3DKMTSetProcessSchedulingPriorityClass(GetCurrentProcess(), D3DKMT_SCHEDULINGPRIORITYCLASS_HIGH)
     };
     let war = if gelesen.is_ok() { gpu_klasse(alt) } else { "unbekannt" };
-    eprintln!("[prioritaet] GPU-Planungsklasse: HIGH (vorher {war}) {}", nt(st));
-    if st.is_ok() && gelesen.is_ok() {
-        *vorher = Some(alt);
+    eprintln!("[prioritaet] Fernsteuerung: GPU-Planungsklasse HIGH (vorher {war}) {}", nt(st));
+    z.gpu_vorher = (st.is_ok() && gelesen.is_ok()).then_some(alt);
+    for g in &z.geraete {
+        geraet_schalten(g, GPU_FADEN);
     }
+}
+
+fn senken(z: &mut Zustand, warum: &str) {
+    z.gehoben = false;
+    if let Some(alt) = z.cpu_vorher.take() {
+        let r = unsafe { SetPriorityClass(GetCurrentProcess(), PROCESS_CREATION_FLAGS(alt)) };
+        eprintln!("[prioritaet] zurück ({warum}): Prozess {} {}", klasse(alt), ergebnis(r));
+    }
+    let faden = unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL) };
+    eprintln!("[prioritaet] zurück ({warum}): Taktfaden NORMAL {}", ergebnis(faden));
+    if let Some(alt) = z.gpu_vorher.take() {
+        let st = unsafe { D3DKMTSetProcessSchedulingPriorityClass(GetCurrentProcess(), alt) };
+        eprintln!("[prioritaet] zurück ({warum}): GPU-Klasse {} {}", gpu_klasse(alt), nt(st));
+    }
+    for g in &z.geraete {
+        geraet_schalten(g, 0);
+    }
+}
+
+fn geraet_schalten(g: &Geraet, wert: i32) {
+    let r = unsafe { g.dxgi.SetGPUThreadPriority(wert) };
+    eprintln!("[prioritaet] Gerät {}: SetGPUThreadPriority({wert}) {}", g.wofuer, ergebnis(r));
+}
+
+/// Ein D3D11-Gerät für die GPU-Stufe anmelden; dazu HAGS und Grafikspeicher in
+/// die Logzeile — beides Kandidaten für die Ursache des Hängers, und beim
+/// Start gemeldet, auch wenn (noch) nicht gesteuert wird. Läuft schon eine
+/// Fernsteuerung, wird das Gerät sofort gehoben.
+pub fn geraet(device: &ID3D11Device, wofuer: &'static str) {
+    if !an() {
+        return;
+    }
+    let dxgi: IDXGIDevice = match device.cast() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("[prioritaet] Gerät {wofuer}: kein IDXGIDevice: {}", fehler(&e));
+            return;
+        }
+    };
+    let adapter = unsafe { dxgi.GetAdapter() }.ok();
+    let desc = adapter.as_ref().and_then(|a| unsafe { a.GetDesc() }.ok());
+    let hags = match desc.as_ref().and_then(|d| gpu_lage::hags(d.AdapterLuid)) {
+        Some(true) => "an",
+        Some(false) => "aus",
+        None => "unbekannt",
+    };
+    let speicher =
+        adapter.as_ref().and_then(gpu_lage::grafikspeicher).unwrap_or_else(|| "unbekannt".into());
+    eprintln!("[prioritaet] Gerät {wofuer}: HAGS {hags}; Grafikspeicher {speicher}");
+    let Ok(mut z) = ZUSTAND.lock() else { return };
+    let g = Geraet { dxgi, wofuer };
+    if z.gehoben {
+        geraet_schalten(&g, GPU_FADEN);
+    }
+    z.geraete.push(g);
 }
 
 /// Schaltet das Recht ein, falls es im Token steht. Antwort für die Logzeile.
@@ -237,47 +304,6 @@ fn recht_einschalten() -> String {
     };
     let _ = unsafe { CloseHandle(token) };
     antwort
-}
-
-/// HAGS (hardwarebeschleunigte GPU-Planung) an diesem Adapter — wie Sunshine
-/// und OBS über `D3DKMTQueryAdapterInfo(KMTQAITYPE_WDDM_2_7_CAPS)`.
-fn hags(luid: LUID) -> Option<bool> {
-    let mut offen = D3DKMT_OPENADAPTERFROMLUID { AdapterLuid: luid, hAdapter: 0 };
-    // SAFETY: Strukturen leben über die Aufrufe; der Adapter wird geschlossen.
-    if unsafe { D3DKMTOpenAdapterFromLuid(&mut offen) }.is_err() {
-        return None;
-    }
-    let mut caps = D3DKMT_WDDM_2_7_CAPS::default();
-    let mut frage = D3DKMT_QUERYADAPTERINFO {
-        hAdapter: offen.hAdapter,
-        Type: KMTQAITYPE_WDDM_2_7_CAPS,
-        pPrivateDriverData: (&raw mut caps).cast(),
-        PrivateDriverDataSize: size_of::<D3DKMT_WDDM_2_7_CAPS>() as u32,
-    };
-    let ok = unsafe { D3DKMTQueryAdapterInfo(&mut frage) }.is_ok();
-    let _ = unsafe { D3DKMTCloseAdapter(&D3DKMT_CLOSEADAPTER { hAdapter: offen.hAdapter }) };
-    ok.then(|| hags_an(unsafe { caps.Anonymous.Value }))
-}
-
-/// Bit 1 von `D3DKMT_WDDM_2_7_CAPS` ist `HwSchEnabled` (Bit 0 `HwSchSupported`,
-/// Bit 2 `HwSchEnabledByDefault`; `d3dkmthk.h`).
-fn hags_an(caps: u32) -> bool {
-    caps & 0b10 != 0
-}
-
-/// Belegung dieses Prozesses gegen das Budget, das Windows ihm im lokalen
-/// Grafikspeicher zugesteht. Ein Budget weit unter der Kartengröße heißt: ein
-/// anderes Programm hält den Speicher.
-fn grafikspeicher(adapter: &IDXGIAdapter) -> Option<String> {
-    let a3: IDXGIAdapter3 = adapter.cast().ok()?;
-    let gesamt = unsafe { adapter.GetDesc() }.ok()?.DedicatedVideoMemory >> 20;
-    let mut info = DXGI_QUERY_VIDEO_MEMORY_INFO::default();
-    unsafe { a3.QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mut info) }.ok()?;
-    Some(format!(
-        "{} MiB belegt, Budget {} MiB, Karte {gesamt} MiB",
-        info.CurrentUsage >> 20,
-        info.Budget >> 20
-    ))
 }
 
 fn fehler(e: &windows::core::Error) -> String {
@@ -322,14 +348,6 @@ fn gpu_klasse(k: D3DKMT_SCHEDULINGPRIORITYCLASS) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn hags_bit() {
-        assert!(!hags_an(0b001), "nur unterstützt");
-        assert!(hags_an(0b010));
-        assert!(hags_an(0b111));
-        assert!(!hags_an(0b100), "nur Vorgabe");
-    }
 
     #[test]
     fn klassennamen() {

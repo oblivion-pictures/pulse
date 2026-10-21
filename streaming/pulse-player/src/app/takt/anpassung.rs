@@ -4,10 +4,11 @@
 //! Kindmodul von [`super`] wie [`super::fernsteuerung`]: es fasst `vorhalt` an,
 //! und der ist privat.
 //!
-//! **Seit dem 2026-10-21 setzt der Regler nur noch das Ziel**, der Vorhalt
-//! gleitet dorthin (s. [`super::gleiten`], dort auch die Messung, die dazu
-//! gefuehrt hat). Gerechnet wird deshalb ueberall hier mit `vorhalt_ziel`, nicht
-//! mit dem Zwischenstand.
+//! **Seit dem 2026-10-21 setzt der Regler waehrend einer Fernsteuerung nur
+//! noch das Ziel**, der Vorhalt gleitet dorthin (s. [`super::gleiten`], dort
+//! auch die Messung, die dazu gefuehrt hat). Beim Zusehen springt er wie
+//! vorher. Gerechnet wird ueberall hier mit `vorhalt_ziel`, nicht mit dem
+//! Zwischenstand — beim Springen sind beide gleich.
 //!
 //! ## Warum nicht einfach ein groesserer fester Wert
 //!
@@ -212,7 +213,19 @@ impl Ausgabetakt {
             // setzt den Anker zurueck, und jede Stufe ruckte (s. `gleiten`).
             // Die Zeile unten bleibt wortgleich, damit Auswertungen alter Logs
             // weiter zaehlen; sie nennt seither das Ziel, nicht den Moment.
-            self.ziel_setzen(ziel_ms);
+            //
+            // **Gleiten nur waehrend einer Fernsteuerung** (Eigentuemer-
+            // Entscheid 2026-10-21: die Aenderungen dieses Tages sollen das
+            // Zusehen nicht beruehren). Beim Zusehen springt der Regler wie
+            // vorher ueber `vorhalt_anwenden` — samt Ankerverlust, also
+            // bewusst mit dem alten Ruck. Wer das aendern will, nimmt die
+            // Bedingung heraus; `gleiten` selbst kennt den Unterschied nicht.
+            if self.vorhalt_vor_fern.is_some() {
+                self.ziel_setzen(ziel_ms);
+            } else {
+                self.vorhalt_anwenden(ziel_ms);
+                self.regler_stufen += 1;
+            }
             eprintln!(
                 "[takt] Vorhalt {ist_ms} -> {ziel_ms} ms ({je_sekunde:.1} zu spaete Bilder/s)"
             );
@@ -260,7 +273,12 @@ mod tests {
     /// hinaus, solange die Bildrate klein ist.
     #[test]
     fn der_regler_rechnet_mit_dem_ziel() {
-        let (mut takt, mut jetzt) = neu_mit_fenster(30);
+        // Gleiten gibt es nur in der geglaetteten Fernsteuerung (`gleiten`).
+        let mut takt = Ausgabetakt::neu(30);
+        takt.fern_sofort_setzen(false);
+        takt.fernsteuerung(true);
+        let mut jetzt = Instant::now();
+        takt.anpassen(jetzt); // erstes Fenster oeffnen, NACH `fernsteuerung`
         fenster(&mut takt, &mut jetzt, 20);
         assert_eq!(takt.vorhalt_ms(), 30, "ohne Bilder kein Uebergang");
         fenster(&mut takt, &mut jetzt, 20);

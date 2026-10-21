@@ -315,14 +315,15 @@ impl Ausgabetakt {
     ///
     /// **Nur fuer Aenderungen, die jemand ausloest.** Der Regler sprang bis zum
     /// 2026-10-21 auf demselben Weg und ruckte damit sichtbar, rund 7-mal je
-    /// Minute; seitdem gleitet er (s. [`gleiten`]).
+    /// Minute; seitdem gleitet er waehrend einer Fernsteuerung (s.
+    /// [`gleiten`]). Beim Zusehen springt er weiter hierueber.
     pub fn setze_vorhalt(&mut self, ms: u32) {
         if let Some(neu) = self.vorhalt_anwenden(ms) {
             // NUR auf diesem Weg: ein von Hand gesetzter Wert ist ein neuer
             // Wunsch und damit die neue Untergrenze der Regelung. Die Regelung
-            // selbst setzt seit dem 2026-10-21 nur ihr Ziel
-            // (`gleiten::ziel_setzen`); davor ging sie ueber
-            // `vorhalt_anwenden` an dieser Zeile vorbei.
+            // selbst geht ueber `vorhalt_anwenden` (beim Zusehen) oder setzt
+            // nur ihr Ziel (`gleiten::ziel_setzen`, waehrend einer
+            // Fernsteuerung) — in beiden Faellen an dieser Zeile vorbei.
             self.anpassung.basis_setzen(neu);
         }
     }
@@ -337,9 +338,8 @@ impl Ausgabetakt {
     /// Stand behalten. Der erste Anlauf loeste das, indem die Regelung ihre
     /// Felder um den Aufruf herum sicherte und zurueckschrieb — das
     /// funktionierte, verlangte aber, dass jedes kuenftige Feld in diese
-    /// Rettung aufgenommen wird. Seitdem die Regelung gleitet ([`gleiten`]),
-    /// ist `setze_vorhalt` der einzige Aufrufer. Die Trennung ist geblieben,
-    /// noetig ist sie nicht mehr.
+    /// Rettung aufgenommen wird. Die Regelung ruft hier weiter auf, aber nur
+    /// beim Zusehen; waehrend einer Fernsteuerung gleitet sie ([`gleiten`]).
     fn vorhalt_anwenden(&mut self, ms: u32) -> Option<Duration> {
         let neu = Duration::from_millis(u64::from(ms.min(VORHALT_MAX_MS)));
         // Ein laufender Regler-Uebergang endet hier in jedem Fall: ein von Hand

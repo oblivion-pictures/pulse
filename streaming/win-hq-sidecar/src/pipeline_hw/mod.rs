@@ -332,6 +332,8 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
         if stop_rx.try_recv().is_ok() {
             break;
         }
+        // Vorrang nur während einer Fernsteuerung (`system::prioritaet`).
+        crate::system::prioritaet::abgleichen();
 
         // Warten (Tick-Raster beim Zusehen, Ankunft bei Fernsteuerung) und
         // die Capture-Queue leeren — samt Begründung in [`warten`].

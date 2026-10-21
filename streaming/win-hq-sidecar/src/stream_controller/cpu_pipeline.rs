@@ -183,6 +183,8 @@ pub(crate) fn run_cpu_pipeline(params: StartParams, stop_rx: Receiver<()>) -> Re
             if stop_rx.try_recv().is_ok() {
                 break;
             }
+            // Vorrang nur während einer Fernsteuerung (`system::prioritaet`).
+            crate::system::prioritaet::abgleichen();
 
             // Bis zum nächsten Tick warten (High-Res-Sleep auf Win10+/Rust).
             let planned = next_tick;

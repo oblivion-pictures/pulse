@@ -251,6 +251,8 @@ pub fn run(params: StartParams, stop_rx: Receiver<()>, codec: VideoCodec) -> Res
         if stop_rx.try_recv().is_ok() {
             break;
         }
+        // Vorrang nur während einer Fernsteuerung (`system::prioritaet`).
+        crate::system::prioritaet::abgleichen();
 
         let planned = next_tick;
         let now = Instant::now();
