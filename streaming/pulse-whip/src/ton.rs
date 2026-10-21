@@ -83,17 +83,8 @@ impl TonSpur {
         Self::mit_start(opus, seq, ts)
     }
 
-    #[cfg(test)]
-    pub(crate) fn neu_mit_start(opus: RTCRtpCodecCapability, seq: u16, ts: u32) -> Self {
-        Self::mit_start(opus, seq, ts)
-    }
-
     fn mit_start(opus: RTCRtpCodecCapability, seq: u16, ts: u32) -> Self {
-        let opus = Arc::new(TrackLocalStaticRTP::new(
-            opus,
-            "audio".to_owned(),
-            "pulse-hq".to_owned(),
-        ));
+        let opus = rtp_spur(opus);
         Self {
             zustand: Mutex::new(Zustand { seq, ts, aktiv: Arc::clone(&opus), red: None }),
             opus,
@@ -114,25 +105,23 @@ impl TonSpur {
     /// Umstellen des Zustands ginge ein Opus-Paket an die schon geloeste Spur
     /// und damit verloren.
     pub async fn nach_aushandlung(&self, sender: &RTCRtpSender, kopien: u8) -> Result<TonArt> {
+        if kopien == 0 {
+            return Ok(TonArt::Opus);
+        }
         let codecs = sender.get_parameters().await.rtp_parameters.codecs;
         let finde = |mime: &str| {
             codecs
                 .iter()
                 .find(|c| c.capability.mime_type.eq_ignore_ascii_case(mime))
         };
-        let (Some(red), Some(opus), true) = (finde(MIME_TYPE_RED), finde(MIME_TYPE_OPUS), kopien > 0)
-        else {
+        let (Some(red), Some(opus)) = (finde(MIME_TYPE_RED), finde(MIME_TYPE_OPUS)) else {
             return Ok(TonArt::Opus);
         };
         let opus_pt = opus.payload_type;
         let kopien = kopien.min(KOPIEN_MAX);
         // Die Fassung aus der Antwort: bindet exakt, auch wenn der Server eine
         // andere fmtp-Zeile nennt als unser Angebot.
-        let red_spur = Arc::new(TrackLocalStaticRTP::new(
-            red.capability.clone(),
-            "audio".to_owned(),
-            "pulse-hq".to_owned(),
-        ));
+        let red_spur = rtp_spur(red.capability.clone());
         sender
             .replace_track(Some(Arc::clone(&red_spur) as Arc<dyn TrackLocal + Send + Sync>))
             .await
@@ -183,6 +172,11 @@ impl TonSpur {
         };
         (paket, Arc::clone(&z.aktiv))
     }
+}
+
+/// Beide Spuren (Opus und RED) mit denselben Kennungen.
+fn rtp_spur(fassung: RTCRtpCodecCapability) -> Arc<TrackLocalStaticRTP> {
+    Arc::new(TrackLocalStaticRTP::new(fassung, "audio".to_owned(), "pulse-hq".to_owned()))
 }
 
 #[cfg(test)]

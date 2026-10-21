@@ -339,8 +339,9 @@ impl WhipSender {
         // (`av1::SpurZustand::zeitstempel`), nicht aus einer Dauer.
         let frame_duration = Duration::from_secs_f64(1.0 / f64::from(fps));
 
-        // Baut die Media-Engine so, dass im Angebot GENAU unsere beiden
-        // Fassungen stehen (Begruendung und Messung im Kopf von [`sdp`]).
+        // Baut die Media-Engine so, dass im Angebot GENAU unsere Fassungen
+        // stehen: Bild, Opus und mit `kopien > 0` RED (Begruendung und Messung
+        // im Kopf von [`sdp`]).
         let audio_cap = sdp::opus_capability();
         // Eine Zahl für Angebot und Nachprüfung (`nach_aushandlung`).
         let kopien = pulse_whip::red::kopien_aus_umgebung();
