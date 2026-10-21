@@ -326,6 +326,10 @@ services:
       # Patch 0009 (2026-10-15), wirksam ab Bild `1.19.1-pulse9`; ebenso 1:1
       # mit infra/prod/docker-compose.yml, Begruendung dort.
       PULSE_AUDIO_NACK: "1"
+      # Patch 0011 (2026-10-21), wirksam ab Bild `1.19.1-pulse11` (am gepinnten
+      # `pulse9` wirkungslos); ebenso 1:1 mit infra/prod/docker-compose.yml,
+      # Begruendung dort.
+      PULSE_AUDIO_RED: "1"
       # Muss 1:1 mit infra/prod/docker-compose.yml übereinstimmen — sonst
       # testet man gegen einen Stand, den es in Produktion nicht gibt. Volle
       # Begründung der Werte dort.

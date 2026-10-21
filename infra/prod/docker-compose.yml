@@ -506,6 +506,15 @@ services:
       # NACK 94-98 % der Bildverluste rettete). Ausgehandelt nur, wo der
       # Zuschauer `nack` fuer Opus anbietet. Begruendung im Kopf des Patches.
       PULSE_AUDIO_NACK: "1"
+      # Patch 0011 (2026-10-21), wirksam ab Bild `1.19.1-pulse11`; am noch
+      # gepinnten `pulse9` ist die Variable wirkungslos (ungesetzt/unbekannt =
+      # Verhalten wie Upstream), darum darf sie schon vorher stehen. Ton-Reserve
+      # am EINGANG (WHIP): der Server nimmt `audio/red` (RFC 2198) an, jedes
+      # Paket traegt die letzten mit, ein fehlendes Opus-Paket wird aus dem
+      # naechsten wieder eingesetzt, VOR dem Umordnungspuffer. Die Sender
+      # bieten RED an und schalten nur um, wenn die Antwort es enthaelt.
+      # Zuschauer sehen weiter nur Opus. Begruendung im Kopf des Patches.
+      PULSE_AUDIO_RED: "1"
       # FlexFEC-Paritaet auf dem WHEP-Ausgang. **Bedingung dafuer, dass ein
       # Verlust ueberlebt wird** — nicht bloss eine Verbesserung: ein
       # Vollbild-Strom heilt zwar am naechsten Vollbild byte-perfekt, aber der
