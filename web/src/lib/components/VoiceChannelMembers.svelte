@@ -101,6 +101,14 @@ import { Button } from '$lib/components/ui/button';
     }
   }
 
+  // Kachel mit Sprech-Rahmen nur auf Handy und Tablet. Am Rechner wollte der
+  // User die schlichte Zeile von vorher zurück (2026-10-22), dort zeigen nur
+  // der Sprech-Ping am Avatar und der fette Name, wer spricht.
+  const KACHEL =
+    'handy:rounded-lg tablet:rounded-lg handy:ring-1 tablet:ring-1 handy:transition-[background,box-shadow,color] tablet:transition-[background,box-shadow,color] handy:duration-150 tablet:duration-150';
+  const KACHEL_SPRICHT =
+    'handy:bg-primary/10 tablet:bg-primary/10 handy:text-text-bright tablet:text-text-bright handy:ring-primary/40 tablet:ring-primary/40 handy:hover:bg-primary/15 tablet:hover:bg-primary/15 handy:data-[state=open]:bg-bg-hover tablet:data-[state=open]:bg-bg-hover';
+
   const streamingSet = $derived(new Set(streamingUserIds));
   const camSet = $derived(new Set(camUserIds));
   const speakingSet = $derived(new Set(speakingUserIds));
@@ -137,9 +145,9 @@ import { Button } from '$lib/components/ui/button';
         <button
           {...props}
           type="button"
-          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm ring-1 transition-[background,box-shadow,color] duration-150 {isSpeaking
-            ? 'bg-primary/10 text-text-bright ring-primary/40 hover:bg-primary/15'
-            : 'ring-transparent text-text-muted hover:bg-bg-hover hover:text-text-base'} data-[state=open]:bg-bg-hover"
+          class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm text-text-muted ring-transparent hover:bg-bg-hover hover:text-text-base data-[state=open]:bg-bg-hover {KACHEL} {isSpeaking
+            ? KACHEL_SPRICHT
+            : ''}"
           data-testid="voice-presence-member"
           data-user-id={uid}
           data-speaking={isSpeaking}

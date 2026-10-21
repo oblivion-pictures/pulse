@@ -106,9 +106,11 @@
           : voice.cameraTracks.find((ct) => userIdFromIdentity(ct.identity) === uid)?.identity}
     <!-- py-1: dem Sprech-Ping (Avatare, zwei animierte Ringe) einen Hauch
          Raum geben — ohne ihn guckte der erste Kachel-Rand oben in den
-         Kanalnamen (Nutzerbefund 2026-10-19 „steht oben rein“). -->
+         Kanalnamen (Nutzerbefund 2026-10-19 „steht oben rein“). Nur auf
+         Handy und Tablet: am Rechner gibt es keine Kacheln (s.
+         VoiceChannelMembers), dort bleibt die Liste dicht wie vorher. -->
     <div
-      class="ml-4 flex flex-col gap-0.5 py-1"
+      class="ml-4 flex flex-col handy:gap-0.5 tablet:gap-0.5 handy:py-1 tablet:py-1"
       data-testid="voice-presence-list"
       data-channel-id={channel.id}
     >
