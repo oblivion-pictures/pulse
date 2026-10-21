@@ -16,6 +16,8 @@ import sys
 
 import pytest
 
+from _gnu_sed import GRUND, gnu_sed_vorhanden
+
 if sys.platform == "win32":
     pytest.skip("Shell-Skripte des Containers — Linux-CI-Sache", allow_module_level=True)
 
@@ -258,6 +260,13 @@ def test_env_sh_bestand_unveraendert():
 
 # ── 09-init-caddy.sh: Admin-Mail optional ─────────────────────────────────
 
+# Ohne Admin-Mail löscht der Block die `email`-Zeile per `sed -i '/…/d'` —
+# GNU-Form ohne Backup-Suffix, an der BSD-sed (macOS) scheitert. Das Skript ist
+# richtig (es läuft im Linux-Container); der Test fährt es auf dem Host und
+# braucht dafür dasselbe sed (s. `_gnu_sed.py`). Je Test, nicht fürs Modul:
+# mit gesetzter Mail läuft kein `sed`, diese Prüfung bleibt auch auf dem Mac.
+braucht_gnu_sed = pytest.mark.skipif(not gnu_sed_vorhanden(), reason=GRUND)
+
 
 def _caddy(tmp_path, env_sh: str | None) -> tuple[subprocess.CompletedProcess, str]:
     ziel = tmp_path / "Caddyfile"
@@ -271,6 +280,7 @@ def _caddy(tmp_path, env_sh: str | None) -> tuple[subprocess.CompletedProcess, s
     return r, ziel.read_text(encoding="utf-8")
 
 
+@braucht_gnu_sed
 def test_caddy_ohne_admin_mail_hat_keine_leere_email_zeile(tmp_path):
     r, text = _caddy(tmp_path, "export PULSE_ADMIN_EMAIL=''\n")
     assert r.returncode == 0, r.stderr
@@ -285,6 +295,7 @@ def test_caddy_nimmt_die_mail_aus_env_sh(tmp_path):
     assert "    email {$PULSE_ADMIN_EMAIL}" in text.splitlines()
 
 
+@braucht_gnu_sed
 def test_caddy_ohne_env_sh_stirbt_nicht(tmp_path):
     r, text = _caddy(tmp_path, None)
     assert r.returncode == 0, r.stderr
