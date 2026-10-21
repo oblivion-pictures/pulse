@@ -124,3 +124,54 @@ fn nachforderungen_fremde_ssrc_und_stille() {
     // Danach wieder still: keine weitere Zeile, auch nach dem Regelabstand.
     assert_eq!(st.rtcp_zu(Spur::Bild, &[], t0 + s(45.0)), None);
 }
+
+/// Ein Bericht mit LSR/DLSR: Laufzeit `rtt_ms` bei `ntp` als Empfangszeit.
+fn rr_rtt(seq: u32, ntp: u32, rtt_ms: u32) -> Box<dyn Packet + Send + Sync> {
+    let dlsr = 65_536 / 2; // der Server wartete eine halbe Sekunde
+    let lsr = ntp.wrapping_sub(dlsr).wrapping_sub(rtt_ms * 65_536 / 1000);
+    Box::new(ReceiverReport {
+        reports: vec![ReceptionReport {
+            ssrc: SSRC,
+            last_sequence_number: seq,
+            last_sender_report: lsr,
+            delay: dlsr,
+            ..Default::default()
+        }],
+        ..Default::default()
+    })
+}
+
+#[test]
+fn laufzeit_steht_in_der_zeile() {
+    let t0 = Instant::now();
+    let st = Strecke::neu_ab(t0);
+    let ntp = 0x4000_0000;
+    for k in 0..10u32 {
+        let rtt = if k == 4 { 52 } else { 31 };
+        let jetzt_ntp = ntp + k * 65_536;
+        let rr = rr_rtt(100 * k, jetzt_ntp, rtt);
+        let z = st.rtcp_mit_uhr(Spur::Bild, &[rr], t0 + s(f64::from(k)), jetzt_ntp);
+        assert_eq!(z, None, "noch keine 10 s");
+    }
+    let z = st.rtcp_mit_uhr(Spur::Bild, &[rr_rtt(1000, ntp, 33)], t0 + s(10.0), ntp).unwrap();
+    let erwartet = "Ton: keine Rückmeldung; Laufzeit 33 ms (Grundwert 31 ms, Stau bis +21 ms)";
+    assert!(z.ends_with(erwartet), "{z}");
+}
+
+#[test]
+fn stau_meldung_geht_vor_und_die_zeile_folgt() {
+    let t0 = Instant::now();
+    let st = Strecke::neu_ab(t0);
+    let ntp = 0x4000_0000;
+    st.rtcp_mit_uhr(Spur::Ton, &[rr_rtt(10, ntp, 30)], t0, ntp);
+    let mut zeilen = Vec::new();
+    for k in 1..=13u32 {
+        let rr = rr_rtt(10 + k, ntp, 180);
+        zeilen.extend(st.rtcp_mit_uhr(Spur::Ton, &[rr], t0 + s(f64::from(k)), ntp));
+    }
+    assert_eq!(zeilen[0], "Leitung eng (Stau): Laufzeit 180 ms, 150 ms über dem Grundwert");
+    // Die Regel-Zeile kam danach trotzdem, mit der Laufzeit drin.
+    assert!(zeilen[1].starts_with("Strecke zum Server (1"), "{zeilen:?}");
+    assert!(zeilen[1].contains("Stau bis +150 ms"), "{zeilen:?}");
+    assert_eq!(zeilen.len(), 2, "{zeilen:?}");
+}
