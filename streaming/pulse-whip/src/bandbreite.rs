@@ -1,23 +1,34 @@
 //! REMB auswerten: was die Gegenseite an Bandbreite schätzt — gemeldet statt
 //! weggeworfen.
 //!
-//! **Was das ist und was nicht.** MediaMTX (pion) schickt über den
-//! RTCP-Rückkanal `goog-remb`-Pakete mit seiner Empfangs-Bandbreitenschätzung.
-//! Bis 2026-08-13 wurden sie gelesen und verworfen — der Sender fuhr seine
-//! Bitrate starr über die ganze Sitzung, und eine zu enge Leitung zahlte man
-//! als wachsende Netz-Warteschlange (= schleichende Latenz), ohne dass
-//! irgendwo eine Zahl stand. Diese Wacht macht daraus eine **Meldung**:
+//! **Es kommt keins an (Befund 2026-10-21).** Hier stand, MediaMTX (pion)
+//! schicke über den RTCP-Rückkanal `goog-remb`-Pakete mit seiner
+//! Empfangs-Bandbreitenschätzung. Das tut es am WHIP-Eingang nicht: in 373
+//! Sender-Berichten der Cloud (60 Tage) stand keine einzige Zeile
+//! „REMB: Gegenseite schätzt", und `registerInterceptors` (MediaMTX 1.19.1)
+//! meldet keinen REMB-Erzeuger an. Auch der Player schickt keins (kein
+//! REMB im `pulse-player`). Die Wacht bleibt für eine Gegenseite, die es
+//! tut; den Stau auf der Strecke zum Server misst seither [`crate::stau`] aus
+//! der Laufzeit der Empfängerberichte.
+//!
+//! **Was das ist und was nicht.** Bis 2026-08-13 wurden REMB-Pakete gelesen
+//! und verworfen — der Sender fuhr seine Bitrate starr über die ganze
+//! Sitzung, und eine zu enge Leitung zahlte man als wachsende
+//! Netz-Warteschlange (= schleichende Latenz), ohne dass irgendwo eine Zahl
+//! stand. Diese Wacht macht daraus eine **Meldung**:
 //! ein `bandwidth_low`-Event samt Schätzung, wenn die Leitung anhaltend unter
 //! dem Ziel liegt, und `bandwidth_ok`, wenn sie sich erholt.
 //!
-//! **Bewusst KEINE automatische Bitraten-Anpassung.** FFmpeg legt bei den
-//! Hardware-Encodern (NVENC/AMF) die Rate beim Öffnen fest und bietet keinen
-//! Laufzeit-Reconfigure an — eine echte Adaption hieße Encoder-Neubau samt
-//! IDR und sichtbarem Ruckler und gehört als eigenes, gemessenes Vorhaben
-//! angegangen. Die Meldung hier ist die Vorstufe: der Client kann darauf
-//! reagieren (Hinweis an den Nutzer, Neustart mit kleinerer Rate), und die
-//! Messakte des Zwei-Geräte-Tests bekommt erstmals die Zahl, an der eine
-//! Adaption später zu beurteilen wäre.
+//! **Bewusst KEINE automatische Bitraten-Anpassung.** Bei NVENC nimmt FFmpeg
+//! eine geänderte Rate zwar zur Laufzeit an, erzwingt dabei aber jedes Mal
+//! ein IDR (n8.1 `libavcodec/nvenc.c`, `reconfig_encoder`, Z. 2974-3007; so
+//! nutzt es `win-hq-sidecar/src/encode/fern_vbv.rs`). Hier stand, die Rate
+//! sei nach dem Öffnen fest — für NVENC stimmte das nicht; AMF ist nicht
+//! nachgeprüft. Eine echte Adaption hieße also ein Vollbild je Änderung und
+//! gehört als eigenes, gemessenes Vorhaben angegangen. Die Meldung hier ist
+//! die Vorstufe: der Client kann darauf reagieren (Hinweis an den Nutzer,
+//! Neustart mit kleinerer Rate), und die Messakte des Zwei-Geräte-Tests
+//! bekommt erstmals die Zahl, an der eine Adaption später zu beurteilen wäre.
 //!
 //! **Hysterese, keine Momentaufnahme.** REMB flattert; gemeldet wird erst,
 //! wenn die Schätzung [`ENG_DAUER`] lang ununterbrochen unter

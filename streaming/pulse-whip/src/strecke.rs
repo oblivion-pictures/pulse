@@ -48,6 +48,8 @@
 //!
 //! **Was diese Datei NICHT tut.** Sie entscheidet nichts und meldet kein
 //! Ereignis — sie macht eine Zeile fürs Log (`sidecar.log`, Diagnose-Upload).
+//! Seit dem 2026-10-21 trägt die Zeile auch die Laufzeit hin und zurück, und
+//! ein anhaltender Stau bekommt eine eigene Zeile ([`crate::stau`]).
 //! Ins Log geht sie höchstens alle [`ZEILEN_ABSTAND`]; tritt Verlust auf,
 //! früher, aber nie öfter als alle [`VERLUST_ABSTAND`]. Je Sekunde eine Zeile
 //! wäre über eine Stream-Stunde 3600 Zeilen, die den 512-KiB-Ausschnitt des
@@ -58,13 +60,15 @@
 //! Abschnitt" stellt sich ohne Server nicht.
 
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use webrtc::rtcp::packet::Packet;
 use webrtc::rtcp::receiver_report::ReceiverReport;
 use webrtc::rtcp::reception_report::ReceptionReport;
 use webrtc::rtcp::transport_feedbacks::transport_layer_nack::TransportLayerNack;
 use webrtc::rtp_transceiver::rtp_sender::RTCRtpSender;
+
+use crate::stau::{self, StauWacht};
 
 /// Regeltakt der Zeile — auch ohne Verlust, damit „0 verloren" belegt ist.
 pub const ZEILEN_ABSTAND: Duration = Duration::from_secs(10);
@@ -125,7 +129,8 @@ struct SpurZaehler {
 }
 
 impl SpurZaehler {
-    fn bericht(&mut self, r: &ReceptionReport) {
+    /// `false` für einen Block über eine fremde SSRC.
+    fn bericht(&mut self, r: &ReceptionReport) -> bool {
         let neu = Stand {
             ssrc: r.ssrc,
             verloren: total_lost_i32(r.total_lost),
@@ -135,7 +140,7 @@ impl SpurZaehler {
             // Fremde SSRC: nicht unsere Spur (ein Bericht mit mehreren
             // Blöcken ginge an jeden Sender, den er nennt). Ignorieren, die
             // Basis bleibt.
-            Some(alt) if alt.ssrc != neu.ssrc => return,
+            Some(alt) if alt.ssrc != neu.ssrc => return false,
             Some(alt) => {
                 let dv = i64::from(neu.verloren) - i64::from(alt.verloren);
                 // Erweiterte Nummer (Zyklen << 16 | Nummer): Differenz mit
@@ -157,6 +162,7 @@ impl SpurZaehler {
         self.stand = Some(neu);
         self.berichte += 1;
         self.jitter_max_takte = self.jitter_max_takte.max(r.jitter);
+        true
     }
 
     fn nack(&mut self, n: &TransportLayerNack) {
@@ -210,6 +216,10 @@ struct Zustand {
     bild: SpurZaehler,
     ton: SpurZaehler,
     letzte_zeile: Instant,
+    /// Eine Strecke für beide Spuren: der Stau sitzt auf der Leitung.
+    stau: StauWacht,
+    /// Eine Stau-Meldung, die vor der nächsten Regel-Zeile hinausgeht.
+    meldung: Option<String>,
 }
 
 impl Zustand {
@@ -220,12 +230,24 @@ impl Zustand {
         }
     }
 
-    fn pakete(&mut self, spur: Spur, pakete: &[Box<dyn Packet + Send + Sync>]) {
+    fn pakete(
+        &mut self,
+        spur: Spur,
+        pakete: &[Box<dyn Packet + Send + Sync>],
+        jetzt: Instant,
+        ntp_mitte: u32,
+    ) {
         for p in pakete {
             let any = p.as_any();
             if let Some(rr) = any.downcast_ref::<ReceiverReport>() {
                 for r in &rr.reports {
-                    self.spur(spur).bericht(r);
+                    if !self.spur(spur).bericht(r) {
+                        continue;
+                    }
+                    let laufzeit = stau::laufzeit(r.last_sender_report, r.delay, ntp_mitte);
+                    if let Some(m) = laufzeit.and_then(|l| self.stau.probe(l, jetzt)) {
+                        self.meldung = Some(m.text());
+                    }
                 }
             } else if let Some(n) = any.downcast_ref::<TransportLayerNack>() {
                 self.spur(spur).nack(n);
@@ -249,8 +271,9 @@ impl Zustand {
         // Mit RED zaehlt „Ton: verloren" den Rest NACH der Rettung durch die
         // Reserve; die rohen Verluste der Strecke stehen in der Server-Zeile
         // `[pulse] Ton-Reserve`.
+        let laufzeit = self.stau.abschnitt_text().map_or(String::new(), |t| format!("; {t}"));
         Some(format!(
-            "Strecke zum Server ({} s) — {}; {}",
+            "Strecke zum Server ({} s) — {}; {}{laufzeit}",
             komma(seit.as_secs_f64()),
             self.bild.text(Spur::Bild),
             self.ton.text(Spur::Ton),
@@ -275,13 +298,16 @@ impl Strecke {
                 bild: SpurZaehler::default(),
                 ton: SpurZaehler::default(),
                 letzte_zeile: beginn,
+                stau: StauWacht::default(),
+                meldung: None,
             }),
         })
     }
 
     /// Die RTCP-Pakete eines Lesevorgangs einordnen. Rückgabe: die Log-Zeile,
     /// wenn eine fällig ist — der Aufrufer setzt sie in SEINER Log-Sprache ab
-    /// (Linux `tracing`, Windows/macOS `eprintln!`, s. `lib.rs`).
+    /// (Linux `tracing`, Windows/macOS `eprintln!`, s. `lib.rs`). Eine
+    /// Stau-Meldung geht vor; die Regel-Zeile folgt dann beim nächsten Bericht.
     pub fn rtcp(&self, spur: Spur, pakete: &[Box<dyn Packet + Send + Sync>]) -> Option<String> {
         self.rtcp_zu(spur, pakete, Instant::now())
     }
@@ -292,9 +318,19 @@ impl Strecke {
         pakete: &[Box<dyn Packet + Send + Sync>],
         jetzt: Instant,
     ) -> Option<String> {
+        self.rtcp_mit_uhr(spur, pakete, jetzt, stau::ntp_mitte(SystemTime::now()))
+    }
+
+    fn rtcp_mit_uhr(
+        &self,
+        spur: Spur,
+        pakete: &[Box<dyn Packet + Send + Sync>],
+        jetzt: Instant,
+        ntp_mitte: u32,
+    ) -> Option<String> {
         let mut z = self.zustand.lock().unwrap_or_else(|e| e.into_inner());
-        z.pakete(spur, pakete);
-        z.zeile(jetzt)
+        z.pakete(spur, pakete, jetzt, ntp_mitte);
+        z.meldung.take().or_else(|| z.zeile(jetzt))
     }
 }
 

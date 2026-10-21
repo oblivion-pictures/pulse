@@ -257,11 +257,13 @@ fn melde_lage(ebene: &str, lage: pulse_whip::verbindung::Lage, zustand: &str) {
 /// Bild nicht, sie staut sich als wachsende Verzoegerung auf, und nirgends
 /// stand eine Zahl.
 ///
-/// **Bewusst KEINE automatische Anpassung der Datenrate.** FFmpeg legt sie bei
-/// den Hardware-Encodern beim Oeffnen fest; sie im Betrieb zu aendern hiesse
-/// Encoder-Neubau samt Vollbild und sichtbarem Ruckler. Das ist ein eigenes,
-/// zu messendes Vorhaben — hier entsteht die Zahl, an der es spaeter zu
-/// beurteilen waere.
+/// **Bewusst KEINE automatische Anpassung der Datenrate.** Sie im Betrieb zu
+/// aendern kostet ein Vollbild je Aenderung (NVENC: FFmpeg erzwingt dabei ein
+/// IDR, s. `pulse_whip::bandbreite`; die Linux-Encoder sind darauf nicht
+/// nachgeprueft). Das ist ein eigenes, zu messendes Vorhaben. Die Zahl, an
+/// der es zu beurteilen waere, entstuende hier — nur kommt von MediaMTX kein
+/// REMB (`pulse_whip::bandbreite`, Befund 2026-10-21); den Stau misst seither
+/// `pulse_whip::stau` aus der Laufzeit.
 fn remb_auswerten(
     wacht: &mut pulse_whip::bandbreite::BandbreitenWacht,
     bps: f32,
