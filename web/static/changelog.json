@@ -2,6 +2,18 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-21.2",
+      "date": "2026-10-21",
+      "style": "Sachlich",
+      "title": "Benachrichtigungen und Nachrichten",
+      "items": [
+        "Nachrichten in einem offenen Chat kommen jetzt zuverlässig an. Bisher fehlte manchmal eine, bis man das Gespräch wechselte, vor allem nachdem die App kurz im Hintergrund war.",
+        "Android (ab App-Version 1.4): Mitteilungen kommen auch, wenn du gleichzeitig am Rechner angemeldet bist. Anrufe klingeln bei geschlossener App und erscheinen über dem Sperrbildschirm.",
+        "Anrufe beachten „Nicht stören“ und stumme Gruppen. Erwähnungen und Freundschaftsanfragen kommen als Mitteilung aufs Handy.",
+        "Gelesene Unterhaltungen räumen ihre Mitteilungen weg, auch wenn du sie auf einem anderen Gerät gelesen hast."
+      ]
+    },
+    {
       "id": "2026-10-21",
       "date": "2026-10-21",
       "style": "Sachlich",
