@@ -229,8 +229,8 @@ impl Ausgabetakt {
                 self.ziel_setzen(ziel_ms);
             } else {
                 self.vorhalt_anwenden(ziel_ms);
-                self.regler_stufen += 1;
             }
+            self.regler_stufen += 1;
             eprintln!(
                 "[takt] Vorhalt {ist_ms} -> {ziel_ms} ms ({je_sekunde:.1} zu spaete Bilder/s)"
             );
