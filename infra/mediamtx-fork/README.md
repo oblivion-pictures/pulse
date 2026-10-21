@@ -12,7 +12,7 @@ the workflow has built it (order rules in the Dockerfile header).
 
 ## What it does
 
-**Ten patches, in two groups.** The Dockerfile header carries the full
+**Eleven patches, in two groups.** The Dockerfile header carries the full
 rationale for each; this is the map.
 
 `patches/` — applied to the MediaMTX source right after clone:
@@ -28,6 +28,7 @@ rationale for each; this is the map.
 | `0008-ton-umordnung-klein` | makes the inbound reorder buffer for audio tracks configurable too, in the other direction (`PULSE_AUDIO_REORDER_BUFFER`, packets, power of two up to 64). Opus has no NACK on our senders, so a lost audio packet never comes back — and the 64-packet default holds every packet after it: 640 ms of silence, then a burst, at 10 ms per packet (computed; dropouts of 560-650 ms measured on 2026-10-14). Intended value: `4`, set where `PULSE_VIDEO_REORDER_BUFFER` is set. |
 | `0009-ton-nachforderung` | negotiates `nack` for audio too, on the WHEP sending side only (`PULSE_AUDIO_NACK=1`). pion's `ConfigureNack` registers it for video codecs only, so a lost Opus packet on the way to the viewer never came back — although the native player offers and requests it (41 lost audio packets in 10 min measured on 2026-10-15, while NACK rescued 94-98 % of the video losses). Negotiated only where the viewer offers it; the publish (WHIP) side stays upstream. Also: the FlexFEC gate (0004) counts only NACKs for the video SSRC. |
 | `0010-vollbild-beim-beitritt` | asks the publisher for a key frame as soon as a viewer attaches (`PULSE_KEYFRAME_ON_JOIN=1`). 0002 is purely reactive, and only Chromium sends a request on join; WebKit (Safari, everything on iOS) waits silently — with 60 s between key frames an iPhone sat in front of black for up to a minute (measured 2026-10-08). |
+| `0011-ton-reserve-am-eingang` | accepts RED (RFC 2198) for audio on the WHIP ingest (`PULSE_AUDIO_RED=1`). Our senders offer `audio/red` (PT 63) before Opus 111 and only pack RED when the answer contains it; every packet then carries, by default, the previous two again. The server unpacks it into plain Opus *before* the reorder buffer, so a lost audio packet comes back out of the next one without extra delay, and everything downstream — viewers included — sees only Opus. Logs `[pulse] Ton-Reserve: fehlten …, ersetzt …, unrettbar …` per track. Derived from the code and tested against pion/gortsplib, not yet measured on a real line. |
 
 `patches-vendor/` — applied to vendored third-party code, after `go mod vendor`:
 
@@ -35,7 +36,7 @@ rationale for each; this is the map.
 |---|---|
 | `0005-flexfec-nachlieferungen-nicht-puffern` | keeps NACK retransmissions out of pion's parity buffer; a single one otherwise left the whole group unprotected. |
 
-**Every one of 0002-0010 is off unless its environment variable is set.** An
+**Every one of 0002-0011 is off unless its environment variable is set.** An
 un-configured deployment behaves exactly like upstream plus 0001.
 
 > **Dieser Abschnitt beschrieb den Fork bis 2026-08-04 als „minimal" mit genau
@@ -53,7 +54,7 @@ wendet **jeden** Patch in `patches/` an, und der Workflow baut daraus das Image,
 das Produktion pinnt.
 
 **Seit 2026-08-04 steht der Patch-Stand im Tag** (`PULSE_REVISION` im
-Dockerfile → aktuell `1.19.1-pulse10`; die Compose-Dateien pinnen bis zum Bau
+Dockerfile → aktuell `1.19.1-pulse11`; die Compose-Dateien pinnen bis zum Bau
 noch `1.19.1-pulse9`, Reihenfolge im Dockerfile-Kopf). Hier stand vorher, ein Patch lande „in Produktion
 — ohne Versionswechsel und ohne dass man es am Tag ablesen könnte". Genau das
 ist jetzt behoben: wer den Satz ändert, ändert den Tag mit, das alte Image
@@ -77,7 +78,7 @@ Testserver von Hand versorgt wird.
 `.github/workflows/mediamtx-fork.yml` rebuilds the image when anything under
 `infra/mediamtx-fork/` changes on `main`. It pushes two tags to GHCR:
 
-- `ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse10` — version pin (MediaMTX-Fassung + unser Patch-Stand, s. `PULSE_REVISION` im Dockerfile)
+- `ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse11` — version pin (MediaMTX-Fassung + unser Patch-Stand, s. `PULSE_REVISION` im Dockerfile)
 - `ghcr.io/oblivion-pictures/pulse-mediamtx:latest`        — rolling
 
 **Windows Pulse Server:** there is no container there, so
