@@ -27,6 +27,8 @@
 # (desktop/test/localBackend/nativeBackend.test.ts), und deren mediamtx.exe
 # baut `bauen.sh` mit ALLEN Patches — dort wuerde der Schalter sofort wirken.
 # Beide Stellen zusammen nachziehen, wenn das Bild mit 0010 gebaut ist.
+# PULSE_AUDIO_RED=1 (Patch 0011, Ton-Reserve am Eingang): wirksam ab Bild
+# `1.19.1-pulse11`, am gepinnten `pulse9` wirkungslos und darum harmlos.
 exec 2>&1
 PULSE_KEYFRAME_INTERVAL=0 \
 PULSE_DEPENDENCY_DESCRIPTOR=1 \
@@ -34,6 +36,7 @@ PULSE_KEYFRAME_ON_DISCARD=1 \
 PULSE_VIDEO_REORDER_BUFFER=128 \
 PULSE_AUDIO_REORDER_BUFFER=4 \
 PULSE_AUDIO_NACK=1 \
+PULSE_AUDIO_RED=1 \
 PULSE_FLEXFEC=1 \
 PULSE_FLEXFEC_MEDIA=10 \
 PULSE_FLEXFEC_FEC=2 \
