@@ -389,7 +389,7 @@ impl WhipSender {
         // Baut die Media-Engine so, dass im Angebot GENAU unsere beiden
         // Fassungen stehen (Begruendung und Messung im Kopf von [`sdp`]).
         let audio_cap = sdp::opus_capability();
-        let api = sdp::baue_api(&cap, &audio_cap)?;
+        let api = sdp::baue_api(&cap, &audio_cap, pulse_whip::red::kopien_aus_umgebung())?;
 
         // Kein STUN: der Weg zum eigenen Server laeuft entweder ueber die
         // Schleife oder ueber eine gewoehnliche ausgehende Verbindung. Ein
