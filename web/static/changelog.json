@@ -2,6 +2,16 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-21.3",
+      "date": "2026-10-21",
+      "style": "Sachlich",
+      "title": "Fernsteuerung",
+      "items": [
+        "Beim Fernsteuern erscheint jedes Bild sofort, sobald es ankommt. Das Bild reagiert direkter und ruckelt seltener, wenn die Leitung schwankt. Wer lieber ein geglättetes Bild hat, nimmt im Fern-Menü den Haken bei „Bild sofort zeigen“ heraus.",
+        "Windows: Der gesteuerte Rechner gibt dem Stream mehr Vorrang und schickt kleinere Vollbilder. Das soll Hänger und kurze Aussetzer verringern."
+      ]
+    },
+    {
       "id": "2026-10-21.2",
       "date": "2026-10-21",
       "style": "Sachlich",
