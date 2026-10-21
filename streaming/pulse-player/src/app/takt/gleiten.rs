@@ -91,7 +91,6 @@ impl Ausgabetakt {
     /// [`Self::gleiten`] Bild fuer Bild.
     pub(super) fn ziel_setzen(&mut self, ms: u32) {
         self.vorhalt_ziel = Duration::from_millis(u64::from(ms.min(VORHALT_MAX_MS)));
-        self.regler_stufen += 1;
     }
 
     /// Wie weit der Vorhalt bei diesem Bild hoechstens ruecken darf.
@@ -143,16 +142,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::decode::{DecodedFrame, PixelLayout};
-
-    fn bild(rtp: u32) -> Box<DecodedFrame> {
-        let mut f = DecodedFrame::for_test(
-            2, 2, vec![vec![0; 4], vec![0; 1], vec![0; 1]], vec![2, 1, 1], false, PixelLayout::Planar420,
-        );
-        f.rtp_ts = Some(rtp);
-        f.clock_rate = 90_000;
-        Box::new(f)
-    }
+    use crate::app::takt::tests::bild;
 
     /// 60 fps mit gleichbleibender Laufzeit; die Fenster-Schleife wacht genau
     /// zu jedem Termin auf. Liefert die Termine der gezeigten Bilder, die

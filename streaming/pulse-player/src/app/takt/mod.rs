@@ -183,7 +183,8 @@ pub struct Ausgabetakt {
     /// Damit die Warnung „Vorhalt passt nicht in die Warteschlange" einmal
     /// kommt und nicht je Bild.
     gewarnt: bool,
-    /// Der Vorhalt, der vor der Fernsteuerung galt (s. [`Self::fernsteuerung`]).
+    /// Der eingestellte Vorhalt von vor der Fernsteuerung, ohne die Anhebung
+    /// des Reglers (s. [`Self::fernsteuerung`]).
     /// `None` heisst „keine Fernsteuerung aktiv" — der Wert ist damit zugleich
     /// der Merker, und es kann kein zweites Absenken den ersten Stand
     /// ueberschreiben.
@@ -584,7 +585,9 @@ mod tests {
     use super::*;
     use crate::decode::{DecodedFrame, PixelLayout};
 
-    fn bild(rtp: u32) -> Box<DecodedFrame> {
+    /// Ein Testbild mit RTP-Zeitstempel. Auch fuer die Tests der Kindmodule
+    /// (`gleiten`) — eine Fassung, damit sie nicht auseinanderlaufen.
+    pub(super) fn bild(rtp: u32) -> Box<DecodedFrame> {
         let mut f =
             DecodedFrame::for_test(2, 2, vec![vec![0; 4], vec![0; 1], vec![0; 1]], vec![2, 1, 1], false, PixelLayout::Planar420);
         f.rtp_ts = Some(rtp);
