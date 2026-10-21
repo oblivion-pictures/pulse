@@ -51,6 +51,8 @@ pub mod sdp;
 /// Was der Server auf der Strecke vom Sender her vermisst (RTCP-Empfänger-
 /// berichte je Spur) — als Log-Zeile, seit dem 2026-10-14.
 pub mod strecke;
+/// Der gemeinsame Ton-Sender: Opus, und RED, wo der Server es annimmt.
+pub mod ton;
 pub mod uebergabe;
 pub mod verbindung;
 pub mod zeitbasis;
