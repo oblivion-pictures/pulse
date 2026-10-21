@@ -116,11 +116,13 @@ export class AnrufStore extends AnrufMedienZustand {
    *  Gegenstelle löst der Handler über den Nutzer-Cache auf. `ton: false`,
    *  wenn die Hülle den Anruf schon zeigt (kalt angenommen, nach einem Neuladen):
    *  CallKit klingelt dort selbst oder das Gespräch läuft, und WebKits DM-Ton
-   *  zöge die Session an sich, bevor `ambient` gilt (Bughunt 2, A9). */
+   *  zöge die Session an sich, bevor `ambient` gilt (Bughunt 2, A9).
+   *  `nativ: false`: kein natives Klingeln (Android-Klingelmeldung,
+   *  iOS-CallKit) — für einen stillen Anruf bei „Nicht stören“. */
   eingehend(
     evt: { call_id: string; art: string; channel_id: string; einleiter_id: string },
     gegenstelle: string,
-    { ton = true }: { ton?: boolean } = {}
+    { ton = true, nativ = true }: { ton?: boolean; nativ?: boolean } = {}
   ): void {
     // Dieselbe Lieferung kann über beide Verbindungen kommen (Hintergrund-
     // Cloud + aktiv) — ein zweiter Lauf desselben call_id darf nichts tun,
@@ -149,7 +151,7 @@ export class AnrufStore extends AnrufMedienZustand {
     if (ton) sounds.play('notification.dm');
     this.#klingelWeckerPlanen();
     // Sperrbildschirm (Anrufe-Epic E): nativ Full-Screen-Notification zeigen.
-    void nativAnkommen(evt.call_id, gegenstelle);
+    if (nativ) void nativAnkommen(evt.call_id, gegenstelle);
   }
 
   async annehmen(gegenstelle: string): Promise<void> {
