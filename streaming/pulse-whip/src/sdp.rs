@@ -47,6 +47,10 @@ const PT_AV1: PayloadType = 41;
 /// Bedeutung steht im `a=rtpmap` desselben Angebots.
 const PT_H265: PayloadType = 126;
 const PT_OPUS: PayloadType = 111;
+/// RED (RFC 2198) um Opus. 63 ist frei (belegt: 41, 102, 111, 126).
+pub const PT_RED: PayloadType = 63;
+/// MIME-Typ der RED-Fassung.
+pub const MIME_TYPE_RED: &str = "audio/red";
 
 /// Rueckmeldungen, die wir zu jeder Bildspur anbieten.
 ///
@@ -190,6 +194,20 @@ pub fn codec_capability(
     }
 }
 
+/// Fassung fuer RED um Opus: `kopien + 1` Glieder in der fmtp-Zeile (die
+/// Opus-Nummer, so oft wie Bloecke im Paket stecken, mit `/` getrennt).
+/// Kein `rtcp_feedback`: Rueckmeldungen gehoeren zu Opus selbst.
+pub fn red_capability(kopien: u8) -> RTCRtpCodecCapability {
+    let glieder = vec![PT_OPUS.to_string(); usize::from(kopien) + 1];
+    RTCRtpCodecCapability {
+        mime_type: MIME_TYPE_RED.to_owned(),
+        clock_rate: 48000,
+        channels: 2,
+        sdp_fmtp_line: glieder.join("/"),
+        rtcp_feedback: vec![],
+    }
+}
+
 /// Meldet genau die beiden Fassungen an, die wir wirklich senden — und keine
 /// weiteren. Tritt an die Stelle von `MediaEngine::register_default_codecs`.
 ///
@@ -207,7 +225,21 @@ pub(super) fn register_codecs(
     media: &mut MediaEngine,
     video: &RTCRtpCodecCapability,
     audio: &RTCRtpCodecCapability,
+    red_kopien: u8,
 ) -> Result<()> {
+    // RED zuerst: die Reihenfolge der Anmeldung ist die Reihenfolge im
+    // Angebot, und die Antwort waehlt bei Gleichstand das Erstgenannte. Der
+    // Direktweg uebergibt 0 (dort hat der Empfaenger keinen RED-Entpacker).
+    if red_kopien > 0 {
+        media.register_codec(
+            RTCRtpCodecParameters {
+                capability: red_capability(red_kopien.min(crate::red::KOPIEN_MAX)),
+                payload_type: PT_RED,
+                ..Default::default()
+            },
+            RTPCodecType::Audio,
+        )?;
+    }
     let video_pt = match video.mime_type.as_str() {
         MIME_TYPE_AV1 => PT_AV1,
         MIME_TYPE_HEVC => PT_H265,
@@ -260,8 +292,9 @@ pub(super) fn register_header_extensions(media: &mut MediaEngine) -> Result<()> 
 pub fn baue_api(
     video: &RTCRtpCodecCapability,
     audio: &RTCRtpCodecCapability,
+    red_kopien: u8,
 ) -> Result<webrtc::api::API> {
-    baue_api_mit_settings(video, audio, webrtc::api::setting_engine::SettingEngine::default())
+    baue_api_mit_settings(video, audio, red_kopien, webrtc::api::setting_engine::SettingEngine::default())
 }
 
 /// Dasselbe wie [`baue_api`], mit einer Setting-Engine des Aufrufers.
@@ -275,10 +308,11 @@ pub fn baue_api(
 pub(crate) fn baue_api_mit_settings(
     video: &RTCRtpCodecCapability,
     audio: &RTCRtpCodecCapability,
+    red_kopien: u8,
     se: webrtc::api::setting_engine::SettingEngine,
 ) -> Result<webrtc::api::API> {
     let mut media = MediaEngine::default();
-    register_codecs(&mut media, video, audio).context("Codecs registrieren")?;
+    register_codecs(&mut media, video, audio, red_kopien).context("Codecs registrieren")?;
     register_header_extensions(&mut media).context("Header-Erweiterungen registrieren")?;
     let registry = register_default_interceptors(Registry::new(), &mut media)
         .context("Interceptor-Registry")?;
@@ -434,9 +468,21 @@ mod angebot_tests {
     /// Baut das Angebot fuer diese Bildgroesse — ohne Netz: `create_offer`
     /// sammelt keine Kandidaten, es schreibt nur auf, was angemeldet ist.
     async fn angebot(codec: &str, breite: u32, hoehe: u32, fps: u32, zehn_bit: bool) -> String {
+        angebot_mit_kopien(codec, breite, hoehe, fps, zehn_bit, 2).await
+    }
+
+    /// Wie [`angebot`], mit gewaehlter RED-Kopienzahl (0 = kein RED).
+    async fn angebot_mit_kopien(
+        codec: &str,
+        breite: u32,
+        hoehe: u32,
+        fps: u32,
+        zehn_bit: bool,
+        kopien: u8,
+    ) -> String {
         let video = codec_capability(codec, breite, hoehe, fps, zehn_bit).unwrap();
         let audio = opus_capability();
-        let api = baue_api(&video, &audio).unwrap();
+        let api = baue_api(&video, &audio, kopien).unwrap();
         let pc = api.new_peer_connection(RTCConfiguration::default()).await.unwrap();
         spuren_anmelden(&pc, video, audio).await;
         let offer = pc.create_offer(None).await.unwrap();
@@ -455,6 +501,28 @@ mod angebot_tests {
         assert!(s4k.contains("profile-level-id=640034"), "4K60:\n{s4k}");
         assert!(!s1440.contains("640034"));
         assert!(!s4k.contains("640033"));
+    }
+
+    /// RED steht im Angebot, mit der Opus-Nummer (111) so oft in der fmtp-Zeile,
+    /// wie Bloecke im Paket stecken, und VOR Opus in der `m=audio`-Zeile
+    /// (Reihenfolge = Vorzug).
+    #[tokio::test]
+    async fn red_steht_vor_opus_im_angebot() {
+        let sdp = angebot("h264", 2560, 1440, 60, false).await;
+        assert!(sdp.contains("a=rtpmap:63 red/48000/2"), "{sdp}");
+        assert!(sdp.contains("a=fmtp:63 111/111/111"), "{sdp}");
+        let m = sdp.lines().find(|l| l.starts_with("m=audio")).expect("m=audio");
+        let pts: Vec<&str> = m.split_whitespace().skip(3).collect();
+        let red = pts.iter().position(|p| *p == "63").expect("63 in m=audio");
+        let opus = pts.iter().position(|p| *p == "111").expect("111 in m=audio");
+        assert!(red < opus, "RED nicht vor Opus: {m}");
+    }
+
+    #[tokio::test]
+    async fn ohne_kopien_kein_red() {
+        let sdp = angebot_mit_kopien("h264", 2560, 1440, 60, false, 0).await;
+        assert!(!sdp.contains("red/"), "{sdp}");
+        assert!(sdp.contains("opus/48000/2"), "{sdp}");
     }
 
     /// Und nichts anderes daneben: die acht H.264-Fassungen der Vorgabeliste
@@ -535,7 +603,7 @@ mod angebot_tests {
 
             let video = codec_capability("hevc", 2560, 1440, 60, zehn_bit).unwrap();
             let audio = opus_capability();
-            let api = baue_api(&video, &audio).unwrap();
+            let api = baue_api(&video, &audio, 2).unwrap();
             let sender_pc = api.new_peer_connection(RTCConfiguration::default()).await.unwrap();
             spuren_anmelden(&sender_pc, video, audio).await;
             sender_pc.set_remote_description(offer).await.unwrap();
