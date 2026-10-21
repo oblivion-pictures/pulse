@@ -16,7 +16,7 @@
 # 1.19.1 establishes it instantly. The AV1 temporal-delimiter patch below still
 # applies cleanly and is still needed (no upstream AV1 fix in 1.18/1.19).
 #
-# Why we maintain this fork — ten patches, two groups:
+# Why we maintain this fork — eleven patches, two groups:
 #
 #   patches/         go against the MediaMTX source, applied right after clone
 #     0001  AMD-VAAPI-encoded AV1 freezes in WHEP after a few seconds because
@@ -48,6 +48,11 @@
 #     0010  Key frame request as soon as a viewer ATTACHES
 #           (PULSE_KEYFRAME_ON_JOIN): WebKit, unlike Chromium, never asks on
 #           join, so an iOS viewer waited for the next regular key frame.
+#     0011  RED (RFC 2198) for audio on the WHIP INGEST (PULSE_AUDIO_RED):
+#           our senders offer `audio/red` before Opus, every packet carries
+#           the previous ones again, and the server unpacks it into plain
+#           Opus BEFORE the reorder buffer — a lost audio packet comes out of
+#           the next one. Viewers only ever see Opus.
 #
 #   patches-vendor/  go against VENDORED third-party code, applied after
 #                    `go mod vendor` (see the step below)
@@ -161,7 +166,19 @@ ARG MEDIAMTX_VERSION=1.19.1
 # Windows-Server-Bau (`desktop/scripts/fetch-win-native.ps1`) liest diese
 # Zeile selbst und baut `mediamtx.exe` gleich mit 0010 (Stempel
 # `1.19.1-pulse10`); ohne gesetzte Variable verhält sich 0010 wie upstream.
-ARG PULSE_REVISION=10
+#
+# 11 (2026-10-21): Patch `0011-ton-reserve-am-eingang` — RED fuer den Ton am
+# WHIP-Eingang, hinter `PULSE_AUDIO_RED`. Mit der Variable sagt der Server
+# `audio/red` zu, und ein Sender, der es anbietet (pulse-whip, alle drei
+# Sidecars), packt jedes Opus-Paket mit standardmaessig zwei Kopien der
+# vorigen; der Server packt es vor dem Umordnungspuffer wieder aus. Ohne
+# Variable verhaelt sich 0011 wie upstream, und die Sender bleiben bei
+# schlichtem Opus, weil RED nicht in der Antwort steht. Wie bei 8-10: erst
+# baut der Workflow `1.19.1-pulse11`, DANACH ziehen die Compose-Dateien,
+# `infra/self-host/Dockerfile` und die Stellen, die den Tag nur nennen, nach;
+# erst dann kann `PULSE_AUDIO_RED` dort wirken. Der Windows-Server-Bau
+# uebernimmt 0011 wie 0010 sofort (Stempel `1.19.1-pulse11`).
+ARG PULSE_REVISION=11
 ARG GO_VERSION=1.26
 
 # ── Stage 1: build the patched binary ──────────────────────────────────────
@@ -270,10 +287,10 @@ RUN CGO_ENABLED=0 GOARCH=${TARGETARCH:-$(go env GOARCH)} \
       -o /out/mediamtx \
       .
 
-# The patches carry their own Go tests (0002/0007/0008/0009 in internal/stream
-# and internal/protocols/webrtc, 0006's fixture check among them), and until
-# 2026-09-03 nothing ran them: not this build, not any workflow — a test that
-# never runs looks exactly like a green one. So they run here, after the
+# The patches carry their own Go tests (0002/0007/0008/0009/0011 in
+# internal/stream and internal/protocols/webrtc, 0006's fixture check among
+# them), and until 2026-09-03 nothing ran them: not this build, not any
+# workflow — a test that never runs looks exactly like a green one. So they run here, after the
 # binary compiled and BEFORE the image gets a tag. ~20 s. Vendored (offline),
 # like the build above. The two packages are the only ones our patches touch;
 # the whole suite would add minutes for code we did not change.

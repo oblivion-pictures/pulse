@@ -1,0 +1,1028 @@
+# Ton-Reserve am Eingang — RED (RFC 2198) fuer Opus auf der Strecke
+# Sender -> Server, ausgepackt VOR dem Umordnungspuffer.
+#
+# Warum: unsere Sender melden fuer Opus kein NACK an, ein verlorenes Tonpaket
+# kommt am Eingang also nie nach. 0008 begrenzt den Schaden (die Luecke haelt
+# den Ton nur noch ~40 ms fest), 0009 rettet nur die Strecke zum Zuschauer.
+# Mit RED traegt jedes Paket die letzten Pakete noch einmal mit; fehlt eins,
+# steckt es im naechsten. Die Sender (`streaming/pulse-whip/src/red.rs`,
+# `sdp.rs` im Pulse-Repo) bieten `audio/red` (PT 63, fmtp `111/111/111` bei
+# zwei Kopien) VOR Opus 111 an und packen nur, wenn die Antwort RED enthaelt.
+#
+# Was der Patch tut (AUS, bis die Variable gesetzt ist):
+#
+#   PULSE_AUDIO_RED=1               Am EINGANG (WHIP, `Publish: false`) wird
+#                                   `audio/red` (PT 63, `111/111`) angemeldet;
+#                                   die Antwort traegt dann die fmtp-Zeile des
+#                                   Angebots. Eine Spur, deren PT RED ist,
+#                                   bekommt eine Reserve: jedes Paket wird in
+#                                   Kopien (aeltester zuerst, Sequenz `seq - k`
+#                                   aus der Position, Zeitstempel aus dem
+#                                   Abstand, ohne Marker und Erweiterungen) und
+#                                   Primaerblock (Kopf des RED-Pakets) zerlegt.
+#                                   Schon Durchgelassenes (Fenster 64) geht
+#                                   nicht noch einmal hinein. `Codec()` meldet
+#                                   den Opus-Eintrag darunter, `to_stream.go`
+#                                   fragt jetzt `Codec()` statt der pion-Spur
+#                                   — dahinter, also auch fuer alle Zuschauer,
+#                                   gibt es nur Opus.
+#
+# Log, je Spur hoechstens einmal je Minute bei Aenderung und beim Schliessen:
+#   [pulse] Ton-Reserve: fehlten N, ersetzt E, unrettbar U[, kaputt K]
+# (fehlten = ersetzt + unrettbar; unrettbar = was gortsplibs Empfaenger danach
+# noch als verloren meldet; kaputt = RED-Pakete, die sich nicht zerlegen
+# liessen und verworfen wurden).
+#
+# Was er NICHT anfasst:
+#
+#   * Die Sendeseite (WHEP): RED wird dort nie angemeldet, Zuschauer
+#     (Player, Browser, iOS) sehen nur Opus.
+#   * Den Umordnungspuffer: keine zusaetzliche Wartezeit. Eine Kopie geht
+#     hinaus, sobald ihr Traeger eintrifft; fehlen mehr Pakete am Stueck, als
+#     Kopien mitreisen, entscheidet der Puffer aus 0008 wie bisher.
+#   * Eine Spur, die trotz zugesagtem RED schlichtes Opus schickt: keine
+#     Reserve, Upstream-Weg.
+#
+# Aus dem Code gefolgert, nicht an einer echten Leitung gemessen. Mit der
+# Antwort-Reihenfolge `63 111` (so in pions Antwort beobachtet) sendet ein
+# Browser-Sender, der RED anbietet, vermutlich ebenfalls RED — der Auspacker
+# nimmt auch das an (Blockzahl frei), geprueft ist es nicht.
+#
+# Getestet an pion und gortsplib (`TestPulseTonReserve*`: Schalter,
+# Aushandlung mit/ohne Schalter, Verlust von 1/2/3 Paketen am Stueck durch den
+# echten Empfaenger mit Fenster 4, keine Doppel, Umbruch, kaputte Pakete,
+# Codec-Meldung; `TestTonReserveEndeZuEnde`: echte Verbindung ueber Loopback,
+# zwei verlorene Pakete kommen aus der Reserve, `ToStream` sieht Opus mit zwei
+# Kanaelen — wie 0009s Loopback-Test nicht unter dem Filter von `bauen.sh`).
+#
+# Geht gegen den Stand NACH 0001-0010 (inbound_track.go traegt 0002/0006/
+# 0007/0008, peer_connection.go 0002/0003/0004/0006/0009). Nachrechnen wie bei
+# den anderen:
+#   git clone --depth=1 -b v1.19.1 https://github.com/bluenviron/mediamtx.git
+#   for p in 0001 0002 0003 0004 0006 0007 0008 0009 0010 0011; do patch -p1 < $p-*.patch; done
+#
+diff --git a/internal/protocols/webrtc/inbound_track.go b/internal/protocols/webrtc/inbound_track.go
+index 63c0f63..eaf3fc2 100644
+--- a/internal/protocols/webrtc/inbound_track.go
++++ b/internal/protocols/webrtc/inbound_track.go
+@@ -3,6 +3,7 @@ package webrtc
+ import (
+ 	"os"
+ 	"strconv"
++	"strings"
+ 	"sync"
+ 	"time"
+ 
+@@ -410,6 +411,9 @@ type InboundTrack struct {
+ 
+ 	// Ausgehandelte Nummer der Bildmarke am EINGANG; 0 = nicht ausgehandelt.
+ 	bildmarkeExtID uint8
++
++	// Ton-Reserve (Patch 0011); nil = die Spur traegt kein RED.
++	reserve *tonReserve
+ }
+ 
+ // RequestKeyFrame asks the publisher for a key frame right now (Pulse).
+@@ -439,6 +443,15 @@ func (t *InboundTrack) initialize() {
+ 	t.OnPacketRTP = func(*rtp.Packet) {}
+ 	t.twccExtID = inboundTrackTWCCExtensionID(t.receiver.GetParameters())
+ 	t.bildmarkeExtID = bildmarkeExtensionID(t.receiver.GetParameters())
++
++	// RED kommt nur zustande, wenn es angemeldet war (PULSE_AUDIO_RED=1).
++	// Massgeblich ist die PT der Spur, nicht die Aushandlung: ein Sender darf
++	// trotz zugesagtem RED schlichtes Opus schicken.
++	if c := t.track.Codec(); strings.EqualFold(c.MimeType, mimeTypeRed) {
++		if opus, ok := pulseOpusUnterRed(t.receiver.GetParameters()); ok {
++			t.reserve = &tonReserve{redPT: uint8(c.PayloadType), opus: opus}
++		}
++	}
+ }
+ 
+ // normalisiereBildmarke schreibt die Marke auf die feste interne Nummer um.
+@@ -475,7 +488,12 @@ func (t *InboundTrack) stripTWCCExtension(pkt *rtp.Packet) {
+ }
+ 
+ // Codec returns the track codec.
++// Pulse: bei einer RED-Spur der Opus-Eintrag darunter — ausgepackt wird im
++// Lesefaden, dahinter sieht alles nur Opus (Patch 0011).
+ func (t *InboundTrack) Codec() webrtc.RTPCodecParameters {
++	if t.reserve != nil {
++		return t.reserve.opus
++	}
+ 	return t.track.Codec()
+ }
+ 
+@@ -575,23 +593,29 @@ func (t *InboundTrack) start() {
+ 				return
+ 			}
+ 
+-			packets, lost := t.rtpReceiver.ProcessPacket2(pkt, time.Now(), true)
++			// Pulse, Patch 0011: eine RED-Spur wird VOR dem Umordnungspuffer
++			// ausgepackt; ohne Reserve kommt pkt unveraendert zurueck.
++			for _, einzeln := range t.reserve.auspacken(pkt) {
++				packets, lost := t.rtpReceiver.ProcessPacket2(einzeln, time.Now(), true)
+ 
+-			if lost != 0 {
+-				t.inboundRTPPacketsLost.Add(lost)
+-				// do not return
+-			}
+-
+-			for _, pkt := range packets {
+-				// sometimes Chrome sends empty RTP packets. ignore them.
+-				if len(pkt.Payload) == 0 {
+-					continue
++				if lost != 0 {
++					t.inboundRTPPacketsLost.Add(lost)
++					t.reserve.unrettbarDazu(lost)
++					// do not return
+ 				}
+ 
+-				t.stripTWCCExtension(pkt)
+-				t.normalisiereBildmarke(pkt)
+-				t.OnPacketRTP(pkt)
++				for _, pkt := range packets {
++					// sometimes Chrome sends empty RTP packets. ignore them.
++					if len(pkt.Payload) == 0 {
++						continue
++					}
++
++					t.stripTWCCExtension(pkt)
++					t.normalisiereBildmarke(pkt)
++					t.OnPacketRTP(pkt)
++				}
+ 			}
++			t.reserve.vielleichtMelden(t.log)
+ 		}
+ 	}()
+ }
+@@ -608,4 +632,5 @@ func (t *InboundTrack) close() {
+ 	if t.rtpReceiver != nil {
+ 		t.rtpReceiver.Close()
+ 	}
++	t.reserve.melden(t.log)
+ }
+diff --git a/internal/protocols/webrtc/peer_connection.go b/internal/protocols/webrtc/peer_connection.go
+index 4f787b8..d892d87 100644
+--- a/internal/protocols/webrtc/peer_connection.go
++++ b/internal/protocols/webrtc/peer_connection.go
+@@ -673,6 +673,13 @@ func (co *PeerConnection) Start() error {
+ 				return err
+ 			}
+ 		}
++
++		// Pulse, Patch 0011: RED fuer den Ton, nur am Eingang und nur mit
++		// PULSE_AUDIO_RED=1 (ton_reserve.go).
++		err := pulseTonReserveAnmelden(mediaEngine)
++		if err != nil {
++			return err
++		}
+ 	}
+ 
+ 	// Die Bildmarke fuer Video anmelden — in BEIDEN Richtungen. Am Eingang,
+diff --git a/internal/protocols/webrtc/to_stream.go b/internal/protocols/webrtc/to_stream.go
+index 5e7580f..e2361e9 100644
+--- a/internal/protocols/webrtc/to_stream.go
++++ b/internal/protocols/webrtc/to_stream.go
+@@ -44,7 +44,7 @@ func ToStream(
+ 		var typ description.MediaType
+ 		var forma format.Format
+ 
+-		switch strings.ToLower(track.track.Codec().MimeType) {
++		switch strings.ToLower(track.Codec().MimeType) {
+ 		case strings.ToLower(webrtc.MimeTypeAV1):
+ 			typ = description.MediaTypeVideo
+ 			forma = &format.AV1{
+@@ -80,7 +80,7 @@ func ToStream(
+ 			typ = description.MediaTypeAudio
+ 			forma = &format.Opus{
+ 				PayloadTyp:   96,
+-				ChannelCount: int(track.track.Codec().Channels),
++				ChannelCount: int(track.Codec().Channels),
+ 			}
+ 
+ 		case strings.ToLower(webrtc.MimeTypeOpus):
+@@ -88,7 +88,7 @@ func ToStream(
+ 			forma = &format.Opus{
+ 				PayloadTyp: 96,
+ 				ChannelCount: func() int {
+-					if strings.Contains(track.track.Codec().SDPFmtpLine, "stereo=1") {
++					if strings.Contains(track.Codec().SDPFmtpLine, "stereo=1") {
+ 						return 2
+ 					}
+ 					return 1
+@@ -100,7 +100,7 @@ func ToStream(
+ 			forma = &format.G722{}
+ 
+ 		case strings.ToLower(webrtc.MimeTypePCMU):
+-			channels := int(track.track.Codec().Channels)
++			channels := int(track.Codec().Channels)
+ 			if channels == 0 {
+ 				channels = 1
+ 			}
+@@ -119,7 +119,7 @@ func ToStream(
+ 			}
+ 
+ 		case strings.ToLower(webrtc.MimeTypePCMA):
+-			channels := int(track.track.Codec().Channels)
++			channels := int(track.Codec().Channels)
+ 			if channels == 0 {
+ 				channels = 1
+ 			}
+@@ -142,12 +142,12 @@ func ToStream(
+ 			forma = &format.LPCM{
+ 				PayloadTyp:   96,
+ 				BitDepth:     16,
+-				SampleRate:   int(track.track.Codec().ClockRate),
+-				ChannelCount: int(track.track.Codec().Channels),
++				SampleRate:   int(track.Codec().ClockRate),
++				ChannelCount: int(track.Codec().Channels),
+ 			}
+ 
+ 		default:
+-			return nil, fmt.Errorf("unsupported codec: %+v", track.track.Codec().RTPCodecCapability)
++			return nil, fmt.Errorf("unsupported codec: %+v", track.Codec().RTPCodecCapability)
+ 		}
+ 
+ 		medi := &description.Media{
+diff --git a/internal/protocols/webrtc/ton_reserve.go b/internal/protocols/webrtc/ton_reserve.go
+new file mode 100644
+index 0000000..f679e7e
+--- /dev/null
++++ b/internal/protocols/webrtc/ton_reserve.go
+@@ -0,0 +1,294 @@
++package webrtc
++
++import (
++	"fmt"
++	"os"
++	"strconv"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"time"
++
++	"github.com/pion/rtp"
++	"github.com/pion/webrtc/v4"
++
++	"github.com/bluenviron/mediamtx/internal/logger"
++)
++
++// Ton-Reserve am Eingang (Pulse, Patch 0011): RED (RFC 2198) fuer Opus auf
++// der Strecke Sender -> Server.
++//
++// Warum es das braucht: unsere Sender melden fuer Opus kein NACK an, ein
++// verlorenes Tonpaket kommt am Eingang also nie nach (Patch 0008/0009). Mit
++// RED traegt jedes Paket die letzten Pakete noch einmal mit; fehlt eins, steckt
++// es im naechsten. Die Sender (`streaming/pulse-whip/src/red.rs` im
++// Pulse-Repo) bieten `audio/red` VOR Opus an und packen nur, wenn die Antwort
++// es enthaelt.
++//
++// Was sich aendert, aus dem Code gefolgert:
++//
++//   - Nur am EINGANG (WHIP, `Publish: false`) und nur mit PULSE_AUDIO_RED=1.
++//     Ohne Schalter wird RED nicht angemeldet, also nie ausgehandelt, und
++//     keine Spur bekommt eine Reserve: alles bleibt wie Upstream.
++//   - Ausgepackt wird VOR dem Umordnungspuffer. Dahinter sieht alles nur
++//     Opus: `Codec()` meldet den Opus-Eintrag unter RED, `to_stream.go` baut
++//     daraus ein schlichtes `format.Opus`, und die Zuschauer bekommen nie RED.
++//   - Keine zusaetzliche Wartezeit: eine Kopie geht in dem Moment hinaus, in
++//     dem ihr Traeger eintrifft. Faellt der Traeger mit aus, entscheidet der
++//     Umordnungspuffer aus 0008 wie bisher.
++//   - Schon Durchgelassenes geht nicht noch einmal hinein, sonst saehe der
++//     Empfaenger jede Nummer bis zu dreimal. gortsplib (`pkg/rtpreceiver`,
++//     v5.6.0, `reorder`) verwirft solche Doppel zwar, zaehlt sie aber auf
++//     seine Ruecksetz-Schwelle (mehr als ein Puffer voll in Folge); erst ein
++//     neues Paket setzt die Zaehlung zurueck — bei 3 Kopien und
++//     4 Plaetzen (0008) bliebe ein Platz Abstand. Und `ersetzt` zaehlt so nur,
++//     was bis dahin fehlte.
++const mimeTypeRed = "audio/red"
++
++// tonReserveFenster ist die Laenge des Gedaechtnisses fuer durchgelassene
++// Sequenznummern. Eine Kopie liegt hoechstens so viele Pakete hinter ihrem
++// Traeger, wie er Kopien traegt (Sender: 0-3); 64 reicht weit darueber hinaus
++// und passt in ein uint64.
++const tonReserveFenster = 64
++
++func pulseAudioRed() bool {
++	return os.Getenv("PULSE_AUDIO_RED") == "1"
++}
++
++// pulseTonReserveAnmelden meldet RED fuer den Ton an. Die fmtp-Zeile muss
++// nicht der des Angebots gleichen (`111/111/111` bei zwei Kopien): pion
++// vergleicht bei fremden Codecs ersatzweise nur Art, Takt und Kanaele
++// (`codecParametersFuzzySearch`, webrtc/v4 rtpcodec.go), und die Antwort
++// traegt die Zeile des Angebots (`TestPulseTonReserveAushandlung`).
++func pulseTonReserveAnmelden(mediaEngine *webrtc.MediaEngine) error {
++	if !pulseAudioRed() {
++		return nil
++	}
++	return mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
++		RTPCodecCapability: webrtc.RTPCodecCapability{
++			MimeType:    mimeTypeRed,
++			ClockRate:   48000,
++			Channels:    2,
++			SDPFmtpLine: "111/111",
++		},
++		PayloadType: 63,
++	}, webrtc.RTPCodecTypeAudio)
++}
++
++// pulseOpusUnterRed liefert den ausgehandelten Opus-Eintrag, auf den der
++// RED-Eintrag zeigt (erste Nummer seiner fmtp-Zeile; ist sie unlesbar, der
++// erste Opus-Eintrag). Ohne RED in den Parametern: false.
++func pulseOpusUnterRed(params webrtc.RTPParameters) (webrtc.RTPCodecParameters, bool) {
++	for _, red := range params.Codecs {
++		if !strings.EqualFold(red.MimeType, mimeTypeRed) {
++			continue
++		}
++		erste, _, _ := strings.Cut(red.SDPFmtpLine, "/")
++		pt, err := strconv.ParseUint(strings.TrimSpace(erste), 10, 8)
++		for _, c := range params.Codecs {
++			if strings.EqualFold(c.MimeType, webrtc.MimeTypeOpus) &&
++				(err != nil || c.PayloadType == webrtc.PayloadType(pt)) {
++				return c, true
++			}
++		}
++	}
++	return webrtc.RTPCodecParameters{}, false
++}
++
++type reserveStand struct {
++	ersetzt, unrettbar, kaputt uint64
++}
++
++// tonReserve packt die RED-Pakete EINER Spur aus. `auspacken` laeuft nur im
++// Lesefaden; die Zaehler liest auch `close()`, deshalb atomar.
++type tonReserve struct {
++	redPT uint8
++	opus  webrtc.RTPCodecParameters
++
++	begonnen bool
++	hoechste uint16
++	gesehen  uint64 // Bit i: hoechste-i ging schon hinaus
++
++	ersetzt   atomic.Uint64 // aus einer Kopie eingesetzt
++	unrettbar atomic.Uint64 // vom Empfaenger als verloren gemeldet
++	kaputt    atomic.Uint64 // RED-Pakete, die sich nicht zerlegen liessen
++
++	meldeMutex    sync.Mutex
++	letzteMeldung time.Time
++	gemeldet      reserveStand
++}
++
++// neu sagt, ob seq noch nicht hinausging, und merkt es sich. Ein
++// Primaerblock hinter dem Fenster geht trotzdem durch, ungemerkt: ob er zu
++// spaet ist, entscheidet der Empfaenger wie Upstream — so faengt sich der Ton
++// auch, falls ein Sender auf derselben SSRC zurueck-nummeriert (keiner unserer
++// Sender tut das). Die Reserve wirkt dann erst wieder, wenn die Nummern das
++// alte Fenster ueberholt haben; eine Kopie dahinter bleibt draussen.
++func (r *tonReserve) neu(seq uint16, kopie bool) bool {
++	if !r.begonnen {
++		r.begonnen, r.hoechste, r.gesehen = true, seq, 1
++		return true
++	}
++	d := int(int16(seq - r.hoechste)) // mit Umbruch
++	if d > 0 {
++		if d >= tonReserveFenster {
++			r.gesehen = 0
++		} else {
++			r.gesehen <<= uint(d)
++		}
++		r.gesehen |= 1
++		r.hoechste = seq
++		return true
++	}
++	if -d >= tonReserveFenster {
++		return !kopie
++	}
++	bit := uint64(1) << uint(-d)
++	if r.gesehen&bit != 0 {
++		return false
++	}
++	r.gesehen |= bit
++	return true
++}
++
++type redBlock struct {
++	pt      uint8
++	abstand uint32
++	laenge  int
++}
++
++// auspacken macht aus einem RED-Paket die Opus-Pakete, die noch nicht
++// hinausgingen: erst die Kopien (aeltester zuerst, Sequenz `seq - k` aus der
++// Position, Zeitstempel `ts - abstand`), dann den Primaerblock mit dem Kopf
++// des RED-Pakets. Kopien bekommen weder Marker noch Header-Erweiterungen: die
++// gehoeren zum Sendezeitpunkt des Traegers. Ein Paket mit anderer PT geht
++// unveraendert durch; ohne Reserve (nil) ebenso.
++func (r *tonReserve) auspacken(pkt *rtp.Packet) []*rtp.Packet {
++	if r == nil {
++		return []*rtp.Packet{pkt}
++	}
++	if pkt.PayloadType != r.redPT {
++		if !r.neu(pkt.SequenceNumber, false) {
++			return nil
++		}
++		return []*rtp.Packet{pkt}
++	}
++
++	bloecke, primPT, pos, ok := redKoepfe(pkt.Payload)
++	if !ok {
++		r.kaputt.Add(1)
++		return nil
++	}
++
++	aus := make([]*rtp.Packet, 0, len(bloecke)+1)
++	for i, b := range bloecke {
++		daten := pkt.Payload[pos : pos+b.laenge : pos+b.laenge]
++		pos += b.laenge
++		seq := pkt.SequenceNumber - uint16(len(bloecke)-i)
++		if !r.neu(seq, true) {
++			continue
++		}
++		r.ersetzt.Add(1)
++		aus = append(aus, &rtp.Packet{
++			Header: rtp.Header{
++				Version:        2,
++				PayloadType:    b.pt,
++				SequenceNumber: seq,
++				Timestamp:      pkt.Timestamp - b.abstand,
++				SSRC:           pkt.SSRC,
++				CSRC:           pkt.CSRC,
++			},
++			Payload: daten,
++		})
++	}
++
++	if r.neu(pkt.SequenceNumber, false) {
++		prim := &rtp.Packet{Header: pkt.Header, Payload: pkt.Payload[pos:len(pkt.Payload):len(pkt.Payload)]}
++		prim.PayloadType = primPT
++		prim.Padding, prim.Header.PaddingSize = false, 0
++		aus = append(aus, prim)
++	}
++	return aus
++}
++
++// redKoepfe liest die Blockkoepfe (RFC 2198 Abschnitt 3: F=1 mit 4 Byte —
++// PT, 14 bit Zeitstempel-Abstand, 10 bit Laenge —, zuletzt F=0 mit 1 Byte)
++// und prueft, dass alle Bloecke ins Paket passen. pos zeigt auf die Daten.
++func redKoepfe(nutz []byte) (bloecke []redBlock, primPT uint8, pos int, ok bool) {
++	for {
++		if pos >= len(nutz) {
++			return nil, 0, 0, false
++		}
++		if nutz[pos]&0x80 == 0 {
++			primPT = nutz[pos] & 0x7f
++			pos++
++			break
++		}
++		if pos+4 > len(nutz) {
++			return nil, 0, 0, false
++		}
++		wort := uint32(nutz[pos+1])<<16 | uint32(nutz[pos+2])<<8 | uint32(nutz[pos+3])
++		bloecke = append(bloecke, redBlock{
++			pt:      nutz[pos] & 0x7f,
++			abstand: wort >> 10,
++			laenge:  int(wort & 0x3ff),
++		})
++		pos += 4
++	}
++	rest := len(nutz) - pos
++	for _, b := range bloecke {
++		rest -= b.laenge
++	}
++	if rest < 0 {
++		return nil, 0, 0, false
++	}
++	return bloecke, primPT, pos, true
++}
++
++// unrettbarDazu zaehlt, was der Empfaenger hinter der Reserve noch als
++// verloren meldet.
++func (r *tonReserve) unrettbarDazu(lost uint64) {
++	if r != nil && lost != 0 {
++		r.unrettbar.Add(lost)
++	}
++}
++
++func (r *tonReserve) stand() reserveStand {
++	return reserveStand{r.ersetzt.Load(), r.unrettbar.Load(), r.kaputt.Load()}
++}
++
++func (r *tonReserve) bericht() string {
++	s := r.stand()
++	text := fmt.Sprintf("[pulse] Ton-Reserve: fehlten %d, ersetzt %d, unrettbar %d",
++		s.ersetzt+s.unrettbar, s.ersetzt, s.unrettbar)
++	if s.kaputt > 0 {
++		text += fmt.Sprintf(", kaputt %d", s.kaputt)
++	}
++	return text
++}
++
++// vielleichtMelden schreibt den Stand ins Log, wenn er sich geaendert hat —
++// hoechstens einmal je Minute.
++func (r *tonReserve) vielleichtMelden(log logger.Writer) {
++	if r == nil {
++		return
++	}
++	r.meldeMutex.Lock()
++	defer r.meldeMutex.Unlock()
++	jetzt := time.Now()
++	if s := r.stand(); s != r.gemeldet &&
++		(r.letzteMeldung.IsZero() || jetzt.Sub(r.letzteMeldung) >= time.Minute) {
++		r.gemeldet, r.letzteMeldung = s, jetzt
++		log.Log(logger.Info, "%s", r.bericht())
++	}
++}
++
++// melden schreibt den Endstand (beim Schliessen der Spur), auch unveraendert.
++func (r *tonReserve) melden(log logger.Writer) {
++	if r == nil {
++		return
++	}
++	r.meldeMutex.Lock()
++	defer r.meldeMutex.Unlock()
++	log.Log(logger.Info, "%s", r.bericht())
++}
+diff --git a/internal/protocols/webrtc/ton_reserve_test.go b/internal/protocols/webrtc/ton_reserve_test.go
+new file mode 100644
+index 0000000..12e090b
+--- /dev/null
++++ b/internal/protocols/webrtc/ton_reserve_test.go
+@@ -0,0 +1,476 @@
++package webrtc
++
++import (
++	"encoding/binary"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/bluenviron/gortsplib/v5/pkg/format"
++	"github.com/bluenviron/mediamtx/internal/conf"
++	"github.com/bluenviron/mediamtx/internal/stream"
++	"github.com/bluenviron/mediamtx/internal/test"
++	"github.com/pion/rtp"
++	"github.com/pion/webrtc/v4"
++	"github.com/stretchr/testify/require"
++)
++
++// Pulse, Patch 0011: der Schalter nimmt nur "1" an, wie PULSE_AUDIO_NACK.
++func TestPulseTonReserveSchalter(t *testing.T) {
++	for _, ca := range []struct {
++		env  string
++		want bool
++	}{
++		{"", false},
++		{"0", false},
++		{"true", false},
++		{"1", true},
++	} {
++		t.Run(ca.env, func(t *testing.T) {
++			t.Setenv("PULSE_AUDIO_RED", ca.env)
++			require.Equal(t, ca.want, pulseAudioRed())
++		})
++	}
++}
++
++// Ein Sender wie pulse-whip: RED (63, `111/111/111`) VOR Opus 111 im Angebot.
++// Der Eingang (WHIP, `Publish: false`) sagt RED nur mit Schalter zu.
++func TestPulseTonReserveAushandlung(t *testing.T) {
++	for _, ca := range []struct {
++		env string
++		red bool
++	}{
++		{"1", true},
++		{"", false},
++	} {
++		t.Run("PULSE_AUDIO_RED="+ca.env, func(t *testing.T) {
++			t.Setenv("PULSE_AUDIO_RED", ca.env)
++
++			me := &webrtc.MediaEngine{}
++			require.NoError(t, me.RegisterCodec(webrtc.RTPCodecParameters{
++				RTPCodecCapability: webrtc.RTPCodecCapability{
++					MimeType: "audio/red", ClockRate: 48000, Channels: 2, SDPFmtpLine: "111/111/111",
++				},
++				PayloadType: 63,
++			}, webrtc.RTPCodecTypeAudio))
++			require.NoError(t, me.RegisterCodec(webrtc.RTPCodecParameters{
++				RTPCodecCapability: webrtc.RTPCodecCapability{
++					MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2,
++					SDPFmtpLine: "minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1",
++				},
++				PayloadType: 111,
++			}, webrtc.RTPCodecTypeAudio))
++			sender, err := webrtc.NewAPI(webrtc.WithMediaEngine(me)).NewPeerConnection(webrtc.Configuration{})
++			require.NoError(t, err)
++			defer sender.Close() //nolint:errcheck
++
++			track, err := webrtc.NewTrackLocalStaticRTP(
++				webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2},
++				"audio", "publisher")
++			require.NoError(t, err)
++			_, err = sender.AddTrack(track)
++			require.NoError(t, err)
++
++			offer, err := sender.CreateOffer(nil)
++			require.NoError(t, err)
++			require.Contains(t, offer.SDP, "a=rtpmap:63 red/48000/2", "Vorbedingung: der Sender bietet RED an")
++			require.NoError(t, sender.SetLocalDescription(offer))
++
++			server := &PeerConnection{
++				LocalRandomUDP:    true,
++				IPsFromInterfaces: true,
++				Publish:           false,
++				Log:               test.NilLogger,
++			}
++			require.NoError(t, server.Start())
++			defer server.Close()
++
++			answer, err := server.CreateFullAnswer(&offer, false)
++			require.NoError(t, err)
++			require.Contains(t, answer.SDP, "opus/48000/2")
++			if ca.red {
++				require.Contains(t, answer.SDP, "a=rtpmap:63 red/48000/2")
++				// Die Zeile des Angebots, nicht die eigene (`111/111`).
++				require.Contains(t, answer.SDP, "a=fmtp:63 111/111/111")
++			} else {
++				require.NotContains(t, strings.ToLower(answer.SDP), "red/48000")
++			}
++		})
++	}
++}
++
++// tonOriginal ist ein Opus-Paket, wie es der Sender vor dem Packen hatte.
++type tonOriginal struct {
++	seq  uint16
++	ts   uint32
++	nutz []byte
++}
++
++func neuesOriginal(seq uint16, ts uint32) tonOriginal {
++	return tonOriginal{seq: seq, ts: ts, nutz: []byte{byte(seq >> 8), byte(seq), 0xAB}}
++}
++
++// redPaket packt wie `streaming/pulse-whip/src/red.rs`: Koepfe der Kopien
++// (aeltester zuerst), Primaerkopf, dann die Daten in derselben Reihenfolge.
++func redPaket(prim tonOriginal, kopien ...tonOriginal) *rtp.Packet {
++	var nutz []byte
++	for _, k := range kopien {
++		wort := (prim.ts-k.ts)<<10 | uint32(len(k.nutz))
++		var b [4]byte
++		binary.BigEndian.PutUint32(b[:], wort)
++		nutz = append(nutz, 0x80|111)
++		nutz = append(nutz, b[1:]...)
++	}
++	nutz = append(nutz, 111)
++	for _, k := range kopien {
++		nutz = append(nutz, k.nutz...)
++	}
++	nutz = append(nutz, prim.nutz...)
++	return &rtp.Packet{
++		Header: rtp.Header{
++			Version: 2, Marker: true, PayloadType: 63,
++			SequenceNumber: prim.seq, Timestamp: prim.ts, SSRC: 0x1234,
++		},
++		Payload: nutz,
++	}
++}
++
++// Ein Strom 100..115 mit je zwei Kopien, durch Reserve UND den echten
++// gortsplib-Empfaenger (Fenster 4, wie mit PULSE_AUDIO_REORDER_BUFFER=4).
++func stromMitVerlust(t *testing.T, verloren ...uint16) ([]*rtp.Packet, uint64, *tonReserve) {
++	t.Helper()
++	r := &tonReserve{redPT: 63}
++	rr := newAudioReceiver(t, 4)
++
++	weg := map[uint16]bool{}
++	for _, s := range verloren {
++		weg[s] = true
++	}
++	var orig []tonOriginal
++	var aus []*rtp.Packet
++	var lostSumme uint64
++	for seq := uint16(100); seq <= 115; seq++ {
++		o := neuesOriginal(seq, uint32(seq)*480)
++		var kopien []tonOriginal
++		if len(orig) >= 2 {
++			kopien = orig[len(orig)-2:]
++		} else {
++			kopien = orig
++		}
++		pkt := redPaket(o, kopien...)
++		orig = append(orig, o)
++		if weg[seq] {
++			continue
++		}
++		for _, p := range r.auspacken(pkt) {
++			out, lost := rr.ProcessPacket2(p, time.Now(), true)
++			lostSumme += lost
++			aus = append(aus, out...)
++		}
++	}
++	return aus, lostSumme, r
++}
++
++func seqs(pakete []*rtp.Packet) []uint16 {
++	var s []uint16
++	for _, p := range pakete {
++		s = append(s, p.SequenceNumber)
++	}
++	return s
++}
++
++func seqBereich(von, bis uint16, ohne ...uint16) []uint16 {
++	var s []uint16
++naechste:
++	for x := von; x <= bis; x++ {
++		for _, o := range ohne {
++			if x == o {
++				continue naechste
++			}
++		}
++		s = append(s, x)
++	}
++	return s
++}
++
++func TestPulseTonReserveEinzelDoppelDreifach(t *testing.T) {
++	for _, ca := range []struct {
++		name     string
++		verloren []uint16
++		fehlt    []uint16
++		ersetzt  uint64
++	}{
++		{"einzeln", []uint16{104}, nil, 1},
++		{"doppelt", []uint16{104, 105}, nil, 2},
++		{"dreifach", []uint16{104, 105, 106}, []uint16{104}, 2},
++	} {
++		t.Run(ca.name, func(t *testing.T) {
++			aus, lost, r := stromMitVerlust(t, ca.verloren...)
++			require.Equal(t, seqBereich(100, 115, ca.fehlt...), seqs(aus))
++			require.Equal(t, uint64(len(ca.fehlt)), lost, "was die Reserve nicht hat, meldet der Empfaenger")
++			require.Equal(t, ca.ersetzt, r.ersetzt.Load())
++			require.Zero(t, r.kaputt.Load())
++
++			// Jedes herausgegebene Paket ist das Original: Opus-PT, Nummer,
++			// Zeitstempel, Nutzlast.
++			for _, p := range aus {
++				o := neuesOriginal(p.SequenceNumber, uint32(p.SequenceNumber)*480)
++				require.Equal(t, uint8(111), p.PayloadType)
++				require.Equal(t, o.ts, p.Timestamp, "Zeitstempel von %d", p.SequenceNumber)
++				require.Equal(t, o.nutz, p.Payload, "Nutzlast von %d", p.SequenceNumber)
++				require.Equal(t, uint32(0x1234), p.SSRC)
++			}
++		})
++	}
++}
++
++// Kopien tragen weder Marker noch Header-Erweiterungen des RED-Pakets (die
++// gehoeren zu dessen Sendezeitpunkt), der Primaerblock behaelt beides.
++func TestPulseTonReserveKopfDerKopien(t *testing.T) {
++	r := &tonReserve{redPT: 63}
++	require.Len(t, r.auspacken(redPaket(neuesOriginal(10, 4800))), 1)
++
++	pkt := redPaket(neuesOriginal(12, 5760), neuesOriginal(11, 5280))
++	require.NoError(t, pkt.SetExtension(3, []byte{0x42}))
++	aus := r.auspacken(pkt)
++	require.Len(t, aus, 2)
++
++	kopie, prim := aus[0], aus[1]
++	require.Equal(t, uint16(11), kopie.SequenceNumber)
++	require.False(t, kopie.Marker)
++	require.False(t, kopie.Extension)
++	require.Empty(t, kopie.Extensions)
++
++	require.Equal(t, uint16(12), prim.SequenceNumber)
++	require.True(t, prim.Marker)
++	require.Equal(t, []byte{0x42}, prim.GetExtension(3))
++	require.Equal(t, uint8(111), prim.PayloadType)
++}
++
++// Paket n wird aus n+1 ersetzt; trifft das Original n danach doch noch ein
++// (vertauscht statt verloren), geht es kein zweites Mal hinaus.
++func TestPulseTonReserveKeineDoppelung(t *testing.T) {
++	r := &tonReserve{redPT: 63}
++	o := func(s uint16) tonOriginal { return neuesOriginal(s, uint32(s)*480) }
++
++	require.Equal(t, []uint16{1}, seqs(r.auspacken(redPaket(o(1)))))
++	require.Equal(t, []uint16{2, 3}, seqs(r.auspacken(redPaket(o(3), o(1), o(2)))))
++	require.Empty(t, r.auspacken(redPaket(o(2), o(1))), "Original 2 nach seiner Kopie")
++	require.Equal(t, []uint16{4}, seqs(r.auspacken(redPaket(o(4), o(2), o(3)))))
++	require.Empty(t, r.auspacken(redPaket(o(4), o(2), o(3))), "doppelt geliefertes Paket")
++	require.Equal(t, uint64(1), r.ersetzt.Load())
++}
++
++// Ueber den Umbruch der Sequenznummer: 65535 fehlt und kommt aus Paket 0, mit
++// dem Zeitstempel aus dessen Abstand.
++func TestPulseTonReserveUmbruch(t *testing.T) {
++	r := &tonReserve{redPT: 63}
++	a := neuesOriginal(65534, 1_000_000)
++	b := neuesOriginal(65535, 1_000_480)
++	c := neuesOriginal(0, 1_000_960)
++
++	require.Equal(t, []uint16{65534}, seqs(r.auspacken(redPaket(a))))
++	aus := r.auspacken(redPaket(c, a, b))
++	require.Equal(t, []uint16{65535, 0}, seqs(aus))
++	require.Equal(t, c.ts-480, aus[0].Timestamp)
++	require.Equal(t, b.nutz, aus[0].Payload)
++	require.Equal(t, uint64(1), r.ersetzt.Load())
++}
++
++// Liegt ein Primaerpaket weiter zurueck als das Fenster, geht es trotzdem
++// weiter — ob es zu spaet ist, entscheidet der Empfaenger wie Upstream (er
++// faengt sich nach einem Neu-Nummerieren des Senders selbst). Eine so alte
++// KOPIE dagegen bleibt draussen.
++func TestPulseTonReserveSprungZurueck(t *testing.T) {
++	r := &tonReserve{redPT: 63}
++	require.Len(t, r.auspacken(redPaket(neuesOriginal(5000, 48000))), 1)
++
++	weit := neuesOriginal(5000-70, 48000-70*480)
++	require.Equal(t, []uint16{5001}, seqs(r.auspacken(redPaket(neuesOriginal(5001, 48480), weit))),
++		"Kopie hinter dem Fenster")
++
++	alt := redPaket(neuesOriginal(100, 960), neuesOriginal(99, 480))
++	require.Equal(t, []uint16{100}, seqs(r.auspacken(alt)), "Primaerblock hinter dem Fenster")
++	require.Zero(t, r.ersetzt.Load())
++}
++
++// Ein Paket mit anderer PT (der Sender schaltet auf schlichtes Opus) geht
++// unveraendert durch.
++func TestPulseTonReserveOhneRedDurch(t *testing.T) {
++	r := &tonReserve{redPT: 63}
++	pkt := &rtp.Packet{
++		Header:  rtp.Header{Version: 2, PayloadType: 111, SequenceNumber: 7, Timestamp: 3360},
++		Payload: []byte{0x80 | 111, 1, 2, 3},
++	}
++	aus := r.auspacken(pkt)
++	require.Len(t, aus, 1)
++	require.Same(t, pkt, aus[0])
++
++	// Ohne Reserve (Spur ohne RED, Schalter aus) ebenso — auch mit PT 63.
++	var ohne *tonReserve
++	red := redPaket(neuesOriginal(8, 3840), neuesOriginal(7, 3360))
++	aus = ohne.auspacken(red)
++	require.Len(t, aus, 1)
++	require.Same(t, red, aus[0])
++	ohne.vielleichtMelden(test.NilLogger)
++	ohne.melden(test.NilLogger)
++}
++
++func TestPulseTonReserveKaputt(t *testing.T) {
++	r := &tonReserve{redPT: 63}
++	for _, nutz := range [][]byte{
++		{},                                     // leer
++		{0x80 | 111, 0, 0},                     // Blockkopf abgeschnitten
++		{0x80 | 111, 0, 0x07, 0x80, 111, 1, 2}, // Block 0x380 = 896 Byte, Paket viel kuerzer
++	} {
++		aus := r.auspacken(&rtp.Packet{
++			Header:  rtp.Header{Version: 2, PayloadType: 63, SequenceNumber: 1, Timestamp: 480},
++			Payload: nutz,
++		})
++		require.Nil(t, aus)
++	}
++	require.Equal(t, uint64(3), r.kaputt.Load())
++
++	// Danach geht es normal weiter, die Nummer 1 ist nicht verbraucht.
++	require.Equal(t, []uint16{1}, seqs(r.auspacken(redPaket(neuesOriginal(1, 480)))))
++}
++
++func TestPulseTonReserveMeldetOpus(t *testing.T) {
++	red := webrtc.RTPCodecParameters{
++		RTPCodecCapability: webrtc.RTPCodecCapability{
++			MimeType: "audio/red", ClockRate: 48000, Channels: 2, SDPFmtpLine: "111/111",
++		},
++		PayloadType: 63,
++	}
++	opus := webrtc.RTPCodecParameters{
++		RTPCodecCapability: webrtc.RTPCodecCapability{
++			MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2,
++			SDPFmtpLine: "minptime=10;useinbandfec=1;stereo=1",
++		},
++		PayloadType: 111,
++	}
++
++	got, ok := pulseOpusUnterRed(webrtc.RTPParameters{Codecs: []webrtc.RTPCodecParameters{red, opus}})
++	require.True(t, ok)
++	require.Equal(t, webrtc.PayloadType(111), got.PayloadType)
++	require.Contains(t, got.SDPFmtpLine, "stereo=1")
++
++	_, ok = pulseOpusUnterRed(webrtc.RTPParameters{Codecs: []webrtc.RTPCodecParameters{opus}})
++	require.False(t, ok)
++}
++
++func TestPulseTonReserveBericht(t *testing.T) {
++	r := &tonReserve{redPT: 63}
++	r.ersetzt.Store(5)
++	r.unrettbarDazu(2)
++	require.Equal(t, "[pulse] Ton-Reserve: fehlten 7, ersetzt 5, unrettbar 2", r.bericht())
++	r.kaputt.Store(1)
++	require.Equal(t, "[pulse] Ton-Reserve: fehlten 7, ersetzt 5, unrettbar 2, kaputt 1", r.bericht())
++
++	var nilReserve *tonReserve
++	nilReserve.unrettbarDazu(3) // ohne RED: kein Absturz
++}
++
++// Ende zu Ende ueber pion: ein Sender schickt RED (63) mit je zwei Kopien und
++// verliert zwei Pakete am Stueck; hinter dem Eingang kommt schlichtes Opus an,
++// lueckenlos, und `ToStream` sieht eine zweikanalige Opus-Spur.
++//
++// Absichtlich NICHT unter dem Namensfilter von `bauen.sh` (`Pulse|Bildmarke`),
++// aus demselben Grund wie `TestTonNachforderungRichtungZuschauer`: echte
++// Verbindung ueber Loopback. Er laeuft im Bild-Bau, der das ganze Paket prueft.
++func TestTonReserveEndeZuEnde(t *testing.T) {
++	t.Setenv("PULSE_AUDIO_RED", "1")
++
++	redCaps := webrtc.RTPCodecCapability{
++		MimeType: "audio/red", ClockRate: 48000, Channels: 2, SDPFmtpLine: "111/111/111",
++	}
++	me := &webrtc.MediaEngine{}
++	require.NoError(t, me.RegisterCodec(webrtc.RTPCodecParameters{
++		RTPCodecCapability: redCaps, PayloadType: 63,
++	}, webrtc.RTPCodecTypeAudio))
++	require.NoError(t, me.RegisterCodec(webrtc.RTPCodecParameters{
++		RTPCodecCapability: webrtc.RTPCodecCapability{
++			MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2,
++			SDPFmtpLine: "minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1",
++		},
++		PayloadType: 111,
++	}, webrtc.RTPCodecTypeAudio))
++	sender, err := webrtc.NewAPI(webrtc.WithMediaEngine(me)).NewPeerConnection(webrtc.Configuration{})
++	require.NoError(t, err)
++	defer sender.Close() //nolint:errcheck
++
++	track, err := webrtc.NewTrackLocalStaticRTP(redCaps, "audio", "publisher")
++	require.NoError(t, err)
++	_, err = sender.AddTrack(track)
++	require.NoError(t, err)
++
++	offer, err := sender.CreateOffer(nil)
++	require.NoError(t, err)
++	gesammelt := webrtc.GatheringCompletePromise(sender)
++	require.NoError(t, sender.SetLocalDescription(offer))
++	<-gesammelt
++
++	server := &PeerConnection{
++		LocalRandomUDP:    true,
++		IPsFromInterfaces: true,
++		Publish:           false,
++		Log:               test.NilLogger,
++	}
++	require.NoError(t, server.Start())
++	defer server.Close()
++
++	answer, err := server.CreateFullAnswer(sender.LocalDescription(), false)
++	require.NoError(t, err)
++	require.NoError(t, sender.SetRemoteDescription(*answer))
++	require.NoError(t, server.WaitUntilConnected(10*time.Second))
++
++	var orig []tonOriginal
++	senden := func(seq uint16, weg bool) {
++		o := neuesOriginal(seq, uint32(seq)*480)
++		kopien := orig
++		if len(kopien) > 2 {
++			kopien = kopien[len(kopien)-2:]
++		}
++		pkt := redPaket(o, kopien...)
++		orig = append(orig, o)
++		if !weg {
++			require.NoError(t, track.WriteRTP(pkt))
++		}
++	}
++
++	// Das erste Paket loest OnTrack aus.
++	senden(100, false)
++	require.NoError(t, server.GatherInboundTracks(5*time.Second))
++	tr := server.InboundTracks()[0]
++	require.NotNil(t, tr.reserve, "RED-Spur ohne Reserve")
++	require.Equal(t, webrtc.MimeTypeOpus, tr.Codec().MimeType)
++
++	var subStream *stream.SubStream
++	medias, err := ToStream(server, &conf.Path{}, &subStream, nil)
++	require.NoError(t, err)
++	require.Equal(t, &format.Opus{PayloadTyp: 96, ChannelCount: 2}, medias[0].Formats[0])
++
++	ankunft := make(chan *rtp.Packet, 64)
++	tr.OnPacketRTP = func(p *rtp.Packet) { ankunft <- p }
++	server.StartReading()
++
++	for seq := uint16(101); seq <= 108; seq++ {
++		senden(seq, seq == 104 || seq == 105)
++		time.Sleep(5 * time.Millisecond)
++	}
++
++	var got []uint16
++	for len(got) < 9 {
++		select {
++		case p := <-ankunft:
++			o := neuesOriginal(p.SequenceNumber, uint32(p.SequenceNumber)*480)
++			require.Equal(t, o.nutz, p.Payload, "Nutzlast von %d", p.SequenceNumber)
++			require.Equal(t, o.ts, p.Timestamp)
++			got = append(got, p.SequenceNumber)
++		case <-time.After(5 * time.Second):
++			t.Fatalf("nur %v kam an", got)
++		}
++	}
++	require.Equal(t, seqBereich(100, 108), got)
++	require.Equal(t, uint64(2), tr.reserve.ersetzt.Load())
++}
