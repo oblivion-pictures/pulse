@@ -7,8 +7,8 @@
       "style": "Sachlich",
       "title": "Fernsteuerung",
       "items": [
-        "Beim Fernsteuern erscheint jedes Bild sofort, sobald es ankommt. Das Bild reagiert direkter und ruckelt seltener, wenn die Leitung schwankt. Wer lieber ein geglättetes Bild hat, nimmt im Fern-Menü den Haken bei „Bild sofort zeigen“ heraus.",
-        "Windows: Der gesteuerte Rechner gibt dem Stream mehr Vorrang und schickt kleinere Vollbilder. Das soll Hänger und kurze Aussetzer verringern."
+        "Beim Fernsteuern erscheint jedes Bild sofort, sobald es ankommt. Das Bild reagiert direkter, und das kurze Rucken beim Nachstellen der Reserve fällt weg. Wirkt das Bild bei stark schwankender Leitung unruhig, hilft es, im Fern-Menü den Haken bei „Bild sofort zeigen“ herauszunehmen.",
+        "Windows: Solange er ferngesteuert wird, gibt der Rechner dem Stream mehr Vorrang und schickt mit Nvidia-Grafik kleinere Vollbilder. Das soll Hänger und kurze Aussetzer verringern."
       ]
     },
     {

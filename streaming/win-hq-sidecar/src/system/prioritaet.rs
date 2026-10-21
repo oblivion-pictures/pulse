@@ -79,6 +79,7 @@
 //! lässt die GPU-Priorität auf Intel ebenfalls aus.
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use windows::Wdk::Graphics::Direct3D::{
     D3DKMT_SCHEDULINGPRIORITYCLASS, D3DKMT_SCHEDULINGPRIORITYCLASS_HIGH,
@@ -144,6 +145,11 @@ fn an() -> bool {
     crate::env::flag_default_on(UMGEBUNG)
 }
 
+/// Ein Wächter lebt ([`streamen`]). Hält [`abgleichen`] billig — es läuft je
+/// Takt und liest die Umgebung so nicht jedes Mal neu — und ohne Wächter
+/// still, weil sonst niemand das Gehobene wieder senken würde.
+static BEREIT: AtomicBool = AtomicBool::new(false);
+
 /// Wächter aus [`streamen`]: senkt beim Fallenlassen, falls noch gehoben.
 #[must_use = "beim Fallenlassen wird die Priorität zurückgesetzt"]
 pub struct Vorrang(());
@@ -157,11 +163,13 @@ pub fn streamen() -> Option<Vorrang> {
         return None;
     }
     eprintln!("[prioritaet] bereit: angehoben wird nur während einer Fernsteuerung");
+    BEREIT.store(true, Ordering::Relaxed);
     Some(Vorrang(()))
 }
 
 impl Drop for Vorrang {
     fn drop(&mut self) {
+        BEREIT.store(false, Ordering::Relaxed);
         let Ok(mut z) = ZUSTAND.lock() else { return };
         if z.gehoben {
             senken(&mut z, "Stream-Ende");
@@ -174,7 +182,7 @@ impl Drop for Vorrang {
 /// `cpu_pipeline`), **nur auf dem Pipeline-Faden**: hebt mit dem Beginn einer
 /// Fernsteuerung an und senkt mit ihrem Ende. Ohne Wechsel ein Vergleich.
 pub fn abgleichen() {
-    if !an() {
+    if !BEREIT.load(Ordering::Relaxed) {
         return;
     }
     let fern = crate::remote_input::fern_aktiv();

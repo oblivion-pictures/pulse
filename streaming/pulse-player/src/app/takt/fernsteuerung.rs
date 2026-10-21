@@ -161,15 +161,17 @@ impl Ausgabetakt {
     /// (`PULSE_PLAYER_AUSGABETAKT_MS`, Pruefstand), bekommt seinen Wert nicht
     /// von der Fernsteuerung angehoben.
     ///
-    /// **Gemerkt wird das Ziel, nicht der Zwischenstand** eines laufenden
-    /// Regler-Uebergangs (s. [`super::gleiten`]): der Zwischenstand ist ein
-    /// Moment, das Ziel ist der Wert, der gerade gilt.
+    /// **Gemerkt wird der eingestellte Wert** (die Untergrenze der Regelung),
+    /// nicht der gerade geltende: hatte der Regler beim Zusehen angehoben,
+    /// wuerde das Zurueckstellen ueber [`Self::setze_vorhalt`] die Anhebung
+    /// sonst zur neuen Untergrenze machen, und der Regler kaeme fuer den Rest
+    /// der Sitzung nie mehr darunter. So stand es bis zum 2026-10-21.
     pub fn fernsteuerung(&mut self, aktiv: bool) {
         if aktiv {
             if self.vorhalt_vor_fern.is_some() {
                 return;
             }
-            self.vorhalt_vor_fern = Some(self.vorhalt_ziel);
+            self.vorhalt_vor_fern = Some(self.anpassung.basis());
             self.fern_wert_stellen();
         } else if let Some(alt) = self.vorhalt_vor_fern.take() {
             self.setze_vorhalt(alt.as_millis() as u32);
@@ -313,18 +315,18 @@ mod tests {
         assert_eq!(ms(&takt), 0);
     }
 
-    /// Ein Regler-Uebergang beim Einschalten: gemerkt wird das ZIEL, nicht der
-    /// Zwischenstand — sonst kaeme nach dem Fern-Ende ein krummer Moment-Wert
-    /// zurueck.
+    /// Der Regler hat beim Zusehen auf 45 angehoben; die Untergrenze bleibt 30.
+    /// Nach dem Steuern gilt wieder 30 — und die Regelung darf von dort aus neu
+    /// anheben, statt auf 45 festzusitzen.
     #[test]
-    fn beim_einschalten_wird_das_ziel_gemerkt() {
+    fn eine_anhebung_beim_zusehen_ueberlebt_das_steuern_nicht() {
         let mut takt = Ausgabetakt::neu(30);
-        takt.ziel_setzen(45);
-        takt.gleiten();
-        assert_eq!(ms(&takt), 31);
+        takt.vorhalt_anwenden(45);
+        assert_eq!(ms(&takt), 45);
         takt.fernsteuerung(true);
         takt.fernsteuerung(false);
-        assert_eq!(ms(&takt), 45);
+        assert_eq!(ms(&takt), 30);
+        assert_eq!(takt.anpassung.basis(), Duration::from_millis(30));
     }
 
     #[test]
