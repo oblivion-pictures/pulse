@@ -10,7 +10,7 @@
 # sie endet der Pull mit 403. Selbst bauen (dauert ein paar Minuten, die
 # Patches und die Go-Tests des Forks laufen dabei mit):
 #
-#     docker build -t ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse9 \
+#     docker build -t ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse11 \
 #       infra/mediamtx-fork
 #
 # Danach prüfen, was WIRKLICH läuft — der Tag sagt das nicht (s. Kommentar in
