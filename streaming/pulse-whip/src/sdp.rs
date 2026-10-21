@@ -39,7 +39,7 @@ use crate::av1;
 /// frei waehlbar (ihre Bedeutung steht im `a=rtpmap` desselben Angebots), aber
 /// AV1 und Opus gingen vorher unter genau diesen Nummern hinaus, und fuer die
 /// Wege soll sich auf der Leitung gar nichts aendern. Eine Kollision kann es
-/// nicht geben: ausser diesen vieren ist nichts angemeldet.
+/// nicht geben: ausser diesen fuenf (mit `PT_RED`) ist nichts angemeldet.
 const PT_H264: PayloadType = 102;
 const PT_AV1: PayloadType = 41;
 /// HEVC — dieselbe Nummer, die `register_default_codecs` an H265 vergibt
@@ -208,8 +208,8 @@ pub fn red_capability(kopien: u8) -> RTCRtpCodecCapability {
     }
 }
 
-/// Meldet genau die beiden Fassungen an, die wir wirklich senden — und keine
-/// weiteren. Tritt an die Stelle von `MediaEngine::register_default_codecs`.
+/// Meldet genau die Fassungen an, die wir wirklich senden (Bild, Opus und,
+/// wenn verlangt, RED um Opus) — und keine weiteren. Tritt an die Stelle von `MediaEngine::register_default_codecs`.
 ///
 /// **Warum nicht zusaetzlich zur Vorgabeliste.** Dann stuenden unsere Werte
 /// zwar mit im Angebot, aber daneben acht weitere H.264-Fassungen, von denen
@@ -228,7 +228,8 @@ pub(super) fn register_codecs(
     red_kopien: u8,
 ) -> Result<()> {
     // RED zuerst: die Reihenfolge der Anmeldung ist die Reihenfolge im
-    // Angebot, und die Antwort waehlt bei Gleichstand das Erstgenannte. Der
+    // Angebot. Ob RED gilt, entscheidet nicht diese Reihenfolge, sondern ob
+    // die Antwort RED enthaelt (`TonSpur::nach_aushandlung`). Der
     // Direktweg uebergibt 0 (dort hat der Empfaenger keinen RED-Entpacker).
     if red_kopien > 0 {
         media.register_codec(
@@ -294,7 +295,12 @@ pub fn baue_api(
     audio: &RTCRtpCodecCapability,
     red_kopien: u8,
 ) -> Result<webrtc::api::API> {
-    baue_api_mit_settings(video, audio, red_kopien, webrtc::api::setting_engine::SettingEngine::default())
+    baue_api_mit_settings(
+        video,
+        audio,
+        red_kopien,
+        webrtc::api::setting_engine::SettingEngine::default(),
+    )
 }
 
 /// Dasselbe wie [`baue_api`], mit einer Setting-Engine des Aufrufers.

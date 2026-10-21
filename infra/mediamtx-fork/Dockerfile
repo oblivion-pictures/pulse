@@ -290,9 +290,9 @@ RUN CGO_ENABLED=0 GOARCH=${TARGETARCH:-$(go env GOARCH)} \
 # The patches carry their own Go tests (0002/0007/0008/0009/0011 in
 # internal/stream and internal/protocols/webrtc, 0006's fixture check among
 # them), and until 2026-09-03 nothing ran them: not this build, not any
-# workflow — a test that never runs looks exactly like a green one. So they run here, after the
-# binary compiled and BEFORE the image gets a tag. ~20 s. Vendored (offline),
-# like the build above. The two packages are the only ones our patches touch;
+# workflow — a test that never runs looks exactly like a green one. So they
+# run here, after the binary compiled and BEFORE the image gets a tag. ~20 s.
+# Vendored (offline), like the build above. The two packages are the only ones our patches touch;
 # the whole suite would add minutes for code we did not change.
 #
 # Sie laufen in der LAEUFER-Architektur (kein `GOARCH` davor, anders als beim
