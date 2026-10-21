@@ -17,7 +17,9 @@ pub(crate) mod ablage;
 pub mod diagnose;
 mod eingabe;
 mod fensterkennung;
+mod minutenzeile;
 mod requests;
+mod sofortbild;
 mod takt;
 mod wayland_zug;
 mod zeigerbau;
@@ -42,7 +44,7 @@ use crate::rpc::StdoutWriter;
 use crate::session::{self, Quelle, SessionCommand, SessionEvent, SessionStats};
 use takt::Ausgabetakt;
 
-pub use takt::VORHALT_MAX_MS;
+pub use takt::{FERN_SOFORT_VORGABE, VORHALT_MAX_MS};
 
 /// Wie frisch das letzte Bild sein muss, damit Eingaben KEINEN eigenen
 /// Durchgang anfordern.
@@ -78,6 +80,9 @@ struct PhaseTimes {
     /// als Ruckeln: die Summe je Sekunde kann stimmen, waehrend einzelne Bilder
     /// doppelt so lange stehen und andere sich draengeln.
     gap_late: u64,
+    /// Dasselbe ueber die ganze Sitzung, fuer die Zaehlzeile (s.
+    /// [`minutenzeile`]) — `gap_late` gilt nur je Sekundenfenster.
+    gap_late_gesamt: u64,
     /// Fertige Werte des letzten Fensters.
     gap_min_us_last: u64,
     gap_max_us_last: u64,
@@ -119,6 +124,7 @@ impl PhaseTimes {
             self.gap_max_us = self.gap_max_us.max(gap);
             if expected_gap.is_some_and(|e| gap > (e.as_micros() as u64).saturating_mul(2)) {
                 self.gap_late += 1;
+                self.gap_late_gesamt += 1;
             }
         }
         self.last_present = Some(now);
@@ -225,9 +231,14 @@ struct Session {
     /// Ausgabe-Takt (s. [`takt`]). **Laeuft in der Vorgabe MIT Vorhalt**
     /// (`proto::AUSGABETAKT_MS_VORGABE`, seit 2026-08-07 30 ms, davor 60);
     /// hier stand bis zum 2026-08-06 „bei ausgeschaltetem Vorhalt — der
-    /// Vorgabe —", und das war schon damals falsch. Nur ausdruecklich
-    /// abgeschaltet reicht er jedes Bild unveraendert durch.
+    /// Vorgabe —", und das war schon damals falsch. Jedes Bild unveraendert
+    /// durch reicht er nur ausdruecklich abgeschaltet — und seit dem
+    /// 2026-10-21 waehrend einer Fernsteuerung mit dem Haken „Bild sofort
+    /// zeigen" (Vorgabe, s. [`sofortbild`]).
     takt: Ausgabetakt,
+    /// Meldetakt der Zaehlzeilen fuer Bild und Ton, ohne Pruefschalter (s.
+    /// [`minutenzeile`]).
+    zaehlung: crate::messzeile::Zaehlung,
     /// Ende-zu-Ende-Sonde, nur mit `PULSE_PLAYER_LATENCY_PROBE=1` vorhanden
     /// (s. `crate::probe`). Ohne die Umgebungsvariable ist das `None` und
     /// kostet nichts.
@@ -329,6 +340,9 @@ pub struct App {
     /// Zahlen liegen sonst nur im Overlay, und wer beim Zuschauen die Maus
     /// bewegt, veraendert die Messung (das Zeichnen des Overlays kostet selbst).
     stats_log: bool,
+    /// Haken „Bild sofort zeigen" — EIN Wert fuer alle Fenster dieses
+    /// Prozesses (s. [`sofortbild`]).
+    fern_sofort: bool,
     sessions: HashMap<u64, Session>,
     by_window: HashMap<WindowId, u64>,
     next_id: u64,
@@ -392,6 +406,7 @@ impl App {
     pub fn new(proxy: EventLoopProxy<UserEvent>, runtime: tokio::runtime::Handle) -> Self {
         Self {
             stats_log: std::env::var_os("PULSE_PLAYER_STATS_LOG").is_some(),
+            fern_sofort: takt::fern_sofort_aus_umgebung(),
             sessions: HashMap::new(),
             by_window: HashMap::new(),
             next_id: 1,
@@ -616,6 +631,7 @@ impl App {
                 // Namen und dieselben Knoepfe wie die Kachel in der App.
                 o.set_title(title);
                 o.set_can_reattach(req.can_reattach.unwrap_or(true));
+                o.set_fern_sofort(self.fern_sofort);
                 Some(o)
             }
             Err(e) => {
@@ -764,7 +780,12 @@ impl App {
                 full_range: false,
                 farbe: decode::Farbangaben::default(),
                 pending: None,
-                takt: Ausgabetakt::neu(vorhalt_ms),
+                takt: {
+                    let mut takt = Ausgabetakt::neu(vorhalt_ms);
+                    takt.fern_sofort_setzen(self.fern_sofort);
+                    takt
+                },
+                zaehlung: Default::default(),
                 probe: crate::probe::LatencyProbe::from_env(),
                 frames_never_drawn: 0,
                 phases: PhaseTimes::default(),
@@ -1405,6 +1426,9 @@ impl App {
             // gibt einen laufenden Anspruch frei und schreibt den Vorbestand
             // zurueck** — nicht bloss den naechsten Anspruch unterlassen.
             OverlayAction::AblageTeilen(an) => self.ablage_teilen_setzen(id, an),
+            // Haken „Bild sofort zeigen": gilt fuer alle Fenster, nicht nur
+            // fuer das, in dem geklickt wurde (s. `sofortbild`).
+            OverlayAction::FernSofort(an) => self.fern_sofort_setzen(an),
         }
     }
 
@@ -1464,6 +1488,9 @@ impl App {
                 eprintln!("pulse-player: Sitzung {id}: {z}");
             }
         }
+        // Die Zaehlzeilen zum Schluss IMMER, auch ohne Ereignis (s.
+        // `minutenzeile`) — vor dem Entfernen, danach fehlen die Zaehler.
+        self.zaehlzeilen(id, true);
         if let Some(session) = self.sessions.remove(&id) {
             self.by_window.remove(&session.window.id());
             let tx = session.commands;
@@ -1486,10 +1513,12 @@ impl App {
                 // Ueber den Ausgabe-Takt einreihen statt direkt uebernehmen.
                 // In der Vorgabe (30 ms Vorhalt) liegt das Bild danach
                 // wirklich eine Weile, und der zweite Weg (`about_to_wait`)
-                // holt es ab. Nur bei ausdruecklich abgeschaltetem Vorhalt ist
-                // es im selben Zug wieder faellig — hier stand bis zum
-                // 2026-08-06 „bei ausgeschaltetem Vorhalt — der Vorgabe —",
-                // und das trifft seit dem 2026-08-05 nicht mehr zu.
+                // holt es ab. Nur bei abgeschaltetem Vorhalt ist es im selben
+                // Zug wieder faellig — ausdruecklich oder waehrend einer
+                // Fernsteuerung mit „Bild sofort zeigen" (seit 2026-10-21).
+                // Hier stand bis zum 2026-08-06 „bei ausgeschaltetem Vorhalt
+                // — der Vorgabe —", und das trifft seit dem 2026-08-05 nicht
+                // mehr zu.
                 let jetzt = std::time::Instant::now();
                 session.takt.einreihen(frame, jetzt);
                 self.abliefern(id, jetzt);
@@ -1506,6 +1535,7 @@ impl App {
                 }
                 session.stats = stats;
                 self.log_stats_if_due(id);
+                self.zaehlzeilen(id, false);
                 let Some(session) = self.sessions.get_mut(&id) else { return };
                 if let Some(overlay) = session.overlay.as_mut() {
                     overlay.mark_stats_dirty();

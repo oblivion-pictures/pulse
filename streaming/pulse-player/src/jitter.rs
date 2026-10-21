@@ -52,10 +52,10 @@ pub enum Release {
     /// Mindestens ein Paket ist endgueltig verloren; die angefangene
     /// Zugriffseinheit ist damit unbrauchbar.
     ///
-    /// `missing` wird heute nur in Tests und Logs gelesen — es bleibt im Typ,
-    /// weil die Anzahl in die Diagnose gehoert, sobald der Stats-Ausbau kommt.
+    /// `missing` = Zahl der fehlenden Pakete am Stueck. Seit dem 2026-10-21
+    /// liest es die Sitzung fuer die Tonluecken-Stufen (`crate::messzeile`);
+    /// hier stand, es werde „nur in Tests und Logs gelesen".
     Gap {
-        #[allow(dead_code)]
         missing: u64,
     },
 }

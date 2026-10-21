@@ -496,6 +496,9 @@ fn run_pipeline(params: StartParams, stop_rx: Receiver<()>) {
     // Eine Vollbild-Anforderung, die nach dem letzten Bild des vorigen Streams
     // eintraf, gehoert nicht diesem hier (Begruendung an `keyframe::reset`).
     crate::keyframe::reset();
+    // Vorrang für die Dauer dieses Stroms; der Wächter setzt beim Ende zurück
+    // (`system::prioritaet`). Dieser Faden ist zugleich der Taktfaden.
+    let _vorrang = crate::system::prioritaet::streamen();
     // `catch_unwind`: ein Panic in der Pipeline (statt eines `Err`) würde sonst
     // an `worker_finished` VORBEI unwinden — kein `error`-Event, `running`
     // bliebe für immer `true`, der Renderer sähe einen Stream, der wortlos in

@@ -4,6 +4,11 @@
 //! Kindmodul von [`super`] wie [`super::fernsteuerung`]: es fasst `vorhalt` an,
 //! und der ist privat.
 //!
+//! **Seit dem 2026-10-21 setzt der Regler nur noch das Ziel**, der Vorhalt
+//! gleitet dorthin (s. [`super::gleiten`], dort auch die Messung, die dazu
+//! gefuehrt hat). Gerechnet wird deshalb ueberall hier mit `vorhalt_ziel`, nicht
+//! mit dem Zwischenstand.
+//!
 //! ## Warum nicht einfach ein groesserer fester Wert
 //!
 //! Der naheliegende Schluss war: der Vorhalt (30 ms) ist kleiner als eine
@@ -28,9 +33,14 @@
 //! ## Wo er NICHT greift
 //!
 //! Bei ausgeschaltetem Takt (`vorhalt == 0`): dort ist „aus" eine Ansage und
-//! kein Startwert.
+//! kein Startwert. Seit dem 2026-10-21 ist das auch der Fall waehrend einer
+//! Fernsteuerung in der Vorgabe-Betriebsart „Bild sofort zeigen" (s.
+//! [`super::fernsteuerung`]) — dort regelt er also nicht.
 //!
-//! ## Waehrend einer Fernsteuerung greift er — seit 2026-08-16
+//! ## Waehrend einer geglaetteten Fernsteuerung greift er — seit 2026-08-16
+//!
+//! Der Abschnitt gilt seit dem 2026-10-21 nur noch fuer die Betriebsart
+//! „geglaettet" (Haken „Bild sofort zeigen" aus).
 //!
 //! **Hier stand das Gegenteil**, und zwar mit guter Begruendung, solange der
 //! Fern-Vorhalt 5 ms betrug: ein Regler, der ihn bei Stoerung anhebt, machte
@@ -137,7 +147,10 @@ impl Ausgabetakt {
 
         let zu_spaet = self.verspaetet.saturating_sub(self.anpassung.verspaetet_start);
         let je_sekunde = zu_spaet as f64 / dauer.as_secs_f64();
-        let ist_ms = self.vorhalt.as_millis() as u32;
+        // Das ZIEL, nicht der Zwischenstand (s. Modulkopf): mitten in einem
+        // Uebergang regelte der Regler sonst gegen seine eigene Bewegung, etwa
+        // ein zweites Mal von 30 aus, waehrend er laengst auf dem Weg zu 45 ist.
+        let ist_ms = self.vorhalt_ziel.as_millis() as u32;
         // Untergrenze des Reglers ist IMMER die Basis — der zuletzt von Hand
         // gesetzte Wert. Anheben ist eine Reaktion auf die Leitung, kein neuer
         // Wunsch; sinkt die Stoerung, gehoert genau dorthin zurueckgeregelt.
@@ -193,10 +206,13 @@ impl Ausgabetakt {
         };
 
         if ziel_ms != ist_ms {
-            // `vorhalt_anwenden` und NICHT `setze_vorhalt`: letzteres setzt die
+            // `ziel_setzen` und NICHT `setze_vorhalt`: letzteres setzt die
             // Untergrenze neu (dort begruendet) — das ist der Weg des Nutzers,
-            // nicht der der Regelung.
-            self.vorhalt_anwenden(ziel_ms);
+            // nicht der der Regelung. Und nicht mehr `vorhalt_anwenden`: das
+            // setzt den Anker zurueck, und jede Stufe ruckte (s. `gleiten`).
+            // Die Zeile unten bleibt wortgleich, damit Auswertungen alter Logs
+            // weiter zaehlen; sie nennt seither das Ziel, nicht den Moment.
+            self.ziel_setzen(ziel_ms);
             eprintln!(
                 "[takt] Vorhalt {ist_ms} -> {ziel_ms} ms ({je_sekunde:.1} zu spaete Bilder/s)"
             );
@@ -231,9 +247,32 @@ mod tests {
     fn anhaltende_verspaetung_hebt_stufenweise_an() {
         let (mut takt, mut jetzt) = neu_mit_fenster(30);
         fenster(&mut takt, &mut jetzt, 20); // 10/s — deutlich ueber HOCH_AB
-        assert_eq!(takt.vorhalt_ms(), 45);
+        assert_eq!(takt.vorhalt_ziel_ms(), 45);
         fenster(&mut takt, &mut jetzt, 20);
-        assert_eq!(takt.vorhalt_ms(), 60);
+        assert_eq!(takt.vorhalt_ziel_ms(), 60);
+    }
+
+    /// **Der Regler rechnet mit dem Ziel, nicht mit dem Zwischenstand.** Hier
+    /// werden keine Bilder eingereiht, der Vorhalt gleitet also gar nicht —
+    /// er steht noch auf 30, waehrend das Ziel schon 45 ist. Rechnete der
+    /// Regler mit dem Zwischenstand, setzte er beim zweiten Fenster wieder 45
+    /// statt 60, und eine anhaltende Stoerung kaeme nie ueber die erste Stufe
+    /// hinaus, solange die Bildrate klein ist.
+    #[test]
+    fn der_regler_rechnet_mit_dem_ziel() {
+        let (mut takt, mut jetzt) = neu_mit_fenster(30);
+        fenster(&mut takt, &mut jetzt, 20);
+        assert_eq!(takt.vorhalt_ms(), 30, "ohne Bilder kein Uebergang");
+        fenster(&mut takt, &mut jetzt, 20);
+        assert_eq!(takt.vorhalt_ziel_ms(), 60);
+        assert_eq!(takt.regler_stufen(), 2);
+        // Und die Ruhe senkt vom Ziel aus, nicht vom Zwischenstand: drei ruhige
+        // Fenster sind EINE Stufe von 60 auf 45 — vom Zwischenstand 30 aus
+        // gaebe es nichts mehr zu senken.
+        for _ in 0..RUHIG_BIS_RUNTER {
+            fenster(&mut takt, &mut jetzt, 0);
+        }
+        assert_eq!(takt.vorhalt_ziel_ms(), 45);
     }
 
     #[test]
@@ -245,22 +284,22 @@ mod tests {
         for _ in 0..5 {
             fenster(&mut takt, &mut jetzt, 8); // 4/s
         }
-        assert_eq!(takt.vorhalt_ms(), 30, "Bodensatz darf nicht regeln");
+        assert_eq!(takt.vorhalt_ziel_ms(), 30, "Bodensatz darf nicht regeln");
     }
 
     #[test]
     fn ruhe_senkt_wieder_bis_zur_basis_und_nicht_darunter() {
         let (mut takt, mut jetzt) = neu_mit_fenster(30);
         fenster(&mut takt, &mut jetzt, 20);
-        assert_eq!(takt.vorhalt_ms(), 45);
+        assert_eq!(takt.vorhalt_ziel_ms(), 45);
         for _ in 0..RUHIG_BIS_RUNTER {
             fenster(&mut takt, &mut jetzt, 0);
         }
-        assert_eq!(takt.vorhalt_ms(), 30, "eine Stufe zurueck");
+        assert_eq!(takt.vorhalt_ziel_ms(), 30, "eine Stufe zurueck");
         for _ in 0..(RUHIG_BIS_RUNTER * 3) {
             fenster(&mut takt, &mut jetzt, 0);
         }
-        assert_eq!(takt.vorhalt_ms(), 30, "nie unter den eingestellten Wert");
+        assert_eq!(takt.vorhalt_ziel_ms(), 30, "nie unter den eingestellten Wert");
     }
 
     #[test]
@@ -269,22 +308,24 @@ mod tests {
         for _ in 0..20 {
             fenster(&mut takt, &mut jetzt, 40);
         }
-        assert_eq!(takt.vorhalt_ms(), u64::from(OBERGRENZE_MS));
+        assert_eq!(takt.vorhalt_ziel_ms(), u64::from(OBERGRENZE_MS));
     }
 
-    /// **Die wichtigste Zusage dieses Moduls.** Waehrend einer Fernsteuerung
-    /// darf der Regler nicht anheben — und schlechte Leitung ist genau der
-    /// Fall, in dem er es sonst taete.
+    /// Waehrend einer GEGLAETTETEN Fernsteuerung hebt der Regler bei Stoerung
+    /// an (s. Modulkopf, seit 2026-08-16). Hier stand bis zum 2026-10-21 „Die
+    /// wichtigste Zusage dieses Moduls. Waehrend einer Fernsteuerung darf der
+    /// Regler nicht anheben" — ueber einem Test, der das Gegenteil prueft.
     #[test]
     fn waehrend_der_fernsteuerung_wird_bei_stoerung_angehoben() {
         let (mut takt, mut jetzt) = neu_mit_fenster(30);
+        takt.fern_sofort_setzen(false);
         takt.fernsteuerung(true);
-        let fern_ms = takt.vorhalt_ms();
+        let fern_ms = takt.vorhalt_ziel_ms();
         for _ in 0..5 {
             fenster(&mut takt, &mut jetzt, 40);
         }
         assert!(
-            takt.vorhalt_ms() > fern_ms,
+            takt.vorhalt_ziel_ms() > fern_ms,
             "eine gestoerte Leitung muss auch beim Steuern mehr Vorhalt bekommen"
         );
         // Und alles Angehobene ist mit dem Ende der Fernsteuerung vergessen.
@@ -304,12 +345,13 @@ mod tests {
     #[test]
     fn waehrend_der_fernsteuerung_bleibt_der_fern_wert_die_untergrenze() {
         let (mut takt, mut jetzt) = neu_mit_fenster(90);
+        takt.fern_sofort_setzen(false);
         takt.fernsteuerung(true);
         for _ in 0..30 {
             fenster(&mut takt, &mut jetzt, 0);
         }
         assert_eq!(
-            takt.vorhalt_ms(),
+            takt.vorhalt_ziel_ms(),
             u64::from(super::super::fernsteuerung::FERN_VORHALT_MS),
             "bis zum Fern-Wert herunter, aber nicht darunter"
         );
@@ -323,6 +365,7 @@ mod tests {
     #[test]
     fn der_regler_hebt_einen_tieferen_nutzerwert_beim_steuern_nicht_an() {
         let mut takt = Ausgabetakt::neu(2);
+        takt.fern_sofort_setzen(false);
         takt.fernsteuerung(true);
         assert_eq!(takt.vorhalt_ms(), 2, "die Fernsteuerung senkt nur, sie hebt nicht");
         // Erst NACH `fernsteuerung()` das Fenster oeffnen: `setze_vorhalt`
@@ -332,7 +375,28 @@ mod tests {
         for _ in 0..(RUHIG_BIS_RUNTER * 2) {
             fenster(&mut takt, &mut jetzt, 0);
         }
-        assert_eq!(takt.vorhalt_ms(), 2, "ruhige Fenster duerfen nicht auf den Fern-Wert heben");
+        assert_eq!(
+            takt.vorhalt_ziel_ms(),
+            2,
+            "ruhige Fenster duerfen nicht auf den Fern-Wert heben"
+        );
+    }
+
+    /// In der Vorgabe-Betriebsart „Bild sofort zeigen" regelt nichts: der
+    /// Vorhalt ist 0, und auch eine gestoerte Leitung hebt ihn nicht an. Das
+    /// ist die Abmachung mit dem Haken — wer Glaettung will, schaltet ihn aus.
+    #[test]
+    fn beim_sofort_zeigen_regelt_nichts() {
+        let (mut takt, mut jetzt) = neu_mit_fenster(30);
+        takt.fern_sofort_setzen(true);
+        takt.fernsteuerung(true);
+        for _ in 0..5 {
+            fenster(&mut takt, &mut jetzt, 40);
+        }
+        assert_eq!(takt.vorhalt_ziel_ms(), 0);
+        assert_eq!(takt.regler_stufen(), 0);
+        takt.fernsteuerung(false);
+        assert_eq!(takt.vorhalt_ms(), 30, "danach wieder der Wert von vorher");
     }
 
     #[test]
@@ -350,7 +414,7 @@ mod tests {
     fn handbedienung_setzt_die_untergrenze_neu() {
         let (mut takt, mut jetzt) = neu_mit_fenster(30);
         fenster(&mut takt, &mut jetzt, 20);
-        assert_eq!(takt.vorhalt_ms(), 45);
+        assert_eq!(takt.vorhalt_ziel_ms(), 45);
         takt.setze_vorhalt(50);
         for _ in 0..(RUHIG_BIS_RUNTER * 2) {
             fenster(&mut takt, &mut jetzt, 0);

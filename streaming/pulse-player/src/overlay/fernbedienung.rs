@@ -280,6 +280,12 @@ impl Overlay {
                         // sich samt Abstand selbst, weil er auf Plattformen
                         // ohne Umsetzung ganz entfaellt.
                         self.ablage_schalter(ui, actions);
+                        // Der Haken „Bild sofort zeigen" (s.
+                        // `super::sofortschalter`) — wie der Ablage-Schalter
+                        // eine Einstellung der laufenden Sitzung, deshalb in
+                        // derselben Gruppe ueber den beendenden Knoepfen.
+                        self.sofort_schalter(ui, actions);
+                        ui.add_space(6.0);
                         // „Diesen Bildschirm schliessen" direkt ueber dem
                         // Trennen: er beendet etwas, aber nur einen Teil —
                         // deshalb in derselben Gruppe, nur ohne die Sitzung.

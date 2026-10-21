@@ -122,6 +122,20 @@ pub fn vendor_defaults(vendor: Vendor, codec: &str) -> Dictionary<'static> {
             // Datenrate, aber mehr sichtbares Pumpen (der Ausgleich ginge ueber
             // den Quantisierer), groesser ist der Daempfungs-Hebel, den der
             // Nutzer am 2026-08-03 wegen der Latenz abgelehnt hat.
+            //
+            // **Eine Ausnahme seit 2026-10-21 — nur im Windows-Sidecar und nur
+            // waehrend einer Fernsteuerung:** dort bekommt der OFFENE
+            // NVENC-Encoder einen Puffer von N Bildern (Vorgabe 4,
+            // `PULSE_HQ_FERN_VBV_BILDER`), beim Ende wieder FFmpegs
+            // Vorgabewert. Gemessen auf einem Windows-Sender (RTX 2080,
+            // `hevc_nvenc`, 2500 kbit/s, 1080p60): ein Vollbild rund 30-mal so
+            // gross wie ein P-Bild hielt die Leitung gut eine Drittelsekunde
+            // besetzt und loeste zweimal die naechste Bildluecke aus. Dass der
+            // kleine Puffer das behebt, ist gefolgert, nicht gemessen; der
+            // Preis ist das Pumpen von oben, und bei der Fernsteuerung zaehlt
+            // die Reaktion vor der Schaerfe. Herleitung, FFmpeg-Fundstellen und
+            // das IDR beim Umschalten: `win-hq-sidecar/src/encode/fern_vbv.rs`.
+            // Dieser Sidecar hat keine Fernsteuerung, also auch keine Ausnahme.
             opts.set("tune", "ull");
             opts.set("rc", "cbr");
             opts.set("b_ref_mode", "0");

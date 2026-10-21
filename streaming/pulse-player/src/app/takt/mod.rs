@@ -30,10 +30,12 @@
 //! vier, die danach das Gegenteil behaupteten. Herleitung und Messwerte
 //! stehen an [`crate::proto::PlayerOptions::ausgabetakt_ms`].
 //!
-//! Bei ausgeschaltetem Vorhalt — also nur noch auf ausdruecklichen Wunsch —
-//! verhaelt sich der Player wie vor diesem Modul: [`Ausgabetakt::einreihen`]
-//! setzt den Zielzeitpunkt auf „jetzt" und [`Ausgabetakt::faellig`] gibt das
-//! Bild im selben Atemzug wieder heraus.
+//! Bei ausgeschaltetem Vorhalt verhaelt sich der Player wie vor diesem Modul:
+//! [`Ausgabetakt::einreihen`] setzt den Zielzeitpunkt auf „jetzt" und
+//! [`Ausgabetakt::faellig`] gibt das Bild im selben Atemzug wieder heraus.
+//! Hier stand bis zum 2026-10-21 „also nur noch auf ausdruecklichen Wunsch".
+//! Seitdem ist das auch die Vorgabe WAEHREND einer Fernsteuerung
+//! (Betriebsart „Bild sofort zeigen", s. [`fernsteuerung`]).
 //!
 //! **Was der Vorhalt NICHT ist:** eine Fehlerkorrektur. Ein Bild, das nach
 //! seinem Zielzeitpunkt eintrifft, wird sofort gezeigt (und gezaehlt, s.
@@ -43,6 +45,9 @@
 
 mod anpassung;
 mod fernsteuerung;
+mod gleiten;
+
+pub use fernsteuerung::{fern_sofort_aus_umgebung, FERN_SOFORT_VORGABE};
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -141,7 +146,14 @@ struct Anker {
 }
 
 pub struct Ausgabetakt {
+    /// Der Vorhalt, mit dem JETZT gerechnet wird. Waehrend eines Uebergangs
+    /// des Reglers ein Zwischenstand auf dem Weg zu [`Self::vorhalt_ziel`]
+    /// (s. [`gleiten`]).
     vorhalt: Duration,
+    /// Wohin der Vorhalt unterwegs ist. Ausserhalb eines Uebergangs gleich
+    /// [`Self::vorhalt`]. **Der Regler rechnet mit diesem Wert**, nicht mit
+    /// dem Zwischenstand — sonst regelte er gegen seinen eigenen Uebergang.
+    vorhalt_ziel: Duration,
     anker: Option<Anker>,
     warteschlange: VecDeque<(Instant, Box<DecodedFrame>)>,
     /// Bilder, die nach ihrem Zielzeitpunkt eintrafen. Die Kennzahl dafuer, ob
@@ -176,6 +188,14 @@ pub struct Ausgabetakt {
     /// der Merker, und es kann kein zweites Absenken den ersten Stand
     /// ueberschreiben.
     vorhalt_vor_fern: Option<Duration>,
+    /// Betriebsart der Fernsteuerung: `true` = „Bild sofort zeigen" (Vorhalt
+    /// 0), `false` = geglaettet (Fern-Vorhalt plus Regler). Gilt auch, wenn
+    /// gerade nicht gesteuert wird — dann fuer die naechste Fernsteuerung
+    /// (s. [`fernsteuerung`]).
+    fern_sofort: bool,
+    /// Wie oft der Regler ein neues Ziel gesetzt hat (eine Zeile
+    /// `[takt] Vorhalt X -> Y ms` je Stufe). Fuer die Zaehlzeile.
+    regler_stufen: u64,
     /// Regelt den Vorhalt bei anhaltender Verspaetung nach oben und wieder
     /// zurueck (s. [`anpassung`]).
     anpassung: anpassung::Anpassung,
@@ -183,8 +203,10 @@ pub struct Ausgabetakt {
 
 impl Ausgabetakt {
     pub fn neu(vorhalt_ms: u32) -> Self {
+        let vorhalt = Duration::from_millis(u64::from(vorhalt_ms.min(VORHALT_MAX_MS)));
         Self {
-            vorhalt: Duration::from_millis(u64::from(vorhalt_ms.min(VORHALT_MAX_MS))),
+            vorhalt,
+            vorhalt_ziel: vorhalt,
             anker: None,
             warteschlange: VecDeque::new(),
             verspaetet: 0,
@@ -195,9 +217,9 @@ impl Ausgabetakt {
             letzter_rtp: None,
             gewarnt: false,
             vorhalt_vor_fern: None,
-            anpassung: anpassung::Anpassung::neu(Duration::from_millis(u64::from(
-                vorhalt_ms.min(VORHALT_MAX_MS),
-            ))),
+            fern_sofort: fernsteuerung::FERN_SOFORT_VORGABE,
+            regler_stufen: 0,
+            anpassung: anpassung::Anpassung::neu(vorhalt),
         }
     }
 
@@ -247,8 +269,21 @@ impl Ausgabetakt {
         !self.vorhalt.is_zero()
     }
 
+    /// Der Vorhalt, mit dem gerade gerechnet wird — waehrend eines
+    /// Regler-Uebergangs der Zwischenstand (s. [`Self::vorhalt_ziel_ms`]).
     pub fn vorhalt_ms(&self) -> u64 {
         self.vorhalt.as_millis() as u64
+    }
+
+    /// Wohin der Vorhalt unterwegs ist (s. [`gleiten`]). Nur die Tests
+    /// fragen das; das Log nennt die Ziele schon (`[takt] Vorhalt X -> Y ms`).
+    #[cfg(test)]
+    pub fn vorhalt_ziel_ms(&self) -> u64 {
+        self.vorhalt_ziel.as_millis() as u64
+    }
+
+    pub fn regler_stufen(&self) -> u64 {
+        self.regler_stufen
     }
 
     pub fn verspaetet(&self) -> u64 {
@@ -270,17 +305,24 @@ impl Ausgabetakt {
         self.verdraengt
     }
 
-        /// Vorhalt zur Laufzeit aendern (`set_option`).
+    /// Vorhalt zur Laufzeit aendern (`set_option`, Ein- und Ausschalten der
+    /// Fernsteuerung, Wechsel ihrer Betriebsart).
     ///
     /// Der Anker faellt dabei weg: ein geaenderter Vorhalt verschiebt jeden
     /// Zielzeitpunkt, und die wartenden Bilder haetten sonst Zeitpunkte aus der
     /// alten Rechnung. Sie werden mit ausgegeben statt verworfen — ein
     /// sichtbarer Sprung ist besser als eine Luecke.
+    ///
+    /// **Nur fuer Aenderungen, die jemand ausloest.** Der Regler sprang bis zum
+    /// 2026-10-21 auf demselben Weg und ruckte damit sichtbar, rund 7-mal je
+    /// Minute; seitdem gleitet er (s. [`gleiten`]).
     pub fn setze_vorhalt(&mut self, ms: u32) {
         if let Some(neu) = self.vorhalt_anwenden(ms) {
             // NUR auf diesem Weg: ein von Hand gesetzter Wert ist ein neuer
             // Wunsch und damit die neue Untergrenze der Regelung. Die Regelung
-            // selbst geht an `vorhalt_anwenden` vorbei (s. dort).
+            // selbst setzt seit dem 2026-10-21 nur ihr Ziel
+            // (`gleiten::ziel_setzen`); davor ging sie ueber
+            // `vorhalt_anwenden` an dieser Zeile vorbei.
             self.anpassung.basis_setzen(neu);
         }
     }
@@ -288,18 +330,26 @@ impl Ausgabetakt {
     /// Den Vorhalt tatsaechlich umstellen — ohne die Regelung anzufassen.
     /// `Some(neu)` = es hat sich etwas geaendert.
     ///
-    /// **Warum getrennt von [`Self::setze_vorhalt`].** Beide Aufrufer wollen
-    /// dasselbe umstellen, aber Verschiedenes damit sagen: der Nutzer setzt
-    /// eine neue Untergrenze, die Regelung ([`anpassung`]) reagiert nur auf die
-    /// Leitung und muss ihren eigenen Stand behalten. Der erste Anlauf loeste
-    /// das, indem die Regelung ihre Felder um den Aufruf herum sicherte und
-    /// zurueckschrieb — das funktionierte, verlangte aber, dass jedes kuenftige
-    /// Feld in diese Rettung aufgenommen wird. Ein Weg, der gar nichts
-    /// zuruecksetzt, braucht die Rettung nicht.
+    /// **Warum getrennt von [`Self::setze_vorhalt`].** Bis zum 2026-10-21
+    /// hatte es zwei Aufrufer, die dasselbe umstellen, aber Verschiedenes damit
+    /// sagen wollten: der Nutzer setzt eine neue Untergrenze, die Regelung
+    /// ([`anpassung`]) reagiert nur auf die Leitung und muss ihren eigenen
+    /// Stand behalten. Der erste Anlauf loeste das, indem die Regelung ihre
+    /// Felder um den Aufruf herum sicherte und zurueckschrieb — das
+    /// funktionierte, verlangte aber, dass jedes kuenftige Feld in diese
+    /// Rettung aufgenommen wird. Seitdem die Regelung gleitet ([`gleiten`]),
+    /// ist `setze_vorhalt` der einzige Aufrufer. Die Trennung ist geblieben,
+    /// noetig ist sie nicht mehr.
     fn vorhalt_anwenden(&mut self, ms: u32) -> Option<Duration> {
         let neu = Duration::from_millis(u64::from(ms.min(VORHALT_MAX_MS)));
+        // Ein laufender Regler-Uebergang endet hier in jedem Fall: ein von Hand
+        // gesetzter Wert gilt sofort und ganz. Steht der Zwischenstand zufaellig
+        // schon auf dem neuen Wert, ist nichts umzurechnen — die Untergrenze
+        // muss der Aufrufer trotzdem neu setzen, deshalb `Some`.
+        let glitt = self.vorhalt_ziel != self.vorhalt;
+        self.vorhalt_ziel = neu;
         if neu == self.vorhalt {
-            return None;
+            return glitt.then_some(neu);
         }
         self.vorhalt = neu;
         self.anker = None;
@@ -371,6 +421,10 @@ impl Ausgabetakt {
 
     /// Ein frisch dekodiertes Bild aufnehmen.
     pub fn einreihen(&mut self, frame: Box<DecodedFrame>, jetzt: Instant) {
+        // Ein Regler-Uebergang rueckt je Bild ein Stueck weiter, VOR der
+        // Rechnung des Zielzeitpunkts — so gehoert der Schritt zu genau diesem
+        // Bild (s. [`gleiten`]).
+        self.gleiten();
         let ziel = self.ziel(&frame, jetzt);
         if ziel <= jetzt && self.aktiv() {
             self.verspaetet += 1;
@@ -538,9 +592,11 @@ mod tests {
         Box::new(f)
     }
 
-    /// **Der Vorgabefall: aus.** Dann darf sich nichts aendern — ein Bild geht
-    /// im selben Zug wieder heraus, und die Fernsteuerung zahlt keine
-    /// Millisekunde.
+    /// **Abgeschaltet** — ausdruecklich oder waehrend einer Fernsteuerung in
+    /// der Betriebsart „Bild sofort zeigen". Dann darf sich nichts aendern:
+    /// ein Bild geht im selben Zug wieder heraus und zahlt keine Millisekunde.
+    /// Hier stand „Der Vorgabefall: aus"; die Vorgabe ist seit dem 2026-08-05
+    /// ein Vorhalt (s. Modulkopf).
     #[test]
     fn ohne_vorhalt_geht_alles_sofort_durch() {
         let mut t = Ausgabetakt::neu(0);

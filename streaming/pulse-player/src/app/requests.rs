@@ -343,6 +343,9 @@ impl App {
         // muss zurueck, bevor der Player die Auswahl mit sich nimmt.
         for id in self.sessions.keys().copied().collect::<Vec<_>>() {
             self.ablage_abbau(id);
+            // Die Zaehlzeilen zum Schluss, wie in `close_session` — auch beim
+            // Beenden des ganzen Players soll jede Sitzung ihre letzte haben.
+            self.zaehlzeilen(id, true);
         }
         self.sessions.clear();
         self.by_window.clear();

@@ -111,6 +111,10 @@ pub enum OverlayAction {
     /// bloss den naechsten Anspruch zu unterlassen. Sonst bliebe die Ablage
     /// des Nutzers leer, obwohl er das Teilen gerade abgeschaltet hat.
     AblageTeilen(bool),
+    /// Haken „Bild sofort zeigen" im Fern-Menue: Vorhalt 0 statt Glaettung
+    /// waehrend der Fernsteuerung. Gilt fuer alle Fenster des Prozesses und
+    /// sofort; umgesetzt in `app::sofortbild`.
+    FernSofort(bool),
 }
 
 /// Ein Bildschirm des ferngesteuerten Rechners, wie ihn die App ins Fenster
