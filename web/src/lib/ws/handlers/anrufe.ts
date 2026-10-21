@@ -6,6 +6,14 @@ import { registerWsHandler } from '../handler-registry';
 import { sendeAnrufSystemzeile } from '$lib/anrufe/systemzeileSenden';
 import { userCache } from '$lib/stores/users.svelte';
 import { auth } from '$lib/stores/auth.svelte';
+import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
+import { isDnd } from '$lib/notifications/inPage';
+
+/** Ist der Anruf in einer Gruppe, die ICH stumm geschaltet habe? */
+function gruppeStumm(kanalId: string): boolean {
+  const gruppe = privateGruppen.byId[kanalId];
+  return !!gruppe && privateGruppen.eigenesStumm(gruppe, auth.user?.id ?? null);
+}
 
 /** Der Anruf-Store — als gecachten dynamischen Import: `anruf.svelte` zieht
  *  das ganze livekit-client-SDK (472 KB) nach sich und darf deshalb nicht im
@@ -29,8 +37,14 @@ export function register(_ctx: HandlerContext): void {
   registerWsHandler('call_klingelt', async (evt) => {
     // Name-Auflösung noch synchron im Dispatch-Fenster.
     const gegenstelle = userCache.displayName(evt.einleiter_id);
+    // Entscheid des Eigentümers (2026-10-21): bei „Nicht stören“ und in einer
+    // stummen Gruppe erscheint der Anruf still — Overlay zum Annehmen, aber
+    // kein Ton und kein natives Klingeln. Der Server schickt dann keinen
+    // Anruf-Push (`anruf_push.klingeln`), das `call_klingelt` über die
+    // WebSocket aber schon: ob die offene App klingelt, entscheidet sie hier.
+    const still = isDnd() || gruppeStumm(evt.channel_id);
     const { anrufe } = await anrufModulLaden();
-    anrufe.eingehend(evt, gegenstelle);
+    anrufe.eingehend(evt, gegenstelle, { ton: !still, nativ: !still });
   });
 
   registerWsHandler('call_angenommen', async (evt) => {

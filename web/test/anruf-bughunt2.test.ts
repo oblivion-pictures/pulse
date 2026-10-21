@@ -143,6 +143,10 @@ test('A9: eine Annahme aus der Hülle spielt keinen DM-Ton', () => {
   const huelle = lies('src/lib/anrufe/anrufHuelle.ts');
   const kalt = zwischen(huelle, "if (!anruf && aktion === 'annehmen' && daten.channel_id)", 'anruf = anrufe.aktiv;');
   assert.match(kalt, /\{ ton: false \}/);
-  // Der WebSocket-Weg klingelt weiter mit Ton.
-  assert.match(lies('src/lib/ws/handlers/anrufe.ts'), /anrufe\.eingehend\(evt, gegenstelle\);/);
+  // Der WebSocket-Weg klingelt weiter mit Ton — ausser bei „Nicht stören“
+  // oder in einer stummen Gruppe (Entscheid 2026-10-21, dort still).
+  assert.match(
+    lies('src/lib/ws/handlers/anrufe.ts'),
+    /anrufe\.eingehend\(evt, gegenstelle, \{ ton: !still, nativ: !still \}\);/
+  );
 });

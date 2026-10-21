@@ -114,3 +114,16 @@ test('Nur der Anzeige-Weg holt das Postfach ab (Bughunt 2, Web-Befund 1)', async
     .sort();
   assert.deepEqual(aufrufer, ['lib/ws/handlers/chat.ts']);
 });
+
+test('Entscheid 2026-10-21: Anruf in der App bei „Nicht stören“ oder stummer Gruppe still', () => {
+  // Der Server klingelt per Push dann nicht (`anruf_push.py`), schickt das
+  // `call_klingelt` über die WebSocket aber trotzdem — „ob sie klingelt,
+  // entscheidet die Oberfläche“. Still heißt: Overlay ja, kein Ton, kein
+  // natives Klingeln (Android-Klingelmeldung, iOS-CallKit).
+  const handler = lies('lib/ws/handlers/anrufe.ts');
+  assert.match(handler, /const still = isDnd\(\) \|\| gruppeStumm\(evt\.channel_id\);/);
+  assert.match(handler, /anrufe\.eingehend\(evt, gegenstelle, \{ ton: !still, nativ: !still \}\);/);
+  const anruf = lies('lib/anrufe/anruf.svelte.ts');
+  assert.match(anruf, /\{ ton = true, nativ = true \}: \{ ton\?: boolean; nativ\?: boolean \} = \{\}/);
+  assert.match(anruf, /if \(nativ\) void nativAnkommen\(evt\.call_id, gegenstelle\);/);
+});
