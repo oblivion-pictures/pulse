@@ -151,3 +151,18 @@ fn opus_paket_wie_bisher() {
     assert_eq!(p2.header.timestamp - p1.header.timestamp, 480);
     assert_eq!(p2.header.sequence_number, 8);
 }
+
+/// Die Dauer kommt als Bruchteil einer Sekunde und faellt in f64 knapp neben
+/// den ganzen Takt; `paket_bauen` muss runden statt abzuschneiden, sonst laeuft
+/// der Ton schleichend weg. 1/30 s ist der Fall, der die Falle frueher zeigte
+/// (1599 statt 1600), 20 ms der Mac-Frame.
+#[test]
+fn nicht_ganze_takte_werden_gerundet() {
+    let ton = TonSpur::neu(opus_capability());
+    let a = ton.paket_bauen(&[1], Duration::from_secs_f64(1.0 / 30.0));
+    let b = ton.paket_bauen(&[2], Duration::from_secs_f64(1.0 / 30.0));
+    assert_eq!(b.header.timestamp.wrapping_sub(a.header.timestamp), 1600);
+    let c = ton.paket_bauen(&[3], Duration::from_millis(20));
+    let d = ton.paket_bauen(&[4], Duration::from_millis(20));
+    assert_eq!(d.header.timestamp.wrapping_sub(c.header.timestamp), 960);
+}

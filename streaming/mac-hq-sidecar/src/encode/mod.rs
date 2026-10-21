@@ -557,8 +557,8 @@ impl VideoEncoder {
 /// Ganzzahl `fps/2`, s. `halbfall_rundet_auf`): bei 30 fps waere `90000/30`
 /// exakt 3000, aber bei krummen Raten wie 280 fps ist es das nicht, und
 /// Abschneiden wuerde den Fehler einseitig aufsummieren lassen (Zwilling zur
-/// Falle, die `whip::dauer_fuer_takte` fuer die Ton-Paketdauer schon einmal
-/// behoben hat).
+/// Falle, die `pulse_whip::ton::TonSpur::senden` fuer die Ton-Paketdauer
+/// schon einmal behoben hat).
 ///
 /// **Groessenordnung eines falschen Vorzeichens/Faktors hier:** bei 60 fps
 /// rueckt der Zeitstempel je Bild um `90000/60 = 1500` RTP-Takte vor, also
