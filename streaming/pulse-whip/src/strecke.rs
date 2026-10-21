@@ -246,6 +246,9 @@ impl Zustand {
             return None;
         }
         self.letzte_zeile = jetzt;
+        // Mit RED zaehlt „Ton: verloren" den Rest NACH der Rettung durch die
+        // Reserve; die rohen Verluste der Strecke stehen in der Server-Zeile
+        // `[pulse] Ton-Reserve`.
         Some(format!(
             "Strecke zum Server ({} s) — {}; {}",
             komma(seit.as_secs_f64()),

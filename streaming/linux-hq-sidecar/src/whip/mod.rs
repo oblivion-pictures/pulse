@@ -68,7 +68,6 @@ use rtcp::payload_feedbacks::receiver_estimated_maximum_bitrate::ReceiverEstimat
 use tokio::runtime::Runtime;
 use webrtc::api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_HEVC};
 use webrtc::ice_transport::ice_server::RTCIceServer;
-use webrtc::media::Sample;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -78,7 +77,6 @@ use webrtc::rtp::packet::Packet;
 use webrtc::rtp::packetizer::Payloader;
 use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
-use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
 
 /// Obergrenze fuers Sammeln der ICE-Kandidaten, bevor das Angebot trotzdem
@@ -100,52 +98,6 @@ fn runtime() -> &'static Runtime {
             .expect("whip tokio runtime bauen")
     })
 }
-
-/// Eine Dauer, aus der webrtc-rs **genau** `takte` RTP-Takte macht.
-///
-/// **Warum das noetig ist** (gemessen 2026-08-02 auf der Windows-Seite,
-/// Messakte `streaming/testbench/profiles/ton-2026-08-02-windows-messstand.json`
-/// — die Stelle ist dieselbe Datei in webrtc-rs, der Fehler also derselbe hier):
-/// `track_local_static_sample.rs:137` rechnet `(dauer.as_secs_f64() * uhr) as
-/// u32`, und `as u32` **schneidet ab**. Ein Bild bei 30/s dauert 1/30 s, das mal
-/// 90000 ergibt in f64 2999,9999999999995, und daraus wird 2999 statt 3000.
-///
-/// Ein Takt je Bild klingt nach nichts und ist bei 30 Bildern je Sekunde
-/// **20 ms je Minute**: das Bild laeuft dem Ton mit rund 1,3 Sekunden je Stunde
-/// davon, ohne dass irgendwo ein Fehler auftaucht. Auf Windows so gemessen
-/// (H.264 -21,9 und -20,5 ms/min), waehrend AV1 dort bei -0,5 und -0,0 lag —
-/// der eigene AV1-Paketierer rechnet den Zeitstempel ganzzahlig aus der
-/// Bildzahl und geht an dieser Stelle vorbei.
-///
-/// **Auf Linux ungemessen**, aber nicht ungeprueft: es ist dieselbe Fassung
-/// derselben fremden Datei, und der Rechenweg haengt an nichts
-/// Plattformspezifischem. Die Gegenprobe auf Windows nach dem Einbau: +4,2 und
-/// -6,7 ms/min statt -21,9 und -20,5, je 149 Paare — der einseitige Fehler ist
-/// weg, der Rest streut um null.
-///
-/// **Eine halbe Takt-Zugabe, nicht eine ganze.** Damit landet das Abschneiden
-/// sicher auf dem gewuenschten Wert, egal wie die f64-Darstellung faellt, und
-/// die Dauer bleibt zugleich naeher am Soll als jede Aufrundung auf den
-/// naechsten Takt. Der Taktgeber (`pacer`) nimmt weiter die ECHTE Bilddauer;
-/// diese hier ist ausschliesslich die Uebergabe an webrtc-rs. (Seit
-/// 2026-08-14 geht nur noch der TON hier durch — das Bild stempelt selbst,
-/// s. Modulkopf; die Video-Zahlen oben bleiben als Beleg der Falle stehen.)
-fn dauer_fuer_takte(takte: u32, uhr: u32) -> Duration {
-    let ns = (f64::from(takte) + 0.5) * 1e9 / f64::from(uhr);
-    Duration::from_nanos(ns.round() as u64)
-}
-
-/// Ein Sample auf eine Spur schreiben. Wird aus dem synchronen Encode-Faden
-/// gerufen; `write_sample` reiht nur ein, blockiert also nicht spuerbar.
-fn write_to_track(track: &TrackLocalStaticSample, data: &[u8], dauer: Duration) -> Result<()> {
-    let sample = Sample {
-        data: Bytes::copy_from_slice(data),
-        duration: dauer,
-        ..Default::default()
-    };
-    runtime().block_on(track.write_sample(&sample)).map_err(Into::into)
-}
-
 
 /// Wie ein encodiertes Bild in RTP-Nutzlasten zerfaellt.
 enum Paketierer {
@@ -185,7 +137,7 @@ pub struct WhipSender {
     /// zur Bild-Latenz. Genau das kostete am 2026-07-28 ueber die echte Leitung
     /// rund 25 ms (RTMPS mit Ton 143, ohne Ton 116,8). Zwei getrennte Spuren
     /// koennen sich so nicht gegenseitig aufhalten.
-    audio: Arc<TrackLocalStaticSample>,
+    audio: Arc<TonSpur>,
     pc: Arc<RTCPeerConnection>,
     /// Aus dem `Location`-Kopf der Antwort — fuer das abschliessende DELETE.
     resource_url: Option<String>,
@@ -208,6 +160,7 @@ pub struct WhipSender {
 /// `pulse-whip::h264`. Hier nur noch durchgereicht, damit die Aufrufstelle
 /// unveraendert bleibt.
 use pulse_whip::h264::h264_ist_vollbild;
+use pulse_whip::ton::{TonArt, TonSpur};
 
 /// Ein Annex-B-Zeitabschnitt in RTP-Nutzlasten zerlegen — der Weg, den H.264
 /// und HEVC gemeinsam nehmen. Der Payloader von webrtc-rs sagt nicht, ob ein
@@ -375,7 +328,9 @@ impl WhipSender {
         // Baut die Media-Engine so, dass im Angebot GENAU unsere beiden
         // Fassungen stehen (Begruendung und Messung im Kopf von [`sdp`]).
         let audio_cap = sdp::opus_capability();
-        let api = sdp::baue_api(&cap, &audio_cap, pulse_whip::red::kopien_aus_umgebung())?;
+        // Eine Zahl fuer Angebot und Nachpruefung (`nach_aushandlung`).
+        let kopien = pulse_whip::red::kopien_aus_umgebung();
+        let api = sdp::baue_api(&cap, &audio_cap, kopien)?;
 
         // Kein STUN: der Weg zum eigenen Server laeuft entweder ueber die
         // Schleife oder ueber eine gewoehnliche ausgehende Verbindung. Ein
@@ -421,14 +376,9 @@ impl WhipSender {
         // seiner einfachen Form nicht (ein POST, eine Antwort). Eine angebotene
         // und stumme Spur kostet dagegen nichts — anders als beim Muxer, wo ein
         // angekuendigter, aber stummer Strom den Interleaver puffern liesse.
-        let audio = Arc::new(TrackLocalStaticSample::new(
-            audio_cap,
-            "audio".to_owned(),
-            "pulse-hq".to_owned(),
-        ));
-        let audio_sender = pc
-            .add_track(Arc::clone(&audio) as Arc<dyn TrackLocal + Send + Sync>)
-            .await?;
+        let audio = Arc::new(TonSpur::neu(audio_cap));
+        let audio_sender = pc.add_track(audio.spur()).await?;
+        let sender_fuer_ton = Arc::clone(&audio_sender);
 
         // Auch der Ton-Sender MUSS gelesen werden (ungelesene Rueckmeldungen
         // stauen den Sender). Seit 2026-10-14 nicht mehr nur leergelesen: die
@@ -525,6 +475,21 @@ impl WhipSender {
                 return Err(e);
             }
         };
+
+        // Ton: RED, wenn der Server es angenommen hat (sonst bleibt es Opus).
+        // Vor dem ersten `send_audio` — `connect` gibt die Sitzung erst jetzt her.
+        match audio.nach_aushandlung(&sender_fuer_ton, kopien).await {
+            Ok(TonArt::Red { kopien, .. }) => {
+                tracing::info!(target: "whip", "Ton mit Reserve: RED, {kopien} Kopien");
+            }
+            Ok(TonArt::Opus) if kopien > 0 => {
+                tracing::info!(target: "whip", "Ton ohne Reserve: Server nimmt kein RED an");
+            }
+            Ok(TonArt::Opus) => {}
+            Err(e) => {
+                tracing::warn!(target: "whip", "Ton-Reserve nicht eingerichtet, bleibt Opus: {e:#}");
+            }
+        }
 
         // Die Nummer, unter der die Bildmarke ausgehandelt wurde. Nach
         // `set_remote_description` liefert webrtc-rs hier genau die
@@ -689,14 +654,10 @@ impl WhipSender {
     /// falscher Wert verschoebe den Ton gegen das Bild, ohne dass irgendwo
     /// ein Fehler auftaucht.
     ///
-    /// **Ueber [`dauer_fuer_takte`]**, weil die Rundung hier dieselbe Falle
-    /// hat wie beim Bild: Sample-Anzahl mal Takt in f64 kann knapp neben dem
-    /// ganzen Takt fallen, und dann liefe der TON schleichend weg (Beleg in
-    /// `dauer_fuer_takte`, Windows-Messung vom 2026-08-14).
+    /// Die Rundung auf ganze Takte steht in `pulse_whip::ton::TonSpur::senden`
+    /// (webrtc-rs schnitte sonst ab und der Ton liefe schleichend weg).
     pub fn send_audio(&self, data: &[u8], dauer: Duration) -> Result<()> {
-        let takte = (dauer.as_secs_f64() * 48_000.0).round() as u32;
-        write_to_track(&self.audio, data, dauer_fuer_takte(takte, 48_000))
-            .context("write_sample audio")
+        runtime().block_on(self.audio.senden(data, dauer)).context("Ton senden")
     }
 
     /// Sitzung abbauen. Idempotent.
@@ -720,6 +681,7 @@ impl WhipSender {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     /// Die Bildmarke waehlt ihre Schablone daran. Ein SPS/PPS-Paket ohne
     /// Vollbild darf NICHT als Vollbild gelten — der Payloader haelt es
@@ -737,49 +699,5 @@ mod tests {
         assert!(!h264_ist_vollbild(&[0, 0, 1, 0x67, 0, 0, 1, 0x68]), "SPS und PPS allein");
         assert!(!h264_ist_vollbild(&[]));
         assert!(!h264_ist_vollbild(&[0, 0, 1]), "Startcode ohne Kopf laeuft nicht ueber");
-    }
-    use super::*;
-
-    /// **Genau die Rechnung, die webrtc-rs anstellt** — nachgebaut, damit der
-    /// Test die Falle prueft und nicht unsere Absicht:
-    /// `track_local_static_sample.rs`, `(dauer.as_secs_f64() * uhr) as u32`.
-    fn wie_webrtc_rs(dauer: Duration, uhr: u32) -> u32 {
-        (dauer.as_secs_f64() * f64::from(uhr)) as u32
-    }
-
-    /// Die alte Rechnung verliert bei 30 Bildern je Sekunde einen Takt je Bild.
-    /// Dieser Test haelt den GEMESSENEN Fehler fest (2026-08-02, rund 20 ms je
-    /// Minute); faellt er irgendwann weg, weil webrtc-rs rundet, darf die
-    /// Zugabe verschwinden — vorher nicht.
-    #[test]
-    fn die_alte_rechnung_verliert_einen_takt() {
-        let alt = Duration::from_secs_f64(1.0 / 30.0);
-        assert_eq!(wie_webrtc_rs(alt, 90_000), 2999, "das war der Fehler");
-        let verlust_je_minute = 30.0 * 60.0 * f64::from(3000 - 2999) / 90_000.0 * 1000.0;
-        assert!((verlust_je_minute - 20.0).abs() < 0.001, "20 ms je Minute");
-    }
-
-    /// Und die berichtigte trifft — fuer jede Bildrate, die hier vorkommt.
-    #[test]
-    fn dauer_fuer_takte_trifft_den_takt() {
-        for fps in [24u32, 25, 30, 50, 60, 90, 120, 144] {
-            let takte = (90_000 + fps / 2) / fps;
-            let d = dauer_fuer_takte(takte, 90_000);
-            assert_eq!(wie_webrtc_rs(d, 90_000), takte, "fps {fps}");
-            // Die Zugabe darf die Dauer nicht spuerbar verschieben: hoechstens
-            // ein halber Takt, also 5,6 Mikrosekunden.
-            let soll = f64::from(takte) / 90_000.0;
-            assert!((d.as_secs_f64() - soll).abs() < 6e-6, "fps {fps} zu weit weg");
-        }
-    }
-
-    /// Dasselbe fuer den Ton, ueber alle zulaessigen Opus-Paketlaengen.
-    #[test]
-    fn dauer_fuer_takte_trifft_auch_den_ton() {
-        for ms in [2.5f64, 5.0, 10.0, 20.0, 40.0, 60.0] {
-            let takte = (ms * 48.0).round() as u32;
-            let d = dauer_fuer_takte(takte, 48_000);
-            assert_eq!(wie_webrtc_rs(d, 48_000), takte, "{ms} ms");
-        }
     }
 }
