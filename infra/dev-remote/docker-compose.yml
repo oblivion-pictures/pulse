@@ -296,7 +296,7 @@ services:
   # weiterhin CI und einen neuen Tag — Quellcode-Sync hilft dabei nicht.
   mediamtx:
     <<: *base
-    image: ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse9
+    image: ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse11
     container_name: pulsetest_mediamtx
     environment:
       PULSE_KEYFRAME_INTERVAL: "0"
@@ -326,8 +326,9 @@ services:
       # Patch 0009 (2026-10-15), wirksam ab Bild `1.19.1-pulse9`; ebenso 1:1
       # mit infra/prod/docker-compose.yml, Begruendung dort.
       PULSE_AUDIO_NACK: "1"
-      # OFFEN: PULSE_AUDIO_RED=1 (Patch 0011) steht noch NICHT, Begruendung
-      # in infra/prod/docker-compose.yml.
+      # Patch 0011 (2026-10-21), wirksam ab Bild `1.19.1-pulse11`; ebenso 1:1
+      # mit infra/prod/docker-compose.yml, Begruendung dort.
+      PULSE_AUDIO_RED: "1"
       # Muss 1:1 mit infra/prod/docker-compose.yml übereinstimmen — sonst
       # testet man gegen einen Stand, den es in Produktion nicht gibt. Volle
       # Begründung der Werte dort.

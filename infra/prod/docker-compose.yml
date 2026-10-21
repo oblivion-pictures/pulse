@@ -422,7 +422,7 @@ services:
     # instantly. The AV1 temporal-delimiter patch still applies cleanly and is
     # kept. Rollback: revert this commit → `:1.17.1-pulse` (image still in GHCR
     # and cached on the host) + `docker compose up -d pulse_mediamtx`.
-    image: ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse9
+    image: ghcr.io/oblivion-pictures/pulse-mediamtx:1.19.1-pulse11
     container_name: pulse_mediamtx
     restart: unless-stopped
     network_mode: host
@@ -506,13 +506,17 @@ services:
       # NACK 94-98 % der Bildverluste rettete). Ausgehandelt nur, wo der
       # Zuschauer `nack` fuer Opus anbietet. Begruendung im Kopf des Patches.
       PULSE_AUDIO_NACK: "1"
-      # OFFEN: PULSE_AUDIO_RED=1 (Patch 0011, Ton-Reserve am Eingang, wirksam
-      # ab Bild `1.19.1-pulse11`) steht hier noch NICHT. Die Windows-Server-App
-      # baut ihren Fork mit allen Patches, der Schalter wuerde dort beim
-      # naechsten Release wirken, vor jedem Handtest. Zusammen mit dem
-      # Tag-Wechsel auf pulse11 an allen fuenf Stellen setzen
-      # (infra/self-host/tests/test_mediamtx_fork.py, nativeBackend.test.ts).
-      # Begruendung im Kopf des Patches.
+      # Patch 0011 (2026-10-21), wirksam ab Bild `1.19.1-pulse11`: RED
+      # (RFC 2198) fuer den Ton am WHIP-EINGANG. Unsere Sender (ab 0.1.127)
+      # bieten `audio/red` an und packen jedem Tonpaket die zwei vorigen bei;
+      # der Server packt das vor dem Umordnungspuffer wieder zu reinem Opus
+      # aus und setzt ein verlorenes Paket aus der Kopie im naechsten ein.
+      # Anlass: blecherner Ton bei ~0,2 % Tonverlust auf der Strecke
+      # Sender->Server (2026-10-21), wo Opus ohne NACK und ohne wirksame FEC
+      # laeuft. Zuschauer sehen weiter nur Opus. Ohne den Schalter lehnt der
+      # Server RED ab, und die Sender bleiben bei Opus. Begruendung im Kopf
+      # des Patches.
+      PULSE_AUDIO_RED: "1"
       # FlexFEC-Paritaet auf dem WHEP-Ausgang. **Bedingung dafuer, dass ein
       # Verlust ueberlebt wird** — nicht bloss eine Verbesserung: ein
       # Vollbild-Strom heilt zwar am naechsten Vollbild byte-perfekt, aber der
