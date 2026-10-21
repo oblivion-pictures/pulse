@@ -83,8 +83,9 @@ impl App {
         // Und der Vorhalt sinkt fuer die Dauer der Fernsteuerung: beim Steuern
         // zaehlt der geschlossene Kreis aus Eingabe hin und Bild zurueck, und
         // dort schlaegt jede Millisekunde Glaettung voll durch
-        // (`takt::Ausgabetakt::fernsteuerung`). Der vorherige Wert kommt danach
-        // von selbst zurueck.
+        // (`takt::Ausgabetakt::fernsteuerung`) — in der Vorgabe auf 0, mit
+        // abgewaehltem „Bild sofort zeigen" auf den Fern-Wert. Der vorherige
+        // Wert kommt danach von selbst zurueck.
         session.takt.fernsteuerung(aktiv);
         // Und die Tastenkuerzel des Fenstermanagers stehen still, solange
         // gesteuert wird (s. [`crate::tastensperre`]). Hier und nicht in der

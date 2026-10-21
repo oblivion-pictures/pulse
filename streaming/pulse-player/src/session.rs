@@ -287,6 +287,12 @@ pub struct SessionStats {
     /// (s. [`crate::buendel`]) — Bild und Ton getrennt, eigene Nummernkreise.
     pub buendel_bild: crate::buendel::Buendelstand,
     pub buendel_ton: crate::buendel::Buendelstand,
+    /// Laengen der Tonluecken, die der Jitter-Puffer aufgegeben hat — also
+    /// NACH der Nachforderung, kumuliert je Sitzung (s. [`crate::messzeile`]).
+    /// Nicht in der `stats`-Antwort: gelesen wird es nur von der Zaehlzeile,
+    /// und die Antwort soll nicht nebenbei ein neues Feld bekommen.
+    #[serde(skip)]
+    pub ton_luecken: crate::messzeile::Lueckenstufen,
     /// Ton- und Aufnahme-Zaehler.
     #[serde(flatten)]
     pub media: MediaStats,
@@ -544,6 +550,8 @@ pub async fn run(
     let mut video_ssrc: Option<u32> = None;
     let mut buendel_bild = crate::buendel::Buendelzaehler::default();
     let mut buendel_ton = crate::buendel::Buendelzaehler::default();
+    // Tonluecken nach der Nachforderung, nach Laenge (s. `crate::messzeile`).
+    let mut ton_luecken = crate::messzeile::Lueckenstufen::default();
     // Bildraten-Messung fuer den Aufnahme-Container ( Begruendung am
     // Medien-Sink-Aufruf): letzter RTP-Zeitstempel und rollierendes Fenster.
     let mut letzte_rtp_ts: Option<u32> = None;
@@ -899,7 +907,13 @@ pub async fn run(
 
             for release in buffer.poll(now) {
                 let (unit, unit_arrived, unit_rtp_ts, unit_bildnummer) = match release {
-                    Release::Gap { .. } => {
+                    Release::Gap { missing } => {
+                        // Die Laenge zaehlt nur beim Ton: dort ist jedes Paket
+                        // ein eigener Rahmen, und an der Laenge haengt, wie
+                        // viele Kopien eine Ton-Reserve tragen muesste.
+                        if *codec == Codec::Opus {
+                            ton_luecken.buchen(missing);
+                        }
                         assembler.on_gap();
                         // Eine Luecke bricht die Zeitreihe: das naechste Bild
                         // ist womoeglich weit spaeter. Der Ausgabe-Takt haengt
@@ -1398,6 +1412,7 @@ pub async fn run(
             // Auch ohne weiteres Paket: der Takt schliesst offene Loecher ab.
             stats.buendel_bild = buendel_bild.stand(Instant::now());
             stats.buendel_ton = buendel_ton.stand(Instant::now());
+            stats.ton_luecken = ton_luecken;
             let _ = events.try_send(SessionEvent::Stats(stats));
             // Die drei Dekodier-Posten gelten JE FENSTER, nicht kumulativ —
             // sonst wuerde der Mittelwert ueber die ganze Sitzung glatt gebuegelt

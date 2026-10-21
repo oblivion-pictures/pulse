@@ -56,6 +56,12 @@ pub(crate) fn vendor_encoder_opts(
             // im Mitschnitt, nicht im Log des Senders; genau dort ist der
             // Fehler auf AMD zuerst durchgerutscht.
             opts.set("forced-idr", "1");
+            // **Kein `rc_buffer_size` beim Öffnen** — FFmpeg setzt dann selbst
+            // `2 × Bitrate`, Begründung und Nutzerentscheid im bufsize-Absatz
+            // des Linux-Zwillings (`linux-hq-sidecar/src/encode/opts.rs`).
+            // Einzige Ausnahme: während einer Fernsteuerung, zur Laufzeit am
+            // offenen Encoder (`fern_vbv.rs`).
+            //
             // **Hier steht mit Absicht KEINE Bittiefen-Option** — anders als im
             // AMD-Zweig unten, der ohne `bitdepth=10` trotz P010-Eingang 8 bit
             // liefert. Die Asymmetrie ist der naheliegendste Verdacht an dieser

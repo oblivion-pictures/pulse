@@ -122,6 +122,8 @@ pub struct FfmpegHwEncoder {
     /// (Begründung an `super::hdr_metadaten::am_bild`), der Encoder muss sie
     /// also über seine Lebensdauer behalten.
     schirm: Option<crate::system::hdr::SchirmFarbe>,
+    /// Kleiner VBV-Puffer während der Fernsteuerung (nur NVENC), s. `fern_vbv`.
+    fern_vbv: super::fern_vbv::FernVbv,
 }
 
 impl FfmpegHwEncoder {
@@ -245,6 +247,14 @@ impl FfmpegHwEncoder {
         );
 
         let encoder_time_base = Rational::new(1, VIDEO_HZ as i32);
+        // NACH dem Öffnen: erst dann steht FFmpegs Vorgabepuffer im Kontext.
+        let fern_vbv = super::fern_vbv::FernVbv::neu(
+            codec_name,
+            i64::from(cfg.bitrate_kbps) * 1000,
+            cfg.fps,
+            unsafe { (*opened.as_ptr()).rc_buffer_size },
+            std::env::var(super::fern_vbv::UMGEBUNG).ok().as_deref(),
+        );
 
         // Der Ton MUSS vor dem Verbinden stehen: WHIP kennt keine
         // Nachverhandlung, die Tonspur muss also schon im Angebot liegen. Wer
@@ -339,6 +349,7 @@ impl FfmpegHwEncoder {
             ),
             enc_latency: EncodeLatency::default(),
             schirm: cfg.schirm,
+            fern_vbv,
         })
     }
 
@@ -442,6 +453,11 @@ impl FfmpegHwEncoder {
         let auf_anforderung = self.vollbilder_angefordert.naechstes_bild(pts);
         let aus_eigenem_takt = self.vollbilder_selbst.faellig();
         let angefordert = auf_anforderung || aus_eigenem_takt;
+        // Vor dem Stempel aus demselben Grund (Logzeile); FFmpeg übernimmt den
+        // Wert im folgenden `avcodec_send_frame` (`fern_vbv`).
+        if let Some(bits) = self.fern_vbv.abgleichen(crate::remote_input::fern_aktiv()) {
+            unsafe { (*self.encoder.as_mut_ptr()).rc_buffer_size = bits };
+        }
         // VOR dem Einschieben stempeln: mit `delay=0` liefert NVENC das Paket
         // im selben Aufruf zurueck (s. `latency.rs`).
         let t_send = std::time::Instant::now();
@@ -557,6 +573,7 @@ impl FfmpegHwEncoder {
             // Zuordnen VOR `rescale_ts` — danach steht der pts in der
             // Muxer-Zeitbasis und passt nicht mehr zum vermerkten.
             self.enc_latency.packet(packet.pts());
+            self.fern_vbv.paket(packet.is_key());
             // ShadowPlay-Tee: die fertigen Bytes gehen ZUSAETZLICH in den
             // Clip-Ring (`crate::clip`) — kein zweites Enkodieren; eine Kopie
             // ist noetig, der Puffer gehoert ffmpeg. Muss hier stehen, VOR dem

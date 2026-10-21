@@ -83,6 +83,7 @@ windows = { version = "0.62", features = [
     "Win32_UI_Input_KeyboardAndMouse", # SendInput: Maus-/Tastatur-Injektion der Fernsteuerung (remote_input/)
     "Win32_UI_HiDpi", # SetProcessDpiAwarenessContext: ohne das trifft die Injektion bei Skalierung != 100 % daneben (remote_input/injektion.rs)
     "Win32_System_Variant",
+    "Wdk_Graphics_Direct3D", # D3DKMTSetProcessSchedulingPriorityClass + HAGS-Abfrage: GPU-Vorrang beim Streamen (system/prioritaet.rs)
 ] }
 
 # Stage 3: per-app audio enum for `list_application_audio`. The crate wraps

@@ -279,6 +279,7 @@ impl GraphicsCaptureApiHandler for D3d12FrameSink {
         // Erste Frame: Ring + Sync-State aus WGCs D3D11-Device bauen, `Setup`
         // mit allen NT-Handles schicken.
         if self.bridge.is_none() {
+            crate::system::prioritaet::geraet(frame.device(), "Aufnahme (D3D12-Weg)");
             let width = frame.width();
             let height = frame.height();
             let bridge = Bridge::build(

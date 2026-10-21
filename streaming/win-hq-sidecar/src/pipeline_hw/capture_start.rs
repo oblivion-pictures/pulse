@@ -104,16 +104,21 @@ pub(super) fn start_and_wait_for_setup(
     // Erzeugung; der Setup-Versatz würde zum konstanten A/V-Offset).
     let origin_instant = Instant::now();
     match setup {
-        HwCaptureItem::Setup { hw, width, height, direkt, first, first_qpc } => Ok(Aufnahmestart {
-            capture,
-            hw,
-            width,
-            height,
-            direkt,
-            first,
-            first_qpc,
-            origin_instant,
-        }),
+        HwCaptureItem::Setup { hw, width, height, direkt, first, first_qpc } => {
+            // Erst NACH `origin_instant`, sonst ginge die Dauer in den
+            // A/V-Anker ein. Dasselbe Gerät trägt Skalierer und Encoder.
+            crate::system::prioritaet::geraet(hw.device(), "Aufnahme+Encoder (D3D11)");
+            Ok(Aufnahmestart {
+                capture,
+                hw,
+                width,
+                height,
+                direkt,
+                first,
+                first_qpc,
+                origin_instant,
+            })
+        }
         HwCaptureItem::Frame { .. } => Err(anyhow!("first item was Frame, expected Setup")),
     }
 }

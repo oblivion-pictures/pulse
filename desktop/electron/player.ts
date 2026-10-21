@@ -28,11 +28,16 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as readline from 'node:readline';
-import { storeGet } from './store';
+import { storeGet, storeSet } from './store';
 import { app } from 'electron';
 
 import { diagnoseEingeschaltet } from './experimental-log-upload';
 import { createHwdecWacht } from './player-hwdec-wacht';
+import {
+  FERN_SOFORT_SCHLUESSEL,
+  fernSofortAusMeldung,
+  fernSofortUmgebung,
+} from './player-fern-sofort';
 import { createLeerlaufWacht } from './player-leerlauf';
 import { logSidecar } from './sidecar-log';
 import { befehlZeile } from './sidecar-log-befehle';
@@ -304,6 +309,12 @@ class PlayerManager {
     if (env.PULSE_PLAYER_HWDEC === undefined && this.hwdecWacht.hardwareAbgeschaltet()) {
       env.PULSE_PLAYER_HWDEC = '0';
     }
+    // Der Haken „Bild sofort zeigen" aus dem letzten Lauf (s.
+    // `player-fern-sofort.ts`); von aussen gesetzt gewinnt, wie oben.
+    const fernSofort = fernSofortUmgebung(storeGet(FERN_SOFORT_SCHLUESSEL));
+    if (env.PULSE_PLAYER_FERN_SOFORT === undefined && fernSofort !== undefined) {
+      env.PULSE_PLAYER_FERN_SOFORT = fernSofort;
+    }
     const child = spawn(binary, [], { stdio: ['pipe', 'pipe', 'pipe'], env });
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
@@ -437,6 +448,10 @@ class PlayerManager {
       if (msg.ev === 'player:state' && msg.state === 'closed' && typeof msg.session === 'number') {
         this.leerlauf.geschlossen(msg.session);
       }
+      // Der Haken „Bild sofort zeigen" wurde im Fenster umgelegt — fuer den
+      // naechsten Player-Prozess merken (s. `player-fern-sofort.ts`).
+      const fernSofort = fernSofortAusMeldung(msg);
+      if (fernSofort !== undefined) storeSet(FERN_SOFORT_SCHLUESSEL, fernSofort);
       this.emit(msg);
       return;
     }
