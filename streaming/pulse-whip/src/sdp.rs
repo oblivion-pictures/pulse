@@ -209,7 +209,8 @@ pub fn red_capability(kopien: u8) -> RTCRtpCodecCapability {
 }
 
 /// Meldet genau die Fassungen an, die wir wirklich senden (Bild, Opus und,
-/// wenn verlangt, RED um Opus) — und keine weiteren. Tritt an die Stelle von `MediaEngine::register_default_codecs`.
+/// wenn verlangt, RED um Opus) — und keine weiteren. Tritt an die Stelle von
+/// `MediaEngine::register_default_codecs`.
 ///
 /// **Warum nicht zusaetzlich zur Vorgabeliste.** Dann stuenden unsere Werte
 /// zwar mit im Angebot, aber daneben acht weitere H.264-Fassungen, von denen

@@ -130,7 +130,7 @@ async fn red_block_traegt_die_ausgehandelte_opus_pt() {
 
 #[test]
 fn sequenz_und_zeit_laufen_ueber() {
-    let ton = TonSpur::neu_mit_start(opus_capability(), u16::MAX, u32::MAX - 239);
+    let ton = TonSpur::mit_start(opus_capability(), u16::MAX, u32::MAX - 239);
     let p1 = ton.paket_bauen(&[1], ZEHN_MS);
     let p2 = ton.paket_bauen(&[2], ZEHN_MS);
     assert_eq!(
@@ -142,7 +142,7 @@ fn sequenz_und_zeit_laufen_ueber() {
 
 #[test]
 fn opus_paket_wie_bisher() {
-    let ton = TonSpur::neu_mit_start(opus_capability(), 7, 1000);
+    let ton = TonSpur::mit_start(opus_capability(), 7, 1000);
     let p1 = ton.paket_bauen(&[9, 8, 7, 6], ZEHN_MS);
     let p2 = ton.paket_bauen(&[5], ZEHN_MS);
     assert_eq!(&p1.payload[..], &[9, 8, 7, 6]);
