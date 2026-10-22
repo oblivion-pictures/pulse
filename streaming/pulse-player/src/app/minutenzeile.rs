@@ -53,5 +53,7 @@ fn tonstand(s: &Session) -> Tonstand {
         danach_verworfen: m.audio_ersetzt,
         unterlaeufe: m.audio_underruns,
         ton_lief: m.audio_active,
+        weg: m.audio_weg,
+        ausgabe_ms: m.audio_ausgabe_ms.map_or(0, |ms| ms.round().max(1.0) as u64),
     }
 }

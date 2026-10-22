@@ -1197,7 +1197,7 @@ impl App {
                     "verdeckt {} (davon PLC {}, danach verworfen {}), verworfen {} ",
                     "(davon verspaetet {}, Schnitte {}), ",
                     "Puffer {} Samples, Uhrenabgleich {:+} ppm, Lippen {:+.0} ms ",
-                    "(Eingriff {:+} ms){}"
+                    "(Eingriff {:+} ms), Ausgabe {} ms ueber {}{}"
                 ),
                 id,
                 media.audio_underruns,
@@ -1211,6 +1211,8 @@ impl App {
                 media.audio_abgleich_ppm,
                 media.audio_lippen_ms,
                 media.audio_sync_versatz_ms,
+                media.audio_ausgabe_ms.map_or_else(|| "?".to_string(), |ms| format!("{ms:.1}")),
+                media.audio_weg,
                 // Ein Geraetefehler heisst: es kommt nichts mehr heraus. Das
                 // gehoert in dieselbe Zeile und nicht in eine einmalige
                 // Meldung, die im Protokoll nach oben wegscrollt.

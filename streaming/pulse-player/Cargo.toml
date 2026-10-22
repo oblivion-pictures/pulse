@@ -185,6 +185,15 @@ windows = { version = "0.62", features = [
 [target.'cfg(target_os = "linux")'.dependencies]
 ash = "0.38"
 libloading = "0.8"
+# --- Tonausgabe direkt ueber PipeWire (s. `src/audio/ausgabe_pipewire.rs`) ---
+# Statt cpal → ALSA → PulseAudio-Uebersetzer → PipeWire: die Kette hielt im
+# Flatpak rund 50-60 ms Ton zurueck (Uebersetzer-Puffer allein 32 ms, am
+# 2026-10-22 an `pulse.attr.tlength` ausgelesen), und die Lippen-Regelung kann
+# davon nur 20 ms ausgleichen. Neu im Baum dieses Crates; dieselbe Reihe 0.10
+# wie im Linux-Sidecar (`linux-hq-sidecar/Cargo.toml`). Lizenz: pipewire und
+# libspa MIT, passt (THIRD-PARTY-NOTICES.md, `drittanbieter.md`). `v0_3_50`: `Buffer::requested` und `pw_stream_get_time_n`
+# (Verzoegerung bis zum Lautsprecher); das Flatpak-SDK 25.08 bringt PipeWire 1.4.
+pipewire = { version = "0.10", features = ["v0_3_50"] }
 
 # --- Wayland-Direktzugriff (s. `src/tastensperre/` UND `src/fernsteuerung/wayland/`) ---
 #

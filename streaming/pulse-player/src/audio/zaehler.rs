@@ -41,4 +41,10 @@ pub struct AudioCounters {
     pub sync_versatz_ms: i32,
     /// Verdeckte Verluste (s. `audio::verdeckung`).
     pub verdeckung: verdeckung::Zaehler,
+    /// Verzoegerung vom Geraete-Abruf bis zum Lautsprecher in ms, wie die
+    /// Anbindung sie meldet. Steckt NICHT in der Bild/Ton-Messung
+    /// (`crate::bildton`) — deshalb gehoert sie daneben ins Protokoll.
+    pub ausgabe_ms: Option<f32>,
+    /// Ueber welchen Weg der Ton hinausgeht (s. `AudioOutput::weg`).
+    pub weg: &'static str,
 }

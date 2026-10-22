@@ -17,12 +17,18 @@
 //!   Videopfad), ohne solche Messung wie vorher gegen die Ton-RTP-Uhr.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use anyhow::{anyhow, Context as _, Result};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+#[cfg(target_os = "linux")]
+use anyhow::Context as _;
+use anyhow::Result;
 
+mod ausgabe_cpal;
+#[cfg(target_os = "linux")]
+mod ausgabe_pipewire;
 mod bildbezug;
 mod fuetterung;
 mod lippen;
@@ -258,154 +264,130 @@ fn fill_output(shared: &Mutex<Shared>, out: &mut [f32]) {
 
 /// Griff auf die laufende Ausgabe. Beim Fallenlassen endet der Thread.
 pub struct AudioOutput {
-    tx: std::sync::mpsc::Sender<AudioCommand>,
+    tx: Sender<AudioCommand>,
     shared: Arc<Mutex<Shared>>,
     pub sample_rate: u32,
     pub channels: u16,
+    /// Verzoegerung vom Geraete-Abruf bis zum Lautsprecher in Mikrosekunden,
+    /// wie die Anbindung sie meldet; 0 = noch keine Meldung. Neben `shared`,
+    /// damit der Echtzeit-Rueckruf dafuer keine zweite Sperre nimmt.
+    latenz_us: Arc<AtomicU32>,
+    /// Ueber welchen Weg der Ton hinausgeht ("PipeWire", "ALSA", "WASAPI" …).
+    pub weg: &'static str,
 }
 
 /// Abtastrate von Opus. Der Codec kennt nur diese eine — alles andere
 /// entsteht erst durch Umrechnen beim Ausgeben.
 const OPUS_SAMPLE_RATE: u32 = 48_000;
 
+/// Zustand und Befehlskanal einer frisch geoeffneten Ausgabe — gemeinsam fuer
+/// beide Geraete-Anbindungen (cpal, PipeWire).
+fn zustand(
+    sample_rate: u32,
+    channels: u16,
+) -> (Arc<Mutex<Shared>>, Sender<AudioCommand>, Receiver<AudioCommand>) {
+    // VOR dem Anlegen von `Shared`: der Sollfuellstand haengt daran, und ihn
+    // erst spaeter zu setzen hiesse, dass die Wiedergabe bis zum ersten
+    // `OffsetMs` ungeregelt liefe — also im Regelfall fuer immer, weil die
+    // Oberflaeche den Trim nur schickt, wenn jemand ihn anfasst.
+    let per_ms = (sample_rate as usize * channels as usize) / 1000;
+
+    let shared = Arc::new(Mutex::new(Shared {
+        // Volle Kapazitaet im Voraus: sonst allokiert der Fuetter-Thread
+        // beim Wachsen des Rings, waehrend er die Sperre haelt, auf die der
+        // Geraete-Callback wartet. Das ist die klassische
+        // Prioritaetsumkehr und aeussert sich als Knacksen.
+        ring: VecDeque::new(),
+        volume: 1.0,
+        target_fill: RING_SOLL_MS * per_ms,
+        underruns: 0,
+        dropped: 0,
+        nachzuegler: Nachzuegler::default(),
+        regelung: Ringregelung::default(),
+        abgleich: Uhrenabgleich::default(),
+        anlauf: true,
+        alive: true,
+        geraetefehler: false,
+        ausgabe: 0,
+        klingt: None,
+        tonuhr: None,
+        trim_ms: 0,
+        sync_ms: 0.0,
+        letzte_fehler_ms: 0.0,
+        bildton: None,
+        bezug: None,
+        letzte_nachfuehr: None,
+        per_ms,
+        max_ziel: max_ring_samples(sample_rate, channels) / 2,
+        verdeckung: Default::default(),
+    }));
+    let (tx, rx) = std::sync::mpsc::channel::<AudioCommand>();
+    // Volle Kapazitaet im Voraus: sonst allokiert der Fuetter-Thread beim
+    // Wachsen des Rings, waehrend er die Sperre haelt, auf die der
+    // Geraete-Callback wartet — Prioritaetsumkehr, hoerbar als Knacksen.
+    if let Ok(mut s) = shared.lock() {
+        s.ring.reserve(max_ring_samples(sample_rate, channels));
+    }
+    (shared, tx, rx)
+}
+
+fn max_ring_samples(sample_rate: u32, channels: u16) -> usize {
+    MAX_RING_SECONDS * sample_rate as usize * channels as usize
+}
+
+/// Die Fuetterschleife bis `Stop` — auf dem Thread, der die Befehle annimmt.
+/// Egal warum sie endet: danach kommt nichts mehr an.
+fn fuettern(rx: &Receiver<AudioCommand>, shared: &Mutex<Shared>, sample_rate: u32, channels: u16) {
+    let per_ms = (sample_rate as usize * channels as usize) / 1000;
+    let max_ring = max_ring_samples(sample_rate, channels);
+    pump_commands(rx, shared, per_ms, max_ring, sample_rate, channels);
+    if let Ok(mut s) = shared.lock() {
+        s.alive = false;
+    }
+}
+
 impl AudioOutput {
-    /// Oeffnet das Standard-Ausgabegeraet. Schlaegt das fehl, ist das kein
-    /// Grund, die Sitzung zu beenden — der Aufrufer laeuft dann stumm weiter.
+    /// Oeffnet die Tonausgabe: unter Linux zuerst direkt ueber PipeWire
+    /// (s. [`ausgabe_pipewire`]), sonst und als Rueckfall ueber cpal. Schlaegt
+    /// beides fehl, ist das kein Grund, die Sitzung zu beenden — der Aufrufer
+    /// laeuft dann stumm weiter.
     pub fn new() -> Result<Self> {
-        let host = cpal::default_host();
-        let device = host
-            .default_output_device()
-            .ok_or_else(|| anyhow!("kein Standard-Ausgabegeraet"))?;
-        let default_config = device
-            .default_output_config()
-            .context("Standard-Ausgabeformat nicht abfragbar")?;
-        // 48 kHz bevorzugen — Opus liefert IMMER 48 kHz.
-        //
-        // `default_output_config()` meldet unter ALSA gern 44100, unabhaengig
-        // davon, was darunter wirklich laeuft. Am 2026-08-03 auf der
-        // Dev-Maschine gemessen: PipeWire fuhr `clock.rate=48000` und liess mit
-        // `allowed-rates=[48000]` gar nichts anderes zu, das Headset ebenfalls
-        // 48000 — der Player waehlte trotzdem 44100. Der Ton wurde also von
-        // 48000 auf 44100 heruntergerechnet und gleich darauf wieder hoch, mit
-        // einem krummen Verhaeltnis in beide Richtungen. Hoerbar als Knacksen.
-        //
-        // Kann das Geraet 48 kHz, faellt beides ersatzlos weg (der Resampler
-        // in `OpusStream` bleibt fuer Geraete, die es nicht koennen).
-        let supported = device
-            .supported_output_configs()
-            .ok()
-            .and_then(|mut ranges| {
-                ranges.find(|r| {
-                    // Kanalzahl MIT pruefen: die Geraeteliste enthaelt auch
-                    // Mono-Varianten, und die stand hier zuerst — der Ton lief
-                    // dadurch einkanalig (gemessen 2026-08-03: "48000 Hz,
-                    // 1 Kanaele" statt 2). Rate zu treffen und dabei einen
-                    // Kanal zu verlieren ist kein guter Tausch.
-                    r.channels() == default_config.channels()
-                        && r.sample_format() == default_config.sample_format()
-                        && r.min_sample_rate() <= OPUS_SAMPLE_RATE
-                        && OPUS_SAMPLE_RATE <= r.max_sample_rate()
-                })
-            })
-            .map(|r| r.with_sample_rate(OPUS_SAMPLE_RATE))
-            .unwrap_or(default_config);
-        let sample_rate = supported.sample_rate();
-        let channels = supported.channels();
-        let config: cpal::StreamConfig = supported.into();
-
-        // VOR dem Anlegen von `Shared`: der Sollfuellstand haengt daran, und ihn
-        // erst spaeter zu setzen hiesse, dass die Wiedergabe bis zum ersten
-        // `OffsetMs` ungeregelt liefe — also im Regelfall fuer immer, weil die
-        // Oberflaeche den Trim nur schickt, wenn jemand ihn anfasst.
-        let per_ms = (sample_rate as usize * channels as usize) / 1000;
-
-        let shared = Arc::new(Mutex::new(Shared {
-            // Volle Kapazitaet im Voraus: sonst allokiert der Fuetter-Thread
-            // beim Wachsen des Rings, waehrend er die Sperre haelt, auf die der
-            // Geraete-Callback wartet. Das ist die klassische
-            // Prioritaetsumkehr und aeussert sich als Knacksen.
-            ring: VecDeque::new(),
-            volume: 1.0,
-            target_fill: RING_SOLL_MS * per_ms,
-            underruns: 0,
-            dropped: 0,
-            nachzuegler: Nachzuegler::default(),
-            regelung: Ringregelung::default(),
-            abgleich: Uhrenabgleich::default(),
-            anlauf: true,
-            alive: true,
-            geraetefehler: false,
-            ausgabe: 0,
-            klingt: None,
-            tonuhr: None,
-            trim_ms: 0,
-            sync_ms: 0.0,
-            letzte_fehler_ms: 0.0,
-            bildton: None,
-            bezug: None,
-            letzte_nachfuehr: None,
-            per_ms,
-            max_ziel: (MAX_RING_SECONDS * sample_rate as usize * channels as usize) / 2,
-            verdeckung: Default::default(),
-        }));
-        let max_ring_samples =
-            MAX_RING_SECONDS * sample_rate as usize * channels as usize;
-        let (tx, rx) = std::sync::mpsc::channel::<AudioCommand>();
-
-        // Volle Kapazitaet im Voraus: sonst allokiert der Fuetter-Thread beim
-        // Wachsen des Rings, waehrend er die Sperre haelt, auf die der
-        // Geraete-Callback wartet — Prioritaetsumkehr, hoerbar als Knacksen.
-        if let Ok(mut s) = shared.lock() {
-            s.ring.reserve(max_ring_samples);
+        #[cfg(target_os = "linux")]
+        if ausgabe_pipewire::gewuenscht() {
+            match Self::ueber_pipewire() {
+                Ok(out) => return Ok(out),
+                Err(e) => eprintln!(
+                    "pulse-player: PipeWire-Ausgabe nicht moeglich ({e:#}) — weiter ueber cpal"
+                ),
+            }
         }
-        let cb_shared = Arc::clone(&shared);
-        let thread_shared = Arc::clone(&shared);
-        // Eigene Kopie fuer den Fehler-Rueckruf: er lebt so lange wie der
-        // Strom, und `shared` wandert gleich in den Thread.
-        let fehler_shared = Arc::clone(&shared);
+        let (device, config, weg) = ausgabe_cpal::oeffnen()?;
+        let (sample_rate, channels) = (config.sample_rate, config.channels);
+        let (shared, tx, rx) = zustand(sample_rate, channels);
+        let latenz_us = Arc::new(AtomicU32::new(0));
+        ausgabe_cpal::starten(device, config, Arc::clone(&shared), rx, Arc::clone(&latenz_us))?;
+        Ok(Self { tx, shared, sample_rate, channels, latenz_us, weg })
+    }
 
-        // Der Stream lebt auf diesem Thread und stirbt mit ihm.
+    /// Direkt ueber PipeWire: immer 48 kHz Stereo — umgerechnet und verteilt
+    /// wird im PipeWire-Graphen, der Opus-Decoder gibt unveraendert weiter.
+    #[cfg(target_os = "linux")]
+    fn ueber_pipewire() -> Result<Self> {
+        let (sample_rate, channels) = (OPUS_SAMPLE_RATE, ausgabe_pipewire::KANAELE);
+        let (shared, tx, rx) = zustand(sample_rate, channels);
+        let latenz_us = Arc::new(AtomicU32::new(0));
+        let griff = ausgabe_pipewire::starten(Arc::clone(&shared), Arc::clone(&latenz_us))?;
+        let faden_shared = Arc::clone(&shared);
         std::thread::Builder::new()
             .name("pulse-player-audio".into())
             .spawn(move || {
-                let stream = device.build_output_stream(
-                    &config,
-                    move |out: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                        fill_output(&cb_shared, out);
-                    },
-                    {
-                        move |err| {
-                            eprintln!("pulse-player: Audio-Stream: {err}");
-                            // NICHT nur melden: der Thread laeuft weiter, und
-                            // ohne diesen Zustand bliebe die Anzeige auf
-                            // "Ton laeuft" stehen (s. `Shared::geraetefehler`).
-                            if let Ok(mut s) = fehler_shared.lock() {
-                                s.geraetefehler = true;
-                            }
-                        }
-                    },
-                    None,
-                );
-                let stream = match stream {
-                    Ok(s) => s,
-                    Err(e) => {
-                        eprintln!("pulse-player: Ausgabestrom liess sich nicht bauen: {e}");
-                        return;
-                    }
-                };
-                if let Err(e) = stream.play() {
-                    eprintln!("pulse-player: Ausgabe startet nicht: {e}");
-                    return;
-                }
-                pump_commands(&rx, &thread_shared, per_ms, max_ring_samples, sample_rate, channels);
-                // Egal warum die Schleife endet: ab hier kommt nichts mehr an.
-                if let Ok(mut s) = thread_shared.lock() {
-                    s.alive = false;
-                }
+                fuettern(&rx, &faden_shared, sample_rate, channels);
+                // Erst jetzt den PipeWire-Faden beenden: bis `Stop` ruft er
+                // die Ausgabe ab.
+                drop(griff);
             })
             .context("Audio-Thread liess sich nicht starten")?;
-
-        Ok(Self { tx, shared, sample_rate, channels })
+        Ok(Self { tx, shared, sample_rate, channels, latenz_us, weg: "PipeWire" })
     }
 
     /// Rohes Opus-Paket zur Wiedergabe geben, samt RTP-Zeitstempel (48-k-Takte)
@@ -453,6 +435,11 @@ impl AudioOutput {
                 klingt: s.klingt,
                 sync_versatz_ms: s.sync_ms.round() as i32,
                 verdeckung: s.verdeckung.zaehler,
+                ausgabe_ms: match self.latenz_us.load(Ordering::Relaxed) {
+                    0 => None,
+                    us => Some(us as f32 / 1000.0),
+                },
+                weg: self.weg,
             })
             .unwrap_or_default()
     }

@@ -52,6 +52,12 @@ pub struct MediaStats {
     pub ton_klingt: Option<(u32, std::time::Instant)>,
     /// Regel-Eingriff der Lippen-Synchronisation auf den Ring-Sollwert in ms.
     pub audio_sync_versatz_ms: i32,
+    /// Verzoegerung vom Geraete-Abruf bis zum Lautsprecher in ms, wie die
+    /// Anbindung sie meldet (s. `audio::AudioCounters::ausgabe_ms`).
+    pub audio_ausgabe_ms: Option<f32>,
+    /// Ueber welchen Weg der Ton hinausgeht ("PipeWire", "ALSA" …).
+    #[serde(skip)]
+    pub audio_weg: &'static str,
     /// Ob ueberhaupt eine Tonausgabe zustande kam.
     pub audio_active: bool,
     pub recording: bool,
@@ -169,7 +175,10 @@ impl MediaSink {
         out.set_volume(self.volume);
         out.set_offset_ms(self.offset_ms);
 
-        eprintln!("pulse-player: Tonausgabe {} Hz, {} Kanaele", out.sample_rate, out.channels);
+        eprintln!(
+            "pulse-player: Tonausgabe {} Hz, {} Kanaele ueber {}",
+            out.sample_rate, out.channels, out.weg
+        );
         self.audio = Some(out);
         true
     }
@@ -225,6 +234,8 @@ impl MediaSink {
             audio_lippen_ms: ton.lippen_ms,
             ton_klingt: ton.klingt,
             audio_sync_versatz_ms: ton.sync_versatz_ms,
+            audio_ausgabe_ms: ton.ausgabe_ms,
+            audio_weg: ton.weg,
             audio_resyncs: ton.resyncs,
             // Nicht `is_some()`: der Griff bleibt bestehen, auch wenn der
             // Ausgabe-Thread laengst weg ist.

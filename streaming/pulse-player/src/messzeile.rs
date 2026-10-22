@@ -105,6 +105,24 @@ pub struct Tonstand {
     pub unterlaeufe: u64,
     /// Lief ueberhaupt eine Tonausgabe? Nur fuer die Schlusszeile.
     pub ton_lief: bool,
+    /// Zwei Momentwerte wie `Bildstand::betriebsart`: ueber welchen Weg der
+    /// Ton hinausgeht und wie lange er vom Geraete-Abruf bis zum Lautsprecher
+    /// braucht (0 = unbekannt). Die Verzoegerung steckt nicht in der
+    /// Bild/Ton-Messung (`crate::bildton`) — ohne diese Zahl im Dauerprotokoll
+    /// blieb sie bis zum 2026-10-22 eine Schaetzung.
+    pub weg: &'static str,
+    pub ausgabe_ms: u64,
+}
+
+impl Tonstand {
+    /// "; Ausgabe 12 ms ueber PipeWire", solange ein Weg bekannt ist.
+    fn ausgabe(&self) -> String {
+        match (self.weg, self.ausgabe_ms) {
+            ("", _) => String::new(),
+            (weg, 0) => format!("; Ausgabe ueber {weg}"),
+            (weg, ms) => format!("; Ausgabe {ms} ms ueber {weg}"),
+        }
+    }
 }
 
 impl Stand for Tonstand {
@@ -120,17 +138,19 @@ impl Stand for Tonstand {
             danach_verworfen: self.danach_verworfen.saturating_sub(alt.danach_verworfen),
             unterlaeufe: self.unterlaeufe.saturating_sub(alt.unterlaeufe),
             ton_lief: self.ton_lief,
+            weg: self.weg,
+            ausgabe_ms: self.ausgabe_ms,
         }
     }
 
     fn leer(&self) -> bool {
-        Self { ton_lief: false, ..*self } == Self::default()
+        Self { ton_lief: false, weg: "", ausgabe_ms: 0, ..*self } == Self::default()
     }
 
     fn text(&self) -> String {
         format!(
             "verloren {} (Luecken {}), bei Ankunft fehlten {}, verdeckt {} (PLC {}, \
-             danach verworfen {}), Unterlaeufe {}",
+             danach verworfen {}), Unterlaeufe {}{}",
             self.verloren,
             self.luecken.text(),
             self.zuerst_gefehlt,
@@ -138,11 +158,16 @@ impl Stand for Tonstand {
             self.verdeckt_plc,
             self.danach_verworfen,
             self.unterlaeufe,
+            self.ausgabe(),
         )
     }
 
     fn nichts(&self) -> String {
-        if self.ton_lief { "nichts gefehlt".into() } else { "kein Ton gelaufen".into() }
+        if self.ton_lief {
+            format!("nichts gefehlt{}", self.ausgabe())
+        } else {
+            "kein Ton gelaufen".into()
+        }
     }
 }
 

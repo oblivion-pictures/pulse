@@ -111,9 +111,16 @@ nicht einsehbar.
   herunterskalierten Fensterinhalt.
 - **Standbild ohne Verbindungsabbruch** (`paused`): die Sitzung laeuft weiter.
 - **Tonausgabe**: Opus wird dekodiert, auf die Rate des Ausgabegeraets gebracht
-  und ueber cpal ausgegeben. `volume` wirkt inklusive Verstaerkung ueber 100 %,
-  `av_offset_ms` als Ziel-Fuellstand des Ausgabepuffers. Laesst sich kein Geraet
-  oeffnen, laeuft die Wiedergabe stumm weiter statt zu scheitern.
+  und ausgegeben — unter Linux seit 2026-10-22 **direkt ueber PipeWire**
+  (`audio/ausgabe_pipewire.rs`, Takt 256 Samples = 5,3 ms), sonst und als
+  Rueckfall ueber cpal (`audio/ausgabe_cpal.rs`). Der alte Linux-Weg cpal → ALSA
+  → PulseAudio-Uebersetzer hielt im Flatpak rund 50-60 ms Ton zurueck.
+  `PULSE_PLAYER_TON=alsa` erzwingt cpal, `PULSE_PLAYER_PW_QUANTUM` (32-2048)
+  stellt den PipeWire-Takt nach. Die Verzoegerung bis zum Lautsprecher steht in
+  der Ton-Zaehlung („Ausgabe X ms ueber PipeWire"). `volume` wirkt inklusive
+  Verstaerkung ueber 100 %, `av_offset_ms` als Ziel-Fuellstand des
+  Ausgabepuffers. Laesst sich kein Geraet oeffnen, laeuft die Wiedergabe stumm
+  weiter statt zu scheitern.
 - **Mitschnitt ohne Neukodierung** (`record`/`stop_record`): der ankommende
   Bitstrom wird direkt gemuxt — Bild und Ton in einer Datei. Container je
   Codec, und das ist gemessen und nicht gewaehlt: **H.264 nach MPEG-TS**
@@ -490,7 +497,8 @@ src/
 ├── stockung.rs    erkennt die haengende GRAFIKEINHEIT (das ist etwas anderes:
 │                  der Decoder liefert, nur Sekunden zu spaet) und gibt den
 │                  Hardware-Weg auf, bevor die Sitzung daran zerbricht
-├── audio.rs       Opus-Decode + cpal-Ausgabe auf eigenem Thread
+├── audio.rs       Opus-Decode, Ring und Regelung; Ausgabe ueber PipeWire
+│                  (Linux) oder cpal (`audio/ausgabe_*.rs`)
 ├── recorder.rs    Matroska-Mux ohne Neukodierung + Clip-Ringpuffer
 ├── mediasink.rs   buendelt Ton und Mitschnitt je Einheit
 ├── zerocopy/      das Bild im Grafikspeicher lassen (Windows: AMD/Intel)
@@ -706,7 +714,8 @@ Fuer Abhaengigkeiten gilt:
   Entwicklung**. Ausgelieferte Builds folgen dem Vorbild der bestehenden
   Sidecars: `win-hq-sidecar` nutzt die vendorte BtbN-LGPL-Distribution,
   `mac-hq-sidecar` ein selbst gebautes LGPL-FFmpeg.
-- `wgpu`, `winit`, `webrtc-rs`, `cpal`: MIT/Apache-2.0. `dav1d`: BSD.
+- `wgpu`, `winit`, `webrtc-rs`, `cpal`: MIT/Apache-2.0. `pipewire`/`libspa`
+  (nur Linux): MIT. `dav1d`: BSD.
   Ueber `webrtc-rs` kommt zwingend `rustls` und damit `aws-lc-rs`/`aws-lc-sys`
   (ISC, Apache-2.0, MIT, BSD-3-Clause — alle permissiv).
 
