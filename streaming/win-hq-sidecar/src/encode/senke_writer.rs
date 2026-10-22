@@ -247,7 +247,10 @@ fn sende_schleife(
                         fenster.ton_luecke((dauer - ton_dauer).as_millis() as u64);
                     }
                 }
-                senke.audio(d, dauer)
+                // Aufnahmezeit in 48-kHz-Takten fuer den Ton-Zeitstempel
+                // (`PaketSenke::audio`); der Trim steckt darin und wirkt so.
+                let pts48 = p.pts().map(|v| v * 48_000 / i64::from(ton_rate.max(1)));
+                senke.audio(d, pts48, dauer)
             }),
         };
         if let Some(zeile) = fenster.faellig(jetzt) {
@@ -268,8 +271,12 @@ fn sende_schleife(
 /// Dauer eines Tonpakets fuer den Sendeweg: der PTS-SPRUNG seit dem letzten
 /// Paket, nicht die feste Opus-Rahmenlaenge.
 ///
-/// WebRTC (WHIP wie Direct) leitet den Ton-RTP-Zeitstempel aus der SUMME der
-/// Paketdauern ab. Mit fester Rahmenlaenge lief die Ton-Zeitlinie als reiner
+/// **Seit dem 2026-10-22 fuer den Zeitstempel nur noch Rueckfall:** die
+/// Tonspur stempelt aus der Aufnahmezeit (`pts48` oben, `pulse_whip::ton`);
+/// die Dauer zaehlt dort nur fuer Pakete ohne pts, und die Messzeile liest
+/// Luecken an ihr ab. Was folgt, beschreibt den Weg davor, als WebRTC (WHIP
+/// wie Direct) den Ton-RTP-Zeitstempel aus der SUMME der Paketdauern
+/// ableitete. Mit fester Rahmenlaenge lief die Ton-Zeitlinie als reiner
 /// Paketzaehler: jeder Sprung der pts-Zeitlinie — der QPC-Nachzug auf den
 /// ersten Geraete-Stempel (s. `audio::sync`), Stille-Einfuellungen des
 /// WASAPI-Budgets — fehlte ihr DAUERHAFT, waehrend das Bild wanduhr-echte
@@ -382,7 +389,7 @@ mod tests {
             }
             Ok(())
         }
-        fn audio(&mut self, _d: &[u8], _dauer: Duration) -> Result<()> {
+        fn audio(&mut self, _d: &[u8], _pts: Option<i64>, _dauer: Duration) -> Result<()> {
             self.ton.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }

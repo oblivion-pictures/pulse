@@ -158,6 +158,19 @@ authHTTPExclude:
   - action: metrics
   - action: pprof
 
+# Zeitangaben der Sender durchreichen (seit 2026-10-22, gemeinsame Uhr von
+# Bild und Ton). Die Senderberichte (RTCP SR) der Pulse-Sidecars tragen die
+# AUFNAHMEZEIT beider Spuren (streaming/pulse-whip/src/senderbericht.rs). Mit
+# `yes` rechnet MediaMTX jedes Paket auf diese Zeit um und gibt sie in seinen
+# eigenen Berichten an die Zuschauer weiter; ohne schaetzt er sie je Spur aus
+# der Ankunft hier, und ein Unterschied der Sendelatenz von Bild und Ton wird
+# beim Zuschauer zum Versatz. Preis: Pakete vor dem ersten Bericht einer Spur
+# verwirft MediaMTX ("received RTP packet without absolute time"). Sender ab
+# Desktop 0.1.130 schicken ihn vor dem ersten Paket, aeltere nach rund einer
+# Sekunde. RTMP-Eingaenge betrifft es nicht (dort ersetzt MediaMTX immer).
+pathDefaults:
+  useAbsoluteTimestamp: yes
+
 # Pulse HQ channel streams use DYNAMIC paths (channel-<id>-<uid>-<nonce>).
 # MediaMTX rejects any path not listed here as "not configured" → without this
 # catch-all EVERY publish is refused and the HQ push dies silently (no error).

@@ -8,6 +8,7 @@ use std::sync::mpsc::RecvTimeoutError;
 use std::sync::Mutex;
 use std::time::Instant;
 
+use super::bildbezug::{self, Bezug};
 use super::lippen;
 use super::opus::OpusDecoder;
 use super::ringregelung::im_rueckstand;
@@ -138,6 +139,8 @@ pub(super) fn pump_commands(
                 if let Some(ts) = rtp_ts {
                     let jetzt = Instant::now();
                     let ausgabe = s.ausgabe;
+                    // Vor dem Griff auf die Tonuhr lesen — der leiht `s` aus.
+                    let am_bild = bildbezug::fehler(s.bildton, s.trim_ms, jetzt);
                     // Start-Vorhalt = aktueller Ring-Sollwert (s.
                     // `lippen::Tonuhr::startvorhalt_s`): ohne ihn waere die
                     // eigene Pufferlatenz ein Regel-Fehler.
@@ -151,13 +154,25 @@ pub(super) fn pump_commands(
                         )
                     });
                     uhr.paket(ts, fuellstand, angehaengt, ausgabe, jetzt);
-                    let fehler = uhr.fehler_ms(ausgabe, sample_rate, channels, jetzt);
+                    // Der Fehler gegen das gezeigte Bild, solange gemessen
+                    // (`bildbezug`, die gemeinsame Uhr); sonst wie bisher gegen
+                    // die eigene Ankunft des Tons. Vermessen wird die Tonuhr
+                    // in beiden Faellen — sie liefert die klingende Marke.
+                    let (fehler, bezug) = match am_bild {
+                        Some(f) => (f, Bezug::Bild),
+                        None => {
+                            (uhr.fehler_ms(ausgabe, sample_rate, channels, jetzt), Bezug::Ankunft)
+                        }
+                    };
                     // Fuer die Zeile „Bild/Ton" (`crate::bildton`): welche
                     // RTP-Marke JETZT klingt. Die verlaengerte Marke beginnt
                     // bei der rohen ersten, `as u32` ergibt also wieder die
                     // rohe 32-Bit-Marke der Leitung.
                     let klingt = uhr.position(ausgabe, sample_rate, channels).round() as i64 as u32;
                     s.klingt = Some((klingt, jetzt));
+                    if s.bezug.replace(bezug) != Some(bezug) {
+                        eprintln!("{}", bezug.zeile());
+                    }
                     // Gemeldet wird der rohe Fehler (so weit liegt der Ton
                     // wirklich daneben), geregelt der ohne Ringabweichung.
                     s.letzte_fehler_ms = fehler;
@@ -187,6 +202,7 @@ pub(super) fn pump_commands(
                 }
             }
             AudioCommand::Volume(v) => s.volume = v,
+            AudioCommand::BildTon(versatz_ms, gemessen) => s.bildton = Some((versatz_ms, gemessen)),
             AudioCommand::OffsetMs(ms) => {
                 // Positiv = Ton spaeter = mehr Vorlauf im Ring.
                 // Nie ueber die Ringgroesse hinaus: der Callback gibt erst

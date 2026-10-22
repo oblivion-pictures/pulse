@@ -23,7 +23,7 @@
 //!
 //! **Kein FlexFEC auf diesem Weg.** MediaMTX erzeugte ihn auf dem Server-Pfad;
 //! der Player bietet ihn nicht an. Verlust-Reparatur läuft deshalb über den
-//! NACK-Responder (`register_default_interceptors`, an unserer `nack`-
+//! NACK-Responder (`configure_nack` in `sdp::interceptoren`, an unserer `nack`-
 //! Rückmeldung) und die Vollbild-Anforderung — der Responder ist mit dem
 //! selben Media-Engine-Aufbau aktiv wie im WHIP-Weg.
 
@@ -39,7 +39,6 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use webrtc::api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_HEVC};
-use webrtc::media::Sample;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::rtp::codecs::h264::H264Payloader;
 use webrtc::rtp::header::Header;
@@ -47,18 +46,19 @@ use webrtc::rtp::packet::Packet;
 use webrtc::rtp::packetizer::Payloader;
 use webrtc::rtp_transceiver::rtp_sender::RTCRtpSender;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
-use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
 
 use pulse_bildmarke as bildmarke;
 use pulse_bildmarke::EXTMAP_URI;
 
+use crate::aufnahmeuhr::Aufnahmeuhr;
 use crate::av1::{self, SpurZustand};
 use crate::h264::h264_ist_vollbild;
 use crate::hevc;
 use crate::pacer;
+use crate::ton::TonSpur;
 use spur::{melde_verteilung, melde_verwurf, Bildspur, Paketierer};
-pub use spur::{dauer_fuer_takte, Konfig};
+pub use spur::Konfig;
 
 /// Ein Annex-B-Zeitabschnitt in RTP-Nutzlasten zerlegen — der Weg des
 /// H.264-Arms (HEVC paketiert seit dem 2026-09-13 `hevc::paketiere` selbst).
@@ -105,7 +105,7 @@ pub fn laufzeit() -> &'static tokio::runtime::Runtime {
 
 pub struct DirectSender {
     track: Bildspur,
-    audio: Arc<TrackLocalStaticSample>,
+    audio: Arc<TonSpur>,
     pc: Arc<RTCPeerConnection>,
     /// Der Video-Sender — der Aufrufer liest hier RTCP ab (PLI/FIR/REMB).
     video_sender: Arc<RTCRtpSender>,
@@ -144,7 +144,10 @@ impl DirectSender {
         // nicht aus einer Dauer — dieselbe Trennung wie im WHIP-Sender.
         let frame_dauer = Duration::from_secs_f64(1.0 / f64::from(fps));
 
-        let api = rtc::baue_api(&cap, &audio_cap)?;
+        // Eine Aufnahmeuhr fuer beide Spuren dieser Verbindung (Senderberichte
+        // in Aufnahmezeit, `crate::senderbericht`).
+        let uhr = Aufnahmeuhr::neu();
+        let api = rtc::baue_api(&cap, &audio_cap, &uhr)?;
         let pc = Arc::new(
             api.new_peer_connection(rtc::eis_konfiguration())
                 .await
@@ -186,13 +189,13 @@ impl DirectSender {
         // verlangen eine neue Aushandlung, und der Direktpfad kennt wie WHIP
         // genau EINEN Handschlag. Eine angebotene und stumme Spur kostet
         // nichts.
-        let audio = Arc::new(TrackLocalStaticSample::new(
-            audio_cap,
-            "audio".to_owned(),
-            "pulse-hq".to_owned(),
-        ));
+        //
+        // Dieselbe Tonspur wie der WHIP-Weg, ohne RED (der Player hat keinen
+        // Entpacker, `rtc::baue_api` bietet es nicht an): sie stempelt aus dem
+        // pts und meldet ihre Basis an die Aufnahmeuhr (`crate::ton`).
+        let audio = Arc::new(TonSpur::neu(audio_cap, &uhr));
         let audio_sender = pc
-            .add_track(Arc::clone(&audio) as Arc<dyn TrackLocal + Send + Sync>)
+            .add_track(audio.spur())
             .await
             .context("Tonspur anmelden")?;
         // Auch der Ton-Sender MUSS gelesen werden (ungelesene Rueckmeldungen
@@ -317,19 +320,13 @@ impl DirectSender {
         }
     }
 
-    /// Ein encodiertes Ton-Paket senden. `dauer` ist die Opus-Paketlänge —
-    /// daraus leitet webrtc-rs den RTP-Zeitstempel ab, ein falscher Wert
-    /// verschiebt den Ton gegen das Bild (Begründung im WHIP-Sender).
-    pub fn send_audio(&self, daten: &[u8], dauer: Duration) -> Result<()> {
-        let takte = (dauer.as_secs_f64() * 48_000.0).round() as u32;
-        let sample = Sample {
-            data: Bytes::copy_from_slice(daten),
-            duration: dauer_fuer_takte(takte, 48_000),
-            ..Default::default()
-        };
+    /// Ein encodiertes Ton-Paket senden. `pts` = Aufnahmezeit in 48-kHz-Takten
+    /// ab dem gemeinsamen Nullpunkt mit dem Bild, `dauer` = Opus-Paketlänge
+    /// (nur ohne `pts` gebraucht) — Begründung in `crate::ton`.
+    pub fn send_audio(&self, daten: &[u8], pts: Option<i64>, dauer: Duration) -> Result<()> {
         laufzeit()
-            .block_on(self.audio.write_sample(&sample))
-            .context("write_sample audio")
+            .block_on(self.audio.senden(daten, pts, dauer))
+            .context("Ton senden")
     }
 
     /// Sitzung abbauen. Idempotent — Senke und Sitzung können beide

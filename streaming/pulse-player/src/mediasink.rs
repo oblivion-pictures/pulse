@@ -140,6 +140,14 @@ impl MediaSink {
         }
     }
 
+    /// Gemessenen Bild/Ton-Versatz an die Tonausgabe (s.
+    /// [`AudioOutput::bildton`]). Ohne Tonausgabe gibt es nichts zu regeln.
+    pub fn bildton(&self, versatz_ms: f64, gemessen: std::time::Instant) {
+        if let Some(out) = self.audio.as_ref() {
+            out.bildton(versatz_ms, gemessen);
+        }
+    }
+
     /// Oeffnet Geraet und Decoder beim ersten Tonpaket. `false` heisst: der
     /// Player bleibt stumm — einmal gescheitert wird nicht erneut versucht.
     fn ensure_audio(&mut self) -> bool {

@@ -205,12 +205,19 @@ PULSE_PLAYER_AV1_FIXTURE=fixture.obu cargo test depacket::av1
 
 Ehrlich benannt, damit niemand danach sucht:
 
-- **Keine echte A/V-Synchronisierung.** Bild und Ton laufen getrennt: das Bild
-  wird gezeigt, sobald es dekodiert ist, der Ton so schnell, wie das Geraet ihn
-  abholt. `av_offset_ms` verschiebt nur den Fuellstand des Ausgabepuffers. Eine
-  saubere Kopplung braeuchte eine gemeinsame Uhr aus den RTP-Zeitstempeln
-  (`clock_rate` liegt dafuer schon bereit). Wie weit das in der Praxis
-  auseinanderlaeuft, ist ungemessen.
+- **A/V-Synchronisierung: der Ton folgt dem Bild, nicht umgekehrt** (seit
+  2026-10-22, gemeinsame Uhr). Der Player bildet das gezeigte Bild und den
+  klingenden Ton ueber die RTCP Sender Reports auf dieselbe Uhr ab und regelt
+  den Fuellstand des Ausgabepuffers gegen diesen Versatz
+  (`src/audio/bildbezug.rs`, `src/bildton.rs`). Die Uhr ist die
+  Aufnahmezeit beim Sender, wenn Sender (Desktop ab 0.1.130,
+  `streaming/pulse-whip/src/senderbericht.rs`) und Server
+  (`useAbsoluteTimestamp`) mitspielen; sonst die Ankunft am Server. Ohne
+  Reports regelt der Ton wie vorher gegen seine eigene Ankunft. **Was er nicht
+  kann:** das Bild auf den Ton warten lassen — liegt der Ton weiter zurueck,
+  als der Puffer hergibt, bleibt der Rest stehen (Logzeile „Bild/Ton").
+  Geraete- und Anzeige-Latenz rechnet er nicht mit. `av_offset_ms` bleibt der
+  Nutz-Trim obendrauf.
 - **Kein Standbild-Export.** Der Frame liegt vor, ein PNG-Encoder fehlt noch.
 - **Zero-copy ist unter Windows die Vorgabe — auf allen drei Herstellern**
   (`PULSE_PLAYER_ZEROCOPY=0` schaltet ihn aus). **Hier stand vom 2026-08-11
@@ -711,8 +718,9 @@ Drittanbieter-Seite im Web.
 1. Gegen einen echten Stream testen — zuerst AV1, dort ist das Risiko am
    groessten. Dabei gleich die Lippensynchronitaet pruefen: Bild kommt aus
    diesem Player, Ton weiterhin aus dem Browser-Pfad.
-2. Lippensynchronitaet messen: Ton laeuft jetzt durch den Player, aber die
-   Synchronisierung ist eine Puffer-Naeherung, keine Zeitstempel-Kopplung.
+2. Lippensynchronitaet messen: seit 2026-10-22 koppelt der Player den Ton
+   ueber die Sender Reports ans Bild (s. oben); gegen eine Referenz (Piep und
+   Blitz) nachgemessen ist das noch nicht.
 3. Die Render-Etappe messen: Glass-to-Glass durch diesen Player gegen den
    `<video>`-Weg. Das ist die Zahl, die in
    `docs/2026-07-21-remote-control-latenz-messung.md` §2.4 noch als Schaetzung

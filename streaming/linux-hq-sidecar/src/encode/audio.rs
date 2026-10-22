@@ -492,16 +492,18 @@ impl AudioEncoder {
                         packet.rescale_ts(self.encoder_time_base, self.stream_time_base);
                         mux.send(packet)?;
                     }
-                    // Die Spur bekommt die Bytes und die Dauer. Das ist der
-                    // PTS-SPRUNG seit dem letzten Paket, nicht die feste
-                    // Opus-Paketlaenge: webrtc-rs summiert die Dauern zum
-                    // RTP-Zeitstempel, und nur der Sprung traegt Luecken und
-                    // Re-Anker der Zeitlinie nach — die gemeinsame Uhr mit dem
-                    // Bild (Begruendung: [`AudioEncoder::whip_dauer`]).
+                    // Die Spur bekommt Bytes, Aufnahmezeit und Dauer. Seit dem
+                    // 2026-10-22 stempelt sie aus der Aufnahmezeit (48-kHz-
+                    // Takte ab `record_start`, wie das Bild — `pulse_whip::ton`);
+                    // die Dauer, der PTS-SPRUNG seit dem letzten Paket, zaehlt
+                    // nur ohne pts (Begruendung: [`AudioEncoder::whip_dauer`]).
                         TonSenke::Whip(w) => {
                             if let Some(d) = packet.data() {
                                 let dauer = self.whip_dauer(packet.pts());
-                                w.send_audio(d, dauer)?;
+                                let pts48 = packet
+                                    .pts()
+                                    .map(|p| p * 48_000 / i64::from(self.sample_rate.max(1)));
+                                w.send_audio(d, pts48, dauer)?;
                             }
                         }
                     }
@@ -526,8 +528,11 @@ impl AudioEncoder {
     /// Dauer eines Opus-Pakets fuer die WHIP-Spur: der PTS-SPRUNG seit dem
     /// letzten Paket, nicht die feste Opus-Paketlaenge.
     ///
-    /// webrtc-rs leitet den Ton-RTP-Zeitstempel aus der SUMME der Paketdauern
-    /// ab. Mit fester Paketlaenge lief die Ton-Zeitlinie als reiner
+    /// **Seit dem 2026-10-22 nur noch Rueckfall:** die Tonspur stempelt aus
+    /// der Aufnahmezeit (`pulse_whip::ton`); die Dauer zaehlt nur fuer Pakete
+    /// ohne pts. Was folgt, beschreibt den Weg davor, als die Tonspur den
+    /// Ton-RTP-Zeitstempel aus der SUMME der Paketdauern ableitete. Mit fester
+    /// Paketlaenge lief die Ton-Zeitlinie als reiner
     /// Paketzaehler: jede Capture-Luecke und jedes Nachfuehren der pts-Zeitlinie
     /// (Re-Anker, Aufholen eines Rueckstands) fehlte ihr DAUERHAFT, waehrend
     /// das Bild wanduhr-echte Zeitstempel traegt — Ton und Bild drifteten

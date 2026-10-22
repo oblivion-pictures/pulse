@@ -14,9 +14,10 @@
 //! 32-bit-Wort der NTP-Zeit (RFC 3550, Abschnitt 6.4.1). gortsplib füllt beide
 //! Felder (`pkg/rtpreceiver/receiver.go:157`, v5.6.0), MediaMTX reicht ihm
 //! unsere Senderberichte durch (`inbound_track.go`, `ProcessSenderReport`);
-//! webrtc-rs stempelt die Senderberichte mit `unix2ntp(SystemTime::now())`
-//! (interceptor 0.17.2, `report/sender/sender_stream.rs`) — [`ntp_mitte`]
-//! nimmt dieselbe Uhr. Am Quelltext nachgelesen, nicht an der Leitung
+//! unsere Senderberichte tragen `unix2ntp(SystemTime::now())` beim Absenden
+//! (seit 2026-10-22 aus `crate::senderbericht`, vorher ebenso aus
+//! webrtc-rs' `report/sender/sender_stream.rs`) — [`ntp_mitte`] nimmt
+//! dieselbe Uhr. Am Quelltext nachgelesen, nicht an der Leitung
 //! gemessen.
 //!
 //! **Was „Stau" hier heißt.** Die kleinste Laufzeit der letzten

@@ -55,11 +55,15 @@ pub trait PaketSenke: Send {
     /// dupliziert.
     fn video(&mut self, daten: &[u8], pts: Option<i64>) -> Result<()>;
 
-    /// Ein fertiges Tonpaket samt seiner Länge. Die Länge ist nicht optional —
-    /// aus ihr leitet der Sendeweg den Zeitstempel ab, und ein falscher Wert
-    /// verschiebt den Ton gegen das Bild, ohne dass irgendwo ein Fehler
-    /// auftaucht.
-    fn audio(&mut self, daten: &[u8], dauer: Duration) -> Result<()>;
+    /// Ein fertiges Tonpaket samt Aufnahmezeit und Länge.
+    ///
+    /// `pts` in 48-kHz-Takten ab demselben Nullpunkt wie das Bild — daraus
+    /// stempelt der Sendeweg den Ton, und nur so tragen die Senderberichte
+    /// beider Spuren dieselbe Aufnahmezeit (`pulse_whip::ton`, seit
+    /// 2026-10-22). Die Länge gilt nur ohne `pts`: dann zählt der Sendeweg die
+    /// Längen zum Zeitstempel auf, und ein falscher Wert verschiebt den Ton
+    /// gegen das Bild, ohne dass irgendwo ein Fehler auftaucht.
+    fn audio(&mut self, daten: &[u8], pts: Option<i64>, dauer: Duration) -> Result<()>;
 
     /// Sitzung abbauen. Läuft **genau einmal**, vom Abgabe-Faden, wenn er
     /// endet — Idempotenz ist also nicht nötig.

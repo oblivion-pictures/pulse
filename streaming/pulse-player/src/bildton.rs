@@ -1,21 +1,22 @@
 //! Bild/Ton-Versatz in Sender-Uhrzeit messen — aus den RTCP Sender Reports.
 //!
-//! **Was hier entsteht, ist eine Messung, kein Regler.** Die Logzeile „Bild/Ton"
-//! sagt, wie weit der gerade klingende Ton hinter dem gerade gezeigten Bild
-//! liegt, beide in der Uhrzeit, die die Gegenstelle ihren Sender Reports
-//! mitgibt. Die Kopplung von Bild und Ton bleibt, wie sie ist (`audio::lippen`,
-//! `app::takt`); Plan: `intern/docs/plans/2026-10-16-bild-ton-sync-plan.md`,
-//! Etappe 0b.
+//! Die Messung sagt, wie weit der gerade klingende Ton hinter dem gerade
+//! gezeigten Bild liegt, beide in der Uhrzeit, die die Gegenstelle ihren Sender
+//! Reports mitgibt. Sie geht zweimal hinaus: als Logzeile „Bild/Ton" (Median je
+//! Intervall) und, **seit dem 2026-10-22, als Regelfehler an die Tonausgabe**
+//! (`audio::bildbezug` — die gemeinsame Uhr). Das Bild selbst regelt sie nicht
+//! (`app::takt` bleibt an seiner Ankunft). Plan:
+//! `intern/docs/plans/2026-10-16-bild-ton-sync-plan.md`, Etappen 0b, 2, 3, 5.
 //!
-//! **Was „Sender-Uhrzeit" heute bedeutet.** Über MediaMTX ist sie die
-//! ANKUNFTSzeit am Server, je Spur aus der Mindest-Latenz geschätzt (Befund B4
-//! im Plan) — die Zeile misst damit den Anteil des Players am Versatz, nicht
-//! den des Senders. Den misst die Sender-Zeile `[sync]`. Auf dem Direktweg
-//! (P2P zum Sidecar, ohne MediaMTX) ist es dagegen die SENDEZEIT beim Sender:
-//! webrtc-rs schreibt dort die Wanduhr beim letzten Paket in den Report
-//! (Befund B5). Sobald der Sender
-//! seine Aufnahmezeit in die Reports schreibt und MediaMTX sie durchreicht
-//! (Etappe 2/3), misst derselbe Code den ganzen Weg.
+//! **Was „Sender-Uhrzeit" bedeutet.** Mit einem Sender ab Desktop 0.1.130
+//! (`pulse-whip/src/senderbericht.rs`) und MediaMTX mit `useAbsoluteTimestamp`
+//! ist sie die AUFNAHMEZEIT beim Sender: dann misst die Zeile den ganzen Weg.
+//! Mit einem Server ohne die Einstellung ist sie die ANKUNFTSzeit dort, je Spur
+//! aus der Mindest-Latenz geschätzt (Befund B4 im Plan) — dann misst sie nur
+//! den Anteil ab dem Server; den Anteil des Senders zeigt seine Zeile `[sync]`.
+//! Mit einem älteren Sender auf dem Direktweg (P2P, ohne MediaMTX) ist es
+//! dessen SENDEZEIT: webrtc-rs schrieb die Wanduhr beim letzten Paket in den
+//! Report (Befund B5).
 //!
 //! **Was die Zeile nicht enthält:** die Latenz des Ausgabegeräts und die der
 //! Anzeige. Beide sind Konstanten je Rechner und kommen erst mit Etappe 4.

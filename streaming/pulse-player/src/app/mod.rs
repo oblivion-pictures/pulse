@@ -1531,6 +1531,13 @@ impl App {
                 {
                     if let Some(v) = crate::bildton::versatz_ms(b, rb, tb, t, rt, tt) {
                         session.bildton.probe(v);
+                        // Und an die Tonausgabe, die ihn ausregelt (gemeinsame
+                        // Uhr, `audio::bildbezug`). Volle Warteschlange: dann
+                        // zaehlt die naechste Messung in 250 ms.
+                        let _ = session.commands.try_send(SessionCommand::BildTon {
+                            versatz_ms: v,
+                            gemessen: std::time::Instant::now(),
+                        });
                     }
                 }
                 session.stats = stats;
