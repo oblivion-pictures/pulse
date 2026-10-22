@@ -181,14 +181,6 @@ pub struct AudioPipeline {
     /// Nur fuer die Messung (`PULSE_MUX_LATENCY_LOG=1`): wann zuletzt der
     /// Rueckstand gemeldet wurde. `None` = Messung aus (s. `report_lag`).
     lag_report: Option<Instant>,
-    /// Echte Aufnahmezeit minus pts-Zeitlinie in Samples (Trim eingerechnet),
-    /// beim letzten Batch gemessen — geteilt mit dem Abgabe-Faden des eigenen
-    /// Sendewegs (`senke_writer::Zeitbezug`). Der pts zaehlt Samples; das
-    /// Stille-Budget von `wasapi.rs` laesst ihn bis zu 100 ms neben der
-    /// Wanduhr, und die Senderberichte (Aufnahmezeit,
-    /// `pulse_whip::senderbericht`) machten daraus Versatz beim Zuschauer
-    /// (Bughunt 2026-10-22). Der Muxer bekommt weiter den gezaehlten pts.
-    versatz: std::sync::Arc<std::sync::atomic::AtomicI64>,
 }
 
 impl AudioPipeline {
@@ -343,7 +335,6 @@ impl AudioPipeline {
             qpc_anchored: false,
             probe_in_beep: false,
             lag_report: crate::env::flag("PULSE_MUX_LATENCY_LOG").then(Instant::now),
-            versatz: Default::default(),
         })
     }
 
@@ -366,11 +357,6 @@ impl AudioPipeline {
     /// Aufnahme (s. `senke_writer::Zeitbezug`).
     pub fn trim_samples(&self) -> i64 {
         self.trim_samples
-    }
-
-    /// Die Zelle mit dem Versatz echte Aufnahmezeit − pts (s. Feld).
-    pub fn versatz_zelle(&self) -> std::sync::Arc<std::sync::atomic::AtomicI64> {
-        std::sync::Arc::clone(&self.versatz)
     }
 
     /// Abtastrate der Tonspur. Der Sendeweg braucht sie als pts-Skala, um die
@@ -414,15 +400,6 @@ impl AudioPipeline {
         self.reanchor_on_first_device_stamp(captured);
         self.probe_beep_pts(captured);
         self.report_lag(anchored);
-        if let Some(a) = anchored {
-            // Der erste Sample dieses Chunks steht in der pts-Zeitlinie HINTER
-            // dem, was noch im Sammelpuffer liegt (s. Feld `versatz`).
-            let vorrat = (self.fifo.len() / self.block_align_in.max(1)) as i64;
-            self.versatz.store(
-                a + self.trim_samples - (self.pts_samples + vorrat),
-                std::sync::atomic::Ordering::Relaxed,
-            );
-        }
 
         self.fifo.extend(&captured.bytes);
 

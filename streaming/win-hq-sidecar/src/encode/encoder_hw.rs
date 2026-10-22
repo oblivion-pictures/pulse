@@ -418,7 +418,6 @@ impl FfmpegHwEncoder {
             w.setze_zeitbezug(super::senke_writer::Zeitbezug {
                 ursprung: origin_qpc.map_or(origin, crate::syncprobe::qpc_als_instant),
                 trim_samples: self.audio.as_ref().map_or(0, AudioPipeline::trim_samples),
-                ton_versatz: self.audio.as_ref().map(AudioPipeline::versatz_zelle).unwrap_or_default(),
             });
         }
     }
