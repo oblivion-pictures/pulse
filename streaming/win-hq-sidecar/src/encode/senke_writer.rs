@@ -56,10 +56,14 @@ unsafe impl Send for Sendung {}
 /// Zeitbezug der Messzeile `[sync]` (s. [`pulse_whip::uebergabe`]): wann
 /// pts 0 beider Spuren aufgenommen wurde, und um wie viele Samples der
 /// A/V-Trim die Tonspur verschiebt (der Trim ist keine Aufnahmezeit).
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Zeitbezug {
     pub ursprung: Instant,
     pub trim_samples: i64,
+    /// Echte Aufnahmezeit minus gezaehlter Ton-pts in Samples, laufend von
+    /// `audio::AudioPipeline` fortgeschrieben — der Ton-Zeitstempel des
+    /// Sendewegs ist pts plus dieser Wert (`AudioPipeline::versatz_zelle`).
+    pub ton_versatz: Arc<std::sync::atomic::AtomicI64>,
 }
 
 /// Fensterlänge der Messzeile. 10 s: lang genug für einen stabilen Median,
@@ -247,9 +251,14 @@ fn sende_schleife(
                         fenster.ton_luecke((dauer - ton_dauer).as_millis() as u64);
                     }
                 }
-                // Aufnahmezeit in 48-kHz-Takten fuer den Ton-Zeitstempel
-                // (`PaketSenke::audio`); der Trim steckt darin und wirkt so.
-                let pts48 = p.pts().map(|v| v * 48_000 / i64::from(ton_rate.max(1)));
+                // Echte Aufnahmezeit in 48-kHz-Takten fuer den Ton-Zeitstempel
+                // (`PaketSenke::audio`): pts plus Versatz zur Wanduhr; der Trim
+                // steckt darin und wirkt so.
+                let versatz = zeitbezug
+                    .get()
+                    .map_or(0, |b| b.ton_versatz.load(std::sync::atomic::Ordering::Relaxed));
+                let pts48 =
+                    p.pts().map(|v| pulse_whip::ton::pts_in_takten(v + versatz, ton_rate));
                 senke.audio(d, pts48, dauer)
             }),
         };

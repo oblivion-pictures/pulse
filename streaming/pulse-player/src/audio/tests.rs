@@ -303,6 +303,25 @@ fn ohne_messung_regelt_der_ton_gegen_seine_ankunft() {
     assert_eq!(shared.lock().unwrap().bezug, Some(bildbezug::Bezug::Ankunft));
 }
 
+/// Faellt die Messung aus, nachdem schon am Bild geregelt wurde, bleibt der
+/// Eingriff stehen — kein Rueckfall auf die Ankunft (Bughunt 2026-10-22).
+#[test]
+fn eine_messpause_haelt_den_eingriff() {
+    let shared = Arc::new(shared_mit_soll(TEST_PER_MS));
+    {
+        let mut s = shared.lock().unwrap();
+        s.anlauf = false;
+        s.bezug = Some(bildbezug::Bezug::Bild);
+        s.sync_ms = -12.5;
+        // Laengst veraltet: zaehlt nicht mehr.
+        s.bildton = Some((80.0, Instant::now() - std::time::Duration::from_secs(5)));
+    }
+    mit_paketen(&shared, vec![]);
+    let s = shared.lock().unwrap();
+    assert_eq!(s.bezug, Some(bildbezug::Bezug::Bild));
+    assert_eq!(s.sync_ms, -12.5, "Eingriff gehalten");
+}
+
 /// Der Nutz-Trim bleibt wirksam: liegt der Ton genau um den Trim hinter dem
 /// Bild, ist das kein Fehler — sonst regelte die gemeinsame Uhr ihn weg.
 #[test]

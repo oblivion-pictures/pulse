@@ -27,7 +27,10 @@
 //! Alle drei sind besser als zwei getrennte Anker.
 //!
 //! **Rueckfall**: ohne frische Messung (keine Reports, kein Bild, Messung
-//! unplausibel) regelt der Ton wie vorher gegen seine Ankunft.
+//! unplausibel) regelt der Ton wie vorher gegen seine Ankunft — aber nur,
+//! solange noch nie am Bild geregelt wurde. Danach haelt eine Messpause den
+//! Eingriff fest (`fuetterung.rs`): die Ankunft zielt woanders hin, und ein
+//! Wechsel machte nach jedem Standbild zunichte, was die Messung erreicht hat.
 
 use std::time::{Duration, Instant};
 

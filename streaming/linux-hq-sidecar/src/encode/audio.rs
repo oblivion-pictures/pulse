@@ -375,6 +375,14 @@ pub struct AudioEncoder {
     /// pts des letzten auf den WHIP-Weg gesandten Pakets (Samples) — Bezug
     /// fuer den Dauer-Sprung (s. [`AudioEncoder::whip_dauer`]).
     letzte_whip_pts: Option<i64>,
+    /// Echte Aufnahmezeit minus pts-Zeitlinie in Samples, beim letzten Batch
+    /// gemessen. Der pts zaehlt Samples, und die Soundkarte taktet mit
+    /// eigenem Quarz: ohne diesen Zuschlag liefe die Ton-Marke der Wanduhr um
+    /// deren Abweichung davon, und die Senderberichte (Aufnahmezeit,
+    /// `pulse_whip::senderbericht`) machten daraus einen wachsenden Versatz
+    /// beim Zuschauer (Bughunt 2026-10-22). Nur der eigene Sendeweg nutzt ihn;
+    /// der Muxer bekommt weiter den gezaehlten pts.
+    versatz: i64,
 }
 
 impl AudioEncoder {
@@ -398,6 +406,7 @@ impl AudioEncoder {
             timeline: PtsTimeline::new(),
             sample_rate,
             letzte_whip_pts: None,
+            versatz: 0,
         }
     }
 
@@ -445,6 +454,10 @@ impl AudioEncoder {
     /// und re-ankert nach Capture-Lücken (s. [`PtsTimeline`]).
     pub fn push(&mut self, samples: &[f32], senke: &TonSenke, anchor_samples: i64) -> Result<()> {
         let mut pts = self.timeline.align(anchor_samples);
+        // Der erste Sample dieses Batches steht in der pts-Zeitlinie HINTER
+        // dem, was noch im Sammelpuffer liegt (s. Feld `versatz`).
+        let vorrat = (self.fifo.len() / self.channels.max(1)) as i64;
+        self.versatz = anchor_samples - (pts + vorrat);
         self.fifo.extend(samples.iter().copied());
         let chunk = opus_frame_samples() * self.channels;
         while self.fifo.len() >= chunk {
@@ -493,16 +506,17 @@ impl AudioEncoder {
                         mux.send(packet)?;
                     }
                     // Die Spur bekommt Bytes, Aufnahmezeit und Dauer. Seit dem
-                    // 2026-10-22 stempelt sie aus der Aufnahmezeit (48-kHz-
-                    // Takte ab `record_start`, wie das Bild — `pulse_whip::ton`);
-                    // die Dauer, der PTS-SPRUNG seit dem letzten Paket, zaehlt
-                    // nur ohne pts (Begruendung: [`AudioEncoder::whip_dauer`]).
+                    // 2026-10-22 stempelt sie aus der ECHTEN Aufnahmezeit
+                    // (pts plus `versatz`, ab `record_start` wie das Bild —
+                    // `pulse_whip::ton`); die Dauer, der PTS-SPRUNG seit dem
+                    // letzten Paket, zaehlt nur ohne pts
+                    // (Begruendung: [`AudioEncoder::whip_dauer`]).
                         TonSenke::Whip(w) => {
                             if let Some(d) = packet.data() {
                                 let dauer = self.whip_dauer(packet.pts());
-                                let pts48 = packet
-                                    .pts()
-                                    .map(|p| p * 48_000 / i64::from(self.sample_rate.max(1)));
+                                let pts48 = packet.pts().map(|p| {
+                                    pulse_whip::ton::pts_in_takten(p + self.versatz, self.sample_rate)
+                                });
                                 w.send_audio(d, pts48, dauer)?;
                             }
                         }

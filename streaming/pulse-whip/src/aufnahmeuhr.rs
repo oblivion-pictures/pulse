@@ -30,8 +30,8 @@
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
-/// Takt der Bildspur (RTP-Uhr aller Video-Codecs, s. `crate::zeitbasis`).
-pub const BILD_HZ: u32 = 90_000;
+/// Takt der Bildspur (RTP-Uhr aller Video-Codecs).
+pub const BILD_HZ: u32 = crate::zeitbasis::VIDEO_HZ;
 /// Takt der Tonspur (Opus, RFC 7587).
 pub const TON_HZ: u32 = 48_000;
 
@@ -103,6 +103,11 @@ impl Aufnahmeuhr {
         if let Some(u) = ursprung {
             let _ = self.ursprung.set(u);
         }
+    }
+
+    /// Wie lange das erste Paket der Verbindung her ist; `None` davor.
+    pub fn seit_ursprung(&self, jetzt: Instant) -> Option<Duration> {
+        self.ursprung.get().map(|u| jetzt.saturating_duration_since(*u))
     }
 
     /// Die Marke, die eine JETZT aufgenommene Probe dieser Spur truege — der
@@ -184,6 +189,17 @@ mod tests {
         // Und 1 s weiter laeuft die Ton-Marke ueber.
         let weiter = spaeter + Duration::from_secs(1);
         assert_eq!(uhr.marke_jetzt(Spur::Ton, weiter), Some((u32::MAX - 100).wrapping_add(48_000)));
+    }
+
+    /// Der dichte Anlauf der Berichte zaehlt ab dem ersten PAKET, nicht ab dem
+    /// Bau der Verbindung (Bughunt 2026-10-22) — davor gibt es keinen Ursprung.
+    #[test]
+    fn seit_ursprung_erst_ab_dem_ersten_paket() {
+        let uhr = Aufnahmeuhr::default();
+        let t0 = Instant::now();
+        assert_eq!(uhr.seit_ursprung(t0), None);
+        uhr.paket(Spur::Bild, 0, t0);
+        assert_eq!(uhr.seit_ursprung(t0 + Duration::from_millis(250)), Some(Duration::from_millis(250)));
     }
 
     #[test]

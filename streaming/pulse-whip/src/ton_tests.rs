@@ -184,17 +184,41 @@ fn marke_ist_basis_plus_pts() {
 }
 
 /// Springt der pts zurueck oder steht er, geht die Marke trotzdem vorwaerts —
-/// um die Dauer des letzten Rahmens; danach greift der pts wieder.
+/// um einen Takt je Rahmen, bis Basis + pts sie wieder ueberholt.
 #[test]
 fn marke_springt_nie_zurueck() {
     let ton = TonSpur::mit_start(opus_capability(), 1, 0);
     ton.paket_bauen(&[1], Some(4_800), ZEHN_MS);
     let zurueck = ton.paket_bauen(&[2], Some(4_000), ZEHN_MS);
-    assert_eq!(zurueck.header.timestamp, 5_280);
-    let gleich = ton.paket_bauen(&[3], Some(5_280), ZEHN_MS);
-    assert_eq!(gleich.header.timestamp, 5_760);
+    assert_eq!(zurueck.header.timestamp, 4_801);
+    let gleich = ton.paket_bauen(&[3], Some(4_801), ZEHN_MS);
+    assert_eq!(gleich.header.timestamp, 4_802);
     let weiter = ton.paket_bauen(&[4], Some(9_600), ZEHN_MS);
     assert_eq!(weiter.header.timestamp, 9_600);
+}
+
+/// Der Befund des Bughunts vom 2026-10-22: nach einem Ruecksprung um mehr als
+/// einen Rahmen, danach gleichmaessig weiter, muss die Marke binnen weniger
+/// Rahmen wieder Basis + pts sein — nicht fuer immer um den Sprung voraus.
+#[test]
+fn nach_einem_ruecksprung_kehrt_die_marke_zum_pts_zurueck() {
+    let ton = TonSpur::mit_start(opus_capability(), 1, 0);
+    ton.paket_bauen(&[0], Some(48_000), ZEHN_MS);
+    // 15 ms zurueck, dann im 10-ms-Raster weiter.
+    let mut pts = 48_000 - 720;
+    let mut zuletzt = 0;
+    for _ in 0..5 {
+        pts += 480;
+        zuletzt = ton.paket_bauen(&[1], Some(pts), ZEHN_MS).header.timestamp;
+    }
+    assert_eq!(i64::from(zuletzt), pts, "Marke wieder auf dem pts");
+}
+
+#[test]
+fn pts_in_takten_rechnet_die_rate_um() {
+    assert_eq!(pts_in_takten(480, 48_000), 480);
+    assert_eq!(pts_in_takten(441, 44_100), 480);
+    assert_eq!(pts_in_takten(100, 0), 4_800_000, "Rate 0 gilt als 1, keine Panik");
 }
 
 /// Die Basis landet in der Aufnahmeuhr — ohne sie berichtete der Ton nie.

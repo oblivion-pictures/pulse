@@ -53,6 +53,14 @@ pub struct AudioEncoder {
     /// pts des letzten auf den WHIP-/Direktweg gesandten Pakets (Samples) —
     /// Bezug fuer den Dauer-Sprung (s. [`AudioEncoder::whip_dauer`]).
     letzte_ton_pts: Option<i64>,
+    /// Echte Aufnahmezeit minus pts-Zeitlinie in Samples, beim letzten Batch
+    /// gemessen. Der pts zaehlt Samples, und die Soundkarte taktet mit
+    /// eigenem Quarz: ohne diesen Zuschlag liefe die Ton-Marke der Wanduhr um
+    /// deren Abweichung davon, und die Senderberichte (Aufnahmezeit,
+    /// `pulse_whip::senderbericht`) machten daraus einen wachsenden Versatz
+    /// beim Zuschauer (Bughunt 2026-10-22). Nur der eigene Sendeweg nutzt ihn;
+    /// der Muxer bekommt weiter den gezaehlten pts.
+    versatz: i64,
 }
 
 /// Paketdauer der WHIP-Tonspur — die Laenge EINES Opus-Pakets. Sie gilt fuer
@@ -160,6 +168,7 @@ impl AudioEncoder {
             timeline: PtsTimeline::new(),
             sample_rate,
             letzte_ton_pts: None,
+            versatz: 0,
         }
     }
 
@@ -250,6 +259,10 @@ impl AudioEncoder {
     /// [`PtsTimeline`]), so audio stays on the video timeline.
     pub fn push(&mut self, samples: &[f32], senke: &TonSenke, anchor_samples: i64) -> Result<()> {
         let mut pts = self.timeline.align(anchor_samples);
+        // Der erste Sample dieses Batches steht in der pts-Zeitlinie HINTER
+        // dem, was noch im Sammelpuffer liegt (s. Feld `versatz`).
+        let vorrat = (self.fifo.len() / self.channels.max(1)) as i64;
+        self.versatz = anchor_samples - (pts + vorrat);
         self.fifo.extend(samples.iter().copied());
         let chunk = OPUS_FRAME_SAMPLES * self.channels;
         while self.fifo.len() >= chunk {
@@ -294,10 +307,11 @@ impl AudioEncoder {
                         mux.send(packet)?;
                     }
                     // Die Spur bekommt Bytes, Aufnahmezeit und Dauer. Seit dem
-                    // 2026-10-22 stempelt sie aus der Aufnahmezeit (48-kHz-
-                    // Takte ab `epoch_s`, wie das Bild — `pulse_whip::ton`);
-                    // die Dauer, der PTS-SPRUNG seit dem letzten Paket, zaehlt
-                    // nur ohne pts (Begruendung: [`AudioEncoder::whip_dauer`]).
+                    // 2026-10-22 stempelt sie aus der ECHTEN Aufnahmezeit
+                    // (pts plus `versatz`, ab `epoch_s` wie das Bild —
+                    // `pulse_whip::ton`); die Dauer, der PTS-SPRUNG seit dem
+                    // letzten Paket, zaehlt nur ohne pts
+                    // (Begruendung: [`AudioEncoder::whip_dauer`]).
                     TonSenke::Whip(w) => {
                         if let Some(d) = packet.data() {
                             let dauer = self.whip_dauer(packet.pts());
@@ -330,11 +344,11 @@ impl AudioEncoder {
         self.stream_idx
     }
 
-    /// Aufnahmezeit eines Pakets in 48-kHz-Takten fuer die Tonspur (WHIP wie
-    /// Direct). Der Encoder zaehlt in `1/sample_rate`; Opus ist 48 kHz, die
-    /// Umrechnung also im Regelfall die Identitaet.
+    /// Echte Aufnahmezeit eines Pakets in 48-kHz-Takten fuer die Tonspur
+    /// (WHIP wie Direct): pts plus `versatz` (s. Feld), umgerechnet aus
+    /// `1/sample_rate`.
     fn pts48(&self, pts: Option<i64>) -> Option<i64> {
-        pts.map(|p| p * 48_000 / i64::from(self.sample_rate.max(1)))
+        pts.map(|p| pulse_whip::ton::pts_in_takten(p + self.versatz, self.sample_rate))
     }
 
     /// Dauer eines Opus-Pakets fuer die Tonspur des eigenen Sendewegs (WHIP
