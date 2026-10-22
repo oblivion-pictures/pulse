@@ -35,6 +35,10 @@ stun = "0.17"
 # mitbringt — ein zweiter Provider (aws-lc-rs) wuerde genau jenen Fehler
 # erst erzeugen.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# Die Senderberichte (`senderbericht.rs`) sind ein eigener Interceptor, und
+# dessen Merkmal ist mit `#[async_trait]` geschrieben. webrtc bringt die Crate
+# selbst mit — keine neue Fassung im Graph, nur ein weiterer Nutzer (wie `stun`).
+async-trait = "0.1"
 pulse-zeitbasis = { path = "../pulse-zeitbasis" }
 pulse-bildmarke = { path = "../pulse-bildmarke" }
 

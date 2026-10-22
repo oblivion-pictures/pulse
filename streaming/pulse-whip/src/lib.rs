@@ -38,6 +38,8 @@
 //! `pulse-zeitbasis` — `av1.rs` ruft `crate::zeitbasis::…` auf, unveraendert
 //! wie in allen drei Sidecars.
 
+/// Gemeinsamer Nullpunkt von Bild und Ton fuer die Senderberichte.
+pub mod aufnahmeuhr;
 pub mod av1;
 pub mod bandbreite;
 /// Der Direktpfad-Sender (Antworter) — Gegenstück zum WHIP-Weg ohne Server.
@@ -48,6 +50,8 @@ pub mod hevc;
 pub mod pacer;
 pub mod red;
 pub mod sdp;
+/// Senderberichte in Aufnahmezeit statt Sendezeit (seit 2026-10-22).
+mod senderbericht;
 /// Was der Server auf der Strecke vom Sender her vermisst (RTCP-Empfänger-
 /// berichte je Spur) — als Log-Zeile, seit dem 2026-10-14.
 pub mod strecke;

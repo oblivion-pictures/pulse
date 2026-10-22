@@ -351,6 +351,10 @@ pub enum SessionCommand {
     /// dafuer die Jitter-Geduld RTT-gekoppelt ab (s. [`FERN_JITTER_MIN_MS`])
     /// und stellt danach die Geduld des Nutzers wieder her.
     Fernsteuerung(bool),
+    /// Bild/Ton-Versatz in der Uhr der Sender Reports, gemessen vom Fenster
+    /// (`crate::bildton::versatz_ms`; + heisst: der Ton hinkt). Geht an die
+    /// Tonausgabe, die ihn ausregelt (`audio::bildbezug`, gemeinsame Uhr).
+    BildTon { versatz_ms: f64, gemessen: Instant },
     Stop,
 }
 
@@ -755,6 +759,9 @@ pub async fn run(
                         fern_geduld = None;
                         jitter_setzen(&mut buffers, &mut stats, &mut target, basis_jitter_ms(&options));
                     }
+                }
+                Some(SessionCommand::BildTon { versatz_ms, gemessen }) => {
+                    media.bildton(versatz_ms, gemessen);
                 }
                 Some(SessionCommand::Options(patch)) => {
                     options.apply(&patch);

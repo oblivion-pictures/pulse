@@ -1,6 +1,13 @@
 //! Lippen-Synchronisation: die Ton-Abspielposition gegen die Ton-RTP-Uhr
-//! regeln — die „gemeinsame Uhr mit dem Videopfad", die es bis hierher nicht
-//! gab (Kopf von [`crate::audio`], Historie im internen Messbericht, Nr. 7).
+//! regeln (Kopf von [`crate::audio`], Historie im internen Messbericht, Nr. 7).
+//!
+//! **Seit dem 2026-10-22 nur noch der Rueckfall.** Liegt eine frische
+//! Bild/Ton-Messung in der Uhr der Sender Reports vor, regelt der Ton gegen
+//! das gezeigte Bild ([`super::bildbezug`], die gemeinsame Uhr); der Regler
+//! unten ([`nachfuehren`]) bleibt derselbe, nur sein Fehler kommt dann von
+//! dort. Die Tonuhr hier vermisst weiterhin die klingende Marke — die braucht
+//! die Messung — und liefert den Fehler, wenn keine Messung da ist (alter
+//! Sender oder Server, noch kein Report). Was folgt, beschreibt diesen Weg.
 //!
 //! Warum das noetig ist: Bild und Ton liefen auf zwei getrennten Uhren — das
 //! Bild folgt seinen RTP-Zeitstempeln (beim Sender wanduhr-echt), der Ton

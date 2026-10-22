@@ -333,7 +333,10 @@ impl WhipSender {
         let audio_cap = sdp::opus_capability();
         // Eine Zahl fuer Angebot und Nachpruefung (`nach_aushandlung`).
         let kopien = pulse_whip::red::kopien_aus_umgebung();
-        let api = sdp::baue_api(&cap, &audio_cap, kopien)?;
+        // Eine Aufnahmeuhr fuer beide Spuren: die Senderberichte tragen damit
+        // die Aufnahmezeit statt der Sendezeit (`pulse_whip::senderbericht`).
+        let uhr = pulse_whip::aufnahmeuhr::Aufnahmeuhr::neu();
+        let api = sdp::baue_api(&cap, &audio_cap, kopien, &uhr)?;
 
         // Kein STUN: der Weg zum eigenen Server laeuft entweder ueber die
         // Schleife oder ueber eine gewoehnliche ausgehende Verbindung. Ein
@@ -379,7 +382,7 @@ impl WhipSender {
         // seiner einfachen Form nicht (ein POST, eine Antwort). Eine angebotene
         // und stumme Spur kostet dagegen nichts — anders als beim Muxer, wo ein
         // angekuendigter, aber stummer Strom den Interleaver puffern liesse.
-        let audio = Arc::new(TonSpur::neu(audio_cap));
+        let audio = Arc::new(TonSpur::neu(audio_cap, &uhr));
         let audio_sender = pc.add_track(audio.spur()).await?;
         let sender_fuer_ton = Arc::clone(&audio_sender);
 
@@ -650,17 +653,13 @@ impl WhipSender {
 
     /// Ein encodiertes Ton-Paket senden.
     ///
-    /// `dauer` ist der PTS-SPRUNG seit dem letzten Paket, nicht die feste
-    /// Opus-Paketlaenge (Begruendung: `encode::audio::AudioEncoder::whip_dauer`)
-    /// — webrtc-rs summiert die Dauern zum RTP-Zeitstempel, und nur der Sprung
-    /// haelt die Ton-Zeitlinie auf der gemeinsamen Uhr mit dem Bild. Ein
-    /// falscher Wert verschoebe den Ton gegen das Bild, ohne dass irgendwo
-    /// ein Fehler auftaucht.
-    ///
-    /// Die Rundung auf ganze Takte steht in `pulse_whip::ton::TonSpur::senden`
-    /// (webrtc-rs schnitte sonst ab und der Ton liefe schleichend weg).
-    pub fn send_audio(&self, data: &[u8], dauer: Duration) -> Result<()> {
-        runtime().block_on(self.audio.senden(data, dauer)).context("Ton senden")
+    /// `pts` = Aufnahmezeit in 48-kHz-Takten ab dem gemeinsamen Nullpunkt mit
+    /// dem Bild — daraus stempelt die gemeinsame Tonspur (`pulse_whip::ton`,
+    /// seit 2026-10-22), und nur so bilden die Senderberichte beider Spuren
+    /// dieselbe Aufnahmezeit ab. `dauer` (der PTS-SPRUNG seit dem letzten
+    /// Paket, `encode::audio::AudioEncoder::whip_dauer`) zaehlt nur ohne `pts`.
+    pub fn send_audio(&self, data: &[u8], pts: Option<i64>, dauer: Duration) -> Result<()> {
+        runtime().block_on(self.audio.senden(data, pts, dauer)).context("Ton senden")
     }
 
     /// Sitzung abbauen. Idempotent.

@@ -176,7 +176,7 @@ mod tests {
         fn video(&mut self, _d: &[u8], _pts: Option<i64>) -> Result<()> {
             Ok(())
         }
-        fn audio(&mut self, _d: &[u8], _dauer: Duration) -> Result<()> {
+        fn audio(&mut self, _d: &[u8], _pts: Option<i64>, _dauer: Duration) -> Result<()> {
             self.0.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }

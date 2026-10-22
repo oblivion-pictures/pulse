@@ -89,3 +89,28 @@ def test_alle_mediamtx_laufen_mit_denselben_schaltern() -> None:
     assert len(image) >= 9, f"run-Datei nicht mehr lesbar? {image}"
     for name, compose in COMPOSES.items():
         assert _schalter_in(compose) == image, name
+
+
+# ── Zeitangaben der Sender: überall durchgereicht ─────────────────────────
+
+KONFIGURATIONEN = {
+    "Cloud": REPO / "infra" / "prod" / "mediamtx.yml",
+    "lokaler Dev-Stack": REPO / "streaming" / "server" / "mediamtx.yml.template",
+    "lokaler Dev-Stack (macOS)": REPO / "streaming" / "server" / "mediamtx.mac.yml",
+    "Self-Host-Image": REPO / "infra" / "self-host" / "s6" / "etc" / "s6-overlay" / "scripts" / "08-init-mediamtx.sh",
+    "Windows-Server-App": REPO / "desktop" / "electron" / "localBackend" / "nativeBackend" / "configs.ts",
+}
+
+
+def test_alle_mediamtx_reichen_die_aufnahmezeit_durch() -> None:
+    """`useAbsoluteTimestamp: yes` unter `pathDefaults` an jeder Stelle.
+
+    Fehlt es an einer, ist dort Bild/Ton wieder nach der Ankunft beim Server
+    verankert, und ein Unterschied der Sendelatenz wird beim Zuschauer zum
+    Versatz (Kopf von `streaming/pulse-whip/src/senderbericht.rs`). Der
+    Remote-Dev-Stack liest eine Datei auf dem Server, nicht aus dem Repo —
+    sie wird von Hand nachgezogen (`infra/dev-remote/README.md`).
+    """
+    for name, pfad in KONFIGURATIONEN.items():
+        text = pfad.read_text()
+        assert re.search(r"^pathDefaults:\n  useAbsoluteTimestamp: yes$", text, re.M), name

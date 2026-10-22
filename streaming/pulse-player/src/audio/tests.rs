@@ -27,6 +27,8 @@ pub(super) fn shared_mit(target_fill: usize) -> Mutex<Shared> {
         trim_ms: 0,
         sync_ms: 0.0,
         letzte_fehler_ms: 0.0,
+        bildton: None,
+        bezug: None,
         letzte_nachfuehr: None,
         per_ms: TEST_PER_MS,
         max_ziel: TEST_MAX_RING / 2,
@@ -263,6 +265,55 @@ fn trim_addiert_sich_auf_den_sollwert() {
         (RING_SOLL_MS + 40) * TEST_PER_MS,
         "Trim muss auf den Sollwert addieren"
     );
+}
+
+// --- Gemeinsame Uhr: Ton gegen das gezeigte Bild (s. `bildbezug`) --------
+
+/// Fuenf Pakete im 20-ms-Takt nach den Befehlen `vorher` — genug, dass der
+/// Regler zweimal nachfuehrt (der erste Schritt setzt nur den Zeitpunkt).
+fn mit_paketen(shared: &Arc<Mutex<Shared>>, vorher: Vec<AudioCommand>) {
+    let mut schritte: Vec<(u64, AudioCommand)> = vorher.into_iter().map(|c| (0, c)).collect();
+    for k in 0..5u32 {
+        schritte.push((20, AudioCommand::Pcm(vec![0.0; 10 * TEST_PER_MS], Some(k * 480))));
+    }
+    mit_pausen(shared, schritte);
+}
+
+/// Mit frischer Bild/Ton-Messung ist SIE der Regelfehler, nicht die eigene
+/// Ankunft des Tons — und hinkt der Ton dem Bild nach, wird er nach vorn
+/// gezogen: der Eingriff auf den Ring-Sollwert sinkt.
+#[test]
+fn mit_messung_regelt_der_ton_gegen_das_bild() {
+    let shared = Arc::new(shared_mit_soll(TEST_PER_MS));
+    shared.lock().unwrap().anlauf = false;
+    mit_paketen(&shared, vec![AudioCommand::BildTon(80.0, Instant::now())]);
+    let s = shared.lock().unwrap();
+    assert_eq!(s.bezug, Some(bildbezug::Bezug::Bild));
+    assert_eq!(s.letzte_fehler_ms, 80.0, "der Fehler ist die Messung");
+    assert!(s.sync_ms < 0.0, "Ton hinkt → Eingriff sinkt, war {}", s.sync_ms);
+}
+
+/// Ohne Messung (alter Server oder Sender, noch kein Report) bleibt alles
+/// beim Alten: der Ton regelt gegen seine Ankunft.
+#[test]
+fn ohne_messung_regelt_der_ton_gegen_seine_ankunft() {
+    let shared = Arc::new(shared_mit_soll(TEST_PER_MS));
+    shared.lock().unwrap().anlauf = false;
+    mit_paketen(&shared, vec![]);
+    assert_eq!(shared.lock().unwrap().bezug, Some(bildbezug::Bezug::Ankunft));
+}
+
+/// Der Nutz-Trim bleibt wirksam: liegt der Ton genau um den Trim hinter dem
+/// Bild, ist das kein Fehler — sonst regelte die gemeinsame Uhr ihn weg.
+#[test]
+fn der_trim_ist_kein_fehler_gegen_das_bild() {
+    let shared = Arc::new(shared_mit_soll(TEST_PER_MS));
+    shared.lock().unwrap().anlauf = false;
+    mit_paketen(
+        &shared,
+        vec![AudioCommand::OffsetMs(100), AudioCommand::BildTon(100.0, Instant::now())],
+    );
+    assert_eq!(shared.lock().unwrap().letzte_fehler_ms, 0.0);
 }
 
 // --- Verspaeteter Ton nach einem Unterlauf (s. `nachzuegler`) -------------

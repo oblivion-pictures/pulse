@@ -85,6 +85,9 @@ test('renderMediamtxYml: echte Interfaces (kein VM-Sonderweg) + Auth-Hook', () =
   assert.match(yml, /webrtcLocalUDPAddress: 0\.0\.0\.0:8189/);
   assert.match(yml, /webrtcICEServers2:/);
   assert.match(yml, /url: stun:stun\.l\.google\.com:19302/);
+  // Aufnahmezeit der Sender durchreichen, wie Cloud und Image (gemeinsame
+  // Uhr von Bild und Ton, infra/self-host/tests/test_mediamtx_fork.py).
+  assert.match(yml, /^pathDefaults:\n  useAbsoluteTimestamp: yes$/m);
 });
 
 test('renderWeedS3Config: weed-IAM-Format (credentials + sts.signingKey)', () => {

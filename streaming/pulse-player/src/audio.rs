@@ -12,8 +12,9 @@
 //! * `av_offset_ms` wird als Ziel-Fuellstand des Rings umgesetzt: mehr Puffer
 //!   heisst spaeterer Ton. Das ist der NUTZ-Trim; darueber liegt seit der
 //!   Lippen-Synchronisation der Regel-Eingriff aus [`lippen`], der den
-//!   Soll-Fuellstand gegen die Ton-RTP-Uhr nachfuehrt — die „gemeinsame Uhr
-//!   mit dem Videopfad", deren Fehlen hier frueher stand.
+//!   Soll-Fuellstand nachfuehrt — seit dem 2026-10-22 gegen das gezeigte Bild
+//!   in der Uhr der Sender Reports ([`bildbezug`], die gemeinsame Uhr mit dem
+//!   Videopfad), ohne solche Messung wie vorher gegen die Ton-RTP-Uhr.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -22,6 +23,7 @@ use std::time::Instant;
 use anyhow::{anyhow, Context as _, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
+mod bildbezug;
 mod fuetterung;
 mod lippen;
 mod nachzuegler;
@@ -31,6 +33,7 @@ mod ringregelung;
 mod tests;
 mod uhrenabgleich;
 mod verdeckung;
+mod zaehler;
 
 use fuetterung::pump_commands;
 use nachzuegler::Nachzuegler;
@@ -40,6 +43,7 @@ use opus::OpusDecoder;
 use ringregelung::im_rueckstand;
 use ringregelung::{Ringregelung, RING_BODEN_MS, RING_RUECKSTAND_MS, RING_SOLL_MS};
 use uhrenabgleich::Uhrenabgleich;
+pub use zaehler::AudioCounters;
 
 /// Wie viel Ton der Ring hoechstens vorhaelt. Laeuft die Wiedergabe davon,
 /// ist er ohnehin verloren — dann lieber verwerfen als Speicher fressen.
@@ -68,6 +72,9 @@ enum AudioCommand {
     Packet(Vec<u8>, Option<u32>),
     Volume(f32),
     OffsetMs(i32),
+    /// Bild/Ton-Versatz in der Uhr der Sender Reports und wann er gemessen
+    /// wurde (s. [`bildbezug`]).
+    BildTon(f64, Instant),
     Stop,
 }
 
@@ -139,6 +146,11 @@ struct Shared {
     /// Zuletzt gemessener Lippenfehler (positiv = Ton haengt hinterher),
     /// fuer die Statistik-Zeile.
     letzte_fehler_ms: f64,
+    /// Zuletzt gemeldeter Bild/Ton-Versatz und wann er gemessen wurde
+    /// (`AudioCommand::BildTon`, s. [`bildbezug`]).
+    bildton: Option<(f64, Instant)>,
+    /// Woran zuletzt geregelt wurde — fuer die Logzeile beim Wechsel.
+    bezug: Option<bildbezug::Bezug>,
     /// Wann der Regel-Eingriff zuletzt fortgeschrieben wurde — fuer den
     /// Zeitschritt und um nach Stillpausen nicht mit altem Fehler zu regeln.
     letzte_nachfuehr: Option<Instant>,
@@ -252,44 +264,6 @@ pub struct AudioOutput {
     pub channels: u16,
 }
 
-/// Zaehlerstaende der Tonausgabe (s. [`AudioOutput::counters`]).
-///
-/// Benannte Felder und kein Tupel: es sind vier gleichartige Zahlen
-/// hintereinander, und genau dort vertauscht irgendwann jemand zwei, ohne dass
-/// es auffaellt (dieselbe Ueberlegung wie bei `session::Zeitmarken`).
-#[derive(Debug, Default, Clone, Copy)]
-pub struct AudioCounters {
-    /// Wie oft dem Ausgabegeraet Daten fehlten.
-    pub underruns: u64,
-    /// Verworfene Samples (harte Ringgrenze, Rueckfuehrung und verspaeteter
-    /// Ton zusammen).
-    pub dropped: u64,
-    /// Davon nach einem Unterlauf als verspaetet verworfen (s.
-    /// `audio::nachzuegler`).
-    pub verspaetet: u64,
-    /// Aktueller Fuellstand des Rings in Samples.
-    pub buffered: usize,
-    /// Grobkappungen der Rueckfuehrung (s. `audio::ringregelung`).
-    pub resyncs: u64,
-    /// Aktuelle Nachfuehrung der Abspielrate in Millionstel (s.
-    /// `audio::uhrenabgleich`). Steht im Protokoll, weil ein Eingriff, den
-    /// niemand sieht, genau die Sorte Fehler ist, die hier behoben wurde.
-    pub abgleich_ppm: i32,
-    /// Ob der Ausgabe-Thread noch laeuft.
-    pub alive: bool,
-    /// Ob der Ausgabegeraet-Fehlerzustand gesetzt ist (s. `Shared::geraetefehler`).
-    pub geraetefehler: bool,
-    /// Zuletzt gemessener Lippenfehler in ms (positiv = Ton haengt hinterher,
-    /// s. `audio::lippen`). 0 solange keine Vermessung laeuft.
-    pub lippen_ms: f32,
-    /// Welche Ton-RTP-Marke zuletzt klang, und wann (s. [`crate::bildton`]).
-    pub klingt: Option<(u32, Instant)>,
-    /// Regel-Eingriff der Lippen-Synchronisation auf den Ring-Sollwert in ms.
-    pub sync_versatz_ms: i32,
-    /// Verdeckte Verluste (s. `audio::verdeckung`).
-    pub verdeckung: verdeckung::Zaehler,
-}
-
 /// Abtastrate von Opus. Der Codec kennt nur diese eine — alles andere
 /// entsteht erst durch Umrechnen beim Ausgeben.
 const OPUS_SAMPLE_RATE: u32 = 48_000;
@@ -367,6 +341,8 @@ impl AudioOutput {
             trim_ms: 0,
             sync_ms: 0.0,
             letzte_fehler_ms: 0.0,
+            bildton: None,
+            bezug: None,
             letzte_nachfuehr: None,
             per_ms,
             max_ziel: (MAX_RING_SECONDS * sample_rate as usize * channels as usize) / 2,
@@ -449,6 +425,13 @@ impl AudioOutput {
 
     pub fn set_offset_ms(&self, ms: i32) {
         let _ = self.tx.send(AudioCommand::OffsetMs(ms.clamp(-2000, 2000)));
+    }
+
+    /// Den zuletzt gemessenen Bild/Ton-Versatz melden (+ = Ton hinkt). Solange
+    /// er frisch ist, regelt die Lippen-Synchronisation gegen IHN statt gegen
+    /// die eigene Ankunft des Tons — die gemeinsame Uhr mit dem Bild.
+    pub fn bildton(&self, versatz_ms: f64, gemessen: Instant) {
+        let _ = self.tx.send(AudioCommand::BildTon(versatz_ms, gemessen));
     }
 
     /// Zaehlerstaende fuer die Statistik. Bei vergifteter Sperre gilt die

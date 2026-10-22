@@ -16,9 +16,17 @@
 //! **Sequenznummer und Zeitstempel fuehren wir selbst**, nicht die Spur:
 //! `TrackLocalStaticRTP::write_rtp` setzt je Bindung nur SSRC und
 //! Nutzlast-Nummer und laesst beides stehen. So laufen sie ueber den Tausch
-//! hinweg weiter, als waere nichts gewesen. Im Opus-Betrieb entsteht genau,
-//! was vorher `TrackLocalStaticSample` schrieb: ein Paket je Opus-Rahmen,
-//! `marker` gesetzt, Zeitstempel um die Rahmendauer in 48-kHz-Takten weiter.
+//! hinweg weiter, als waere nichts gewesen. Ein Paket je Opus-Rahmen,
+//! `marker` gesetzt.
+//!
+//! **Der Zeitstempel ist Basis + pts** (seit 2026-10-22, gemeinsame Uhr): die
+//! Aufnahmezeit des Rahmens in 48-kHz-Takten, ab demselben Nullpunkt wie das
+//! Bild. Nur so bildet der Senderbericht beider Spuren dieselbe Aufnahmezeit
+//! auf dieselbe Wanduhr ab ([`crate::aufnahmeuhr`]). Vorher war er die SUMME
+//! der Rahmendauern; eine Luecke der pts-Zeitlinie (Sprung um die Luecke)
+//! landete damit erst ein Paket spaeter in der Marke, und ihr Bezug zum Bild
+//! bestand nur ueber die Sendezeit. Ohne pts (Aufrufer ohne Zeitstempel) gilt
+//! die Summe weiter.
 //!
 //! **Bedeutung der Strecke-Zeile „Ton: verloren“ ([`crate::strecke`]).** Der
 //! Server packt RED aus, BEVOR sein Empfaengerbericht die Pakete zaehlt
@@ -39,11 +47,12 @@ use webrtc::rtp_transceiver::rtp_sender::RTCRtpSender;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
 
+use crate::aufnahmeuhr::{Aufnahmeuhr, TON_HZ};
 use crate::red::{RedPacker, KOPIEN_MAX};
 use crate::sdp::MIME_TYPE_RED;
 
 /// Takt der Opus-Zeitstempel (RFC 7587: immer 48 kHz).
-const TAKT_HZ: f64 = 48_000.0;
+const TAKT_HZ: f64 = TON_HZ as f64;
 
 /// Was die Tonspur nach der Aushandlung sendet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +66,12 @@ pub enum TonArt {
 
 struct Zustand {
     seq: u16,
+    /// Marke bei pts 0 (s. Modulkopf).
+    basis: u32,
+    /// Marke des naechsten Pakets ohne pts: die letzte plus deren Dauer.
     ts: u32,
+    /// Marke des zuletzt gebauten Pakets — eine Marke darf nicht zurueck.
+    letzte: Option<u32>,
     aktiv: Arc<TrackLocalStaticRTP>,
     /// `Some` im RED-Betrieb: Packer und Opus-Nummer fuer die Blockkoepfe.
     red: Option<(RedPacker, u8)>,
@@ -71,22 +85,31 @@ pub struct TonSpur {
 
 impl TonSpur {
     /// Startwerte: die Sequenznummer zufaellig wie bei `TrackLocalStaticSample`,
-    /// der Zeitstempel aus den Nanosekunden der Uhr statt aus `rand` (das dort
+    /// die Basis aus den Nanosekunden der Uhr statt aus `rand` (das dort
     /// nimmt; hier waere es eine neue Abhaengigkeit). RFC 3550 §5.1 will nur
-    /// einen beliebigen Anfang, keinen bestimmten.
-    pub fn neu(opus: RTCRtpCodecCapability) -> Self {
+    /// einen beliebigen Anfang, keinen bestimmten. Die Basis geht an die
+    /// Aufnahmeuhr der Verbindung — ohne sie berichtet der Ton nicht.
+    pub fn neu(opus: RTCRtpCodecCapability, uhr: &Aufnahmeuhr) -> Self {
         let seq = rtp::sequence::new_random_sequencer().next_sequence_number();
-        let ts = SystemTime::now()
+        let basis = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos() as u32)
             .unwrap_or_default();
-        Self::mit_start(opus, seq, ts)
+        uhr.ton_basis_setzen(basis);
+        Self::mit_start(opus, seq, basis)
     }
 
-    fn mit_start(opus: RTCRtpCodecCapability, seq: u16, ts: u32) -> Self {
+    fn mit_start(opus: RTCRtpCodecCapability, seq: u16, basis: u32) -> Self {
         let opus = rtp_spur(opus);
         Self {
-            zustand: Mutex::new(Zustand { seq, ts, aktiv: Arc::clone(&opus), red: None }),
+            zustand: Mutex::new(Zustand {
+                seq,
+                basis,
+                ts: basis,
+                letzte: None,
+                aktiv: Arc::clone(&opus),
+                red: None,
+            }),
             opus,
         }
     }
@@ -132,26 +155,40 @@ impl TonSpur {
         Ok(TonArt::Red { kopien, opus_pt })
     }
 
-    /// Ein Opus-Rahmen von `dauer` hinaus.
-    pub async fn senden(&self, opus: &[u8], dauer: Duration) -> Result<()> {
-        let (paket, spur) = self.bauen(opus, dauer);
+    /// Ein Opus-Rahmen hinaus. `pts` = Aufnahmezeit in 48-kHz-Takten ab dem
+    /// gemeinsamen Nullpunkt mit dem Bild (s. Modulkopf); `dauer` = Rahmenlaenge,
+    /// gebraucht nur ohne `pts` und nach einer Marke, die zurueckspraenge.
+    pub async fn senden(&self, opus: &[u8], pts: Option<i64>, dauer: Duration) -> Result<()> {
+        let (paket, spur) = self.bauen(opus, pts, dauer);
         spur.write_rtp(&paket).await.context("Tonpaket schreiben")?;
         Ok(())
     }
 
     /// Der reine Teil von [`Self::senden`] — zaehlt Sequenz und Zeit weiter.
     #[cfg(test)]
-    pub(crate) fn paket_bauen(&self, opus: &[u8], dauer: Duration) -> rtp::packet::Packet {
-        self.bauen(opus, dauer).0
+    pub(crate) fn paket_bauen(
+        &self,
+        opus: &[u8],
+        pts: Option<i64>,
+        dauer: Duration,
+    ) -> rtp::packet::Packet {
+        self.bauen(opus, pts, dauer).0
     }
 
     /// Baut unter der Sperre und gibt sie VOR dem Schreiben frei: `write_rtp`
     /// wartet, und ein `std`-Mutex darf nicht ueber ein `await` gehalten werden.
-    fn bauen(&self, opus: &[u8], dauer: Duration) -> (rtp::packet::Packet, Arc<TrackLocalStaticRTP>) {
+    fn bauen(
+        &self,
+        opus: &[u8],
+        pts: Option<i64>,
+        dauer: Duration,
+    ) -> (rtp::packet::Packet, Arc<TrackLocalStaticRTP>) {
         let takte = (dauer.as_secs_f64() * TAKT_HZ).round() as u32;
         let mut z = self.zustand.lock().unwrap_or_else(|e| e.into_inner());
-        let (seq, ts) = (z.seq, z.ts);
+        let seq = z.seq;
+        let ts = marke(z.basis, z.ts, z.letzte, pts);
         z.seq = seq.wrapping_add(1);
+        z.letzte = Some(ts);
         z.ts = ts.wrapping_add(takte);
         let nutzlast = match &mut z.red {
             Some((packer, opus_pt)) => Bytes::from(packer.packen(ts, *opus_pt, opus)),
@@ -171,6 +208,20 @@ impl TonSpur {
             payload: nutzlast,
         };
         (paket, Arc::clone(&z.aktiv))
+    }
+}
+
+/// Die Marke eines Rahmens: Basis + pts, solange sie vorwaerts geht; sonst
+/// (kein pts, oder pts sprang hinter die letzte Marke zurueck) die laufende
+/// Summe `naechste`. Zwei Rahmen mit derselben oder fallender Marke taeten
+/// jedem Empfaenger weh, eine kurz verschobene Marke nur der Synchronisation.
+fn marke(basis: u32, naechste: u32, letzte: Option<u32>, pts: Option<i64>) -> u32 {
+    let Some(p) = pts else { return naechste };
+    // `as u32` schneidet oben ab wie jede RTP-Uhr (RFC 3550).
+    let aus_pts = basis.wrapping_add(p as u32);
+    match letzte {
+        Some(l) if (aus_pts.wrapping_sub(l) as i32) <= 0 => naechste,
+        _ => aus_pts,
     }
 }
 

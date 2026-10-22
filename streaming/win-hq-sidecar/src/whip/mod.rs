@@ -345,7 +345,10 @@ impl WhipSender {
         let audio_cap = sdp::opus_capability();
         // Eine Zahl für Angebot und Nachprüfung (`nach_aushandlung`).
         let kopien = pulse_whip::red::kopien_aus_umgebung();
-        let api = sdp::baue_api(&cap, &audio_cap, kopien)?;
+        // Eine Aufnahmeuhr fuer beide Spuren: die Senderberichte tragen damit
+        // die Aufnahmezeit statt der Sendezeit (`pulse_whip::senderbericht`).
+        let uhr = pulse_whip::aufnahmeuhr::Aufnahmeuhr::neu();
+        let api = sdp::baue_api(&cap, &audio_cap, kopien, &uhr)?;
 
         // Kein STUN: der Weg zum eigenen Server laeuft entweder ueber die
         // Schleife oder ueber eine gewoehnliche ausgehende Verbindung. Ein
@@ -397,7 +400,7 @@ impl WhipSender {
         // seiner einfachen Form nicht (ein POST, eine Antwort). Eine angebotene
         // und stumme Spur kostet dagegen nichts — anders als beim Muxer, wo ein
         // angekuendigter, aber stummer Strom den Interleaver puffern liesse.
-        let audio = Arc::new(TonSpur::neu(audio_cap));
+        let audio = Arc::new(TonSpur::neu(audio_cap, &uhr));
         let audio_sender = pc.add_track(audio.spur()).await?;
         let sender_fuer_ton = Arc::clone(&audio_sender);
 
@@ -675,15 +678,12 @@ impl WhipSender {
 
     /// Ein encodiertes Ton-Paket senden.
     ///
-    /// `dauer` ist die Länge des Opus-Pakets (auf dem WHIP-Weg 10 ms,
-    /// `OPUS_FRAME_MS_WHIP` in `encode::audio`) — daraus leitet die gemeinsame
-    /// Tonspur den RTP-Zeitstempel ab. Ein falscher Wert verschöbe den Ton
-    /// gegen das Bild, ohne dass irgendwo ein Fehler auftaucht.
-    ///
-    /// Die Rundung auf ganze Takte steht in `pulse_whip::ton::TonSpur::senden`
-    /// (webrtc-rs schnitte sonst ab und der Ton liefe schleichend weg).
-    pub fn send_audio(&self, data: &[u8], dauer: Duration) -> Result<()> {
-        runtime().block_on(self.audio.senden(data, dauer)).context("Ton senden")
+    /// `pts` = Aufnahmezeit in 48-kHz-Takten ab dem Nullpunkt des Bildes —
+    /// daraus stempelt die gemeinsame Tonspur (`pulse_whip::ton`). `dauer` ist
+    /// die Länge des Opus-Pakets (auf dem WHIP-Weg 10 ms, `OPUS_FRAME_MS_WHIP`
+    /// in `encode::audio`) und zählt nur ohne `pts`.
+    pub fn send_audio(&self, data: &[u8], pts: Option<i64>, dauer: Duration) -> Result<()> {
+        runtime().block_on(self.audio.senden(data, pts, dauer)).context("Ton senden")
     }
 
     /// Sitzung abbauen. Idempotent.

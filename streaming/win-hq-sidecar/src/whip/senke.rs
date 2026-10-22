@@ -61,8 +61,8 @@ impl PaketSenke for WhipSenke {
         self.sender.send(daten, pts)
     }
 
-    fn audio(&mut self, daten: &[u8], dauer: Duration) -> Result<()> {
-        self.sender.send_audio(daten, dauer)
+    fn audio(&mut self, daten: &[u8], pts: Option<i64>, dauer: Duration) -> Result<()> {
+        self.sender.send_audio(daten, pts, dauer)
     }
 
     fn schliesse(&mut self) {

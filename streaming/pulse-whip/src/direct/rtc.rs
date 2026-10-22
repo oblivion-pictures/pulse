@@ -38,6 +38,7 @@ use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 
 use super::sdp::{self, host_kandidaten};
 use super::stun;
+use crate::aufnahmeuhr::Aufnahmeuhr;
 
 /// Der STUN-Server des Direktpfads. Vorgabe der Schnittstelle; kein TURN —
 /// Stufe 1 scheitert sichtbar, wenn die Leitung keinen Direktweg hergibt.
@@ -88,16 +89,18 @@ fn nuetzliche_ip(ip: IpAddr) -> bool {
 }
 
 /// Die fertige webrtc-rs-API des Direktpfads: dieselbe Media-Engine wie der
-/// WHIP-Weg (genau unsere Codecs, Bildmarke, Standard-Interceptor samt
-/// NACK-Responder), aber mit Setting-Engine für die ICE-Filter.
+/// WHIP-Weg (genau unsere Codecs, Bildmarke, Interceptoren samt
+/// NACK-Responder und Senderberichten in Aufnahmezeit), aber mit
+/// Setting-Engine für die ICE-Filter.
 pub fn baue_api(
     video: &RTCRtpCodecCapability,
     audio: &RTCRtpCodecCapability,
+    uhr: &Arc<Aufnahmeuhr>,
 ) -> Result<API> {
     let mut se = SettingEngine::default();
     se.set_interface_filter(Box::new(nuetzliches_interface));
     se.set_ip_filter(Box::new(nuetzliche_ip));
-    crate::sdp::baue_api_mit_settings(video, audio, 0, se)
+    crate::sdp::baue_api_mit_settings(video, audio, 0, uhr, se)
 }
 
 /// Beantwortet ein Angebot vollständig: Offer setzen, Answer erzeugen,
