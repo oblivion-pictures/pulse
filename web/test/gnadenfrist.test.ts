@@ -113,3 +113,18 @@ describe('Client- und Server-Frist bleiben zueinander passend', () => {
     assert.equal(Number(treffer[1]), SERVER_GRACE_S);
   });
 });
+
+describe('abgelehnter Reclaim', () => {
+  it('wiederholt nur, wenn der Server den Abriss noch nicht verarbeitet hat', async () => {
+    const { reclaimNochmal, RECLAIM_NOCHMAL_MS, FRIST_WACHTAKT_MS } = await import(
+      '../src/lib/remote/gnadenfrist.ts'
+    );
+    assert.equal(reclaimNochmal('no grace window for this role'), true);
+    for (const grund of ['session gone', 'no access', 'not a session peer', undefined]) {
+      assert.equal(reclaimNochmal(grund), false, String(grund));
+    }
+    // Mehrere Versuche und Weckprüfungen müssen in die Frist passen.
+    assert.ok(RECLAIM_NOCHMAL_MS * 3 < CLIENT_GRACE_MS);
+    assert.ok(FRIST_WACHTAKT_MS * 3 < CLIENT_GRACE_MS);
+  });
+});

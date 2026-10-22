@@ -298,3 +298,32 @@ async def test_grace_expiry_calling_remote_end_does_not_cancel_itself():
         "der ablaufende Zeitgeber hat sich über remote_end selbst storniert, "
         "bevor er seine Meldung verschicken konnte"
     )
+
+
+@pytest.mark.asyncio
+async def test_reclaim_takes_over_a_socket_the_fan_out_already_dropped():
+    """Netzwackler vom 2026-10-22: der Fan-out traegt den Host-Socket nach 5 s
+    Sendestau aus, die Gnadenfrist beginnt aber erst, wenn seine Empfangsschleife
+    endet. Ein Reclaim des neu verbundenen Hosts in dieser Luecke muss gelten,
+    statt mit "no grace window" die Sitzung zu beenden."""
+    reg = _Reg()
+    sess, host_ws, ctrl_ws = await _active_session(reg)
+    # Verbindungsbuch wie im echten Manager: der Steuernde ist eingetragen, der
+    # Host schon ausgetragen (Fan-out), eine Frist laeuft noch nicht.
+    reg._connections = {ctrl_ws}
+    new_host_ws = _Sock()
+    reclaimed = await reg.remote_reclaim(sess.session_id, "host", "10", new_host_ws)
+    assert reclaimed is sess
+    assert reg.remote_get(sess.session_id).host_socket is new_host_ws
+
+
+@pytest.mark.asyncio
+async def test_reclaim_without_grace_fails_while_the_old_socket_is_still_registered():
+    """Gegenprobe: ist der alte Socket noch eingetragen (ein zweiter Tab
+    desselben Nutzers, keine Frist), darf ein Reclaim ihn nicht verdraengen."""
+    reg = _Reg()
+    sess, host_ws, ctrl_ws = await _active_session(reg)
+    reg._connections = {ctrl_ws, host_ws}
+    reclaimed = await reg.remote_reclaim(sess.session_id, "host", "10", _Sock())
+    assert reclaimed is None
+    assert reg.remote_get(sess.session_id).host_socket is host_ws

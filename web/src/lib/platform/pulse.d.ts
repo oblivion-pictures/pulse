@@ -78,6 +78,10 @@ export interface PulseSidecarApi {
     /** Ein ANDERER Stream-Platz meldet gerade Vorrang des Hosts — die Frames
      *  werden dann auch dort verworfen (`$lib/remote/vorrang.ts`). */
     hostAktiv?: boolean,
+    /** Absendezeit beim Steuernden (ms seit 1970), falls mitgeschickt — nur
+     *  fuer die Laufzeit-Messung des Eingabewegs
+     *  (`desktop/electron/eingabeLaufzeit.ts`). Fehlt bei aelteren Steuernden. */
+    t?: number,
   ): Promise<unknown>;
   /** Sitzungsende — der Sidecar gibt alles Gedrueckte frei. Ohne diesen Ruf
    *  bliebe nach einem Abbruch eine Taste gedrueckt. Idempotent. */

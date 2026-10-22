@@ -241,9 +241,14 @@ class RemoteSessionStore {
     // (Bughunt 2026-08-17). Reines Lesen, keine Mutation — unschädlich, falls
     // der Kanal am Ende doch trägt und der Schnappschuss ungenutzt bleibt.
     const gehaltenVorDieserNachricht = remoteP2P.nachziehBuendel();
+    // Absendezeit für die Laufzeit-Messung beim Host (seit 2026-10-22,
+    // `desktop/electron/eingabeLaufzeit.ts`): staut sich der Eingabeweg im
+    // Lauf einer Sitzung an, wächst sie dort. Nur an den eigentlichen
+    // Frames, nicht an Hello und Nachzug — die sagen nichts über den Weg.
+    const t = Date.now();
     // Erst der direkte Kanal (`p2p.ts`) — er sagt, ob er getragen hat oder was
     // dem Serverweg noch vorangehen muss (frisches Hello nach Kanal-Ausfall).
-    const weg = remoteP2P.senden(sessionId, slot, frames);
+    const weg = remoteP2P.senden(sessionId, slot, frames, t);
     if (weg === 'p2p') return true;
     if (weg === 'ws_mit_hello') {
       // Hello plus letzte Zeigerlage — ein nacktes Hello löscht beim Host
@@ -264,7 +269,7 @@ class RemoteSessionStore {
         }
       }
     }
-    return this.#senden((c) => c.sendRemoteInput(sessionId, slot, frames));
+    return this.#senden((c) => c.sendRemoteInput(sessionId, slot, frames, t));
   }
 
   // ── Host-Seite ────────────────────────────────────────────────────────────

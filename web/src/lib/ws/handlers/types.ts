@@ -487,7 +487,9 @@ export type ServerEvent =
   | { op: 'remote_reclaim_failed'; session_id: string; reason: string }
   // Eingabe-Frames des Steuernden, vom Gateway unverändert durchgereicht (nur
   // der Host bekommt sie). Format: `docs/plans/2026-08-12-input-wire-protokoll-v2.md`.
-  | { op: 'remote_input'; session_id: string; slot: number; frames: string[] }
+  // `t` = Absendezeit beim Steuernden, nur fuer die Laufzeit-Messung des Hosts
+  // (`desktop/electron/eingabeLaufzeit.ts`, seit 2026-10-22).
+  | { op: 'remote_input'; session_id: string; slot: number; frames: string[]; t?: number }
   // SDP/ICE des P2P-Eingabewegs, peer-gebunden weitergereicht — das Gegenüber
   // der aktiven Sitzung verhandelt darüber den DataChannel (`$lib/remote/p2p.ts`).
   | { op: 'remote_signal'; session_id: string; kind: RemoteSignalKind; data: unknown }
@@ -608,8 +610,8 @@ export type ClientEvent =
   | { op: 'remote_respond'; session_id: string; accept: boolean; /** **P2P:** der Platz des wartenden Direktstroms (nur Host, nur bei Zusage). */
       slot?: number }
   // Eingabe-Frames zum Host. Nur der Steuernde sendet; der Gateway prüft
-  // Sitzung, Rolle und Größe und schaut nicht in die Frames hinein.
-  | { op: 'remote_input'; session_id: string; slot: number; frames: string[] }
+  // Sitzung, Rolle und Größe und schaut nicht in die Frames hinein. `t` s. oben.
+  | { op: 'remote_input'; session_id: string; slot: number; frames: string[]; t?: number }
   | { op: 'remote_signal'; session_id: string; kind: RemoteSignalKind; data: unknown }
   | { op: 'remote_end'; session_id: string }
   // Nach einem Verbindungsabriss zurück, innerhalb der Gnadenfrist

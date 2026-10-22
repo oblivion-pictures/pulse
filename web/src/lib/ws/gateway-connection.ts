@@ -1379,8 +1379,8 @@ export class GatewayConnection {
     senders.sendRemoteEnd(this._raw, sessionId);
   sendRemoteReclaim = (sessionId: string): boolean =>
     senders.sendRemoteReclaim(this._raw, sessionId);
-  sendRemoteInput = (sessionId: string, slot: number, frames: string[]): boolean =>
-    senders.sendRemoteInput(this._raw, sessionId, slot, frames);
+  sendRemoteInput = (sessionId: string, slot: number, frames: string[], t?: number): boolean =>
+    senders.sendRemoteInput(this._raw, sessionId, slot, frames, t);
   sendRemoteSignal = (
     sessionId: string, kind: RemoteSignalKind, data: unknown,
   ): boolean => senders.sendRemoteSignal(this._raw, sessionId, kind, data);

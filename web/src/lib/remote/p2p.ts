@@ -38,7 +38,9 @@ import type { RemoteSignalKind } from '$lib/ws/handlers/types';
 import { Gedruecktbuch, MAX_FRAMES } from './buchfuehrung';
 
 type SignalSender = (kind: RemoteSignalKind, data: unknown) => boolean;
-type FrameSink = (evt: { session_id: string; slot: number; frames: string[] }) => void;
+/** `t` = Absendezeit beim Steuernden (ms seit 1970), nur für die
+ *  Laufzeit-Messung beim Host (`desktop/electron/eingabeLaufzeit.ts`). */
+type FrameSink = (evt: { session_id: string; slot: number; frames: string[]; t?: number }) => void;
 
 /** Wie der Sender einer Nachricht verfahren soll (`RemoteSessionStore.sendInput`). */
 type Transportwahl = 'p2p' | 'ws' | 'ws_mit_hello';
@@ -172,7 +174,7 @@ class RemoteP2P {
    * den Serverweg, aber mit vorangestelltem Hello (der Kanal ist gerade
    * gestorben, der Host braucht einen frischen Eingabestrom).
    */
-  senden(sessionId: string, slot: number, frames: string[]): Transportwahl {
+  senden(sessionId: string, slot: number, frames: string[], t?: number): Transportwahl {
     // Ruhe wird gegen den Stand VOR dieser Nachricht gemessen (Bughunt
     // 2026-08-13): Die Nachricht mit dem LETZTEN Loslassen leert `#unten` —
     // erst danach geprüft, schaltete genau sie um, und ihr Loslassen fuhr
@@ -217,7 +219,7 @@ class RemoteP2P {
       console.info('[remote-p2p] Eingabe läuft jetzt direkt (DataChannel)');
       this.#status('Direktverbindung');
     }
-    this.#kanalSenden(sessionId, slot, frames);
+    this.#kanalSenden(sessionId, slot, frames, t);
     return 'p2p';
   }
 
@@ -382,9 +384,10 @@ class RemoteP2P {
     if (this.#role === 'host') dc.onmessage = (e) => this.#empfangen(e.data);
   }
 
-  #kanalSenden(sessionId: string, slot: number, frames: string[]): void {
+  #kanalSenden(sessionId: string, slot: number, frames: string[], t?: number): void {
     try {
-      this.#dc?.send(JSON.stringify({ session_id: sessionId, slot, frames }));
+      // Ein fehlendes `t` lässt `JSON.stringify` von selbst weg.
+      this.#dc?.send(JSON.stringify({ session_id: sessionId, slot, frames, t }));
     } catch {
       // Ein Wurf hier heißt „Kanal gerade zugegangen" — der nächste
       // `senden()`-Ruf sieht das am readyState und fällt mit Hello zurück.
@@ -395,7 +398,7 @@ class RemoteP2P {
 
   #empfangen(roh: unknown): void {
     if (typeof roh !== 'string' || roh.length > MAX_NACHRICHT_ZEICHEN) return;
-    let msg: { session_id?: unknown; slot?: unknown; frames?: unknown };
+    let msg: { session_id?: unknown; slot?: unknown; frames?: unknown; t?: unknown };
     try {
       msg = JSON.parse(roh);
     } catch {
@@ -431,6 +434,8 @@ class RemoteP2P {
       session_id: msg.session_id,
       slot,
       frames: msg.frames as string[],
+      // Reine Messung (s. `FrameSink`): Unsinn fällt weg, statt zu verwerfen.
+      t: typeof msg.t === 'number' && Number.isFinite(msg.t) ? msg.t : undefined,
     });
   }
 

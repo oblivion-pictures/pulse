@@ -36,6 +36,9 @@ async function eingabe(evt: {
   session_id: string;
   slot: number;
   frames: string[];
+  /** Absendezeit beim Steuernden, nur fuer die Laufzeit-Messung (s.
+   *  `desktop/electron/eingabeLaufzeit.ts`); fehlt bei aelteren Fassungen. */
+  t?: number;
 }): Promise<void> {
   if (remoteSession.phase !== 'active' || remoteSession.role !== 'host') return;
   if (!evt.session_id || evt.session_id !== remoteSession.sessionId) return;
@@ -50,7 +53,8 @@ async function eingabe(evt: {
   // Weitergereicht statt hier verworfen, damit ein Hello in derselben Nachricht
   // ankommt — sonst liefe die naechste Eingabe in „Eingabe vor dem
   // Hello-Handschlag" und riesse die Sitzung fail-closed ab.
-  if (await eingabeEinspielen(evt.slot, evt.session_id, evt.frames, remoteVorrang.aktiv)) return;
+  const t = typeof evt.t === 'number' && Number.isFinite(evt.t) ? evt.t : undefined;
+  if (await eingabeEinspielen(evt.slot, evt.session_id, evt.frames, remoteVorrang.aktiv, t)) return;
   // Fail-closed: der Sidecar hat die Eingabe-Sitzung stillgelegt (oder es gibt
   // gar keine Brücke). Ab hier käme nichts mehr an, auch kein Hoch-Ereignis —
   // eine Sitzung, die nur noch Tasten drückt, ist schlimmer als keine.

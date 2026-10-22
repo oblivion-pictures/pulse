@@ -44,6 +44,8 @@ import {
 import { playerManager, recordingDir, shadowClipPath } from './player';
 import { auftragLesen, EingabeWeiche, erfassungSchalten } from './remoteInput';
 import { RemoteEingabe } from './remoteInputHost';
+import { EingabeLaufzeit } from './eingabeLaufzeit';
+import { logSidecar } from './sidecar-log';
 import { freigabeEinstellungAdresse } from './macFreigabe';
 import { zielFuerAblage, rolleLesen, endeAnstoss } from './ablageWeiche';
 import { migriereAufStandardAn, onSidecarEventForUpload } from './experimental-log-upload';
@@ -1528,6 +1530,9 @@ function normaliseSlot(slot: unknown): number {
   return Number.isInteger(n) && n >= 0 && n < MAX_STREAM_SLOTS ? n : 0;
 }
 
+/** Laufzeit des Eingabewegs, Host-Seite (s. `eingabeLaufzeit.ts`). */
+const eingabeLaufzeit = new EingabeLaufzeit();
+
 /**
  * Fernsteuerung, Host-Seite: Buchfuehrung darueber, welche Stream-Plaetze eine
  * Eingabe-Sitzung haben (s. `remoteInputHost.ts`).
@@ -1673,10 +1678,21 @@ function wireSidecar(): void {
   // Sidecar startet, der nichts zu tun hat (s. `remoteInputHost.ts`).
   ipcMain.handle(
     'sidecar:remoteInput',
-    (_e, slot: unknown, sessionId: unknown, frames: unknown, hostAktiv: unknown) =>
-      remoteEingabe.frames(slot, sessionId, frames, hostAktiv === true),
+    (_e, slot: unknown, sessionId: unknown, frames: unknown, hostAktiv: unknown, t: unknown) => {
+      // Laufzeit des Eingabewegs, eine Zeile je Minute (`eingabeLaufzeit.ts`).
+      // In die `sidecar.log`, weil nur sie mit dem Diagnose-Upload in die Cloud
+      // kommt — die Konsole des Renderers hat im verpackten Build keinen Abnehmer.
+      if (typeof sessionId === 'string') eingabeLaufzeit.erfassen(sessionId, t);
+      const zeile = eingabeLaufzeit.faellig();
+      if (zeile) logSidecar('lifecycle', zeile);
+      return remoteEingabe.frames(slot, sessionId, frames, hostAktiv === true);
+    },
   );
-  ipcMain.handle('sidecar:remoteInputEnd', () => remoteEingabe.beenden());
+  ipcMain.handle('sidecar:remoteInputEnd', () => {
+    const zeile = eingabeLaufzeit.faellig(Date.now(), true);
+    if (zeile) logSidecar('lifecycle', zeile);
+    return remoteEingabe.beenden();
+  });
 
   // macOS: die Liste einer Systemfreigabe aufschlagen (Bedienungshilfen bzw.
   // Eingabeüberwachung). Der Renderer schickt nur den Schlüssel, die Adresse
