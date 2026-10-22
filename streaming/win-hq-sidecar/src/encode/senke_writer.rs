@@ -56,14 +56,10 @@ unsafe impl Send for Sendung {}
 /// Zeitbezug der Messzeile `[sync]` (s. [`pulse_whip::uebergabe`]): wann
 /// pts 0 beider Spuren aufgenommen wurde, und um wie viele Samples der
 /// A/V-Trim die Tonspur verschiebt (der Trim ist keine Aufnahmezeit).
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Zeitbezug {
     pub ursprung: Instant,
     pub trim_samples: i64,
-    /// Echte Aufnahmezeit minus gezaehlter Ton-pts in Samples, laufend von
-    /// `audio::AudioPipeline` fortgeschrieben — der Ton-Zeitstempel des
-    /// Sendewegs ist pts plus dieser Wert (`AudioPipeline::versatz_zelle`).
-    pub ton_versatz: Arc<std::sync::atomic::AtomicI64>,
 }
 
 /// Fensterlänge der Messzeile. 10 s: lang genug für einen stabilen Median,
@@ -251,14 +247,19 @@ fn sende_schleife(
                         fenster.ton_luecke((dauer - ton_dauer).as_millis() as u64);
                     }
                 }
-                // Echte Aufnahmezeit in 48-kHz-Takten fuer den Ton-Zeitstempel
-                // (`PaketSenke::audio`): pts plus Versatz zur Wanduhr; der Trim
-                // steckt darin und wirkt so.
-                let versatz = zeitbezug
-                    .get()
-                    .map_or(0, |b| b.ton_versatz.load(std::sync::atomic::Ordering::Relaxed));
-                let pts48 =
-                    p.pts().map(|v| pulse_whip::ton::pts_in_takten(v + versatz, ton_rate));
+                // Aufnahmezeit in 48-kHz-Takten fuer den Ton-Zeitstempel
+                // (`PaketSenke::audio`); der Trim steckt darin und wirkt so.
+                //
+                // **Der gezaehlte pts, ohne Versatz zur Wanduhr — anders als
+                // unter Linux und macOS.** Dort kennt jeder Batch seine eigene
+                // Wanduhr-Position; hier traegt `CapturedAudio::qpc` nur den
+                // Stempel des ERSTEN je gelesenen Samples, fuer jeden Chunk
+                // derselbe (`audio/wasapi.rs`). Ein Versatz „Anker minus pts"
+                // fiel damit um eine Sekunde je Sekunde, die Marke stand still,
+                // und der Player mass „Ton Sekunden hinter Bild" (0.1.130,
+                // gemessen am 2026-10-22). Neben der Wanduhr haelt den pts das
+                // Stille-Budget in `wasapi.rs` (hoechstens 100 ms Vorlauf).
+                let pts48 = p.pts().map(|v| pulse_whip::ton::pts_in_takten(v, ton_rate));
                 senke.audio(d, pts48, dauer)
             }),
         };

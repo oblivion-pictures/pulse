@@ -156,11 +156,13 @@ impl TonSpur {
     }
 
     /// Ein Opus-Rahmen hinaus. `pts` = Aufnahmezeit in 48-kHz-Takten ab dem
-    /// gemeinsamen Nullpunkt mit dem Bild (s. Modulkopf) — die ECHTE
-    /// Aufnahmezeit, nicht die gezaehlten Samples: die Soundkarte taktet mit
-    /// eigenem Quarz, und gezaehlte Samples liefen der Wanduhr um ihre
-    /// Abweichung davon (Bughunt 2026-10-22). `dauer` = Rahmenlaenge, gebraucht
-    /// nur ohne `pts`.
+    /// gemeinsamen Nullpunkt mit dem Bild (s. Modulkopf) — so echt, wie der
+    /// Sender sie kennt: die Soundkarte taktet mit eigenem Quarz, und gezaehlte
+    /// Samples laufen der Wanduhr um ihre Abweichung davon (Bughunt
+    /// 2026-10-22). Linux und macOS geben deshalb pts plus Versatz zum
+    /// Batch-Anker; Windows den gezaehlten pts, weil es keinen Anker je Chunk
+    /// hat (`win-hq-sidecar/src/encode/senke_writer.rs`). `dauer` =
+    /// Rahmenlaenge, gebraucht nur ohne `pts`.
     pub async fn senden(&self, opus: &[u8], pts: Option<i64>, dauer: Duration) -> Result<()> {
         let (paket, spur) = self.bauen(opus, pts, dauer);
         spur.write_rtp(&paket).await.context("Tonpaket schreiben")?;
