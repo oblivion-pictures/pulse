@@ -402,7 +402,7 @@ einzeln beschrieben.
 - `PULSE_HQ_FERN_TICKRASTER=1` — Notausgang: im Fern-Modus wieder starr takten
   statt bei Ankunft zu senden (A/B gegen den Latenzgewinn).
 - `PULSE_HQ_FERN_VBV_BILDER=<0..60>` — VBV-Puffer des offenen NVENC-Encoders,
-  **nur während einer Fernsteuerung**, in Bildern (Vorgabe 4, `0` = aus, also
+  **nur während einer Fernsteuerung**, in Bildern (Vorgabe 2, `0` = aus, also
   durchgehend FFmpegs 2 × Bitrate). Je Umschalten erzwingt NVENC ein IDR. Auf AMF
   ohne Wirkung und deshalb übersprungen. Begründung: `src/encode/fern_vbv.rs`.
 - `PULSE_HQ_PRIORITAET=0` — schaltet den Vorrang während einer Fernsteuerung
