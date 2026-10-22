@@ -141,6 +141,7 @@ The user-facing counterpart is the "Nativer HQ-Player" section of
 | resvg / usvg | 0.45.1 | Apache-2.0 OR MIT | SVG icon rasteriser pulled in by `egui_extras`'s `svg` feature |
 | tiny-skia | 0.11.4 | BSD-3-Clause | |
 | cpal | 0.17.3 | Apache-2.0 | audio output |
+| pipewire / libspa (Rust bindings, Linux only) | 0.10.1 | MIT | audio output on Linux since 2026-10-22; `libpipewire` itself (MIT) comes from the Flatpak runtime and is linked dynamically |
 | ffmpeg-next / ffmpeg-sys-next | 8.1.0 | WTFPL | bindings only — FFmpeg itself is the LGPL library above |
 | rustls | 0.23.42 | Apache-2.0 OR ISC OR MIT | |
 | aws-lc-rs | 1.17.3 | ISC AND (Apache-2.0 OR ISC) AND … | crypto provider chosen in `main.rs` |
@@ -202,6 +203,7 @@ until the same day.
 | [winit](https://github.com/rust-windowing/winit) | 0.30.13 | Apache-2.0 |
 | [egui](https://github.com/emilk/egui) (+ `egui-wgpu`, `egui-winit`) | 0.36.1 | MIT OR Apache-2.0 |
 | [cpal](https://github.com/RustAudio/cpal) | 0.17.3 | Apache-2.0 |
+| [pipewire-rs](https://gitlab.freedesktop.org/pipewire/pipewire-rs) (`pipewire`, `libspa`; Linux only) | 0.10.1 | MIT |
 | [ffmpeg-next](https://github.com/zmwangx/rust-ffmpeg) (binding only) | 8.1.0 | WTFPL |
 | [rustls](https://github.com/rustls/rustls) | 0.23.42 | Apache-2.0 OR ISC OR MIT |
 | [aws-lc-rs](https://github.com/aws/aws-lc-rs) / aws-lc-sys | 1.17.3 / 0.43.0 | ISC, Apache-2.0, MIT, BSD-3-Clause |

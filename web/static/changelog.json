@@ -7,7 +7,8 @@
       "style": "Sachlich",
       "title": "Bild und Ton",
       "items": [
-        "Beim Zusehen und beim Fernsteuern richtet sich der Ton jetzt nach dem gerade gezeigten Bild, damit beide auch in langen Sitzungen nicht auseinanderlaufen. Wirksam, sobald der streamende Rechner dieses Update hat; eigene Heimserver brauchen ihr Update ebenfalls."
+        "Beim Zusehen und beim Fernsteuern richtet sich der Ton jetzt nach dem gerade gezeigten Bild, damit beide auch in langen Sitzungen nicht auseinanderlaufen. Wirksam, sobald der streamende Rechner dieses Update hat; eigene Heimserver brauchen ihr Update ebenfalls.",
+        "Unter Linux gibt der Stream-Player den Ton jetzt direkt über PipeWire aus. Er kommt dadurch spürbar früher aus dem Lautsprecher und liegt näher am Bild."
       ]
     },
     {

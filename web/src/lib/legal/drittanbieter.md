@@ -125,6 +125,7 @@ Nennung verlangen.
 | [resvg](https://github.com/linebender/resvg) / usvg (Symbol-Zeichner) | 0.45.1 | Apache-2.0 oder MIT |
 | [tiny-skia](https://github.com/linebender/tiny-skia) | 0.11.4 | BSD-3-Clause |
 | [cpal](https://github.com/RustAudio/cpal) | 0.17.3 | Apache-2.0 |
+| [pipewire-rs](https://gitlab.freedesktop.org/pipewire/pipewire-rs) (`pipewire`, `libspa`; nur Linux, Tonausgabe) | 0.10.1 | MIT |
 | [ffmpeg-next](https://github.com/zmwangx/rust-ffmpeg) (nur Anbindung) | 8.1.0 | WTFPL |
 | [rustls](https://github.com/rustls/rustls) | 0.23.42 | Apache-2.0, ISC oder MIT |
 | [aws-lc-rs](https://github.com/aws/aws-lc-rs) | 1.17.3 | ISC, Apache-2.0, MIT, BSD-3-Clause |
