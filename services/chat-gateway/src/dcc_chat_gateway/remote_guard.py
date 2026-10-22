@@ -94,11 +94,15 @@ async def _end_reason(session, manager, sess, max_session_s: float) -> str | Non
         #
         # (b) Alles andere — insbesondere der Pubsub-Verteiler, der einen Socket
         # bei Sendefehler oder abgelaufener Sendefrist ueber ``remove_socket``
-        # abmeldet, OHNE ihn zu schliessen und OHNE den Disconnect-Pfad (und
-        # damit ohne jede Gnadenfrist) zu rufen. Ein Steuernder, der kurz nicht
-        # liest (TCP-Gegendruck, Mobilclient mit Sendestau), verliert so seinen
-        # Eintrag, steuert aber weiter — dafuer bleibt es beim Sofort-Ende, sonst
-        # sagte die Wache fuer diese Sitzung fuer immer "leben lassen".
+        # abmeldet, OHNE den Disconnect-Pfad (und damit ohne jede Gnadenfrist)
+        # zu rufen. Hier stand bis 2026-10-22 „ohne ihn zu schliessen" — seit
+        # dem Push-Bughunt (Befund 4, ``pubsub_listener.py``) schliesst er ihn
+        # auch; die Gnadenfrist folgt dann, sobald die Empfangsschleife endet,
+        # und ein frueherer ``remote_reclaim`` uebernimmt den ausgetragenen
+        # Socket (``remote_reconnect_registry._socket_abgemeldet``). Faellt ein
+        # Takt dieser Wache genau in die Luecke dazwischen, bleibt es beim
+        # Sofort-Ende — bewusst: sonst sagte die Wache fuer einen Socket, dessen
+        # Schleife nie endet, fuer immer "leben lassen".
         #
         # Fehlen BEIDE, muss BEIDE Abwesenheit ueber eine laufende Frist erklaert
         # sein — fehlt auch nur einer ohne Frist, bleibt es beim Sofort-Ende.

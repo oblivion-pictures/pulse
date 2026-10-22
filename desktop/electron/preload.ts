@@ -140,8 +140,11 @@ contextBridge.exposeInMainWorld('pulse', {
       sessionId: string,
       frames: string[],
       hostAktiv?: boolean,
+      // Absendezeit beim Steuernden, nur fuer die Laufzeit-Messung
+      // (`eingabeLaufzeit.ts`); fehlt bei aelteren Steuernden.
+      t?: number,
     ): Promise<unknown> =>
-      ipcRenderer.invoke('sidecar:remoteInput', slot, sessionId, frames, hostAktiv === true),
+      ipcRenderer.invoke('sidecar:remoteInput', slot, sessionId, frames, hostAktiv === true, t),
     /** Sitzungsende — der Sidecar gibt alles Gedrueckte frei (sonst klemmt eine
      *  Taste). Idempotent, und ohne Frames zuvor folgenlos. */
     remoteInputEnd: (): Promise<unknown> => ipcRenderer.invoke('sidecar:remoteInputEnd'),

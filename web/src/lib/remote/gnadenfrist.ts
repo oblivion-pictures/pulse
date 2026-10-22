@@ -47,6 +47,35 @@
  */
 export const CLIENT_GRACE_MS = 12_000;
 
+/**
+ * Ein abgelehntes `remote_reclaim`, das sich lohnt zu wiederholen — und wie
+ * lange bis dahin.
+ *
+ * **Warum es das gibt** (2026-10-22, drei Netzwackler von je ~6 s zwischen
+ * einem Standplatz-Gerät und seinem Heimserver; der Eigentümer hatte die
+ * Sitzung nicht beendet). Stockt das Zustellen, trägt der Server den Socket
+ * nach 5 s aus; seine eigene Gnadenfrist beginnt aber erst, wenn er den Abriss
+ * verarbeitet hat. Kam der Reclaim des neu verbundenen Clients davor an,
+ * lautete die Antwort „no grace window for this role", und der Client beendete
+ * die Sitzung sofort — obwohl die Leitung längst wieder stand. Seit demselben
+ * Tag übernimmt der Server einen schon ausgetragenen Socket auch ohne Frist
+ * (`remote_reconnect_registry.py::_socket_abgemeldet`); ein Heimserver ohne
+ * dieses Update antwortet aber weiter so. Dann noch einmal fragen, solange die
+ * eigene Frist läuft — jede andere Ablehnung (Sitzung weg, kein Zugriff) bleibt
+ * endgültig.
+ */
+export const RECLAIM_NOCHMAL_MS = 1_000;
+
+export function reclaimNochmal(grund: unknown): boolean {
+  return grund === 'no grace window for this role';
+}
+
+/** Wie oft während einer laufenden Frist nach der Verbindung gesehen wird
+ *  (`GatewayConnection.wachPruefen`). Ohne das wählt der Client nach einem
+ *  Abriss in der Staffel 1, 2, 4, 8 s neu — vier vergebliche Versuche während
+ *  eines Netzausfalls, und der nächste käme erst nach der 12-s-Frist. */
+export const FRIST_WACHTAKT_MS = 2_000;
+
 /** Serverseitige Frist — nur zur Dokumentation der Beziehung hier gespiegelt;
  *  die tatsächliche Zahl gilt in `remote_reconnect_registry.py`. Ein Test hält
  *  fest, dass sie unter [`CLIENT_GRACE_MS`] bleibt. */

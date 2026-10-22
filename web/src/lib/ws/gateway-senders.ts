@@ -161,9 +161,11 @@ export function sendRemoteReclaim(send: SendRaw, sessionId: string): boolean {
  * Electron-Hauptprozess bereits (höchstens 32 je Nachricht).
  */
 export function sendRemoteInput(
-  send: SendRaw, sessionId: string, slot: number, frames: string[],
+  send: SendRaw, sessionId: string, slot: number, frames: string[], t?: number,
 ): boolean {
-  return send({ op: 'remote_input', session_id: sessionId, slot, frames });
+  // `t` = Absendezeit (ms seit 1970) fuer die Laufzeit-Messung beim Host
+  // (`desktop/electron/eingabeLaufzeit.ts`); der Gateway reicht sie durch.
+  return send({ op: 'remote_input', session_id: sessionId, slot, frames, t });
 }
 /**
  * SDP/ICE für den P2P-Eingabeweg (`$lib/remote/p2p.ts`) — der Gateway reicht

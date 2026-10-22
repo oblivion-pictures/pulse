@@ -14,7 +14,13 @@
  */
 
 import type { GatewayConnection } from '$lib/ws/connection';
-import { CLIENT_GRACE_MS, Gnadenfrist } from './gnadenfrist';
+import {
+  CLIENT_GRACE_MS,
+  FRIST_WACHTAKT_MS,
+  Gnadenfrist,
+  RECLAIM_NOCHMAL_MS,
+  reclaimNochmal,
+} from './gnadenfrist';
 import { istAnfrageFehler, weckFehlerArt } from './fehlerCodes';
 
 /** Jede Wacht liefert die Funktion, die sie wieder abstellt. Zweimal gerufen
@@ -165,6 +171,8 @@ export function verbindungsWachtMitGnadenfrist(
       }
     }, CLIENT_GRACE_MS);
   });
+  // Geplante Wiederholung eines abgelehnten Reclaims (s. `reclaimNochmal`).
+  let nochmal: ReturnType<typeof setTimeout> | null = null;
   const abFrame = conn.on((evt) => {
     if (evt.op === 'ready') {
       // Verbindung wieder da — nur reklamieren, wenn gerade wirklich eine
@@ -199,12 +207,34 @@ export function verbindungsWachtMitGnadenfrist(
     // dann zu keiner laufenden Frist mehr — sie darf die gerade erst
     // wiederhergestellte, aktiv laufende Sitzung nicht mehr abbauen.
     if (!frist.aktiv) return;
+    // Der Server hat den Abriss noch nicht verarbeitet (s. `reclaimNochmal`):
+    // gleich noch einmal fragen, solange die eigene Frist läuft — deren
+    // Zeitgeber beendet die Sitzung, falls es dabei bleibt.
+    if (reclaimNochmal(evt.reason)) {
+      if (nochmal === null) {
+        nochmal = setTimeout(() => {
+          nochmal = null;
+          if (frist.aktiv) reclaimSenden();
+        }, RECLAIM_NOCHMAL_MS);
+      }
+      return;
+    }
     ab();
     beiEndgueltigemVerlust();
   });
 
+  // Während einer Frist regelmäßig nach der Verbindung sehen, statt auf die
+  // Staffel der Neuwahl zu warten (s. `FRIST_WACHTAKT_MS`). Außerhalb einer
+  // Frist tut der Takt nichts.
+  const wachTakt = setInterval(() => {
+    if (frist.aktiv) conn.wachPruefen();
+  }, FRIST_WACHTAKT_MS);
+
   ab = () => {
     zeitgeberAbraeumen();
+    if (nochmal !== null) clearTimeout(nochmal);
+    nochmal = null;
+    clearInterval(wachTakt);
     abClose();
     abFrame();
   };

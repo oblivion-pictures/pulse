@@ -110,6 +110,13 @@ class _RemoteReconnectMixin:
             self._disconnect_grace_expired(session_id, role, on_expired, delay)
         )
         self._remote_disconnect_timers[key] = task
+        # Bis 2026-10-22 schrieb der Server zu Frist, Ablauf und Reclaim nichts
+        # (ausser dem Erfolg) — eine nach einem Netzwackler beendete Sitzung
+        # liess sich deshalb selbst mit dem Server-Log nicht aufklaeren.
+        log.info(
+            "remote session %s: disconnect grace started for role=%s (%.0f s)",
+            session_id, role, delay,
+        )
 
     def remote_cancel_disconnect_grace(
         self, session_id: str, *, role: str | None = None
@@ -175,6 +182,11 @@ class _RemoteReconnectMixin:
             # _host_end_after_grace`.
             if self._remote_disconnect_timers.get(key) is not asyncio.current_task():
                 return
+            # `warning`: die Cloud loggt erst ab dieser Stufe (s. `pubsub.py`).
+            log.warning(
+                "remote session %s: disconnect grace expired for role=%s — ending",
+                session_id, role,
+            )
             await on_expired(session_id, role)
         finally:
             if self._remote_disconnect_timers.get(key) is asyncio.current_task():
@@ -202,10 +214,38 @@ class _RemoteReconnectMixin:
             if erwarteter_nutzer != str(user_id):
                 return None
             if not self.remote_disconnect_grace_active(session_id, role):
-                return None
+                alter = sess.host_socket if role == "host" else sess.controller_socket
+                if not self._socket_abgemeldet(alter):
+                    return None
+                log.info(
+                    "remote session %s: reclaim by role=%s before the old socket's "
+                    "disconnect was handled — taking over",
+                    session_id, role,
+                )
             if role == "host":
                 sess.host_socket = new_socket
             else:
                 sess.controller_socket = new_socket
         self.remote_cancel_disconnect_grace(session_id, role=role)
         return sess
+
+    def _socket_abgemeldet(self, sock: Any) -> bool:
+        """Ist ``sock`` beim Manager schon ausgetragen, ohne dass sein
+        Disconnect-Pfad (``cleanup_remote_on_disconnect``) gelaufen waere?
+
+        **Warum ein Reclaim dann ohne Frist gelten muss** (2026-10-22, nach
+        drei Netzwacklern von je ~6 s zwischen einem Standplatz-Geraet und
+        seinem Heimserver): stockt das Zustellen an einen Socket, traegt der
+        Fan-out ihn nach 5 s aus und schliesst ihn (``pubsub_listener.py``) —
+        die Gnadenfrist beginnt aber erst, wenn seine Empfangsschleife endet,
+        und auf einer halb toten Leitung kann das dauern. Verbindet sich die
+        Seite derweil neu, kam ihr ``remote_reclaim`` VOR der Frist an, bekam
+        "no grace window for this role", und der Client beendete die Sitzung —
+        obwohl die Leitung laengst wieder stand. Ein ausgetragener Socket
+        empfaengt nichts mehr; ihn durch den neuen desselben Nutzers zu
+        ersetzen, nimmt niemandem etwas weg.
+
+        Ohne Verbindungsbuch (``_connections`` fehlt, etwa im Test-Wirt) gilt
+        der Socket als eingetragen — dann bleibt es bei der Frist-Regel."""
+        verbindungen = getattr(self, "_connections", None)
+        return verbindungen is not None and sock not in verbindungen

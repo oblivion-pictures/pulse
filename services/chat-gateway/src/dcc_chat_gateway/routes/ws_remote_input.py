@@ -137,12 +137,27 @@ async def handle_input(ctx: WSOpContext, msg: dict[str, Any]) -> None:
         return
     # ``slot`` selects one of the host's concurrent streams; resolving it to a
     # source rectangle is the host's job.
-    await send_to_socket(
-        sess.host_socket,
-        {
-            "op": "remote_input",
-            "session_id": session_id,
-            "slot": msg["slot"],
-            "frames": msg["frames"],
-        },
-    )
+    weiter: dict[str, Any] = {
+        "op": "remote_input",
+        "session_id": session_id,
+        "slot": msg["slot"],
+        "frames": msg["frames"],
+    }
+    # Absendezeit beim Steuernden (Millisekunden seit 1970, seit 2026-10-22):
+    # der Host misst daran, ob sich der Eingabeweg im Lauf einer Sitzung
+    # anstaut (`desktop/electron/eingabeLaufzeit.ts`). Reine Messung, kein
+    # Steuerwert — fehlt sie oder ist sie unsinnig, geht die Eingabe ohne sie
+    # weiter, statt abgewiesen zu werden.
+    t = _absendezeit(msg.get("t"))
+    if t is not None:
+        weiter["t"] = t
+    await send_to_socket(sess.host_socket, weiter)
+
+
+def _absendezeit(wert: Any) -> int | None:
+    """``t`` als ganze Millisekunden, wenn es eine plausible Uhrzeit ist."""
+    if isinstance(wert, bool) or not isinstance(wert, (int, float)):
+        return None
+    if not 0 < wert < 2**53:
+        return None
+    return int(wert)

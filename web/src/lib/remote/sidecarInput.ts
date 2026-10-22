@@ -64,11 +64,12 @@ export async function eingabeEinspielen(
   sessionId: string,
   frames: string[],
   hostAktiv = false,
+  t?: number,
 ): Promise<boolean> {
   const bruecke = sidecar();
   if (typeof bruecke?.remoteInput !== 'function') return false;
   try {
-    const res = (await bruecke.remoteInput(slot, sessionId, frames, hostAktiv)) as
+    const res = (await bruecke.remoteInput(slot, sessionId, frames, hostAktiv, t)) as
       | { ok?: unknown; error?: unknown }
       | undefined;
     if (res?.ok === false) {

@@ -42,6 +42,10 @@ async def handle_reclaim(
     frame_ok = {"op": "remote_reclaimed", "session_id": session_id}
 
     def frame_failed(reason: str) -> dict[str, Any]:
+        # Jede Ablehnung ins Log (seit 2026-10-22): der Client beendet die
+        # Sitzung daraufhin sofort, und ohne diese Zeile blieb der Grund dafuer
+        # unsichtbar. `warning`, weil die Cloud erst ab dieser Stufe loggt.
+        log.warning("remote session %s: reclaim refused (%s)", session_id, reason)
         return {"op": "remote_reclaim_failed", "session_id": session_id, "reason": reason}
 
     if not session_id:
