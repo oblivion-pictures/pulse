@@ -8,7 +8,8 @@
       "title": "Fernsteuerung",
       "items": [
         "Reißt die Leitung zum gesteuerten Rechner kurz ab, wartet die Fernsteuerung jetzt bis zu 15 Sekunden mit stehendem Bild, statt sofort abzubrechen. Kurze Aussetzer übersteht die Sitzung damit.",
-        "Verbindet sich der gesteuerte Rechner nach so einem Aussetzer neu, holt er die laufende Fernsteuerung jetzt zuverlässiger zurück, statt sie zu beenden. Eigene Heimserver brauchen dafür ihr Update."
+        "Verbindet sich der gesteuerte Rechner nach so einem Aussetzer neu, holt er die laufende Fernsteuerung jetzt zuverlässiger zurück, statt sie zu beenden. Eigene Heimserver brauchen dafür ihr Update.",
+        "Wird ein Windows-Rechner mit NVIDIA-Grafikkarte ferngesteuert, ist die Schrift jetzt deutlich schärfer. Er sendet bei ruhigem Bild nun die eingestellte Bitrate, statt nur einen Bruchteil davon zu nutzen. Wirksam, sobald der gesteuerte Rechner dieses Update hat."
       ]
     },
     {

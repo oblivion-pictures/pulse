@@ -11,14 +11,37 @@
 //! Bildlücke aus.
 //!
 //! **Gefolgert, nicht gemessen:** mit N Bildern Puffer belegt ein einzelnes
-//! Bild höchstens rund N Bildabstände Leitungszeit (Vorgabe N = 4, bei 60 fps
-//! also ~67 ms statt ~330 ms). Der Preis ist derselbe, den die Abwägung vom
+//! Bild höchstens rund N Bildabstände Leitungszeit (bei 60 fps und N = 2
+//! also ~33 ms statt ~330 ms). Der Preis ist derselbe, den die Abwägung vom
 //! 2026-08-03 nennt: die Rate wird über den Quantisierer gehalten, ein
 //! Vollbild und jede große Bildänderung kommen gröber und schärfen in den
 //! Folgebildern nach. Bei der Fernsteuerung zählt die Reaktion vor der
 //! Schärfe; beim bloßen Zusehen gilt die Abwägung weiter, deshalb nur
 //! während der Sitzung. Ob die Lücken damit verschwinden, steht aus — dafür
 //! `PULSE_HQ_FERN_VBV_BILDER=0` als A/B-Schalter.
+//!
+//! **Warum 2 und nicht 4 Bilder — gemessen** (2026-10-22, RTX 4090, Treiber
+//! 615.78, FFmpeg 8 mit genau diesen NVENC-Optionen, Bildschirminhalt 1440p60
+//! als verlustfreie Vorlage, Schärfe = Luma-PSNR der letzten Sekunde):
+//! zwischen 2 und 2,5 Bildern schaltet NVENCs Ratensteuerung hart um. Bei 3
+//! bis 12 Bildern verhielt sich `hevc_nvenc` überall gleich und schöpfte bei
+//! ruhigem Bild nur ein Drittel des Budgets aus (4 Mbit/s eingestellt, 1,2
+//! gesendet, 46 dB) — das Bild blieb unscharf, obwohl die Leitung frei war.
+//! Das Log des Senders aus dem Messfall oben zeigte dasselbe: rund 2,6
+//! Pakete je Bild statt der ~7, die 4 Mbit/s bei 60 fps tragen. Bei 2 Bildern
+//! schöpft `hevc_nvenc` das Budget aus (4,2 Mbit/s, 53 dB; langsames
+//! Scrollen 55 statt 47 dB), das größte Einzelbild bleibt gleich klein
+//! (17 statt 20 kB) — der Grund für den kleinen Puffer gilt also weiter.
+//! Kein Füllmaterial: im Strom stehen keine Filler-NALs, die Bits sind
+//! Bildinhalt. Preis: über 250 ms schwankt die Rate bis ~1,3× statt ~1,1×
+//! des Budgets. **1 Bild ist falsch** — dort sprengt der Encoder das Budget
+//! (schnelles Scrollen 8,2 statt 4 Mbit/s). `av1_nvenc` verhält sich bei 2
+//! und 4 Bildern gleich, `h264_nvenc` wird bei ruhigem Bild schärfer
+//! (51,5 statt 43,7 dB); schlechter wird nirgends etwas. **Ungemessen:**
+//! ob ältere NVENC-Generationen (der Messfall oben ist eine 2080, Turing)
+//! an derselben Stelle umschalten — die Schwelle ist undokumentiertes
+//! Treiberverhalten.
+//! Prüfstein im Sender-Log: Pakete je Bild in `[whip] Verteilung je Bild`.
 //!
 //! **Warum das zur Laufzeit geht** (FFmpeg n8.1, `libavcodec/nvenc.c`, am
 //! Quelltext geprüft, nicht am Treiber gemessen):
@@ -65,8 +88,9 @@
 
 /// Name des Schalters: `0` = aus (altes Verhalten), 1-60 = Bilder.
 pub const UMGEBUNG: &str = "PULSE_HQ_FERN_VBV_BILDER";
-/// Vorgabe, wenn der Schalter nicht gesetzt ist.
-pub const VORGABE_BILDER: u32 = 4;
+/// Vorgabe, wenn der Schalter nicht gesetzt ist. Nicht 1, nicht 3+ — warum,
+/// steht oben unter „Warum 2 und nicht 4 Bilder".
+pub const VORGABE_BILDER: u32 = 2;
 /// Obergrenze. Bei 60 fps eine Sekunde — darüber nähert sich der Wert dem
 /// Regelpuffer von zwei Sekunden, und die Ausnahme verlöre ihren Zweck.
 pub const HOECHSTENS_BILDER: u32 = 60;
@@ -245,7 +269,8 @@ mod tests {
         assert!(bilder_aus(Some("vier")).is_err());
     }
 
-    /// Der Messfall: 2500 kbit/s, 60 fps, 4 Bilder = 166 667 bit ≈ 20,8 kB.
+    /// Der Messfall mit der Vorgabe bis 0.1.134: 2500 kbit/s, 60 fps,
+    /// 4 Bilder = 166 667 bit ≈ 20,8 kB.
     #[test]
     fn puffer_des_messfalls() {
         assert_eq!(puffer_bits(2_500_000, 60, 4), 166_667);
@@ -286,7 +311,7 @@ mod tests {
     fn umschalten_hin_und_zurueck() {
         let mut v = FernVbv::neu("hevc_nvenc", 2_500_000, 60, 5_000_000, None);
         assert_eq!(v.abgleichen(false), None);
-        assert_eq!(v.abgleichen(true), Some(166_667));
+        assert_eq!(v.abgleichen(true), Some(83_333));
         assert_eq!(v.abgleichen(true), None);
         assert_eq!(v.abgleichen(false), Some(5_000_000));
         assert_eq!(v.abgleichen(false), None);
