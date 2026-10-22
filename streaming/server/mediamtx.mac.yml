@@ -122,8 +122,13 @@ authInternalUsers: []
 # der Ankunft hier, und ein Unterschied der Sendelatenz von Bild und Ton wird
 # beim Zuschauer zum Versatz. Preis: Pakete vor dem ersten Bericht einer Spur
 # verwirft MediaMTX ("received RTP packet without absolute time"). Sender ab
-# Desktop 0.1.130 schicken ihn vor dem ersten Paket, aeltere nach rund einer
-# Sekunde. RTMP-Eingaenge betrifft es nicht (dort ersetzt MediaMTX immer).
+# Desktop 0.1.130 schicken ihn vor dem ersten Paket. Aeltere verlieren beim
+# Start rund eine Sekunde samt erstem Vollbild (bis ein Zuschauer eins
+# anfordert), und kommt ihr erster Bericht vor dem ersten Paket, traegt er eine
+# sinnlose Abbildung (webrtc-rs rechnet dann ab 1970), die erst der naechste
+# nach einer Sekunde ersetzt. Deshalb in der Cloud erst einschalten, wenn die
+# Sender aktualisiert sind. RTMP-Eingaenge betrifft es nicht (dort ersetzt
+# MediaMTX immer).
 pathDefaults:
   useAbsoluteTimestamp: yes
 

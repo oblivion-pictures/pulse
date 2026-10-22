@@ -23,11 +23,8 @@
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
-use webrtc::api::interceptor_registry::{configure_nack, configure_twcc_receiver_only};
 use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_AV1, MIME_TYPE_HEVC, MIME_TYPE_H264, MIME_TYPE_OPUS};
 use webrtc::api::APIBuilder;
-use webrtc::interceptor::registry::Registry;
-use webrtc::interceptor::report::receiver::ReceiverReport;
 use webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RTPCodecType,
 };
@@ -35,7 +32,6 @@ use webrtc::rtp_transceiver::{PayloadType, RTCPFeedback};
 
 use crate::aufnahmeuhr::Aufnahmeuhr;
 use crate::av1;
-use crate::senderbericht::SenderberichtBauer;
 
 /// Nutzlast-Nummern, die wir selbst vergeben.
 ///
@@ -65,7 +61,7 @@ pub const MIME_TYPE_RED: &str = "audio/red";
 /// ffmpegs Muxer zu verlassen galt, laege still.
 ///
 /// `nack`, `nack pli` und `transport-cc` haengen `configure_nack` und
-/// `configure_twcc_receiver_only` (in [`interceptoren`]) spaeter ohnehin an
+/// `configure_twcc_receiver_only` (in `senderbericht::interceptoren`) spaeter ohnehin an
 /// jede angemeldete Video-Fassung (`register_feedback`).
 /// `goog-remb` und `ccm fir` NICHT — die stehen nur hier. Deshalb dieselbe
 /// Liste, die `register_default_codecs` an seine Video-Codecs haengt.
@@ -225,7 +221,7 @@ pub fn red_capability(kopien: u8) -> RTCRtpCodecCapability {
 /// Baseline nennt und High schickt, ist genau der Fehler, den diese Datei
 /// vermeiden soll; ihn nur unwahrscheinlicher zu machen reicht nicht.
 ///
-/// **Muss VOR [`interceptoren`] laufen.** Die haengen ihre
+/// **Muss VOR `senderbericht::interceptoren` laufen.** Die haengen ihre
 /// Rueckmeldungen (`nack`, `nack pli`, `transport-cc`) an die zu dem Zeitpunkt
 /// angemeldeten Fassungen; danach angemeldete bekaemen nichts davon.
 pub(super) fn register_codecs(
@@ -333,24 +329,13 @@ pub(crate) fn baue_api_mit_settings(
     let mut media = MediaEngine::default();
     register_codecs(&mut media, video, audio, red_kopien).context("Codecs registrieren")?;
     register_header_extensions(&mut media).context("Header-Erweiterungen registrieren")?;
-    let registry = interceptoren(&mut media, uhr).context("Interceptor-Registry")?;
+    let registry = crate::senderbericht::interceptoren(&mut media, uhr)
+        .context("Interceptor-Registry")?;
     Ok(APIBuilder::new()
         .with_setting_engine(se)
         .with_media_engine(media)
         .with_interceptor_registry(registry)
         .build())
-}
-
-/// Was `register_default_interceptors` anmeldet — NACK, Empfaengerberichte,
-/// Transport-CC —, nur die Senderberichte aus der Aufnahmeuhr statt der
-/// webrtc-rs-eigenen (Begruendung in [`crate::senderbericht`]). Zwei
-/// Senderbericht-Interceptoren nebeneinander schickten zwei verschiedene
-/// Abbildungen derselben SSRC, und der Empfaenger nimmt jeweils die letzte.
-fn interceptoren(media: &mut MediaEngine, uhr: &Arc<Aufnahmeuhr>) -> Result<Registry> {
-    let mut registry = configure_nack(Registry::new(), media);
-    registry.add(Box::new(ReceiverReport::builder()));
-    registry.add(Box::new(SenderberichtBauer { uhr: Arc::clone(uhr) }));
-    Ok(configure_twcc_receiver_only(registry, media)?)
 }
 
 /// Fassung fuer die Tonspur — immer Opus, der Ton-Encoder kennt nichts anderes

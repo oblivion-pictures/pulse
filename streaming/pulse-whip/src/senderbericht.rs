@@ -25,6 +25,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use async_trait::async_trait;
+use webrtc::api::interceptor_registry::{configure_nack, configure_twcc_receiver_only};
+use webrtc::api::media_engine::MediaEngine;
+use webrtc::interceptor::registry::Registry;
+use webrtc::interceptor::report::receiver::ReceiverReport;
 use webrtc::interceptor::stream_info::StreamInfo;
 use webrtc::interceptor::{
     Attributes, Error, Interceptor, InterceptorBuilder, RTCPReader, RTCPWriter, RTPReader,
@@ -37,10 +41,26 @@ use crate::aufnahmeuhr::{Aufnahmeuhr, Spur};
 
 /// Abstand der Berichte im Lauf — wie webrtc-rs und MediaMTX (1 s).
 const INTERVALL: Duration = Duration::from_secs(1);
-/// In der ersten Sekunde einer Verbindung kommen die Berichte so dicht, damit
-/// ein Server, der den ersten verpasst hat, nicht eine volle Sekunde wartet.
+/// In der ersten Sekunde nach dem ersten Paket kommen die Berichte so dicht,
+/// damit ein Server, der den ersten verpasst hat, nicht eine volle Sekunde
+/// wartet. Davor laeuft der Takt ebenso dicht, berichtet aber nichts.
 const ANLAUF: Duration = Duration::from_millis(100);
 const ANLAUF_DAUER: Duration = Duration::from_secs(1);
+
+/// Was `register_default_interceptors` anmeldet — NACK, Empfaengerberichte,
+/// Transport-CC —, nur die Senderberichte aus der Aufnahmeuhr statt der
+/// webrtc-rs-eigenen (Begruendung im Modulkopf). Zwei
+/// Senderbericht-Interceptoren nebeneinander schickten zwei verschiedene
+/// Abbildungen derselben SSRC, und der Empfaenger nimmt jeweils die letzte.
+pub(crate) fn interceptoren(
+    media: &mut MediaEngine,
+    uhr: &Arc<Aufnahmeuhr>,
+) -> anyhow::Result<Registry> {
+    let mut registry = configure_nack(Registry::new(), media);
+    registry.add(Box::new(ReceiverReport::builder()));
+    registry.add(Box::new(SenderberichtBauer { uhr: Arc::clone(uhr) }));
+    Ok(configure_twcc_receiver_only(registry, media)?)
+}
 
 /// Baut den Interceptor fuer die Registry (`sdp::baue_api_mit_settings`).
 pub struct SenderberichtBauer {
@@ -177,9 +197,16 @@ impl Interceptor for Senderbericht {
         *self.intern.rtcp.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&writer));
         let intern = Arc::clone(&self.intern);
         let griff = tokio::spawn(async move {
-            let start = Instant::now();
             loop {
-                let abstand = if start.elapsed() < ANLAUF_DAUER { ANLAUF } else { INTERVALL };
+                // Dicht bis eine Sekunde nach dem ERSTEN Paket, nicht nach dem
+                // Bau der Verbindung: Sammeln, WHIP-POST und DTLS dauern oft
+                // laenger als die Anlaufzeit, und vor dem ersten Paket gibt es
+                // nichts zu berichten (Bughunt 2026-10-22).
+                let anlauf = intern
+                    .uhr
+                    .seit_ursprung(Instant::now())
+                    .is_none_or(|seit| seit < ANLAUF_DAUER);
+                let abstand = if anlauf { ANLAUF } else { INTERVALL };
                 tokio::time::sleep(abstand).await;
                 let stroeme = intern.alle();
                 intern.melden(&stroeme).await;
@@ -200,8 +227,11 @@ impl Interceptor for Senderbericht {
         // (s. Kopf von `aufnahmeuhr`) — dann besser keiner als ein falscher.
         let Some(spur) = Spur::aus_takt(info.clock_rate) else { return writer };
         let strom = Arc::new(Strom { ssrc: info.ssrc, spur, zaehler: Mutex::default() });
-        // Ein Spurtausch (Opus → RED, `ton::TonSpur::nach_aushandlung`) bindet
-        // dieselbe SSRC neu; der Eintrag wird ersetzt, die Zaehler beginnen neu.
+        // Gerufen einmal je Sender (`RTCRtpSender::send`). Ein Spurtausch
+        // (Opus → RED, `ton::TonSpur::nach_aushandlung`) laeuft ueber
+        // `replace_track` und kommt hier NICHT vorbei (webrtc 0.17.2): die
+        // RED-Pakete gehen durch denselben Schreiber, Eintrag und Zaehler
+        // bleiben (Bughunt 2026-10-22).
         self.intern
             .stroeme
             .lock()

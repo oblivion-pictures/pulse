@@ -141,6 +141,7 @@ pub(super) fn pump_commands(
                     let ausgabe = s.ausgabe;
                     // Vor dem Griff auf die Tonuhr lesen — der leiht `s` aus.
                     let am_bild = bildbezug::fehler(s.bildton, s.trim_ms, jetzt);
+                    let (bezug_vorher, fehler_vorher) = (s.bezug, s.letzte_fehler_ms);
                     // Start-Vorhalt = aktueller Ring-Sollwert (s.
                     // `lippen::Tonuhr::startvorhalt_s`): ohne ihn waere die
                     // eigene Pufferlatenz ein Regel-Fehler.
@@ -158,11 +159,22 @@ pub(super) fn pump_commands(
                     // (`bildbezug`, die gemeinsame Uhr); sonst wie bisher gegen
                     // die eigene Ankunft des Tons. Vermessen wird die Tonuhr
                     // in beiden Faellen — sie liefert die klingende Marke.
-                    let (fehler, bezug) = match am_bild {
-                        Some(f) => (f, Bezug::Bild),
-                        None => {
-                            (uhr.fehler_ms(ausgabe, sample_rate, channels, jetzt), Bezug::Ankunft)
+                    //
+                    // Einmal am Bild geregelt, HAELT eine Messpause (Standbild,
+                    // Warten auf ein Vollbild, Pause) den Eingriff, statt zur
+                    // Ankunft zurueckzufallen: die zielt woanders hin und
+                    // machte nach jeder Pause zunichte, was die Bildmessung
+                    // erreicht hat (Bughunt 2026-10-22).
+                    let (fehler, bezug, regeln) = match am_bild {
+                        Some(f) => (f, Bezug::Bild, true),
+                        None if bezug_vorher == Some(Bezug::Bild) => {
+                            (fehler_vorher, Bezug::Bild, false)
                         }
+                        None => (
+                            uhr.fehler_ms(ausgabe, sample_rate, channels, jetzt),
+                            Bezug::Ankunft,
+                            true,
+                        ),
                     };
                     // Fuer die Zeile „Bild/Ton" (`crate::bildton`): welche
                     // RTP-Marke JETZT klingt. Die verlaengerte Marke beginnt
@@ -192,7 +204,7 @@ pub(super) fn pump_commands(
                         None => s.letzte_nachfuehr = Some(jetzt),
                         Some(zuletzt) => {
                             let dt = jetzt.duration_since(zuletzt).as_secs_f64();
-                            if lippen::darf_nachfuehren(dt, anlauf, rueckstand) {
+                            if regeln && lippen::darf_nachfuehren(dt, anlauf, rueckstand) {
                                 s.sync_ms = lippen::nachfuehren(s.sync_ms, fehler_regel, dt);
                                 s.ziel_setzen();
                             }

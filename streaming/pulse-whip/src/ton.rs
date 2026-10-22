@@ -156,8 +156,11 @@ impl TonSpur {
     }
 
     /// Ein Opus-Rahmen hinaus. `pts` = Aufnahmezeit in 48-kHz-Takten ab dem
-    /// gemeinsamen Nullpunkt mit dem Bild (s. Modulkopf); `dauer` = Rahmenlaenge,
-    /// gebraucht nur ohne `pts` und nach einer Marke, die zurueckspraenge.
+    /// gemeinsamen Nullpunkt mit dem Bild (s. Modulkopf) — die ECHTE
+    /// Aufnahmezeit, nicht die gezaehlten Samples: die Soundkarte taktet mit
+    /// eigenem Quarz, und gezaehlte Samples liefen der Wanduhr um ihre
+    /// Abweichung davon (Bughunt 2026-10-22). `dauer` = Rahmenlaenge, gebraucht
+    /// nur ohne `pts`.
     pub async fn senden(&self, opus: &[u8], pts: Option<i64>, dauer: Duration) -> Result<()> {
         let (paket, spur) = self.bauen(opus, pts, dauer);
         spur.write_rtp(&paket).await.context("Tonpaket schreiben")?;
@@ -211,18 +214,30 @@ impl TonSpur {
     }
 }
 
-/// Die Marke eines Rahmens: Basis + pts, solange sie vorwaerts geht; sonst
-/// (kein pts, oder pts sprang hinter die letzte Marke zurueck) die laufende
-/// Summe `naechste`. Zwei Rahmen mit derselben oder fallender Marke taeten
-/// jedem Empfaenger weh, eine kurz verschobene Marke nur der Synchronisation.
+/// Die Marke eines Rahmens: Basis + pts, solange sie vorwaerts geht.
+///
+/// Ohne pts gilt die laufende Summe `naechste` (letzte Marke plus deren
+/// Dauer). Springt der pts hinter die letzte Marke zurueck, geht die Marke nur
+/// um EINEN Takt weiter, bis Basis + pts sie wieder ueberholt: so findet sie
+/// nach wenigen Rahmen auf die Aufnahmezeit zurueck, von der die
+/// Senderberichte ausgehen. Mit der vollen Dauer (bis zum Bughunt 2026-10-22)
+/// liefe sie dem pts fuer den Rest der Sitzung um den Ruecksprung voraus —
+/// ein bleibender Versatz ohne jede Logzeile. Zwei Rahmen mit derselben oder
+/// fallender Marke taeten jedem Empfaenger weh.
 fn marke(basis: u32, naechste: u32, letzte: Option<u32>, pts: Option<i64>) -> u32 {
     let Some(p) = pts else { return naechste };
     // `as u32` schneidet oben ab wie jede RTP-Uhr (RFC 3550).
     let aus_pts = basis.wrapping_add(p as u32);
     match letzte {
-        Some(l) if (aus_pts.wrapping_sub(l) as i32) <= 0 => naechste,
+        Some(l) if (aus_pts.wrapping_sub(l) as i32) <= 0 => l.wrapping_add(1),
         _ => aus_pts,
     }
+}
+
+/// Eine Aufnahmezeit von `rate` (Abtastrate des Ton-Encoders) in die
+/// 48-kHz-Takte der Tonspur — eine Stelle fuer alle drei Sidecars.
+pub fn pts_in_takten(pts: i64, rate: u32) -> i64 {
+    pts * i64::from(TON_HZ) / i64::from(rate.max(1))
 }
 
 /// Beide Spuren (Opus und RED) mit denselben Kennungen.
