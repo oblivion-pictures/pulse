@@ -49,6 +49,26 @@ const STATS_INTERVAL: Duration = Duration::from_millis(250);
 /// totes Bild sieht.
 const STILLE_FENSTER_BIS_ABBRUCH: u32 = 12;
 
+/// Dasselbe waehrend einer Fernsteuerung: 60 mal 250 ms sind 15 Sekunden.
+///
+/// **Warum laenger (Eigentuemer-Entscheid 2026-10-22).** Zweimal in gut einer
+/// Stunde riss die Leitung zwischen dem gesteuerten Rechner und dem Heimserver
+/// fuer rund sechs Sekunden fast ganz ab (Server meldete 88 % Verlust) und
+/// erholte sich dann von selbst — der Player hatte nach drei Sekunden schon
+/// aufgegeben, und mit ihm endete die Fernsteuerung. Beim Steuern ist ein
+/// Standbild von ein paar Sekunden das kleinere Uebel als eine abgebrochene
+/// Sitzung. Die 15 s hat der Eigentuemer festgelegt. MediaMTX gaebe einen
+/// stummen Sender erst auf, wenn pion dessen Verbindung als gescheitert meldet
+/// (`peer_connection.go`, Vorgaben von pion 5 s + 25 s — gelesen, nicht
+/// gemessen; `readTimeout` gilt nur fuer HTTP). Laenger zu warten ginge also,
+/// verzoegert aber den Neuaufbau, wenn die Leitung wirklich weg ist.
+const STILLE_FENSTER_BIS_ABBRUCH_FERN: u32 = 60;
+
+/// Statistik-Fenster in ganze Sekunden, fuer die Meldungen des Waechters.
+fn stille_s(fenster: u32) -> u64 {
+    u64::from(fenster) * STATS_INTERVAL.as_millis() as u64 / 1000
+}
+
 /// Fenster fuer Bildrate und Bitrate. Bewusst ein VIELFACHES von
 /// [`STATS_INTERVAL`] und hier berechnet, nicht beim Anzeigen: wer die Rate aus
 /// zwei Abfragen eines fremden Taktes bildet, misst mal 3, mal 4 Intervalle und
@@ -1372,10 +1392,31 @@ pub async fn run(
                     stille_fenster += 1;
                 }
             } else {
+                if stille_fenster >= STILLE_FENSTER_BIS_ABBRUCH {
+                    eprintln!(
+                        "pulse-player: Pakete kommen wieder — Luecke von rund {} s ueberstanden",
+                        stille_s(stille_fenster)
+                    );
+                }
                 stille_fenster = 0;
                 bytes_im_letzten_fenster = stats.bytes_received;
             }
-            if stille_fenster >= STILLE_FENSTER_BIS_ABBRUCH {
+            let grenze = if fernsteuerung {
+                STILLE_FENSTER_BIS_ABBRUCH_FERN
+            } else {
+                STILLE_FENSTER_BIS_ABBRUCH
+            };
+            // Beim Steuern einmal melden, sobald die normale Grenze erreicht
+            // ist — sonst steht im Log zwischen dem letzten Paket und dem Abbruch
+            // nichts, und eine ueberstandene Luecke bliebe ganz unsichtbar.
+            if fernsteuerung && stille_fenster == STILLE_FENSTER_BIS_ABBRUCH {
+                eprintln!(
+                    "pulse-player: seit {} s kein Paket — Fernsteuerung wartet bis {} s",
+                    stille_s(STILLE_FENSTER_BIS_ABBRUCH),
+                    stille_s(STILLE_FENSTER_BIS_ABBRUCH_FERN)
+                );
+            }
+            if stille_fenster >= grenze {
                 // Ueber `break` und nicht ueber eine stille Ecke: die Sitzung
                 // ist tot, und sie abzuraeumen beendet zugleich die
                 // Ton-Unterlaeufe, die sonst bis in alle Ewigkeit weiterzaehlen.
@@ -1383,8 +1424,9 @@ pub async fn run(
                 break 'sitzung (
                     format!(
                         "Verbindung abgerissen — seit {} Sekunden kein Paket",
-                        (STILLE_FENSTER_BIS_ABBRUCH as u64 * STATS_INTERVAL.as_millis() as u64)
-                            / 1000
+                        // Die echte Laenge, nicht die Grenze: endet die
+                        // Fernsteuerung mitten in einer Luecke, ist sie laenger.
+                        stille_s(stille_fenster)
                     ),
                     true,
                 );
