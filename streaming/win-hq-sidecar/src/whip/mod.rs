@@ -79,6 +79,21 @@ use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
 /// rausgeht. Wie im Player (`pulse-player/src/whep.rs`).
 const ICE_GATHERING_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Groesster Antwortkoerper, den der WHIP-POST annimmt. Eine SDP-Antwort ist
+/// wenige Kilobyte gross; 256 KiB lassen selbst fuer eine ungewoehnlich lange
+/// Kandidatenliste reichlich Luft.
+///
+/// **Warum das eine Grenze braucht** (Security-Scan 24.10.2026): Bis dahin war
+/// der 15-s-Timeout des HTTP-Clients die einzige Schranke, und `negotiate`
+/// holte den Koerper mit `res.text()` vollstaendig in den Speicher, BEVOR
+/// geprueft wurde, ob SDP drinsteht. Der Player hat dasselbe Muster schon
+/// behoben (Bughunt 4, Befund 22: ein Stub, der `Content-Length: 209715200`
+/// ankuendigt, wurde in 1,17 s vollstaendig los — weit innerhalb des
+/// Timeouts); hier steht das Pendant fuer die Sender-Seite. Nachgemessen im
+/// Linux-Zwilling, Regressionstest `repro_whip_antwort_ohne_groessengrenze`:
+/// ohne Deckel schluckt der Sidecar alle 200 MB.
+const MAX_ANSWER_BYTES: usize = 256 * 1024;
+
 /// Der Server hat den Sendeweg abgewiesen — eine Aussage ueber die
 /// BERECHTIGUNG, nicht ueber die Hardware.
 ///
@@ -309,6 +324,52 @@ fn zerlege_annexb<P: Payloader>(
         .enumerate()
         .map(|(i, b)| (b, i == 0, i + 1 == n, ist_vollbild))
         .collect())
+}
+
+/// Liest den Antwortkoerper des WHIP-POST **gestreamt** und bricht ab, sobald
+/// er [`MAX_ANSWER_BYTES`] ueberschreitet. Ein angekuendigtes `Content-Length`
+/// darueber wird gar nicht erst gelesen; fehlt der Kopf oder luegt er, faengt
+/// die laufende Zaehlung ueber die Stuecke es ab.
+///
+/// Der Abbruchgrund ist derselbe wie bei einer inhaltlich unbrauchbaren
+/// Antwort ("kein gueltiges SDP") — was diese Groesse hat, IST keine
+/// SDP-Antwort mehr, und der Anrufer muss beide Faelle gleich behandeln.
+/// Pendant zu `lies_answer_begrenzt` im Player (`pulse-player/src/whep.rs`,
+/// dort Befund 22); der Regressionstest `repro_whip_antwort_ohne_
+/// groessengrenze` haelt beide Seiten zusammen.
+async fn lies_answer_begrenzt(mut res: reqwest::Response) -> Result<String> {
+    if res.content_length().is_some_and(|n| n > MAX_ANSWER_BYTES as u64) {
+        bail!(
+            "WHIP-Antwort war kein gueltiges SDP: angekuendigte {} Byte \
+             ueberschreiten die Obergrenze von {MAX_ANSWER_BYTES} Byte",
+            res.content_length().unwrap_or(0)
+        );
+    }
+    let mut body: Vec<u8> = Vec::new();
+    while let Some(stueck) = res.chunk().await.context("Answer-Body")? {
+        if body.len() + stueck.len() > MAX_ANSWER_BYTES {
+            bail!(
+                "WHIP-Antwort war kein gueltiges SDP: laenger als die \
+                 Obergrenze von {MAX_ANSWER_BYTES} Byte"
+            );
+        }
+        body.extend_from_slice(&stueck);
+    }
+    String::from_utf8(body)
+        .map_err(|_| anyhow!("WHIP-Antwort war kein gueltiges SDP: kein UTF-8"))
+}
+
+/// Nur gleiche Herkunft folgen — verhindert, dass ein manipulierter
+/// `Location`-Kopf das abschliessende DELETE auf einen fremden Host umlenkt
+/// (Security-Scan 24.10.2026). Gleiche Regel wie im Player und im
+/// Browser-Client.
+fn resolve_resource_url(whip_url: &str, location: &str) -> Option<String> {
+    let base = reqwest::Url::parse(whip_url).ok()?;
+    let resolved = base.join(location).ok()?;
+    let same_origin = resolved.scheme() == base.scheme()
+        && resolved.host_str() == base.host_str()
+        && resolved.port_or_known_default() == base.port_or_known_default();
+    same_origin.then(|| resolved.to_string())
 }
 
 impl WhipSender {
@@ -593,14 +654,21 @@ impl WhipSender {
             .get(reqwest::header::LOCATION)
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
-        let answer = res.text().await.context("Answer-Body")?;
+        let answer = lies_answer_begrenzt(res).await?;
         if !answer.contains("v=") {
             bail!("WHIP-Antwort war kein gueltiges SDP");
         }
         pc.set_remote_description(RTCSessionDescription::answer(answer)?)
             .await
             .context("set_remote_description")?;
-        Ok((location, http))
+        // Nur gleiche Herkunft folgen (Security-Scan 24.10.2026): der Server,
+        // der den `Location`-Kopf liefert, darf nicht beliebige DELETE-Ziele
+        // vorgeben koennen. Fremde Herkunft → keine Resource-URL → das DELETE
+        // bleibt aus; die Sitzung laeuft beim Server ohnehin aus.
+        Ok((
+            location.and_then(|loc| resolve_resource_url(url, &loc)),
+            http,
+        ))
     }
 
     /// Ein encodiertes Bild senden.
@@ -725,5 +793,132 @@ mod tests {
         assert!(!h264_ist_vollbild(&[0, 0, 1, 0x67, 0, 0, 1, 0x68]), "SPS und PPS allein");
         assert!(!h264_ist_vollbild(&[]));
         assert!(!h264_ist_vollbild(&[0, 0, 1]), "Startcode ohne Kopf laeuft nicht ueber");
+    }
+
+    /// Nur gleiche Herkunft: ein manipulierter `Location`-Kopf darf das
+    /// abschliessende DELETE nicht auf einen fremden Host lenken
+    /// (**Security-Scan 24.10.2026** — der Server, der die Location liefert,
+    /// konnte bislang beliebige DELETE-Ziele vorgeben). Spiegel zu
+    /// `resource_url_nur_bei_gleicher_herkunft` im Player.
+    #[test]
+    fn resource_url_nur_bei_gleicher_herkunft() {
+        let base = "https://howispulse.com/whip/x?token=abc";
+        assert_eq!(
+            resolve_resource_url(base, "/whip/session/1").as_deref(),
+            Some("https://howispulse.com/whip/session/1")
+        );
+        // Fremder Host wird verworfen — das DELETE bleibt dann einfach aus
+        // (der Server laesst die Sitzung ohnehin auslaufen).
+        assert_eq!(resolve_resource_url(base, "https://evil.example/x"), None);
+        assert_eq!(resolve_resource_url(base, "http://howispulse.com/x"), None);
+    }
+
+    /// Ein WHIP-Endpunkt antwortet mit HTTP 200 und kuendigt 200 MB Body an.
+    ///
+    /// **Security-Scan 24.10.2026** — das Pendant zu Befund 22 der Bughunt 4
+    /// (`repro_22` im Player, `pulse-player/src/whep.rs`): Bis hierher stand
+    /// in `negotiate` ein nacktes `res.text().await` — der Sidecar holte die
+    /// volle Antwort in den Speicher, BEVOR er pruefte, ob ueberhaupt SDP
+    /// drinsteht, und der 15-s-Timeout des HTTP-Clients war die einzige
+    /// Schranke. Ein feindseliger oder uebernommener WHIP-Endpunkt konnte den
+    /// Sendeweg damit beliebig aufblaehen.
+    ///
+    /// Gemessen wird nicht der Speicher (schlecht beobachtbar), sondern was
+    /// die Gegenstelle loswerden konnte (dieselbe Methode wie im Player):
+    /// mit der Obergrenze bricht der Client an der angekuendigten Groesse ab,
+    /// ohne den Koerper zu lesen, und der Stub bringt nur noch das los, was
+    /// die Socket-Puffer schon geschluckt hatten — nicht die vollen 200 MB.
+    /// Die genaue Zahl ist keine Eigenschaft des Codes (Kernpuffer variieren);
+    /// alles, was um Groessenordnungen unter `ANGEKUENDIGT` liegt, belegt den
+    /// Abbruch. Derselbe Test laeuft im Linux-Zwilling.
+    #[test]
+    fn repro_whip_antwort_ohne_groessengrenze() {
+        use std::io::{Read, Write};
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        /// Was der Stub hoechstens loswerden DARF — gross genug, dass
+        /// Socket-Puffer verschiedener Maschinen darunter bleiben, klein
+        /// genug, dass ein Client ohne Begrenzung sicher darueber liegt.
+        const ERLAUBT: u64 = 16 * 1024 * 1024;
+        /// Was er ankündigt (und ohne Begrenzung auch loswird).
+        const ANGEKUENDIGT: u64 = 200 * 1024 * 1024;
+
+        fn kopfende(roh: &[u8]) -> Option<usize> {
+            roh.windows(4).position(|f| f == b"\r\n\r\n").map(|p| p + 4)
+        }
+        fn content_length(kopf: &[u8]) -> usize {
+            String::from_utf8_lossy(kopf)
+                .lines()
+                .find_map(|l| {
+                    let (k, v) = l.split_once(':')?;
+                    k.eq_ignore_ascii_case("content-length").then(|| v.trim().parse().ok())?
+                })
+                .unwrap_or(0)
+        }
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("local_addr");
+        let geschrieben = Arc::new(AtomicU64::new(0));
+        let zaehler = geschrieben.clone();
+
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            // Erst die Anfrage (Kopf + Offer-SDP) abnehmen, sonst haengt der
+            // Client im Senden statt im Lesen.
+            let mut roh = Vec::new();
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = stream.read(&mut buf).expect("read");
+                if n == 0 {
+                    break;
+                }
+                roh.extend_from_slice(&buf[..n]);
+                if let Some(p) = kopfende(&roh) {
+                    if roh.len() - p >= content_length(&roh[..p]) {
+                        break;
+                    }
+                }
+            }
+            let kopf = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/sdp\r\n\
+                 Content-Length: {ANGEKUENDIGT}\r\n\r\n"
+            );
+            if stream.write_all(kopf.as_bytes()).is_err() {
+                return;
+            }
+            let block = vec![0u8; 64 * 1024];
+            let mut rest = ANGEKUENDIGT;
+            while rest > 0 {
+                let n = (block.len() as u64).min(rest) as usize;
+                if stream.write_all(&block[..n]).is_err() {
+                    break; // Client hat abgebrochen — genau das ist der Fix
+                }
+                zaehler.fetch_add(n as u64, Ordering::Relaxed);
+                rest -= n as u64;
+            }
+        });
+
+        let ergebnis = WhipSender::connect(
+            &format!("http://{addr}/whip"), "h264", 30, 64, 64, 1000, false,
+        );
+        let fehler = match ergebnis {
+            Ok(_) => panic!("die Sitzung darf mit dieser Antwort nicht zustande kommen"),
+            Err(e) => format!("{e:#}"),
+        };
+        let _ = server.join();
+
+        let n = geschrieben.load(Ordering::Relaxed);
+        eprintln!("Stub konnte {n} Bytes absetzen; Fehler des Sidecars: {fehler}");
+        // Der Abbruchgrund nennt die angekuendigte Groesse — er kommt aus der
+        // Pruefung VOR dem Lesen, nicht aus der SDP-Pruefung dahinter.
+        assert!(
+            fehler.contains("kein gueltiges SDP"),
+            "unerwarteter Abbruchgrund (Test misst dann etwas anderes): {fehler}"
+        );
+        assert!(
+            n <= ERLAUBT,
+            "der Sidecar hat {n} Bytes Antwortkoerper geschluckt \
+             (erlaubt waeren hoechstens {ERLAUBT}) — keine Groessenbegrenzung"
+        );
     }
 }

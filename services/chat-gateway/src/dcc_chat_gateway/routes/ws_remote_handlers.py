@@ -156,8 +156,29 @@ _SIGNAL_KINDS = (
 )
 
 
+# Obergrenze der ``session_id`` in Byte (Security-Scan 24.10.2026) — dieselbe
+# Zahl wie in der Fernsteuerung selbst
+# (``streaming/pulse-fernsteuerung/src/huelle.rs::MAX_SITZUNGS_ID_BYTES``),
+# die sie an zwei weiteren Stellen durchsetzt. Der Gateway mint Kennungen als
+# 16 Hex-Zeichen (``secrets.token_hex(8)``); 128 Byte lassen Luft fuer
+# kuenftige Formate. Ohne den Deckel floss eine beliebig lange Kennung in
+# Registry-Lookups, Logs und die an den Host weitergeleiteten Frames.
+_SESSION_ID_MAX_BYTES = 128
+
+
 def _session_id(value: object) -> str:
-    return str(value or "").strip()
+    """Die Sitzungs-Kennung, gestrip't — oder leer, wenn sie fehlt oder den
+    Deckel ueberschreitet.
+
+    Leer zaehlt wie fehlend: jeder Op antwortet dann 4050 statt eine
+    Exception zu werfen (kein 500), und die laufende Sitzung bleibt
+    unberuehrt."""
+    session_id = str(value or "").strip()
+    try:
+        zu_lang = len(session_id.encode("utf-8")) > _SESSION_ID_MAX_BYTES
+    except UnicodeEncodeError:
+        zu_lang = True  # einzelne Surrogate sind kein gueltiger Text
+    return "" if zu_lang else session_id
 
 
 async def handle_request(

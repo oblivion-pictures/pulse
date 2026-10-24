@@ -56,6 +56,21 @@ use crate::base64;
 const MAX_FRAMES: usize = 32;
 const MAX_BYTES: usize = 1024;
 
+/// Obergrenze der `session_id` in Byte — derselbe Deckel wie in der Sitzung
+/// ([`crate::sitzung`], die ihn noch einmal selbst durchsetzt) und im Gateway
+/// (`services/chat-gateway/.../ws_remote_handlers.py::_SESSION_ID_MAX_BYTES`).
+/// Eine echte Kennung mint der Gateway als 16 Hex-Zeichen
+/// (`secrets.token_hex(8)`); 128 Byte lassen auch für künftige Formate Luft.
+///
+/// **Warum die Begrenzung braucht** (Security-Scan 24.10.2026): die Sitzung
+/// führt die Kennung unbegrenzt in ihrem Zustand mit, und bis dahin nahm
+/// [`sitzungs_id_aus`] jede Länge an — ein feindseliger Steuernder konnte den
+/// Zustand des Host mit jedem Frame weiter aufblähen. Länger als der Deckel
+/// ist kein Fall für die Sitzung, sondern mit an Sicherheit grenzender
+/// Wahrscheinlichkeit ein falsches Feld: fail-closed wie jeder andere
+/// missgeformte Hüllenwert.
+pub const MAX_SITZUNGS_ID_BYTES: usize = 128;
+
 /// Der Platz aus der Hülle — **nicht zurechtgebogen**.
 ///
 /// Hier stand `.and_then(Value::as_u64).unwrap_or(0)`: `slot: -1`, `slot: 1.5`
@@ -87,9 +102,15 @@ fn slot_aus(params: &Map<String, Value>) -> Result<u64, String> {
 /// und damit eine eigene, nicht die Fortsetzung der vorherigen (s. Modul-Doku).
 /// Ein Feld, das keine Zeichenkette ist, ist missgeformt: dann lieber
 /// fail-closed als eine fremde Sitzung stillschweigend weiterführen.
+/// Dasselbe gilt für eine Kennung über [`MAX_SITZUNGS_ID_BYTES`] — die Sitzung
+/// führt sie unbegrenzt in ihrem Zustand mit, und überlang ist mit an Sicherheit
+/// grenzender Wahrscheinlichkeit ein falsches Feld (Security-Scan 24.10.2026).
 fn sitzungs_id_aus(params: &Map<String, Value>) -> Result<Option<&str>, String> {
     match params.get("session_id") {
         None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) if s.len() > MAX_SITZUNGS_ID_BYTES => Err(format!(
+            "session_id länger als {MAX_SITZUNGS_ID_BYTES} Byte"
+        )),
         Some(Value::String(s)) => Ok(Some(s.as_str())),
         Some(anderes) => Err(format!("session_id muss eine Zeichenkette sein, war {anderes}")),
     }
@@ -290,6 +311,39 @@ mod tests {
         assert!(sitzungs_id_aus(&mit(json!(7))).is_err());
         let sitzung = frische_sitzung();
         assert!(wie_handle(&sitzung, mit(json!(7))).is_err());
+    }
+
+    /// **Security-Scan 24.10.2026:** die Kennung wurde in BELIEBIGER Länge
+    /// angenommen und (eine Ebene tiefer, in `sitzung.rs`) ungekürzt in den
+    /// Zustand übernommen — ein feindseliger Steuernder konnte den Zustand
+    /// des Host mit jedem Frame weiter aufblähen. Über dem Deckel aus
+    /// [`MAX_SITZUNGS_ID_BYTES`] ist jetzt fail-closed wie jeder andere
+    /// missgeformte Hüllenwert; der Grenzwert selbst geht noch durch.
+    #[test]
+    fn ueberlange_kennung_ist_fail_closed() {
+        let mit = |wert: Value| {
+            json!({"slot": 0, "session_id": wert, "frames": ["AAI="]})
+                .as_object()
+                .unwrap()
+                .clone()
+        };
+        let passt = "k".repeat(MAX_SITZUNGS_ID_BYTES);
+        let zu_lang = "k".repeat(MAX_SITZUNGS_ID_BYTES + 1);
+        assert_eq!(
+            sitzungs_id_aus(&mit(json!(passt.clone()))),
+            Ok(Some(passt.as_str())),
+            "der Grenzwert selbst ist keine Abweisung wert"
+        );
+        assert!(
+            sitzungs_id_aus(&mit(json!(zu_lang.clone()))).is_err(),
+            "eine Kennung über dem Deckel muss abgewiesen werden"
+        );
+
+        // Über die ganze Operation: fail-closed — die Sitzung ist danach
+        // stillgelegt, ein wohlgeformter Aufruf kommt nicht mehr durch.
+        let sitzung = frische_sitzung();
+        assert!(wie_handle(&sitzung, mit(json!(zu_lang))).is_err());
+        assert!(wie_handle(&sitzung, params(json!(0))).is_err());
     }
 
     /// Ein Platz außerhalb des Bereichs dagegen: still verworfen, die Sitzung

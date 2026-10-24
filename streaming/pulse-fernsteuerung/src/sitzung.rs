@@ -174,6 +174,25 @@ impl Sitzung {
             return Ok(Bericht { verarbeitet: 0, zustand: "ended" });
         }
 
+        // Kennung über dem Deckel — fail-closed, noch vor dem Sitzungswechsel.
+        //
+        // Die Hülle weist das schon ab ([`crate::huelle::MAX_SITZUNGS_ID_BYTES`]);
+        // dieser zweite Deckel schützt den Zustand auch dann, wenn jemand die
+        // Hülle umgeht (derselbe Grundsatz wie `MAX_FRAMES`/`MAX_BYTES` dort):
+        // unten wird die Kennung ungekürzt übernommen, und ohne Deckel könnte
+        // ein feindseliger Aufrufer sie mit jeder Nachricht weiter aufblähen
+        // (Security-Scan 24.10.2026). Stilllegen statt Raten — und freigeben,
+        // wie jeder Protokollfehler.
+        if sitzungs_id.is_some_and(|id| id.len() > crate::huelle::MAX_SITZUNGS_ID_BYTES) {
+            return Err(self.stilllegen(
+                &mut z,
+                format!(
+                    "session_id länger als {} Byte",
+                    crate::huelle::MAX_SITZUNGS_ID_BYTES
+                ),
+            ));
+        }
+
         // Sitzungswechsel ohne vorheriges Ende (Verbindung weg, Gegenüber
         // gewechselt): erst die alte auflösen, sonst hinge deren Gedrücktes.
         //
