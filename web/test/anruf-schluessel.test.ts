@@ -14,7 +14,11 @@ import {
 const SCHLUESSEL = Buffer.from(new Array(32).fill(0).map((_, i) => i * 7 + 1)).toString('base64');
 
 test('Anruf-Schlüssel-Frame: Roundtrip, Rahmen-Erkennung, fail-closed', () => {
-  const bytes = baueAnrufSchluesselNutzlast('1788829404772578317', SCHLUESSEL);
+  // Die Absender-Bindung ist Pflicht (Security-Fix 2026-10-24).
+  const bytes = baueAnrufSchluesselNutzlast('1788829404772578317', SCHLUESSEL, {
+    nutzer: 'user-9',
+    geraet: 'geraet-7'
+  });
   const gelesen = leseNachrichtNutzlast(bytes);
   assert.equal(gelesen.anrufSchluessel?.anrufId, '1788829404772578317');
   assert.equal(gelesen.anrufSchluessel?.schluessel, SCHLUESSEL);

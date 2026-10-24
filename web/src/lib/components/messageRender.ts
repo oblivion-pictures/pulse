@@ -33,7 +33,14 @@ const ALLOWED_TAGS = [
   'b', 'i', 'em', 'strong', 'code', 'pre', 'del', 's',
   'a', 'ul', 'ol', 'li', 'br', 'p', 'blockquote', 'span'
 ];
-const ALLOWED_ATTR = ['href', 'title', 'target', 'rel', 'class', 'data-mention-type', 'data-mention-id', 'data-self'];
+// Security-Scan 2026-10-24: KEIN `class` hier. Mit `span` + `class` konnte
+// jedes Mitglied `<span class="mention mention--self">@Admin</span>` posten
+// und native Pillen fälschen — das CSS formt Pillen ausschließlich über die
+// Klassen (app.css `.mention*`), data-Attribute sind reine Test-Haken. Rohe
+// Klassen fliegen damit vor dem Hook raus; die ECHTEN Pillen erzeugt der
+// afterSanitizeAttributes-Hook selbst (createElement + className-Direkt-
+// zuweisung NACH der Attribut-Filterung — sie überleben).
+const ALLOWED_ATTR = ['href', 'title', 'target', 'rel', 'data-mention-type', 'data-mention-id', 'data-self'];
 
 // One-time hook setup — DOMPurify is a singleton; we use removeAllHooks
 // instead of removeHook(name) so re-imports during HMR don't stack

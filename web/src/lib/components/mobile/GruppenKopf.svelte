@@ -16,6 +16,10 @@
   import { gruppenApi, type PrivateGruppe } from '$lib/api/gruppen';
   import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
   import { m } from '$lib/paraglide/messages.js';
+  // Security-Scan 2026-10-24: icon_url filtern wie überall — private Gruppen
+  // sind Cloud-only (gruppen.ts cloudRoute), guildIconSrc löst relative Pfade
+  // gegen die Cloud-Origin auf und lehnt alles andere ab (http:, data:, …).
+  import { guildIconSrc } from '$lib/guildIcon';
 
   let {
     gruppe,
@@ -38,6 +42,8 @@
   /** Umbenennen (Owner): Klick auf den Stift macht den Namen zum Eingabefeld. */
   let umbenennenOffen = $state(false);
   let neuerName = $state('');
+  /** Gefiltertes Gruppenbild — null = Initialien-Bahn (s. Import-Kommentar). */
+  const icon = $derived(guildIconSrc(gruppe.icon_url));
   /** Persönlich, pro Gerät synchron — einzige Lesestelle im Store. */
   const ichStumm = $derived(privateGruppen.eigenesStumm(gruppe, ichId));
 
@@ -98,8 +104,13 @@
       aria-label={gruppe.icon_url ? m.gruppen_bild_ersetzen() : m.gruppen_bild_setzen()}
       data-testid="group-icon-change"
     >
-      {#if gruppe.icon_url}
-        <img src={gruppe.icon_url} alt="" class="size-14 rounded-full object-cover" data-testid="group-icon" />
+      {#if icon}
+        <img
+          src={icon}
+          alt=""
+          class="size-14 rounded-full object-cover"
+          data-testid="group-icon"
+        />
       {:else}
         <span
           class="accent-gradient flex size-14 items-center justify-center rounded-full text-lg font-bold text-white"

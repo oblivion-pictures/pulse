@@ -128,6 +128,19 @@ _RULES: dict[str, tuple[int, float]] = {
     # Kanalhistorie in der größten Tabelle des Schemas, as-you-type getippt.
     # 30/Minute: ein Mensch tippt seine Suche aus, kein Skript.
     "dm_search": (30, 60.0),
+    # Archiv-Einlieferung (Security-Scan 2026-10-24): ``POST /archiv`` nimmt
+    # bis 2000 Zeilen und 100 Wraps JE ANFRAGE an — ohne Bremse der billigste
+    # DB-Churn-Generator des Dienstes, nach dem Muster der Postfach-Bremse
+    # (``message``), nur gröber, weil ein Aufruf gleich einen ganzen Batch
+    # schreibt. 30/Minute: der Hintergrund-Sync liefert in Batches, aber
+    # nicht im Sekundentakt.
+    "archiv_einliefern": (30, 60.0),
+    # Schlüssel-Abholung (Security-Scan 2026-10-24): ``POST /keys/claim``
+    # fragt bis 64 Ziele je Aufruf ab (je Ziel Bundel-SELECTs, je Gerät
+    # OTK-SELECT+DELETE) und war ungedrosselt wiederholbar. Das OTK-Budget
+    # deckt nur den Einmalschlüssel-Verbrauch, nie die Last — dieselbe Lücke
+    # wie bei ``keys_buendel_auskunft`` (Bughunt 2026-09-23).
+    "keys_claim": (30, 60.0),
 }
 
 

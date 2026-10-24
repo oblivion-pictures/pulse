@@ -28,6 +28,11 @@
  * `standNachSendung` als Nachricht — sonst driftete der Zaehler vom echten
  * Ratchet-Stand davon und die Sitzung rotierte spaeter, als verschluesselt
  * wurde.
+ *
+ * Jeder Frame traegt die Absender-Bindung (`absenderNutzer`/`absenderGeraet`,
+ * Security-Fix 2026-10-24): die Zuschreibung aus den Postfach-Metadaten setzt
+ * der Server frei, und der Empfangsweg verwirft ungebundene Aktions-Frames
+ * (`../nachrichtNutzlast.ts::aktionsRahmenUngebunden`).
  */
 import { keysApi } from '../../api/keys';
 import { gruppenApi } from '../../api/gruppen';
@@ -155,7 +160,15 @@ export async function sendeGruppenLoeschung(kanalId: string, nachrichtId: string
   // Der Riegel (Gegenprüfung 2026-10-12, R3), wie in `senden.ts::sendeInGruppe`
   // — die Frames ändern den eigenen Verlauf. Der Anruf-Schlüssel unten nicht.
   verlaufRiegelPruefen();
-  return versendeGruppenFrame(kanalId, baueLoeschNutzlast(nachrichtId));
+  // Absender-Bindung wie beim DM-Lösch-Frame (Security-Fix 2026-10-24): auch
+  // hier fährt die Zuschreibung in der authentisierten Nutzlast mit.
+  const eigeneUserId = auth.user?.id ?? null;
+  if (eigeneUserId === null) return false;
+  const eigeneKennung = await geraeteKennung();
+  return versendeGruppenFrame(
+    kanalId,
+    baueLoeschNutzlast(nachrichtId, { nutzer: eigeneUserId, geraet: eigeneKennung })
+  );
 }
 
 /**
@@ -171,7 +184,18 @@ export async function sendeGruppenReaktion(
   entfernen: boolean
 ): Promise<boolean> {
   verlaufRiegelPruefen(); // s. `sendeGruppenLoeschung`
-  return versendeGruppenFrame(kanalId, baueReaktionsNutzlast(zielNachrichtId, emoji, entfernen));
+  // Absender-Bindung (Security-Fix 2026-10-24): der Empfangsweg verwirft
+  // ungebundene Reaktions-Frames, statt der Server-Zuschreibung zu vertrauen.
+  const eigeneUserId = auth.user?.id ?? null;
+  if (eigeneUserId === null) return false;
+  const eigeneKennung = await geraeteKennung();
+  return versendeGruppenFrame(
+    kanalId,
+    baueReaktionsNutzlast(zielNachrichtId, emoji, entfernen, {
+      nutzer: eigeneUserId,
+      geraet: eigeneKennung
+    })
+  );
 }
 
 /**
@@ -184,7 +208,17 @@ export async function sendeGruppenBearbeitung(
   inhalt: string
 ): Promise<boolean> {
   verlaufRiegelPruefen(); // s. `sendeGruppenLoeschung`
-  return versendeGruppenFrame(kanalId, baueBearbeitungsNutzlast(zielNachrichtId, inhalt));
+  // Absender-Bindung wie bei der Reaktion (Security-Fix 2026-10-24).
+  const eigeneUserId = auth.user?.id ?? null;
+  if (eigeneUserId === null) return false;
+  const eigeneKennung = await geraeteKennung();
+  return versendeGruppenFrame(
+    kanalId,
+    baueBearbeitungsNutzlast(zielNachrichtId, inhalt, {
+      nutzer: eigeneUserId,
+      geraet: eigeneKennung
+    })
+  );
 }
 
 /**
@@ -193,10 +227,21 @@ export async function sendeGruppenBearbeitung(
  * bei Zustellung; der Aufrufer (`anruf.svelte.ts`) bricht den Anruf ab,
  * wenn sie misslingt — fail-closed.
  */
-export function sendeGruppenAnrufSchluessel(
+export async function sendeGruppenAnrufSchluessel(
   kanalId: string,
   anrufId: string,
   schluessel: string
 ): Promise<boolean> {
-  return versendeGruppenFrame(kanalId, baueAnrufSchluesselNutzlast(anrufId, schluessel));
+  // Absender-Bindung wie bei der Reaktion (Security-Fix 2026-10-24); kein
+  // `verlaufRiegelPruefen`, der Frame legt nichts ab.
+  const eigeneUserId = auth.user?.id ?? null;
+  if (eigeneUserId === null) return false;
+  const eigeneKennung = await geraeteKennung();
+  return versendeGruppenFrame(
+    kanalId,
+    baueAnrufSchluesselNutzlast(anrufId, schluessel, {
+      nutzer: eigeneUserId,
+      geraet: eigeneKennung
+    })
+  );
 }

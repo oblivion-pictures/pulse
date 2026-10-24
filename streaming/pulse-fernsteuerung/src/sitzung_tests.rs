@@ -257,6 +257,32 @@ fn protokollfehler_der_huelle_gibt_frei_und_legt_still() {
     s.sitzung.beenden();
 }
 
+/// **Security-Scan 24.10.2026:** der Sitzungswechsel nahm die Kennung
+/// ungekürzt in den Zustand auf (`z.id = sitzungs_id.map(str::to_string)`),
+/// egal was die Hülle vorher geprüft hatte — dieser Test ruft `frames`
+/// deshalb DIREKT, an der Hülle vorbei. Der Deckel
+/// (`crate::huelle::MAX_SITZUNGS_ID_BYTES`, derselbe Wert wie im Gateway)
+/// gilt noch einmal hier, und ein Verstoß ist fail-closed: stilllegen und
+/// alles freigeben, damit der Zustand des Host nicht Frame für Frame
+/// aufgebläht werden kann.
+#[test]
+fn ueberlange_kennung_legt_still_und_gibt_frei() {
+    let s = stand();
+    gedrueckt(&s.sitzung, &[0x11], &[]);
+    let _ = s.inj.nimm();
+    let zu_lang = "k".repeat(crate::huelle::MAX_SITZUNGS_ID_BYTES + 1);
+
+    assert!(s.sitzung.frames(0, Some(&zu_lang), &[hello()], false).is_err());
+    assert_eq!(ist_noch_gedrueckt(&s.sitzung), 0, "fail-closed gibt frei");
+    assert!(
+        s.inj.nimm().contains(&Ereignis::Taste { scan: 0x11, down: false, mods: vec![] }),
+        "die gedrückte Taste muss losgelassen worden sein"
+    );
+    // Stillgelegt: ein wohlgeformter Aufruf kommt nicht mehr durch.
+    assert!(s.sitzung.frames(0, None, &[hello()], false).is_err());
+    s.sitzung.beenden();
+}
+
 /// Nach dem endgültigen Schluss (Prozessende) darf **nichts** mehr
 /// injiziert werden — auch nicht von einer Nachricht, die im Dispatch-Faden
 /// schon auf der Sperre wartete, während der Writer-Faden freigab und

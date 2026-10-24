@@ -17,6 +17,10 @@
   import { chatZeilenAktionen } from './chatZeilenAktionen';
   import { m } from '$lib/paraglide/messages.js';
   import type { PrivateGruppe } from '$lib/api/gruppen';
+  // Security-Scan 2026-10-24: icon_url filtern wie überall — private Gruppen
+  // sind Cloud-only (gruppen.ts cloudRoute), guildIconSrc löst relative Pfade
+  // gegen die Cloud-Origin auf und lehnt alles andere ab (http:, data:, …).
+  import { guildIconSrc } from '$lib/guildIcon';
 
   let {
     gruppe,
@@ -29,6 +33,7 @@
   const ungelesen = $derived(readState.isUnread(gruppe.id));
   const zahl = $derived(readState.getUnreadCount(gruppe.id));
   const aktionen = $derived(chatZeilenAktionen(gruppe.id));
+  const icon = $derived(guildIconSrc(gruppe.icon_url));
 </script>
 
 <div class="relative">
@@ -38,9 +43,9 @@
     data-testid={`chat-row-${gruppe.id}`}
     data-unread={ungelesen}
   >
-    {#if gruppe.icon_url}
+    {#if icon}
       <img
-        src={gruppe.icon_url}
+        src={icon}
         alt=""
         class="size-[46px] shrink-0 rounded-full object-cover"
       />

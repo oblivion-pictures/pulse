@@ -20,6 +20,7 @@
   import { toast } from 'svelte-sonner';
   import type { Role } from '$lib/api/roles';
   import { userCache } from '$lib/stores/users.svelte';
+  import { safeAvatarUrl } from '$lib/avatar';
   import { m } from '$lib/paraglide/messages.js';
   import EmptyState from '$lib/components/feedback/EmptyState.svelte';
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
@@ -99,7 +100,10 @@
           >
             <Avatar.Root class="size-6 shrink-0">
               {#if u?.avatar_url}
-                <Avatar.Image src={u.avatar_url} alt="" />
+                <!-- Security-Scan 2026-10-24: avatar_url wie überall durch
+                     safeAvatarUrl (nur https:// oder /-relativ), sonst
+                     Initialen-Bahn. -->
+                <Avatar.Image src={safeAvatarUrl(u.avatar_url) ?? undefined} alt="" />
               {/if}
               <Avatar.Fallback class="accent-gradient text-primary-foreground text-[0.6rem] font-semibold">
                 {anfangsBuchstabe(name(uid))}
