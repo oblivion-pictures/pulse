@@ -431,11 +431,20 @@ export async function sendeReaktion(
   emoji: string,
   entfernen: boolean
 ): Promise<boolean> {
+  // Absender-Bindung im Frame (Security-Fix 2026-10-24): ohne sie bliebe die
+  // Zuschreibung den Server-Metadaten ueberlassen — der Empfangsweg verwirft
+  // ungebundene Aktions-Frames (`aktionsRahmenUngebunden`).
+  const eigeneUserId = auth.user?.id ?? null;
+  if (eigeneUserId === null) return false;
   verlaufRiegelPruefen(); // s. `sendeVerschluesselt`
+  const eigeneKennung = await geraeteKennung();
   return versendeFrame(
     kanalId,
     empfaengerUserId,
-    baueReaktionsNutzlast(zielNachrichtId, emoji, entfernen)
+    baueReaktionsNutzlast(zielNachrichtId, emoji, entfernen, {
+      nutzer: eigeneUserId,
+      geraet: eigeneKennung
+    })
   );
 }
 
@@ -451,23 +460,46 @@ export async function sendeBearbeitung(
   zielNachrichtId: string,
   inhalt: string
 ): Promise<boolean> {
+  // Absender-Bindung wie bei der Reaktion (Security-Fix 2026-10-24).
+  const eigeneUserId = auth.user?.id ?? null;
+  if (eigeneUserId === null) return false;
   verlaufRiegelPruefen(); // s. `sendeVerschluesselt`
-  return versendeFrame(kanalId, empfaengerUserId, baueBearbeitungsNutzlast(zielNachrichtId, inhalt));
+  const eigeneKennung = await geraeteKennung();
+  return versendeFrame(
+    kanalId,
+    empfaengerUserId,
+    baueBearbeitungsNutzlast(zielNachrichtId, inhalt, {
+      nutzer: eigeneUserId,
+      geraet: eigeneKennung
+    })
+  );
 }
 
 /**
  * Verschickt den E2EE-Schluessel eines Anrufs (E2EE-Anrufe, 2026-09-09):
- * ein Anruf-Schluessel-Frame (`baueAnrufSchluesselNutzlast`) an alle
+ * ein Anruf-Schlüssel-Frame (`baueAnrufSchluesselNutzlast`) an alle
  * Zielgeraete der Gegenstelle UND die eigenen anderen — jedes Geraet beider
  * Konten kann so am Anruf teilnehmen. `true` nur bei Zustellung; der
  * Aufrufer (`anruf.svelte.ts`) bricht den Anruf ab, wenn sie misslingt —
  * fail-closed, kein unverschluesselter Anruf.
  */
-export function sendeAnrufSchluessel(
+export async function sendeAnrufSchluessel(
   kanalId: string,
   empfaengerUserId: string,
   anrufId: string,
   schluessel: string
 ): Promise<boolean> {
-  return versendeFrame(kanalId, empfaengerUserId, baueAnrufSchluesselNutzlast(anrufId, schluessel));
+  // Absender-Bindung wie bei der Reaktion (Security-Fix 2026-10-24); kein
+  // `verlaufRiegelPruefen` — der Frame legt nichts im Verlauf ab.
+  const eigeneUserId = auth.user?.id ?? null;
+  if (eigeneUserId === null) return false;
+  const eigeneKennung = await geraeteKennung();
+  return versendeFrame(
+    kanalId,
+    empfaengerUserId,
+    baueAnrufSchluesselNutzlast(anrufId, schluessel, {
+      nutzer: eigeneUserId,
+      geraet: eigeneKennung
+    })
+  );
 }

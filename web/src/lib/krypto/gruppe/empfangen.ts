@@ -30,7 +30,7 @@
  */
 import type { PostfachZustellung } from '../../api/postfach';
 import type { ZustellungOffenErgebnis } from '../zustellungOeffnen';
-import { leseNachrichtNutzlast, rahmenAusNutzlast } from '../nachrichtNutzlast';
+import { leseNachrichtNutzlast, rahmenAusNutzlast, aktionsRahmenUngebunden } from '../nachrichtNutzlast';
 import { baueEmpfangeneNachricht } from '../empfangeneNachricht';
 import { ART_GRUPPENNACHRICHT, leseGruppenhuelle, leseVerteilNutzlast } from './gruppenNutzlast';
 import {
@@ -150,7 +150,11 @@ export async function verteilschluesselAufnehmen(
  * traegt: die Metadaten setzt der Server frei, die Nutzlast ist gegen die
  * Megolm-Sitzung authentisiert. Erst der fehlende Wert (Sender vor der
  * Aenderung) faellt auf die Metadaten zurueck — deshalb bleibt die
- * `absender_user_id === null`-Sperre bestehen.
+ * `absender_user_id === null`-Sperre bestehen. **Ausnahme seit dem
+ * Security-Fix 2026-10-24:** Reaktions-, Bearbeitungs- und Anruf-
+ * Schluessel-Frames fallen NIE ohne Bindung durch (`aktionsRahmenUngebunden`
+ * — Begruendung dort), nur Loesch-Frames und Nachrichten behalten den
+ * Legacy-Rueckfall.
  *
  * **Aktions-Frames (Reaktion, Bearbeitung, Loeschung) reisen hier im selben
  * Megolm-Geheimtext wie Nachrichten** — sie werden durch denselben
@@ -205,6 +209,23 @@ export async function oeffneGruppennachricht(
   }
 
   const gelesen = leseNachrichtNutzlast(geoeffnet.klartext());
+  if (aktionsRahmenUngebunden(gelesen)) {
+    // Reaktions-, Bearbeitungs- und Anruf-Schluessel-Frames OHNE Absender-
+    // Bindung (Security-Fix 2026-10-24): die Zuschreibung durfte bis dahin der
+    // Server frei setzen — ein zurueckgehaltener Frame eines Mitglieds
+    // erschien unter fremdem Konto (Fremd-Bearbeitung im Namen des
+    // Original-Autors, Reaktionen unter falschem Namen). Ein toleranter
+    // Rueckfall ist nicht sauber moeglich (der Wasserstand verwirft alte
+    // Zaehler bereits als Wiedereinspiel, ueber dem Stand sind Frames ohne
+    // Felder ununterscheidbar — Begruendung in `aktionsRahmenUngebunden`),
+    // deshalb strikt verwerfen. Quittierbar, sonst versuchte jeder Abholzyklus
+    // denselben Angriff erneut. Loesch-Frames und Nachrichten behalten ihren
+    // dokumentierten Metadaten-Rueckfall.
+    console.warn('[gruppe] Aktions-Frame ohne Absender-Bindung verworfen', {
+      kanal: z.channel_id
+    });
+    return { art: 'ohneAblage', id: z.id };
+  }
   if (
     gelesen.absenderGeraet !== null &&
     gelesen.absenderGeraet !== z.absender_device_pubkey
