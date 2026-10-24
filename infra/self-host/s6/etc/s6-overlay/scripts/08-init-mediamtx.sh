@@ -158,6 +158,12 @@ authHTTPExclude:
   - action: metrics
   - action: pprof
 
+# Interne Nutzer leer pinnen — derselbe Pin wie infra/prod/mediamtx.yml: Unter
+# authMethod:http ist er heute ein No-op, verteidigt aber gegen Upstream-/
+# Fork-Divergenz, die sonst still einen any-user-Publish oeffnen koennte
+# (Security-Scan 2026-10-24: Self-Host hatte als einziger Ort den Pin nicht).
+authInternalUsers: []
+
 # Zeitangaben der Sender durchreichen (seit 2026-10-22, gemeinsame Uhr von
 # Bild und Ton). Die Senderberichte (RTCP SR) der Pulse-Sidecars tragen die
 # AUFNAHMEZEIT beider Spuren (streaming/pulse-whip/src/senderbericht.rs). Mit
