@@ -35,6 +35,7 @@ Policy:
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import defaultdict, deque
 from datetime import UTC, datetime
@@ -65,21 +66,25 @@ _READ_ACTIONS = frozenset({"read", "playback"})
 # Security-Scan 2026-09-18: der authHTTP-Endpoint authentifiziert den Aufrufer
 # nicht (Loopback ist Konvention) und jeder Request löst Redis-GETs aus —
 # spiegelbildlich zum relay-frps-plugin (Bughunt Runde 2) drosselt ein
-# In-Prozess-Schiebefenster je Quell-IP die Flut. Per-Prozess genügt: der Hook
+# In-Prozess-Schiebefenster je Quelle die Flut. Per-Prozess genügt: der Hook
 # läuft als einzelner Uvicorn-Worker neben MediaMTX.
-# Bughunt 2026-09-20: „Quell-IP" ist die des Payloads (``AuthRequest.ip``) —
+# Bughunt 2026-09-20: „Quelle" war die IP des Payloads (``AuthRequest.ip``) —
 # MediaMTX ruft den Hook immer von loopback aus, ``request.client.host`` wäre
 # für ALLE Calls gleich, und der Schieber hätte als einziges globales Budget
 # funktioniert: ein einziger Zuschauer mit WHEP-Reconnects hätte allen anderen
 # die Auth-Kapazität weggenommen (429 → MediaMTX wertet nicht-20x als Ablehnung).
-# ``ip`` füllt MediaMTX aus dem Socket und ist von außen nicht wählbar; ohne
-# den Fall-Klumpen dient loopback als Ersatzschlüssel.
+# Security-Scan 2026-10-24: hinter dem Reverse-Proxy (nginx/Caddy → MediaMTX)
+# ist genau dieselbe Klumpenbildung zurück — ``ip`` ist dann für ALLE Zuschauer
+# und Publisher DIE Proxy-IP, und ~2 req/s anonymes Feuer aufs öffentliche
+# /whep/ (kein gültiges Token nötig) kippt JEDE neue publish/read-Auth der
+# Instanz. Fachschlüssel ist deshalb das vorgelegte Credential (gehasht, s.
+# ``_rate_quelle``); die IP bleibt nur der Fallback ohne Credential.
 _HOOK_LIMIT = 120       # Requests je Fenster
 _HOOK_FENSTER_S = 60.0
 _hook_zeiten: dict[str, deque[float]] = defaultdict(deque)
 
 
-# Bughunt Runde 5: jede jemals gesehene Zuschauer-IP hinterlässt einen
+# Bughunt Runde 5: jede jemals gesehene Quelle hinterlässt einen
 # dauerhaften Dict-Eintrag (Key + leerer Deque) — langsames Leck auf
 # öffentlichen Instanzen. Derselbe Deckel wie ``gaeste._fallback_zeiten``:
 # über dem Limit fallen ALTE Keys weg; ein aktiver Zuschauer baut sein
@@ -87,7 +92,7 @@ _hook_zeiten: dict[str, deque[float]] = defaultdict(deque)
 _HOOK_MAX_QUELLEN = 4096
 
 
-def _rate_ok(ip: str) -> bool:
+def _rate_ok(quelle: str) -> bool:
     if len(_hook_zeiten) > _HOOK_MAX_QUELLEN:
         jetzt_kandidat = monotonic()
         for k in [
@@ -100,13 +105,30 @@ def _rate_ok(ip: str) -> bool:
         while len(_hook_zeiten) > _HOOK_MAX_QUELLEN:
             _hook_zeiten.pop(next(iter(_hook_zeiten)))
     jetzt = monotonic()
-    fenster = _hook_zeiten[ip]
+    fenster = _hook_zeiten[quelle]
     while fenster and jetzt - fenster[0] > _HOOK_FENSTER_S:
         fenster.popleft()
     if len(fenster) >= _HOOK_LIMIT:
         return False
     fenster.append(jetzt)
     return True
+
+
+def _rate_quelle(req: AuthRequest, request: Request) -> str:
+    """Der Fachschlüssel des Schiebefensters (Security-Scan 2026-10-24).
+
+    Das vorgelegte Credential (Publish-Streamkey, Lese-Token, auch das
+    ``?token=`` aus der WHEP-Query) — gehasht, damit das Dict weder an
+    Credential-Längen noch an den Klartext herankommt. Der Limiter läuft VOR
+    der Token-Prüfung: auch ein UNGÜLTIGES Credential füllt nur sein eigenes
+    Fach, der Angreifer drosselt sich selbst, alle anderen bleiben
+    unberührt. Erst ohne jedes Credential (anonyme Reads bei
+    ``read_token_required=false``) fällt das Fenster auf die IP zurück — der
+    alte Schlüssel, mit der Proxy-IP als Klumpen (s. Kommentar am Deckel)."""
+    credential = req.credential
+    if credential:
+        return "cred:" + hashlib.sha256(credential.encode("utf-8")).hexdigest()
+    return "ip:" + (req.ip or (request.client.host if request.client else "?"))
 
 
 class AuthRequest(BaseModel):
@@ -486,7 +508,7 @@ async def authenticate(req: AuthRequest, request: Request) -> Response:
             req.user, req.password, settings.mediamtx_api_user, settings.mediamtx_api_password
         )
         return Response(status_code=status.HTTP_200_OK)
-    if not _rate_ok(req.ip or (request.client.host if request.client else "?")):
+    if not _rate_ok(_rate_quelle(req, request)):
         raise HTTPException(status_code=429, detail="rate limited")
     redis = _get_redis(request)
     await _handle(req, redis)

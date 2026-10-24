@@ -537,6 +537,56 @@ async def test_auth_rate_limit_je_nutzer_ip(client):
         hook_routes._hook_zeiten.clear()
 
 
+@pytest.mark.asyncio
+async def test_flut_ohne_token_hinter_proxy_drosselt_nicht_den_mit_token(
+    client, redis
+):
+    """Security-Scan 2026-10-24: hinter dem Reverse-Proxy (nginx/Caddy →
+    MediaMTX) ist ``ip`` für ALLE Zuschauer DIE Proxy-IP — wer den Schieber
+    nach der IP schlüsselt, teilt allen ein einziges globales Fach aus. Ein
+    anonymer Dauerfeuerer aufs öffentliche /whep/ (kein gültiges Token nötig,
+    ~2 req/s genügen) hätte damit JEDE neue publish/read-Auth der Instanz
+    gekippt. Schlüssel ist deshalb das vorgelegte Credential; ohne eines
+    bleibt es beim IP-Fallback — und der Zuschauer MIT Token bekommt sein
+    eigenes Fach, selbst wenn der Angreifer dasselbe Fallback-Fach füllt."""
+    hook_routes._hook_zeiten.clear()
+    cid = _unique_cid()
+    token = "read-" + uuid.uuid4().hex
+    await _put_token(redis, token, channel_id=cid, user_id="1", scope="read")
+    try:
+        proxy_ip = "10.0.0.9"  # Proxy-Szenario: beide Seiten treten mit derselben IP auf
+        angriff = {**_body("read", _ch_path(cid, "1")), "ip": proxy_ip}
+        for _ in range(hook_routes._HOOK_LIMIT):
+            assert (await client.post("/", json=angriff)).status_code == 401
+        assert (await client.post("/", json=angriff)).status_code == 429
+        # Der legitime Zuschauer ist vom vollen Fallback-Fach unberührt.
+        gut = {**_body("read", _ch_path(cid, "1"), token=token), "ip": proxy_ip}
+        assert (await client.post("/", json=gut)).status_code == 200
+    finally:
+        await redis.delete(TOKEN_KEY.format(token=token))
+        hook_routes._hook_zeiten.clear()
+
+
+@pytest.mark.asyncio
+async def test_ungueltiges_token_fuellt_nur_sein_eigenes_fach(client):
+    """Der Limiter läuft VOR der Token-Prüfung — der Fachschlüssel muss also
+    auch für UNGÜLTIGE Tokens funktionieren: wer mit Müll-Tokens feuert,
+    drosselt nur sich selbst. Ein anderes (gleichfalls ungültiges) Token
+    erreicht weiterhin die Prüfung und wird sachlich mit 401 abgelehnt,
+    nicht stillhaltend mit 429 weggebremst."""
+    hook_routes._hook_zeiten.clear()
+    try:
+        boese = _body("read", _ch_path(_unique_cid(), "1"), token="boese-" + uuid.uuid4().hex)
+        for _ in range(hook_routes._HOOK_LIMIT):
+            assert (await client.post("/", json=boese)).status_code == 401
+        assert (await client.post("/", json=boese)).status_code == 429
+        # Anderes Token, selbe IP: eigenes Fach — 401 aus der Prüfung, kein 429.
+        anderes = {**boese, "token": "anderes-" + uuid.uuid4().hex}
+        assert (await client.post("/", json=anderes)).status_code == 401
+    finally:
+        hook_routes._hook_zeiten.clear()
+
+
 # ── Standplatz-Geraete (seit 2026-10-16) ────────────────────────────────────
 
 
