@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 # hineingelaufen, und drei Tests haben es gefangen.
 from dcc_chat_gateway import config as chat_config
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.mitgliedschafts_meldung import melde_mitgliedschaft
 from dcc_chat_gateway.owner_admin_log import log_owner_admin_decision
 from dcc_chat_gateway.routes.gates import enforce_ban_gate, enforce_join_gate
 from dcc_chat_gateway.session_tokens import issue_session_token
@@ -138,6 +139,14 @@ async def sitzung_aus_ticket(
             payload.community_grant_code,
             payload.public_join_handle,
         )
+        # Mitgliedschaft der Cloud melden — aber nur, wer wirklich durch das
+        # Gate kam (oben wirft bei Ablehnung) und nicht der Betreiber ist
+        # (dessen Owner-Rolle in der Cloud steht ohnehin). Erst diese
+        # Bestätigung schaltet dort den Direktpfad frei (Scan 2026-10-24,
+        # Heim-IP-Lücke). Best effort: Ein Fehlschlag hält die Sitzung nicht
+        # gefangen — das Telefonbuch heilt bei der nächsten Anmeldung.
+        if not ist_betreiber:
+            await melde_mitgliedschaft(kennung)
 
     return SitzungAus(
         session_token=issue_session_token(

@@ -205,6 +205,83 @@ def test_offer_without_membership_404(signal_env, _isolate_settings):
         assert r.status_code == 404
 
 
+def _seed_member_with_verification(
+    db_url: str, token: str, user_id: int, bestaetigt_am
+) -> None:
+    """Mitglieds-Zeile mit Rolle ``member`` und gesetzter/fehlender Cloud-
+    Bestätigung seeden (Sicherheits-Scan 2026-10-24: nur bestätigte Mitglieder
+    dürfen den Direktpfad)."""
+
+    async def _run() -> None:
+        from sqlalchemy import text
+
+        engine = create_async_engine(db_url, future=True)
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO registered_instances (id, hostname, client_id,"
+                    " client_secret, worker_id_chat, worker_id_voice, worker_id_media,"
+                    " status, origin, registered_by, relay_tunnel_token_hash)"
+                    " VALUES (:iid, 'sig.example.com', :cid, 'x', 810, 811, 812,"
+                    " 'active', 'app_host', :uid, :th)"
+                ),
+                {
+                    "iid": _INSTANCE_ID,
+                    "cid": f"ci_{secrets.token_hex(6)}",
+                    "uid": user_id,
+                    "th": hash_relay_token(token),
+                },
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO user_instance_memberships (user_id, instance_id,"
+                    " role, notification_mode, bestaetigt_am)"
+                    " VALUES (:uid, :iid, 'member', 'mentions', :best)"
+                ),
+                {"uid": user_id, "iid": _INSTANCE_ID, "best": bestaetigt_am},
+            )
+        await engine.dispose()
+
+    asyncio.run(_run())
+
+
+def test_offer_unverified_member_404(signal_env, _isolate_settings):
+    """Merkhilfe-Mitgliedschaft ohne Cloud-Bestätigung spannt keinen Draht auf
+    die interne Fläche des Hosters (Heim-IP-Lücke, Scan 2026-10-24)."""
+    with TestClient(signal_env["app"]) as client:
+        cookie, uid = _login(client)
+        _seed_member_with_verification(
+            _isolate_settings.database_url, signal_env["token"], uid, None
+        )
+        r = client.post(
+            f"/me/instances/{_INSTANCE_ID}/direct-offer",
+            json={"sdp": "v=0 OFFER"},
+            headers={"Cookie": cookie},
+        )
+        assert r.status_code == 404
+
+
+def test_offer_verified_member_passes_gate(signal_env, _isolate_settings):
+    """Bestätigte Mitgliedschaft passiert das Gate — danach entscheidet der
+    Hub (Instanz offline → 409, nicht 404)."""
+    from datetime import UTC, datetime
+
+    with TestClient(signal_env["app"]) as client:
+        cookie, uid = _login(client)
+        _seed_member_with_verification(
+            _isolate_settings.database_url,
+            signal_env["token"],
+            uid,
+            datetime.now(UTC),
+        )
+        r = client.post(
+            f"/me/instances/{_INSTANCE_ID}/direct-offer",
+            json={"sdp": "v=0 OFFER"},
+            headers={"Cookie": cookie},
+        )
+        assert r.status_code == 409
+
+
 def test_ws_offer_answer_full_roundtrip(signal_env, _isolate_settings):
     """Client-POST und Server-App-WS gleichzeitig: Offer rein, Answer zurück."""
     with TestClient(signal_env["app"]) as client:

@@ -349,3 +349,162 @@ async def test_unverbundener_server_nimmt_niemanden_auf(
     r = await client.post("/session", json={"ticket": ticket_bauer()})
     assert r.status_code == 503
     assert r.json() == {"detail": "nicht_verbunden"}
+
+
+# — Mitgliedschafts-Meldung an die Cloud (Heim-IP-Lücke, Scan 2026-10-24) ————
+# Wer das Beitritts-Gate passiert (Betreiber ausgenommen), wird der Cloud
+# gemeldet: Erst DAS schaltet dort den Telefonbuch-Lookup frei — die
+# nachweislose Selbst-Eintragung des Kontos tat das bis zum 24.10. und
+# offenbarte jedem Cloud-Konto die Heim-Adresse.
+
+
+@pytest.fixture
+def meldung_log(monkeypatch):
+    """Fängt die Cloud-Meldung ab (Muster wie ``auth_mirror``: am Funktions-
+    Namen patchbar). Gibt die Liste der gemeldeten Kennungen zurück."""
+    from dcc_chat_gateway.routes import session_ticket
+    from dcc_chat_gateway import mitgliedschafts_meldung
+
+    mitgliedschafts_meldung.zuruecksetzen()
+    rufe: list[str] = []
+
+    async def _fake(kennung: str) -> bool:
+        rufe.append(kennung)
+        return True
+
+    monkeypatch.setattr(session_ticket, "melde_mitgliedschaft", _fake)
+    return rufe
+
+
+@pytest.mark.asyncio
+async def test_beitritt_wird_der_cloud_gemeldet(
+    client, ticket_bauer, jwks_in_redis, session_factory, meldung_log
+):
+    """Wer per Einladung/öffentlicher Community hereinkommt, wird gemeldet —
+    mit der Kennung aus dem Ticket (``sub``)."""
+    from sqlalchemy import text
+
+    async with session_factory() as s:
+        await s.execute(
+            text(
+                "INSERT INTO guilds (id, name, owner_id, is_public, handle) "
+                "VALUES (778, 'Offen', 1, 1, 'offen2')"
+            )
+        )
+        await s.commit()
+
+    r = await client.post(
+        "/session",
+        json={"ticket": ticket_bauer(), "public_join_handle": "offen2"},
+    )
+    assert r.status_code == 200, r.text
+    assert meldung_log == [NUTZER]
+
+
+@pytest.mark.asyncio
+async def test_bestehendes_mitglied_wird_gemeldet(
+    client, ticket_bauer, jwks_in_redis, session_factory, meldung_log
+):
+    """Auch der Wieder-Anmelder wird gemeldet — so heilt eine verflossene oder
+    nie erfolgte Cloud-Bestätigung bei der nächsten Anmeldung."""
+    from sqlalchemy import text
+
+    async with session_factory() as s:
+        await s.execute(
+            text("INSERT INTO instance_members (user_identifier) VALUES (:k)").bindparams(
+                k=NUTZER
+            )
+        )
+        await s.commit()
+
+    r = await client.post("/session", json={"ticket": ticket_bauer()})
+    assert r.status_code == 200, r.text
+    assert meldung_log == [NUTZER]
+
+
+@pytest.mark.asyncio
+async def test_betreiber_wird_nicht_gemeldet(
+    client, ticket_bauer, jwks_in_redis, als_betreiber, meldung_log
+):
+    """Der Betreiber hat die Owner-Rolle in der Cloud — eine Meldung wäre
+    überflüssig (und dürfte die Rolle niemals antasten)."""
+    r = await client.post("/session", json={"ticket": ticket_bauer()})
+    assert r.status_code == 200, r.text
+    assert meldung_log == []
+
+
+@pytest.mark.asyncio
+async def test_abgewiesener_wird_nicht_gemeldet(
+    client, ticket_bauer, jwks_in_redis, meldung_log
+):
+    """Wer am Beitritts-Gate scheitert, wird der Cloud NICHT als Mitglied
+    bestätigt — sonst wäre die Meldung wertlos."""
+    r = await client.post("/session", json={"ticket": ticket_bauer()})
+    assert r.status_code == 403
+    assert meldung_log == []
+
+
+@pytest.mark.asyncio
+async def test_meldungsfehler_haelt_die_sitzung_nicht_gefangen(
+    client, ticket_bauer, jwks_in_redis, session_factory, monkeypatch
+):
+    """Die Cloud-Meldung ist best effort: Ihr Scheitern (Netz, Ausfall) darf
+    die Anmeldung nicht blockieren — der Nutzer hat bestanden, nur das
+    Telefonbuch hinkt nach (heilt bei der nächsten Anmeldung)."""
+    from dcc_chat_gateway import mitgliedschafts_meldung
+    from dcc_chat_gateway.routes import session_ticket
+
+    mitgliedschafts_meldung.zuruecksetzen()
+
+    async def _kaputt(kennung: str) -> bool:
+        return False
+
+    monkeypatch.setattr(session_ticket, "melde_mitgliedschaft", _kaputt)
+    from sqlalchemy import text
+
+    async with session_factory() as s:
+        await s.execute(
+            text("INSERT INTO instance_members (user_identifier) VALUES (:k)").bindparams(
+                k=NUTZER
+            )
+        )
+        await s.commit()
+
+    r = await client.post("/session", json={"ticket": ticket_bauer()})
+    assert r.status_code == 200, r.text
+
+
+@pytest.mark.asyncio
+async def test_meldung_ist_getaktet(
+    client, ticket_bauer, jwks_in_redis, session_factory, monkeypatch, _isolate_chat_settings
+):
+    """Stündliche Sitzungs-Erneuerungen melden nicht jedes Mal (die Cloud
+    prüft bei jeder Meldung Argon2) — der Takt steckt in der ECHTEN Funktion,
+    nur der HTTP-Teil ist ersetzt."""
+    from sqlalchemy import text
+
+    from dcc_chat_gateway import mitgliedschafts_meldung
+
+    mitgliedschafts_meldung.zuruecksetzen()
+    _isolate_chat_settings.pulse_cloud_client_id = "ci_test"
+    _isolate_chat_settings.pulse_cloud_client_secret = "geheim"
+    gesendet: list[str] = []
+
+    async def _sende(kennung: str) -> bool:
+        gesendet.append(kennung)
+        return True
+
+    monkeypatch.setattr(mitgliedschafts_meldung, "_sende", _sende)
+
+    async with session_factory() as s:
+        await s.execute(
+            text("INSERT INTO instance_members (user_identifier) VALUES (:k)").bindparams(
+                k=NUTZER
+            )
+        )
+        await s.commit()
+
+    for _ in range(2):
+        r = await client.post("/session", json={"ticket": ticket_bauer()})
+        assert r.status_code == 200, r.text
+    assert gesendet == [NUTZER]

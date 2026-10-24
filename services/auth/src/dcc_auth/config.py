@@ -184,8 +184,18 @@ class Settings(BaseSettings):
     rate_limit_directory_heartbeat: str = "10/minute"
     rate_limit_directory_lookup: str = "30/minute"
     rate_limit_directory_offer: str = "20/minute"
+    # Mitgliedschafts-Bestätigung der Server-App (Scan 2026-10-24): kommt je
+    # Mitglied spätestens alle paar Stunden (Takt im Gateway) — 60/h reichen
+    # selbst für einen Beitritts-Sturm nach einem Stream-Aufruf.
+    rate_limit_directory_mitgliedschaft: str = "60/hour"
     # Eintrag gilt als "online", solange der letzte Heartbeat jünger ist.
     directory_online_threshold_seconds: int = 300
+    # Wie lange die vom Server bestätigte Mitgliedschaft den Telefonbuch-Lookup
+    # freihält (Scan 2026-10-24, Heim-IP-Lücke): Jede Anmeldung beim Server
+    # frischt die Bestätigung auf, ein Rauswurf/Bann lässt sie verfallen. Sieben
+    # Tage: wer länger nicht auf dem Server war, muss sich neu anmelden — das
+    # tut die App beim nächsten Öffnen ohnehin.
+    directory_membership_gueltigkeit_tage: int = 7
     # 2 Stunden (vorher 20 Min). Der Wert muss eine ganze Installation ueberdauern,
     # nicht nur das Einfuegen des Befehls: Docker nachinstallieren, das
     # allinone-Image ziehen, Proxy/DNS richten, ACME-Zertifikat holen — und
@@ -363,6 +373,7 @@ class Settings(BaseSettings):
         "rate_limit_directory_heartbeat",
         "rate_limit_directory_lookup",
         "rate_limit_directory_offer",
+        "rate_limit_directory_mitgliedschaft",
         "rate_limit_registry_token",
         "rate_limit_per_account",
         "rate_limit_recovery_package",
