@@ -946,6 +946,37 @@ async def test_claim_budget_bremst_das_leerziehen_fremder_vorraete(
 
 
 @pytest.mark.asyncio
+async def test_claim_ist_gedrosselt(client, cloud_mode, _auth_signer):
+    """Security-Scan 2026-10-24: ``POST /keys/claim`` fragt bis 64 Ziele je
+    Aufruf ab (je Ziel Bundel-SELECTs, je Geraet OTK-SELECT+DELETE) und war
+    ungedrosselt wiederholbar. 30 Abrufe je Minute und Konto; der 31. Versuch
+    bekommt 429, ein anderes Konto bleibt unberührt."""
+    token_a, uid_a = _register(_auth_signer)
+    token_b, uid_b = _register(_auth_signer)
+
+    codes = [
+        (
+            await client.post(
+                "/keys/claim",
+                json={"user_ids": [str(uid_a)]},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+        ).status_code
+        for _ in range(31)
+    ]
+    assert codes[:30] == [200] * 30, codes
+    assert codes[30] == 429, codes
+
+    # Das andere Konto hat sein eigenes Fach.
+    r = await client.post(
+        "/keys/claim",
+        json={"user_ids": [str(uid_b)]},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_claim_budget_gilt_nicht_fuer_die_eigenen_geraete(
     client, session_factory, cloud_mode, access_token
 ):

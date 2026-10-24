@@ -287,6 +287,40 @@ async def test_wrap_nur_fuer_teilnehmer(client, _auth_signer, friend_pair):
 
 
 @pytest.mark.asyncio
+async def test_einliefern_ist_gedrosselt(client, _auth_signer, friend_pair):
+    """Security-Scan 2026-10-24: ``POST /archiv`` nimmt bis 2000 Zeilen und
+    100 Wraps JE ANFRAGE an — ohne Bremse der billigste DB-Churn-Generator
+    des Dienstes (wie die Postfach-Bremse nach demselben Muster). 30
+    Einlieferungen je Minute und Konto; der 31. Versuch bekommt 429, ein
+    anderes Konto bleibt unberührt."""
+    t_a, uid_a = await _register(_auth_signer)
+    _, uid_b = await _register(_auth_signer)
+    dm_a = await _dm_zwischen(client, _auth_signer, friend_pair, uid_a, uid_b)
+    t_c, uid_c = await _register(_auth_signer)
+    _, uid_d = await _register(_auth_signer)
+    dm_c = await _dm_zwischen(client, _auth_signer, friend_pair, uid_c, uid_d)
+
+    rumpf_a = {
+        "zeilen": [{"id": 1, "channel_id": int(dm_a), "nutzlast_b64": _b64(b"d" * 60)}],
+        "wraps": [],
+    }
+    codes = [
+        (await client.post("/archiv", json=rumpf_a, headers=make_auth_header(t_a))).status_code
+        for _ in range(31)
+    ]
+    assert codes[:30] == [204] * 30, codes
+    assert codes[30] == 429, codes
+
+    # Ein anderes Konto hat sein eigenes Fach.
+    rumpf_c = {
+        "zeilen": [{"id": 1, "channel_id": int(dm_c), "nutzlast_b64": _b64(b"c" * 60)}],
+        "wraps": [],
+    }
+    r = await client.post("/archiv", json=rumpf_c, headers=make_auth_header(t_c))
+    assert r.status_code == 204
+
+
+@pytest.mark.asyncio
 async def test_pubkeys_nur_fuer_dm_partner(client, _auth_signer, friend_pair):
     t_a, uid_a = await _register(_auth_signer)
     _, uid_b = await _register(_auth_signer)
