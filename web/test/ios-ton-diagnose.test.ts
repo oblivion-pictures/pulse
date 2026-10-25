@@ -85,6 +85,27 @@ test('Anlass: genau ein Bericht, der Rest hängt sich an; normaler Verlauf sende
   d.berichtSenderSetzen(null);
 });
 
+test('Beitritt ohne Mikrofon sammelt 60 s — die Messzeilen der Hülle kommen mit', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 70_000_000_000 });
+  const gesendet: { anlaesse: string[]; zeilen: { art: string }[] }[] = [];
+  d.berichtSenderSetzen(async (b) => {
+    gesendet.push(b);
+    return true;
+  });
+  assert.equal(d.sammelMs('mikro_tot'), d.SAMMEL_MS);
+  d.iosTonMelden('beitritt_ohne_mikro');
+  t.mock.timers.tick(d.SAMMEL_MS + 1);
+  await Promise.resolve();
+  assert.equal(gesendet.length, 0, 'nach 30 s noch offen');
+  d.iosTonMelden('messung', { seitMs: 55_000 });
+  t.mock.timers.tick(d.SAMMEL_MS_OHNE_MIKRO - d.SAMMEL_MS);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(gesendet.length, 1);
+  assert.ok(gesendet[0].zeilen.some((z) => z.art === 'messung'));
+  d.berichtSenderSetzen(null);
+});
+
 test('T4: der Bericht bleibt unter 60 KiB, die ältesten Zeilen gehen zuerst', () => {
   const zeilen = Array.from({ length: 400 }, (_, i) => ({ i, f: 'x'.repeat(300) }));
   const text = d.berichtKappen(zeilen, (rest, verworfen) => JSON.stringify({ rest, verworfen }));

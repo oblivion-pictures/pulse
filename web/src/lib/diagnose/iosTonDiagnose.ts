@@ -68,6 +68,13 @@ export const ANLAESSE: ReadonlySet<string> = new Set([
 ]);
 
 export const SAMMEL_MS = 30_000;
+/**
+ * Ein Beitritt ohne Mikrofon sammelt doppelt so lang: die Messzeilen der Hülle
+ * (`SpracheRaumMessung.swift`, Diagnose-Build CarPlay 2026-10-25) laufen bis
+ * 55 s nach dem Beitritt, und die Verbindungsabbrüche im Auto kamen erst
+ * 20–50 s danach — mit 30 s fehlte die zweite Hälfte im Bericht.
+ */
+export const SAMMEL_MS_OHNE_MIKRO = 60_000;
 export const VORLAUF_MS = 120_000;
 export const ABSTAND_MS = 10 * 60_000;
 export const JE_TAG = 5;
@@ -77,6 +84,11 @@ export const BERICHT_MAX_BYTES = 60 * 1024;
 /** Ein nachgereichter Anlass, der älter ist, erzählt nichts Brauchbares mehr. */
 export const OFFEN_MAX_ALTER_MS = TAG_MS;
 const LADE_KEY = 'pulse.diag.ladezaehler';
+
+/** Wie lange ein Bericht nach seinem ersten Anlass sammelt. */
+export function sammelMs(art: string): number {
+  return art === 'beitritt_ohne_mikro' ? SAMMEL_MS_OHNE_MIKRO : SAMMEL_MS;
+}
 
 /**
  * Darf zu einem Anlass ein Bericht entstehen? `offen`: einer sammelt gerade —
@@ -312,7 +324,7 @@ function anlass(art: string, jetzt: number): void {
   }
   offen[gruppe] = { start: jetzt, anlaesse: new Set([art]) };
   offenMerken(gruppe);
-  setTimeout(() => void abschicken(gruppe), SAMMEL_MS);
+  setTimeout(() => void abschicken(gruppe), sammelMs(art));
 }
 
 async function abschicken(gruppe: Gruppe): Promise<void> {

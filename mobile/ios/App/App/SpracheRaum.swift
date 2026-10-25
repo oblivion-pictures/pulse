@@ -186,7 +186,8 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // (Bughunt 2026-10-11, E1).
         taub = taubStart
         await hoerwunschSetzen(je: lautstaerken, gesamt: gesamt)
-        let r = Room(delegate: self, roomOptions: Self.raumOptionen())
+        TonMessung.geteilt.beginnen()
+        let r = Room(delegate: self, roomOptions: Self.raumOptionen(statistik: Self.statistikNoetig()))
         sitzung += 1
         raum = r
         self.kanalId = kanalId
@@ -224,6 +225,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         mikrofonFehler = nil
         mikroWunsch = !stumm
         var fehlerFelder: [String: Any] = [:]
+        let mikroAb = TonMessung.geteilt.seitMs()
         do {
             try await r.localParticipant.setMicrophone(enabled: true)
             Self.agcAus()
@@ -237,16 +239,21 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
             NSLog("[PulseSprache] Mikrofon beim Beitritt gescheitert: %@",
                   error.localizedDescription)
         }
+        // Wann das Mikrofon begann und endete, ab Beitritt: trennt die Fristen
+        // des SDK (`SpracheRaumMessung.swift`).
+        let mikroZeit: [String: Any] = ["mikroAbMs": mikroAb, "mikroBisMs": TonMessung.geteilt.seitMs()]
         try await nochAktuell(r)
         // Ohne Erlaubnis ist ein fehlendes Mikrofon die Wahl des Nutzers, kein
         // Ausfall — nur der zweite Fall ist ein Anlass für den Bericht.
         let art = mikrofonFehler == nil ? "beitritt"
             : (Anrufverwaltung.mikrofonErlaubt() ? "beitritt_ohne_mikro" : "beitritt_ohne_erlaubnis")
-        diagMelden(art, tonBeleg().merging(["stumm": stumm]) { $1 }.merging(fehlerFelder) { $1 })
+        diagMelden(art, tonBeleg().merging(["stumm": stumm]) { $1 }.merging(fehlerFelder) { $1 }
+            .merging(mikroZeit) { $1 }.merging(TonMessung.geteilt.felder()) { $1 })
         await funkHqAbgleichen("beitritt")
         let vorn = await MainActor.run { UIApplication.shared.applicationState != .background }
         wache.beginnen(vordergrund: vorn)
         if mikrofonFehler != nil { mikrofonNachholen(sitzung: sitzung) }
+        messReiheBeginnen(sitzung: sitzung)
         schickeTeilnehmer()
         schickeEigenen()
         await MainActor.run { SpracheBildImBild.geteilt.raumDa(r) }
@@ -271,6 +278,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         raum = nil
         // Was das Nachholen unter CarPlay verstellt hat, gilt nur für diesen Raum.
         Self.carPlayZuruecksetzen()
+        TonMessung.geteilt.beenden()
         SpracheFunkHq.geteilt.raumWeg()
         StreamTonVerwaltung.geteilt.echoAnstossen()
         wache.beenden()

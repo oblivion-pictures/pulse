@@ -62,6 +62,7 @@
 		A1B2C3D4E5F6071800000199 /* AnrufPluginRaum.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607180000019A /* AnrufPluginRaum.swift */; };
 		A1B2C3D4E5F607180000019B /* SpracheRaumStumm.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607180000019C /* SpracheRaumStumm.swift */; };
 		A1B2C3D4E5F60718000002AC /* SpracheRaumMikroNachholen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000002AB /* SpracheRaumMikroNachholen.swift */; };
+		A1B2C3D4E5F60718000002AE /* SpracheRaumMessung.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000002AD /* SpracheRaumMessung.swift */; };
 		A1B2C3D4E5F60718000001DD /* SpracheMikroWacheRegeln.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001DE /* SpracheMikroWacheRegeln.swift */; };
 		A1B2C3D4E5F60718000001DB /* SpracheRaumKamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001DC /* SpracheRaumKamera.swift */; };
 		A1B2C3D4E5F60718000001D9 /* SpracheRaumNeustart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718000001DA /* SpracheRaumNeustart.swift */; };
@@ -176,6 +177,7 @@
 		A1B2C3D4E5F607180000019A /* AnrufPluginRaum.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnrufPluginRaum.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F607180000019C /* SpracheRaumStumm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheRaumStumm.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000002AB /* SpracheRaumMikroNachholen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheRaumMikroNachholen.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718000002AD /* SpracheRaumMessung.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheRaumMessung.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000001DE /* SpracheMikroWacheRegeln.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheMikroWacheRegeln.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000001DC /* SpracheRaumKamera.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheRaumKamera.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718000001DA /* SpracheRaumNeustart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpracheRaumNeustart.swift; sourceTree = "<group>"; };
@@ -353,6 +355,7 @@
 				A1B2C3D4E5F607180000019A /* AnrufPluginRaum.swift */,
 				A1B2C3D4E5F607180000019C /* SpracheRaumStumm.swift */,
 				A1B2C3D4E5F60718000002AB /* SpracheRaumMikroNachholen.swift */,
+				A1B2C3D4E5F60718000002AD /* SpracheRaumMessung.swift */,
 				A1B2C3D4E5F60718000001DE /* SpracheMikroWacheRegeln.swift */,
 				A1B2C3D4E5F60718000001DC /* SpracheRaumKamera.swift */,
 				A1B2C3D4E5F60718000001DA /* SpracheRaumNeustart.swift */,
@@ -691,6 +694,7 @@
 				A1B2C3D4E5F6071800000199 /* AnrufPluginRaum.swift in Sources */,
 				A1B2C3D4E5F607180000019B /* SpracheRaumStumm.swift in Sources */,
 				A1B2C3D4E5F60718000002AC /* SpracheRaumMikroNachholen.swift in Sources */,
+				A1B2C3D4E5F60718000002AE /* SpracheRaumMessung.swift in Sources */,
 				A1B2C3D4E5F60718000001DD /* SpracheMikroWacheRegeln.swift in Sources */,
 				A1B2C3D4E5F60718000001DB /* SpracheRaumKamera.swift in Sources */,
 				A1B2C3D4E5F60718000001D9 /* SpracheRaumNeustart.swift in Sources */,
