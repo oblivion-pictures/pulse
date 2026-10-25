@@ -269,6 +269,8 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     private func raumLoesen(_ r: Room) {
         guard raum === r else { return }
         raum = nil
+        // Was das Nachholen unter CarPlay verstellt hat, gilt nur für diesen Raum.
+        Self.carPlayZuruecksetzen()
         SpracheFunkHq.geteilt.raumWeg()
         StreamTonVerwaltung.geteilt.echoAnstossen()
         wache.beenden()
