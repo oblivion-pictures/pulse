@@ -99,8 +99,8 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     var mikroWunsch = true
     /// Warum das Mikrofon beim Beitritt nicht hochkam, falls es das nicht tat.
     /// Reist im Zustand mit, statt den Beitritt zu werfen — Begründung in
-    /// `beitreten`.
-    private(set) var mikrofonFehler: String?
+    /// `beitreten`. Geleert vom Nachholen (`SpracheRaumMikroNachholen.swift`).
+    var mikrofonFehler: String?
     /// Griff auf den Routen-Beobachter. **Nur in `SpracheRaumSession.swift`
     /// anfassen** — `private` ginge nicht, Swift rechnet es datei-weit.
     var sessionBeobachter: NSObjectProtocol?
@@ -223,6 +223,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // der Preis ist der Absatz darüber: ohne Aufnahme keine Hörmuschel.
         mikrofonFehler = nil
         mikroWunsch = !stumm
+        var fehlerFelder: [String: Any] = [:]
         do {
             try await r.localParticipant.setMicrophone(enabled: true)
             Self.agcAus()
@@ -232,6 +233,7 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
             if stumm || anrufPausiert { try await Self.stummSchalten(true, in: r) }
         } catch {
             mikrofonFehler = error.localizedDescription
+            fehlerFelder = Self.fehlerFelder(error)
             NSLog("[PulseSprache] Mikrofon beim Beitritt gescheitert: %@",
                   error.localizedDescription)
         }
@@ -240,10 +242,11 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // Ausfall — nur der zweite Fall ist ein Anlass für den Bericht.
         let art = mikrofonFehler == nil ? "beitritt"
             : (Anrufverwaltung.mikrofonErlaubt() ? "beitritt_ohne_mikro" : "beitritt_ohne_erlaubnis")
-        diagMelden(art, tonBeleg().merging(["stumm": stumm]) { $1 })
+        diagMelden(art, tonBeleg().merging(["stumm": stumm]) { $1 }.merging(fehlerFelder) { $1 })
         await funkHqAbgleichen("beitritt")
         let vorn = await MainActor.run { UIApplication.shared.applicationState != .background }
         wache.beginnen(vordergrund: vorn)
+        if mikrofonFehler != nil { mikrofonNachholen(sitzung: sitzung) }
         schickeTeilnehmer()
         schickeEigenen()
         await MainActor.run { SpracheBildImBild.geteilt.raumDa(r) }
@@ -328,26 +331,5 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // Schliessen, damit die Oberfläche keinen Griff „zurück in den Kanal"
         // anbietet, wenn es keinen Kanal mehr gibt.
         Task { @MainActor in SpracheAnsichtHalter.geteilt.schliessen(melden: true) }
-    }
-
-    /// Lautsprecher oder Hörmuschel — der Schalter, um den es beim ganzen
-    /// Umbau geht (`isSpeakerOutputPreferred`, Doc-Kommentar des SDK: „Set to
-    /// `false` if the receiver is preferred instead of the speaker").
-    ///
-    /// **Er wirkt NICHT, solange ein Anruf die Session führt** — führt CallKit,
-    /// ist die Konfiguration des SDK abgeschaltet und die Hülle stellt die
-    /// Route des Anrufs selbst; der Wunsch hier bleibt liegen und gilt nach
-    /// dem Anruf. Läuft der Anruf ohne CallKit, teilen sich beide den Schalter
-    /// des SDK, und der Wunsch wird nur gemerkt (`AnrufSitzung.swift`). Die
-    /// Route wird hier NICHT gemeldet: sie wechselt asynchron (8–17 ms, am
-    /// Gerät gemessen), ein Lesen hier läse den alten Wert. Die Wahrheit
-    /// schickt der Routen-Beobachter.
-    func ausgabe(_ weg: String) {
-        let lautsprecher = weg != "hoermuschel"
-        if !Anrufverwaltung.geteilt.kanalWunschMerken(lautsprecher: lautsprecher) {
-            AudioManager.shared.isSpeakerOutputPreferred = lautsprecher
-        }
-        NSLog("[PulseSprache] Ausgabe '%@' gewuenscht", weg)
-        schickeEigenen()
     }
 }

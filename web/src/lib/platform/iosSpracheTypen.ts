@@ -114,6 +114,9 @@ export interface NativerEigenerZustand {
   /** Wie in `NativerZustand` (B3). */
   mikroWunsch?: boolean;
   taubWunsch?: boolean;
+  /** Wie in `NativerZustand`; `null`, sobald die Hülle ein beim Beitritt
+   *  gescheitertes Mikrofon nachgeholt hat (`SpracheRaumMikroNachholen.swift`). */
+  mikrofonFehler?: string | null;
 }
 
 /** Was die Oberfläche hören will — der Befehl `lautstaerken`. */

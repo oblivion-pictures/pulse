@@ -428,6 +428,11 @@ export class NativerRaum {
     if (e.kamera !== undefined) w.isCameraOn = e.kamera;
     if (e.kameraVorn !== undefined) w.cameraFacing = e.kameraVorn ? 'user' : 'environment';
     if (e.taub !== undefined) w.deafened = e.taub;
+    // Mikrofon nachgeholt (CarPlay-Befund 2026-10-25): die Meldung vom Beitritt
+    // gilt nicht mehr. Eine ältere Hülle schickt das Feld nicht (`undefined`).
+    if (e.mikrofonFehler === null && w.error === m.livekit_microphone_access_failed()) {
+      w.error = null;
+    }
     this.#pause = pausenWunsch(e);
     // Auch ein geänderter Wunsch während der Pause muss in den Eintrag fürs
     // Wiederaufnehmen — der wirksame Stand ändert sich dabei nicht (B3).
