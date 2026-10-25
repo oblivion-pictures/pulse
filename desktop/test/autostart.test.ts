@@ -24,7 +24,7 @@ test('autostartDesktopEntry: XDG-Pflichtfelder + X-Flatpak nur im Flatpak', () =
 
 function linuxDeps(home: string, over: Partial<AutostartDeps> = {}): AutostartDeps {
   return {
-    platform: 'linux', flatpak: false, execPath: '/usr/bin/pulse-server', home,
+    platform: 'linux', packaged: true, flatpak: false, execPath: '/usr/bin/pulse-server', home,
     setLoginItems: () => { throw new Error('nicht auf Linux'); },
     ...over,
   };
@@ -41,6 +41,38 @@ test('applyAutostart linux: enabled schreibt .desktop, disabled entfernt sie', (
     assert.equal(existsSync(file), false);
     // disabled ohne existierende Datei bleibt ok (idempotent).
     assert.deepEqual(applyAutostart(false, linuxDeps(home)), { ok: true });
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('applyAutostart ungepackt (pnpm dev): fasst den OS-Zustand nicht an → ok:false', () => {
+  const home = mkdtempSync(join(tmpdir(), 'pulse-autostart-'));
+  try {
+    const file = join(home, '.config', 'autostart', 'pulse-server.desktop');
+    assert.deepEqual(applyAutostart(true, linuxDeps(home, { packaged: false })), { ok: false });
+    assert.equal(existsSync(file), false);
+    // Ein Eintrag der installierten App bleibt auch beim Abschalten stehen.
+    assert.deepEqual(applyAutostart(true, linuxDeps(home)), { ok: true });
+    assert.deepEqual(applyAutostart(false, linuxDeps(home, { packaged: false })), { ok: false });
+    assert.equal(existsSync(file), true);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+  const calls: boolean[] = [];
+  const win = linuxDeps('/nope', { platform: 'win32', packaged: false, setLoginItems: (o) => { calls.push(o); } });
+  assert.deepEqual(applyAutostart(true, win), { ok: false });
+  assert.deepEqual(calls, []);
+});
+
+test('applyAutostart Flatpak: isPackaged=false sperrt nicht (Exec = flatpak run)', () => {
+  const home = mkdtempSync(join(tmpdir(), 'pulse-autostart-'));
+  try {
+    const file = join(home, '.config', 'autostart', 'pulse-server.desktop');
+    assert.deepEqual(applyAutostart(true, linuxDeps(home, { packaged: false, flatpak: true })), { ok: true });
+    assert.match(readFileSync(file, 'utf8'), new RegExp(`^Exec=flatpak run ${FLATPAK_SERVER_APP_ID} --autostarted$`, 'm'));
+    assert.deepEqual(applyAutostart(false, linuxDeps(home, { packaged: false, flatpak: true })), { ok: true });
+    assert.equal(existsSync(file), false);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

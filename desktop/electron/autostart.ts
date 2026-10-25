@@ -47,6 +47,12 @@ export function autostartDesktopEntry(execLine: string, flatpak: boolean): strin
 
 export interface AutostartDeps {
   platform: NodeJS.Platform;
+  /** app.isPackaged. Ungepackt (`pnpm dev`) ist execPath der nackte Electron-
+   *  Binary aus node_modules: ein Eintrag damit startet beim Anmelden nur
+   *  Electrons Default-App („electron path-to-app“) statt Pulse. Auch das
+   *  Flatpak meldet false (es startet /app/electron/electron mit Verzeichnis),
+   *  braucht execPath aber nicht — `flatpak` hebt die Sperre deshalb auf. */
+  packaged: boolean;
   /** Win/Mac: app.setLoginItemSettings({ openAtLogin }) — injiziert. */
   setLoginItems(openAtLogin: boolean): void;
   flatpak: boolean;
@@ -57,6 +63,11 @@ export interface AutostartDeps {
 /** OS-Autostart setzen/entfernen. Fehler → ok:false (UI zeigt den Schalter
  *  dann als nicht übernommen), nie ein throw. */
 export function applyAutostart(enabled: boolean, deps: AutostartDeps): { ok: boolean } {
+  // Ungepackt (außer Flatpak) kein OS-Zustand, auch kein Entfernen: die
+  // Linux-Datei teilt ihren Namen mit der installierten App, ein Dev-Lauf
+  // löschte sonst deren Eintrag. Win/Mac registrieren ungepackt ebenso
+  // Electron statt Pulse (aus der Electron-Doku gefolgert, nicht gemessen).
+  if (!deps.packaged && !deps.flatpak) return { ok: false };
   try {
     if (deps.platform === 'win32' || deps.platform === 'darwin') {
       deps.setLoginItems(enabled);

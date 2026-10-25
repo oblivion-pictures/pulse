@@ -872,6 +872,7 @@ function wireHost(getWin: () => Electron.BrowserWindow | null): void {
   const osApplyAutostart = (enabled: boolean): { ok: boolean } =>
     applyAutostart(enabled, {
       platform: process.platform,
+      packaged: app.isPackaged,
       // `args` wirkt nur unter Windows (Run-Key-Zeile) — ohne den Schalter
       // erkannte die App dort nie, dass sie per Autostart kam.
       setLoginItems: (openAtLogin) =>
