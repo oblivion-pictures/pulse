@@ -35,3 +35,18 @@ test('die Hülle holt nach einem Beitritt ohne Mikrofon nach und meldet den Fehl
   const projekt = readFileSync(new URL('../../mobile/ios/App/App.xcodeproj/project.pbxproj', import.meta.url), 'utf8');
   assert.match(projekt, /SpracheRaumMikroNachholen\.swift in Sources \*\/,/);
 });
+
+test('zweiter Bericht: übrige Spur vor dem Neuversuch abmelden, CarPlay-Varianten beim Verlassen zurück', () => {
+  const nachholen = huelle('SpracheRaumMikroNachholen.swift');
+  // Sonst „Server state mismatch" (Build 24.1, Versuch 1).
+  assert.match(
+    nachholen,
+    /try await r\.localParticipant\.unpublish\(publication: pub\)\s*\}\s*try await r\.localParticipant\.setMicrophone\(enabled: true\)/
+  );
+  assert.match(nachholen, /Self\.carPlayAktiv\(\) \? Self\.carPlayVarianteSetzen\(stufe: versuch\) : "gleich"/);
+  for (const variante of ['"sprachchat"', '"sprachchat_ohne_vpio"', '"sprachchat_ohne_vpio_iphone_mikro"']) {
+    assert.ok(nachholen.includes(`return ${variante}`), variante);
+  }
+  // Nichts bleibt über das Auto hinaus verstellt.
+  assert.match(huelle('SpracheRaum.swift'), /raum = nil\n[^\n]*\n\s*Self\.carPlayZuruecksetzen\(\)/);
+});
