@@ -23,7 +23,7 @@ test('L2: der native „Volle Tonqualität"-Weg ist entfernt, die Software-Verar
     /static let softwareVerarbeitung = AudioProcessingOptions\(\s*echoCancellation: true, autoGainControl: false, noiseSuppression: true,\s*echoCancellationMode: \.software, noiseSuppressionMode: \.software\)/
   );
   assert.match(swift('SpracheFunkHqAbgleich.swift'), /try spur\.setAudioProcessingOptions\(software \? Self\.softwareVerarbeitung : Self\.vpioVerarbeitung\)/);
-  assert.match(swift('SpracheRaum.swift'), /let r = Room\(delegate: self, roomOptions: Self\.raumOptionen\(\)\)/);
+  assert.match(swift('SpracheRaum.swift'), /let r = Room\(delegate: self, roomOptions: Self\.raumOptionen\(statistik: Self\.statistikNoetig\(\)\)\)/);
 });
 
 test('L3: Beitritt meldet vpio, aec und kbps', () => {

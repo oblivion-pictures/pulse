@@ -26,9 +26,12 @@ extension SpracheRaum {
     /// Bild-in-Bild-Fenster (`SpracheBildImBildInhalt`, eine `SwiftUIVideoView`)
     /// melden sich also richtig an; ohne jede Ansicht pausiert das Video, und
     /// beim Öffnen kommt es nach einem Takt des SDK und einem Vollbild zurück.
-    static func raumOptionen() -> RoomOptions {
+    /// `statistik`: Statistik der Empfangsspuren erheben (`statistikNoetig`,
+    /// Messung des Diagnose-Builds in `SpracheRaumMessung.swift`).
+    static func raumOptionen(statistik: Bool) -> RoomOptions {
         RoomOptions(defaultAudioCaptureOptions: aufnahmeOptionen,
-                    adaptiveStream: true, dynacast: true)
+                    adaptiveStream: true, dynacast: true,
+                    reportRemoteTrackStatistics: statistik)
     }
 
     /// **Automatische Mikrofon-Regelung (AGC) AUS, Echo- und Rauschunterdrückung

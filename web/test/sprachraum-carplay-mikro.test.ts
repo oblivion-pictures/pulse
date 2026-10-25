@@ -50,3 +50,22 @@ test('zweiter Bericht: übrige Spur vor dem Neuversuch abmelden, CarPlay-Variant
   // Nichts bleibt über das Auto hinaus verstellt.
   assert.match(huelle('SpracheRaum.swift'), /raum = nil\n[^\n]*\n\s*Self\.carPlayZuruecksetzen\(\)/);
 });
+
+test('Diagnose-Build: Messung beginnt vor dem Verbinden, endet beim Verlassen, Wechsel werden gemeldet', () => {
+  const raum = huelle('SpracheRaum.swift');
+  assert.match(raum, /TonMessung\.geteilt\.beginnen\(\)\n\s*let r = Room\(delegate: self, roomOptions: Self\.raumOptionen\(statistik: Self\.statistikNoetig\(\)\)\)/);
+  assert.match(raum, /\.merging\(mikroZeit\) \{ \$1 \}\.merging\(TonMessung\.geteilt\.felder\(\)\) \{ \$1 \}/);
+  assert.match(raum, /messReiheBeginnen\(sitzung: sitzung\)/);
+  assert.match(raum, /private func raumLoesen[\s\S]*?TonMessung\.geteilt\.beenden\(\)[\s\S]*?\n {4}\}/);
+  assert.match(huelle('SpracheRaumNeustart.swift'), /reportRemoteTrackStatistics: statistik/);
+  const delegat = huelle('SpracheRaumDelegate.swift');
+  assert.match(delegat, /diagMelden\("verbindung_wechsel", felder\)/);
+  assert.match(delegat, /diagMelden\("getrennt", felder\)/);
+  const messung = huelle('SpracheRaumMessung.swift');
+  assert.match(messung, /AudioManager\.shared\.add\(localAudioRenderer: lokal\)/);
+  assert.match(messung, /AudioManager\.shared\.remove\(remoteAudioRenderer: fern\)/);
+  // Nie die Adresse eines Kandidaten, nur ihre Familie.
+  assert.doesNotMatch(messung, /"[a-zA-Z]+": l\?\.address[,\n]/);
+  const projekt = readFileSync(new URL('../../mobile/ios/App/App.xcodeproj/project.pbxproj', import.meta.url), 'utf8');
+  assert.match(projekt, /SpracheRaumMessung\.swift in Sources \*\/,/);
+});

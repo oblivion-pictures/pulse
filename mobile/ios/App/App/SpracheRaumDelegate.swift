@@ -28,6 +28,13 @@ extension SpracheRaum: RoomDelegate {
         NSLog("[PulseSprache] Verbindung %@ → %@", "\(alt)", "\(state)")
         guard room === raum else { return }
         melden("verbindung", ["zustand": Self.verbindungsName(state)])
+        // Messung (`SpracheRaumMessung.swift`): wann die Verbindung wackelt,
+        // in Millisekunden seit dem Beitritt. Über eine Aufgabe, weil
+        // `diagMelden` blockierend aus WebRTC liest — nie vom Faden des SDK.
+        let felder: [String: Any] = ["von": Self.verbindungsName(alt),
+                                     "nach": Self.verbindungsName(state),
+                                     "seitMs": TonMessung.geteilt.seitMs()]
+        Task { diagMelden("verbindung_wechsel", felder) }
         if state == .connected { schickeTeilnehmer() }
     }
 
@@ -40,6 +47,9 @@ extension SpracheRaum: RoomDelegate {
         raumAbgerissen(room)
         melden("verbindung", ["zustand": "disconnected",
                               "fehler": error?.localizedDescription ?? NSNull()])
+        var felder: [String: Any] = ["seitMs": TonMessung.geteilt.seitMs()]
+        if let error { felder.merge(Self.fehlerFelder(error)) { $1 } }
+        Task { [felder] in diagMelden("getrennt", felder) }
     }
 
     func room(_ room: Room, didFailToConnectWithError error: LiveKitError?) {
