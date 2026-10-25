@@ -3,14 +3,16 @@ import LiveKit
 import UIKit
 
 /// Was die Audio-Session der Hülle tut, während der Raum steht — beobachtet,
-/// nicht gesteuert.
+/// nicht gesteuert; einzige Ausnahme ist der Ausgabe-Schalter (`ausgabe`),
+/// der zur Route gehört, die der Routen-Beobachter meldet.
 ///
-/// **Warum eine eigene Datei.** Hier steht nichts, was etwas bewirkt: nur
-/// Beobachter und ihre Begründungen — was sie anstossen, entscheidet der
-/// Mikrofon-Wächter (`SpracheMikroWache.swift`). Zusammen mit der Steuerung lag
-/// `SpracheRaum.swift` über der Grössen-Policy (`PLAN.md` §12.1). Reine
-/// Verschiebung, Verhalten unverändert; `sessionBeobachter` liegt weiter am
-/// Typ, weil eine Erweiterung keine gespeicherte Eigenschaft tragen kann.
+/// **Warum eine eigene Datei.** Hier steht, ausser dem Schalter, nichts, was
+/// etwas bewirkt: nur Beobachter und ihre Begründungen — was sie anstossen,
+/// entscheidet der Mikrofon-Wächter (`SpracheMikroWache.swift`). Zusammen mit
+/// der Steuerung lag `SpracheRaum.swift` über der Grössen-Policy (`PLAN.md`
+/// §12.1). Reine Verschiebung, Verhalten unverändert; `sessionBeobachter`
+/// liegt weiter am Typ, weil eine Erweiterung keine gespeicherte Eigenschaft
+/// tragen kann.
 extension SpracheRaum {
     /// Horcht auf Routenwechsel UND Unterbrechungen der Session — einmal fuers
     /// ganze Leben des Singletons, nicht je Beitritt (beide haengen am
@@ -105,5 +107,26 @@ extension SpracheRaum {
         ) { [weak self] _ in
             self?.wache.vordergrund(false)
         }
+    }
+
+    /// Lautsprecher oder Hörmuschel — der Schalter, um den es beim ganzen
+    /// Umbau geht (`isSpeakerOutputPreferred`, Doc-Kommentar des SDK: „Set to
+    /// `false` if the receiver is preferred instead of the speaker").
+    ///
+    /// **Er wirkt NICHT, solange ein Anruf die Session führt** — führt CallKit,
+    /// ist die Konfiguration des SDK abgeschaltet und die Hülle stellt die
+    /// Route des Anrufs selbst; der Wunsch hier bleibt liegen und gilt nach
+    /// dem Anruf. Läuft der Anruf ohne CallKit, teilen sich beide den Schalter
+    /// des SDK, und der Wunsch wird nur gemerkt (`AnrufSitzung.swift`). Die
+    /// Route wird hier NICHT gemeldet: sie wechselt asynchron (8–17 ms, am
+    /// Gerät gemessen), ein Lesen hier läse den alten Wert. Die Wahrheit
+    /// schickt der Routen-Beobachter.
+    func ausgabe(_ weg: String) {
+        let lautsprecher = weg != "hoermuschel"
+        if !Anrufverwaltung.geteilt.kanalWunschMerken(lautsprecher: lautsprecher) {
+            AudioManager.shared.isSpeakerOutputPreferred = lautsprecher
+        }
+        NSLog("[PulseSprache] Ausgabe '%@' gewuenscht", weg)
+        schickeEigenen()
     }
 }

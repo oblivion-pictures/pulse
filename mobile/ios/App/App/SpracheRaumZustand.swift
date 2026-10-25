@@ -202,7 +202,10 @@ extension SpracheRaum {
             "taub": wirksamTaub,
             "pausiert": anrufPausiert,
             "lautsprecher": AudioManager.shared.isSpeakerOutputPreferred,
-            "route": routeJetzt()
+            "route": routeJetzt(),
+            // Damit die Oberfläche ihre Fehlermeldung zurücknimmt, wenn das
+            // Mikrofon nachgeholt wurde (`SpracheRaumMikroNachholen.swift`).
+            "mikrofonFehler": mikrofonFehler ?? NSNull()
         ].merging(wunschFelder) { $1 })
     }
 }
