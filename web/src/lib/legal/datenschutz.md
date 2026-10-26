@@ -123,6 +123,41 @@ Seit dem 6. August 2026 ist diese Übermittlung standardmäßig aktiviert. Du
 kannst sie jederzeit in den Einstellungen der Desktop-App über den Schalter
 „**Diagnoseberichte senden**“ (Reiter „Experimental“) abschalten.
 
+### Verbindungsaufbau über einen STUN-Server von Google
+
+Damit Bild und Ton auch durch Router und Firewalls hindurch ankommen, muss dein
+Gerät beim Verbindungsaufbau seine eigene öffentliche Internet-Adresse kennen.
+Dazu schickt es eine kurze Anfrage an einen öffentlichen sogenannten
+STUN-Server von Google (`stun.l.google.com`). Als Antwort erhält es die Adresse,
+unter der es im Internet erreichbar ist.
+
+- **Wann:** wenn du einen HQ-Stream startest oder ansiehst (im Browser, in der
+  Desktop-App oder in der iOS-App), wenn du einen Rechner fernsteuerst und bei
+  einer direkten Übertragung zwischen zwei Geräten.
+- **Welche Daten Google erhält:** deine IP-Adresse, den verwendeten Port und den
+  Zeitpunkt der Anfrage. Die Anfrage enthält keine Bild- oder Toninhalte und
+  keine Daten deines Pulse-Kontos.
+- **Zweck und Rechtsgrundlage:** Ohne diese Abfrage kommt die Verbindung in
+  vielen Netzen nicht zustande. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO
+  (berechtigtes Interesse an einer zuverlässigen Verbindung).
+- **Verantwortung und Drittland:** Google verarbeitet die Anfrage in eigener
+  Verantwortung (für Nutzer im Europäischen Wirtschaftsraum laut Googles
+  Datenschutzerklärung die Google Ireland Limited, Gordon House, Barrow Street,
+  Dublin 4, Irland). Daten können dabei auch in die USA gelangen — siehe
+  Ziffer 15.
+- **Abschalten:** Die Anfrage lässt sich derzeit nicht abschalten.
+
+Weitere Informationen findest du in der
+[Datenschutzerklärung von Google](https://policies.google.com/privacy?hl=de).
+
+### Direkte Verbindungen zwischen zwei Geräten
+
+Bei der Fernsteuerung und bei der direkten Übertragung eines Streams verbinden
+sich zwei Geräte unmittelbar miteinander, ohne Umweg über unsere Server. Dabei
+erfährt das jeweils andere Gerät deine IP-Adresse — so, wie es für jede direkte
+Verbindung im Internet nötig ist. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b
+DSGVO: Ohne diese Angabe kommt die von dir gewünschte Verbindung nicht zustande.
+
 ## 10. Profilbilder/Avatare
 
 Hochgeladene Profilbilder werden in einem selbst betriebenen Objektspeicher
@@ -163,6 +198,11 @@ Beim Herunterladen der Apps und ihrer Updates (Ziffer 21) verbindet sich dein
 Gerät direkt mit GitHub. GitHub ist dabei kein Auftragsverarbeiter von uns; wir
 geben keine Daten an GitHub weiter, dein Gerät übermittelt sie selbst.
 
+Beim Aufbau von Stream- und Fernsteuerungs-Verbindungen fragt dein Gerät direkt
+bei einem STUN-Server von Google nach seiner öffentlichen Adresse (Ziffer 9).
+Auch Google ist dabei kein Auftragsverarbeiter von uns; wir geben keine Daten an
+Google weiter.
+
 ## 15. Drittlandübermittlung
 
 Im Zusammenhang mit dem E-Mail-Versand über Resend (Plus Five Five, Inc., USA —
@@ -177,6 +217,11 @@ dort. Nach eigenen Angaben stützt GitHub Übermittlungen aus der EU auf die
 EU-Standardvertragsklauseln und ist nach dem EU-U.S. Data Privacy Framework
 (einschließlich der UK-Erweiterung) sowie dem Swiss-U.S. Data Privacy Framework
 zertifiziert.
+
+Auch bei der Anfrage an den STUN-Server von Google (siehe Ziffer 9) können
+Daten in die USA gelangen. Nach eigenen Angaben ist die Google LLC nach dem
+EU-U.S. Data Privacy Framework (einschließlich der UK-Erweiterung) sowie dem
+Swiss-U.S. Data Privacy Framework zertifiziert.
 
 Eine darüber hinausgehende Übermittlung in Drittländer findet nicht statt.
 
@@ -292,7 +337,7 @@ Wir behalten uns vor, diese Datenschutzerklärung anzupassen, damit sie stets de
 aktuellen rechtlichen Anforderungen entspricht oder um Änderungen des Dienstes
 umzusetzen. Es gilt die jeweils aktuelle, hier veröffentlichte Fassung.
 
-Stand: 13. Oktober 2026
+Stand: 26. Oktober 2026
 
 ---
 
