@@ -316,9 +316,9 @@ pub fn baue_api(
 /// **Der einzige Zweck ist der Direktpfad** ([`crate::direct`]): der dessen
 /// ICE-Filter (Schleifen-/virtuelle Adapter raus, `direct::rtc`) sitzt in der
 /// Setting-Engine, und genau die sollte NICHT hier erfunden werden — der
-/// WHIP-Weg will sie unverändert lassen (kein STUN, kein Filter; Begründung
-/// bei `WhipSender::connect`). Was im Angebot steht, ist hier weiterhin an
-/// EINEM Ort: beide Wege teilen Registrierung und Interceptor.
+/// WHIP-Weg will sie unverändert lassen (kein Filter; sein STUN steht in der
+/// Konfiguration, [`eis_konfiguration`]). Was im Angebot steht, ist hier
+/// weiterhin an EINEM Ort: beide Wege teilen Registrierung und Interceptor.
 pub(crate) fn baue_api_mit_settings(
     video: &RTCRtpCodecCapability,
     audio: &RTCRtpCodecCapability,
@@ -336,6 +336,32 @@ pub(crate) fn baue_api_mit_settings(
         .with_media_engine(media)
         .with_interceptor_registry(registry)
         .build())
+}
+
+/// Die ICE-Konfiguration des WHIP-Wegs: STUN ja, TURN nein — dieselbe wie
+/// im Direktpfad ([`crate::direct::rtc::eis_konfiguration`]), derselbe
+/// Server wie im Player (`pulse-player/src/whep.rs`).
+///
+/// **Bis 0.1.135 ohne STUN**, mit der Begründung, der Weg zum eigenen Server
+/// laufe über die Schleife oder eine gewöhnliche ausgehende Verbindung. Das
+/// trägt nur, solange der Server UDP 8189 von außen annimmt. Am 2026-10-26
+/// (Sender im Heimnetz, Self-Host `pulse.all3media.de`) scheiterte ICE nach
+/// 30 s (`whip: Verbindung verloren ebene="ice"`), während der Player vom
+/// selben Rechner zum selben Server in 0,9 s verband: er bietet per STUN
+/// seine Außenadresse an, und der Server erreicht ihn von sich aus. Ohne
+/// STUN stehen im Angebot nur LAN-Adressen, die der Server nicht erreicht.
+/// Dass dort eine eingehend geschlossene Firewall oder eine falsch
+/// angekündigte Adresse die Ursache ist, ist aus diesem Muster GEFOLGERT,
+/// nicht am Server gemessen; dass STUN den Sendeweg heilt, ist am Player
+/// belegt, am Sender noch nicht.
+///
+/// Ohne Mux (Vorgabe-Setting-Engine) sammelt webrtc-rs den srflx-Kandidaten
+/// selbst (s. Kopf von [`crate::direct::sdp`]). Preis: eine STUN-Anfrage je
+/// Streamstart; ist STUN gesperrt, deckelt `ICE_GATHERING_TIMEOUT` (2 s) im
+/// Aufrufer die Wartezeit, und das Angebot geht mit den Host-Kandidaten raus
+/// wie bisher.
+pub fn eis_konfiguration() -> webrtc::peer_connection::configuration::RTCConfiguration {
+    crate::direct::rtc::eis_konfiguration()
 }
 
 /// Fassung fuer die Tonspur — immer Opus, der Ton-Encoder kennt nichts anderes
@@ -409,6 +435,16 @@ mod fassung_tests {
         assert_eq!(cap.sdp_fmtp_line, "profile-id=0");
         let cap = codec_capability("av1", 7680, 4320, 60, true).unwrap();
         assert_eq!(cap.sdp_fmtp_line, "profile-id=0");
+    }
+
+    /// Ohne STUN bietet der Sender nur LAN-Adressen an, und ein Server, der
+    /// eingehend sperrt, erreicht ihn nie (Begründung bei
+    /// [`super::eis_konfiguration`]).
+    #[test]
+    fn whip_fragt_stun_ab() {
+        let urls: Vec<String> =
+            super::eis_konfiguration().ice_servers.into_iter().flat_map(|s| s.urls).collect();
+        assert!(urls.iter().any(|u| u.starts_with("stun:")), "kein STUN-Server: {urls:?}");
     }
 
     /// Ohne `ccm fir`/`nack pli` im Angebot bittet der Empfaenger nie um ein
