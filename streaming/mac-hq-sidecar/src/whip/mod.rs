@@ -75,8 +75,6 @@ use rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
 use rtcp::payload_feedbacks::receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate;
 use tokio::runtime::Runtime;
 use webrtc::api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_HEVC};
-use webrtc::ice_transport::ice_server::RTCIceServer;
-use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::rtp::codecs::h264::H264Payloader;
@@ -304,11 +302,9 @@ impl WhipSender {
         let uhr = pulse_whip::aufnahmeuhr::Aufnahmeuhr::neu();
         let api = sdp::baue_api(&cap, &audio_cap, kopien, &uhr)?;
 
-        // Kein STUN: der Weg zum eigenen Server laeuft entweder ueber die
-        // Schleife oder ueber eine gewoehnliche ausgehende Verbindung. Ein
-        // STUN-Server waere ein zusaetzlicher Aussenkontakt ohne Nutzen.
-        let config = RTCConfiguration { ice_servers: vec![RTCIceServer::default()], ..Default::default() };
-        let pc = Arc::new(api.new_peer_connection(config).await?);
+        // STUN, damit der Server uns auch erreicht, wenn er eingehend sperrt
+        // (Begruendung bei `sdp::eis_konfiguration`).
+        let pc = Arc::new(api.new_peer_connection(sdp::eis_konfiguration()).await?);
         verbindung_ueberwachen(&pc);
 
         // Beide Codecs stempeln selbst; nur der Zerleger unterscheidet sich

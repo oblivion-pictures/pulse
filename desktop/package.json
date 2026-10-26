@@ -1,6 +1,6 @@
 {
   "name": "@dcc/desktop",
-  "version": "0.1.135",
+  "version": "0.1.136",
   "private": true,
   "license": "AGPL-3.0-only",
   "description": "Pulse desktop wrapper (Electron)",
