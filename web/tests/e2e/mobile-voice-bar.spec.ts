@@ -31,6 +31,7 @@ test.describe('Sprach-Knopfreihe auf dem Handy', () => {
     await page.getByTestId('reg-username').fill(`voice_${TAG}`);
     await page.getByTestId('reg-email').fill(`voice_${TAG}@dcc-test.example.com`);
     await page.getByTestId('reg-password').fill(PW);
+    await page.getByTestId('reg-agb').check();
     await page.getByTestId('reg-submit').click();
     await page.waitForURL(/\/app/);
     await page

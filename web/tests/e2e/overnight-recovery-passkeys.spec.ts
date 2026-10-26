@@ -45,6 +45,7 @@ async function register(page: Page, username: string, password: string = PASSWOR
   await page.getByTestId('reg-username').fill(username);
   await page.getByTestId('reg-email').fill(`${username.toLowerCase()}@dcc-test.example.com`);
   await page.getByTestId('reg-password').fill(password);
+  await page.getByTestId('reg-agb').check();
   await page.getByTestId('reg-submit').click();
   await page.waitForURL(/\/app/);
   await page

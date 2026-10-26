@@ -250,6 +250,12 @@
       await goto('/verify-email-required', { replaceState: true });
       return;
     }
+    // Nutzungsbedingungen: ohne Zustimmung zur aktuellen Fassung kein Zutritt
+    // (dcc_auth/agb.py). Gleiche Mechanik wie die E-Mail-Sperre darüber.
+    if (auth.user?.agb_zustimmung_noetig) {
+      await goto('/agb-zustimmung', { replaceState: true });
+      return;
+    }
     // No `guilds.hydrate()` here: the WS Ready frame is authoritative for
     // the guild list (includes icon_url + created_at since Phase 4 perf
     // pass) and `gateway.connect()` already runs in parallel below. Calling

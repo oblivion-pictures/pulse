@@ -54,7 +54,8 @@ Echtzeit-Sprach- und Streaming-Verbindungen sind ebenfalls verschlüsselt
 
 ## 6. Registrierung und Nutzerkonto
 
-Zur Nutzung des Dienstes ist ein Nutzerkonto erforderlich. Dabei verarbeiten wir:
+Zur Nutzung des Dienstes ist ein Nutzerkonto erforderlich; ohne Konto ist nur
+die Teilnahme als Gast möglich (siehe Ziffer 8). Für das Konto verarbeiten wir:
 
 - gewählter **Benutzername**,
 - **E-Mail-Adresse**,
@@ -64,6 +65,15 @@ Zur Nutzung des Dienstes ist ein Nutzerkonto erforderlich. Dabei verarbeiten wir
 - technische Konto- und Sitzungsdaten (z. B. Anmeldezeitpunkte, Sitzungstokens).
 
 Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung).
+
+### Zustimmung zu den Nutzungsbedingungen
+
+Bei der Registrierung und nach jeder Änderung der Nutzungsbedingungen stimmst
+du ihnen ausdrücklich zu. Wir speichern dazu an deinem Konto, **welcher
+Fassung** (ihr Datum) du **wann** zugestimmt hast. So können wir belegen, dass
+der Nutzungsvertrag zu diesen Bedingungen zustande gekommen ist.
+Rechtsgrundlage ist Art. 6 Abs. 1 lit. b und lit. f DSGVO (Vertragsschluss und
+berechtigtes Interesse am Nachweis). Die Angabe wird mit deinem Konto gelöscht.
 
 ### E-Mail-Verifizierung
 
@@ -98,6 +108,18 @@ Deutschland) verwendet. Dabei werden Verbindungs- und Übertragungsdaten
 verarbeitet, die zur Herstellung der Echtzeit-Verbindung erforderlich sind. Die
 Audio-/Videoinhalte werden zur Vermittlung übertragen, aber **nicht dauerhaft
 gespeichert**. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO.
+
+### Teilnahme als Gast über einen Besprechungslink
+
+Mit einem Besprechungslink kannst du ohne Pulse-Konto an einem Sprachkanal
+teilnehmen. Dabei verarbeiten wir den **Namen**, den du eingibst, und eine
+Gast-Kennung, die wir für diese Teilnahme vergeben. Dein Name ist für die anderen Teilnehmer des Kanals
+sichtbar. Beides speichern wir nur, solange deine Teilnahme gültig ist
+(höchstens vier Stunden). Zum Schutz vor Missbrauch zählen wir außerdem für
+eine Minute, wie oft von deiner **IP-Adresse** aus Besprechungslinks aufgerufen
+werden. Für Sprache und Bild gilt das oben Gesagte. Rechtsgrundlage ist Art. 6
+Abs. 1 lit. b DSGVO, für den Missbrauchsschutz Art. 6 Abs. 1 lit. f DSGVO
+(berechtigtes Interesse an einem sicheren Betrieb).
 
 ## 9. HQ-Bildschirm-Streaming
 

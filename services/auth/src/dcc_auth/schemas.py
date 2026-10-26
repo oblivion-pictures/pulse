@@ -30,6 +30,9 @@ class RegisterIn(BaseModel):
     # Required only when the server is in ``invite_only`` mode; ignored
     # otherwise. Validated + consumed in the /register handler.
     invite_code: Annotated[str | None, Field(default=None, max_length=64)] = None
+    # Häkchen „Nutzungsbedingungen akzeptiert“. In der Cloud Pflicht
+    # (``agb.py``); ein Self-Host mit lokalen Konten ignoriert es.
+    agb_akzeptiert: bool = False
 
 
 class LoginIn(BaseModel):
@@ -86,6 +89,12 @@ class UserPublic(BaseModel):
     # account is still unverified — i.e. the hard email-verification gate is
     # blocking this user. ``me()`` fills it; everywhere else it defaults false.
     email_verification_pending: bool = False
+    # Computed in ``me()`` (``agb.py``): true, solange das Konto der aktuellen
+    # Fassung der Nutzungsbedingungen nicht zugestimmt hat — dann zeigt die
+    # Oberfläche den Zustimmungs-Dialog und schickt ``agb_fassung_aktuell``
+    # an ``POST /me/agb-zustimmung`` zurück. Ausserhalb der Cloud None/false.
+    agb_zustimmung_noetig: bool = False
+    agb_fassung_aktuell: str | None = None
     # Profil-Felder: separater Update-Pfad (POST /me/profile). UI braucht sie
     # für die Round-Trip-Vorschau im Settings-"Profil"-Tab und für die
     # Default-Werte im Color-Picker / Avatar-Anzeige.

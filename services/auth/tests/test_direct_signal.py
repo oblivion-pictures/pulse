@@ -84,6 +84,8 @@ _REG = {
     "email": "sig_alice@dcc-test.example.com",
     "password": "correct horse battery staple",
     "display_name": "Alice",
+    # Starlette-TestClient statt des conftest-Klienten: das Häkchen selbst setzen.
+    "agb_akzeptiert": True,
 }
 
 

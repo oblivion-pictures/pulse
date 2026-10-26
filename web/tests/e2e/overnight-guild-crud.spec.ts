@@ -27,6 +27,7 @@ async function register(page: Page, u: { username: string; email: string; passwo
   // dann gegen einen wieder gesunden Dienst.
   let drin = false;
   for (const _versuch of [1, 2]) {
+    await page.getByTestId('reg-agb').check();
     await page.getByTestId('reg-submit').click();
     drin = await page
       .waitForURL(/\/app/, { timeout: 15_000 })

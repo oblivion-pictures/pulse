@@ -12,6 +12,7 @@
   import OctagonXIcon from '@lucide/svelte/icons/octagon-x';
   import AuthCard from '$lib/components/AuthCard.svelte';
   import LegalFooter from '$lib/components/LegalFooter.svelte';
+  import AgbHaekchen, { istAgbFehler } from '$lib/components/auth/AgbHaekchen.svelte';
   import { startProfileRefresh } from '$lib/identity/profile-refresh.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
@@ -22,6 +23,7 @@
   let error = $state<string | null>(null);
   let suggestions = $state<string[]>([]);
   let busy = $state(false);
+  let agbAkzeptiert = $state(false);
 
   // Invite code: prefilled from a shared ``/register?invite=CODE`` link, and
   // otherwise revealed only when the backend reports the server is invite-only
@@ -40,7 +42,8 @@
         email: email.trim().toLowerCase(),
         password,
         display_name: displayName.trim() || null,
-        invite_code: inviteCode.trim() || null
+        invite_code: inviteCode.trim() || null,
+        agb_akzeptiert: agbAkzeptiert
       });
       // `await`: Account-Switch-Cleanup in setUser vor dem Issue-Flow abschließen
       // (Konsistenz mit dem Login-Pfad; bei frischer Registration ohnehin No-Op).
@@ -74,6 +77,8 @@
         } else {
           error = (err as Error).message;
         }
+      } else if (istAgbFehler(err)) {
+        error = m.register_error_agb_required();
       } else if (err instanceof ApiError && err.status === 403) {
         // Registration gate (auth-svc sends a plain-string detail).
         const detail = String((err.body as { detail?: string } | null)?.detail ?? '');
@@ -198,6 +203,8 @@
           data-testid="reg-password"
         />
       </div>
+
+      <AgbHaekchen bind:checked={agbAkzeptiert} required testid="reg-agb" />
 
       {#if error}
         <Alert.Root variant="destructive" data-testid="reg-error">

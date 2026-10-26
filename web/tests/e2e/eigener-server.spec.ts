@@ -72,6 +72,7 @@ async function registrieren(page: Page, name: string): Promise<void> {
   await page.getByTestId('reg-username').fill(name);
   await page.getByTestId('reg-email').fill(`${name}@dcc-test.example.com`);
   await page.getByTestId('reg-password').fill(PW);
+  await page.getByTestId('reg-agb').check();
   await page.getByTestId('reg-submit').click();
   await page.waitForURL(/\/app/);
   await page

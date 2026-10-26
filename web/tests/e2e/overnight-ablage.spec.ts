@@ -53,6 +53,7 @@ async function register(page: Page, u: { username: string; email: string; passwo
   await page.getByTestId('reg-username').fill(u.username);
   await page.getByTestId('reg-email').fill(u.email);
   await page.getByTestId('reg-password').fill(u.password);
+  await page.getByTestId('reg-agb').check();
   await page.getByTestId('reg-submit').click();
   await page.waitForURL(/\/app/);
   // BackupSetupStep poppt nach runIssueFlow auf — best-effort dismiss.
@@ -263,7 +264,7 @@ test.describe.serial('T11 — Community-Dateiablage', () => {
       const r = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(user)
+        body: JSON.stringify({ ...user, agb_akzeptiert: true })
       });
       const body = await r.json();
       if (!r.ok && !('access_token' in body)) throw new Error(`register failed ${r.status}`);

@@ -130,6 +130,7 @@ test.describe.serial('Bestätigungsseite /verbinden', () => {
     await page.getByTestId('reg-username').fill(NAME);
     await page.getByTestId('reg-email').fill(`${NAME}@dcc-test.example.com`);
     await page.getByTestId('reg-password').fill(PW);
+    await page.getByTestId('reg-agb').check();
     await page.getByTestId('reg-submit').click();
     // Registrieren endet auf /app; die Startseite löst den gemerkten Code ein.
     await page.waitForURL((u) => u.pathname === '/verbinden' && u.hash === `#${CODE}`, {

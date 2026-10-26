@@ -38,6 +38,7 @@ async function register(page: Page, u: { username: string; email: string; passwo
   await page.getByTestId('reg-email').fill(u.email);
   await page.getByTestId('reg-password').fill(u.password);
   for (let versuch = 0; versuch < 2; versuch++) {
+    await page.getByTestId('reg-agb').check();
     await page.getByTestId('reg-submit').click();
     try {
       await page.waitForURL(/\/app/, { timeout: 20_000 });
@@ -222,7 +223,7 @@ test.describe('Pulse-Laufwerk — Community-Dateiablage', () => {
       const r = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(user)
+        body: JSON.stringify({ ...user, agb_akzeptiert: true })
       });
       const body = await r.json();
       if (!r.ok && !('access_token' in body)) throw new Error(`register failed ${r.status}`);

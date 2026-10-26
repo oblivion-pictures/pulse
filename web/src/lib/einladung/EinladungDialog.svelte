@@ -43,7 +43,8 @@
   }
 
   function ausSpeicherLesen(): void {
-    if (!auth.user || auth.user.email_verification_pending) return;
+    if (!auth.user || auth.user.email_verification_pending || auth.user.agb_zustimmung_noetig)
+      return;
     const g = gemerkteEinladung(browserSpeicher(), Date.now());
     // Nur bei echter Änderung zuweisen: jede neue Objekt-Identität lüde neu.
     if (zielSchluessel(g) !== zielSchluessel(ausSpeicher)) ausSpeicher = g;

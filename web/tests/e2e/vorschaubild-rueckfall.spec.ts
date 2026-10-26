@@ -109,6 +109,7 @@ test.describe.serial('Vorschaubild-Rückfall', () => {
     await page.getByTestId('reg-username').fill(USER.username);
     await page.getByTestId('reg-email').fill(USER.email);
     await page.getByTestId('reg-password').fill(USER.password);
+    await page.getByTestId('reg-agb').check();
     await page.getByTestId('reg-submit').click();
     await page.waitForURL(/\/app/);
     await page
