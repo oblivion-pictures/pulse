@@ -22,6 +22,7 @@ from dcc_shared.anmeldeketten import CLAIM as ANMELDEKETTE_CLAIM
 from dcc_shared.snowflake import INT64_MAX, INT64_MIN
 
 from dcc_auth import ketten_ende
+from dcc_auth.agb import AGB_FASSUNG, agb_pflicht, zustimmung_noetig
 from dcc_auth.browser_sessions import (
     COOKIE_NAME,
     REFRESH_COOKIE_NAME,
@@ -360,6 +361,13 @@ async def register(
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="invite code required"
         )
+    # Nutzungsbedingungen: in der Cloud ohne Häkchen kein Konto (``agb.py``).
+    # Der Server prüft selbst, damit weder ein alter Client noch ein direkter
+    # Aufruf die Zustimmung überspringt.
+    if agb_pflicht(settings) and not payload.agb_akzeptiert:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, detail={"error": "agb_required"}
+        )
 
     # Username-Vorab-Checks — billig, und zwar VOR dem Argon2-Hash (dieselbe
     # Logik wie der Mode-Check oben). Groß-/klein gemischt vergleichen: die
@@ -401,6 +409,9 @@ async def register(
         password_hash=password_hash,
         display_name=(payload.display_name or "").strip() or None,
     )
+    if agb_pflicht(settings):
+        user.agb_fassung = AGB_FASSUNG
+        user.agb_akzeptiert_am = now
     session.add(user)
     try:
         await session.flush()
@@ -951,6 +962,9 @@ async def me(session: SessionDep, current: User = Depends(_get_current_user)):
     # Faktor fällig ist — bei Passkey-only-Konten ohne TOTP sonst unsichtbar
     # (Bughunt Runde 4).
     out.has_passkey = bool(await _passkey_count(session, current.id))
+    settings = get_settings()
+    out.agb_zustimmung_noetig = zustimmung_noetig(settings, current.agb_fassung)
+    out.agb_fassung_aktuell = AGB_FASSUNG if agb_pflicht(settings) else None
     return out
 
 

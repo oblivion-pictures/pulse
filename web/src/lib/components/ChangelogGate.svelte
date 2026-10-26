@@ -90,8 +90,13 @@
   // Toast erst feuern, wenn etwas Neues da ist UND der User eingeloggt ist.
   // ``auth.user`` ist reaktiv ($state) → der Effect läuft erneut, sobald die
   // Hydration/der Login ihn setzt. ``fired`` stellt einmaliges Feuern sicher.
+  // Nicht auf einem Sperrbildschirm (Nutzungsbedingungen, E-Mail-Bestätigung):
+  // dort verdeckte der Toast unten rechts den einzigen Knopf (am 2026-10-26 im
+  // E2E-Test „Zustimmen und weiter" gefunden). Nach der Zustimmung setzt die
+  // Seite den Nutzer neu, der Effect läuft erneut und zeigt den Toast in /app.
   $effect(() => {
     if (fired || entries.length === 0 || !auth.user) return;
+    if (auth.user.agb_zustimmung_noetig || auth.user.email_verification_pending) return;
     fired = true;
     const seenId = entries[0].id;
     toast.custom(ChangelogToast, {

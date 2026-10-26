@@ -24,6 +24,13 @@ export type User = {
    *  unverified — i.e. the hard email-verification gate is blocking the user.
    *  Drives the `/verify-email-required` lock screen. */
   email_verification_pending?: boolean;
+  /** Server-computed (nur /me, nur Cloud): das Konto hat der aktuellen
+   *  Fassung der Nutzungsbedingungen nicht zugestimmt — treibt den
+   *  `/agb-zustimmung`-Sperrbildschirm (`dcc_auth/agb.py`). */
+  agb_zustimmung_noetig?: boolean;
+  /** Die Fassung, der dort zugestimmt wird; geht an `POST /me/agb-zustimmung`
+   *  zurück. Ausserhalb der Cloud null. */
+  agb_fassung_aktuell?: string | null;
   /** True iff TOTP-based 2FA is set up + confirmed for this account. */
   totp_enabled?: boolean;
   /** Server-computed (nur /me): mind. ein Passkey vorhanden — auch ohne TOTP

@@ -139,6 +139,12 @@ class User(Base):
     # consumed yet (safe default — any timecode > NULL is always allowed).
     # Migration 0023 adds this column.
     totp_last_counter: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Zustimmung zu den Nutzungsbedingungen (Migration 0059, ``agb.py``):
+    # welche Fassung (ISO-Datum des „Stand“) und wann. NULL = nie zugestimmt.
+    agb_fassung: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    agb_akzeptiert_am: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

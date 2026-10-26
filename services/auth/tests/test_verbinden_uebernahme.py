@@ -131,6 +131,7 @@ async def _konto(client, name: str) -> dict:
         "email": f"{name}@dcc-test.example.com",
         "password": "correct horse battery staple",
         "display_name": name.capitalize(),
+        "agb_akzeptiert": True,
     }
     r = await client.post("/register", json=reg)
     assert r.status_code == 201, r.text

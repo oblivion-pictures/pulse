@@ -148,11 +148,27 @@ async def app(session_factory):
     application.dependency_overrides.clear()
 
 
+class _Testklient(httpx.AsyncClient):
+    """Registriert mit akzeptierten Nutzungsbedingungen, wenn der Test nichts sagt.
+
+    ``/register`` verlangt das Häkchen in der Cloud (``dcc_auth/agb.py``), und
+    über hundert Tests legen nebenbei Konten an. Statt jede Nutzlast
+    anzufassen, ergänzt der Klient ``agb_akzeptiert: True`` — aber nur, wenn
+    der Schlüssel fehlt. Wer die Ablehnung prüft, setzt ihn ausdrücklich auf
+    ``False`` (``test_agb.py``).
+    """
+
+    async def post(self, url, *args, json=None, **kwargs):  # type: ignore[override]
+        if str(url).endswith("/register") and isinstance(json, dict):
+            json = {"agb_akzeptiert": True, **json}
+        return await super().post(url, *args, json=json, **kwargs)
+
+
 @pytest_asyncio.fixture
 async def client(app) -> AsyncIterator[httpx.AsyncClient]:
     _reset_rate(app)
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with _Testklient(transport=transport, base_url="http://test") as c:
         yield c
 
 

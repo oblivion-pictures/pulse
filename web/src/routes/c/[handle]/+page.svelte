@@ -71,6 +71,12 @@
       zustand = 'email';
       return;
     }
+    // Ohne Zustimmung zu den aktuellen Nutzungsbedingungen kein Beitritt
+    // (dcc_auth/agb.py): Einladung merken, nach der Zustimmung öffnet /app sie.
+    if (auth.user?.agb_zustimmung_noetig) {
+      merkenUndWeiter('/agb-zustimmung');
+      return;
+    }
     const r = auth.user ? await ladeEinladung(z) : await ladeEinladungAbgemeldet(z);
     if (meiner !== lauf) return;
     zustand = r.zustand;

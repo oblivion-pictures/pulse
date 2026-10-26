@@ -42,6 +42,8 @@ export async function register(payload: {
   password: string;
   display_name?: string | null;
   invite_code?: string | null;
+  /** Häkchen „Nutzungsbedingungen akzeptiert" — in der Cloud Pflicht. */
+  agb_akzeptiert: boolean;
 }): Promise<Tokens> {
   const tokens = await request<Tokens>('/register', {
     method: 'POST',
@@ -177,6 +179,17 @@ export async function confirmEmailChange(token: string): Promise<void> {
 export async function emailVerifySend(): Promise<void> {
   await request<void>('/email/verification/send', {
     method: 'POST',
+    endpoint: 'auth'
+  });
+}
+
+/** Nachträgliche Zustimmung zu den Nutzungsbedingungen. `fassung` ist
+ *  `agb_fassung_aktuell` aus `/me`; passt sie nicht mehr (AGB inzwischen
+ *  geändert), antwortet der Server 409. */
+export async function agbZustimmen(fassung: string): Promise<void> {
+  await request<void>('/me/agb-zustimmung', {
+    method: 'POST',
+    body: { fassung },
     endpoint: 'auth'
   });
 }

@@ -27,6 +27,7 @@ async function registerAndOpenSecurity(page: import('@playwright/test').Page) {
   await page.getByTestId('reg-username').fill(username);
   await page.getByTestId('reg-email').fill(`${username}@dcc-test.example.com`);
   await page.getByTestId('reg-password').fill('sup3r-secret-pass');
+  await page.getByTestId('reg-agb').check();
   await page.getByTestId('reg-submit').click();
   await page.waitForURL(/\/app/);
   // BackupSetupStep poppt nach runIssueFlow auf (s. issue-flow.ts) — der

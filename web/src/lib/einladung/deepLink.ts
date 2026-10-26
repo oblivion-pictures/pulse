@@ -35,7 +35,8 @@ export function einladungAusDeepLink(data: { hostname: string; code: string }): 
   if (deepLinkWiederholung(zuletzt, schluessel, Date.now())) return;
   zuletzt = { schluessel, zeit: Date.now() };
   const e = { code: data.code, host };
-  const bereit = !!auth.user && !auth.user.email_verification_pending;
+  const bereit =
+    !!auth.user && !auth.user.email_verification_pending && !auth.user.agb_zustimmung_noetig;
   const weg = deepLinkWeg(window.location.pathname, bereit);
   if (weg === 'dialog') {
     // Steht schon eine Einladung in der Adresse, ersetzen statt anhängen.

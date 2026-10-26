@@ -32,6 +32,7 @@ async function register(page: Page, user = USER) {
 	await page.getByTestId('reg-username').fill(user.username);
 	await page.getByTestId('reg-email').fill(user.email);
 	await page.getByTestId('reg-password').fill(user.password);
+	await page.getByTestId('reg-agb').check();
 	await page.getByTestId('reg-submit').click();
 	await page.waitForURL(/\/app/);
 	await page

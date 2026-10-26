@@ -36,6 +36,7 @@ test('Voice-Channel-Benutzerlimit: setzen und Anzeige', async ({ page }) => {
   await page.getByTestId('reg-username').fill(OWNER.username);
   await page.getByTestId('reg-email').fill(OWNER.email);
   await page.getByTestId('reg-password').fill(OWNER.password);
+  await page.getByTestId('reg-agb').check();
   await page.getByTestId('reg-submit').click();
   await page.waitForURL(/\/app/);
   await page

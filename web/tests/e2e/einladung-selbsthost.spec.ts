@@ -85,6 +85,7 @@ test.describe('Einladung auf einen Self-Host', () => {
       await p.getByTestId('reg-username').fill(NUTZER.username);
       await p.getByTestId('reg-email').fill(NUTZER.email);
       await p.getByTestId('reg-password').fill(NUTZER.password);
+      await p.getByTestId('reg-agb').check();
       await p.getByTestId('reg-submit').click();
       await p.waitForURL(/\/app/);
 

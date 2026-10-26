@@ -2,6 +2,17 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-26.2",
+      "date": "2026-10-26",
+      "style": "Sachlich",
+      "title": "Nutzungsbedingungen und Datenschutz",
+      "items": [
+        "Bei der Registrierung bestätigst du die Nutzungsbedingungen jetzt ausdrücklich mit einem Häkchen.",
+        "Wer schon ein Konto hat, wird beim nächsten Öffnen einmal gebeten, den überarbeiteten Nutzungsbedingungen zuzustimmen. Neu geregelt sind unter anderem die Fernsteuerung, eigene Server und die Teilnahme als Gast.",
+        "Die Datenschutzerklärung nennt jetzt auch die Adressabfrage bei Google, mit der Pulse beim Aufbau von Streams und Fernsteuerung die eigene Internet-Adresse ermittelt, sowie die Teilnahme als Gast."
+      ]
+    },
+    {
       "id": "2026-10-26",
       "date": "2026-10-26",
       "style": "Sachlich",

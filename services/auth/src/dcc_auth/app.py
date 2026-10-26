@@ -24,6 +24,7 @@ from dcc_auth.routes_admin import router as admin_router
 from dcc_auth.routes_admin_backup import router as admin_backup_router
 from dcc_auth.routes_admin_instances import router as admin_instances_router
 from dcc_auth.routes_admin_smtp import router as admin_smtp_router
+from dcc_auth.routes_agb import router as agb_router
 from dcc_auth.routes_archiv import router as archiv_router
 from dcc_auth.routes_avatar import router as avatar_router
 from dcc_auth.routes_complaints import router as complaints_router
@@ -302,6 +303,7 @@ def create_app() -> FastAPI:
     app.include_router(registry_auth_router)
     app.include_router(gast_ticket_router)
     app.include_router(ketten_stand_router)
+    app.include_router(agb_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

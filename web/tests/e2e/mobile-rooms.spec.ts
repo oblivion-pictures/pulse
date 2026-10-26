@@ -27,6 +27,7 @@ test.describe('Räume-Bereich auf dem Handy', () => {
     await page.getByTestId('reg-username').fill(`rooms_${TAG}`);
     await page.getByTestId('reg-email').fill(`rooms_${TAG}@dcc-test.example.com`);
     await page.getByTestId('reg-password').fill(PW);
+    await page.getByTestId('reg-agb').check();
     await page.getByTestId('reg-submit').click();
     await page.waitForURL(/\/app/);
     await page
@@ -166,6 +167,7 @@ test.describe('Profil als Blatt von unten', () => {
     await seite.getByTestId('reg-username').fill(`prof_${TAG}`);
     await seite.getByTestId('reg-email').fill(`prof_${TAG}@dcc-test.example.com`);
     await seite.getByTestId('reg-password').fill(PW);
+    await seite.getByTestId('reg-agb').check();
     await seite.getByTestId('reg-submit').click();
     await seite.waitForURL(/\/app/);
     await seite

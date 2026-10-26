@@ -9,7 +9,9 @@
    */
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import { onMount } from 'svelte';
   import { m } from '$lib/paraglide/messages.js';
+  import { istCloudServer } from '$lib/legal/cloudServer';
   import type { GastInfo } from './api';
 
   let {
@@ -26,6 +28,10 @@
 
   let name = $state('');
   let bereit = $derived(name.trim().length > 0 && !laedt && info !== null);
+  let agbGelten = $state(true);
+  onMount(async () => {
+    agbGelten = await istCloudServer();
+  });
 
   function fehlerText(schluessel: string): string {
     if (schluessel === 'abgelaufen') return m.gast_fehler_abgelaufen();
@@ -84,6 +90,20 @@
           {laedt ? m.gast_verbinde() : m.gast_beitreten()}
         </Button>
         <p class="text-muted-foreground text-center text-xs">{m.gast_hinweis()}</p>
+        <!-- Gäste haben kein Konto und damit kein Häkchen: der Hinweis direkt
+             unter dem Knopf macht die AGB beim Beitritt sichtbar (AGB 3.6).
+             Auf einem Self-Host gelten sie nicht ($lib/legal/cloudServer). -->
+        {#if agbGelten}
+          <p class="text-muted-foreground text-center text-xs" data-testid="gast-agb-hinweis">
+            {m.gast_agb_vor()}
+            <a class="text-primary hover:underline" href="/agb" target="_blank" rel="noopener">
+              {m.agb_haekchen_link()}</a
+            >{m.gast_agb_mitte()}
+            <a class="text-primary hover:underline" href="/datenschutz" target="_blank" rel="noopener">
+              {m.agb_datenschutz_link()}</a
+            >.
+          </p>
+        {/if}
       </form>
     {/if}
   </div>
