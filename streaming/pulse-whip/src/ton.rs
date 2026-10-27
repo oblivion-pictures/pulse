@@ -159,9 +159,10 @@ impl TonSpur {
     /// gemeinsamen Nullpunkt mit dem Bild (s. Modulkopf) — so echt, wie der
     /// Sender sie kennt: die Soundkarte taktet mit eigenem Quarz, und gezaehlte
     /// Samples laufen der Wanduhr um ihre Abweichung davon (Bughunt
-    /// 2026-10-22). Linux und macOS geben deshalb pts plus Versatz zum
-    /// Batch-Anker; Windows den gezaehlten pts, weil es keinen Anker je Chunk
-    /// hat (`win-hq-sidecar/src/encode/senke_writer.rs`). `dauer` =
+    /// 2026-10-22). Alle drei Sidecars geben deshalb pts plus Versatz zur
+    /// echten Aufnahmezeit: Linux und macOS zum Batch-Anker, Windows seit
+    /// 2026-10-27 zum Geraetestempel je Chunk (`win-hq-sidecar`,
+    /// `audio/aufnahmebuch.rs` und `encode/senke_writer.rs`). `dauer` =
     /// Rahmenlaenge, gebraucht nur ohne `pts`.
     pub async fn senden(&self, opus: &[u8], pts: Option<i64>, dauer: Duration) -> Result<()> {
         let (paket, spur) = self.bauen(opus, pts, dauer);

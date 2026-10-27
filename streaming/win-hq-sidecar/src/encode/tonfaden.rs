@@ -107,8 +107,10 @@ fn schleife(
         while !stopp.load(Ordering::Relaxed) {
             match samples.recv_timeout(STOPP_BLICK) {
                 Ok(chunk) => {
-                    for paket in audio.send(&chunk)? {
-                        ausgang.audio(paket)?;
+                    let pakete = audio.send(&chunk)?;
+                    let versatz = audio.versatz();
+                    for paket in pakete {
+                        ausgang.audio(paket, versatz)?;
                     }
                 }
                 Err(RecvTimeoutError::Timeout) => {}
@@ -123,8 +125,10 @@ fn schleife(
         }
         // Regulärer Stopp: den Rest aus libopus noch abgeben, wie vorher
         // `FfmpegHwEncoder::finish`.
-        for paket in audio.flush()? {
-            ausgang.audio(paket)?;
+        let pakete = audio.flush()?;
+        let versatz = audio.versatz();
+        for paket in pakete {
+            ausgang.audio(paket, versatz)?;
         }
         Ok(())
     })();
@@ -204,6 +208,7 @@ mod tests {
                 frames: frames as u32,
                 captured_at: Instant::now(),
                 qpc: 0,
+                aufnahme: crate::audio::aufnahmebuch::Aufnahmezeit::Unbekannt,
             })
             .unwrap();
         }

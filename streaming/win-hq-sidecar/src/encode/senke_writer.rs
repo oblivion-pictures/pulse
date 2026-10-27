@@ -49,7 +49,9 @@ const QUEUE_CAPACITY: usize = 128;
 /// Aliasing; der `AVBufferRef`-Zähler ist atomar.
 enum Sendung {
     Video(Packet),
-    Ton(Packet),
+    /// Tonpaket samt Versatz echte Aufnahmezeit minus gezählter pts in
+    /// Samples (`AudioPipeline::versatz`).
+    Ton(Packet, i64),
 }
 unsafe impl Send for Sendung {}
 
@@ -138,9 +140,9 @@ impl SenkenWriter {
         self.reihe_ein(Sendung::Video(packet))
     }
 
-    /// Ein Tonpaket einreihen.
-    pub fn audio(&self, packet: Packet) -> Result<()> {
-        self.reihe_ein(Sendung::Ton(packet))
+    /// Ein Tonpaket einreihen; `versatz` s. [`Sendung::Ton`].
+    pub fn audio(&self, packet: Packet, versatz: i64) -> Result<()> {
+        self.reihe_ein(Sendung::Ton(packet, versatz))
     }
 
     /// Ein zweiter Eingang für den Ton, der auf einem eigenen Faden kodiert
@@ -180,8 +182,8 @@ pub struct TonAusgang {
 }
 
 impl TonAusgang {
-    pub fn audio(&self, packet: Packet) -> Result<()> {
-        einreihen(&self.tx, &self.fail_msg, Sendung::Ton(packet))
+    pub fn audio(&self, packet: Packet, versatz: i64) -> Result<()> {
+        einreihen(&self.tx, &self.fail_msg, Sendung::Ton(packet, versatz))
     }
 }
 
@@ -232,10 +234,19 @@ fn sende_schleife(
                 }
                 p.data().map(|d| senke.video(d, p.pts()))
             }
-            Sendung::Ton(p) => p.data().map(|d| {
+            Sendung::Ton(p, versatz) => p.data().map(|d| {
+                // Die Dauer (und damit die Luecken-Zaehlung der Messzeile)
+                // folgt dem GEZAEHLTEN pts: Luecken der Opus-Zeitlinie sind
+                // gemeint, nicht der Zitter der Geraetestempel.
                 let dauer =
                     ton_dauer_aus_pts(p.pts(), &mut letzte_ton_pts, ton_dauer, ton_rate);
-                if let (Some(b), Some(pts)) = (zeitbezug.get(), p.pts()) {
+                // Aufnahmezeit = gezaehlter pts + Versatz (s. unten).
+                let aufnahme = p.pts().map(|v| v + versatz);
+                if let (Some(b), Some(pts)) = (zeitbezug.get(), aufnahme) {
+                    // Seit 2026-10-27 die ECHTE Aufnahmezeit: die Zeile zeigt
+                    // fuer den Ton dieselbe Groesse wie fuer das Bild (WGC-
+                    // Stempel). Bis dahin mass sie den gezaehlten pts und sah
+                    // 2026-10-27 einen Ton 12-30 ms „in der Zukunft".
                     let ms = pulse_whip::uebergabe::alter_ms(
                         b.ursprung,
                         pts - b.trim_samples,
@@ -250,16 +261,20 @@ fn sende_schleife(
                 // Aufnahmezeit in 48-kHz-Takten fuer den Ton-Zeitstempel
                 // (`PaketSenke::audio`); der Trim steckt darin und wirkt so.
                 //
-                // **Der gezaehlte pts, ohne Versatz zur Wanduhr — anders als
-                // unter Linux und macOS.** Dort kennt jeder Batch seine eigene
-                // Wanduhr-Position; hier traegt `CapturedAudio::qpc` nur den
-                // Stempel des ERSTEN je gelesenen Samples, fuer jeden Chunk
-                // derselbe (`audio/wasapi.rs`). Ein Versatz „Anker minus pts"
-                // fiel damit um eine Sekunde je Sekunde, die Marke stand still,
-                // und der Player mass „Ton Sekunden hinter Bild" (0.1.130,
-                // gemessen am 2026-10-22). Neben der Wanduhr haelt den pts das
-                // Stille-Budget in `wasapi.rs` (hoechstens 100 ms Vorlauf).
-                let pts48 = p.pts().map(|v| pulse_whip::ton::pts_in_takten(v, ton_rate));
+                // **pts plus Versatz zur echten Aufnahmezeit, wie unter Linux
+                // und macOS.** Der gezaehlte pts allein laeuft der Uhr um
+                // alles davon, was das Stille-Budget in `wasapi.rs` zulaesst
+                // (bis 100 ms Vorlauf). Den Versatz rechnet die Ton-Pipeline je
+                // Chunk aus dessen Geraetestempel (`audio/aufnahmebuch.rs`,
+                // `encode/audio/versatz.rs`). Bis 0.1.139 stand hier der
+                // gezaehlte pts allein, weil `CapturedAudio::qpc` nur den
+                // Stempel des ERSTEN je gelesenen Samples traegt: 0.1.130
+                // rechnete damit „Anker minus pts", der Versatz fiel um eine
+                // Sekunde je Sekunde, und der Player mass „Ton Sekunden hinter
+                // Bild" (2026-10-22). Der Test
+                // `versatz_tests::versatz_bleibt_ueber_eine_stunde_beschraenkt`
+                // haelt das fest; unplausibel (> 1 s) heisst Versatz 0.
+                let pts48 = aufnahme.map(|v| pulse_whip::ton::pts_in_takten(v, ton_rate));
                 senke.audio(d, pts48, dauer)
             }),
         };
@@ -425,7 +440,7 @@ mod tests {
         let mut w = SenkenWriter::start(Box::new(senke), Duration::from_millis(5), 48_000).unwrap();
         w.video(paket()).unwrap();
         w.video(paket()).unwrap();
-        w.audio(paket()).unwrap();
+        w.audio(paket(), 0).unwrap();
         w.finish().unwrap();
         assert_eq!(v.load(Ordering::SeqCst), 2, "beide Videopakete");
         assert_eq!(t.load(Ordering::SeqCst), 1, "das Tonpaket");

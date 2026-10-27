@@ -417,8 +417,9 @@ impl FfmpegHwEncoder {
     pub fn send_audio(&mut self, captured: &CapturedAudio) -> Result<()> {
         if let Some(audio) = self.audio.as_mut() {
             let packets = audio.send(captured)?;
+            let versatz = audio.versatz();
             for packet in packets {
-                Self::ton_ausgeben(&mut self.ausgabe, packet)?;
+                Self::ton_ausgeben(&mut self.ausgabe, packet, versatz)?;
             }
         }
         Ok(())
@@ -433,16 +434,16 @@ impl FfmpegHwEncoder {
         Some(super::tonfaden::TonAbzweig { audio: self.audio.take()?, ausgang })
     }
 
-    /// Ein fertiges Opus-Paket ans Ziel. Auf dem fremden Weg zählt nur der
-    /// rohe Inhalt plus die Paketlänge — der Zeitstempel des Muxers hilft dort
-    /// nicht, die Zeit kommt aus der RTP-Uhr.
+    /// Ein fertiges Opus-Paket ans Ziel. Auf dem Weg ohne Container trägt
+    /// `versatz` (echte Aufnahmezeit minus gezählter pts, s.
+    /// `AudioPipeline::versatz`) die Ton-Marke; der Muxer braucht ihn nicht.
     ///
     /// Als zugeordnete Funktion statt Methode, damit der Aufrufer `self.audio`
     /// weiter geliehen halten darf, während er hier ausgibt.
-    fn ton_ausgeben(ausgabe: &mut Ausgabe, packet: Packet) -> Result<()> {
+    fn ton_ausgeben(ausgabe: &mut Ausgabe, packet: Packet, versatz: i64) -> Result<()> {
         match ausgabe {
             Ausgabe::Mux { writer, .. } => writer.send(packet),
-            Ausgabe::Extern(w) => w.audio(packet),
+            Ausgabe::Extern(w) => w.audio(packet, versatz),
         }
     }
 
@@ -669,8 +670,9 @@ impl FfmpegHwEncoder {
         self.drain_video()?;
         if let Some(audio) = self.audio.as_mut() {
             let packets = audio.flush()?;
+            let versatz = audio.versatz();
             for packet in packets {
-                Self::ton_ausgeben(&mut self.ausgabe, packet)?;
+                Self::ton_ausgeben(&mut self.ausgabe, packet, versatz)?;
             }
         }
         match &mut self.ausgabe {
