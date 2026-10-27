@@ -184,6 +184,8 @@ export interface SidecarStartArgs {
      *  VERWEIGERT den Start, wenn er es nicht liefern kann — anders als bei
      *  `bit_depth`, das still zurückgenommen wird. */
     hdr?: boolean;
+    /** Volle Farbauflösung, s. `OverrideSet.chroma`. */
+    chroma?: '444';
   };
   /** Show the mouse cursor in the captured stream. Default true (GSR's
    *  built-in default); set to false to pass `-cursor no`. */

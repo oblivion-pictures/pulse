@@ -453,6 +453,9 @@ export function buildStartArgs(
       ? standplatz.uebersteuerung.hdr === true
       : streamSettings.overrides.hdr === true;
     if (hdrGewuenscht && cleaned.bit_depth === 10 && stream.hdrAvailable) cleaned.hdr = true;
+    // 4:4:4 geht als Wunsch hinaus; der Sidecar fällt selbst auf 4:2:0
+    // zurück, wenn er es nicht kann (`encode/vollfarbe.rs`).
+    if (o.chroma === '444') cleaned.chroma = '444';
     if (Object.keys(cleaned).length > 0) args.overrides = cleaned;
   }
   return args;

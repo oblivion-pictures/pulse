@@ -11,6 +11,7 @@ const basis = {
   bitrate_kbps: 8000,
   zehn_bit: false,
   hdr: false,
+  voll_farbe: false,
 };
 
 test('Vorgabeprofil in einer Zeile', () => {
@@ -41,4 +42,9 @@ test('HEVC wird als HEVC genannt, mit 10 Bit', () => {
 test('HDR nur bei AV1, 10 Bit nie bei H.264 — wie beim Senden', () => {
   assert.match(profilZusammenfassung({ ...basis, codec: 'hevc', zehn_bit: true, hdr: true }), / · HEVC · .* · 10 Bit$/);
   assert.doesNotMatch(profilZusammenfassung({ ...basis, zehn_bit: true }), /10 Bit/);
+});
+
+test('4:4:4 steht am Ende der Zeile', () => {
+  assert.match(profilZusammenfassung({ ...basis, codec: 'hevc', voll_farbe: true }), / · HEVC · .* · 4:4:4$/);
+  assert.doesNotMatch(profilZusammenfassung(basis), /4:4:4/);
 });
