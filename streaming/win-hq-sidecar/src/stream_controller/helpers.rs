@@ -15,7 +15,7 @@ use super::StartParams;
 /// erst nach Vendor, dann wird der erste Treffer genommen. Nützlich auf
 /// Multi-GPU-Systemen (dGPU+iGPU) um den AMF/QSV-Pfad zu validieren ohne den
 /// HIGH_PERFORMANCE-Default umzustellen.
-pub(super) fn select_adapter() -> Result<dxgi::Adapter> {
+pub(crate) fn select_adapter() -> Result<dxgi::Adapter> {
     let adapters = dxgi::list_adapters()?;
     let adapter = match std::env::var("PULSE_HQ_ADAPTER_VENDOR").ok().as_deref() {
         Some(want) if !want.is_empty() => adapters

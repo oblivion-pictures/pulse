@@ -136,7 +136,21 @@ impl Sitzung {
         // verweigern den Start dort ohnehin (`encode::zehnbit::pruefen`). Was
         // der Wert auf der Leitung bewirkt (heute nichts), steht an
         // `pulse_whip::direct::Konfig::zehn_bit`.
-        let zehn_bit = params.pool_wahl().ten_bit;
+        let pool = params.pool_wahl();
+        let zehn_bit = pool.ten_bit;
+        // 4:4:4 ebenso vor dem ersten Bild: dieselbe Regel wie in
+        // `pipeline_hw::run` (`encode::vollfarbe`). Der Hersteller kommt hier
+        // aus `select_adapter`, dort aus dem Aufnahme-Gerät — auf einem Rechner
+        // mit zwei GPUs verschiedener Hersteller kann das Angebot also
+        // daneben liegen, ebenso wenn der Encoder 4:4:4 erst beim Öffnen
+        // ablehnt. Folgen hat das nur für eine Gegenseite, die das Profil
+        // auswertet; der Player tut es nicht (`Konfig::zehn_bit`).
+        let voll_farbe = params.voll_farbe
+            && crate::encode::vollfarbe::absage(
+                crate::stream_controller::select_adapter()?.vendor(),
+                &pool,
+            )
+            .is_none();
         let konfig = pulse_whip::direct::Konfig {
             codec_slug: params.codec().slug(),
             fps,
@@ -144,6 +158,7 @@ impl Sitzung {
             hoehe,
             bitrate_kbps,
             zehn_bit,
+            voll_farbe,
         };
         let sender = Arc::new(
             pulse_whip::direct::DirectSender::neu(&konfig)

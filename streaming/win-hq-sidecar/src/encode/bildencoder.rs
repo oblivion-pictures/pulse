@@ -435,6 +435,7 @@ mod tests {
             dst_h: 1080,
             ten_bit: false,
             schirm: None,
+            voll_farbe: false,
         }
     }
 

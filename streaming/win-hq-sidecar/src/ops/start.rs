@@ -153,6 +153,7 @@ pub(crate) fn parse_start_params(params: &Map<String, Value>) -> Result<StartPar
         // eine davon gibt es nicht mehr. (Begründung: `StartParams::hdr`.)
         ten_bit: overrides.ten_bit || overrides.hdr,
         hdr: overrides.hdr,
+        voll_farbe: overrides.voll_farbe,
         // Wird erst vom Verteiler gefüllt, wenn `hdr` geprüft ist — hier steht
         // noch nicht fest, ob der Schirm mitspielt.
         schirm: None,
@@ -330,6 +331,10 @@ struct Overrides {
     /// Start (`encode::hdr::pruefen`). Der Unterschied ist Absicht und in
     /// `StartParams::hdr` begründet.
     hdr: bool,
+    /// Volle Farbauflösung (`chroma: "444"`) — ein Wunsch wie
+    /// [`ten_bit`](Self::ten_bit), aber ohne Abbruch, wenn er nicht geht
+    /// (Begründung: `encode::vollfarbe`).
+    voll_farbe: bool,
 }
 
 fn parse_overrides(params: &Map<String, Value>) -> Overrides {
@@ -392,7 +397,9 @@ fn parse_overrides(params: &Map<String, Value>) -> Overrides {
         Some(gesagt) => gesagt,
         None => crate::env::flag("PULSE_HDR"),
     };
-    Overrides { codec, bitrate_kbps: bitrate, fps, resolution, ten_bit, hdr }
+    // Dieselbe Strenge wie bei `bit_depth`: nur genau "444" zählt.
+    let voll_farbe = o.get("chroma").and_then(Value::as_str) == Some("444");
+    Overrides { codec, bitrate_kbps: bitrate, fps, resolution, ten_bit, hdr, voll_farbe }
 }
 
 #[cfg(test)]

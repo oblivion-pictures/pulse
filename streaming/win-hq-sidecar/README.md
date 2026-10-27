@@ -169,6 +169,18 @@ AMF-Eigenheit (`encode/opts.rs`). Werkzeug
 
 Messschalter: `PULSE_HQ_D3D11_SINGLE_TEX=1|0` übersteuert beides.
 
+### Volle Farbauflösung 4:4:4 (seit 2026-10-27, zum Ausprobieren)
+`overrides.chroma: "444"` (aus dem Standplatz-Profil) stellt NVENC auf
+`rgb_mode=yuv444`: der BGRA-Pool geht wie im 8-bit-Regelweg direkt an den
+Encoder, der aber jetzt in voller Farbauflösung wandelt (H.264 High 4:4:4
+Predictive, HEVC Rext, AV1 `chromaFormatIDC=3`; Farbsignalisierung unverändert
+BT.601, begrenzter Bereich). Das WHIP-Angebot nennt das passende Profil
+(`pulse_whip::sdp::codec_capability_444`). **Ein Wunsch, kein Befehl**
+(`src/encode/vollfarbe.rs`): AMD, CPU-/D3D12-Weg, 10 bit und HDR starten in
+4:2:0, ebenso ein Encoder, der 4:4:4 beim Öffnen ablehnt (AV1 auf jeder
+GeForce, laut NVIDIA-Tabelle) — jeweils mit einer `[vollfarbe]`-Zeile im Log.
+Anzeigen kann es heute nur der native Player.
+
 ### AMD Zero-Copy H.264/HEVC (D3D12VA) — 2026-05-21
 `src/pipeline_d3d12.rs` + `src/capture/wgc_d3d12.rs` + `src/encode/d3d12_convert.rs` +
 `src/encode/encoder_d3d12.rs` (+ `extradata.rs`).

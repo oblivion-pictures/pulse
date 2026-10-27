@@ -88,6 +88,10 @@ pub struct HwEncoderConfig {
     /// die Metadaten), und die Angaben ohne HDR wären bedeutungslos. Zwei
     /// Felder könnten widersprüchlich gesetzt werden, dieses eine nicht.
     pub schirm: Option<crate::system::hdr::SchirmFarbe>,
+    /// 4:4:4 versuchen (`rgb_mode=yuv444`). Schon gegen Hersteller und Pool
+    /// geprüft (`super::vollfarbe::entscheiden`); lehnt der Encoder es beim
+    /// Öffnen ab, öffnet er ohne.
+    pub voll_farbe: bool,
 }
 
 pub struct FfmpegHwEncoder {
@@ -180,76 +184,97 @@ impl FfmpegHwEncoder {
             .as_ref()
             .is_some_and(|o| o.format().flags().contains(format::Flags::GLOBAL_HEADER));
 
-        let mut encoder = codec::context::Context::new_with_codec(codec_descriptor)
-            .encoder()
-            .video()?;
-        encoder.set_width(cfg.dst_w);
-        encoder.set_height(cfg.dst_h);
-        encoder.set_format(format::Pixel::D3D11);
-        // Zeitbasis 1/90000, NICHT 1/fps — Begruendung in [`crate::zeitbasis`].
-        // Die Bildrate steht in der Zeile darunter und bleibt damit die
-        // Grundlage von Ratenregelung und GOP; nur die EINHEIT der
-        // Zeitstempel wird feiner.
-        encoder.set_time_base(Rational::new(1, VIDEO_HZ as i32));
-        encoder.set_frame_rate(Some(Rational::new(cfg.fps as i32, 1)));
-        encoder.set_bit_rate((cfg.bitrate_kbps as usize).saturating_mul(1000));
-        encoder.set_max_bit_rate((cfg.bitrate_kbps as usize).saturating_mul(1000));
-        // NVENC mit Rückkanal (WHIP, Direktweg — nur die haben einen für
-        // Vollbild-Anforderungen) taktet seine Vollbilder selbst, damit der
-        // Takt während einer Fernsteuerung pausieren kann
-        // (`keyframe::Selbsttakt`). Ohne Rückkanal bleibt es beim GOP.
         let nvenc = codec_name.ends_with("_nvenc");
         let rueckkanal = output.is_none();
         let nvenc_selbst = nvenc && rueckkanal;
-        encoder.set_gop(if nvenc_selbst {
-            crate::keyframe::GOP_UNBEGRENZT
-        } else {
-            crate::keyframe::abstand_bilder(cfg.fps)
-        });
-        // Keine B-Bilder — gesetzt statt den Encoder-Defaults vertraut: Der
-        // Decoder des Zuschauers öffnet mit LOW_DELAY und die Zusammensetzer
-        // nehmen keine Umordnungen an. `usage=ultralowlatency` (AMF) und die
-        // NVENC-Defaults liefern heute ohnehin 0 — ändert sich der Encoder,
-        // bricht diese Annahme sonst still. D3D12-, Linux- und macOS-Zwilling
-        // setzen es längst ausdrücklich.
-        encoder.set_max_b_frames(0);
-        if global_header {
-            encoder.set_flags(codec::Flags::GLOBAL_HEADER);
-        }
 
-        // hw_frames_ctx an die AVCodecContext hängen — MUSS vor open passieren.
-        // Native = Capture-D3D11-Pool (src-res), Downscale = Scaler-Ziel-Pool
-        // (dst-res); beide D3D11/BGRA, also derselbe Encoder-Pfad.
-        unsafe {
-            let ctx_ptr = encoder.as_mut_ptr();
-            let new_ref = av_buffer_ref(hw_frames_ref);
-            if new_ref.is_null() {
-                return Err(anyhow!("av_buffer_ref(hw_frames_ref) returned NULL"));
+        // Kontext bauen und öffnen — als Closure, weil 4:4:4 einen zweiten
+        // Versuch ohne braucht: ob der Encoder es kann, sagt erst das Öffnen
+        // (AV1 in 4:4:4 kann keine GeForce, ältere Karten auch HEVC nicht).
+        // Der Kontext ist nach einem gescheiterten `open_with` verbraucht.
+        let oeffnen = |voll_farbe: bool| -> Result<codec::encoder::Video> {
+            let mut encoder = codec::context::Context::new_with_codec(codec_descriptor)
+                .encoder()
+                .video()?;
+            encoder.set_width(cfg.dst_w);
+            encoder.set_height(cfg.dst_h);
+            encoder.set_format(format::Pixel::D3D11);
+            // Zeitbasis 1/90000, NICHT 1/fps — Begruendung in [`crate::zeitbasis`].
+            // Die Bildrate steht in der Zeile darunter und bleibt damit die
+            // Grundlage von Ratenregelung und GOP; nur die EINHEIT der
+            // Zeitstempel wird feiner.
+            encoder.set_time_base(Rational::new(1, VIDEO_HZ as i32));
+            encoder.set_frame_rate(Some(Rational::new(cfg.fps as i32, 1)));
+            encoder.set_bit_rate((cfg.bitrate_kbps as usize).saturating_mul(1000));
+            encoder.set_max_bit_rate((cfg.bitrate_kbps as usize).saturating_mul(1000));
+            // NVENC mit Rückkanal (WHIP, Direktweg — nur die haben einen für
+            // Vollbild-Anforderungen) taktet seine Vollbilder selbst, damit der
+            // Takt während einer Fernsteuerung pausieren kann
+            // (`keyframe::Selbsttakt`). Ohne Rückkanal bleibt es beim GOP.
+            encoder.set_gop(if nvenc_selbst {
+                crate::keyframe::GOP_UNBEGRENZT
+            } else {
+                crate::keyframe::abstand_bilder(cfg.fps)
+            });
+            // Keine B-Bilder — gesetzt statt den Encoder-Defaults vertraut: Der
+            // Decoder des Zuschauers öffnet mit LOW_DELAY und die Zusammensetzer
+            // nehmen keine Umordnungen an. `usage=ultralowlatency` (AMF) und die
+            // NVENC-Defaults liefern heute ohnehin 0 — ändert sich der Encoder,
+            // bricht diese Annahme sonst still. D3D12-, Linux- und macOS-Zwilling
+            // setzen es längst ausdrücklich.
+            encoder.set_max_b_frames(0);
+            if global_header {
+                encoder.set_flags(codec::Flags::GLOBAL_HEADER);
             }
-            (*ctx_ptr).hw_frames_ctx = new_ref;
-        }
 
-        // Farb-Signalisierung NUR wenn eine Vorstufe davor gewandelt hat —
-        // dieselbe Zurückhaltung wie im Linux-Sidecar: im 8-bit-Pfad wandelt
-        // der Encoder nach eigener Konvention, und etwas zu behaupten, das wir
-        // nicht kontrollieren, würde einen verifiziert korrekten Weg auf
-        // Verdacht verstellen.
-        //
-        // **Beide Fälle in EINEM Aufruf**, obwohl HDR und 10-bit-SDR
-        // verschiedene Werte setzen: bei HDR ist `ten_bit` ebenfalls gesetzt
-        // (HDR schaltet es selbst ein, s. `StartParams::hdr`), und zwei
-        // getrennte `if`s hätten sich in dieser Reihenfolge überschrieben — der
-        // Strom trüge dann PQ-Bildpunkte unter einer BT.709-Beschriftung. Wer
-        // die Entscheidung sucht: `super::hdr::signalisieren`.
-        if cfg.ten_bit {
-            super::hdr::signalisieren(&mut encoder, cfg.schirm.as_ref());
-        }
+            // hw_frames_ctx an die AVCodecContext hängen — MUSS vor open passieren.
+            // Native = Capture-D3D11-Pool (src-res), Downscale = Scaler-Ziel-Pool
+            // (dst-res); beide D3D11/BGRA, also derselbe Encoder-Pfad.
+            unsafe {
+                let ctx_ptr = encoder.as_mut_ptr();
+                let new_ref = av_buffer_ref(hw_frames_ref);
+                if new_ref.is_null() {
+                    return Err(anyhow!("av_buffer_ref(hw_frames_ref) returned NULL"));
+                }
+                (*ctx_ptr).hw_frames_ctx = new_ref;
+            }
 
-        let opts = vendor_encoder_opts(&cfg.vendor, cfg.codec, cfg.ten_bit);
-        warn_unknown_opts(&mut encoder, codec_name, &opts);
-        let opened = encoder
-            .open_with(opts)
-            .with_context(|| format!("open hw encoder '{codec_name}' (vendor={})", cfg.vendor))?;
+            // Farb-Signalisierung NUR wenn eine Vorstufe davor gewandelt hat —
+            // dieselbe Zurückhaltung wie im Linux-Sidecar: im 8-bit-Pfad wandelt
+            // der Encoder nach eigener Konvention, und etwas zu behaupten, das wir
+            // nicht kontrollieren, würde einen verifiziert korrekten Weg auf
+            // Verdacht verstellen.
+            //
+            // **Beide Fälle in EINEM Aufruf**, obwohl HDR und 10-bit-SDR
+            // verschiedene Werte setzen: bei HDR ist `ten_bit` ebenfalls gesetzt
+            // (HDR schaltet es selbst ein, s. `StartParams::hdr`), und zwei
+            // getrennte `if`s hätten sich in dieser Reihenfolge überschrieben — der
+            // Strom trüge dann PQ-Bildpunkte unter einer BT.709-Beschriftung. Wer
+            // die Entscheidung sucht: `super::hdr::signalisieren`.
+            if cfg.ten_bit {
+                super::hdr::signalisieren(&mut encoder, cfg.schirm.as_ref());
+            }
+
+            let mut opts = vendor_encoder_opts(&cfg.vendor, cfg.codec, cfg.ten_bit);
+            if voll_farbe {
+                super::vollfarbe::einschalten(&mut opts);
+            }
+            warn_unknown_opts(&mut encoder, codec_name, &opts);
+            encoder
+                .open_with(opts)
+                .with_context(|| format!("open hw encoder '{codec_name}' (vendor={})", cfg.vendor))
+        };
+        let (opened, voll_farbe) = match oeffnen(cfg.voll_farbe) {
+            Ok(opened) => (opened, cfg.voll_farbe),
+            Err(e) if cfg.voll_farbe => {
+                eprintln!("[vollfarbe] 4:4:4 vom Encoder abgelehnt ({e:#}) -> 4:2:0");
+                (oeffnen(false)?, false)
+            }
+            Err(e) => return Err(e),
+        };
+        if voll_farbe {
+            eprintln!("[vollfarbe] 4:4:4 aktiv ({codec_name}, rgb_mode=yuv444)");
+        }
         super::log_encoder_open(
             codec_name,
             &cfg.vendor,
@@ -316,6 +341,7 @@ impl FfmpegHwEncoder {
                     hoehe: cfg.dst_h,
                     bitrate_kbps: cfg.bitrate_kbps,
                     zehn_bit: cfg.ten_bit,
+                    voll_farbe,
                 })
                 .context("fremden Sendeweg aufbauen")?;
                 // **Sagen, welcher Weg genommen wurde.** Die beiden Wege sind

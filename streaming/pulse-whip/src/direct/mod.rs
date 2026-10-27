@@ -130,12 +130,13 @@ impl DirectSender {
     }
 
     async fn neu_async(konfig: Konfig) -> Result<Self> {
-        let cap = crate::sdp::codec_capability(
+        let cap = crate::sdp::codec_capability_444(
             konfig.codec_slug,
             konfig.breite,
             konfig.hoehe,
             konfig.fps,
             konfig.zehn_bit,
+            konfig.voll_farbe,
         )?;
         let audio_cap = crate::sdp::opus_capability();
         let fps = konfig.fps.max(1);

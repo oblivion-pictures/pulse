@@ -74,6 +74,11 @@ pub struct Konfig {
     /// Das Feld hält die Fähigkeit wahr für den Fall, dass ein Angebot je ein
     /// Profil nennt.
     pub zehn_bit: bool,
+    /// Volle Farbauflösung (4:4:4) — nennt das 4:4:4-Profil im Angebot
+    /// (`crate::sdp::codec_capability_444`). Dieselbe Einschränkung wie bei
+    /// [`zehn_bit`](Self::zehn_bit): der Direktweg antwortet, und die Antwort
+    /// trägt die fmtp-Zeile des Angebots.
+    pub voll_farbe: bool,
 }
 
 /// Die Bildspur: Zustand + Paketierer + Taktgeber, Form wie im WHIP-Sender.

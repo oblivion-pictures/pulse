@@ -312,6 +312,7 @@ fn zerlege_annexb<P: Payloader>(
 impl WhipSender {
     /// Baut die Sitzung auf und kehrt zurueck, sobald das Angebot beantwortet
     /// ist. Blockiert den aufrufenden (synchronen) Faden waehrenddessen.
+    #[allow(clippy::too_many_arguments)]
     pub fn connect(
         url: &str,
         codec: &str,
@@ -320,8 +321,9 @@ impl WhipSender {
         hoehe: u32,
         bitrate_kbps: u32,
         zehn_bit: bool,
+        voll_farbe: bool,
     ) -> Result<Self> {
-        let cap = sdp::codec_capability(codec, breite, hoehe, fps, zehn_bit)?;
+        let cap = sdp::codec_capability_444(codec, breite, hoehe, fps, zehn_bit, voll_farbe)?;
         let fps = fps.max(1);
         runtime().block_on(async move { Self::connect_async(url, cap, fps, bitrate_kbps).await })
     }
