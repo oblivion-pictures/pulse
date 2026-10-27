@@ -411,7 +411,8 @@ einzeln beschrieben.
   dort auf NVENC und `h264_amf`, **sofern der Sendeweg einen Rückkanal hat**
   (eigener WHIP-Sender, Direktweg); Vollbilder gibt es dann nur auf Anforderung
   (Einstieg, Verlust). Über RTMPS (Windows an einem Heimserver) läuft der Takt
-  weiter. Zu Beginn jeder Fernsteuerung kommt ein Vollbild. `hevc_amf`, `av1_amf`, QSV und der CPU-Weg
+  weiter — NVENC bleibt dort beim GOP des Encoders wie bisher und schickt zu
+  Beginn jeder Fernsteuerung ein Vollbild (vorher erzwang das der Fern-Puffer). `hevc_amf`, `av1_amf`, QSV und der CPU-Weg
   (`PULSE_HQ_DISABLE_ZERO_COPY=1`) behalten ihren GOP-Takt. Begründung:
   `src/keyframe.rs`, `Selbsttakt`.
 - `PULSE_HQ_PRIORITAET=0` — schaltet den Vorrang während einer Fernsteuerung

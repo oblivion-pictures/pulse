@@ -116,6 +116,8 @@ pub struct FfmpegHwEncoder {
     /// (`auffrischung::braucht_selbsttakt`), und auf NVENC, damit der Takt in
     /// der Fernsteuerung pausieren kann (`keyframe::Selbsttakt`).
     vollbilder_selbst: crate::keyframe::Selbsttakt,
+    /// Vollbild zu Beginn einer Fernsteuerung (NVENC über RTMPS).
+    fern_beginn: crate::keyframe::FernBeginn,
     /// Einschieben -> Paket, s. `latency.rs`. Das ist der Posten, den
     /// `zerolatency`/`delay` veraendern; `last_send_us` sieht ihn NICHT.
     enc_latency: EncodeLatency,
@@ -192,10 +194,14 @@ impl FfmpegHwEncoder {
         encoder.set_frame_rate(Some(Rational::new(cfg.fps as i32, 1)));
         encoder.set_bit_rate((cfg.bitrate_kbps as usize).saturating_mul(1000));
         encoder.set_max_bit_rate((cfg.bitrate_kbps as usize).saturating_mul(1000));
-        // NVENC taktet seine Vollbilder selbst, damit der Takt während einer
-        // Fernsteuerung pausieren kann (`keyframe::Selbsttakt`).
+        // NVENC mit Rückkanal (WHIP, Direktweg — nur die haben einen für
+        // Vollbild-Anforderungen) taktet seine Vollbilder selbst, damit der
+        // Takt während einer Fernsteuerung pausieren kann
+        // (`keyframe::Selbsttakt`). Ohne Rückkanal bleibt es beim GOP.
         let nvenc = codec_name.ends_with("_nvenc");
-        encoder.set_gop(if nvenc {
+        let rueckkanal = output.is_none();
+        let nvenc_selbst = nvenc && rueckkanal;
+        encoder.set_gop(if nvenc_selbst {
             crate::keyframe::GOP_UNBEGRENZT
         } else {
             crate::keyframe::abstand_bilder(cfg.fps)
@@ -279,10 +285,6 @@ impl FfmpegHwEncoder {
             })
             .transpose()?;
 
-        // Nur der angemeldete Sendeweg (WHIP, Direktweg) hat einen Rückkanal
-        // für Vollbild-Anforderungen — ohne ihn darf der Takt nicht pausieren
-        // (`keyframe::Selbsttakt`).
-        let rueckkanal = output.is_none();
         let ausgabe = match output {
             Some(mut output) => {
                 let mut stream = output.add_stream(codec_descriptor).context("add_stream")?;
@@ -356,10 +358,11 @@ impl FfmpegHwEncoder {
             last_mux_us: 0,
             vollbilder_angefordert: Default::default(),
             vollbilder_selbst: crate::keyframe::Selbsttakt::neu(
-                (nvenc || super::auffrischung::braucht_selbsttakt(codec_name))
+                (nvenc_selbst || super::auffrischung::braucht_selbsttakt(codec_name))
                     .then(|| crate::keyframe::abstand_bilder(cfg.fps)),
                 rueckkanal && !crate::env::flag(crate::keyframe::FERN_TAKT_UMGEBUNG),
             ),
+            fern_beginn: crate::keyframe::FernBeginn::neu(nvenc && !rueckkanal),
             enc_latency: EncodeLatency::default(),
             schirm: cfg.schirm,
             fern_vbv,
@@ -465,11 +468,9 @@ impl FfmpegHwEncoder {
         // Kurzschluss.
         let fern = crate::remote_input::fern_aktiv();
         let auf_anforderung = self.vollbilder_angefordert.naechstes_bild(pts);
-        let aus_eigenem_takt = self.vollbilder_selbst.faellig(fern);
-        if auf_anforderung {
-            self.vollbilder_selbst.vollbild_gesendet();
-        }
-        let angefordert = auf_anforderung || aus_eigenem_takt;
+        let aus_eigenem_takt = self.vollbilder_selbst.faellig(fern, auf_anforderung);
+        let fern_beginn = self.fern_beginn.faellig(fern);
+        let angefordert = auf_anforderung || aus_eigenem_takt || fern_beginn;
         // Vor dem Stempel aus demselben Grund (Logzeile); FFmpeg übernimmt den
         // Wert im folgenden `avcodec_send_frame` (`fern_vbv`).
         if let Some(bits) = self.fern_vbv.abgleichen(fern) {
