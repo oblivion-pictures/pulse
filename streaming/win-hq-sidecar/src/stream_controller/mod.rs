@@ -37,7 +37,7 @@ mod cpu_pipeline;
 mod helpers;
 pub(crate) use cpu_pipeline::run_cpu_pipeline;
 pub(crate) use helpers::{build_argv_redacted, emit_state, fit_within_box, zielmasse};
-use helpers::select_adapter;
+pub(crate) use helpers::select_adapter;
 
 /// Wie lange `stop()` maximal auf das Auslaufen des Worker-Threads wartet,
 /// bevor es ihn aufgibt. Der Worker terminiert nach dem Stop-Signal selbst
@@ -138,6 +138,11 @@ pub struct StartParams {
     /// sichtbar geringelt. Der Nutzer muss also nicht zwei Kästchen finden,
     /// die zusammengehören.
     pub hdr: bool,
+    /// Volle Farbauflösung (4:4:4) gewünscht — `chroma: "444"` im Request,
+    /// aus dem Standplatz-Profil (seit 2026-10-27). Nur ein Wunsch: was gilt,
+    /// entscheidet `encode::vollfarbe::entscheiden` in `pipeline_hw::run`, und
+    /// was nicht geht, startet in 4:2:0 mit einer Log-Zeile.
+    pub voll_farbe: bool,
     /// Die Angaben des aufgenommenen Bildschirms, sobald [`hdr`](Self::hdr)
     /// geprüft ist — Leuchtdichten und Primärvalenzen für die
     /// Mastering-Metadaten.
@@ -579,6 +584,11 @@ fn run_pipeline(params: StartParams, stop_rx: Receiver<()>) {
             // 10-bit-Meldung verdrängen.
             crate::encode::zehnbit::pruefen(disable_zc, pfad)?;
         }
+        // 4:4:4 gibt es nur auf dem D3D11-Weg (`encode::vollfarbe`); die
+        // feinere Prüfung dort sieht diese Wege nie, also hier die Zeile.
+        if params.voll_farbe && (disable_zc || !matches!(pfad, EncodePath::D3d11ZeroCopy)) {
+            eprintln!("[vollfarbe] 4:4:4 verlangt, nur auf dem D3D11-Weg -> 4:2:0");
+        }
         let params = params;
         if !disable_zc {
             match pfad {
@@ -656,6 +666,7 @@ mod wartend_tests {
             override_resolution: None,
             ten_bit: false,
             hdr: false,
+            voll_farbe: false,
             schirm: None,
             show_cursor: true,
             av_offset_ms: 0,

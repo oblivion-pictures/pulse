@@ -120,6 +120,36 @@ pub fn codec_capability(
     fps: u32,
     zehn_bit: bool,
 ) -> Result<RTCRtpCodecCapability> {
+    codec_capability_444(codec, breite, hoehe, fps, zehn_bit, false)
+}
+
+/// Wie [`codec_capability`], dazu die Farbauflösung: `voll_farbe` = 4:4:4
+/// statt 4:2:0 (seit 2026-10-27, Fernsteuerung).
+///
+/// Eigene Funktion statt eines weiteren Arguments an allen Aufrufern, weil
+/// heute nur der Windows-Sidecar 4:4:4 encodiert; Linux und der Direktweg
+/// bleiben bei [`codec_capability`]. Die Profilangaben:
+///
+/// - H.264: `profile_idc` 244 = High 4:4:4 Predictive (`f4`), sonst High (`64`).
+/// - HEVC: `profile-id=4` = Format Range Extensions (Rext), unabhängig von der
+///   Bittiefe — Rext trägt 8 und 10 bit.
+/// - AV1: `profile=1` = High (Schlüssel nach der AV1-RTP-Spezifikation; der
+///   4:2:0-Zweig nennt seit jeher `profile-id=0`, das niemand auswertet).
+///
+/// **Was die Gegenseite damit tut (am Quelltext gelesen, 2026-10-27, nicht
+/// gemessen):** MediaMTX 1.19.1 meldet für den WHIP-Eingang nur H.264
+/// `42001f`/`42e01f`, HEVC `profile-id=1`/`2` und AV1 `profile=1` bzw. ohne
+/// Angabe an. Pion nimmt ein Angebot ohne exakten Treffer über den MIME-Typ
+/// an (`codecMatchPartial`) — derselbe Weg, über den High (`6400xx`) heute
+/// schon ankommt.
+pub fn codec_capability_444(
+    codec: &str,
+    breite: u32,
+    hoehe: u32,
+    fps: u32,
+    zehn_bit: bool,
+    voll_farbe: bool,
+) -> Result<RTCRtpCodecCapability> {
     match codec {
         "h264" => Ok(RTCRtpCodecCapability {
             mime_type: MIME_TYPE_H264.to_owned(),
@@ -146,7 +176,8 @@ pub fn codec_capability(
             // (Modul-Kopf). Seit [`register_codecs`] steht er wirklich da.
             sdp_fmtp_line: format!(
                 "level-asymmetry-allowed=1;packetization-mode=1;\
-                 profile-level-id=6400{:02x}",
+                 profile-level-id={}00{:02x}",
+                if voll_farbe { "f4" } else { "64" },
                 h264_stufe(breite, hoehe, fps)
             ),
             ..Default::default()
@@ -167,7 +198,7 @@ pub fn codec_capability(
             mime_type: MIME_TYPE_AV1.to_owned(),
             clock_rate: av1::RTP_TAKT_HZ,
             rtcp_feedback: video_rtcp_feedback(),
-            sdp_fmtp_line: "profile-id=0".to_owned(),
+            sdp_fmtp_line: if voll_farbe { "profile=1" } else { "profile-id=0" }.to_owned(),
             ..Default::default()
         }),
         // `profile-id` — Main (1) oder Main 10 (2), je Bittiefe des Stroms
@@ -189,7 +220,12 @@ pub fn codec_capability(
             mime_type: MIME_TYPE_HEVC.to_owned(),
             clock_rate: av1::RTP_TAKT_HZ,
             rtcp_feedback: video_rtcp_feedback(),
-            sdp_fmtp_line: if zehn_bit { "profile-id=2" } else { "profile-id=1" }.to_owned(),
+            sdp_fmtp_line: match (voll_farbe, zehn_bit) {
+                (true, _) => "profile-id=4",
+                (false, true) => "profile-id=2",
+                (false, false) => "profile-id=1",
+            }
+            .to_owned(),
             ..Default::default()
         }),
         andere => bail!("WHIP: Codec {andere} nicht unterstuetzt"),
@@ -391,7 +427,7 @@ pub fn opus_capability() -> RTCRtpCodecCapability {
 
 #[cfg(test)]
 mod fassung_tests {
-    use super::{codec_capability, h264_stufe};
+    use super::{codec_capability, codec_capability_444, h264_stufe};
 
     /// Gegen den ECHTEN Encoder geprüft: `h264_vaapi` meldete bei 2560x1440
     /// `level=51`, bei 3840x2160 mit 30 fps ebenfalls `level=51` (gemessen
@@ -435,6 +471,33 @@ mod fassung_tests {
         assert_eq!(cap.sdp_fmtp_line, "profile-id=0");
         let cap = codec_capability("av1", 7680, 4320, 60, true).unwrap();
         assert_eq!(cap.sdp_fmtp_line, "profile-id=0");
+    }
+
+    /// 4:4:4 nennt je Codec das Profil, das die Farbauflösung trägt — und
+    /// lässt die Stufe bei H.264 unberührt (sie hängt an Größe und Rate,
+    /// nicht an der Farbauflösung).
+    #[test]
+    fn voll_farbe_nennt_die_444_profile() {
+        let h264 = codec_capability_444("h264", 2560, 1440, 60, false, true).unwrap();
+        assert!(h264.sdp_fmtp_line.contains("profile-level-id=f40033"), "{}", h264.sdp_fmtp_line);
+        for zehn_bit in [false, true] {
+            let hevc = codec_capability_444("hevc", 2560, 1440, 60, zehn_bit, true).unwrap();
+            assert_eq!(hevc.sdp_fmtp_line, "profile-id=4");
+        }
+        let av1 = codec_capability_444("av1", 2560, 1440, 60, false, true).unwrap();
+        assert_eq!(av1.sdp_fmtp_line, "profile=1");
+    }
+
+    /// Ohne `voll_farbe` muss alles beim Alten bleiben — die Linux- und
+    /// Direktwege rufen weiter [`codec_capability`].
+    #[test]
+    fn ohne_voll_farbe_bleibt_es_bei_420() {
+        for (codec, zehn_bit) in [("h264", false), ("hevc", false), ("hevc", true), ("av1", true)] {
+            assert_eq!(
+                codec_capability_444(codec, 2560, 1440, 60, zehn_bit, false).unwrap().sdp_fmtp_line,
+                codec_capability(codec, 2560, 1440, 60, zehn_bit).unwrap().sdp_fmtp_line,
+            );
+        }
     }
 
     /// Ohne STUN bietet der Sender nur LAN-Adressen an, und ein Server, der
@@ -490,7 +553,7 @@ mod fassung_tests {
 /// bis zum fertigen SDP.
 #[cfg(test)]
 mod angebot_tests {
-    use super::{baue_api, codec_capability, opus_capability};
+    use super::{baue_api, codec_capability, codec_capability_444, opus_capability};
     use crate::aufnahmeuhr::Aufnahmeuhr;
     use std::sync::Arc;
     use webrtc::peer_connection::configuration::RTCConfiguration;
@@ -540,6 +603,27 @@ mod angebot_tests {
         let offer = pc.create_offer(None).await.unwrap();
         pc.close().await.unwrap();
         offer.sdp
+    }
+
+    /// 4:4:4 kommt im Angebot an: die Spur findet ihren Codec beim Binden
+    /// (dieselbe Fassung an `register_codecs` und an der Spur), und das
+    /// Profil steht wirklich im SDP statt einer Vorgabe.
+    #[tokio::test]
+    async fn voll_farbe_steht_im_angebot() {
+        for (codec, soll) in [
+            ("h264", "profile-level-id=f40033"),
+            ("hevc", "profile-id=4"),
+            ("av1", "profile=1"),
+        ] {
+            let video = codec_capability_444(codec, 2560, 1440, 60, false, true).unwrap();
+            let audio = opus_capability();
+            let api = baue_api(&video, &audio, 0, &Aufnahmeuhr::neu()).unwrap();
+            let pc = api.new_peer_connection(RTCConfiguration::default()).await.unwrap();
+            spuren_anmelden(&pc, video, audio).await;
+            let sdp = pc.create_offer(None).await.unwrap().sdp;
+            pc.close().await.unwrap();
+            assert!(sdp.contains(soll), "{codec}: {soll} fehlt:\n{sdp}");
+        }
     }
 
     /// Der Kern: die gerechnete Stufe steht im SDP, und zwei Bildgroessen

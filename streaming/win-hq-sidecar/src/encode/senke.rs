@@ -96,6 +96,10 @@ pub struct SenkenAuftrag<'a> {
     /// Bittiefe des encodierten Stroms — HEVC verspricht im Angebot Main (1)
     /// oder Main 10 (2) je nachdem (s. `whip::sdp`). AV1/H.264 ignorieren es.
     pub zehn_bit: bool,
+    /// Volle Farbauflösung (4:4:4) — was der Encoder WIRKLICH fährt, nicht
+    /// der Wunsch (`encoder_hw` öffnet ohne, wenn er es ablehnt). Das Angebot
+    /// nennt dann das 4:4:4-Profil (`pulse_whip::sdp::codec_capability_444`).
+    pub voll_farbe: bool,
 }
 
 /// Baut die Sitzung auf. **Läuft erst, wenn die Encoder offen sind** — würde

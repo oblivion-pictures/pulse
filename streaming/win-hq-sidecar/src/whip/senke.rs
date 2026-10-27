@@ -47,6 +47,7 @@ pub fn baue(auftrag: &SenkenAuftrag) -> Result<Box<dyn PaketSenke>> {
         auftrag.hoehe,
         auftrag.bitrate_kbps,
         auftrag.zehn_bit,
+        auftrag.voll_farbe,
     )
     .context("WHIP-Sitzung aufbauen")?;
     Ok(Box::new(WhipSenke { sender }))

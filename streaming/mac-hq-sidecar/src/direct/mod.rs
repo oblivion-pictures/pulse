@@ -144,6 +144,7 @@ impl Sitzung {
             // Der Mac-Sidecar encodiert immer 8 bit (`encode/mod.rs`, dort
             // auch, warum `hevc_ten_bit` nicht gemeldet wird).
             zehn_bit: false,
+            voll_farbe: false,
         };
         let sender = Arc::new(
             pulse_whip::direct::DirectSender::neu(&konfig)

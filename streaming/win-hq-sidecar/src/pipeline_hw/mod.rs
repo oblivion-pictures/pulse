@@ -172,6 +172,9 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
         };
         eprintln!("[pipeline-hw] 10 bit {grund} -> 8 bit");
     }
+    // 4:4:4 hängt am Pool wie die Bittiefe: nur ein BGRA-Pool erreicht den
+    // Encoder noch in voller Farbauflösung (`encode::vollfarbe`).
+    let voll_farbe = crate::encode::vollfarbe::entscheiden(params.voll_farbe, vendor, &pool);
     let (dst_format, geteilt) = (pool.format, pool.geteilt);
 
     // Was zwischen Aufnahme und Encoder passiert — Verkleinern, Farbwandlung,
@@ -202,6 +205,7 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
         // und die Mastering-Metadaten. Ein getrenntes `hdr: bool` daneben
         // wären zwei Wahrheiten über denselben Sachverhalt.
         schirm: params.schirm,
+        voll_farbe,
     };
     // SAFETY: `hw_frames_ref` zeigt auf den Frames-Kontext des Scalers oder des
     // Capture-Pools. Beide leben in dieser Funktion (`scaler`, `hw`) und damit
