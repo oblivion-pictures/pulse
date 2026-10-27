@@ -402,9 +402,16 @@ einzeln beschrieben.
 - `PULSE_HQ_FERN_TICKRASTER=1` — Notausgang: im Fern-Modus wieder starr takten
   statt bei Ankunft zu senden (A/B gegen den Latenzgewinn).
 - `PULSE_HQ_FERN_VBV_BILDER=<0..60>` — VBV-Puffer des offenen NVENC-Encoders,
-  **nur während einer Fernsteuerung**, in Bildern (Vorgabe 2, `0` = aus, also
-  durchgehend FFmpegs 2 × Bitrate). Je Umschalten erzwingt NVENC ein IDR. Auf AMF
-  ohne Wirkung und deshalb übersprungen. Begründung: `src/encode/fern_vbv.rs`.
+  **nur während einer Fernsteuerung**, in Bildern (seit 2026-10-27 Vorgabe aus,
+  also durchgehend FFmpegs 2 × Bitrate; vorher 2). Je Umschalten erzwingt NVENC
+  ein IDR. Auf AMF ohne Wirkung und deshalb übersprungen. Begründung:
+  `src/encode/fern_vbv.rs`.
+- `PULSE_HQ_FERN_VOLLBILDTAKT=1` — regulärer Vollbild-Takt auch während einer
+  Fernsteuerung (das Verhalten bis 2026-10-27). Ohne den Schalter pausiert er
+  dort auf NVENC und `h264_amf`; Vollbilder gibt es dann nur auf Anforderung
+  (Einstieg, Verlust). `hevc_amf`, `av1_amf`, QSV und der CPU-Weg
+  (`PULSE_HQ_DISABLE_ZERO_COPY=1`) behalten ihren GOP-Takt. Begründung:
+  `src/keyframe.rs`, `Selbsttakt`.
 - `PULSE_HQ_PRIORITAET=0` — schaltet den Vorrang während einer Fernsteuerung
   ab (Prozess `ABOVE_NORMAL`, Taktfaden `ABOVE_NORMAL`, GPU-Planungsklasse
   `HIGH`, `SetGPUThreadPriority(7)`; Vorgabe an, nur solange gesteuert wird,
@@ -433,8 +440,9 @@ einzeln beschrieben.
   rollender Intra-Refresh statt periodischer Vollbilder, mit Startverweigerung,
   wenn der Encoder die Betriebsart nicht trug. Die Betriebsart ist aus Pulse
   entfernt — die Variable wird nicht mehr gelesen, auf Windows so wenig wie auf
-  Linux. Der Vollbild-Abstand steht durchgehend auf 60 s,
-  `PULSE_KEYFRAME_SECONDS` verstellt ihn.)*
+  Linux. Der Vollbild-Abstand steht auf 60 s, `PULSE_KEYFRAME_SECONDS`
+  verstellt ihn; während einer Fernsteuerung pausiert er auf NVENC und
+  `h264_amf`, s. `PULSE_HQ_FERN_VOLLBILDTAKT`.)*
 - `PULSE_WHIP_PACING=0` — schaltet die Verteilung der RTP-Pakete eines Bildes über
   die Zeit AB (zurück zum Schwall-Senden). **AN als Vorgabe seit 2026-08-14**, seit
   dem Neubau mit absoluten Zeitpunkten und Paketgruppen; die erste Fassung war

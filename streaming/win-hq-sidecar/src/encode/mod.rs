@@ -68,10 +68,11 @@ pub mod zehnbit;
 /// libwebrtcs RTP-Zusammenbau zerlegt. Kein Weg.
 ///
 /// **Auf NVENC gilt das nicht, und dort steht seit dem 2026-10-21 eine
-/// Ausnahme:** während einer Fernsteuerung bekommt der offene Encoder einen
-/// Puffer von wenigen Bildern ([`fern_vbv`], mit Messanlass und den
-/// FFmpeg-Fundstellen). AMF bleibt davon ausgenommen — aus dem Grund oben, und
-/// weil `amfenc` das Feld ohnehin nur beim Öffnen liest.
+/// Ausnahme:** während einer Fernsteuerung kann der offene Encoder einen
+/// Puffer von wenigen Bildern bekommen ([`fern_vbv`], mit Messanlass und den
+/// FFmpeg-Fundstellen; seit 2026-10-27 nur noch auf Wunsch, Vorgabe aus). AMF
+/// bleibt davon ausgenommen — aus dem Grund oben, und weil `amfenc` das Feld
+/// ohnehin nur beim Öffnen liest.
 ///
 /// Meldet, WELCHER Encoder wirklich offen ist — von allen drei Encoder-Pfaden
 /// direkt nach `open_with` gerufen.

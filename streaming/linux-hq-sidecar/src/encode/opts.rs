@@ -125,8 +125,9 @@ pub fn vendor_defaults(vendor: Vendor, codec: &str) -> Dictionary<'static> {
             //
             // **Eine Ausnahme seit 2026-10-21 — nur im Windows-Sidecar und nur
             // waehrend einer Fernsteuerung:** dort bekommt der OFFENE
-            // NVENC-Encoder einen Puffer von N Bildern (Vorgabe 2,
-            // `PULSE_HQ_FERN_VBV_BILDER`), beim Ende wieder FFmpegs
+            // NVENC-Encoder einen Puffer von N Bildern (seit 2026-10-27 nur
+            // noch auf Wunsch, `PULSE_HQ_FERN_VBV_BILDER`, Vorgabe aus), beim
+            // Ende wieder FFmpegs
             // Vorgabewert. Gemessen auf einem Windows-Sender (RTX 2080,
             // `hevc_nvenc`, 2500 kbit/s, 1080p60): ein Vollbild rund 30-mal so
             // gross wie ein P-Bild hielt die Leitung gut eine Drittelsekunde

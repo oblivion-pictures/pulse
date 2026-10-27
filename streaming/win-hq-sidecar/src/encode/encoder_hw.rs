@@ -111,9 +111,10 @@ pub struct FfmpegHwEncoder {
     /// Vollbilder auf Anforderung: abholen, zählen, gedrosselt melden
     /// (s. `crate::keyframe::Anforderungen`).
     vollbilder_angefordert: crate::keyframe::Anforderungen,
-    /// Vollbilder aus eigenem Takt — nur auf Encodern, die trotz abgewählter
+    /// Vollbilder aus eigenem Takt — auf Encodern, die trotz abgewählter
     /// Auffrischung auffrischen und deshalb den GOP-Takt nicht einlösen
-    /// (`auffrischung::braucht_selbsttakt`).
+    /// (`auffrischung::braucht_selbsttakt`), und auf NVENC, damit der Takt in
+    /// der Fernsteuerung pausieren kann (`keyframe::Selbsttakt`).
     vollbilder_selbst: crate::keyframe::Selbsttakt,
     /// Einschieben -> Paket, s. `latency.rs`. Das ist der Posten, den
     /// `zerolatency`/`delay` veraendern; `last_send_us` sieht ihn NICHT.
@@ -191,7 +192,14 @@ impl FfmpegHwEncoder {
         encoder.set_frame_rate(Some(Rational::new(cfg.fps as i32, 1)));
         encoder.set_bit_rate((cfg.bitrate_kbps as usize).saturating_mul(1000));
         encoder.set_max_bit_rate((cfg.bitrate_kbps as usize).saturating_mul(1000));
-        encoder.set_gop(crate::keyframe::abstand_bilder(cfg.fps));
+        // NVENC taktet seine Vollbilder selbst, damit der Takt während einer
+        // Fernsteuerung pausieren kann (`keyframe::Selbsttakt`).
+        let nvenc = codec_name.ends_with("_nvenc");
+        encoder.set_gop(if nvenc {
+            crate::keyframe::GOP_UNBEGRENZT
+        } else {
+            crate::keyframe::abstand_bilder(cfg.fps)
+        });
         // Keine B-Bilder — gesetzt statt den Encoder-Defaults vertraut: Der
         // Decoder des Zuschauers öffnet mit LOW_DELAY und die Zusammensetzer
         // nehmen keine Umordnungen an. `usage=ultralowlatency` (AMF) und die
@@ -344,8 +352,9 @@ impl FfmpegHwEncoder {
             last_mux_us: 0,
             vollbilder_angefordert: Default::default(),
             vollbilder_selbst: crate::keyframe::Selbsttakt::neu(
-                super::auffrischung::braucht_selbsttakt(codec_name)
+                (nvenc || super::auffrischung::braucht_selbsttakt(codec_name))
                     .then(|| crate::keyframe::abstand_bilder(cfg.fps)),
+                !crate::env::flag(crate::keyframe::FERN_TAKT_UMGEBUNG),
             ),
             enc_latency: EncodeLatency::default(),
             schirm: cfg.schirm,
@@ -450,12 +459,16 @@ impl FfmpegHwEncoder {
         // waere das naechste Bild ein zweites Vollbild, das niemand wollte.
         // Deshalb beide Seiten in eigene Bindungen und kein `||` mit
         // Kurzschluss.
+        let fern = crate::remote_input::fern_aktiv();
         let auf_anforderung = self.vollbilder_angefordert.naechstes_bild(pts);
-        let aus_eigenem_takt = self.vollbilder_selbst.faellig();
+        if auf_anforderung {
+            self.vollbilder_selbst.vollbild_gesendet();
+        }
+        let aus_eigenem_takt = self.vollbilder_selbst.faellig(fern);
         let angefordert = auf_anforderung || aus_eigenem_takt;
         // Vor dem Stempel aus demselben Grund (Logzeile); FFmpeg übernimmt den
         // Wert im folgenden `avcodec_send_frame` (`fern_vbv`).
-        if let Some(bits) = self.fern_vbv.abgleichen(crate::remote_input::fern_aktiv()) {
+        if let Some(bits) = self.fern_vbv.abgleichen(fern) {
             unsafe { (*self.encoder.as_mut_ptr()).rc_buffer_size = bits };
         }
         // VOR dem Einschieben stempeln: mit `delay=0` liefert NVENC das Paket

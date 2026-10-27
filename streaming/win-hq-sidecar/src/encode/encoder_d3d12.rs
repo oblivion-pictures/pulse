@@ -129,9 +129,10 @@ pub struct FfmpegD3d12Encoder {
     /// Ein AMD-Rechner, auf dem das Issue zuschlaegt, landet also hier, und
     /// der Fehler traf ihn in voller Schwere.
     ///
-    /// Kein `Selbsttakt` daneben wie in `encoder_hw.rs`: den braucht nur
-    /// `h264_amf` (s. `auffrischung::braucht_selbsttakt`), und der laeuft
-    /// nicht ueber d3d12va.
+    /// Kein `Selbsttakt` daneben wie in `encoder_hw.rs`: den brauchen nur
+    /// `h264_amf` (s. `auffrischung::braucht_selbsttakt`) und NVENC (Pause in
+    /// der Fernsteuerung, s. `keyframe::Selbsttakt`), und beide laufen nicht
+    /// ueber d3d12va.
     vollbilder_angefordert: crate::keyframe::Anforderungen,
 }
 

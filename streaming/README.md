@@ -95,7 +95,10 @@ Intra-Refresh statt periodischer Vollbilder, samt Fähigkeitsmeldung
 Betriebsart nicht lieferte. Beides ist entfallen; wer eines der Felder noch
 mitschickt, wird ignoriert.
 
-Der Vollbild-Abstand steht auf 60 s (`PULSE_KEYFRAME_SECONDS`). Der Rückkanal
+Der Vollbild-Abstand steht auf 60 s (`PULSE_KEYFRAME_SECONDS`). Ausnahme:
+während einer Fernsteuerung pausiert er im Windows-Sidecar auf NVENC und
+`h264_amf` (seit 2026-10-27, `win-hq-sidecar/README.md`,
+`PULSE_HQ_FERN_VOLLBILDTAKT`). Der Rückkanal
 (`keyframe` bzw. RTCP) ist damit **Voraussetzung, nicht Zubehör**: ohne ihn
 wartet ein beitretender Zuschauer bis zu eine Minute auf sein erstes Bild.
 

@@ -60,7 +60,8 @@ pub(crate) fn vendor_encoder_opts(
             // `2 × Bitrate`, Begründung und Nutzerentscheid im bufsize-Absatz
             // des Linux-Zwillings (`linux-hq-sidecar/src/encode/opts.rs`).
             // Einzige Ausnahme: während einer Fernsteuerung, zur Laufzeit am
-            // offenen Encoder (`fern_vbv.rs`).
+            // offenen Encoder (`fern_vbv.rs`) — seit 2026-10-27 nur noch auf
+            // Wunsch (`PULSE_HQ_FERN_VBV_BILDER`, Vorgabe aus).
             //
             // **Hier steht mit Absicht KEINE Bittiefen-Option** — anders als im
             // AMD-Zweig unten, der ohne `bitdepth=10` trotz P010-Eingang 8 bit
