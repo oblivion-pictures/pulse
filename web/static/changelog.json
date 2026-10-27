@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-27.2",
+      "date": "2026-10-27",
+      "style": "Sachlich",
+      "title": "Fernsteuerung",
+      "items": [
+        "Im Übertragungsprofil eines fernsteuerbaren Rechners gibt es den neuen, noch experimentellen Schalter „Volle Farbauflösung (4:4:4)“. Farbige Schrift und feine Linien bleiben damit scharf. Er wirkt mit NVIDIA-Grafikkarte und nur im Pulse-Player, nicht im Browser."
+      ]
+    },
+    {
       "id": "2026-10-27",
       "date": "2026-10-27",
       "style": "Sachlich",
