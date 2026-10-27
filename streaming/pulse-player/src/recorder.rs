@@ -196,10 +196,14 @@ fn find_av1_sequence_header(mut data: &[u8]) -> Option<Vec<u8>> {
 /// — und MPEG-TS traegt AV1 gar nicht, dort landet der Strom als `bin_data`.
 ///
 /// Profil und Chroma sind hier NICHT aus dem Sequence-Header geparst, sondern
-/// abgeleitet: der Player unterstuetzt ausschliesslich 4:2:0 in 8 oder 10 Bit
-/// (siehe `decode::PixelLayout`), und das ist genau Profil 0. Die Bittiefe
-/// kommt aus dem dekodierten Bild. Ein Strom in 4:4:4 oder 12 Bit wuerde hier
-/// falsch beschrieben — den kann der Player aber ohnehin nicht anzeigen.
+/// fest Profil 0 (4:2:0); die Bittiefe kommt aus dem dekodierten Bild.
+///
+/// **Bekannte Luecke seit dem 2026-10-27:** hier stand, der Player zeige
+/// ohnehin nur 4:2:0 an. Seither zeigt er auch AV1 Profil 1 (4:4:4, s.
+/// `decode::PixelLayout::Planar444`) — eine Aufnahme davon traegt hier eine
+/// falsche Beschreibung (Profil 0, 4:2:0). Kein Sender von uns erzeugt AV1 in
+/// 4:4:4 (NVENC kann es nicht); behoben ist es deshalb nicht. 12 Bit kann
+/// der Player weiterhin nicht anzeigen.
 fn av1_codec_config(seq_header: &[u8], ten_bit: bool) -> Vec<u8> {
     let mut out = Vec::with_capacity(4 + seq_header.len());
     out.push(0x81); // marker=1, version=1

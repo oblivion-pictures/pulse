@@ -30,6 +30,8 @@ mod instanz;
 mod musterprobe;
 mod setup;
 mod uniforms;
+#[cfg(test)]
+mod vollfarbe_tests;
 
 // Nur das, was der Messpfad wirklich braucht — nicht die ganzen Module.
 pub use ausgabe::OverlayPass;
@@ -43,6 +45,7 @@ pub use farbe::{
 // mit einer eigenen Eintragung meldete sie nach einem Wechsel hier „ok" fuer
 // ein Format, das gar nicht mehr benutzt wird.
 pub use hdr_fenster::HDR_OBERFLAECHE;
+pub use instanz::ohne_anzeige;
 pub use setup::{bind_group_aus_teilen, build_graphics, geraet_oeffnen, pick_format, Graphics};
 pub use uniforms::Uniforms;
 

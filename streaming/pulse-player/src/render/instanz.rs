@@ -43,3 +43,30 @@ pub fn gemeinsam(anzeige: &winit::event_loop::OwnedDisplayHandle) -> &'static wg
         })
     })
 }
+
+/// Dasselbe fuer alles OHNE Fenster: Tests und den Messstand (`messen::gpu`).
+///
+/// **Gemessen am 2026-10-27 (RTX 5080, Treiber wie oben):** liefen die
+/// GPU-Tests parallel und legte jeder seine eigene Instanz an und wieder ab,
+/// starb der Testlauf in 4 von 11 Laeufen mit SIGSEGV — Aufruf an Adresse 0
+/// in `vkCreateInstance` (Coredumps: `shader_uebersetzt_fuer_jedes_zielformat`
+/// und `render::vollfarbe_tests`). Dasselbe Muster wie oben: eine Instanz
+/// faellt, waehrend eine andere entsteht. Ob es derselbe Treiberpfad ist, ist
+/// nicht nachgewiesen; die Abhilfe ist dieselbe — EINE Instanz, nie zerstoert.
+/// Getrennt von [`gemeinsam`], weil die eine Anzeige verlangt und diese keine
+/// hat.
+///
+/// **Ohne GL**, und das ist ebenfalls gemessen: mit GL in der geteilten
+/// Instanz scheiterten bei parallelem Gebrauch 2 bis 4 Tests je Lauf in
+/// `wgpu-hal/src/gles/egl.rs` mit `BadAccess` (ein EGL-Kontext ist immer nur
+/// in einem Faden aktuell). Der Preis: auf einer Maschine ohne Vulkan, DX12
+/// oder Metal findet der Messstand keine GPU mehr; die Tests ueberspringen
+/// dort ohnehin.
+pub fn ohne_anzeige() -> &'static wgpu::Instance {
+    static OHNE: OnceLock<wgpu::Instance> = OnceLock::new();
+    OHNE.get_or_init(|| {
+        let mut beschreibung = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+        beschreibung.backends.remove(wgpu::Backends::GL);
+        wgpu::Instance::new(beschreibung)
+    })
+}

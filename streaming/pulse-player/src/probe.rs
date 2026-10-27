@@ -308,8 +308,8 @@ fn luma_at(frame: &DecodedFrame, x: usize, y: usize) -> Option<u8> {
         let off = y * stride + x * 2;
         let wort = u16::from_le_bytes([*plane.get(off)?, *plane.get(off + 1)?]);
         let zehn = match frame.format {
-            PixelLayout::BiPlanar420 => wort >> 6,
-            PixelLayout::Planar420 => wort & 0x03FF,
+            PixelLayout::BiPlanar420 | PixelLayout::BiPlanar444 => wort >> 6,
+            PixelLayout::Planar420 | PixelLayout::Planar444 => wort & 0x03FF,
         };
         Some(auf_acht_bit(zehn))
     } else {
@@ -452,8 +452,8 @@ mod tests {
                         // es erwartet — genau der Unterschied, den `luma_at`
                         // beachten muss.
                         let wort: u16 = match format {
-                            PixelLayout::BiPlanar420 => 1023 << 6, // P010: oben
-                            PixelLayout::Planar420 => 1023,        // yuv420p10: unten
+                            PixelLayout::BiPlanar420 | PixelLayout::BiPlanar444 => 1023 << 6,
+                            PixelLayout::Planar420 | PixelLayout::Planar444 => 1023,
                         };
                         plane[off..off + 2].copy_from_slice(&wort.to_le_bytes());
                     } else {
