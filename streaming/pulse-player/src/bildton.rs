@@ -18,8 +18,13 @@
 //! dessen SENDEZEIT: webrtc-rs schrieb die Wanduhr beim letzten Paket in den
 //! Report (Befund B5).
 //!
-//! **Was die Zeile nicht enthält:** die Latenz des Ausgabegeräts und die der
-//! Anzeige. Beide sind Konstanten je Rechner und kommen erst mit Etappe 4.
+//! **Was der Nutzer sieht und hört (seit 2026-10-27).** Bis dahin verglich die
+//! Messung das zur Anzeige gestellte Bild mit dem herausgegebenen Ton — ohne
+//! Geräte- und Anzeige-Latenz. Jetzt zählt beim Ton die gemeldete
+//! Ausgabelatenz mit (`audio::lippen::Tonuhr::im_lautsprecher`, gemeldet von
+//! PipeWire bzw. cpal), beim Bild die Anzeige-Latenz ([`crate::anzeigelatenz`]:
+//! Zeichnen gemessen, Bildschirm GESCHÄTZT). Beide Anteile weist die Zeile aus
+//! ([`Anteile`]). Nicht darin: Compositor, Monitor, Wandler und Lautsprecher.
 
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -104,15 +109,28 @@ impl SrZellen {
 /// Sitzung lang.
 pub const HOECHSTENS_PROBEN: usize = 400;
 
+/// Was in einer Probe an Geräte- und Anzeige-Latenz steckt — für die Zeile.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Anteile {
+    /// Gemeldete Ton-Ausgabelatenz in ms; `None` = noch keine Meldung (dann
+    /// steckt sie auch nicht in der Probe).
+    pub ausgabe_ms: Option<f32>,
+    pub anzeige: crate::anzeigelatenz::Anzeige,
+}
+
 /// Sammelt Proben über ein Log-Intervall und meldet ihren Median.
 #[derive(Default)]
 pub struct Versatzfenster {
     proben: std::collections::VecDeque<f64>,
+    /// Anteile der jüngsten Probe — sie ändern sich kaum, der Median braucht
+    /// sie nicht.
+    anteile: Option<Anteile>,
 }
 
 impl Versatzfenster {
     /// Eine Probe; ist das Fenster voll, fällt die älteste heraus.
-    pub fn probe(&mut self, ms: f64) {
+    pub fn probe(&mut self, ms: f64, anteile: Anteile) {
+        self.anteile = Some(anteile);
         if self.proben.len() >= HOECHSTENS_PROBEN {
             self.proben.pop_front();
         }
@@ -129,8 +147,19 @@ impl Versatzfenster {
         werte.sort_by(f64::total_cmp);
         let n = werte.len();
         let median = werte[n / 2];
+        let anteile = match self.anteile {
+            Some(a) => {
+                let ausgabe = a.ausgabe_ms.map_or_else(
+                    || "Ton-Ausgabe noch nicht gemeldet".into(),
+                    |ms| format!("Ton-Ausgabe {ms:.1} ms gemeldet"),
+                );
+                format!("{ausgabe}, {}", a.anzeige.beschreibung())
+            }
+            None => "ohne Geraete- und Anzeige-Latenz".into(),
+        };
         Some(format!(
-            "Bild/Ton: Ton {median:+.0} ms hinter Bild (Median, n={n}; Bezug: Sender-Reports, ohne Geraete- und Anzeige-Latenz)"
+            "Bild/Ton: Ton {median:+.0} ms hinter Bild (Median, n={n}; wie gesehen und gehoert: \
+             {anteile}; ohne Compositor und Monitor; Bezug: Sender-Reports)"
         ))
     }
 }

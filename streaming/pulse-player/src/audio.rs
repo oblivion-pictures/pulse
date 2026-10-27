@@ -138,7 +138,8 @@ struct Shared {
     ausgabe: u64,
     /// Vermessung gegen die Ton-RTP-Uhr (s. [`lippen`]), ab dem ersten Paket.
     tonuhr: Option<lippen::Tonuhr>,
-    /// Zuletzt vermessen: welche Ton-RTP-Marke klang, und wann
+    /// Zuletzt vermessen: welche Ton-RTP-Marke aus dem Lautsprecher kam
+    /// (samt Ausgabelatenz, `lippen::Tonuhr::im_lautsprecher`), und wann
     /// (s. [`crate::bildton`]).
     klingt: Option<(u32, Instant)>,
     /// Nutz-Trim `av_offset_ms` — positively = Ton spaeter (s. `OffsetMs`).
@@ -152,7 +153,8 @@ struct Shared {
     /// Zuletzt gemessener Lippenfehler (positiv = Ton haengt hinterher),
     /// fuer die Statistik-Zeile.
     letzte_fehler_ms: f64,
-    /// Zuletzt gemeldeter Bild/Ton-Versatz und wann er gemessen wurde
+    /// Bild/Ton-Versatz, GEGLAETTET ueber die Messungen (`bildbezug::glaetten`,
+    /// seit 2026-10-27), und wann zuletzt gemessen wurde
     /// (`AudioCommand::BildTon`, s. [`bildbezug`]).
     bildton: Option<(f64, Instant)>,
     /// Woran zuletzt geregelt wurde — fuer die Logzeile beim Wechsel.
@@ -166,6 +168,10 @@ struct Shared {
     max_ziel: usize,
     /// Abruftakt des Geraets und Zaehler der Verlust-Verdeckung (s. [`verdeckung`]).
     verdeckung: verdeckung::Stand,
+    /// Gemeldete Ausgabelatenz in µs (s. [`AudioOutput::latenz_us`]) — dieselbe
+    /// Zelle, hier fuer die Frage, was gerade aus dem Lautsprecher kommt
+    /// (`fuetterung`, `lippen::Tonuhr::im_lautsprecher`).
+    latenz_us: Arc<AtomicU32>,
 }
 
 impl Shared {
@@ -285,6 +291,7 @@ const OPUS_SAMPLE_RATE: u32 = 48_000;
 fn zustand(
     sample_rate: u32,
     channels: u16,
+    latenz_us: Arc<AtomicU32>,
 ) -> (Arc<Mutex<Shared>>, Sender<AudioCommand>, Receiver<AudioCommand>) {
     // VOR dem Anlegen von `Shared`: der Sollfuellstand haengt daran, und ihn
     // erst spaeter zu setzen hiesse, dass die Wiedergabe bis zum ersten
@@ -320,6 +327,7 @@ fn zustand(
         per_ms,
         max_ziel: max_ring_samples(sample_rate, channels) / 2,
         verdeckung: Default::default(),
+        latenz_us,
     }));
     let (tx, rx) = std::sync::mpsc::channel::<AudioCommand>();
     // Volle Kapazitaet im Voraus: sonst allokiert der Fuetter-Thread beim
@@ -363,8 +371,8 @@ impl AudioOutput {
         }
         let (device, config, weg) = ausgabe_cpal::oeffnen()?;
         let (sample_rate, channels) = (config.sample_rate, config.channels);
-        let (shared, tx, rx) = zustand(sample_rate, channels);
         let latenz_us = Arc::new(AtomicU32::new(0));
+        let (shared, tx, rx) = zustand(sample_rate, channels, Arc::clone(&latenz_us));
         ausgabe_cpal::starten(device, config, Arc::clone(&shared), rx, Arc::clone(&latenz_us))?;
         Ok(Self { tx, shared, sample_rate, channels, latenz_us, weg })
     }
@@ -374,8 +382,8 @@ impl AudioOutput {
     #[cfg(target_os = "linux")]
     fn ueber_pipewire() -> Result<Self> {
         let (sample_rate, channels) = (OPUS_SAMPLE_RATE, ausgabe_pipewire::KANAELE);
-        let (shared, tx, rx) = zustand(sample_rate, channels);
         let latenz_us = Arc::new(AtomicU32::new(0));
+        let (shared, tx, rx) = zustand(sample_rate, channels, Arc::clone(&latenz_us));
         let griff = ausgabe_pipewire::starten(Arc::clone(&shared), Arc::clone(&latenz_us))?;
         let faden_shared = Arc::clone(&shared);
         std::thread::Builder::new()

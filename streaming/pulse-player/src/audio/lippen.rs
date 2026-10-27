@@ -163,6 +163,38 @@ impl Tonuhr {
         self.rtp as f64 + interleaved / f64::from(channels) * 48_000.0 / f64::from(sample_rate)
     }
 
+    /// RTP-Position (verlaengert, 48-k-Takte), die JETZT aus dem Lautsprecher
+    /// kommt — fuer die Zeile „Bild/Ton" und die gemeinsame Uhr (seit
+    /// 2026-10-27; vorher stand dort [`Self::position`]).
+    ///
+    /// **Warum nicht `position`:** der Ausgabezaehler springt zu Beginn jedes
+    /// Geraete-Abrufs um dessen ganze Groesse (`fill_output`), `position`
+    /// meint also das ENDE des zuletzt herausgegebenen Abschnitts — und tut
+    /// so, als klinge es schon. Erklingen tut der ANFANG dieses Abschnitts erst
+    /// `latenz_s` nach dem Abruf, so wie die Anbindung es meldet (PipeWire
+    /// `pw_stream_get_time_n`: „delay ... for the next output sample", cpal
+    /// `playback - callback`; beides aus der Doku gefolgert, nicht gegen einen
+    /// Lautsprecher gemessen). Danach laeuft er in Echtzeit weiter.
+    ///
+    /// `abruf` = Groesse des letzten Abrufs in verschraenkten Samples,
+    /// `seit_abruf_s` = Zeit seither (beide 0 = noch kein Abruf, dann zaehlt
+    /// nur die Latenz).
+    /// Gedeckelt auf das, was das Geraet nach dem Abruf noch vorraetig hat
+    /// (Abschnitt plus Latenz) — weiter ist es ohne neuen Abruf nicht.
+    pub fn im_lautsprecher(
+        &self,
+        ausgabe: u64,
+        abruf: usize,
+        seit_abruf_s: f64,
+        latenz_s: f64,
+        sample_rate: u32,
+        channels: u16,
+    ) -> f64 {
+        let anfang = self.position(ausgabe.saturating_sub(abruf as u64), sample_rate, channels);
+        let abruf_s = abruf as f64 / f64::from(channels) / f64::from(sample_rate);
+        anfang + (seit_abruf_s.clamp(0.0, abruf_s + latenz_s) - latenz_s) * 48_000.0
+    }
+
     /// Verlaengerte RTP-Marke eines NEUEN Pakets, vorzeichenbehaftet gegen die
     /// zuletzt vermessene: ein aelteres Paket liegt davor, statt wie in der
     /// Wrap-Rechnung von [`Self::paket`] einen Tag voraus. Fuer den Vergleich
@@ -403,6 +435,44 @@ mod tests {
         assert!((99.0..=101.0).contains(&uhr.fehler_ms(ausgabe, 48_000, 2, spaeter)));
         uhr.vorhalt_verschieben(0.100);
         assert!(uhr.fehler_ms(ausgabe, 48_000, 2, spaeter).abs() < 0.1);
+    }
+
+    /// Was aus dem Lautsprecher kommt, liegt hinter dem Zaehlerstand: der
+    /// Anfang des letzten Abrufs, plus die Zeit seither, minus die gemeldete
+    /// Ausgabelatenz. Zahlen wie im PipeWire-Fall vom 2026-10-27 (Takt
+    /// 256 Samples = 5,33 ms, gemeldet 16 ms).
+    #[test]
+    fn im_lautsprecher_klingt_der_abschnittsanfang_minus_latenz() {
+        let jetzt = Instant::now();
+        // Marke 48 000 klingt bei Zaehlerstand 0 (Anker), 48 kHz Stereo.
+        let uhr = Tonuhr::neu(48_000, 0, jetzt, 0.0);
+        let abruf = 256 * 2;
+        // 1 s herausgegeben (Ende des letzten Abrufs), 2 ms nach dem Abruf.
+        let ausgabe = 96_000;
+        let pos = uhr.im_lautsprecher(ausgabe, abruf, 0.002, 0.016, 48_000, 2);
+        let erwartet = 48_000.0 + 48_000.0 - 256.0 + (0.002 - 0.016) * 48_000.0;
+        assert!((pos - erwartet).abs() < 0.5, "{pos} statt {erwartet}");
+        // In ms: 5,33 (Abschnitt) - 2 (verstrichen) + 16 (Latenz) = 19,3 ms
+        // hinter dem, was `position` behauptet.
+        let hinter_ms = (uhr.position(ausgabe, 48_000, 2) - pos) / 48.0;
+        assert!((19.2..=19.5).contains(&hinter_ms), "{hinter_ms} ms");
+    }
+
+    /// Ohne Abruf und ohne Meldung ist es `position` (alter Stand), ohne
+    /// Abruf mit Meldung nur um die Latenz verschoben; ein verspaeteter
+    /// Abruf schiebt die Position nicht ueber den Vorrat des Geraets hinaus.
+    #[test]
+    fn im_lautsprecher_randfaelle() {
+        let jetzt = Instant::now();
+        let uhr = Tonuhr::neu(0, 0, jetzt, 0.0);
+        let ausgabe = 96_000;
+        let pos = uhr.position(ausgabe, 48_000, 2);
+        assert_eq!(uhr.im_lautsprecher(ausgabe, 0, 0.0, 0.0, 48_000, 2), pos);
+        let nur_latenz = uhr.im_lautsprecher(ausgabe, 0, 0.0, 0.010, 48_000, 2);
+        assert!((pos - nur_latenz - 480.0).abs() < 0.5, "{nur_latenz}");
+        // 10-ms-Abruf, 1 s ohne neuen Abruf: hoechstens das Abschnittsende.
+        let gedeckelt = uhr.im_lautsprecher(ausgabe, 960, 1.0, 0.010, 48_000, 2);
+        assert!((gedeckelt - pos).abs() < 0.5, "{gedeckelt} statt {pos}");
     }
 
     /// Der Startfall vom 2026-09-27 (E2E-Lauf): der Ring fuellt sich mit

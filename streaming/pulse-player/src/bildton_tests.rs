@@ -66,6 +66,14 @@ fn zellen_halten_den_letzten_report_je_spur() {
     assert_eq!(s.ton.unwrap().rtp, 9);
 }
 
+/// Anteile wie am 2026-10-27 (PipeWire meldete 16 ms; Mailbox bei 60 Hz,
+/// 2 ms Zeichnen).
+fn anteile() -> Anteile {
+    use crate::anzeigelatenz::Anzeige;
+    let anzeige = Anzeige::schaetzen(2_000, Some(wgpu::PresentMode::Mailbox), Some(60_000));
+    Anteile { ausgabe_ms: Some(16.0), anzeige }
+}
+
 /// Die Logzeile kommt erst ab `mindestens` Proben — jede wiederkehrende Zeile
 /// kostet den Diagnose-Upload Reichweite (er trägt nur das Ende des Logs) —,
 /// meldet dann den Median und leert das Fenster.
@@ -73,13 +81,15 @@ fn zellen_halten_den_letzten_report_je_spur() {
 fn fenster_meldet_den_median_ab_genug_proben_und_leert_sich() {
     let mut f = Versatzfenster::default();
     assert_eq!(f.zeile(3), None, "ohne Proben keine Zeile");
-    f.probe(30.0);
-    f.probe(10.0);
+    f.probe(30.0, anteile());
+    f.probe(10.0, anteile());
     assert_eq!(f.zeile(3), None, "zu wenige Proben: warten, nicht leeren");
-    f.probe(20.0);
+    f.probe(20.0, anteile());
     let z = f.zeile(3).unwrap();
     assert!(z.contains("Ton +20 ms hinter Bild"), "{z}");
     assert!(z.contains("n=3"), "{z}");
+    assert!(z.contains("Ton-Ausgabe 16.0 ms gemeldet, Anzeige 10.3 ms"), "{z}");
+    assert!(z.contains("GESCHAETZT"), "{z}");
     assert_eq!(f.zeile(1), None, "danach leer");
 }
 
@@ -89,7 +99,7 @@ fn fenster_meldet_den_median_ab_genug_proben_und_leert_sich() {
 fn fenster_waechst_nicht_unbegrenzt() {
     let mut f = Versatzfenster::default();
     for i in 0..10_000 {
-        f.probe(f64::from(i));
+        f.probe(f64::from(i), anteile());
     }
     let z = f.zeile(1).unwrap();
     assert!(z.contains(&format!("n={}", super::HOECHSTENS_PROBEN)), "{z}");

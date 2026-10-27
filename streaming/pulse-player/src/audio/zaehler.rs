@@ -42,8 +42,9 @@ pub struct AudioCounters {
     /// Verdeckte Verluste (s. `audio::verdeckung`).
     pub verdeckung: verdeckung::Zaehler,
     /// Verzoegerung vom Geraete-Abruf bis zum Lautsprecher in ms, wie die
-    /// Anbindung sie meldet. Steckt NICHT in der Bild/Ton-Messung
-    /// (`crate::bildton`) — deshalb gehoert sie daneben ins Protokoll.
+    /// Anbindung sie meldet. Steckt seit 2026-10-27 in der Bild/Ton-Messung
+    /// (`klingt`, `lippen::Tonuhr::im_lautsprecher`); die Zeile „Bild/Ton"
+    /// weist sie aus.
     pub ausgabe_ms: Option<f32>,
     /// Ueber welchen Weg der Ton hinausgeht (s. `AudioOutput::weg`).
     pub weg: &'static str,

@@ -130,7 +130,8 @@ mod tests {
     #[ignore]
     fn echtes_geraet_laeuft_an_und_misst_die_verzoegerung() {
         let (device, config, weg) = oeffnen().expect("Ausgabegeraet");
-        let (shared, tx, rx) = super::super::zustand(config.sample_rate, config.channels);
+        let (shared, tx, rx) =
+            super::super::zustand(config.sample_rate, config.channels, Default::default());
         let latenz = Arc::new(AtomicU32::new(0));
         starten(device, config, Arc::clone(&shared), rx, Arc::clone(&latenz)).expect("Strom");
         std::thread::sleep(Duration::from_millis(600));
