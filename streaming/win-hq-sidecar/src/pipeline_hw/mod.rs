@@ -321,6 +321,8 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
     let mut ton_faden = crate::encode::tonfaden::abzweigen(&mut **encoder, &mut audio_capture)?;
     let mut last_frame: Option<OwnedHwFrame> = Some(first);
     let mut last_pts: i64 = -1;
+    // Verzug des letzten echten Bildes — Bezug der Duplikate (`zeitbasis::BildUhr`).
+    let mut bilduhr = zeitbasis::BildUhr::default();
     let mut audio_dead = false;
     let mut frames_sent: u64 = 0;
     let mut platz = bildplatz::Bildplatz::neu(started, fps);
@@ -398,26 +400,25 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
         // Aufnahmezeit bleibt damit erhalten statt auf das fps-Raster gerundet
         // zu werden (Begründung in `crate::zeitbasis`).
         //
-        // **Duplikate kommen aus dem ZÄHLER, echte Bilder aus der Uhr.** Ein
-        // Duplikat hat keine eigene Aufnahmezeit — `newest_qpc` steht dann
-        // still, und `elapsed` mit ihm. Im alten Raster fiel das nicht auf:
-        // die Monotonie-Untergrenze `last_pts + 1` war dort ein ganzer
-        // Bildabstand und damit zufällig genau das Richtige. In Takten sind
-        // daraus 11 µs geworden — ein Duplikat stünde 11 µs nach seinem
-        // Vorgänger, und eine Sekunde Standbild schrumpfte im Strom auf
-        // Millisekunden. Beim ersten Messlauf am 2026-08-14 sah man es sofort:
-        // Siebenergruppen im 11-µs-Abstand, dazwischen Sprünge von 111 ms.
-        // Der Linux-Zwilling verankert Duplikate aus demselben Grund am
-        // Zähler (`stream_controller.rs`, „Duplikate dagegen kommen aus dem
-        // ZÄHLER") — dort in Bildplätzen, hier in Takten.
-        // Seit 2026-10-20 mit der Uhr als Untergrenze — warum, steht an
-        // `duplikat_pts` (Fernsteuerung: Bild und Ton liefen auseinander).
+        // **Duplikate haben keine eigene Aufnahmezeit** — `newest_qpc` steht
+        // dann still, und `elapsed` mit ihm. Mit `elapsed` stünde ein Duplikat
+        // 11 µs nach seinem Vorgänger, und eine Sekunde Standbild schrumpfte im
+        // Strom auf Millisekunden (Messlauf 2026-08-14: Siebenergruppen im
+        // 11-µs-Abstand, dazwischen Sprünge von 111 ms). Bis 2026-10-27 kamen
+        // sie deshalb aus einem Zähler mit der Uhr als Untergrenze; seitdem
+        // aus der Uhr abzüglich des Verzugs des letzten echten Bildes, damit
+        // beide Arten auf derselben Zeitachse liegen — warum, steht an
+        // `zeitbasis::BildUhr` (Fernsteuerung: Bild und Ton liefen
+        // auseinander). Der Linux-Zwilling zählt weiter in Bildplätzen
+        // (`stream_controller.rs`, „Duplikate dagegen kommen aus dem ZÄHLER").
+        let uhr_pts = zeitbasis::pts_aus_sekunden(zeitbasis::jetzt_seit_ursprung(
+            qpc_sync.then_some(origin_qpc),
+            started,
+        ));
         let mut pts = if captured > 0 {
-            zeitbasis::pts_aus_sekunden(elapsed)
+            bilduhr.echt(zeitbasis::pts_aus_sekunden(elapsed), uhr_pts)
         } else {
-            let jetzt = zeitbasis::jetzt_seit_ursprung(qpc_sync.then_some(origin_qpc), started);
-            let uhr_pts = zeitbasis::pts_aus_sekunden(jetzt);
-            zeitbasis::duplikat_pts(last_pts, platz.takte_je_bild(), uhr_pts)
+            bilduhr.duplikat(last_pts, uhr_pts)
         };
         // Fern-Weg: höchstens ein Bild je Bildabstand — wozu, und warum die
         // Grenze ein Bildabstand ist und kein Takt, steht bei

@@ -123,28 +123,62 @@ pub fn lueckenschwelle(fps: u32) -> i64 {
     takte_je_bild(fps) * 2
 }
 
-/// pts eines Duplikats (die Quelle steht still, es wird das letzte Bild
-/// erneut gesendet). `uhr_pts` ist JETZT auf derselben Uhr wie die echten
-/// Bilder (`pts_aus_sekunden(jetzt - ursprung)`).
+/// Obergrenze für den Verzug eines echten Bildes, den [`BildUhr`] auf die
+/// Duplikate überträgt (100 ms). Gemessen liegt er bei rund 20 ms (Windows,
+/// `[sync]`-Zeile, 2026-10-27); ein einzelnes Bild hinter einem
+/// Stocken (gemessen bis 124 ms) soll die Duplikate danach nicht um mehr als
+/// das zurückversetzen.
+pub const MAX_VERZUG: i64 = 9_000;
+
+/// Zeitstempel der Bilder eines Stroms: echte Bilder tragen ihre
+/// Aufnahmezeit, Duplikate die Uhr **abzüglich des Verzugs, den das letzte
+/// echte Bild hatte** (Uhr bei der Übergabe minus Aufnahmezeit).
 ///
-/// **Zaehler mit Uhr als Untergrenze.** Ein Duplikat hat keine eigene
-/// Aufnahmezeit, deshalb geht es grundsaetzlich einen Bildabstand weiter
-/// (sonst schrumpft ein Standbild auf Millisekunden). Der Zaehler allein
-/// rechnet aber mit dem SOLL-Abstand, und der Herzschlag kommt nie genau
-/// puenktlich: jede Aufwach-Verspaetung und jedes Stocken fehlte ihm fuer
-/// immer. Am 2026-10-20 lag der Zeitstempel so nach Sekunden Standbild
-/// Hunderte Millisekunden hinter der Uhr, bis das naechste echte Bild ihn
-/// zurueckriss (Tests unten). Deshalb darf ein Duplikat hoechstens einen
-/// Bildabstand hinter der Uhr liegen.
+/// **Warum der Verzug und nicht die Uhr selbst** (2026-10-27, Fernsteuerung,
+/// all3media). Bis dahin lag ein Duplikat einen Bildabstand hinter der Uhr
+/// und mindestens einen Bildabstand nach seinem Vorgänger. Ein echtes Bild
+/// kommt aber erst rund 20 ms nach seiner Aufnahme an — gemessen lagen die
+/// Duplikate dadurch etwa 29 ms SPÄTER auf der Zeitachse als die echten
+/// Bilder (`[sync]` Bild p50 +21 ms bei Bewegung, −8 ms bei Standbild). Der
+/// Player richtet den Ton am Zeitstempel des gezeigten Bildes aus, jeder
+/// Wechsel zwischen Standbild und Bewegung verschiebt seinen Bezug also um
+/// diesen Betrag (aus dem Code gefolgert). Gemessen am selben Tag im Player:
+/// Bild/Ton sprang zwischen +15 und −13 ms, oft bei einem angeforderten
+/// Vollbild, bei einem Regler am Anschlag. Mit dem Verzug des letzten echten
+/// Bildes liegen beide Arten auf derselben Linie.
 ///
-/// **Warum einen Bildabstand dahinter und nicht auf der Uhr:** ein echtes
-/// Bild, das kurz vor dem Herzschlag aufgenommen wurde, kann erst danach
-/// ankommen. Laege das Duplikat schon auf „jetzt", haette dieses Bild einen
-/// kleineren Zeitstempel als sein Vorgaenger und muesste geklemmt werden —
-/// die Dauer-Klemmung, die die Messung vom 2026-08-14 bei an die Uhr
-/// gehefteten Duplikaten gezeigt hat.
-pub fn duplikat_pts(last_pts: i64, takte_je_bild: i64, uhr_pts: i64) -> i64 {
-    (last_pts + takte_je_bild).max(uhr_pts - takte_je_bild)
+/// Was davor galt und weiter gilt:
+/// - **Kein Rückstand hinter der Uhr** (2026-10-20): ein Zähler, der den
+///   Soll-Abstand addiert, fiel nach Sekunden Standbild Hunderte
+///   Millisekunden zurück. Hier folgt das Duplikat der Uhr selbst.
+/// - **Kein Zusammenschrumpfen** (2026-08-14): stünde die Uhr still, lägen
+///   Duplikate 11 µs auseinander. Die Uhr läuft hier aber immer
+///   (`jetzt_seit_ursprung` liest sie bei jedem Herzschlag neu), die
+///   Abstände sind die echten Herzschlag-Abstände.
+/// - **Platz für das nächste echte Bild** (2026-08-14): ein Duplikat an der
+///   Uhr läge VOR der Aufnahmezeit eines echten Bildes, das kurz vor dem
+///   Herzschlag aufgenommen wurde und erst danach ankommt. Mit dem Verzug
+///   liegt es genau so weit hinter der Uhr wie ein echtes Bild; geklemmt
+///   wird nur noch, wenn ein Bild langsamer ankommt als sein Vorgänger.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct BildUhr {
+    verzug: i64,
+}
+
+impl BildUhr {
+    /// Ein echtes Bild: gibt seine Aufnahmezeit zurück und merkt sich, wie
+    /// lange es bis jetzt gebraucht hat.
+    pub fn echt(&mut self, aufnahme_pts: i64, uhr_pts: i64) -> i64 {
+        self.verzug = (uhr_pts - aufnahme_pts).clamp(0, MAX_VERZUG);
+        aufnahme_pts
+    }
+
+    /// Ein Duplikat (die Quelle steht still, das letzte Bild geht erneut
+    /// hinaus): die Uhr abzüglich des gemerkten Verzugs, streng nach seinem
+    /// Vorgänger.
+    pub fn duplikat(&self, last_pts: i64, uhr_pts: i64) -> i64 {
+        (uhr_pts - self.verzug).max(last_pts + 1)
+    }
 }
 
 #[cfg(test)]
@@ -210,18 +244,18 @@ mod tests {
         assert!(takte_je_bild(60) * 3 > lueckenschwelle(60));
     }
 
-    /// Faehrt eine Strecke aus lauter Duplikaten: der Herzschlag kommt alle
-    /// `abstand_s` Sekunden (bei der Fernsteuerung einen Bildabstand plus die
-    /// Aufwach-Verspaetung), dazu optional ein Stocken. Liefert alle pts und
-    /// die Uhr beim letzten.
+    /// Ein Strom aus einem echten Bild (Aufnahme bei 0, angekommen mit
+    /// `verzug_s`) und danach `n` Duplikaten im Abstand `abstand_s`, wahlweise
+    /// mit einem Stocken. Liefert die pts und die Uhr am Schluss.
     fn duplikat_strecke(
+        verzug_s: f64,
         abstand_s: f64,
         n: usize,
         stocken_bei: Option<(usize, f64)>,
     ) -> (Vec<i64>, i64) {
-        let f = takte_je_bild(60);
-        let mut uhr_s = 0.0;
-        let mut pts = vec![0i64];
+        let mut bu = BildUhr::default();
+        let mut uhr_s = verzug_s;
+        let mut pts = vec![bu.echt(0, pts_aus_sekunden(uhr_s))];
         for i in 1..n {
             uhr_s += abstand_s;
             if let Some((bei, dauer)) = stocken_bei
@@ -230,64 +264,74 @@ mod tests {
                 uhr_s += dauer;
             }
             let letzter = *pts.last().unwrap();
-            pts.push(duplikat_pts(letzter, f, pts_aus_sekunden(uhr_s)));
+            pts.push(bu.duplikat(letzter, pts_aus_sekunden(uhr_s)));
         }
         (pts, pts_aus_sekunden(uhr_s))
     }
 
+    /// **Der Fehler vom 2026-10-27:** Duplikate lagen um den Verzug echter
+    /// Bilder später auf der Zeitachse als diese. Jetzt liegt jedes Duplikat
+    /// genau so weit hinter der Uhr wie das letzte echte Bild (21 ms, wie
+    /// gemessen).
+    #[test]
+    fn duplikate_tragen_den_verzug_echter_bilder() {
+        let verzug = 0.021;
+        let (pts, uhr) = duplikat_strecke(verzug, 1.0 / 60.0, 600, None);
+        assert_eq!(uhr - *pts.last().unwrap(), pts_aus_sekunden(verzug));
+    }
+
     /// **Der Fehler vom 2026-10-20** (Fernsteuerung, Windows, all3media): der
-    /// Herzschlag kam im Mittel 0,6 ms zu spaet (57,9 statt 60 Bilder/s), der
-    /// Zaehler rechnete aber glatte 16,7 ms. Nach zehn Sekunden Standbild lag
-    /// der Zeitstempel ~360 ms hinter der Uhr — der Player hielt die Bilder
-    /// fuer verspaetet und schob seinen Vorhalt zwischen 30 und 105 ms hin
-    /// und her, der Ton blieb stehen: Bild und Ton liefen auseinander.
+    /// Herzschlag kam im Mittel 0,6 ms zu spaet (57,9 statt 60 Bilder/s), ein
+    /// Zaehler mit glatten 16,7 ms lag nach zehn Sekunden Standbild ~360 ms
+    /// hinter der Uhr. Der Abstand zur Uhr bleibt hier der Verzug.
     #[test]
     fn duplikate_fallen_nicht_hinter_die_uhr() {
-        let abstand = 1.0 / 57.9;
-        let (pts, uhr) = duplikat_strecke(abstand, 579, None);
-        let rueckstand = uhr - *pts.last().unwrap();
-        assert!(
-            rueckstand <= takte_je_bild(60),
-            "nach 10 s Standbild {} ms hinter der Uhr",
-            rueckstand / 90
-        );
+        let (pts, uhr) = duplikat_strecke(0.021, 1.0 / 57.9, 579, None);
+        assert_eq!(uhr - *pts.last().unwrap(), pts_aus_sekunden(0.021));
     }
 
-    /// Ein Stocken des Senders (gemessen bis 278 ms) darf ebenso keinen
-    /// bleibenden Rueckstand hinterlassen — die Luecke gehoert in den
-    /// Zeitstempel, sie ist ja wirklich passiert.
+    /// Ein Stocken des Senders (gemessen bis 278 ms) gehoert in den
+    /// Zeitstempel, es ist ja wirklich passiert — ohne bleibenden Rueckstand.
     #[test]
     fn stocken_hinterlaesst_keinen_rueckstand() {
-        let (pts, uhr) = duplikat_strecke(1.0 / 60.0, 120, Some((60, 0.278)));
-        assert!(uhr - *pts.last().unwrap() <= takte_je_bild(60));
+        let (pts, uhr) = duplikat_strecke(0.021, 1.0 / 60.0, 120, Some((60, 0.278)));
+        assert_eq!(uhr - *pts.last().unwrap(), pts_aus_sekunden(0.021));
     }
 
-    /// Die andere Falle (Messung 2026-08-14): ein Duplikat ist mindestens
-    /// einen Bildabstand weiter, sonst schrumpft ein Standbild im Strom auf
-    /// Millisekunden. Gilt auch, wenn die Uhr GAR NICHT weiterliefe.
+    /// Kein Zusammenschrumpfen (Messung 2026-08-14): die Abstaende der
+    /// Duplikate sind die Abstaende des Herzschlags, und streng monoton bleibt
+    /// es auch, wenn die Uhr einmal nicht weiterliefe.
     #[test]
-    fn duplikate_halten_mindestens_einen_bildabstand() {
+    fn duplikate_folgen_dem_herzschlag() {
+        let (pts, _) = duplikat_strecke(0.021, 1.0 / 60.0, 300, None);
         let f = takte_je_bild(60);
-        for uhr in [0, 1_000, 5_000] {
-            assert_eq!(duplikat_pts(5_000, f, uhr), 5_000 + f);
-        }
-        let (pts, _) = duplikat_strecke(1.0 / 70.0, 300, None);
-        assert!(pts.windows(2).all(|w| w[1] - w[0] >= f));
+        assert!(pts.windows(2).skip(1).all(|w| (w[1] - w[0] - f).abs() <= 1));
+        let bu = BildUhr::default();
+        assert_eq!(bu.duplikat(5_000, 1_000), 5_001);
     }
 
-    /// Und die dritte (Dauer-Klemmung, ebenfalls 2026-08-14): an die Uhr
-    /// geheftete Duplikate liefen VOR die Aufnahmezeit des naechsten echten
-    /// Bildes, das dann nur noch geklemmt werden konnte. Deshalb bleibt ein
-    /// Duplikat einen Bildabstand HINTER der Uhr: ein echtes Bild, das bis zu
-    /// einem Bildabstand vor dem Herzschlag aufgenommen wurde und erst danach
-    /// ankommt, behaelt seine Aufnahmezeit.
+    /// Platz fuer das naechste echte Bild (Dauer-Klemmung, 2026-08-14): ein
+    /// echtes Bild, das kurz vor dem Herzschlag aufgenommen wurde und mit
+    /// demselben Verzug danach ankommt, liegt NACH dem Duplikat.
     #[test]
     fn duplikat_laesst_dem_naechsten_echten_bild_platz() {
-        let f = takte_je_bild(60);
-        let uhr = 900_000;
-        let dup = duplikat_pts(0, f, uhr);
-        assert_eq!(dup, uhr - f);
-        let echtes_bild_kurz_davor = uhr - f / 2;
-        assert!(echtes_bild_kurz_davor > dup);
+        let verzug = pts_aus_sekunden(0.021);
+        let mut bu = BildUhr::default();
+        bu.echt(0, verzug);
+        let herzschlag = 900_000;
+        let dup = bu.duplikat(0, herzschlag);
+        let aufgenommen_kurz_davor = herzschlag - verzug + 100;
+        assert!(aufgenommen_kurz_davor > dup);
+    }
+
+    /// Ein Ausreisser (ein Bild nach langem Stocken) versetzt die Duplikate
+    /// hoechstens um [`MAX_VERZUG`] zurueck.
+    #[test]
+    fn verzug_ist_begrenzt() {
+        let mut bu = BildUhr::default();
+        bu.echt(0, 90_000);
+        assert_eq!(bu.duplikat(0, 100_000), 100_000 - MAX_VERZUG);
+        bu.echt(50_000, 40_000); // Uhr vor der Aufnahme: kein negativer Verzug
+        assert_eq!(bu.duplikat(0, 100_000), 100_000);
     }
 }
