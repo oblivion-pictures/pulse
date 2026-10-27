@@ -271,7 +271,8 @@ async def issue_stream_token(
     # MEDIAMTX_PUSH_PROTOCOL=whip, damit Gaeste ueber die NAT-durchstossende
     # WebRTC-Schicht publishen statt ueber TCP 1936, den sie hinter dem NAT des
     # Hosts gar nicht erreichen. Der Instanz-OWNER streamt auf die eigene
-    # Maschine und behaelt den bewaehrten RTMPS-Weg.
+    # Maschine und behaelt den RTMPS-Weg — sofern sein Client nicht WHIP
+    # wuenscht, was seit 2026-10-27 jeder tut (s. unten).
     #
     # Der Wunsch kam 2026-08-02 dazu: ueber RTMPS fehlt der RTCP-Rueckkanal,
     # und ohne ihn wartet ein beitretender Zuschauer bis zum naechsten
@@ -303,8 +304,12 @@ async def issue_stream_token(
     # Dort kennzeichnet der ``admin``-Claim des Session-Tokens den Owner
     # (session_ticket.py vergleicht die CLOUD-sub gegen PULSE_INSTANCE_OWNER_ID
     # und setzt ihn beim Prägen). Ohne das bekam der Windows-Owner WHIP
-    # aufgedrückt — und der win-hq-sidecar scheitert am DTLS-Handshake mit
-    # Schannel (SEC_E_ALGORITHM_MISMATCH, s. docs/plans/2026-07-14-…-status.md).
+    # aufgedrückt — damals mit der Begründung, der win-hq-sidecar scheitere am
+    # DTLS-Handshake mit Schannel (s. docs/plans/2026-07-14-…-status.md). Das
+    # galt für FFmpegs WHIP-Muxer, den der Sidecar seit 2026-08-04 nicht mehr
+    # nutzt; seit 2026-10-27 wünscht auch Windows WHIP
+    # (`web/src/lib/stream/settings.svelte.ts::pushProtokoll`). Die Ausnahme
+    # bedient damit nur noch ältere Clients, die RTMPS wünschen.
     owner_erkannt = user_id == settings.pulse_instance_owner_id or (
         user.is_self_host and user.is_admin
     )

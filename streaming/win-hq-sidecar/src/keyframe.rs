@@ -337,11 +337,11 @@ pub fn reset() {
 /// Vollbilder lang stumpf.
 ///
 /// **Pausiert wird nur mit Rueckkanal** (eigener WHIP-Sender oder Direktweg,
-/// beide als `encode::senke` angemeldet). Auf dem FFmpeg-Muxer (RTMPS — den
-/// waehlt die Oberflaeche fuer Windows an einem Heimserver,
-/// `web/src/lib/stream/settings.svelte.ts::pushProtokoll`) erreicht keine
-/// Anforderung den Encoder; dort ist der Takt die einzige Quelle und laeuft
-/// weiter.
+/// beide als `encode::senke` angemeldet). Auf dem FFmpeg-Muxer (RTMPS — die
+/// Oberflaeche waehlt es seit 2026-10-27 nirgends mehr, aber aeltere Clients
+/// wuenschten es fuer Windows an einem Heimserver, und media-svc gibt es dem
+/// Betreiber weiter, wenn er es wuenscht) erreicht keine Anforderung den
+/// Encoder; dort ist der Takt die einzige Quelle und laeuft weiter.
 ///
 /// Ohne Rueckkanal bleibt NVENC deshalb beim GOP-Takt des Encoders, genau wie
 /// vor dem 2026-10-27; der Selbsttakt laeuft dort nur fuer `h264_amf`.
@@ -414,7 +414,7 @@ impl Selbsttakt {
 }
 
 /// Ein Vollbild zu Beginn einer Fernsteuerung — **nur NVENC ohne Rueckkanal**
-/// (RTMPS, also Windows an einem Heimserver).
+/// (RTMPS, s. [`Selbsttakt`]).
 ///
 /// Bis 2026-10-27 erzwang das Umschalten des Fern-Puffers auf NVENC dort ein
 /// IDR (`encode/fern_vbv.rs`: FFmpeg setzt beim Umkonfigurieren `forceIDR`),

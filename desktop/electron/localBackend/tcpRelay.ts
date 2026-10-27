@@ -8,7 +8,9 @@
  * des OWNERS ins Leere: media-svc mintet dem Instanz-Owner bewusst eine
  * `rtmps://localhost:1936`-Push-URL (der Owner streamt „auf die eigene
  * Maschine") — auf Windows liegt MediaMTX aber in der VM, nicht auf
- * Host-localhost → FFmpeg scheitert mit `write_header`.
+ * Host-localhost → FFmpeg scheitert mit `write_header`. Seit 2026-10-27
+ * wünscht der Client auch unter Windows WHIP (`pushProtokoll`); den
+ * RTMPS-Weg nehmen nur noch ältere Clients des Owners.
  *
  * Der Relay ist ein transparenter Byte-Durchreicher: die RTMPS-TLS-Sitzung
  * läuft Ende-zu-Ende zwischen Sidecar und MediaMTX DURCH den Relay (kein

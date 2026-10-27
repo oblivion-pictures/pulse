@@ -42,7 +42,8 @@ export const TURN = 3478;
 export const DIREKT_MUX = 7900;
 /** MediaMTX-WHEP-ICE (Stream-Wiedergabe). */
 export const WHEP_ICE = 8189;
-/** MediaMTX-RTMPS-Ingest (Owner-Push auf `rtmps://127.0.0.1:1936` —
+/** MediaMTX-RTMPS-Ingest (Owner-Push auf `rtmps://127.0.0.1:1936`, nur noch
+ *  für ältere Clients — seit 2026-10-27 wünschen alle WHIP —
  *  07-render-env.sh setzt für app_host `MEDIAMTX_INGEST=127.0.0.1`). Gedacht
  *  nur für Loopback: Gäste publishen per WHIP, RTMPS aus dem LAN/Internet ist
  *  nicht vorgesehen, und weitergereicht wird der Port auf keiner Plattform
