@@ -39,6 +39,13 @@ export interface OverrideSet {
    * damit AV1; die Oberfläche erzwingt beides beim Anhaken.
    */
   hdr?: boolean;
+  /**
+   * Volle Farbauflösung (4:4:4). Heute nur aus dem Standplatz-Profil und nur
+   * vom Windows-Sidecar verstanden (NVENC, 8 bit); die anderen Sidecars
+   * ignorieren das Feld. Ein Wunsch: was der Sender nicht kann, startet in
+   * 4:2:0 (`encode/vollfarbe.rs`).
+   */
+  chroma?: '444';
 }
 
 // Hard caps for the HQ-stream bitrate. MediaMTX fans out WHEP copies to every

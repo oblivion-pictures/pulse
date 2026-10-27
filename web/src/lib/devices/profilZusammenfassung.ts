@@ -16,6 +16,7 @@ interface ProfilAuszug {
   bitrate_kbps: number;
   zehn_bit: boolean;
   hdr: boolean;
+  voll_farbe: boolean;
 }
 
 // Dieselben Namen wie `PROFIL_CODECS` in `profilCodec.ts` — hier doppelt, weil
@@ -34,5 +35,6 @@ export function profilZusammenfassung(p: ProfilAuszug): string {
   // nicht mit H.264 — sonst nennt die Zeile, was nie hinausgeht.
   if (p.hdr && p.codec === 'av1') teile.push('HDR');
   else if (p.zehn_bit && p.codec !== 'h264') teile.push('10 Bit');
+  if (p.voll_farbe) teile.push('4:4:4');
   return teile.join(' · ');
 }

@@ -102,6 +102,18 @@ export interface StandplatzProfil {
    * Bild ausgewaschen aus. Deshalb Vorgabe aus, aber kein Verbot.
    */
   hdr: boolean;
+  /**
+   * Volle Farbauflösung (4:4:4) statt 4:2:0 — farbige Schrift und feine
+   * Linien bleiben scharf. Seit 2026-10-27, zum Ausprobieren.
+   *
+   * **Heute nur im nativen Player sichtbar**: der Windows-Sidecar sendet es
+   * nur über NVENC und nur in 8 bit (`encode/vollfarbe.rs`), ein Browser kann
+   * HEVC 4:4:4 nicht und H.264/AV1 4:4:4 nur in Chrome. Was der Sender nicht
+   * kann, startet in 4:2:0 statt abzubrechen — derselbe Grund wie bei
+   * [`zehn_bit`]: ein Weckruf darf an einer Qualitätsfrage nicht scheitern.
+   * Deshalb schliesst das Formular es mit 10 bit und HDR aus.
+   */
+  voll_farbe: boolean;
 }
 
 /** Die Vorgaben — Begründung im Modulkopf. */
@@ -113,6 +125,7 @@ export const VORGABE: StandplatzProfil = {
   bitrate_kbps: 8000,
   zehn_bit: false,
   hdr: false,
+  voll_farbe: false,
 };
 
 function ausSpeicher(roh: unknown): StandplatzProfil {
@@ -128,8 +141,11 @@ function ausSpeicher(roh: unknown): StandplatzProfil {
       typeof o.bitrate_kbps === 'number' && o.bitrate_kbps > 0
         ? o.bitrate_kbps
         : VORGABE.bitrate_kbps,
-    zehn_bit: o.zehn_bit === true,
+    // 4:4:4 schliesst 10 bit aus (Formular); ein Stand mit beidem kommt nur
+    // aus einer Hand-Änderung und wird hier zugunsten von 4:4:4 aufgelöst.
+    zehn_bit: o.zehn_bit === true && o.voll_farbe !== true,
     hdr: o.hdr === true,
+    voll_farbe: o.voll_farbe === true,
   };
 }
 
@@ -185,6 +201,7 @@ class StandplatzProfilStore {
       // Weckruf dieselbe, und es gibt sie nur einmal.
       ...(p.zehn_bit ? { bit_depth: 10 as const } : {}),
       ...(hdrGilt(codec, p.hdr) ? { hdr: true } : {}),
+      ...(p.voll_farbe ? { chroma: '444' as const } : {}),
     };
   }
 }

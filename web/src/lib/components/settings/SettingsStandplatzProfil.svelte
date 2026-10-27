@@ -95,6 +95,19 @@
    */
   const schalter = $derived(farbSchalter(entwurf.codec, stream));
   const zehnBitMoeglich = $derived(schalter.zehnBit);
+
+  // 4:4:4 und 10 bit schliessen sich vorerst aus: der Sender fährt 4:4:4 nur
+  // in 8 bit (`encode/vollfarbe.rs`). Wer das eine anhakt, hakt das andere
+  // ab — gesperrte Kästchen hätten sich über einen Codec-Wechsel beide
+  // anhaken und dann beide nicht mehr lösen lassen.
+  function vollFarbeGesetzt(e: Event): void {
+    if ((e.currentTarget as HTMLInputElement).checked)
+      entwurf = { ...entwurf, voll_farbe: true, zehn_bit: false, hdr: false };
+  }
+  function zehnBitGesetzt(e: Event): void {
+    if ((e.currentTarget as HTMLInputElement).checked)
+      entwurf = { ...entwurf, zehn_bit: true, voll_farbe: false };
+  }
   const hdrMoeglich = $derived(schalter.hdr && entwurf.zehn_bit);
 
   /**
@@ -203,7 +216,7 @@
       </label>
     </div>
 
-    <!-- Die drei Schalter nebeneinander: sie gehören zusammen (was der
+    <!-- Die Schalter nebeneinander: sie gehören zusammen (was der
          Encoder zusätzlich tun soll) und kosten einzeln untereinander mehr
          Höhe als der ganze Rest des Bildes. -->
     <div class="border-border/60 flex flex-wrap items-start gap-x-6 gap-y-2 border-t pt-3">
@@ -212,6 +225,7 @@
           class="mt-0.5 shrink-0"
           bind:checked={entwurf.zehn_bit}
           disabled={!zehnBitMoeglich}
+          onchange={zehnBitGesetzt}
           data-testid="standplatz-profil-zehnbit"
         />
         <span class="text-text-bright text-sm font-medium">{m.standplatz_profil_ten_bit()}</span>
@@ -224,6 +238,15 @@
           data-testid="standplatz-profil-hdr"
         />
         <span class="text-text-bright text-sm font-medium">{m.standplatz_profil_hdr()}</span>
+      </label>
+      <label class="flex items-start gap-2">
+        <Checkbox
+          class="mt-0.5 shrink-0"
+          bind:checked={entwurf.voll_farbe}
+          onchange={vollFarbeGesetzt}
+          data-testid="standplatz-profil-vollfarbe"
+        />
+        <span class="text-text-bright text-sm font-medium">{m.standplatz_profil_voll_farbe()}</span>
       </label>
     </div>
 
