@@ -335,6 +335,12 @@ impl Renderer {
         &self.device
     }
 
+    /// Ausgabe-Takt der Oberflaeche — fuer die geschaetzte Anzeige-Latenz
+    /// (`crate::anzeigelatenz`).
+    pub fn present_mode(&self) -> wgpu::PresentMode {
+        self.config.present_mode
+    }
+
     pub fn surface_texture_format(&self) -> wgpu::TextureFormat {
         self.config.format
     }

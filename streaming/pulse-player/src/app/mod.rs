@@ -1527,12 +1527,23 @@ impl App {
             }
             SessionEvent::Stats(stats) => {
                 // Eine Probe fuer die Zeile „Bild/Ton": gezeigtes Bild gegen
-                // klingenden Ton, beide in der Uhr der Sender Reports.
+                // klingenden Ton, beide in der Uhr der Sender Reports — so,
+                // wie man sie sieht und hoert (seit 2026-10-27): das Bild
+                // erst nach der Anzeige-Latenz (`anzeigelatenz`, Bildschirm
+                // GESCHAETZT), der Ton samt Ausgabelatenz (steckt schon in
+                // `ton_klingt`, `audio::lippen::Tonuhr::im_lautsprecher`).
                 if let (Some(b), Some(t), Some((rb, tb)), Some((rt, tt))) =
                     (stats.sr.bild, stats.sr.ton, session.gezeigt, stats.media.ton_klingt)
                 {
-                    if let Some(v) = crate::bildton::versatz_ms(b, rb, tb, t, rt, tt) {
-                        session.bildton.probe(v);
+                    let anzeige = crate::anzeigelatenz::Anzeige::schaetzen(
+                        session.phases.upload_avg_us + session.phases.render_avg_us,
+                        session.renderer.as_ref().map(render::Renderer::present_mode),
+                        session.window.current_monitor().and_then(|m| m.refresh_rate_millihertz()),
+                    );
+                    let sichtbar = tb + anzeige.dauer();
+                    if let Some(v) = crate::bildton::versatz_ms(b, rb, sichtbar, t, rt, tt) {
+                        let ausgabe_ms = stats.media.audio_ausgabe_ms;
+                        session.bildton.probe(v, crate::bildton::Anteile { ausgabe_ms, anzeige });
                         // Und an die Tonausgabe, die ihn ausregelt (gemeinsame
                         // Uhr, `audio::bildbezug`). Volle Warteschlange: dann
                         // zaehlt die naechste Messung in 250 ms.

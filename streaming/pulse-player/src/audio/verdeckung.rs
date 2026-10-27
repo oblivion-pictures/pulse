@@ -128,6 +128,12 @@ impl Stand {
         self.abruf = samples;
         self.abruf_zeit = Some(jetzt);
     }
+
+    /// Groesse und Zeitpunkt des letzten Abrufs — auch fuer die Frage, was
+    /// gerade aus dem Lautsprecher kommt (`lippen::Tonuhr::im_lautsprecher`).
+    pub(super) fn letzter_abruf(&self) -> (usize, Option<Instant>) {
+        (self.abruf, self.abruf_zeit)
+    }
 }
 
 /// Momentaufnahme fuer [`Verdeckung::entscheiden`].

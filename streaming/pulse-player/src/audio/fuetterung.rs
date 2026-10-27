@@ -4,6 +4,7 @@
 //! herausgeloest (Groessengrenze, `PLAN.md` §12.1) am 2026-10-14, im selben
 //! Zug angepasst (Schwall-Erkennung, Lippen-Regler ohne Ringabweichung).
 
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -142,6 +143,11 @@ pub(super) fn pump_commands(
                     // Vor dem Griff auf die Tonuhr lesen — der leiht `s` aus.
                     let am_bild = bildbezug::fehler(s.bildton, s.trim_ms, jetzt);
                     let (bezug_vorher, fehler_vorher) = (s.bezug, s.letzte_fehler_ms);
+                    let latenz_s = f64::from(s.latenz_us.load(Ordering::Relaxed)) / 1e6;
+                    let (abruf, seit_abruf_s) = match s.verdeckung.letzter_abruf() {
+                        (n, Some(t)) => (n, jetzt.saturating_duration_since(t).as_secs_f64()),
+                        (_, None) => (0, 0.0),
+                    };
                     // Start-Vorhalt = aktueller Ring-Sollwert (s.
                     // `lippen::Tonuhr::startvorhalt_s`): ohne ihn waere die
                     // eigene Pufferlatenz ein Regel-Fehler.
@@ -165,8 +171,12 @@ pub(super) fn pump_commands(
                     // Ankunft zurueckzufallen: die zielt woanders hin und
                     // machte nach jeder Pause zunichte, was die Bildmessung
                     // erreicht hat (Bughunt 2026-10-22).
+                    //
+                    // Am Bild nur ausserhalb des Totbands (seit 2026-10-27,
+                    // `bildbezug::TOTBAND_MS`, Vorbild libwebrtc): darunter
+                    // pendelte der Regler jeder Schwankung hinterher.
                     let (fehler, bezug, regeln) = match am_bild {
-                        Some(f) => (f, Bezug::Bild, true),
+                        Some(f) => (f, Bezug::Bild, bildbezug::ausserhalb_totband(f)),
                         None if bezug_vorher == Some(Bezug::Bild) => {
                             (fehler_vorher, Bezug::Bild, false)
                         }
@@ -177,10 +187,20 @@ pub(super) fn pump_commands(
                         ),
                     };
                     // Fuer die Zeile „Bild/Ton" (`crate::bildton`): welche
-                    // RTP-Marke JETZT klingt. Die verlaengerte Marke beginnt
-                    // bei der rohen ersten, `as u32` ergibt also wieder die
-                    // rohe 32-Bit-Marke der Leitung.
-                    let klingt = uhr.position(ausgabe, sample_rate, channels).round() as i64 as u32;
+                    // RTP-Marke JETZT aus dem Lautsprecher kommt — samt der
+                    // gemeldeten Ausgabelatenz (seit 2026-10-27, vorher die
+                    // herausgegebene, s. `Tonuhr::im_lautsprecher`). Die
+                    // verlaengerte Marke beginnt bei der rohen ersten, `as u32`
+                    // ergibt also wieder die rohe 32-Bit-Marke der Leitung.
+                    let klingt = uhr.im_lautsprecher(
+                        ausgabe,
+                        abruf,
+                        seit_abruf_s,
+                        latenz_s,
+                        sample_rate,
+                        channels,
+                    );
+                    let klingt = klingt.round() as i64 as u32;
                     s.klingt = Some((klingt, jetzt));
                     if s.bezug.replace(bezug) != Some(bezug) {
                         eprintln!("{}", bezug.zeile());
@@ -214,7 +234,11 @@ pub(super) fn pump_commands(
                 }
             }
             AudioCommand::Volume(v) => s.volume = v,
-            AudioCommand::BildTon(versatz_ms, gemessen) => s.bildton = Some((versatz_ms, gemessen)),
+            // Geglaettet abgelegt (`bildbezug::glaetten`): gegen den geglaetteten
+            // Fehler prueft das Totband, und mit ihm regelt der Regler.
+            AudioCommand::BildTon(versatz_ms, gemessen) => {
+                s.bildton = Some((bildbezug::glaetten(s.bildton, versatz_ms, gemessen), gemessen));
+            }
             AudioCommand::OffsetMs(ms) => {
                 // Positiv = Ton spaeter = mehr Vorlauf im Ring.
                 // Nie ueber die Ringgroesse hinaus: der Callback gibt erst

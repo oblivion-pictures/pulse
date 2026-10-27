@@ -107,9 +107,9 @@ pub struct Tonstand {
     pub ton_lief: bool,
     /// Zwei Momentwerte wie `Bildstand::betriebsart`: ueber welchen Weg der
     /// Ton hinausgeht und wie lange er vom Geraete-Abruf bis zum Lautsprecher
-    /// braucht (0 = unbekannt). Die Verzoegerung steckt nicht in der
-    /// Bild/Ton-Messung (`crate::bildton`) — ohne diese Zahl im Dauerprotokoll
-    /// blieb sie bis zum 2026-10-22 eine Schaetzung.
+    /// braucht (0 = unbekannt). Ohne diese Zahl im Dauerprotokoll blieb sie
+    /// bis zum 2026-10-22 eine Schaetzung; seit 2026-10-27 steckt sie auch in
+    /// der Bild/Ton-Messung (`crate::bildton`).
     pub weg: &'static str,
     pub ausgabe_ms: u64,
 }

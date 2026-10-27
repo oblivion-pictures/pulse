@@ -33,6 +33,7 @@ pub(super) fn shared_mit(target_fill: usize) -> Mutex<Shared> {
         per_ms: TEST_PER_MS,
         max_ziel: TEST_MAX_RING / 2,
         verdeckung: Default::default(),
+        latenz_us: Default::default(),
     })
 }
 
@@ -291,6 +292,34 @@ fn mit_messung_regelt_der_ton_gegen_das_bild() {
     assert_eq!(s.bezug, Some(bildbezug::Bezug::Bild));
     assert_eq!(s.letzte_fehler_ms, 80.0, "der Fehler ist die Messung");
     assert!(s.sync_ms < 0.0, "Ton hinkt → Eingriff sinkt, war {}", s.sync_ms);
+}
+
+/// Totband (seit 2026-10-27, `bildbezug::TOTBAND_MS`): liegt der Ton weniger
+/// als 30 ms hinter dem Bild, misst die Regelung am Bild, stellt aber nicht
+/// nach — der Eingriff bleibt, wo er war.
+#[test]
+fn unter_dem_totband_bleibt_der_eingriff_stehen() {
+    let shared = Arc::new(shared_mit_soll(TEST_PER_MS));
+    shared.lock().unwrap().anlauf = false;
+    mit_paketen(&shared, vec![AudioCommand::BildTon(25.0, Instant::now())]);
+    let s = shared.lock().unwrap();
+    assert_eq!(s.bezug, Some(bildbezug::Bezug::Bild));
+    assert_eq!(s.letzte_fehler_ms, 25.0, "gemessen wird trotzdem");
+    assert_eq!(s.sync_ms, 0.0, "nachgestellt wird nicht");
+}
+
+/// Die klingende Marke fuer die Bild/Ton-Messung liegt um die gemeldete
+/// Ausgabelatenz hinter der herausgegebenen: 16 ms = 768 Takte.
+#[test]
+fn die_ausgabelatenz_steckt_in_der_klingenden_marke() {
+    let marke = |latenz_us: u32| {
+        let shared = Arc::new(shared_mit_soll(TEST_PER_MS));
+        shared.lock().unwrap().latenz_us.store(latenz_us, Ordering::Relaxed);
+        mit_paketen(&shared, vec![]);
+        let klingt = shared.lock().unwrap().klingt;
+        klingt.expect("vermessen").0
+    };
+    assert_eq!(marke(0).wrapping_sub(marke(16_000)), 768);
 }
 
 /// Ohne Messung (alter Server oder Sender, noch kein Report) bleibt alles

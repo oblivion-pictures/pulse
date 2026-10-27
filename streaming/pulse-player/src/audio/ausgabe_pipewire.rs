@@ -280,7 +280,8 @@ mod tests {
     #[test]
     #[ignore]
     fn echter_strom_laeuft_an_und_misst_die_verzoegerung() {
-        let (shared, _tx, _rx) = super::super::zustand(OPUS_SAMPLE_RATE, KANAELE);
+        let (shared, _tx, _rx) =
+            super::super::zustand(OPUS_SAMPLE_RATE, KANAELE, Default::default());
         let latenz = Arc::new(AtomicU32::new(0));
         let griff = starten(Arc::clone(&shared), Arc::clone(&latenz)).expect("PipeWire-Strom");
         std::thread::sleep(Duration::from_millis(600));
