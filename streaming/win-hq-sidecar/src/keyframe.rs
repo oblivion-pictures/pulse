@@ -297,7 +297,9 @@ pub fn reset() {
 /// Unterlass anfordert. Ein Takt aus dem eigenen Haus ist kein Sturm; liefe er
 /// durch die Leiter, wuerde ausgerechnet der regulaere Abstand gedrosselt,
 /// sobald daneben ein Zuschauer repariert. Beide Quellen muenden erst im
-/// Encoder zusammen.
+/// Encoder zusammen; seit 2026-10-27 setzt ein angefordertes Vollbild den
+/// Zaehler zurueck ([`Selbsttakt::vollbild_gesendet`]) — die Leiter selbst
+/// bleibt davon unberuehrt.
 ///
 /// **Der Zaehler laeuft ueber ALLE Bilder**, auch die duplizierten. Das ist
 /// Absicht: der Abstand ist in Sekunden gedacht, und die Zeit laeuft auch
@@ -324,7 +326,25 @@ pub fn reset() {
 /// Vollbild ist bei NVENC ein IDR (`forced-idr`, `encode/opts.rs`). **Preis:**
 /// der Clip-Ring (`crate::clip`, 90 s) braucht ein Vollbild; wer nach mehr als
 /// 90 s Sitzung ohne angefordertes Vollbild einen Clip speichert, bekommt
-/// „kein Vollbild im Ring". Gegenprobe:
+/// „kein Vollbild im Ring". Dasselbe gilt fuer den Clip-Ring des Zuschauers
+/// (`pulse-player`, `recorder.rs`), und die Einfrier-Wacht des Players
+/// koppelt ihre Mindestdauer an die Zeit seit dem letzten Vollbild
+/// (`pulse-player/src/einfrieren.rs::mindestdauer_zur_zeit`): ein haengender
+/// Decoder OHNE gemeldeten Schaden faellt in einer langen Sitzung ohne
+/// Vollbild spaeter auf als bisher (vorher hoechstens rund 75 s).
+///
+/// **Pausiert wird nur mit Rueckkanal** (eigener WHIP-Sender oder Direktweg,
+/// beide als `encode::senke` angemeldet). Auf dem FFmpeg-Muxer (RTMPS — den
+/// waehlt die Oberflaeche fuer Windows an einem Heimserver,
+/// `web/src/lib/stream/settings.svelte.ts::pushProtokoll`) erreicht keine
+/// Anforderung den Encoder; dort ist der Takt die einzige Quelle und laeuft
+/// weiter.
+///
+/// **Zu Beginn einer Fernsteuerung kommt ein Vollbild**, auch ohne Pause. Bis
+/// 2026-10-27 erzwang das Umschalten des Fern-Puffers dort ein IDR (s.
+/// `encode/fern_vbv.rs`); seit der Puffer standardmaessig aus ist, faellt es
+/// weg — und auf RTMPS wartete der steuernde Zuschauer sonst bis zum naechsten
+/// Takt auf sein erstes scharfes Bild. Gegenprobe:
 /// `PULSE_HQ_FERN_VOLLBILDTAKT=1` laesst den Takt auch in der Fernsteuerung
 /// laufen ([`FERN_TAKT_UMGEBUNG`]).
 #[derive(Debug)]
@@ -332,6 +352,7 @@ pub struct Selbsttakt {
     abstand: u32,
     seit: u32,
     fern_pause: bool,
+    fern_vorher: bool,
 }
 
 /// Schalter: gesetzt = der Selbsttakt laeuft auch waehrend der Fernsteuerung
@@ -346,14 +367,21 @@ pub const GOP_UNBEGRENZT: u32 = i32::MAX as u32;
 
 impl Selbsttakt {
     /// `abstand` in Bildern, aus [`abstand_bilder`]. `None` = aus.
-    /// `fern_pause` = waehrend einer Fernsteuerung kein Takt (s. oben).
+    /// `fern_pause` = waehrend einer Fernsteuerung kein Takt (s. oben). Meldet
+    /// das Ergebnis in einer Logzeile, wenn der Takt laeuft.
     pub fn neu(abstand: Option<u32>, fern_pause: bool) -> Self {
-        Self { abstand: abstand.unwrap_or(0), seit: 0, fern_pause }
+        if let Some(n) = abstand {
+            let fern = if fern_pause { "pausiert" } else { "laeuft weiter" };
+            eprintln!("[keyframe] Selbsttakt alle {n} Bilder, bei Fernsteuerung {fern}");
+        }
+        Self { abstand: abstand.unwrap_or(0), seit: 0, fern_pause, fern_vorher: false }
     }
 
     /// Ein angefordertes Vollbild geht hinaus: der Abstand zaehlt ab ihm neu.
     /// Spart ein zweites Vollbild kurz nach einem angeforderten — bei fester
     /// Bitrate genau dort, wo der Zuschauer gerade einsteigt oder repariert.
+    /// **Nach** [`Self::faellig`] desselben Bildes rufen, sonst zaehlt dieses
+    /// Bild schon als erstes des neuen Abstands.
     pub fn vollbild_gesendet(&mut self) {
         self.seit = 0;
     }
@@ -367,9 +395,16 @@ impl Selbsttakt {
     ///
     /// In der Pause steht der Zaehler auf null: nach dem Ende der Sitzung kommt
     /// das naechste Vollbild erst nach einem vollen Abstand, nicht sofort.
+    /// Das erste Bild einer Fernsteuerung ist eines (s. oben).
     pub fn faellig(&mut self, fern: bool) -> bool {
         if self.abstand == 0 {
             return false;
+        }
+        let beginn = fern && !self.fern_vorher;
+        self.fern_vorher = fern;
+        if beginn {
+            self.seit = 0;
+            return true;
         }
         if fern && self.fern_pause {
             self.seit = 0;
@@ -486,7 +521,8 @@ mod tests {
         let mut takt = Selbsttakt::neu(Some(4), true);
         assert!(!takt.faellig(false));
         assert!(!takt.faellig(false));
-        assert!((0..500).all(|_| !takt.faellig(true)), "in der Sitzung nie");
+        assert!(takt.faellig(true), "Beginn der Sitzung = ein Vollbild");
+        assert!((0..500).all(|_| !takt.faellig(true)), "danach in der Sitzung nie");
         let danach: Vec<bool> = (0..4).map(|_| takt.faellig(false)).collect();
         assert_eq!(danach, vec![false, false, false, true], "voller Abstand nach dem Ende");
     }
@@ -495,20 +531,27 @@ mod tests {
     #[test]
     fn selbsttakt_zaehlt_ab_angefordertem_neu() {
         let mut takt = Selbsttakt::neu(Some(4), true);
-        for _ in 0..3 {
+        for _ in 0..2 {
             assert!(!takt.faellig(false));
         }
+        // Wie im Encoder: erst `faellig` fuer das angeforderte Bild, dann
+        // zuruecksetzen.
+        assert!(!takt.faellig(false));
         takt.vollbild_gesendet();
         let danach: Vec<bool> = (0..4).map(|_| takt.faellig(false)).collect();
-        assert_eq!(danach, vec![false, false, false, true]);
+        assert_eq!(danach, vec![false, false, false, true], "volle 4 Bilder Abstand");
     }
 
     /// Die Gegenprobe: ohne Pause laeuft der Takt durch die Sitzung.
     #[test]
     fn selbsttakt_ohne_pause_laeuft_weiter() {
         let mut takt = Selbsttakt::neu(Some(4), false);
-        let treffer = (0..12).filter(|_| takt.faellig(true)).count();
-        assert_eq!(treffer, 3);
+        let treffer: Vec<bool> = (0..9).map(|_| takt.faellig(true)).collect();
+        assert_eq!(
+            treffer,
+            vec![true, false, false, false, true, false, false, false, true],
+            "Beginn, dann jedes vierte"
+        );
     }
 
     #[test]

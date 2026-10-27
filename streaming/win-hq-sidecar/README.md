@@ -408,8 +408,10 @@ einzeln beschrieben.
   `src/encode/fern_vbv.rs`.
 - `PULSE_HQ_FERN_VOLLBILDTAKT=1` — regulärer Vollbild-Takt auch während einer
   Fernsteuerung (das Verhalten bis 2026-10-27). Ohne den Schalter pausiert er
-  dort auf NVENC und `h264_amf`; Vollbilder gibt es dann nur auf Anforderung
-  (Einstieg, Verlust). `hevc_amf`, `av1_amf`, QSV und der CPU-Weg
+  dort auf NVENC und `h264_amf`, **sofern der Sendeweg einen Rückkanal hat**
+  (eigener WHIP-Sender, Direktweg); Vollbilder gibt es dann nur auf Anforderung
+  (Einstieg, Verlust). Über RTMPS (Windows an einem Heimserver) läuft der Takt
+  weiter. Zu Beginn jeder Fernsteuerung kommt ein Vollbild. `hevc_amf`, `av1_amf`, QSV und der CPU-Weg
   (`PULSE_HQ_DISABLE_ZERO_COPY=1`) behalten ihren GOP-Takt. Begründung:
   `src/keyframe.rs`, `Selbsttakt`.
 - `PULSE_HQ_PRIORITAET=0` — schaltet den Vorrang während einer Fernsteuerung
@@ -441,8 +443,8 @@ einzeln beschrieben.
   wenn der Encoder die Betriebsart nicht trug. Die Betriebsart ist aus Pulse
   entfernt — die Variable wird nicht mehr gelesen, auf Windows so wenig wie auf
   Linux. Der Vollbild-Abstand steht auf 60 s, `PULSE_KEYFRAME_SECONDS`
-  verstellt ihn; während einer Fernsteuerung pausiert er auf NVENC und
-  `h264_amf`, s. `PULSE_HQ_FERN_VOLLBILDTAKT`.)*
+  verstellt ihn; während einer Fernsteuerung mit Rückkanal pausiert er auf
+  NVENC und `h264_amf`, s. `PULSE_HQ_FERN_VOLLBILDTAKT`.)*
 - `PULSE_WHIP_PACING=0` — schaltet die Verteilung der RTP-Pakete eines Bildes über
   die Zeit AB (zurück zum Schwall-Senden). **AN als Vorgabe seit 2026-08-14**, seit
   dem Neubau mit absoluten Zeitpunkten und Paketgruppen; die erste Fassung war

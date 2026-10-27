@@ -27,6 +27,9 @@
 //! fährt damit FFmpegs 2 × Bitrate, schickt aber auch keine regulären
 //! Vollbilder. Der kleine Puffer war die Antwort auf genau diese regulären
 //! Vollbilder; ohne sie bleiben nur die angeforderten (Einstieg, Verlust).
+//! Über RTMPS (ohne Rückkanal) bleiben die regulären Vollbilder stehen und
+//! kommen jetzt wieder in voller Größe — dort misst der Versuch genau die
+//! Abwägung von oben: Pumpen gegen Lücken.
 //! Sein Preis dagegen stand am 2026-10-27 im Bild: die Vollbilder kamen mit
 //! 8-11 KB (2 Bilder bei 2,5 Mbit/s ≈ 10 KB) grob an, das Bild pumpte im
 //! Minutentakt. **Ob das ohne den Puffer verschwindet und ob die Lücken
