@@ -76,8 +76,10 @@ class Settings(BaseSettings):
     mediamtx_push_protocol: Literal["rtmp", "whip"] = "rtmp"
 
     # Instance owner (app-host): the owner streams to their OWN machine, so
-    # they keep the proven loopback/direct RTMPS path even when the instance
-    # mints WHIP for guests. Empty (cloud / plain self-host) → no exemption.
+    # they keep the loopback/direct RTMPS path even when the instance mints
+    # WHIP for guests — unless the client asks for WHIP, which every client
+    # does since 2026-10-27 (routes.py). Empty (cloud / plain self-host) → no
+    # exemption.
     # Already exported instance-wide by the allinone env renderer.
     pulse_instance_owner_id: str = ""
 

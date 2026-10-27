@@ -581,8 +581,9 @@ async def test_stream_token_selfhost_owner_admin_keeps_rtmps(
     """Heim-Server 2026-09-27: auf einem Self-Host ist ``sub`` die SYNTHETISCHE
     pairwise-ID — der Cloud-Vergleich gegen pulse_instance_owner_id trifft nie.
     Der ``admin``-Claim des Session-Tokens kennzeichnet dort den Owner; ohne
-    diese Erkennung bekam der Windows-Owner WHIP aufgezwungen und der
-    win-hq-sidecar starb am Schannel-DTLS-Handshake."""
+    diese Erkennung bekam der Windows-Owner WHIP aufgezwungen (damals mit dem
+    Schannel-DTLS-Befund begründet, der nur FFmpegs WHIP-Muxer betraf). Seit
+    2026-10-27 wünscht Windows selbst WHIP; die Ausnahme trägt ältere Clients."""
     import dcc_media_svc.routes as media_routes
 
     settings = _isolate_settings.model_copy(

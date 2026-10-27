@@ -124,7 +124,8 @@ export function renderNativeEnv(
     LIVEKIT_API_URL: `http://127.0.0.1:${p.livekitApi}`,
 
     // MediaMTX — API intern, Ingest über Loopback (App-Host: RTMPS ist nicht
-    // durch NAT zu lochen, Owner pusht lokal — wie im Container mit hostNet).
+    // durch NAT zu lochen; den Loopback-RTMPS-Weg nimmt nur noch ein Owner,
+    // dessen Client RTMPS wünscht — seit 2026-10-27 wünschen alle WHIP).
     MEDIAMTX_API_URL: `http://127.0.0.1:9997/v3/paths/list`,
     // API-Zugang wie im Container (07-render-env.sh): media-svc schickt ihn als
     // Basic-Auth, der auth-hook prüft ihn (api_zugang.py) — renderMediamtxYml
