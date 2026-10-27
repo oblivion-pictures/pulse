@@ -304,25 +304,75 @@ pub fn reset() {
 /// dann weiter, wenn sich das Bild nicht aendert. Ein Zaehler nur auf frischen
 /// Aufnahmen liesse bei stehendem Bildschirm minutenlang kein Vollbild zu —
 /// genau dann, wenn ein neuer Zuschauer nichts zu sehen bekaeme.
+///
+/// **Waehrend einer Fernsteuerung pausiert er** (seit 2026-10-27, Versuch nach
+/// RustDesk-Vorbild): RustDesk oeffnet seine Encoder mit unbegrenztem GOP und
+/// schickt ein Vollbild nur beim Verbinden oder auf Anforderung
+/// (`rustdesk/libs/scrap/src/common/hwcodec.rs`, `DEFAULT_GOP = i32::MAX`).
+/// Anlass: am 2026-10-27 kamen bei der Fernsteuerung (all3media, RTX 2080)
+/// nur die regulaeren Vollbilder, 8-11 KB gross unter dem kleinen Fern-Puffer
+/// (`encode/fern_vbv.rs`), und das Bild pumpte im Minutentakt; angefordert
+/// wurde in 6 Minuten keines. Ein Zuschauer, der einsteigt oder etwas
+/// verliert, fordert sein Vollbild weiter ueber den Rueckkanal an — der
+/// regulaere Takt ist dort nur die Sicherung. **Ob das Pumpen damit
+/// verschwindet, ist ungemessen.** Damit der Takt pausieren kann, kommen
+/// seitdem auch bei **NVENC** die Vollbilder aus diesem Zaehler und nicht aus
+/// dem GOP (der steht dort auf [`GOP_UNBEGRENZT`]): FFmpeg stellt den GOP am
+/// offenen Encoder nicht um — `reconfig_encoder` uebernimmt nur Seitenformat,
+/// Bitrate und Puffer (n8.1 `nvenc.c:2952-3001`), und ein Neuoeffnen kostete
+/// mitten in der Sitzung den Strom. Das angeforderte wie das getaktete
+/// Vollbild ist bei NVENC ein IDR (`forced-idr`, `encode/opts.rs`). **Preis:**
+/// der Clip-Ring (`crate::clip`, 90 s) braucht ein Vollbild; wer nach mehr als
+/// 90 s Sitzung ohne angefordertes Vollbild einen Clip speichert, bekommt
+/// „kein Vollbild im Ring". Gegenprobe:
+/// `PULSE_HQ_FERN_VOLLBILDTAKT=1` laesst den Takt auch in der Fernsteuerung
+/// laufen ([`FERN_TAKT_UMGEBUNG`]).
 #[derive(Debug)]
 pub struct Selbsttakt {
     abstand: u32,
     seit: u32,
+    fern_pause: bool,
 }
+
+/// Schalter: gesetzt = der Selbsttakt laeuft auch waehrend der Fernsteuerung
+/// (das Verhalten bis 2026-10-27).
+pub const FERN_TAKT_UMGEBUNG: &str = "PULSE_HQ_FERN_VOLLBILDTAKT";
+
+/// GOP-Laenge fuer Encoder, deren Vollbilder allein aus dem [`Selbsttakt`]
+/// kommen. `i32::MAX` wie RustDesk (`hwcodec/cpp/common/util.cpp`): FFmpeg
+/// reicht `gop_size` bei NVENC als `gopLength`/`idrPeriod` durch (n8.1
+/// `nvenc.c:1923-1925`, `1330`/`1534`/`1700`), bei 60 fps rund 400 Tage.
+pub const GOP_UNBEGRENZT: u32 = i32::MAX as u32;
 
 impl Selbsttakt {
     /// `abstand` in Bildern, aus [`abstand_bilder`]. `None` = aus.
-    pub fn neu(abstand: Option<u32>) -> Self {
-        Self { abstand: abstand.unwrap_or(0), seit: 0 }
+    /// `fern_pause` = waehrend einer Fernsteuerung kein Takt (s. oben).
+    pub fn neu(abstand: Option<u32>, fern_pause: bool) -> Self {
+        Self { abstand: abstand.unwrap_or(0), seit: 0, fern_pause }
+    }
+
+    /// Ein angefordertes Vollbild geht hinaus: der Abstand zaehlt ab ihm neu.
+    /// Spart ein zweites Vollbild kurz nach einem angeforderten — bei fester
+    /// Bitrate genau dort, wo der Zuschauer gerade einsteigt oder repariert.
+    pub fn vollbild_gesendet(&mut self) {
+        self.seit = 0;
     }
 
     /// Einmal je Bild rufen. `true` = dieses Bild soll ein Vollbild werden.
+    /// `fern` = gerade laeuft eine Fernsteuerung.
     ///
     /// Das ERSTE Bild ist keines: der Encoder legt von sich aus mit einem
     /// Vollbild los, und ein zweites unmittelbar danach waere verschenkte
     /// Bitrate an der Stelle, an der sie am knappsten ist.
-    pub fn faellig(&mut self) -> bool {
+    ///
+    /// In der Pause steht der Zaehler auf null: nach dem Ende der Sitzung kommt
+    /// das naechste Vollbild erst nach einem vollen Abstand, nicht sofort.
+    pub fn faellig(&mut self, fern: bool) -> bool {
         if self.abstand == 0 {
+            return false;
+        }
+        if fern && self.fern_pause {
+            self.seit = 0;
             return false;
         }
         self.seit += 1;
@@ -411,8 +461,8 @@ mod tests {
     /// nicht auf 1.
     #[test]
     fn selbsttakt_haelt_den_abstand() {
-        let mut takt = Selbsttakt::neu(Some(4));
-        let treffer: Vec<bool> = (0..12).map(|_| takt.faellig()).collect();
+        let mut takt = Selbsttakt::neu(Some(4), true);
+        let treffer: Vec<bool> = (0..12).map(|_| takt.faellig(false)).collect();
         assert_eq!(
             treffer,
             vec![false, false, false, true, false, false, false, true, false, false, false, true],
@@ -425,8 +475,40 @@ mod tests {
     /// Vollbilder dann doppelt.
     #[test]
     fn selbsttakt_aus_liefert_nie() {
-        let mut takt = Selbsttakt::neu(None);
-        assert!((0..500).all(|_| !takt.faellig()));
+        let mut takt = Selbsttakt::neu(None, true);
+        assert!((0..500).all(|_| !takt.faellig(false)));
+    }
+
+    /// Waehrend der Fernsteuerung kein Takt; danach ein voller Abstand bis zum
+    /// naechsten, nicht sofort eins.
+    #[test]
+    fn selbsttakt_pausiert_bei_fernsteuerung() {
+        let mut takt = Selbsttakt::neu(Some(4), true);
+        assert!(!takt.faellig(false));
+        assert!(!takt.faellig(false));
+        assert!((0..500).all(|_| !takt.faellig(true)), "in der Sitzung nie");
+        let danach: Vec<bool> = (0..4).map(|_| takt.faellig(false)).collect();
+        assert_eq!(danach, vec![false, false, false, true], "voller Abstand nach dem Ende");
+    }
+
+    /// Nach einem angeforderten Vollbild zaehlt der Abstand neu.
+    #[test]
+    fn selbsttakt_zaehlt_ab_angefordertem_neu() {
+        let mut takt = Selbsttakt::neu(Some(4), true);
+        for _ in 0..3 {
+            assert!(!takt.faellig(false));
+        }
+        takt.vollbild_gesendet();
+        let danach: Vec<bool> = (0..4).map(|_| takt.faellig(false)).collect();
+        assert_eq!(danach, vec![false, false, false, true]);
+    }
+
+    /// Die Gegenprobe: ohne Pause laeuft der Takt durch die Sitzung.
+    #[test]
+    fn selbsttakt_ohne_pause_laeuft_weiter() {
+        let mut takt = Selbsttakt::neu(Some(4), false);
+        let treffer = (0..12).filter(|_| takt.faellig(true)).count();
+        assert_eq!(treffer, 3);
     }
 
     #[test]

@@ -18,7 +18,20 @@
 //! Folgebildern nach. Bei der Fernsteuerung zählt die Reaktion vor der
 //! Schärfe; beim bloßen Zusehen gilt die Abwägung weiter, deshalb nur
 //! während der Sitzung. Ob die Lücken damit verschwinden, steht aus — dafür
-//! `PULSE_HQ_FERN_VBV_BILDER=0` als A/B-Schalter.
+//! war `PULSE_HQ_FERN_VBV_BILDER=0` der A/B-Schalter (seit 2026-10-27 ist aus
+//! die Vorgabe, s. den nächsten Absatz).
+//!
+//! **Seit dem 2026-10-27 standardmäßig AUS** (Versuch nach RustDesk-Vorbild,
+//! zusammen mit der Vollbild-Pause in `keyframe::Selbsttakt`): RustDesk setzt
+//! kein `rc_buffer_size` (`rustdesk-org/hwcodec`, `cpp/common/util.cpp`) und
+//! fährt damit FFmpegs 2 × Bitrate, schickt aber auch keine regulären
+//! Vollbilder. Der kleine Puffer war die Antwort auf genau diese regulären
+//! Vollbilder; ohne sie bleiben nur die angeforderten (Einstieg, Verlust).
+//! Sein Preis dagegen stand am 2026-10-27 im Bild: die Vollbilder kamen mit
+//! 8-11 KB (2 Bilder bei 2,5 Mbit/s ≈ 10 KB) grob an, das Bild pumpte im
+//! Minutentakt. **Ob das ohne den Puffer verschwindet und ob die Lücken
+//! zurückkommen, ist ungemessen.** Wer den alten Stand vergleichen will:
+//! `PULSE_HQ_FERN_VBV_BILDER=2`.
 //!
 //! **Warum 2 und nicht 4 Bilder — gemessen** (2026-10-22, RTX 4090, Treiber
 //! 615.78, FFmpeg 8 mit genau diesen NVENC-Optionen, Bildschirminhalt 1440p60
@@ -86,11 +99,10 @@
 //! (`rustc --edition 2024 --test src/encode/fern_vbv.rs`). Den Zugriff auf
 //! den `AVCodecContext` macht der Encoder (`encoder_hw.rs`).
 
-/// Name des Schalters: `0` = aus (altes Verhalten), 1-60 = Bilder.
+/// Name des Schalters: nicht gesetzt oder `0` = aus (Vorgabe seit
+/// 2026-10-27), 1-60 = Bilder. Wer ihn einschaltet, nimmt 2 — nicht 1, nicht
+/// 3+, warum, steht oben unter „Warum 2 und nicht 4 Bilder".
 pub const UMGEBUNG: &str = "PULSE_HQ_FERN_VBV_BILDER";
-/// Vorgabe, wenn der Schalter nicht gesetzt ist. Nicht 1, nicht 3+ — warum,
-/// steht oben unter „Warum 2 und nicht 4 Bilder".
-pub const VORGABE_BILDER: u32 = 2;
 /// Obergrenze. Bei 60 fps eine Sekunde — darüber nähert sich der Wert dem
 /// Regelpuffer von zwei Sekunden, und die Ausnahme verlöre ihren Zweck.
 pub const HOECHSTENS_BILDER: u32 = 60;
@@ -101,14 +113,11 @@ const PRUEF_PAKETE: u8 = 3;
 
 /// Wert der Umgebung → Anzahl Bilder; `Ok(None)` heißt abgeschaltet.
 ///
-/// Nicht gesetzt = Vorgabe; leer oder `0` = aus (dieselbe Auslegung wie bei
-/// den Schaltern in `crate::env`). Ein ungültiger Wert ist ein `Err` — der
-/// Aufrufer meldet ihn und nimmt die Vorgabe, damit ein Tippfehler im
+/// Nicht gesetzt, leer oder `0` = aus. Ein ungültiger Wert ist ein `Err` —
+/// der Aufrufer meldet ihn und bleibt bei aus, damit ein Tippfehler im
 /// A/B-Vergleich auffällt statt still eine andere Messung zu fahren.
 pub fn bilder_aus(wert: Option<&str>) -> Result<Option<u32>, String> {
-    let Some(w) = wert.map(str::trim) else {
-        return Ok(Some(VORGABE_BILDER));
-    };
+    let w = wert.map(str::trim).unwrap_or_default();
     if w.is_empty() {
         return Ok(None);
     }
@@ -116,7 +125,7 @@ pub fn bilder_aus(wert: Option<&str>) -> Result<Option<u32>, String> {
         Ok(0) => Ok(None),
         Ok(n) if n <= HOECHSTENS_BILDER => Ok(Some(n)),
         _ => Err(format!(
-            "{UMGEBUNG}={w} ungültig (0 = aus, 1-{HOECHSTENS_BILDER} = Bilder) — nehme {VORGABE_BILDER}"
+            "{UMGEBUNG}={w} ungültig (0 = aus, 1-{HOECHSTENS_BILDER} = Bilder) — bleibt aus"
         )),
     }
 }
@@ -228,11 +237,10 @@ fn planen(
     }
     let bilder = match bilder_aus(umgebung) {
         Ok(Some(n)) => n,
-        Ok(None) => return (None, format!("aus: {UMGEBUNG}=0 (Regelpuffer auch bei Fernsteuerung)")),
-        Err(warnung) => {
-            eprintln!("[fern-vbv] {warnung}");
-            VORGABE_BILDER
+        Ok(None) => {
+            return (None, format!("aus: {UMGEBUNG} nicht gesetzt oder 0 (Regelpuffer auch bei Fernsteuerung)"));
         }
+        Err(warnung) => return (None, format!("aus: {warnung}")),
     };
     if regel_bits <= 0 {
         return (None, format!("aus: Encoder meldet keinen Regelpuffer (rc_buffer_size={regel_bits})"));
@@ -258,7 +266,7 @@ mod tests {
 
     #[test]
     fn umgebung_auslegen() {
-        assert_eq!(bilder_aus(None), Ok(Some(VORGABE_BILDER)));
+        assert_eq!(bilder_aus(None), Ok(None), "nicht gesetzt = aus (seit 2026-10-27)");
         assert_eq!(bilder_aus(Some("0")), Ok(None));
         assert_eq!(bilder_aus(Some("")), Ok(None));
         assert_eq!(bilder_aus(Some(" 8 ")), Ok(Some(8)));
@@ -289,27 +297,27 @@ mod tests {
     #[test]
     fn nur_nvenc() {
         let regel = 5_000_000;
-        assert!(planen("hevc_nvenc", 2_500_000, 60, regel, None).0.is_some());
-        assert!(planen("av1_nvenc", 2_500_000, 60, regel, None).0.is_some());
-        assert!(planen("av1_amf", 2_500_000, 60, regel, None).0.is_none());
-        assert!(planen("h264_qsv", 2_500_000, 60, regel, None).0.is_none());
+        assert!(planen("hevc_nvenc", 2_500_000, 60, regel, Some("2")).0.is_some());
+        assert!(planen("av1_nvenc", 2_500_000, 60, regel, Some("2")).0.is_some());
+        assert!(planen("av1_amf", 2_500_000, 60, regel, Some("2")).0.is_none());
+        assert!(planen("h264_qsv", 2_500_000, 60, regel, Some("2")).0.is_none());
     }
 
     #[test]
     fn abschaltbar_und_unsinnig() {
         assert!(planen("hevc_nvenc", 2_500_000, 60, 5_000_000, Some("0")).0.is_none());
-        assert!(planen("hevc_nvenc", 2_500_000, 60, 0, None).0.is_none());
+        assert!(planen("hevc_nvenc", 2_500_000, 60, 0, Some("2")).0.is_none());
         // 60 Bilder bei 30 fps = 2 s = so groß wie der Regelpuffer.
         assert!(planen("hevc_nvenc", 2_500_000, 30, 5_000_000, Some("60")).0.is_none());
-        // Ungültig: Vorgabe statt Abschalten.
-        let (plan, _) = planen("hevc_nvenc", 2_500_000, 60, 5_000_000, Some("x"));
-        assert_eq!(plan.map(|p| p.bilder), Some(VORGABE_BILDER));
+        // Ungültig und nicht gesetzt: aus, wie die Vorgabe.
+        assert!(planen("hevc_nvenc", 2_500_000, 60, 5_000_000, Some("x")).0.is_none());
+        assert!(planen("hevc_nvenc", 2_500_000, 60, 5_000_000, None).0.is_none());
     }
 
     /// Hin und zurück, und nur beim Umspringen — nicht bei jedem Bild.
     #[test]
     fn umschalten_hin_und_zurueck() {
-        let mut v = FernVbv::neu("hevc_nvenc", 2_500_000, 60, 5_000_000, None);
+        let mut v = FernVbv::neu("hevc_nvenc", 2_500_000, 60, 5_000_000, Some("2"));
         assert_eq!(v.abgleichen(false), None);
         assert_eq!(v.abgleichen(true), Some(83_333));
         assert_eq!(v.abgleichen(true), None);
@@ -319,14 +327,14 @@ mod tests {
 
     #[test]
     fn aus_heisst_nie_umschalten() {
-        let mut v = FernVbv::neu("av1_amf", 2_500_000, 60, 5_000_000, None);
+        let mut v = FernVbv::neu("av1_amf", 2_500_000, 60, 5_000_000, Some("2"));
         assert_eq!(v.abgleichen(true), None);
         assert_eq!(v.abgleichen(false), None);
     }
 
     #[test]
     fn idr_pruefung() {
-        let mut v = FernVbv::neu("hevc_nvenc", 2_500_000, 60, 5_000_000, None);
+        let mut v = FernVbv::neu("hevc_nvenc", 2_500_000, 60, 5_000_000, Some("2"));
         v.paket(true); // ohne Umschalten: nichts zu prüfen
         assert_eq!(v.pruefen, 0);
         v.abgleichen(true);
