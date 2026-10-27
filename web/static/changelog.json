@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-27.4",
+      "date": "2026-10-27",
+      "style": "Sachlich",
+      "title": "Bild und Ton",
+      "items": [
+        "Bild und Ton liegen beim Fernsteuern und Zuschauen im Pulse-Player enger beieinander: Windows-Rechner geben dem Ton jetzt die genaue Aufnahmezeit mit, und der Player berücksichtigt die Verzögerung von Lautsprecher und Bildschirm. Wirksam, sobald Sender und Zuschauer dieses Update haben."
+      ]
+    },
+    {
       "id": "2026-10-27.3",
       "date": "2026-10-27",
       "style": "Sachlich",
