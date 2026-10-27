@@ -240,6 +240,7 @@ pub fn run(params: StartParams, stop_rx: Receiver<()>, codec: VideoCodec) -> Res
         if qpc_sync { Some(origin_qpc) } else { None },
     );
     let mut last_pts: i64 = -1;
+    let mut bilduhr = zeitbasis::BildUhr::default();
     let mut audio_dead = false;
     let mut frames_sent: u64 = 0;
     let mut next_tick = started;
@@ -333,17 +334,18 @@ pub fn run(params: StartParams, stop_rx: Receiver<()>, codec: VideoCodec) -> Res
         };
         // In Takten der Video-Zeitbasis, NICHT in Bildplaetzen — die echte
         // Aufnahmezeit bleibt damit erhalten (Begruendung in `crate::zeitbasis`).
-        // Duplikate (`captured == 0`) kommen aus dem ZAEHLER: sie haben keine
-        // eigene Aufnahmezeit, `newest_qpc` steht still. In Takten waere die
-        // Monotonie-Untergrenze nur 11 us — ein Standbild schrumpfte damit im
-        // Strom zusammen. Ausfuehrlich an derselben Stelle in `pipeline_hw`,
-        // ebenso warum die Uhr die Untergrenze ist (`duplikat_pts`).
+        // Duplikate (`captured == 0`) haben keine eigene Aufnahmezeit
+        // (`newest_qpc` steht still) und tragen die Uhr abzueglich des Verzugs
+        // des letzten echten Bildes (`zeitbasis::BildUhr`, dort auch warum).
+        // Ausfuehrlich an derselben Stelle in `pipeline_hw`.
+        let uhr_pts = zeitbasis::pts_aus_sekunden(zeitbasis::jetzt_seit_ursprung(
+            qpc_sync.then_some(origin_qpc),
+            started,
+        ));
         let mut pts = if captured > 0 {
-            zeitbasis::pts_aus_sekunden(elapsed)
+            bilduhr.echt(zeitbasis::pts_aus_sekunden(elapsed), uhr_pts)
         } else {
-            let jetzt = zeitbasis::jetzt_seit_ursprung(qpc_sync.then_some(origin_qpc), started);
-            let uhr_pts = zeitbasis::pts_aus_sekunden(jetzt);
-            zeitbasis::duplikat_pts(last_pts, zeitbasis::takte_je_bild(fps), uhr_pts)
+            bilduhr.duplikat(last_pts, uhr_pts)
         };
         if pts <= last_pts {
             pts = last_pts + 1;

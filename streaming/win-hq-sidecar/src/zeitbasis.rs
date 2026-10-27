@@ -5,7 +5,7 @@
 pub use pulse_zeitbasis::*;
 
 /// Jetzt in Sekunden seit dem Bild-Ursprung, auf derselben Uhr wie die pts
-/// echter Bilder — die Untergrenze für Duplikate ([`duplikat_pts`]).
+/// echter Bilder — der Bezug der Duplikate ([`BildUhr`]).
 ///
 /// Mit QPC-Sync zählen echte Bilder ab dem QPC des ersten Bildes, also hier
 /// derselbe Zähler; ohne die Wanduhr ab `started`, wie dort. Nicht

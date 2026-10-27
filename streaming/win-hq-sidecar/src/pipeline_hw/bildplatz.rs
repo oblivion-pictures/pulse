@@ -96,16 +96,6 @@ impl Bildplatz {
         self.faellig
     }
 
-    /// Ein Bildabstand in Takten der Video-Zeitbasis.
-    ///
-    /// Hier heraus statt an der Aufrufstelle erneut aus `fps` gerechnet: die
-    /// Bremse [`Self::traegt`] und der Zeitstempel eines Duplikats müssen
-    /// **dieselbe** Zahl benutzen, sonst schiebt sich ein Duplikat um einen
-    /// Takt gegen die Schwelle, die es gleich darauf passieren muss.
-    pub(super) fn takte_je_bild(&self) -> i64 {
-        self.takte_je_bild
-    }
-
     /// Trägt der Platz ein Bild mit diesem Zeitstempel schon?
     ///
     /// `false` heisst: das Bild ist zu früh und wird gehalten. Es geht
@@ -156,6 +146,7 @@ mod tests {
         let start = Instant::now();
         let mut platz = Bildplatz::neu(start, fps);
         let mut last_pts: i64 = -1;
+        let mut bilduhr = zeitbasis::BildUhr::default();
         let mut jetzt = start;
         let mut naechste_ankunft = start;
         let mut neuestes = start;
@@ -175,10 +166,14 @@ mod tests {
                     jetzt = faellig;
                 }
             }
+            // Wie in `run`: echte Bilder tragen ihre Aufnahmezeit, Duplikate
+            // die Uhr abzüglich des Verzugs (`zeitbasis::BildUhr`; im
+            // Trockenlauf kommt jedes Bild ohne Verzug an).
+            let uhr = zeitbasis::pts_aus_sekunden((jetzt - start).as_secs_f64());
             let pts = if captured > 0 {
-                zeitbasis::pts_aus_sekunden((neuestes - start).as_secs_f64())
+                bilduhr.echt(zeitbasis::pts_aus_sekunden((neuestes - start).as_secs_f64()), uhr)
             } else {
-                last_pts + platz.takte_je_bild()
+                bilduhr.duplikat(last_pts, uhr)
             };
             if captured > 0 && !platz.traegt(pts, last_pts) {
                 // Gehalten — und der Platz bleibt ausdrücklich stehen.
