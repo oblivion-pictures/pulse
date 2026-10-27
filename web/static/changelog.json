@@ -2,6 +2,16 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-27",
+      "date": "2026-10-27",
+      "style": "Sachlich",
+      "title": "Fernsteuerung",
+      "items": [
+        "Beim Fernsteuern eines Windows-Rechners mit NVIDIA-Grafikkarte schickt Pulse kein regelmäßiges Komplettbild mehr, sondern nur noch, wenn eins gebraucht wird, und dann in voller Schärfe. Das Bild soll dadurch nicht mehr im Minutentakt unscharf werden und nachschärfen. Wirksam, sobald der gesteuerte Rechner dieses Update hat.",
+        "Windows-Rechner streamen an eigene Server jetzt auf demselben Weg wie in die Cloud. Nach einer Störung fordert der Zuschauer damit sofort ein neues Bild an, statt auf das nächste reguläre zu warten."
+      ]
+    },
+    {
       "id": "2026-10-26.2",
       "date": "2026-10-26",
       "style": "Sachlich",
