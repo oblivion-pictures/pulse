@@ -29,6 +29,7 @@ use std::time::Instant;
 use crate::audio::CapturedAudio;
 
 mod sync;
+mod versatz;
 
 /// Länge eines Opus-Pakets in Millisekunden.
 ///
@@ -181,6 +182,9 @@ pub struct AudioPipeline {
     /// Nur fuer die Messung (`PULSE_MUX_LATENCY_LOG=1`): wann zuletzt der
     /// Rueckstand gemeldet wurde. `None` = Messung aus (s. `report_lag`).
     lag_report: Option<Instant>,
+    /// Nur ohne Container (WHIP/Direktweg): echte Aufnahmezeit minus
+    /// gezaehlter pts fuer die Ton-Marke (s. `versatz.rs`, `sync::miss_versatz`).
+    versatzbuch: Option<versatz::Versatzbuch>,
 }
 
 impl AudioPipeline {
@@ -213,6 +217,7 @@ impl AudioPipeline {
         let codec_descriptor = codec::encoder::find_by_name("libopus")
             .ok_or_else(|| anyhow!("libopus encoder not registered in linked FFmpeg"))?;
 
+        let ohne_container = output.is_none();
         // Ohne Container: kein globaler Kopf (es gibt keinen, in den er
         // gehörte) und kein Stream-Index.
         let global_header = output
@@ -335,6 +340,8 @@ impl AudioPipeline {
             qpc_anchored: false,
             probe_in_beep: false,
             lag_report: crate::env::flag("PULSE_MUX_LATENCY_LOG").then(Instant::now),
+            versatzbuch: ohne_container
+                .then(|| versatz::Versatzbuch::neu(sample_rate, std::time::Duration::from_secs(10))),
         })
     }
 
@@ -357,6 +364,13 @@ impl AudioPipeline {
     /// Aufnahme (s. `senke_writer::Zeitbezug`).
     pub fn trim_samples(&self) -> i64 {
         self.trim_samples
+    }
+
+    /// Versatz in Samples, um den die Ton-Marke der zuletzt aus [`send`](Self::send)
+    /// gelieferten Pakete vom gezaehlten pts abweicht (echte Aufnahmezeit minus
+    /// Zaehlung, Trim eingerechnet). 0 auf dem Muxer-Weg und im Rueckfall.
+    pub fn versatz(&self) -> i64 {
+        self.versatzbuch.as_ref().map_or(0, versatz::Versatzbuch::versatz)
     }
 
     /// Abtastrate der Tonspur. Der Sendeweg braucht sie als pts-Skala, um die
@@ -398,6 +412,7 @@ impl AudioPipeline {
             self.origin_set = true;
         }
         self.reanchor_on_first_device_stamp(captured);
+        self.miss_versatz(captured);
         self.probe_beep_pts(captured);
         self.report_lag(anchored);
 
@@ -481,51 +496,4 @@ impl AudioPipeline {
 }
 
 #[cfg(test)]
-mod extern_pts_tests {
-    use super::*;
-
-    /// Der containerlose Weg (WHIP/Direct) ruft `set_stream_time_base` NIE —
-    /// die pts der Tonpakete muessen dort trotzdem in SAMPLES ankommen, denn
-    /// `senke_writer::ton_dauer_aus_pts` teilt den PTS-Sprung durch die
-    /// Abtastrate. Bis 0.1.90 stand der Platzhalter auf dem FLV-Default
-    /// (1/1000): jeder Sprung kam in Millisekunden, jedes 10-ms-Paket bekam
-    /// 1 ms Dauer, die Ton-RTP-Uhr lief mit einem Zehntel der Echtzeit, und
-    /// der Bild/Ton-Versatz wuchs um ~0,9 s je gestreamter Sekunde — AMD wie
-    /// NVIDIA, auch im Browser sichtbar. Die Tests an `ton_dauer_aus_pts`
-    /// fuettern die reine Funktion mit Sample-Skala und pruefen damit nur
-    /// ihre Annahme; dieser Test nagelt die Skala fest, die wirklich ankommt.
-    #[test]
-    fn ohne_container_bleiben_die_pts_in_samples() {
-        let rate = 48_000;
-        let mut p = AudioPipeline::create(None, rate, 2, 128, 0).unwrap();
-        let frames_je_paket = (rate as usize / 1000) * opus_frame_ms();
-        let chunk = CapturedAudio {
-            format: crate::audio::AudioFormat {
-                sample_rate: rate,
-                channels: 2,
-                bits_per_sample: 32,
-            },
-            bytes: vec![0u8; frames_je_paket * 8],
-            frames: frames_je_paket as u32,
-            captured_at: std::time::Instant::now(),
-            qpc: 0,
-        };
-        let mut pts = Vec::new();
-        for _ in 0..3 {
-            for paket in p.send(&chunk).unwrap() {
-                pts.push(paket.pts().unwrap());
-            }
-        }
-        assert!(
-            pts.len() >= 2,
-            "libopus muss je Frame ein Paket liefern, sonst prueft der Test nichts"
-        );
-        for paar in pts.windows(2) {
-            assert_eq!(
-                paar[1] - paar[0],
-                frames_je_paket as i64,
-                "PTS-Sprung in Sample-Skala erwartet — Millisekunden sind der 0.1.90er-Fehler"
-            );
-        }
-    }
-}
+mod extern_pts_tests;

@@ -11,6 +11,7 @@
 use std::time::Instant;
 
 use crate::audio::CapturedAudio;
+use crate::audio::aufnahmebuch::Aufnahmezeit;
 
 use super::AudioPipeline;
 
@@ -91,6 +92,37 @@ impl AudioPipeline {
             "[audio] Ton-Anker auf den Geraete-Zeitstempel nachgezogen: +{sprung_ms:.1} ms \
              (davor stand er auf einer Stille-Fuellung)"
         );
+    }
+
+    /// Misst für die Ton-Marke des Wegs ohne Container, wie weit die ECHTE
+    /// Aufnahmezeit dieses Chunks (`CapturedAudio::aufnahme`) vom gezählten
+    /// pts abweicht — Gegenstück zu `versatz` im Linux-Sidecar
+    /// (`encode/audio.rs`): `Aufnahme + Trim − (pts + Vorrat)`. Der Trim steckt
+    /// im gezählten pts; damit `av_offset_ms` auch auf der Marke wirkt, steht
+    /// er auf beiden Seiten. Der Vorrat (was vom vorigen Chunk noch im
+    /// Sammelpuffer liegt) schiebt das erste Sample dieses Chunks auf der
+    /// Zählung nach hinten — wie unter Linux.
+    ///
+    /// Ohne QPC-Ursprung (`PULSE_HQ_NO_AV_OFFSET=1` oder kein Bildstempel)
+    /// stempelt auch das Bild nach der Wanduhr; die QPC-Aufnahmezeit hätte
+    /// dann keinen gemeinsamen Nullpunkt mit ihm, und es gilt der gezählte pts.
+    pub(super) fn miss_versatz(&mut self, captured: &CapturedAudio) {
+        let echt = match (self.stream_origin_qpc, captured.aufnahme.qpc()) {
+            (Some(origin), Some(q)) => {
+                Some(self.qpc_to_samples(q as i64, origin) + self.trim_samples)
+            }
+            _ => None,
+        };
+        let gezaehlt = self.pts_samples + (self.fifo.len() / self.block_align_in) as i64;
+        let aus_geraet = matches!(captured.aufnahme, Aufnahmezeit::Geraet(_));
+        let Some(buch) = self.versatzbuch.as_mut() else { return };
+        let jetzt = Instant::now();
+        if let Some(zeile) = buch.messen(echt, aus_geraet, gezaehlt, jetzt) {
+            eprintln!("{zeile}");
+        }
+        if let Some(zeile) = buch.faellig(jetzt) {
+            eprintln!("{zeile}");
+        }
     }
 
     /// Wanduhr-Position dieses Batches in Samples seit dem Video-PTS-Ursprung.

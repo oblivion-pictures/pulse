@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 
 use wasapi::{AudioClient, Direction, SampleType, StreamMode, WaveFormat, initialize_mta};
 
+use super::aufnahmebuch::{Aufnahmebuch, Aufnahmezeit, Luecke, MAX_LUECKE_FRAMES, Schritt};
 use super::source::AudioSource;
 
 /// PCM-Format der Capture-Pipeline. Festgenagelt — der Encoder kommt damit klar.
@@ -56,7 +57,13 @@ pub struct CapturedAudio {
     /// Samples des Streams (`BufferInfo.timestamp` des ersten Reads); `0` bis ein
     /// echter Read passiert ist. Verankert den Audio-PTS an der echten
     /// Aufnahmezeit auf derselben QPC-Uhr wie der WGC-Video-Timestamp.
+    /// **Für jeden Chunk derselbe** — die Aufnahmezeit DIESES Chunks steht in
+    /// [`aufnahme`](Self::aufnahme).
     pub qpc: u64,
+    /// Aufnahmezeit des ersten Samples DIESES Chunks (QPC, 100 ns). Trägt die
+    /// Ton-Marke auf dem Sendeweg ohne Container (`encode::audio::versatz`);
+    /// der gezählte pts und der Muxer-Weg bleiben davon unberührt.
+    pub aufnahme: Aufnahmezeit,
 }
 
 /// Living capture-handle. Drop = stop.
@@ -205,26 +212,25 @@ fn run_capture(
     // Spur und der 2-Stream-Muxer stockt (`av_interleaved_write_frame` puffert
     // ewig → kein Push → `rw_timeout`).
     //
-    // `emitted_frames` zählt ALLE emittierten Frames (real + Stille). Stille
-    // wird nur eingeschoben, wenn ein GANZER Chunk gegenüber der Wall-Clock
-    // fehlt. Fließt echtes Audio in Echtzeit, deckt der Sub-Chunk-Rest in der
-    // Queue den Verzug ab → die Bilanz holt nie einen vollen Chunk Rückstand
-    // ein → es wird KEINE Stille zwischen reale Samples gestottert. Ein früher
+    // Das Buch zählt ALLE emittierten Frames (real + Stille). Stille wird nur
+    // eingeschoben, wenn ein GANZER Chunk gegenüber der Wall-Clock fehlt.
+    // Fließt echtes Audio in Echtzeit, deckt der Sub-Chunk-Rest in der Queue
+    // den Verzug ab → die Bilanz holt nie einen vollen Chunk Rückstand ein →
+    // es wird KEINE Stille zwischen reale Samples gestottert. Ein früher
     // Timer-Ansatz (Schwelle == realer Chunk-Takt) tat genau das.
+    //
+    // Bidirektionale Drift-Korrektur (#2): liegt die emittierte Menge mehr als
+    // ~100 ms vor der wall-clock-fälligen, verwirft das Buch reale Chunks statt
+    // sie zu emittieren — sonst driftet Audio unbegrenzt VOR das Bild
+    // (Fast-Clock-Drift). Groß genug, dass normale Jitter/Bursts keinen Drop
+    // auslösen. Regeln, Lückenbuchführung und die Aufnahmezeit je Chunk:
+    // `aufnahmebuch.rs` (ohne Windows-Bezug, dort getestet).
     let started = Instant::now();
-    let mut emitted_frames: u64 = 0;
+    // Derselbe Moment auf der QPC-Achse: Bezug der Stille-Stempel vor dem
+    // ersten Gerätestempel (s. `Aufnahmebuch::schritt`).
+    let started_qpc = crate::syncprobe::qpc_now().max(0) as u64;
+    let mut buch = Aufnahmebuch::neu(format.sample_rate, chunk_frames, started_qpc);
     let mut should_stop = false;
-    // Vorlauf-Budget für die Drift-Korrektur (#2): ~100 ms. Erst darüber wird
-    // ein realer Chunk verworfen — groß genug, dass normale Jitter/Bursts
-    // keinen Drop auslösen, nur echte Fast-Clock-Drift der Audio-Geräte-Clock.
-    let ahead_limit = (format.sample_rate / 10) as u64;
-    // QPC (100ns) des allerersten gelesenen Samples — Audio-Stream-Ursprung für
-    // die HW-Timestamp-Verankerung. 0, bis ein echter Read passiert ist.
-    let mut first_read_qpc: u64 = 0;
-    // Erwarteter Geräte-Frame-Index des nächsten Lesevorgangs. S.
-    // `fuelle_geraetelucke` — ohne diese Buchführung schrumpft die Ton-Zeitlinie
-    // bei jeder Gerätelücke, und der Ton läuft dem Bild dauerhaft voraus.
-    let mut naechster_index: u64 = 0;
     // Diagnose-Sonde am ROHEN Gerätestrom (`PULSE_HQ_SYNC_PROBE=1`). Sitzt
     // bewusst VOR Stille-Fill und Drift-Korrektur: nur von hier aus lässt sich
     // sagen, ob eine Tonlücke schon aus dem Gerät kam. S. `syncprobe.rs`.
@@ -235,63 +241,43 @@ fn run_capture(
             should_stop = true;
         }
 
-        // Reale Chunks rauspushen, solange genug Samples gepuffert sind.
-        while queue.len() >= chunk_bytes {
-            // Bidirektionale Drift-Korrektur (#2): liegt die emittierte Menge
-            // mehr als `ahead_limit` vor der wall-clock-fälligen, verwerfen wir
-            // reale Chunks statt sie zu emittieren — sonst driftet Audio
-            // unbegrenzt VOR das Bild (Fast-Clock-Drift). Gegenstück zur
-            // Silence-Fill weiter unten (die Rückstand auffüllt).
+        // Reale Chunks, Drops und Stille, bis das Buch auf neue Daten wartet.
+        loop {
             let owed = (started.elapsed().as_secs_f64() * format.sample_rate as f64) as u64;
-            if emitted_frames > owed + ahead_limit {
-                if let Some(p) = probe.as_mut() {
-                    p.on_drop(chunk_frames as u64);
+            let (bytes, aufnahme) = match buch.schritt(owed) {
+                Schritt::Warten => break,
+                Schritt::Verwerfen => {
+                    if let Some(p) = probe.as_mut() {
+                        p.on_drop(chunk_frames as u64);
+                    }
+                    queue.drain(..chunk_bytes);
+                    continue;
                 }
-                queue.drain(..chunk_bytes);
-                continue;
-            }
-            let mut chunk = vec![0u8; chunk_bytes];
-            for slot in chunk.iter_mut() {
-                *slot = queue.pop_front().unwrap();
-            }
-            if let Some(p) = probe.as_mut() {
-                p.on_emit(false, emitted_frames);
-            }
+                Schritt::Echt { zeit, vorher } => {
+                    if let Some(p) = probe.as_mut() {
+                        p.on_emit(false, vorher);
+                    }
+                    (queue.drain(..chunk_bytes).collect::<Vec<u8>>(), zeit)
+                }
+                Schritt::Stille { zeit, vorher } => {
+                    if let Some(p) = probe.as_mut() {
+                        p.on_emit(true, vorher);
+                    }
+                    (vec![0u8; chunk_bytes], zeit)
+                }
+            };
             let captured = CapturedAudio {
                 format,
-                bytes: chunk,
+                bytes,
                 frames: chunk_frames as u32,
                 captured_at: Instant::now(),
-                qpc: first_read_qpc,
+                qpc: buch.erster_qpc(),
+                aufnahme,
             };
             if !send_or_stop(&tx, &stop_rx, captured) {
                 should_stop = true;
                 break;
             }
-            emitted_frames += chunk_frames as u64;
-        }
-        if should_stop {
-            break;
-        }
-
-        // Stille-Fill: nur ganze Chunks, die gegenüber der Wall-Clock fehlen.
-        let owed = (started.elapsed().as_secs_f64() * format.sample_rate as f64) as u64;
-        while queue.len() < chunk_bytes && emitted_frames + chunk_frames as u64 <= owed {
-            if let Some(p) = probe.as_mut() {
-                p.on_emit(true, emitted_frames);
-            }
-            let silence = CapturedAudio {
-                format,
-                bytes: vec![0u8; chunk_bytes],
-                frames: chunk_frames as u32,
-                captured_at: Instant::now(),
-                qpc: first_read_qpc,
-            };
-            if !send_or_stop(&tx, &stop_rx, silence) {
-                should_stop = true;
-                break;
-            }
-            emitted_frames += chunk_frames as u64;
         }
         if should_stop {
             break;
@@ -308,12 +294,15 @@ fn run_capture(
                 let info = capture_client
                     .read_from_device_to_deque(&mut queue)
                     .context("read_from_device_to_deque")?;
-                // QPC des ersten je gelesenen Samples = Audio-Stream-Ursprung.
-                if first_read_qpc == 0 {
-                    first_read_qpc = info.timestamp;
-                    naechster_index = info.index;
-                }
-                fuelle_geraetelucke(&mut queue, vorher, &info, &mut naechster_index, block_align);
+                let gelesen = ((queue.len() - vorher) / block_align) as u64;
+                let luecke = buch.gelesen(
+                    info.index,
+                    gelesen,
+                    info.timestamp,
+                    !info.flags.timestamp_error,
+                );
+                fuelle_geraetelucke(&mut queue, vorher, luecke, block_align);
+                debug_assert_eq!(queue.len() as u64, buch.gepuffert() * block_align as u64);
                 if let Some(p) = probe.as_mut() {
                     let neu: Vec<u8> = queue.iter().skip(vorher).copied().collect();
                     p.on_read(&info, &neu);
@@ -362,39 +351,36 @@ fn run_capture(
 /// Die Stille muss **vor** die frisch gelesenen Bytes, sonst säße das Loch an
 /// der falschen Stelle. Deshalb wird der neue Teil kurz herausgenommen und
 /// hinter der Stille wieder angehängt — das passiert nur im Lückenfall.
+///
+/// Ob eine Lücke vorliegt (Geräte-Index gegen den erwarteten, Obergrenze
+/// [`MAX_LUECKE_FRAMES`]), entscheidet `Aufnahmebuch::gelesen`; das Buch
+/// stempelt die Stille mit der Zeit, die real verstrich.
 fn fuelle_geraetelucke(
     queue: &mut VecDeque<u8>,
     vor_dem_lesen: usize,
-    info: &wasapi::BufferInfo,
-    naechster_index: &mut u64,
+    luecke: Luecke,
     block_align: usize,
 ) {
-    let gelesen = (queue.len() - vor_dem_lesen) / block_align;
-    if info.index > *naechster_index {
-        let fehlend = (info.index - *naechster_index) as usize;
-        // Ein absurd grosser Sprung ist eher ein Geraete-Neustart als eine
-        // Luecke; dann waere Stille in dieser Menge schlimmer als der Versatz.
-        if fehlend <= MAX_LUECKE_FRAMES {
+    match luecke {
+        Luecke::Keine => {}
+        Luecke::Aufgefuellt(fehlend) => {
             let neu: Vec<u8> = queue.drain(vor_dem_lesen..).collect();
-            queue.extend(std::iter::repeat_n(0u8, fehlend * block_align));
+            queue.extend(std::iter::repeat_n(0u8, fehlend as usize * block_align));
             queue.extend(neu);
             eprintln!(
                 "[audio] Geraetelucke {fehlend} Frames ({:.1} ms) mit Stille aufgefuellt — \
                  ohne das liefe der Ton ab hier um diesen Betrag vor dem Bild",
                 fehlend as f64 * 1000.0 / 48_000.0
             );
-        } else {
-            eprintln!(
-                "[audio] Geraete-Index springt um {fehlend} Frames — zu gross fuer eine \
-                 Luecke, nicht aufgefuellt (Geraete-Neustart?)"
-            );
         }
+        // Ein absurd grosser Sprung ist eher ein Geraete-Neustart als eine
+        // Luecke; dann waere Stille in dieser Menge schlimmer als der Versatz.
+        Luecke::ZuGross(fehlend) => eprintln!(
+            "[audio] Geraete-Index springt um {fehlend} Frames — zu gross fuer eine \
+             Luecke (> {MAX_LUECKE_FRAMES}), nicht aufgefuellt (Geraete-Neustart?)"
+        ),
     }
-    *naechster_index = info.index + gelesen as u64;
 }
-
-/// Obergrenze für das Auffüllen einer Gerätelücke (2 s bei 48 kHz).
-const MAX_LUECKE_FRAMES: usize = 96_000;
 
 fn open_audio_client(source: &AudioSource) -> Result<AudioClient> {
     match source {
