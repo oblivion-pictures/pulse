@@ -118,8 +118,7 @@ pub(super) fn planes_anlegen(
     // Quelldaten beim Hochladen auf 8 bit heruntergerechnet.
     let wide = frame.ten_bit && wide_textures;
     let (single, chroma_format) = super::farbe::ebenenformate(wide, frame.format);
-    let chroma_w = frame.width.div_ceil(2);
-    let chroma_h = frame.height.div_ceil(2);
+    let (chroma_w, chroma_h) = frame.format.farbmasse(frame.width, frame.height);
     let nutzung = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
     Planes {
         y: textur(device, frame.width, frame.height, single, nutzung, "y"),
@@ -169,18 +168,20 @@ pub(super) fn planes_fuellen(
     scratch: &mut [Vec<u8>; 3],
 ) {
     let bytes_per_sample: u32 = if frame.ten_bit { 2 } else { 1 };
-    let chroma_w = frame.width.div_ceil(2);
-    let chroma_h = frame.height.div_ceil(2);
+    // Bei 4:4:4 so gross wie Luma — der Shader tastet alle Ebenen mit
+    // denselben Koordinaten ab, eine volle Farbebene wird also Punkt fuer Punkt
+    // getroffen.
+    let (chroma_w, chroma_h) = frame.format.farbmasse(frame.width, frame.height);
 
     // Die dritte Ebene bleibt bei verschraenktem UV ungenutzt — der Shader
     // liest sie dann nicht.
     let targets = match frame.format {
-        PixelLayout::Planar420 => [
+        PixelLayout::Planar420 | PixelLayout::Planar444 => [
             (&planes.y, frame.width, frame.height, Some(0usize)),
             (&planes.u, chroma_w, chroma_h, Some(1)),
             (&planes.v, chroma_w, chroma_h, Some(2)),
         ],
-        PixelLayout::BiPlanar420 => [
+        PixelLayout::BiPlanar420 | PixelLayout::BiPlanar444 => [
             (&planes.y, frame.width, frame.height, Some(0usize)),
             (&planes.u, chroma_w, chroma_h, Some(1)),
             (&planes.v, 1, 1, None),
@@ -202,8 +203,7 @@ pub(super) fn planes_fuellen(
         let stride = if narrow { frame.strides[idx] / 2 } else { frame.strides[idx] };
         let bytes_per_sample: u32 = if narrow { 1 } else { bytes_per_sample };
         // verschraenktes UV traegt zwei Komponenten je Bildpunkt
-        let components: u32 =
-            if frame.format == PixelLayout::BiPlanar420 && idx == 1 { 2 } else { 1 };
+        let components: u32 = if !frame.format.planar() && idx == 1 { 2 } else { 1 };
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: tex,

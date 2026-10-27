@@ -97,8 +97,7 @@ pub struct Messstand {
 
 impl Messstand {
     pub async fn aufbauen(q: &Quelle) -> Result<Self> {
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let instance = crate::render::ohne_anzeige();
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,

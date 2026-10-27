@@ -114,23 +114,12 @@ impl Bauart {
     /// Masse und Bittiefe aus dem dekodierten Bild lesen.
     ///
     /// Die Bittiefe steht **nicht** am Bild (dessen Format ist `CUDA`), sondern
-    /// im `sw_format` seines `hw_frames_ctx` — dort merkt sich FFmpeg, was
-    /// hinter dem Geraetezeiger liegt.
+    /// im `sw_format` seines `hw_frames_ctx` (s. `linuxweg::sw_format`).
+    ///
+    /// Die Weiche prueft das Format schon vor dem Bau der Bruecke; hier wird
+    /// es trotzdem je Bild gelesen, weil der Strom es unterwegs wechseln kann.
     fn von_frame(frame: &ffmpeg::util::frame::video::Video) -> Result<Self> {
-        // SAFETY: das Bild lebt und traegt bei `AV_PIX_FMT_CUDA` einen
-        // `hw_frames_ctx`; jede Stufe wird vor dem naechsten Zugriff geprueft.
-        let sw = unsafe {
-            let f = frame.as_ptr();
-            let frames_ref = (*f).hw_frames_ctx;
-            if frames_ref.is_null() {
-                bail!("Bild ohne hw_frames_ctx");
-            }
-            let frames = (*frames_ref).data as *mut ffmpeg::ffi::AVHWFramesContext;
-            if frames.is_null() {
-                bail!("hw_frames_ctx ohne Inhalt");
-            }
-            (*frames).sw_format
-        };
+        let sw = super::linuxweg::sw_format(frame)?;
         let zehn_bit = match sw {
             ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_NV12 => false,
             ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_P010LE => true,

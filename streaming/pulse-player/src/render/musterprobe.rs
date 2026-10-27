@@ -350,8 +350,7 @@ mod tests {
     /// einer Maschine ohne Grafikausgabe waere ein roter Test hier keine
     /// Aussage ueber den Code.
     fn geraet() -> Option<(wgpu::Device, wgpu::Queue)> {
-        let instanz =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let instanz = super::super::ohne_anzeige();
         let adapter = pollster::block_on(instanz.request_adapter(&Default::default())).ok()?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("pulse-player-musterprobe-test"),

@@ -12,7 +12,7 @@ struct Uniforms {
     crop: vec4<f32>,
     // x = Deband-Staerke, y = Dither an/aus, z = Anzahl Ausgabestufen, w = Zeit
     params: vec4<f32>,
-    // x = 10-bit-Quelle, y = voller Wertebereich, z = biplanar (NV12/P010),
+    // x = 10-bit-Quelle, y = voller Wertebereich, z = biplanar (NV12/P010/NV24),
     // w = Skalierungsfaktor der Abtastwerte (s. render::sample_scale)
     flags: vec4<f32>,
     // x = Ausgabe erwartet LINEARE Werte (s. render::surface_is_linear),
@@ -132,7 +132,7 @@ fn sample_yuv(uv: vec2<f32>) -> vec3<f32> {
     var cb: f32;
     var cr: f32;
     if (u.flags.z > 0.5) {
-        // Biplanar (NV12/P010): Cb und Cr liegen verschraenkt in einer Textur.
+        // Biplanar (NV12/P010/NV24): Cb und Cr liegen verschraenkt in einer Textur.
         let chroma = textureSampleLevel(tex_u, samp, uv, 0.0);
         cb = chroma.r;
         cr = chroma.g;

@@ -62,6 +62,8 @@ use crate::einfrieren::EinfrierWacht;
 use crate::neuaufbau::{self, ErrorAction, Neuaufbauten};
 use crate::whep::Codec;
 
+mod lizenzlinie;
+
 /// Erkennt am Decoder-Namen, ob er selbst auf der GPU laeuft.
 ///
 /// Gilt ausdruecklich NICHT fuer die hwaccel-Wege: die laufen ueber den
@@ -303,8 +305,10 @@ const MAX_WARTEZEIT_OHNE_KEYFRAME: std::time::Duration = std::time::Duration::fr
 /// **Das ist die Luecke, in der KEIN Waechter mehr greift.** Der Decoder nimmt
 /// jedes Paket an (`consecutive_errors` steht danach auf 0, also kann
 /// [`neuaufbau::classify`] nie ausloesen), er liefert auch Bilder — nur kann
-/// [`convert`] sie nicht uebersetzen, etwa `YUV444P` aus AV1 Profile 1 oder
-/// H.264 High 4:4:4. Damit kommt beim Einfrier-Waechter nie ein Bild an,
+/// [`convert`] sie nicht uebersetzen, etwa `YUV422P` aus einem 4:2:2-Strom
+/// oder NVDECs `YUV444P10MSB` aus 10-bit-4:4:4. (Hier stand bis zum
+/// 2026-10-27 `YUV444P` aus AV1 Profil 1 oder H.264 High 4:4:4 — das nimmt
+/// [`convert`] seither an.) Damit kommt beim Einfrier-Waechter nie ein Bild an,
 /// `letzte_aenderung` bleibt `None` und [`crate::einfrieren`] schweigt
 /// ebenfalls; Bytes fliessen weiter, also greift auch der Stille-Abbruch
 /// nicht. Ohne diese Grenze steht das letzte Bild endlos.
@@ -1205,10 +1209,43 @@ fn spitze_nits_von(frame: &ffmpeg::util::frame::video::Video) -> Option<f32> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PixelLayout {
-    /// Drei Ebenen: Y, U, V.
+    /// Drei Ebenen: Y, U, V; Farbe halb so breit und halb so hoch.
     Planar420,
-    /// Zwei Ebenen: Y und verschraenktes UV.
+    /// Zwei Ebenen: Y und verschraenktes UV; Farbe halb so breit und hoch.
     BiPlanar420,
+    /// Drei Ebenen: Y, U, V, alle in voller Bildgroesse (`YUV444P`,
+    /// `YUV444P10LE`).
+    Planar444,
+    /// Zwei Ebenen: Y und verschraenktes UV in voller Bildgroesse (`NV24`).
+    BiPlanar444,
+}
+
+impl PixelLayout {
+    /// Getrennte U- und V-Ebene (drei Ebenen) statt verschraenktem UV?
+    ///
+    /// **Entscheidet bei 10 bit auch, wo die Bits im Wort sitzen** — aber nur,
+    /// weil [`convert`] genau so zuordnet: die planaren 10-bit-Formate, die es
+    /// annimmt (`YUV420P10LE`, `YUV444P10LE`), legen sie UNTEN ab, das einzige
+    /// verschraenkte (`P010LE`) OBEN. Wer ein Format ergaenzt, das davon
+    /// abweicht (etwa NVDECs `YUV444P10MSB`), braucht dafuer eine eigene
+    /// Unterscheidung, nicht diese.
+    pub fn planar(self) -> bool {
+        match self {
+            Self::Planar420 | Self::Planar444 => true,
+            Self::BiPlanar420 | Self::BiPlanar444 => false,
+        }
+    }
+
+    /// Breite und Hoehe der Farbebene(n) zu einem Bild dieser Masse.
+    ///
+    /// Bei 4:2:0 **aufgerundet** — bei ungerader Bildgroesse waere die
+    /// abgerundete Ebene zu klein.
+    pub fn farbmasse(self, breite: u32, hoehe: u32) -> (u32, u32) {
+        match self {
+            Self::Planar420 | Self::BiPlanar420 => (breite.div_ceil(2), hoehe.div_ceil(2)),
+            Self::Planar444 | Self::BiPlanar444 => (breite, hoehe),
+        }
+    }
 }
 
 pub struct VideoDecoder {
@@ -1216,6 +1253,13 @@ pub struct VideoDecoder {
     /// Name des tatsaechlich gewaehlten Decoders (fuer Diagnose und Statistik).
     pub name: String,
     pub hardware: bool,
+    /// Welcher Kandidat das ist und an welcher Stelle der Liste er stand —
+    /// fuer [`Self::hevc_weiterschalten`], das beim naechsten weitermacht.
+    kandidat: Kandidat,
+    kandidat_nr: usize,
+    /// Gesetzt, sobald ein HEVC-Decoder mit Geraet ein Bild in Software
+    /// herausgegeben hat (s. [`Self::hevc_weiterschalten`]).
+    hevc_in_software: bool,
     /// Fuer den Neuaufbau: welcher Codec urspruenglich verlangt war.
     codec: Codec,
     /// Abgelehnte Einheiten in Folge; jede angenommene setzt zurueck.
@@ -1319,10 +1363,21 @@ impl VideoDecoder {
         if !codec.is_video() {
             bail!("{} ist kein Video-Codec", codec.as_str());
         }
+        Self::ab_kandidat(codec, allow_hw, geraet, 0)
+    }
+
+    /// Wie [`Self::new`], aber erst ab dem Kandidaten Nummer `ab` der Liste —
+    /// fuer das Weiterschalten nach [`Self::hevc_weiterschalten`].
+    fn ab_kandidat(
+        codec: Codec,
+        allow_hw: Option<bool>,
+        geraet: Option<wgpu::Device>,
+        ab: usize,
+    ) -> Result<Self> {
         let allow = allow_hw.unwrap_or_else(hwdec_vorgabe);
 
         let mut last_err = None;
-        for kandidat in candidates(codec, allow) {
+        for (kandidat_nr, kandidat) in candidates(codec, allow).into_iter().enumerate().skip(ab) {
             match Self::try_open(kandidat, &geraet) {
                 Ok(decoder) => {
                     let hardware = kandidat.hardware();
@@ -1335,6 +1390,9 @@ impl VideoDecoder {
                         decoder,
                         name: kandidat.name.to_string(),
                         hardware,
+                        kandidat,
+                        kandidat_nr,
+                        hevc_in_software: false,
                         codec,
                         consecutive_errors: 0,
                         rebuilds: Neuaufbauten::default(),
@@ -1591,6 +1649,10 @@ impl VideoDecoder {
         self.ruecklesen_us = 0;
         self.bruecke_us = 0;
         let bilder = self.drain();
+        if self.hevc_in_software {
+            self.hevc_weiterschalten()?;
+            return Ok(bilder);
+        }
         let abschnitte = crate::stockung::Abschnitte {
             hineingeben,
             herausholen: uhr.elapsed().as_micros() as u64 - hineingeben,
@@ -1771,6 +1833,9 @@ impl VideoDecoder {
         self.decoder = fresh.decoder;
         self.name = fresh.name;
         self.hardware = fresh.hardware;
+        self.kandidat = fresh.kandidat;
+        self.kandidat_nr = fresh.kandidat_nr;
+        self.hevc_in_software = false;
         self.consecutive_errors = 0;
         // Der Ersatz liefert andere Pixelformate als der abgeloeste Decoder —
         // was er vorher nicht uebersetzen konnte, zaehlt nicht gegen ihn.
@@ -2155,6 +2220,12 @@ impl VideoDecoder {
             // Welche Formate das sind und warum die Liste vollstaendig sein
             // MUSS, steht bei [`AUF_GPU_FORMATE`].
             let auf_gpu = AUF_GPU_FORMATE.contains(&frame.format());
+            if lizenzlinie::hevc_in_software(self.codec, self.kandidat.hw.is_some(), auf_gpu) {
+                // Nicht anzeigen und nicht als „unbrauchbar" zaehlen: `decode`
+                // schaltet gleich auf den naechsten Hardware-Kandidaten.
+                self.hevc_in_software = true;
+                continue;
+            }
             // Der Weg am Hauptspeicher vorbei — nur wenn angefordert, nur bei
             // einem Format, fuer das es eine Bruecke gibt, und nur, solange sie
             // traegt. Scheitert sie, wird sie nicht wieder versucht und es geht
@@ -2260,6 +2331,17 @@ fn convert(
         Pixel::YUV420P10LE => (PixelLayout::Planar420, true, 3),
         Pixel::NV12 => (PixelLayout::BiPlanar420, false, 2),
         Pixel::P010LE => (PixelLayout::BiPlanar420, true, 2),
+        // Volle Farbaufloesung. `YUV444P` liefern laut FFmpeg-Quelle (n8.1)
+        // NVDEC/cuvid und VAAPI nach dem Ruecklesen sowie die Software-Decoder
+        // fuer H.264 High 4:4:4 und AV1 Profil 1; `YUV444P10LE` libdav1d bei
+        // 10 bit; `NV24` VideoToolbox (`hwcontext_videotoolbox.c`). Gemessen
+        // am 2026-10-27 (RTX 5080, `decode::vollfarbe_tests`), Bild fuer Bild
+        // gleich einer unabhaengigen Referenz: `YUV444P` aus `hevc_cuvid` und
+        // `hevc` mit VAAPI (beide ruecklesend), `h264` und `libdav1d`;
+        // `YUV444P10LE` aus `libdav1d`. `NV24` ist ungemessen (kein Mac hier).
+        Pixel::YUV444P => (PixelLayout::Planar444, false, 3),
+        Pixel::YUV444P10LE => (PixelLayout::Planar444, true, 3),
+        Pixel::NV24 => (PixelLayout::BiPlanar444, false, 2),
         other => {
             // Nur beim WECHSEL melden. Ein Format, das wir nicht koennen, kommt
             // in JEDEM Bild wieder — bei 60 fps waeren das 60 gleiche Zeilen je
@@ -2298,12 +2380,13 @@ fn convert(
 
     let width = frame.width();
     let height = frame.height();
+    let farbhoehe = layout.farbmasse(width, height).1;
     let mut planes = Vec::with_capacity(planes_n);
     let mut strides = Vec::with_capacity(planes_n);
     for i in 0..planes_n {
         let stride = frame.stride(i);
-        // Chroma-Ebenen sind bei 4:2:0 halb so hoch.
-        let rows = if i == 0 { height } else { height.div_ceil(2) } as usize;
+        // Farbebenen sind bei 4:2:0 halb so hoch, bei 4:4:4 so hoch wie Luma.
+        let rows = if i == 0 { height } else { farbhoehe } as usize;
         let data = frame.data(i);
         let needed = stride * rows;
         if data.len() < needed {
@@ -2873,7 +2956,12 @@ mod tests {
     /// [`MAX_UNBRAUCHBARE_BILDER`], und nach einer Sekunde solcher Bilder endet
     /// die Sitzung mit einer Meldung statt mit einem Standbild. Hier
     /// nachgewiesen wird das trotzdem nicht — dafuer braeuchte es einen
-    /// Decoder, der wirklich `YUV444P` liefert, also einen 4:4:4-Strom.
+    /// Decoder, der wirklich ein unbekanntes Format liefert.
+    ///
+    /// **Bis zum 2026-10-27 standen hier `YUV444P` und `YUV422P`.** `YUV444P`
+    /// nimmt [`convert`] seither an (volle Farbaufloesung), an seine Stelle
+    /// tritt `YUV440P` — weiterhin unbekannt, und als Wechsel zu `YUV422P`
+    /// derselbe Nachweis.
     ///
     /// Der Umweg ueber ein zweites Exemplar des Testbinaers ist noetig, weil
     /// `convert` per `eprintln!` meldet und der Testlaeufer stderr nicht
@@ -2887,7 +2975,7 @@ mod tests {
         // Kindlauf: nur ablehnen lassen, nicht pruefen.
         if std::env::var(KIND).is_ok() {
             let pool = PlanePool::default();
-            for format in [Pixel::YUV444P, Pixel::YUV422P] {
+            for format in [Pixel::YUV440P, Pixel::YUV422P] {
                 for _ in 0..WIEDERHOLUNGEN {
                     let f = ffmpeg::util::frame::video::Video::new(format, 320, 240);
                     assert!(
@@ -2926,12 +3014,12 @@ mod tests {
                 .filter(|z| z.contains("Pixelformat") && z.contains(muster))
                 .count()
         };
-        let yuv444 = zaehle("YUV444P");
+        let yuv440 = zaehle("YUV440P");
         let yuv422 = zaehle("YUV422P");
-        eprintln!("Meldezeilen bei je {WIEDERHOLUNGEN} Ablehnungen: YUV444P={yuv444}, YUV422P={yuv422}");
+        eprintln!("Meldezeilen bei je {WIEDERHOLUNGEN} Ablehnungen: YUV440P={yuv440}, YUV422P={yuv422}");
         assert_eq!(
-            yuv444, 1,
-            "{WIEDERHOLUNGEN} gleiche Ablehnungen duerfen EINE Zeile ergeben, nicht {yuv444}"
+            yuv440, 1,
+            "{WIEDERHOLUNGEN} gleiche Ablehnungen duerfen EINE Zeile ergeben, nicht {yuv440}"
         );
         assert_eq!(
             yuv422, 1,
@@ -2981,6 +3069,9 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod vollfarbe_tests;
 
 #[cfg(test)]
 mod flush_bei_luecke_tests {

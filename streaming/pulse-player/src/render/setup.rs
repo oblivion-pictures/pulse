@@ -492,8 +492,7 @@ mod tests {
     /// einem Bauserver ohne Grafikkarte nichts behaupten.
     #[test]
     fn shader_uebersetzt_fuer_jedes_zielformat() {
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let instance = super::super::ohne_anzeige();
         let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
             eprintln!("keine GPU — Shader-Uebersetzung nicht geprueft");
             return;

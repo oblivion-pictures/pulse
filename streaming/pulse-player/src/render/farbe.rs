@@ -112,7 +112,7 @@ pub fn build_uniforms(
         flags: [
             flag(form.ten_bit),
             flag(full_range),
-            flag(form.layout == PixelLayout::BiPlanar420),
+            flag(!form.layout.planar()),
             abtast_skalierung,
         ],
         output: [
@@ -201,10 +201,10 @@ pub fn surface_is_linear(format: wgpu::TextureFormat) -> bool {
 ///   die **unteren** Bits, Wertebereich 0..1023. Als Unorm gelesen waere das
 ///   um Faktor ~64 zu dunkel.
 pub fn narrow_plane_into(source: &[u8], layout: PixelLayout, out: &mut Vec<u8>) {
-    // Planar (YUV420P10LE) legt die 10 Bit in die UNTEREN Bits, Wertebereich
-    // 0..1023 -> zwei Bit abschneiden. P010 legt sie in die OBEREN, dort ist
-    // das hohe Byte schon der richtige 8-bit-Wert.
-    let planar = layout == PixelLayout::Planar420;
+    // Planar (YUV420P10LE, YUV444P10LE) legt die 10 Bit in die UNTEREN Bits,
+    // Wertebereich 0..1023 -> zwei Bit abschneiden. P010 legt sie in die
+    // OBEREN, dort ist das hohe Byte schon der richtige 8-bit-Wert.
+    let planar = layout.planar();
     // `clear` behaelt die Kapazitaet — nach dem ersten Bild wird hier nichts
     // mehr angefordert.
     out.clear();
@@ -267,9 +267,11 @@ pub fn ebenenformate(
         if wide { wgpu::TextureFormat::R16Unorm } else { wgpu::TextureFormat::R8Unorm };
     let chroma = match layout {
         // Planar: die Chroma-Ebenen sind einkanalig wie Luma.
-        PixelLayout::Planar420 => einzeln,
-        PixelLayout::BiPlanar420 if wide => wgpu::TextureFormat::Rg16Unorm,
-        PixelLayout::BiPlanar420 => wgpu::TextureFormat::Rg8Unorm,
+        PixelLayout::Planar420 | PixelLayout::Planar444 => einzeln,
+        PixelLayout::BiPlanar420 | PixelLayout::BiPlanar444 if wide => {
+            wgpu::TextureFormat::Rg16Unorm
+        }
+        PixelLayout::BiPlanar420 | PixelLayout::BiPlanar444 => wgpu::TextureFormat::Rg8Unorm,
     };
     (einzeln, chroma)
 }
@@ -280,9 +282,14 @@ pub fn scales(wide_texture: bool, layout: PixelLayout) -> (f32, f32) {
         (false, _) => (1.0, 255.0),
         // Planar 10 bit: Werte 0..1023 in den UNTEREN Bits — hochskalieren auf
         // Code/1023; ein 8-bit-Code ist ein Viertel davon.
-        (true, PixelLayout::Planar420) => (f32::from(u16::MAX) / 1023.0, 1023.0 / 4.0),
-        // P010: die zehn Bit sitzen OBEN, der Wert stimmt bereits.
-        (true, _) => (1.0, f32::from(u16::MAX) / 256.0),
+        (true, PixelLayout::Planar420 | PixelLayout::Planar444) => {
+            (f32::from(u16::MAX) / 1023.0, 1023.0 / 4.0)
+        }
+        // P010: die zehn Bit sitzen OBEN, der Wert stimmt bereits. Ohne
+        // Auffangzweig, damit ein neues Layout hier entschieden werden muss.
+        (true, PixelLayout::BiPlanar420 | PixelLayout::BiPlanar444) => {
+            (1.0, f32::from(u16::MAX) / 256.0)
+        }
     }
 }
 

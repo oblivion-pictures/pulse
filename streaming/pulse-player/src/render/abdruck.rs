@@ -415,8 +415,7 @@ mod tests {
     /// wurde — ein stillschweigend uebersprungener Test waere schlimmer als
     /// keiner.
     fn geraet() -> Option<(wgpu::Device, wgpu::Queue)> {
-        let instanz =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let instanz = super::super::ohne_anzeige();
         let adapter = pollster::block_on(instanz.request_adapter(&Default::default())).ok()?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("pulse-player-abdruck-test"),

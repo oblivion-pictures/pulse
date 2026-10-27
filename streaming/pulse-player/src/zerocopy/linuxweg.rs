@@ -67,6 +67,20 @@ impl Bruecke {
         briefkasten: Arc<crate::einfrieren::Briefkasten>,
         geraet: &Option<wgpu::Device>,
     ) -> Result<Self> {
+        // **Erst fragen, ob die Bruecke das Bild ueberhaupt traegt.** Beide
+        // Wege haengen genau zwei Ebenen mit halber Farbaufloesung ein (NV12,
+        // P010). Ein 4:4:4-Bild (`YUV444P`) scheiterte sonst erst am ersten
+        // Bild — auf dem VAAPI-Weg nach der Meldung „Zero-Copy an", die dann
+        // nicht stimmt (gemessen am 2026-10-27, `hevc` mit VAAPI auf einer
+        // RTX 5080). Der Rueckfall aufs Ruecklesen ist derselbe, nur ehrlich.
+        let sw = sw_format(frame)?;
+        if !matches!(
+            sw,
+            ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_NV12
+                | ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_P010LE
+        ) {
+            bail!("{sw:?} ist weder NV12 noch P010");
+        }
         match frame.format() {
             ffmpeg::format::Pixel::CUDA => {
                 Ok(Self::Cuda(linux::Bruecke::neu(frame, briefkasten, geraet)?))
@@ -95,6 +109,29 @@ impl Bruecke {
             Self::Vaapi(b) => b.uebernehmen(frame)?.map(GpuBild::Vaapi),
         };
         Ok(bild.map(Arc::new))
+    }
+}
+
+/// Was hinter einem GPU-Bild liegt.
+///
+/// Steht **nicht** am Bild (dessen Format ist `CUDA` bzw. `VAAPI`), sondern im
+/// `sw_format` seines `hw_frames_ctx` — dort merkt sich FFmpeg, was hinter dem
+/// Geraetezeiger liegt.
+pub(super) fn sw_format(
+    frame: &ffmpeg::util::frame::video::Video,
+) -> Result<ffmpeg::ffi::AVPixelFormat> {
+    // SAFETY: das Bild lebt und traegt bei einem GPU-Format einen
+    // `hw_frames_ctx`; jede Stufe wird vor dem naechsten Zugriff geprueft.
+    unsafe {
+        let frames_ref = (*frame.as_ptr()).hw_frames_ctx;
+        if frames_ref.is_null() {
+            bail!("Bild ohne hw_frames_ctx");
+        }
+        let frames = (*frames_ref).data as *mut ffmpeg::ffi::AVHWFramesContext;
+        if frames.is_null() {
+            bail!("hw_frames_ctx ohne Inhalt");
+        }
+        Ok((*frames).sw_format)
     }
 }
 
