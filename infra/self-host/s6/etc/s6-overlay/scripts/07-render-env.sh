@@ -64,7 +64,9 @@ MEDIAMTX_API_PASS=$(cat "${KEYS}/mediamtx_api.password")
 # Container veröffentlicht 1936). Streams FREMDER Mitglieder laufen über WHIP
 # (WebRTC-Ingest, lochbar wie WHEP): MEDIAMTX_PUSH_PROTOCOL=whip unten lässt
 # media-svc für Gäste WHIP-URLs minten; der Owner (PULSE_INSTANCE_OWNER_ID)
-# bleibt auf dem bewährten RTMPS-Pfad. Plan:
+# bekommt RTMPS nur noch, wenn sein Client es wünscht — seit 2026-10-27
+# wünschen alle Clients WHIP, auch unter Windows
+# (web/src/lib/stream/settings.svelte.ts::pushProtokoll). Plan:
 # docs/plans/2026-07-12-whip-guest-publish.md
 
 # App-Hosting-Erkennung: explizit via PULSE_HOST_ORIGIN (app_host | vps) —
@@ -153,8 +155,8 @@ export MEDIAMTX_API_USER=pulse-media-svc
 export MEDIAMTX_API_PASSWORD='${MEDIAMTX_API_PASS}'
 export MEDIAMTX_INGEST_HOST='${MEDIAMTX_INGEST}'
 export MEDIAMTX_PUBLIC_BASE='https://${PULSE_HOSTNAME}/whep'
-# Gäste-Publish per WHIP (WebRTC-Ingest, NAT-lochbar); Owner bleibt RTMPS —
-# siehe Kommentarblock oben.
+# Publish per WHIP (WebRTC-Ingest, NAT-lochbar); RTMPS nur für einen Owner,
+# dessen (älterer) Client es wünscht — siehe Kommentarblock oben.
 export MEDIAMTX_PUSH_PROTOCOL=whip
 
 # CORS — Cloud-Foundation needs to embed self-host endpoints
