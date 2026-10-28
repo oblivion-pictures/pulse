@@ -658,8 +658,9 @@ export const chatApi = {
     monitorIndex?: number,
     /** Welcher Codec gefahren wird. Reist bis zum Zuschauer (Token-Record →
      *  auth-hook → stream:active → WHEP-Antwort) und entscheidet dort VOR der
-     *  Aushandlung den Wiedergabeweg — HEVC im Linux-Browser heißt: direkt der
-     *  native Player, statt erst eine Fehlermeldung. "h264"/fehlend = nichts
+     *  Aushandlung den Wiedergabeweg — HEVC im Linux-Browser ohne H265-Empfang
+     *  (`h265Empfangbar`) heißt: direkt der native Player, statt erst eine
+     *  Fehlermeldung. "h264"/fehlend = nichts
      *  mitschicken (Legacy-Form bleibt byte-identisch). */
     codec?: 'h264' | 'hevc' | 'av1',
     /** Dieser Strom kommt vom Standplatz-Gerät `deviceId` (seit 2026-10-16).
@@ -700,7 +701,8 @@ export const chatApi = {
    *  entscheidet der Zuschauer den Wiedergabeweg (nur der native Player kann
    *  mehr als 8 bit ausgeben). Ältere Server lassen das Feld weg → 8 bit.
    *  `codec` nennt denselben Grund für den Codec — HEVC im Linux-Browser
-   *  heißt: direkt der native Player. Fehlt es, gilt "h264". */
+   *  ohne H265-Empfang heißt: direkt der native Player. Fehlt es, gilt
+   *  "h264". */
   getWhepUrl(
     channelId: string,
     userId: string,
