@@ -178,7 +178,16 @@ ARG MEDIAMTX_VERSION=1.19.1
 # `infra/self-host/Dockerfile` und die Stellen, die den Tag nur nennen, nach;
 # erst dann kann `PULSE_AUDIO_RED` dort wirken. Der Windows-Server-Bau
 # uebernimmt 0011 wie 0010 sofort (Stempel `1.19.1-pulse11`).
-ARG PULSE_REVISION=11
+#
+# 12 (2026-10-28): Patch `0012-h265-ohne-level-id` — die H265-fmtp der
+# WHEP-Ausgabe ohne `level-id`. Mit `PULSE_FLEXFEC=1` (0003) passt
+# `flexfec-03` exakt zu Chromiums Angebot, H265 mit `level-id=93` gegen
+# Chromiums `level-id=180` nur ungefaehr — und pion behaelt dann nur die
+# exakten Treffer: jeder Chromium-Zuschauer bekam bei HEVC „codec is not
+# supported by remote“. Wirkt ohne Schalter. Wie bei 8-11: erst baut der
+# Workflow `1.19.1-pulse12`, DANACH ziehen die Compose-Dateien,
+# `infra/self-host/Dockerfile` und die Stellen, die den Tag nur nennen, nach.
+ARG PULSE_REVISION=12
 ARG GO_VERSION=1.26
 
 # ── Stage 1: build the patched binary ──────────────────────────────────────
