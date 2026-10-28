@@ -1,0 +1,39 @@
+diff --git a/internal/protocols/webrtc/from_stream.go b/internal/protocols/webrtc/from_stream.go
+index 993dd39..2bbcf2d 100644
+--- a/internal/protocols/webrtc/from_stream.go
++++ b/internal/protocols/webrtc/from_stream.go
+@@ -223,9 +223,18 @@ func setupVideoTrack(
+ 	if h265Format != nil { //nolint:dupl
+ 		track := &OutboundTrack{
+ 			Caps: webrtc.RTPCodecCapability{
+-				MimeType:    webrtc.MimeTypeH265,
+-				ClockRate:   90000,
+-				SDPFmtpLine: "level-id=93;profile-id=1;tier-flag=0;tx-mode=SRST",
++				MimeType:  webrtc.MimeTypeH265,
++				ClockRate: 90000,
++				// Pulse: no `level-id` here. pion has no H265 matcher and
++				// compares the keys both sides carry (`paramsEqual`); Chromium
++				// offers `level-id=180`, so with `level-id=93` H265 was only a
++				// PARTIAL match. pion keeps the partial matches only when no
++				// codec of the section matches exactly — and with
++				// PULSE_FLEXFEC=1 `flexfec-03` does (patch 0003), so H265 was
++				// dropped and every Chromium WHEP reader failed with "codec is
++				// not supported by remote". Without `level-id` H265 matches
++				// exactly, the answer carries the reader's own fmtp.
++				SDPFmtpLine: "profile-id=1;tier-flag=0;tx-mode=SRST",
+ 			},
+ 		}
+ 
+diff --git a/internal/protocols/webrtc/to_stream_test.go b/internal/protocols/webrtc/to_stream_test.go
+index a3e57ab..4bb13bf 100644
+--- a/internal/protocols/webrtc/to_stream_test.go
++++ b/internal/protocols/webrtc/to_stream_test.go
+@@ -77,7 +77,7 @@ var toFromStreamCases = []struct {
+ 		webrtc.RTPCodecCapability{
+ 			MimeType:    "video/H265",
+ 			ClockRate:   90000,
+-			SDPFmtpLine: "level-id=93;profile-id=1;tier-flag=0;tx-mode=SRST",
++			SDPFmtpLine: "profile-id=1;tier-flag=0;tx-mode=SRST", // Pulse: ohne level-id
+ 		},
+ 		&format.H265{
+ 			PayloadTyp: 96,
