@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-10-28.2",
+      "date": "2026-10-28",
+      "style": "Sachlich",
+      "title": "Vollbild",
+      "items": [
+        "Im Vollbild einer Übertragung oder Bildschirmfreigabe reagieren Lautstärke, Chat und Schließen am Rechner wieder. Nach dem Verlassen des Vollbilds kehrt die Kachel wieder in ihre normale Ansicht zurück."
+      ]
+    },
+    {
       "id": "2026-10-28",
       "date": "2026-10-28",
       "style": "Sachlich",
