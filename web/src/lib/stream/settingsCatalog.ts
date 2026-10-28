@@ -63,10 +63,12 @@ export const HQ_BITRATE_MAX_KBPS = 10_000;
 // own window; the browser path itself works after the sender fix,
 // docs/2026-09-13-windows-amf-hevc-10bit.md); plain-web viewers remain
 // subject to browser support (Chrome 136+/Safari with hardware decode play,
-// Firefox and Linux+NVIDIA negotiate it not at all → black picture, audio
-// keeps playing). Since 2026-09-20 it IS the default when the GPU encodes
-// HEVC but not AV1 (`codecVorgabeFuerGpu`) — the streamer sees the choice in
-// the codec field and can switch back to H.264 for a browser-mixed audience.
+// Firefox and Chrome on Linux+NVIDIA without `VaapiOnNvidiaGPUs` negotiate it
+// not at all → black picture, audio keeps playing; the desktop app sets that
+// switch on Linux since 2026-10-28). Since 2026-09-20 it IS the default when
+// the GPU encodes HEVC but not AV1 (`codecVorgabeFuerGpu`) — the streamer
+// sees the choice in the codec field and can switch back to H.264 for a
+// browser-mixed audience.
 export const CODEC_VALUES: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'h264', label: 'H.264' },
   { value: 'hevc', label: 'HEVC' },

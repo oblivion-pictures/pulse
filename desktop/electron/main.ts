@@ -13,11 +13,12 @@
  *         (`<userData>/pulse-stream.json`, chmod 600 on Linux) exposed over the
  *         `store:*` IPC channels (renderer side: `window.pulse.store.*`).
  *
- * Wayland/NVIDIA note: Electron runs on Wayland via XWayland (X11 backend) by
- * default and that works robustly here. We deliberately set NO Ozone/Wayland
- * flags in E1a — the WebKitGTK DMABUF crash was a Tauri/WebKitGTK problem, not
- * an Electron one. (Native Wayland would be `ozone-platform-hint=auto`, but that
- * can introduce rendering quirks — not in E1a.)
+ * Wayland/NVIDIA note: we deliberately set NO Ozone/Wayland flags here — the
+ * WebKitGTK DMABUF crash was a Tauri/WebKitGTK problem, not an Electron one.
+ * (Written for E1a, when Electron defaulted to XWayland. Electron 43 picks
+ * native Wayland on its own in a Wayland session — measured 2026-10-28, the
+ * `ozone-platform` switch reads `wayland` without any flag from us; the
+ * Flatpak launcher passes `--ozone-platform-hint=auto` anyway.)
  */
 
 import { app, BrowserWindow, Menu, dialog, ipcMain, session, desktopCapturer, screen, shell, nativeImage, Notification, powerSaveBlocker, powerMonitor } from 'electron';
@@ -198,8 +199,20 @@ process.env.PULSE_APP_VERSION = APP_VERSION;
 // Document-Picture-in-Picture explizit anschalten — Chromium hat die API seit
 // 116 default-on, aber manche Electron-Builds / Distro-Patches schalten sie
 // per Default ab; der Renderer nutzt sie für das ScreenShare-Detach-Fenster.
+//
+// Linux zusätzlich `VaapiOnNvidiaGPUs`: Chromium überspringt NVIDIA-Karten bei
+// VA-API sonst absichtlich (`vaapi_wrapper.cc`, crbug.com/1492880 — Abstürze
+// mit NVIDIA-Treibern). Ohne Hardware-Decoder bietet es beim WebRTC-Empfang
+// kein H265 an, und HEVC-Streams liessen sich nur im nativen Player zeigen.
+// Gemessen 2026-10-28 (Electron 43, Wayland, RTX 5080, libva-nvidia-driver):
+// HEVC und H.264 1080p60 je 30 s dekodiert und angezeigt, kein Absturz. Ob
+// der Decoder wirklich da ist, prüft die Web-App selbst (`h265Empfangbar`)
+// und fällt sonst auf den nativen Player zurück. Ein zweiter
+// `appendSwitch('enable-features')` überschriebe den ersten — daher eine Liste.
 // Muss VOR app.whenReady() laufen.
-app.commandLine.appendSwitch('enable-features', 'DocumentPictureInPictureAPI');
+const chromiumFeatures = ['DocumentPictureInPictureAPI'];
+if (process.platform === 'linux') chromiumFeatures.push('VaapiOnNvidiaGPUs');
+app.commandLine.appendSwitch('enable-features', chromiumFeatures.join(','));
 
 // Linux: Wayland-app_id / X11-WM_CLASS auf den Desktop-File-Namen ziehen, sonst
 // fällt Chromium auf "electron" zurück → das Fenster matcht nicht

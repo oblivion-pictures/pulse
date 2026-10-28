@@ -31,6 +31,7 @@
   import BildStartenKnopf from './BildStartenKnopf.svelte';
   import RemoteRequestButton from '$lib/remote/components/RemoteRequestButton.svelte';
 	import { isElectron, isLinux } from '$lib/platform/runtime';
+	import { h265Empfangbar } from '$lib/stream/h265Empfang';
   import { remoteSession } from '$lib/remote/session.svelte';
   import { anfragbarAmStrom } from '$lib/remote/darfSteuern';
   import { detachedStreams } from '../detach.svelte';
@@ -92,9 +93,14 @@
     if (mgr?.tenBit) tenBitGesehen = true;
   });
 	// Dasselbe Muster fuer den Codec, aber seit Michaels Entscheidung vom
-	// 2026-10-03 nur noch auf LINUX ein Zwang: Dort laesst sich der H265-Track
-	// im Browser gar nicht verhandeln — ohne das eigene Fenster saehe der
-	// Zuschauer nur die Fehlermeldung. Auf Windows/macOS spielt die Kachel
+	// 2026-10-03 nur noch auf LINUX ein Zwang, und seit 2026-10-28 nur dann,
+	// wenn der Browser H265 nicht empfangen kann (`h265Empfangbar`). Das ist
+	// der Fall bei NVIDIA ohne den Schalter `VaapiOnNvidiaGPUs`, also in
+	// Electron-Versionen vor dem Schalter (`desktop/electron/main.ts`) und
+	// in jedem Chrome ohne ihn. Dort laesst sich der H265-Track gar nicht
+	// verhandeln — ohne das eigene Fenster saehe der Zuschauer nur die
+	// Fehlermeldung. Mit dem Schalter, oder auf AMD/Intel mit VA-API, spielt
+	// die Kachel HEVC selbst. Auf Windows/macOS spielt die Kachel
 	// HEVC inzwischen selbst (die erste Gegenmessung „Electron dekodiert H265
 	// nicht" war ein Sender-Bug — der RTP-Packer warf Keyframes weg,
 	// IDR_N_LP-Bug des rtp-Crate-Payloaders; nach dessen Fix dekodierte
@@ -104,14 +110,14 @@
 	// ist zurueckgenommen: HEVC 8 bit verhaelt sich wie H264/AV1 — Kachel
 	// zuerst, das eigene Fenster nur auf ausdruecklichen Wunsch (Entkoppel-
 	// Knopf). 10 bit erzwingt das Fenster unabhaengig davon weiter (`tenBit`).
-	// Ohne HEVC-Verhandlung (Firefox, Linux+NVIDIA, Windows ohne HEVC-
-	// Grafikhardware) bleibt die Kachel schwarz, bis der Zuschauer selbst
-	// entkoppelt — dokumentierte Abwaegung.
+	// Ohne HEVC-Verhandlung (Firefox, Chrome auf Linux+NVIDIA ohne den
+	// Schalter, Windows ohne HEVC-Grafikhardware) bleibt die Kachel schwarz,
+	// bis der Zuschauer selbst entkoppelt — dokumentierte Abwaegung.
 	let hevcGesehen = $state(false);
 	$effect(() => {
 		if (mgr?.codec === 'hevc') hevcGesehen = true;
 	});
-	const hevcNativPflicht = $derived(isLinux() && hevcGesehen);
+	const hevcNativPflicht = $derived(isLinux() && hevcGesehen && !h265Empfangbar());
   // Dasselbe Spiel fuer die Fernsteuerbarkeit, und aus demselben Grund: sobald
   // das eigene Fenster spielt, wird `mgr` hier abgeklemmt (s. unten) — genau
   // dann braucht aber das Fenster die Antwort fuer seinen Anfrage-Knopf.
@@ -157,8 +163,9 @@
     // und die Kachel startet im `<video>`-Weg; kommt danach `true`, schaltet
     // dieser abgeleitete Wert die Kachel um.
     tenBit: tenBitGesehen,
-    // HEVC + Linux: der Browser-Weg kann den Track nicht mal verhandeln —
-    // ohne den Zwang sähe der Zuschauer nur die Fehlermeldung (s. oben).
+    // HEVC + Linux ohne H265-Empfang: der Browser-Weg kann den Track nicht
+    // mal verhandeln — ohne den Zwang sähe der Zuschauer nur die
+    // Fehlermeldung (s. oben).
     nurNativ: hevcNativPflicht,
   }));
   const useNative = $derived(native.active);
