@@ -99,8 +99,8 @@
 	// Electron-Versionen vor dem Schalter (`desktop/electron/main.ts`) und
 	// in jedem Chrome ohne ihn. Dort laesst sich der H265-Track gar nicht
 	// verhandeln — ohne das eigene Fenster saehe der Zuschauer nur die
-	// Fehlermeldung. Mit dem Schalter, oder auf AMD/Intel mit VA-API, spielt
-	// die Kachel HEVC selbst. Auf Windows/macOS spielt die Kachel
+	// Fehlermeldung. Mit dem Schalter spielt die Kachel HEVC selbst (gemessen
+	// auf NVIDIA); AMD/Intel mit VA-API sollte genauso gehen, ungetestet. Auf Windows/macOS spielt die Kachel
 	// HEVC inzwischen selbst (die erste Gegenmessung „Electron dekodiert H265
 	// nicht" war ein Sender-Bug — der RTP-Packer warf Keyframes weg,
 	// IDR_N_LP-Bug des rtp-Crate-Payloaders; nach dessen Fix dekodierte
