@@ -15,10 +15,18 @@
  * `42001f` in den Chrome-WebRTC-Stats; vdo.ninja-Doku bestätigt das Mapping.
  *
  * Dieser einmalige, idempotente Hook auf `RTCPeerConnection.prototype.addTransceiver`
- * sortiert für jeden Video-Transceiver die H.264-`42e01f`-Einträge ans Ende der
- * Codec-Preference. Andere Codecs (VP8/VP9/AV1) und Audio-Transceiver bleiben
- * unangetastet, die Reihenfolge ist sonst stable — entspricht also dem Browser-
- * Default minus dem SW-Profil ganz vorn.
+ * sortiert für jeden SENDENDEN Video-Transceiver die H.264-`42e01f`-Einträge ans
+ * Ende der Codec-Preference. Andere Codecs (VP8/VP9/AV1) und Audio-Transceiver
+ * bleiben unangetastet, die Reihenfolge ist sonst stable — entspricht also dem
+ * Browser-Default minus dem SW-Profil ganz vorn.
+ *
+ * **`recvonly` bleibt unangetastet** (seit 2026-10-28). Die Liste kommt aus den
+ * SENDE-Fähigkeiten; als Preference auf einem reinen Empfänger streicht sie
+ * jeden Codec, den der Rechner dekodieren, aber nicht kodieren kann. Genau das
+ * traf den WHEP-Zuschauer (`stream/whep.ts`): Linux + NVIDIA mit
+ * `VaapiOnNvidiaGPUs` dekodiert H265, Chromium hat dort aber keinen
+ * H265-Encoder — H265 fiel aus dem Angebot, MediaMTX antwortete
+ * „codecs not supported by client" (MediaMTX-Log, Electron-Dev-App).
  */
 
 type CodecCap = RTCRtpCodec & { sdpFmtpLine?: string };
@@ -45,7 +53,9 @@ export function installH264HwHint(): void {
       typeof trackOrKind === 'string'
         ? trackOrKind
         : (trackOrKind as MediaStreamTrack | undefined)?.kind;
-    if (kind !== 'video') return transceiver;
+    // Empfänger kodieren nicht — und die Sende-Liste darunter kennt nicht jeden
+    // Codec, den sie dekodieren (s. Kopf).
+    if (kind !== 'video' || init?.direction === 'recvonly') return transceiver;
     try {
       const caps = RTCRtpSender.getCapabilities('video');
       const codecs = caps?.codecs as CodecCap[] | undefined;
