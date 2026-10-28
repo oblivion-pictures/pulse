@@ -7,7 +7,17 @@
  *
  * `.svelte.ts`, weil `layoutLage` reaktiv daraus ableitet. Kleine Zahlen,
  * wenige Wechsel — kein Stau zu erwarten.
+ *
+ * **An- und Abmelden lesen den Zähler `untrack`** (seit 2026-10-28). Gerufen
+ * werden sie aus einem `$effect` (`TileShell`); `offen += 1` liest `offen` dort
+ * mit, der Effekt hing dadurch an seinem eigenen Schreiben — abmelden,
+ * anmelden, wieder von vorn, bis Svelte mit `effect_update_depth_exceeded`
+ * abbrach. Danach stand die Kachel: am Rechner blieb sie nach Esc im
+ * Vollbild-Zustand, Schliessen und Lautstärke wirkten nicht mehr (gemessen in
+ * der Electron-Dev-App per DevTools-Protokoll).
  */
+import { untrack } from 'svelte';
+
 let offen = $state(0);
 
 export const kachelVollbildLage = {
@@ -15,9 +25,13 @@ export const kachelVollbildLage = {
     return offen;
   },
   anmelden(): void {
-    offen += 1;
+    untrack(() => {
+      offen += 1;
+    });
   },
   abmelden(): void {
-    offen = Math.max(0, offen - 1);
+    untrack(() => {
+      offen = Math.max(0, offen - 1);
+    });
   }
 };

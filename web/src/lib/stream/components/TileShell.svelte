@@ -296,8 +296,12 @@
              Vollbild (Mobile). Die Watch-Party (kind 'party') nutzt ein
              iframe — dort würde der Fänger die nativen Controls blockieren. -->
         <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+        <!-- `z-20` nur am HANDY im Vollbild (dort muss der Tap über allem
+             Inhalt ankommen, die schwebenden Knöpfe liegen auf z-30). Am
+             Rechner deckte er die Vollbild-Leiste (z-10), Chat-Eingabe und
+             Reaktionsleiste zu — kein Knopf reagierte mehr (2026-10-28). -->
         <div
-          class={isFullscreen
+          class={isFullscreen && handy
             ? 'absolute inset-0 z-20 cursor-pointer'
             : 'absolute inset-0 cursor-pointer'}
           onclick={handleCatcherClick}
