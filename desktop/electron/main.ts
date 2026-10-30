@@ -60,6 +60,7 @@ import { wireClipboard } from './clipboard';
 import { startUpdater } from './updater';
 import { wireGlobalShortcuts } from './shortcuts';
 import { handleDeepLink, extractPulseUrl, takePendingInvite, isValidFqdn } from './deeplink';
+import { istErlaubtesZiel } from './navZiel';
 import { HostLifecycle } from './hostLifecycle';
 import type { HostDeps } from './hostLifecycle';
 import { ContainerBackendManager, resolveImage, HOST_HTTP_PORT, setzeContainerWelt } from './localBackend/containerBackendManager';
@@ -379,6 +380,16 @@ function createWindow(): void {
       _openExternalIfWebUrl(url);
     }
   });
+  // Security-Scan 2026-10-24: HTTP-Redirects (30x) lösen `will-navigate`
+  // NICHT aus — nur `will-redirect`. Ohne diesen Guard hätte eine per
+  // Redirect umgeleitete fremde Origin still mit Preload/Bridge geladen
+  // werden können; derselbe Origin-Guard wie bei will-navigate.
+  mainWindow.webContents.on('will-redirect', (e, url) => {
+    if (!_isAllowedOrigin(url)) {
+      e.preventDefault();
+      _openExternalIfWebUrl(url);
+    }
+  });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (!_isAllowedOrigin(url)) {
       _openExternalIfWebUrl(url);
@@ -414,6 +425,14 @@ function createWindow(): void {
   mainWindow.webContents.on('did-create-window', (child, { url }) => {
     if (url) void child.loadURL(url);
     child.webContents.on('will-navigate', (e, navUrl) => {
+      if (!_isAllowedOrigin(navUrl)) {
+        e.preventDefault();
+        _openExternalIfWebUrl(navUrl);
+      }
+    });
+    // Redirect-Guard wie im Hauptfenster (Security-Scan 2026-10-24): auch
+    // das Kindfenster kann per 30x auf eine fremde Origin umgeleitet werden.
+    child.webContents.on('will-redirect', (e, navUrl) => {
       if (!_isAllowedOrigin(navUrl)) {
         e.preventDefault();
         _openExternalIfWebUrl(navUrl);
@@ -549,6 +568,14 @@ async function captureAuthTokens(win: BrowserWindow): Promise<void> {
  *  für Wege ohne Navigation (z.B. Session war beim Start schon gültig). */
 function startLoginWatch(win: BrowserWindow, loginOrigin: string): void {
   let done = false;
+  // Security-Scan 2026-10-24: Der Origin, gegen den onNav unten prüft —
+  // normalisiert, weil loginOrigin aus unterschiedlichen Quellen kommt
+  // (TARGET_URL beim Boot, realmOrigin() aus host:login, teils mit Pfad).
+  // Unparsebares bleibt roh → der URL-Vergleich scheitert dann fail-closed.
+  let erlaubterLoginOrigin = loginOrigin;
+  try {
+    erlaubterLoginOrigin = new URL(loginOrigin).origin;
+  } catch { /* roh lassen — istErlaubtesZiel lehnt dann alles ab */ }
   const toServer = async () => {
     if (done || win.isDestroyed()) return;
     done = true;
@@ -560,9 +587,12 @@ function startLoginWatch(win: BrowserWindow, loginOrigin: string): void {
     void win.loadFile(path.join(__dirname, 'server.html'));
   };
   const onNav = (_e: unknown, url: string) => {
-    try {
-      if (new URL(url).pathname.startsWith('/app')) toServer();
-    } catch { /* unparsebare URL → ignorieren */ }
+    // Security-Scan 2026-10-24: Pfad allein reicht nicht — eine (per 30x-
+    // Redirect) umgeleitete FREMDE Origin mit Pfad /app wäre sonst als
+    // Login-Erfolg gewertet worden und captureAuthTokens hätte deren
+    // „Tokens" übernommen. Origin UND Pfad, dieselbe Quelle der Wahrheit
+    // wie _isAllowedOrigin (Rechnung testbar in navZiel.ts).
+    if (istErlaubtesZiel(url, erlaubterLoginOrigin)) toServer();
   };
   win.webContents.on('did-navigate-in-page', onNav);
   win.webContents.on('did-navigate', onNav);

@@ -64,10 +64,11 @@ async def join_instance_membership(
     user = await _require_user(request, db)
     # Beitreten ist billig, idempotent und braucht keinen Nachweis — deshalb
     # eignet es sich zum Durchprobieren von Instanz-Kennungen. Die eingetragene
-    # Membership ist eine Merkhilfe ohne Zugriffsbeweis; die Direktpfad-Routen
-    # (Telefonbuch, direct-offer) fragen deshalb Owner-Rolle statt „Eintrag
-    # vorhanden" (Bughunt 2026-09-23, Weg 1 aus
-    # ``docs/2026-09-07-direktweg-berechtigung.md``). Der Konto-Eimer bleibt:
+    # Membership ist eine Merkhilfe OHNE Zugriffsbeweis: Die Direktpfad-Routen
+    # (Telefonbuch, direct-offer) verlangen seit dem Sicherheits-Scan
+    # 2026-10-24 zusätzlich die Bestätigung des SERVERS
+    # (``POST /selfhost/directory/mitgliedschaft``, ``bestaetigt_am``) — die
+    # Selbst-Eintragung allein öffnet nichts. Der Konto-Eimer bleibt:
     # Kennungen durchprobieren kostet ein Konto, nicht eine IP.
     await _check_rate(request, "instance_membership_join", "30/hour", account=str(user.id))
     # Eine unbrauchbare Kennung ist erwartetes Verhalten, kein Fehlerfall —

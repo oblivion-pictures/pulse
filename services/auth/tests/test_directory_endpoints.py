@@ -169,12 +169,19 @@ async def test_lookup_without_membership_404(client, bob, instance):
     assert r.status_code == 404
 
 
-async def test_plain_member_gets_lookup_since_heim_server(client, bob, instance, session_factory):
-    """Heim-Server V1 (2026-09-27): ohne Relay ist der Direktweg der einzige
-    Zugang für Mitglieder — die Merkhilfe-Membership genügt wieder (Weg 1 aus
-    docs/2026-09-07-direktweg-berechtigung.md, Produktentscheid). Die echte
-    Schranke ist das Sitzungs-Ticket + Beitritts-Gate auf dem Server selbst;
-    Nicht-Mitglieder bleiben außen vor (404)."""
+# — Mitgliedschafts-Nachweis (Sicherheits-Scan 2026-10-24, Heim-IP-Lücke) ———
+# Die Merkhilfe-Membership (Selbst-Eintragung ohne Nachweis) öffnet das
+# Telefonbuch NICHT mehr. Der HEIM-SERVER meldet der Cloud nach bestandenem
+# Beitritts-Gate die Mitgliedschaft (``POST /selfhost/directory/mitgliedschaft``,
+# Auth wie der Heartbeat) — erst diese Bestätigung schaltet den Lookup frei
+# (Produktentscheidung Michael, 2026-10-24; ersetzt den Heim-Server-V1-Entscheid
+# vom 2026-09-27, dessen „Mitglieder"-Schranke wirkungslos war, weil sich jeder
+# selbst als Mitglied eintragen konnte).
+
+
+async def test_unverified_member_gets_no_lookup(client, bob, instance, session_factory):
+    """Die nachweislose Selbst-Eintragung bleibt eine Merkhilfe für die
+    Server-Liste — die Heim-Adresse sieht sie nicht (404 wie für Fremde)."""
     await client.post("/selfhost/directory/heartbeat", json=_heartbeat_body(instance))
     async with session_factory() as session:
         session.add(
@@ -187,8 +194,153 @@ async def test_plain_member_gets_lookup_since_heim_server(client, bob, instance,
         f"/me/instances/{instance['id']}/direct-endpoint",
         headers={"Cookie": bob["cookie"]},
     )
-    assert r.status_code == 200
+    assert r.status_code == 404
+
+
+async def test_verified_member_gets_lookup(client, bob, instance, session_factory):
+    """Vom Server bestätigte Mitgliedschaft (``bestaetigt_am`` gesetzt) sieht
+    die Heim-Adresse — der Heim-Server V1 bleibt für Freunde nutzbar."""
+    await client.post("/selfhost/directory/heartbeat", json=_heartbeat_body(instance))
+    async with session_factory() as session:
+        session.add(
+            UserInstanceMembership(
+                user_id=int(bob["id"]),
+                instance_id=_INSTANCE_ID,
+                role="member",
+                bestaetigt_am=datetime.now(UTC),
+            )
+        )
+        await session.commit()
+    r = await client.get(
+        f"/me/instances/{instance['id']}/direct-endpoint",
+        headers={"Cookie": bob["cookie"]},
+    )
+    assert r.status_code == 200, r.text
     assert r.json()["fingerprint"] == _FINGERPRINT
+
+
+async def test_stale_verification_expires(client, bob, instance, session_factory):
+    """Die Bestätigung verfällt: Wer länger nicht mehr auf dem Server war
+    (letzte Bestätigung älter als die Gültigkeit), sieht die Adresse nicht
+    mehr. So wird auch ein Rauswurf/Bann wirksam, ohne dass der Server der
+    Cloud eine Abmeldung schicken müsste — jede Anmeldung frischt auf."""
+    await client.post("/selfhost/directory/heartbeat", json=_heartbeat_body(instance))
+    async with session_factory() as session:
+        session.add(
+            UserInstanceMembership(
+                user_id=int(bob["id"]),
+                instance_id=_INSTANCE_ID,
+                role="member",
+                bestaetigt_am=datetime.now(UTC) - timedelta(days=8),
+            )
+        )
+        await session.commit()
+    r = await client.get(
+        f"/me/instances/{instance['id']}/direct-endpoint",
+        headers={"Cookie": bob["cookie"]},
+    )
+    assert r.status_code == 404
+
+
+async def test_membership_report_sets_verification_end_to_end(client, bob, instance):
+    """``POST /selfhost/directory/mitgliedschaft`` (Auth wie der Heartbeat)
+    trägt die vom Server bestätigte Mitgliedschaft nach — danach sieht der
+    Bestätigte die Adresse. Ende-zu-Ende: Meldung → Lookup."""
+    await client.post("/selfhost/directory/heartbeat", json=_heartbeat_body(instance))
+    r = await client.post(
+        "/selfhost/directory/mitgliedschaft",
+        json={
+            "instance_id": instance["id"],
+            "token": instance["token"],
+            "user_id": bob["id"],
+        },
+    )
+    assert r.status_code == 204, r.text
+
+    r = await client.get(
+        f"/me/instances/{instance['id']}/direct-endpoint",
+        headers={"Cookie": bob["cookie"]},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["candidates"] == [{"ip": "9.9.9.9", "port": 7900, "protocol": "udp"}]
+
+
+async def test_membership_report_refreshes_stale_verification(
+    client, bob, instance, session_factory
+):
+    """Eine erneute Meldung frischt eine verflossene Bestätigung wieder auf
+    (jede Anmeldung beim Server meldet — idempotent, kein Owner-Downgrade)."""
+    async with session_factory() as session:
+        session.add(
+            UserInstanceMembership(
+                user_id=int(bob["id"]),
+                instance_id=_INSTANCE_ID,
+                role="member",
+                bestaetigt_am=datetime.now(UTC) - timedelta(days=8),
+            )
+        )
+        await session.commit()
+    r = await client.post(
+        "/selfhost/directory/mitgliedschaft",
+        json={
+            "instance_id": instance["id"],
+            "token": instance["token"],
+            "user_id": bob["id"],
+        },
+    )
+    assert r.status_code == 204, r.text
+    async with session_factory() as session:
+        row = await session.get(UserInstanceMembership, (int(bob["id"]), _INSTANCE_ID))
+        assert row.bestaetigt_am is not None
+        # SQLite (Tests) liefert naive UTC-Zeiten — wie im Produktionscode
+        # normalisieren, sonst schlägt der Vergleich fehl.
+        bestaetigt = row.bestaetigt_am
+        if bestaetigt.tzinfo is None:
+            bestaetigt = bestaetigt.replace(tzinfo=UTC)
+        assert bestaetigt > datetime.now(UTC) - timedelta(minutes=1)
+
+
+async def test_membership_report_wrong_token_401(client, bob, instance):
+    r = await client.post(
+        "/selfhost/directory/mitgliedschaft",
+        json={
+            "instance_id": instance["id"],
+            "token": "plse_relay_wrongwrongwrong",
+            "user_id": bob["id"],
+        },
+    )
+    assert r.status_code == 401
+
+
+async def test_membership_report_unknown_user_404(client, instance):
+    r = await client.post(
+        "/selfhost/directory/mitgliedschaft",
+        json={
+            "instance_id": instance["id"],
+            "token": instance["token"],
+            "user_id": "999999999999999999",
+        },
+    )
+    assert r.status_code == 404
+
+
+async def test_membership_report_leaves_owner_role_alone(
+    client, alice, instance, session_factory
+):
+    """Der Owner braucht keine Bestätigung; eine Meldung für ihn darf die
+    Owner-Rolle nicht antasten (kein Downgrade, kein Seiteneffekt)."""
+    r = await client.post(
+        "/selfhost/directory/mitgliedschaft",
+        json={
+            "instance_id": instance["id"],
+            "token": instance["token"],
+            "user_id": alice["id"],
+        },
+    )
+    assert r.status_code == 204, r.text
+    async with session_factory() as session:
+        row = await session.get(UserInstanceMembership, (int(alice["id"]), _INSTANCE_ID))
+        assert row.role == "owner"
 
 
 async def test_lookup_without_heartbeat_404(client, alice, instance):

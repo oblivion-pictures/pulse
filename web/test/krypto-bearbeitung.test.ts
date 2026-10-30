@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { baueBearbeitungsNutzlast, leseNachrichtNutzlast } from '../src/lib/krypto/nachrichtNutzlast.ts';
 
 test('Bearbeitungs-Frame: Roundtrip und fail-closed', () => {
-  const bytes = baueBearbeitungsNutzlast('1788829404772578317', 'Neuer Text');
+  // Die Absender-Bindung ist Pflicht (Security-Fix 2026-10-24).
+  const bytes = baueBearbeitungsNutzlast('1788829404772578317', 'Neuer Text', {
+    nutzer: 'user-9',
+    geraet: 'geraet-7'
+  });
   const gelesen = leseNachrichtNutzlast(bytes);
   assert.equal(gelesen.bearbeitung?.ziel, '1788829404772578317');
   assert.equal(gelesen.bearbeitung?.inhalt, 'Neuer Text');

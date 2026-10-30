@@ -1,6 +1,6 @@
 """Direktpfad-Telefonbuch (Plan ``2026-07-09-direct-path-webrtc``, Phase 1).
 
-Zwei Endpoints:
+Endpoints:
 
 * ``POST /selfhost/directory/heartbeat`` — die Server-App meldet ihre
   STUN-ermittelte öffentliche Adresse + den DTLS-Fingerprint ihres
@@ -12,8 +12,12 @@ Zwei Endpoints:
   ihn bis zur Online-Schwelle (300 s) veralten zu lassen — in diesem Fenster
   würde sonst jeder Client-Dial auf einen toten UDP-Port die vollen
   ICE-Timeouts verbrennen (App-Hosting, 2026-10-03).
+* ``POST /selfhost/directory/mitgliedschaft`` — der Server bestätigt der
+  Cloud, dass ein Cloud-User bei ihm Mitglied ist (Scan 2026-10-24): Erst
+  DAS schaltet den Lookup frei, nicht die nachweislose Selbst-Eintragung
+  des Kontos (``routes_instance_membership.py``).
 * ``GET /me/instances/{id}/direct-endpoint`` — Clients holen den Eintrag zum
-  Verbindungsaufbau. Session- UND membership-gated (die Heim-IP des Hosters
+  Verbindungsaufbau. Session- UND nachweis-gated (die Heim-IP des Hosters
   ist sensibel; 404 statt 403 gegen Existence-Leak, Muster Bootstrap-Mint).
 
 Kein Inhalt läuft hier durch — nur Erreichbarkeitsdaten (wenige Bytes).
@@ -25,7 +29,7 @@ import asyncio
 
 import hmac
 import ipaddress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -38,6 +42,7 @@ from dcc_shared.snowflake import kennung_aus_text
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
 from dcc_auth.instance_status import melde, setze_online
+from dcc_auth.models import User
 from dcc_auth.models_instances import (
     InstanceDirectEndpoint,
     RegisteredInstance,
@@ -208,17 +213,90 @@ async def setze_anzeigename(body: AnzeigenameIn, request: Request, db: SessionDe
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+class MitgliedschaftIn(BaseModel):
+    """Die Server-App bestätigt eine Mitgliedschaft — identische Auth wie der
+    Heartbeat (Tunnel-Token oder Pairing-Creds), nur ohne Adressdaten."""
+
+    model_config = ConfigDict(extra="forbid")
+    instance_id: Annotated[str, Field(min_length=1, max_length=32)]
+    token: Annotated[str, Field(min_length=1, max_length=128)]
+    client_id: Annotated[str, Field(max_length=128)] | None = None
+    user_id: Annotated[str, Field(min_length=1, max_length=32)]
+
+
+@router.post(
+    "/selfhost/directory/mitgliedschaft", status_code=status.HTTP_204_NO_CONTENT
+)
+async def bestaetige_mitgliedschaft(
+    body: MitgliedschaftIn, request: Request, db: SessionDep
+) -> Response:
+    """Der Server bestätigt: dieser Cloud-User ist (noch) bei mir Mitglied.
+
+    Scan 2026-10-24 (Heim-IP-Lücke): Bis dahin genügte die nachweislose
+    Selbst-Eintragung des Kontos, um die Heim-Adresse abzurufen. Jetzt setzt
+    erst DIESER Nachweis des Servers ``bestaetigt_am`` — der Gateway meldet
+    nach bestandenem Beitritts-Gate, getaktet (Argon2-Kosten), und jede
+    Anmeldung frischt die Bestätigung wieder auf. Ein Rauswurf oder Bann wird
+    damit über die Gültigkeitsdauer wirksam, ohne Abmelde-Weg.
+
+    Owner-Rollen werden nicht angetastet (kein Downgrade, keine Rolle neu).
+    """
+    settings = get_settings()
+    await _check_rate(
+        request, "directory_mitgliedschaft", settings.rate_limit_directory_mitgliedschaft
+    )
+    inst = await _authed_instance(db, body.instance_id, body.token, body.client_id)
+    uid = kennung_aus_text(body.user_id)
+    if uid is None or await db.get(User, uid) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not found")
+
+    row = await db.get(UserInstanceMembership, (uid, inst.id))
+    if row is None:
+        db.add(
+            UserInstanceMembership(
+                user_id=uid, instance_id=inst.id, role="member",
+                bestaetigt_am=datetime.now(UTC),
+            )
+        )
+    elif row.role != "owner":
+        row.bestaetigt_am = datetime.now(UTC)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def direktpfad_frei(
+    membership: UserInstanceMembership | None, gueltigkeit_tage: int
+) -> bool:
+    """Schaltet diese Membership den Direktpfad frei (Telefonbuch + Offer)?
+
+    Owner: immer (strukturell beim Pairing/Bootstrap entstanden). Mitglied:
+    nur mit frischer Server-Bestätigung — die nachweislose Merkhilfe genügt
+    NICHT (Heim-IP-Lücke, Scan 2026-10-24; Entscheidung Michael 24.10.,
+    ersetzt den Heim-Server-V1-Entscheid 2026-09-27). Geteilt mit
+    ``routes_selfhost_signal.py`` — zwei Kopien dieser Entscheidung wären
+    genau die Bauform, die still auseinanderläuft."""
+    if membership is None:
+        return False
+    if membership.role == "owner":
+        return True
+    if membership.role != "member" or membership.bestaetigt_am is None:
+        return False
+    bestaetigt = membership.bestaetigt_am
+    if bestaetigt.tzinfo is None:  # SQLite (Tests) liefert naive UTC-Zeiten
+        bestaetigt = bestaetigt.replace(tzinfo=UTC)
+    return datetime.now(UTC) - bestaetigt < timedelta(days=gueltigkeit_tage)
+
+
 @router.get(
     "/me/instances/{instance_id}/direct-endpoint", response_model=DirectEndpointOut
 )
 async def get_direct_endpoint(
     instance_id: str, request: Request, db: SessionDep
 ) -> DirectEndpointOut:
-    """Telefonbuch-Lookup für Owner UND gemerkte Mitglieder der Instanz
-    (404 sonst — kein Leak). Bis 2026-09-23 owner-only (IP-Schutz); mit dem
-    Heim-Server-V1-Entscheid (2026-09-27, kein Relay) ist der Direktweg der
-    einzige Zugang für Mitglieder — Weg 1 aus
-    docs/2026-09-07-direktweg-berechtigung.md."""
+    """Telefonbuch-Lookup für Owner UND vom Server bestätigte Mitglieder der
+    Instanz (404 sonst — kein Leak). Bis 2026-09-23 owner-only (IP-Schutz);
+    2026-09-27 für Mitglieder geöffnet, 2026-10-24 an die Server-Bestätigung
+    gebunden — s. ``bestaetige_mitgliedschaft``."""
     settings = get_settings()
     await _check_rate(request, "directory_lookup", settings.rate_limit_directory_lookup)
     user = await _require_user(request, db)
@@ -226,18 +304,14 @@ async def get_direct_endpoint(
     iid = kennung_aus_text(instance_id)
     if iid is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not found")
-    # Direktpfad ist Owner-Sache: der Mitglied-Eintrag ist eine Merkhilfe ohne
-    # Nachweis („beitreten" braucht keinen Beleg), und der Lookup gibt die
-    # Heim-IP des Betreibers her — docs/2026-09-07-direktweg-berechtigung.md,
-    # Weg 1. Suspendierte Instanz: Kill-Switch versiegelt auch die letzte
+    # Die Membership-Zeile allein ist eine Merkhilfe ohne Nachweis („beitreten"
+    # braucht keinen Beleg — routes_instance_membership.py). Der Lookup gibt
+    # die Heim-IP des Betreibers her; ihn freizuschalten verlangt die
+    # Bestätigung des SERVERS (bestaetigt_am, frisch), Owner ausgenommen.
+    # Suspendierte Instanz: Kill-Switch versiegelt auch die letzte
     # bekannte Heimadresse.
-    # Heim-Server V1 (2026-09-27): ohne Relay ist der Direktweg der EINZIGE
-    # Weg für Mitglieder — geöffnet für Owner und gemerkte Mitgliedschaft
-    # (Weg 1 aus docs/2026-09-07-direktweg-berechtigung.md, Produktentscheid).
-    # Die echte Schranke bleibt das Sitzungs-Ticket + Beitritts-Gate (Invite-
-    # Codes) auf dem Server dahinter; Suspend-versiegelt bleibt beides.
     membership = await db.get(UserInstanceMembership, (user.id, iid))
-    if membership is None or membership.role not in ("owner", "member"):
+    if not direktpfad_frei(membership, settings.directory_membership_gueltigkeit_tage):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not found")
     inst = await db.get(RegisteredInstance, iid)
     if inst is None or inst.status != "active":

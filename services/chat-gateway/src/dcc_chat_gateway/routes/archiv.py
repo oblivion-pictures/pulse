@@ -43,6 +43,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from dcc_chat_gateway import ratelimit
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.models import (
     ARCHIV_VORHALTE_TAGE,
@@ -157,6 +158,14 @@ async def archiv_einliefern(
     session: SessionDep,
     current: CurrentUser,
 ) -> None:
+    # 0. Drossel (Security-Scan 2026-10-24): die Route nimmt bis 2000 Zeilen
+    # und 100 Wraps JE ANFRAGE an — ohne Bremse der billigste DB-Churn-
+    # Generator des Dienstes, als Dauerfeuer wiederholbar. 30/Minute je
+    # Konto, Muster wie die Postfach-Bremse (``postfach_einliefern``); die
+    # Mitgliedschafts-Prüfung läuft wie dort NACH der Drossel, abgewiesene
+    # Anfragen kosten keine DB-Runden.
+    if not ratelimit.check("archiv_einliefern", current.id):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail="rate limit exceeded")
     if not payload.zeilen and not payload.wraps:
         return
     kanaele = {z.channel_id for z in payload.zeilen} | {w.channel_id for w in payload.wraps}

@@ -188,11 +188,35 @@ function dockerEnv() {
 }
 
 /**
- * Lädt ein GitHub-Release-Asset herunter und entpackt es nach destDir.
- * curl statt fetch: Release-Assets zeigen auf objects.githubusercontent.com,
- * dem folgt curl selbst, und es ist auf Windows Bordmittel.
+ * SHA256-Pins der Release-Archive — wie desktop/scripts/fetch-win-podman.ps1
+ * und fetch-mac-podman.sh: ein kompromittiertes Release/CDN liefert sonst
+ * Code-Ausführung auf der Dev-Maschine (Security-Scan 2026-10-24). Bei einem
+ * Versions-Bump BOTH hashes neu berechnen (sha256sum über das Zip) und hier
+ * eintragen.
  */
-function fetchReleaseZip(url, zipPath, destDir) {
+const LIVEKIT_ZIP_SHA256 = '9df299b6c6c32f1be88d3d106a9a63f8f921b424b353cc59f57d6b84532a4475';
+const MEDIAMTX_ZIP_SHA256 = 'ca3d89c370bf73dc33ef9ee87afea04834f21b129f499d4b645490fcb01cce22';
+
+function sha256sum(file) {
+  if (WIN) {
+    const res = spawnSync(
+      'powershell',
+      ['-NoProfile', '-Command', `(Get-FileHash -LiteralPath '${file}' -Algorithm SHA256).Hash.ToLower()`],
+      { stdio: ['ignore', 'pipe', 'ignore'], shell: false }
+    );
+    return res.stdout?.toString().trim() ?? '';
+  }
+  const res = spawnSync('sha256sum', [file], { stdio: ['ignore', 'pipe', 'ignore'] });
+  return res.stdout?.toString().split(' ')[0] ?? '';
+}
+
+/**
+ * Lädt ein GitHub-Release-Asset herunter, prüft den SHA256-Pin und entpackt
+ * nach destDir. curl statt fetch: Release-Assets zeigen auf
+ * objects.githubusercontent.com, dem folgt curl selbst, und es ist auf
+ * Windows Bordmittel.
+ */
+function fetchReleaseZip(url, zipPath, destDir, sha256) {
   console.log(`  Download: ${url}`);
   const res = spawnSync('curl', ['-fL', '--retry', '3', '-o', zipPath, url], {
     stdio: ['ignore', 'ignore', 'pipe'],
@@ -201,6 +225,10 @@ function fetchReleaseZip(url, zipPath, destDir) {
   if (res.status !== 0) {
     console.error(res.stderr?.toString());
     die(`Download fehlgeschlagen: ${url}\n  Release-Page prüfen: https://github.com/releases`);
+  }
+  const ist = sha256sum(zipPath);
+  if (ist !== sha256) {
+    die(`SHA256 stimmt nicht (${ist}); erwartet ${sha256}\n  Entweder war der Download korrumpiert, oder die Version wurde gebumpt ohne den Pin anzupassen (oben bei den Konstanten).`);
   }
   // tar (bsdtar von Windows) käme mit zip zurecht, das GNU-tar aus Git Bash
   // NICHT — PowerShell hat dafür Expand-Archive, das überall da ist.
@@ -221,7 +249,8 @@ function ensureBinaries() {
     fetchReleaseZip(
       `https://github.com/livekit/livekit/releases/download/v${LIVEKIT_VERSION}/livekit_${LIVEKIT_VERSION}_windows_amd64.zip`,
       zip,
-      BIN_DIR
+      BIN_DIR,
+      LIVEKIT_ZIP_SHA256
     );
     if (!fs.existsSync(livekit)) die(`livekit nicht im Archiv erwartet: ${BIN_DIR}`);
     fs.rmSync(zip, { force: true });
@@ -234,7 +263,8 @@ function ensureBinaries() {
     fetchReleaseZip(
       `https://github.com/bluenviron/mediamtx/releases/download/v${MEDIAMTX_VERSION}/mediamtx_v${MEDIAMTX_VERSION}_windows_amd64.zip`,
       zip,
-      BIN_DIR
+      BIN_DIR,
+      MEDIAMTX_ZIP_SHA256
     );
     if (!fs.existsSync(mediamtx)) die(`mediamtx nicht im Archiv erwartet: ${BIN_DIR}`);
     fs.rmSync(zip, { force: true });

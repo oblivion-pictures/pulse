@@ -417,43 +417,18 @@ async def register(
         await session.flush()
     except IntegrityError as exc:
         await session.rollback()
-        # Disambiguate: was the conflict the username, the email, or both?
-        # We re-query so the 409 body can carry concrete suggestions when
-        # the username is taken (the common case for popular handles).
-        # Single round-trip: check both username and email in one query.
-        conflict_row = (
-            await session.execute(
-                select(
-                    # LOWER-Vergleich: Migration 0053 (uq_users_username_lower)
-                    # erzwingt Fall-Varianten auf DB-Ebene — die Re-Abfrage
-                    # muss denselben Vergleich fahren, sonst lief ein
-                    # Fallkollisions-Race in das generische „conflict“ statt
-                    # in die hilfreiche username_taken-Antwort mit Vorschlägen.
-                    (func.lower(User.username) == payload.username.lower()).label("u_taken"),
-                    (User.email == payload.email.lower()).label("e_taken"),
-                ).where(
-                    or_(
-                        func.lower(User.username) == payload.username.lower(),
-                        User.email == payload.email.lower(),
-                    )
-                )
-            )
-        ).first()
-        u_taken = conflict_row is not None and conflict_row.u_taken
-        e_taken = conflict_row is not None and conflict_row.e_taken
-        if u_taken:
-            suggestions = await _suggest_usernames(session, payload.username)
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                detail={"error": "username_taken", "suggestions": suggestions},
-            ) from exc
-        if e_taken:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT, detail={"error": "email_taken"}
-            ) from exc
-        # Shouldn't happen — another unique constraint we don't know about.
+        # Security-Scan 24.10. (E-Mail-Enumeration): Die frühere Disambiguierung
+        # („username_taken“ vs. „email_taken“) verriet über die Registrierung,
+        # ob eine E-Mail-Adresse registriert ist — Login und /password/forgot
+        # sind equalisiert, nur dieser Pfad differenzierte noch. Konflikte
+        # antworten deshalb feldunabhängig identisch wie der Username-Fall
+        # (Vorab-Check oben): gleicher Fehlercode, gleiche Keys, Suggestions
+        # rein aus dem gewählten Username abgeleitet. Die Re-Abfrage entfällt
+        # damit komplett — auch zeitlich unterscheiden sich die Fälle nicht.
+        suggestions = await _suggest_usernames(session, payload.username)
         raise HTTPException(
-            status.HTTP_409_CONFLICT, detail="conflict"
+            status.HTTP_409_CONFLICT,
+            detail={"error": "username_taken", "suggestions": suggestions},
         ) from exc
 
     # Invite-only: consume the code atomically now that the user exists. The

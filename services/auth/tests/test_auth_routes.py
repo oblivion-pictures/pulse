@@ -92,8 +92,11 @@ async def test_register_username_taken_returns_suggestions(client):
 
 @pytest.mark.asyncio
 async def test_register_email_taken_returns_error(client):
-    """Email collision (different username) → 409 with error=email_taken,
-    no suggestions (those are for the username case)."""
+    """Email collision (different username) → 409, aber NICHT als solche
+    erkennbar: Login und /password/forgot sind equalisiert, nur die
+    Registrierung differenzierte noch (Security-Scan 24.10. — E-Mail-
+    Enumeration). Der Konflikt-Antwortkörper ist feldunabhängig identisch
+    mit dem Username-Fall, inkl. Suggestions-Key."""
     r1 = await client.post("/register", json=REG_PAYLOAD)
     assert r1.status_code == 201
     r2 = await client.post(
@@ -102,8 +105,35 @@ async def test_register_email_taken_returns_error(client):
     )
     assert r2.status_code == 409
     detail = r2.json()["detail"]
-    assert detail["error"] == "email_taken"
-    assert "suggestions" not in detail
+    assert detail["error"] == "username_taken"
+    assert isinstance(detail.get("suggestions"), list)
+
+
+@pytest.mark.asyncio
+async def test_register_konflikt_nicht_feld_unterscheidbar(client):
+    """Username- und E-Mail-Kollision müssen dieselbe Antwortform haben —
+    ein Angreifer, der Registrierungen mit fremden Adressen probiert, darf
+    aus Status, Fehlercode oder Body-Keys nicht ablesen können, welches
+    Feld kollidiert ist (Security-Scan 24.10.)."""
+    r1 = await client.post("/register", json=REG_PAYLOAD)
+    assert r1.status_code == 201
+    # Nur Username kollidiert (Race-Pfad via IntegrityError umgehen wir:
+    # der Vorab-Check feuert hier, gleiche Antwortform wie der Flush-Fehler).
+    nur_username = await client.post(
+        "/register",
+        json={**REG_PAYLOAD, "email": "other@dcc-test.example.com"},
+    )
+    # Nur E-Mail kollidiert.
+    nur_email = await client.post(
+        "/register",
+        json={**REG_PAYLOAD, "username": "different_handle"},
+    )
+    assert nur_username.status_code == 409
+    assert nur_email.status_code == 409
+    du = nur_username.json()["detail"]
+    de = nur_email.json()["detail"]
+    assert du["error"] == de["error"]
+    assert set(du.keys()) == set(de.keys())
 
 
 @pytest.mark.asyncio

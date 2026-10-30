@@ -1211,3 +1211,50 @@ async def test_input_with_out_of_range_slot_is_dropped_silently(ws_app, _auth_si
                 assert got["slot"] == 1 and got["frames"] == [_CLICK]
 
     await asyncio.to_thread(_run)
+
+
+def test_session_id_helper_empties_over_the_cap():
+    """Security-Scan 24.10.2026: ``_session_id`` nahm jede Laenge an — die
+    Kennung floss unveraendert in Registry-Lookups, Logs und die an den Host
+    weitergeleiteten Frames. Ueber dem Deckel zaehlt sie jetzt wie fehlend
+    (leer), der Grenzwert selbst geht durch."""
+    from dcc_chat_gateway.routes.ws_remote_handlers import (
+        _SESSION_ID_MAX_BYTES,
+        _session_id,
+    )
+
+    assert _session_id(None) == ""
+    assert _session_id("   ") == ""
+    assert _session_id("  abc  ") == "abc"
+    assert _session_id("k" * _SESSION_ID_MAX_BYTES) == "k" * _SESSION_ID_MAX_BYTES
+    assert _session_id("k" * (_SESSION_ID_MAX_BYTES + 1)) == ""
+
+
+@pytest.mark.asyncio
+async def test_oversized_session_id_is_rejected_not_fatal(ws_app, _auth_signer):
+    """Security-Scan 24.10.2026: eine beliebig lange ``session_id`` wurde
+    unbeanstandet in Sitzungssuche und Weiterleitung uebernommen. Ueber dem
+    Deckel (128 Byte, dieselbe Zahl wie in ``pulse-fernsteuerung``) zaehlt sie
+    jetzt wie fehlend: 4050, kein 500 — und die laufende Sitzung bleibt
+    unberuehrt, genau wie bei den Nutzlastgrenzen des Weiterleiters."""
+
+    def _run():
+        with TestClient(ws_app) as tc:
+            owner_token, _, member_token, member_uid, _, cid = _setup_remote(
+                tc, _auth_signer
+            )
+            with tc.websocket_connect(f"/ws?token={owner_token}") as ctrl_ws, \
+                 tc.websocket_connect(f"/ws?token={member_token}") as host_ws:
+                skip_init_frames(ctrl_ws)
+                skip_init_frames(host_ws)
+                sid = _open_session(ctrl_ws, host_ws, cid, member_uid)
+
+                zu_lang = "k" * 129
+                _send_input(ctrl_ws, zu_lang, [_MOVE])
+                assert _drain_for(ctrl_ws, "error")["code"] == 4050
+                ping_barrier(host_ws)  # nichts davon erreichte den Host
+                # Die Sitzung lebt: eine normale Eingabe kommt weiter durch.
+                _send_input(ctrl_ws, sid, [_CLICK])
+                assert _drain_for(host_ws, "remote_input")["frames"] == [_CLICK]
+
+    await asyncio.to_thread(_run)

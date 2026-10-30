@@ -150,6 +150,14 @@ class UserInstanceMembership(Base):
     role: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="owner"
     )
+    # Wann der HEIM-SERVER diese Mitgliedschaft der Cloud bestätigt hat
+    # (``POST /selfhost/directory/mitgliedschaft``, Scan 2026-10-24). NULL =
+    # bloße Merkhilfe ohne Nachweis — schaltet den Direktpfad NICHT frei.
+    # Verfällt nach ``directory_membership_gueltigkeit_tage``; jede Anmeldung
+    # beim Server frischt auf (der Gateway meldet getaktet mit).
+    bestaetigt_am: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Per-User-Server-Präferenzen (account-basiert statt gerätelokal, damit sie
     # über Geräte hinweg gelten). ``user_label`` NULL → Hostname anzeigen.
     user_label: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -98,15 +98,17 @@ export type AnhangAngabe = {
  * Nachricht, auf die reagiert wird (`kanonischeAntwortId.ts` — dieselbe
  * Uebersetzung wie bei `replyToId`, aus demselben Grund: die lokale ID ist
  * je Geraet verschieden). `entfernen` nimmt die eigene Reaktion zurueck.
- * Der Absender steht nicht in der Nutzlast — er ist der Sitzungs-Partner
- * (`absenderErmitteln.ts`), und nur der darf seine Reaktion entfernen
- * (`reaktionen.ts`).
+ * Die Absender-Bindung steht SEIT dem Security-Fix 2026-10-24 in der Nutzlast
+ * (`aktionsRahmenUngebunden`); der Sitzungs-Partner (`absenderErmitteln.ts`)
+ * und die Server-Metadaten sind nur noch der Legacy-Rueckfall — und nur der
+ * zugeschriebene Absender darf seine Reaktion entfernen (`reaktionen.ts`).
  */
 export type ReaktionsAngabe = { ziel: string; emoji: string; entfernen?: true };
 
 /** Bearbeitungs-Frame (P1.5 Teil 2): referenziert die Nachricht mit der
- *  kanonischen/localen ID und trägt den NEUEN Inhalt. Der Absender steht
- *  wie bei Reaktionen außerhalb — der Sitzungs-Partner ist der Autor. */
+ *  kanonischen/localen ID und trägt den NEUEN Inhalt. Die Absender-Bindung
+ *  steht wie bei Reaktionen in der Nutzlast (Security-Fix 2026-10-24) — die
+ *  Zuschreibung entscheidet, wessen Sätze der Frame umschreiben darf. */
 export type BearbeitungsAngabe = { ziel: string; inhalt: string };
 
 /** Anruf-Schlüssel-Frame (E2EE-Anrufe, 2026-09-09): `schluessel` ist der EINE
@@ -129,7 +131,9 @@ export type NachrichtNutzlast = {
    *  Zuschreibung aus den Postfach-Metadaten (`z.absender_user_id`) setzt
    *  der Server frei — ohne diese Felder könnte er Mallorys Geheimtext als
    *  Bob ausliefern. Beide `null` bei Legacy-Nutzlasten; der Empfänger fällt
-   *  dann (nur dort) auf die Metadaten zurück. */
+   *  dann auf die Metadaten zurück — seit dem Security-Fix 2026-10-24 AUSGENOMMEN
+   *  Reaktions-, Bearbeitungs- und Anruf-Schluessel-Frames auf dem Gruppenweg:
+   *  sie werden ohne Bindung verworfen (`aktionsRahmenUngebunden`). */
   absenderNutzer: string | null;
   absenderGeraet: string | null;
   /** Lösch-Frame (2026-09-02): `true` = die Nachricht mit dieser ID wurde
@@ -243,15 +247,27 @@ export function baueLoeschNutzlast(
 
 /** Reaktions-Umschlag: Frame ohne Text und ohne eigene ID — er IST keine
  *  Nachricht, sondern bezieht sich auf eine (`ReaktionsAngabe.ziel`, kanonisch).
- *  Derselbe verschluesselte Sendeweg wie der Loesch-Frame. */
+ *  Derselbe verschluesselte Sendeweg wie der Loesch-Frame. `absender` bindet
+ *  den wahren Absender in die authentisierte Nutzlast (Security-Fix
+ *  2026-10-24) und ist Pflicht: der Empfangsweg verwirft ungebundene
+ *  Aktions-Frames (`aktionsRahmenUngebunden`). */
 export function baueReaktionsNutzlast(
   zielNachrichtId: string,
   emoji: string,
-  entfernen: boolean
+  entfernen: boolean,
+  absender: { nutzer: string; geraet: string }
 ): Uint8Array {
   const reaktion: ReaktionsAngabe = { ziel: zielNachrichtId, emoji };
   if (entfernen) reaktion.entfernen = true;
-  return new TextEncoder().encode(JSON.stringify({ v: FASSUNG, text: '', reaktion }));
+  return new TextEncoder().encode(
+    JSON.stringify({
+      v: FASSUNG,
+      text: '',
+      reaktion,
+      absenderNutzer: absender.nutzer,
+      absenderGeraet: absender.geraet
+    })
+  );
 }
 
 /** Fail-closed wie `leseAnhang`: ein Frame ohne Ziel oder Emoji ist keine
@@ -282,18 +298,44 @@ function leseBearbeitung(wert: unknown): BearbeitungsAngabe | null {
 
 /** Bearbeitungs-Umschlag: Frame ohne Text und ohne eigene ID — er IST keine
  *  Nachricht, sondern ersetzt den Text der Ziel-Nachricht. Derselbe
- *  verschluesselte Sendeweg wie Loesch- und Reaktions-Frame. */
-export function baueBearbeitungsNutzlast(zielNachrichtId: string, inhalt: string): Uint8Array {
+ *  verschluesselte Sendeweg wie Loesch- und Reaktions-Frame. `absender` wie
+ *  beim Reaktions-Umschlag Pflicht (Security-Fix 2026-10-24,
+ *  `aktionsRahmenUngebunden`). */
+export function baueBearbeitungsNutzlast(
+  zielNachrichtId: string,
+  inhalt: string,
+  absender: { nutzer: string; geraet: string }
+): Uint8Array {
   const bearbeitung: BearbeitungsAngabe = { ziel: zielNachrichtId, inhalt };
-  return new TextEncoder().encode(JSON.stringify({ v: FASSUNG, text: '', bearbeitung }));
+  return new TextEncoder().encode(
+    JSON.stringify({
+      v: FASSUNG,
+      text: '',
+      bearbeitung,
+      absenderNutzer: absender.nutzer,
+      absenderGeraet: absender.geraet
+    })
+  );
 }
 
 /** Anruf-Schlüssel-Umschlag: Frame ohne Text — er gehört zu einem Anruf,
  *  nicht zu einer Nachricht. Derselbe verschluesselte Sendeweg wie Loesch-,
- *  Reaktions- und Bearbeitungs-Frame (DM: Olm, Gruppe: Megolm). */
-export function baueAnrufSchluesselNutzlast(anrufId: string, schluessel: string): Uint8Array {
+ *  Reaktions- und Bearbeitungs-Frame (DM: Olm, Gruppe: Megolm). `absender`
+ *  wie beim Reaktions-Umschlag Pflicht (Security-Fix 2026-10-24,
+ *  `aktionsRahmenUngebunden`). */
+export function baueAnrufSchluesselNutzlast(
+  anrufId: string,
+  schluessel: string,
+  absender: { nutzer: string; geraet: string }
+): Uint8Array {
   return new TextEncoder().encode(
-    JSON.stringify({ v: FASSUNG, text: '', anrufSchluessel: { anrufId, schluessel } })
+    JSON.stringify({
+      v: FASSUNG,
+      text: '',
+      anrufSchluessel: { anrufId, schluessel },
+      absenderNutzer: absender.nutzer,
+      absenderGeraet: absender.geraet
+    })
   );
 }
 
@@ -326,8 +368,9 @@ function leseAnrufSchluessel(wert: unknown): AnrufSchluesselAngabe | null {
  * und den Megolm-Weg der Gruppen (`gruppe/empfangen.ts`): eine
  * Aktions-Nutzlast bedeutet ueberall dasselbe, und zwei Kopien der
  * Fallunterscheidung liefen auseinander. `autorId` steht nicht IN der
- * Nutzlast — er ist beim Olm-Weg der Sitzungs-Partner, beim Megolm-Weg der
- * Zustellungs-Absender, und wird hier nur durchgereicht.
+ * Nutzlast dieses Typs — der Aufrufer leitet ihn aus der Absender-Bindung
+ * (Security-Fix 2026-10-24) bzw. dem Sitzungs-Partner und den Metadaten ab
+ * und reicht ihn hier nur durch.
  */
 export type RahmenErgebnis =
   /** Ein Frame mit ungueltigem Ziel (`NachrichtNutzlast.verworfen`): nur
@@ -360,6 +403,55 @@ export type RahmenErgebnis =
       anrufId: string;
       schluessel: string;
     };
+
+/** Ob ein gelesener Aktions-Frame eines der drei Felder `reaktion`,
+ *  `bearbeitung`, `anrufSchluessel` traegt — die Frame-Arten, deren
+ *  Zuschreibung der Empfaenger nicht anderweitig an den Verfasser binden
+ *  kann (Security-Fix 2026-10-24). */
+function istUngebundenerAktionsRahmen(gelesen: NachrichtNutzlast): boolean {
+  return gelesen.reaktion !== undefined || gelesen.bearbeitung !== undefined || gelesen.anrufSchluessel !== undefined;
+}
+
+/**
+ * Ob die Nutzlast ein Reaktions-, Bearbeitungs- oder Anruf-Schluessel-Frame
+ * OHNE vollstaendige Absender-Bindung ist — der Gruppen-Empfangsweg verwirft
+ * solche Frames (quittierbar), statt auf die Server-Metadaten zurueckzufallen
+ * (Security-Fix 2026-10-24).
+ *
+ * **Die Luecke:** die drei Builder trugen bis zu diesem Fix kein
+ * `absenderNutzer`/`absenderGeraet` (Nachrichten und Loesch-Frames taten es,
+ * Bughunt 2026-09-23), und der Gruppen-Empfangsweg uebersprang beide Pruefungen,
+ * wenn die Felder fehlten. Die Zuschreibung (`absender_user_id`) setzt der
+ * Server aber frei: ein zurueckgehaltener Frame eines Mitglieds liess sich
+ * unter fremdem Konto zustellen — Mallorys Bearbeitungs-Frame als der
+ * Original-Autor angewandt (`bearbeitungAnwenden` bindet an die Zuschreibung),
+ * Reaktionen unter falschem Namen, Anruf-Schluessel fremdem Konto zugeschrieben.
+ *
+ * **Warum strikt, ohne Wasserstand-Rueckfall:** ein Rueckfall „nur fuer ALTE
+ * Frames" liesse sich nicht sauber fassen. Der Wasserstand verwirft Frames auf
+ * oder unter dem Stand bereits als Wiedereinspiel — sie erreichen diese
+ * Entscheidung gar nicht; Frames UEBER dem Stand sind ununterscheidbar zwischen
+ * einem ehrlichen, noch nicht aktualisierten Sender und der Neu-Zustellung
+ * eines zurueckgehaltenen Frames ebendieses Senders. Jede Toleranz waere also
+ * die Luecke selbst. Verworfen wird deshalb fail-closed; der Verlust waehrend
+ * des Rollouts (Reaktion, Bearbeitung, Anruf-Schluessel noch nicht
+ * aktualisierter Sender) ist die kleinere Huelse — eine falsche Zuschreibung
+ * ist schlimmer als eine Luecke.
+ *
+ * **Loesch-Frames bleiben ausgenommen**, aus zwei Gruenden: erstens bindet
+ * `loeschZiel` die Loeschung an den VERFASSER — eine umetikettierte Loeschung
+ * wird abgewiesen, die richtige Zuschreibung ist keine Faelschung; zweitens
+ * tragen Gruppen-Loesch-Frames bis zu diesem Fix die Felder nicht, striktes
+ * Verwerfen wuerde jede Loeschung eines noch nicht aktualisierten Clients
+ * brechen. Nachrichten behalten ihren dokumentierten Legacy-Rueckfall
+ * (Bughunt 2026-09-23) ebenfalls.
+ *
+ * Importfrei (nur Typen), damit Nodes Testlaeufer sie ohne Bundler prueft.
+ */
+export function aktionsRahmenUngebunden(gelesen: NachrichtNutzlast): boolean {
+  if (!istUngebundenerAktionsRahmen(gelesen)) return false;
+  return gelesen.absenderNutzer === null || gelesen.absenderGeraet === null;
+}
 
 /** Liest aus einer geoeffneten Nutzlast einen Aktions-Frame — `null`, wenn es
  *  eine gewoehnliche Nachricht ist (der Aufrufer baut dann selbst die

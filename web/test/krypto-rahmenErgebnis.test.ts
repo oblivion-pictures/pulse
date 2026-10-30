@@ -22,6 +22,8 @@ const KANAL = 'kanal-42';
 const ZUSTELLUNG = 'zustell-77';
 /** Die Kennung der Ziel-Nachricht — eine Ziffernfolge wie jede echte ID. */
 const ZIEL = '1760000000000000009';
+/** Die Absender-Bindung ist seit dem Security-Fix 2026-10-24 Pflicht. */
+const ABSENDER = { nutzer: AUTOR, geraet: 'geraet-7' };
 
 test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
   const loeschung = rahmenAusNutzlast(
@@ -39,7 +41,7 @@ test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
   });
 
   const reaktion = rahmenAusNutzlast(
-    leseNachrichtNutzlast(baueReaktionsNutzlast(ZIEL, '👍', false)),
+    leseNachrichtNutzlast(baueReaktionsNutzlast(ZIEL, '👍', false, ABSENDER)),
     ZUSTELLUNG,
     KANAL,
     AUTOR
@@ -55,7 +57,7 @@ test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
   });
 
   const reaktionZurueck = rahmenAusNutzlast(
-    leseNachrichtNutzlast(baueReaktionsNutzlast(ZIEL, '👍', true)),
+    leseNachrichtNutzlast(baueReaktionsNutzlast(ZIEL, '👍', true, ABSENDER)),
     ZUSTELLUNG,
     KANAL,
     AUTOR
@@ -64,7 +66,7 @@ test('Loesch-, Reaktions- und Bearbeitungs-Frames werden erkannt', () => {
   assert.equal(reaktionZurueck.entfernen, true);
 
   const bearbeitung = rahmenAusNutzlast(
-    leseNachrichtNutzlast(baueBearbeitungsNutzlast(ZIEL, 'Neuer Text')),
+    leseNachrichtNutzlast(baueBearbeitungsNutzlast(ZIEL, 'Neuer Text', ABSENDER)),
     ZUSTELLUNG,
     KANAL,
     AUTOR

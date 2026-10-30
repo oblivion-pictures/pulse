@@ -205,11 +205,21 @@ async def test_voller_durchlauf_selbstbedienung_bis_container_env(
     )
     assert login_b.status_code == 200, login_b.text
     bob_cookie = f"pulse_session={login_b.cookies.get('pulse_session')}"
+    bob_me = await client.get("/me", headers={"Cookie": bob_cookie})
+    assert bob_me.status_code == 200, bob_me.text
+    bob_id = bob_me.json()["id"]
 
     join = await client.post(
         f"/me/instances/{iid}/membership", headers={"Cookie": bob_cookie}
     )
     assert join.status_code in (200, 201, 204), join.text
+
+    # Die Selbst-Eintragung ist eine Merkhilfe OHNE Nachweis — seit dem
+    # Sicherheits-Scan 2026-10-24 (Heim-IP-Lücke) schaltet sie den
+    # Direktweg NICHT mehr frei. Erst die Bestätigung des SERVERS unten.
+    noch_nicht = await client.get(f"/me/instances/{iid}/direct-endpoint",
+                                  headers={"Cookie": bob_cookie})
+    assert noch_nicht.status_code == 404
 
     # Noch kein Heartbeat des Containers → 404 (offline), aber KEIN 404-wegen-
     # Berechtigung mehr: ein Nicht-Mitglied bleibt bei 404, das Mitglied
@@ -248,6 +258,20 @@ async def test_voller_durchlauf_selbstbedienung_bis_container_env(
         },
     )
     assert wrong.status_code == 401, wrong.text
+
+    # Der Server bestätigt Bobs Mitgliedschaft der Cloud (Auth wie der
+    # Heartbeat: Pairing-Creds) — das tut der Gateway nach bestandenem
+    # Beitritts-Gate (Scan 2026-10-24); hier simuliert es der Test von Hand.
+    bestaetigung = await client.post(
+        "/selfhost/directory/mitgliedschaft",
+        json={
+            "instance_id": iid,
+            "token": creds["client_secret"],
+            "client_id": creds["client_id"],
+            "user_id": str(bob_id),
+        },
+    )
+    assert bestaetigung.status_code == 204, bestaetigung.text
 
     lookup = await client.get(
         f"/me/instances/{iid}/direct-endpoint", headers={"Cookie": bob_cookie}

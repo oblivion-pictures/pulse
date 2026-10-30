@@ -33,7 +33,12 @@ router = APIRouter()
 class CallTokenIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    call_id: Annotated[str, Field(min_length=1, max_length=64)]
+    # Anruf-IDs sind Snowflakes — Musterbindung wie channel_id in token.py
+    # und internal.py. Die ID wird unverändert in den chat-gateway-Pfad
+    # interpoliert; ohne Muster würden ``/``, ``?`` und ``%`` Bestandteil
+    # des Request-Pfads und httpx ``..``-Segmente normalisieren
+    # (Security-Scan 24.10.).
+    call_id: Annotated[str, Field(min_length=1, max_length=64, pattern=r"^\d+$")]
 
 
 class CallTokenOut(BaseModel):
@@ -81,8 +86,17 @@ async def issue_call_token(
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY, detail="membership check failed"
         )
-    tatbestand = resp.json()
-    room = tatbestand["room"]
+    # 200 ohne brauchbaren ``room`` ist Schema-Drift des chat-gateway —
+    # sauber 502 statt KeyError/500 (Security-Scan 24.10.). Dasselbe gilt
+    # für einen 200-Body, der gar kein JSON-Objekt ist.
+    try:
+        room = resp.json().get("room")
+    except (ValueError, AttributeError):
+        room = None
+    if not isinstance(room, str) or not room:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, detail="membership check failed"
+        )
 
     grants = lk.VideoGrants(
         room_join=True,

@@ -21,6 +21,7 @@ import dcc_chat_gateway.config as chat_config
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.geraete_widerruf import darf_empfangen
 from dcc_chat_gateway.models import DeviceKeyBundle, DeviceOneTimeKey
+from dcc_chat_gateway.ratelimit import check as ratelimit_check
 from dcc_chat_gateway.schemas import GeraeteSchluesselOut, SchluesselAbholenRequest
 from dcc_chat_gateway.schluessel_grenzen import einmalschluessel_budget_uebrig
 from dcc_chat_gateway.schluessel_verfall import verfall_grenze
@@ -93,6 +94,13 @@ async def schluessel_abholen(
     einer Mehrfachanfrage die anderen, zulaessigen mit herunter, und die Liste
     ist ohnehin die richtige Antwortform fuer "hier gibt es nichts zu holen".
     """
+    # Drossel (Security-Scan 2026-10-24): ein Aufruf fragt bis 64 Ziele ab
+    # (je Ziel Bundel-SELECTs, je Geraet OTK-SELECT+DELETE) und war ungedrosselt
+    # wiederholbar — das OTK-Budget deckt nur den Einmalschluessel-Verbrauch,
+    # nie die Last (dieselbe Luecke wie bei ``keys_buendel_auskunft``). Der
+    # Check steht VOR den Schleifen: abgewiesene Anfragen kosten keine Runden.
+    if not ratelimit_check("keys_claim", user.id):
+        raise HTTPException(status_code=429, detail="rate limit exceeded")
     redis = _require_redis(request)
     settings = chat_config.get_settings()
     ergebnis: dict[str, list[GeraeteSchluesselOut]] = {}

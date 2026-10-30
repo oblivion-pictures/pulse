@@ -14,14 +14,18 @@ import {
 import { reaktionAnwenden, reaktionenZuAggregat } from '../src/lib/krypto/reaktionen.ts';
 
 describe('Reaktions-Umschlag: Nutzlast', () => {
+  // Jeder Reaktions-Frame traegt die Absender-Bindung (Security-Fix
+  // 2026-10-24) — der Parameter ist Pflicht.
+  const ABSENDER = { nutzer: 'user-9', geraet: 'geraet-7' };
+
   test('Hin- und Rueckweg traegt Ziel, Emoji und die Entfernen-Marke', () => {
-    const hinzu = leseNachrichtNutzlast(baueReaktionsNutzlast('123', '👍', false));
+    const hinzu = leseNachrichtNutzlast(baueReaktionsNutzlast('123', '👍', false, ABSENDER));
     assert.deepEqual(hinzu.reaktion, { ziel: '123', emoji: '👍' });
     assert.equal(hinzu.text, '');
     assert.equal(hinzu.id, null);
     assert.equal(hinzu.geloescht, undefined);
 
-    const weg = leseNachrichtNutzlast(baueReaktionsNutzlast('123', '👍', true));
+    const weg = leseNachrichtNutzlast(baueReaktionsNutzlast('123', '👍', true, ABSENDER));
     assert.deepEqual(weg.reaktion, { ziel: '123', emoji: '👍', entfernen: true });
   });
 
