@@ -128,11 +128,11 @@ pub struct FfmpegEncoder {
     /// durchgezogen und im Rückfall-Zweig nicht mitgedacht.
     ///
     /// Kein `Selbsttakt` daneben wie in `encoder_hw.rs`: den brauchen nur
-    /// `h264_amf` (s. `auffrischung::braucht_selbsttakt`) und NVENC (Pause in
-    /// der Fernsteuerung, s. `keyframe::Selbsttakt`). `h264_amf` laeuft nie
+    /// `h264_amf` (s. `auffrischung::braucht_selbsttakt`) und NVENC mit
+    /// Rueckkanal (s. `keyframe::Selbsttakt`). `h264_amf` laeuft nie
     /// ueber diesen Weg (`codec::encode_path`), NVENC nur unter dem
     /// Messschalter `PULSE_HQ_DISABLE_ZERO_COPY=1` — dort behaelt es seinen
-    /// GOP-Takt, auch in der Fernsteuerung (nicht umgebaut).
+    /// GOP-Takt (nicht umgebaut).
     vollbilder_angefordert: crate::keyframe::Anforderungen,
 }
 

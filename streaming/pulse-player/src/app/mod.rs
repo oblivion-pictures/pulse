@@ -19,7 +19,6 @@ mod eingabe;
 mod fensterkennung;
 mod minutenzeile;
 mod requests;
-mod sofortbild;
 mod takt;
 mod wayland_zug;
 mod zeigerbau;
@@ -44,7 +43,7 @@ use crate::rpc::StdoutWriter;
 use crate::session::{self, Quelle, SessionCommand, SessionEvent, SessionStats};
 use takt::Ausgabetakt;
 
-pub use takt::{FERN_SOFORT_VORGABE, VORHALT_MAX_MS};
+pub use takt::VORHALT_MAX_MS;
 
 /// Wie frisch das letzte Bild sein muss, damit Eingaben KEINEN eigenen
 /// Durchgang anfordern.
@@ -232,9 +231,9 @@ struct Session {
     /// (`proto::AUSGABETAKT_MS_VORGABE`, seit 2026-08-07 30 ms, davor 60);
     /// hier stand bis zum 2026-08-06 „bei ausgeschaltetem Vorhalt — der
     /// Vorgabe —", und das war schon damals falsch. Jedes Bild unveraendert
-    /// durch reicht er nur ausdruecklich abgeschaltet — und seit dem
-    /// 2026-10-21 waehrend einer Fernsteuerung mit dem Haken „Bild sofort
-    /// zeigen" (Vorgabe, s. [`sofortbild`]).
+    /// durch reicht er nur ausdruecklich abgeschaltet — auch waehrend einer
+    /// Fernsteuerung gilt derselbe Vorhalt wie beim Zusehen (seit dem
+    /// 2026-10-31; davor senkte sie ihn ab, zuletzt auf 0).
     takt: Ausgabetakt,
     /// Meldetakt der Zaehlzeilen fuer Bild und Ton, ohne Pruefschalter (s.
     /// [`minutenzeile`]).
@@ -340,9 +339,6 @@ pub struct App {
     /// Zahlen liegen sonst nur im Overlay, und wer beim Zuschauen die Maus
     /// bewegt, veraendert die Messung (das Zeichnen des Overlays kostet selbst).
     stats_log: bool,
-    /// Haken „Bild sofort zeigen" — EIN Wert fuer alle Fenster dieses
-    /// Prozesses (s. [`sofortbild`]).
-    fern_sofort: bool,
     sessions: HashMap<u64, Session>,
     by_window: HashMap<WindowId, u64>,
     next_id: u64,
@@ -406,7 +402,6 @@ impl App {
     pub fn new(proxy: EventLoopProxy<UserEvent>, runtime: tokio::runtime::Handle) -> Self {
         Self {
             stats_log: std::env::var_os("PULSE_PLAYER_STATS_LOG").is_some(),
-            fern_sofort: takt::fern_sofort_aus_umgebung(),
             sessions: HashMap::new(),
             by_window: HashMap::new(),
             next_id: 1,
@@ -484,14 +479,16 @@ impl App {
                     //
                     // **Verworfen werden darf es trotzdem nicht.** Hier stand
                     // ein blosses `try_send` mit der Begruendung, der naechste
-                    // Statistik-Takt bzw. Options-Patch ziehe es nach — das
-                    // gilt aber nur fuers EINSCHALTEN: `fern_geduld` in
-                    // `session.rs` wird nur bei laufender Fernsteuerung neu
-                    // gerechnet. Blieb ein `Fernsteuerung(false)` liegen, hing
-                    // das Auffangnetz bis zum Sitzungsende auf der abgesenkten
-                    // Geduld — und gezeigt wird es genau dann, wenn der
-                    // Hauptstrom ausfaellt. Der Nachschub laeuft deshalb ueber
-                    // eine eigene Task, die warten darf, waehrend der
+                    // Statistik-Takt bzw. Options-Patch ziehe es nach — fuer
+                    // `Fernsteuerung` gibt es aber keinen Nachzug: es kommt
+                    // genau einmal je Wechsel. Blieb ein `Fernsteuerung(false)`
+                    // liegen, wartete das Auffangnetz bis zum Sitzungsende bei
+                    // Stille 15 statt 3 Sekunden
+                    // (`session::STILLE_FENSTER_BIS_ABBRUCH_FERN`; bis zum
+                    // 2026-10-31 hing es zusaetzlich auf einer abgesenkten
+                    // Jitter-Geduld) — und gezeigt wird es genau dann, wenn
+                    // der Hauptstrom ausfaellt. Der Nachschub laeuft deshalb
+                    // ueber eine eigene Task, die warten darf, waehrend der
                     // Weiterleiter weiterlaeuft.
                     let voll = nachzuegler.as_ref().is_some_and(|h| !h.is_finished());
                     let rest = if voll {
@@ -631,7 +628,6 @@ impl App {
                 // Namen und dieselben Knoepfe wie die Kachel in der App.
                 o.set_title(title);
                 o.set_can_reattach(req.can_reattach.unwrap_or(true));
-                o.set_fern_sofort(self.fern_sofort);
                 Some(o)
             }
             Err(e) => {
@@ -780,11 +776,7 @@ impl App {
                 full_range: false,
                 farbe: decode::Farbangaben::default(),
                 pending: None,
-                takt: {
-                    let mut takt = Ausgabetakt::neu(vorhalt_ms);
-                    takt.fern_sofort_setzen(self.fern_sofort);
-                    takt
-                },
+                takt: Ausgabetakt::neu(vorhalt_ms),
                 zaehlung: Default::default(),
                 probe: crate::probe::LatencyProbe::from_env(),
                 frames_never_drawn: 0,
@@ -1428,9 +1420,6 @@ impl App {
             // gibt einen laufenden Anspruch frei und schreibt den Vorbestand
             // zurueck** — nicht bloss den naechsten Anspruch unterlassen.
             OverlayAction::AblageTeilen(an) => self.ablage_teilen_setzen(id, an),
-            // Haken „Bild sofort zeigen": gilt fuer alle Fenster, nicht nur
-            // fuer das, in dem geklickt wurde (s. `sofortbild`).
-            OverlayAction::FernSofort(an) => self.fern_sofort_setzen(an),
         }
     }
 
@@ -1515,9 +1504,9 @@ impl App {
                 // Ueber den Ausgabe-Takt einreihen statt direkt uebernehmen.
                 // In der Vorgabe (30 ms Vorhalt) liegt das Bild danach
                 // wirklich eine Weile, und der zweite Weg (`about_to_wait`)
-                // holt es ab. Nur bei abgeschaltetem Vorhalt ist es im selben
-                // Zug wieder faellig — ausdruecklich oder waehrend einer
-                // Fernsteuerung mit „Bild sofort zeigen" (seit 2026-10-21).
+                // holt es ab. Nur bei ausdruecklich abgeschaltetem Vorhalt
+                // ist es im selben Zug wieder faellig (bis zum 2026-10-31
+                // auch waehrend einer Fernsteuerung mit „Bild sofort zeigen").
                 // Hier stand bis zum 2026-08-06 „bei ausgeschaltetem Vorhalt
                 // — der Vorgabe —", und das trifft seit dem 2026-08-05 nicht
                 // mehr zu.

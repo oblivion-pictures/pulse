@@ -36,7 +36,6 @@
 //! [`controls`]; hier liegt die Schleife, die entscheidet, WANN.
 
 mod ablageschalter;
-mod sofortschalter;
 mod controls;
 mod fernbedienung;
 mod schirmkarte;
@@ -145,9 +144,6 @@ pub struct Overlay {
     /// (`app::ablage`); damit traegt er auch, wenn Plan 1b-2 und 1c die
     /// uebrigen Plattformen nachreichen.
     ablage_verfuegbar: bool,
-    /// Haken „Bild sofort zeigen" im Fern-Menue (s. [`sofortschalter`]). Nur
-    /// zur ANZEIGE — verbindlich ist der Wert der App (`app::sofortbild`).
-    fern_sofort: bool,
 }
 
 impl Overlay {
@@ -205,7 +201,6 @@ impl Overlay {
             fern_anordenbar: false,
             ablage_teilen: true,
             ablage_verfuegbar: false,
-            fern_sofort: crate::app::FERN_SOFORT_VORGABE,
         })
     }
 

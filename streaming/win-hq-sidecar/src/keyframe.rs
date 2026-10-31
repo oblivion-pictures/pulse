@@ -307,56 +307,34 @@ pub fn reset() {
 /// Aufnahmen liesse bei stehendem Bildschirm minutenlang kein Vollbild zu —
 /// genau dann, wenn ein neuer Zuschauer nichts zu sehen bekaeme.
 ///
-/// **Waehrend einer Fernsteuerung pausiert er** (seit 2026-10-27, Versuch nach
-/// RustDesk-Vorbild): RustDesk oeffnet seine Encoder mit unbegrenztem GOP und
-/// schickt ein Vollbild nur beim Verbinden oder auf Anforderung
-/// (`rustdesk/libs/scrap/src/common/hwcodec.rs`, `DEFAULT_GOP = i32::MAX`).
-/// Anlass: am 2026-10-27 kamen bei der Fernsteuerung (all3media, RTX 2080)
-/// nur die regulaeren Vollbilder, 8-11 KB gross unter dem kleinen Fern-Puffer
-/// (`encode/fern_vbv.rs`), und das Bild pumpte im Minutentakt; angefordert
-/// wurde in 6 Minuten keines. Ein Zuschauer, der einsteigt oder etwas
-/// verliert, fordert sein Vollbild weiter ueber den Rueckkanal an — der
-/// regulaere Takt ist dort nur die Sicherung. **Ob das Pumpen damit
-/// verschwindet, ist ungemessen.** Damit der Takt pausieren kann, kommen
-/// seitdem auch bei **NVENC mit Rueckkanal** die Vollbilder aus diesem Zaehler
-/// und nicht aus dem GOP (der steht dort auf [`GOP_UNBEGRENZT`]): FFmpeg stellt den GOP am
-/// offenen Encoder nicht um — `reconfig_encoder` uebernimmt nur Seitenformat,
-/// Bitrate und Puffer (n8.1 `nvenc.c:2952-3001`), und ein Neuoeffnen kostete
-/// mitten in der Sitzung den Strom. Das angeforderte wie das getaktete
-/// Vollbild ist bei NVENC ein IDR (`forced-idr`, `encode/opts.rs`). **Preis:**
-/// der Clip-Ring (`crate::clip`, 90 s) braucht ein Vollbild; wer nach mehr als
-/// 90 s Sitzung ohne angefordertes Vollbild einen Clip speichert, bekommt
-/// „kein Vollbild im Ring". Dasselbe gilt fuer den Clip-Ring des Zuschauers
-/// (`pulse-player`, `recorder.rs`), und die Einfrier-Wacht des Players
-/// koppelt ihre Mindestdauer an die Zeit seit dem letzten Vollbild
-/// (`pulse-player/src/einfrieren.rs::mindestdauer_zur_zeit`, 1,25 x): ohne
-/// Vollbild waechst die Schwelle mit der Standzeit mit, ein haengender Decoder
-/// OHNE gemeldeten Schaden faellt waehrend der Pause also praktisch gar nicht
-/// auf (vorher nach hoechstens rund 75 s), und weil der lange Abstand danach
-/// im Fenster der letzten Abstaende steht, bleibt die Wacht noch einige
-/// Vollbilder lang stumpf.
+/// **NVENC mit Rueckkanal** (eigener WHIP-Sender oder Direktweg, beide als
+/// `encode::senke` angemeldet) bekommt seine Vollbilder seit 2026-10-27
+/// ebenfalls aus diesem Zaehler; der GOP steht dort auf [`GOP_UNBEGRENZT`].
+/// Eingefuehrt wurde das zusammen mit einer Pause des Takts waehrend der
+/// Fernsteuerung (Versuch nach RustDesk-Vorbild,
+/// `rustdesk/libs/scrap/src/common/hwcodec.rs`, `DEFAULT_GOP = i32::MAX`):
+/// FFmpeg stellt den GOP am offenen Encoder nicht um — `reconfig_encoder`
+/// uebernimmt nur Seitenformat, Bitrate und Puffer (n8.1 `nvenc.c:2952-3001`),
+/// und ein Neuoeffnen kostete mitten in der Sitzung den Strom —, also musste
+/// der Takt aus dem Sidecar kommen. **Die Pause ist seit 2026-10-31 entfernt**
+/// (Eigentuemer-Entscheid: waehrend einer Fernsteuerung wird genau so
+/// gestreamt wie sonst). Der Selbsttakt bleibt, weil das normale Streamen
+/// seitdem auf ihm laeuft: derselbe Abstand wie vorher der GOP
+/// ([`abstand_bilder`]), dazu der Neubeginn nach einem angeforderten Vollbild.
+/// Das angeforderte wie das getaktete Vollbild ist bei NVENC ein IDR
+/// (`forced-idr`, `encode/opts.rs`).
 ///
-/// **Pausiert wird nur mit Rueckkanal** (eigener WHIP-Sender oder Direktweg,
-/// beide als `encode::senke` angemeldet). Auf dem FFmpeg-Muxer (RTMPS — die
-/// Oberflaeche waehlt es seit 2026-10-27 nirgends mehr, aber aeltere Clients
-/// wuenschten es fuer Windows an einem Heimserver, und media-svc gibt es dem
-/// Betreiber weiter, wenn er es wuenscht) erreicht keine Anforderung den
-/// Encoder; dort ist der Takt die einzige Quelle und laeuft weiter.
-///
-/// Ohne Rueckkanal bleibt NVENC deshalb beim GOP-Takt des Encoders, genau wie
-/// vor dem 2026-10-27; der Selbsttakt laeuft dort nur fuer `h264_amf`.
-/// Gegenprobe: `PULSE_HQ_FERN_VOLLBILDTAKT=1` laesst den Takt auch in der
-/// Fernsteuerung laufen ([`FERN_TAKT_UMGEBUNG`]).
+/// **Ohne Rueckkanal** (FFmpeg-Muxer, RTMPS — die Oberflaeche waehlt es seit
+/// 2026-10-27 nirgends mehr, aber aeltere Clients wuenschten es fuer Windows
+/// an einem Heimserver, und media-svc gibt es dem Betreiber weiter, wenn er es
+/// wuenscht) erreicht keine Anforderung den Encoder. NVENC bleibt dort beim
+/// GOP-Takt des Encoders, genau wie vor dem 2026-10-27; der Selbsttakt laeuft
+/// dort nur fuer `h264_amf`.
 #[derive(Debug)]
 pub struct Selbsttakt {
     abstand: u32,
     seit: u32,
-    fern_pause: bool,
 }
-
-/// Schalter: gesetzt = der Selbsttakt laeuft auch waehrend der Fernsteuerung
-/// (das Verhalten bis 2026-10-27).
-pub const FERN_TAKT_UMGEBUNG: &str = "PULSE_HQ_FERN_VOLLBILDTAKT";
 
 /// GOP-Laenge fuer Encoder, deren Vollbilder allein aus dem [`Selbsttakt`]
 /// kommen. `i32::MAX` wie RustDesk (`hwcodec/cpp/common/util.cpp`): FFmpeg
@@ -365,20 +343,18 @@ pub const FERN_TAKT_UMGEBUNG: &str = "PULSE_HQ_FERN_VOLLBILDTAKT";
 pub const GOP_UNBEGRENZT: u32 = i32::MAX as u32;
 
 impl Selbsttakt {
-    /// `abstand` in Bildern, aus [`abstand_bilder`]. `None` = aus.
-    /// `fern_pause` = waehrend einer Fernsteuerung kein Takt (s. oben). Meldet
-    /// das Ergebnis in einer Logzeile, wenn der Takt laeuft.
-    pub fn neu(abstand: Option<u32>, fern_pause: bool) -> Self {
+    /// `abstand` in Bildern, aus [`abstand_bilder`]. `None` = aus. Meldet das
+    /// Ergebnis in einer Logzeile, wenn der Takt laeuft.
+    pub fn neu(abstand: Option<u32>) -> Self {
         if let Some(n) = abstand {
-            let fern = if fern_pause { "pausiert" } else { "laeuft weiter" };
-            eprintln!("[keyframe] Selbsttakt alle {n} Bilder, bei Fernsteuerung {fern}");
+            eprintln!("[keyframe] Selbsttakt alle {n} Bilder");
         }
-        Self { abstand: abstand.unwrap_or(0), seit: 0, fern_pause }
+        Self { abstand: abstand.unwrap_or(0), seit: 0 }
     }
 
     /// Einmal je Bild rufen. `true` = dieses Bild soll ein Vollbild werden.
-    /// `fern` = gerade laeuft eine Fernsteuerung; `angefordert` = dieses Bild
-    /// wird ohnehin ein Vollbild, weil ein Zuschauer eines verlangt hat.
+    /// `angefordert` = dieses Bild wird ohnehin ein Vollbild, weil ein
+    /// Zuschauer eines verlangt hat.
     ///
     /// Das ERSTE Bild ist keines: der Encoder legt von sich aus mit einem
     /// Vollbild los, und ein zweites unmittelbar danach waere verschenkte
@@ -389,18 +365,11 @@ impl Selbsttakt {
     /// genau dort, wo der Zuschauer gerade einsteigt oder repariert. Als
     /// Parameter und nicht als eigener Aufruf, damit die Reihenfolge nicht am
     /// Aufrufer haengt.
-    ///
-    /// In der Pause steht der Zaehler auf null: nach dem Ende der Sitzung kommt
-    /// das naechste Vollbild erst nach einem vollen Abstand, nicht sofort.
-    pub fn faellig(&mut self, fern: bool, angefordert: bool) -> bool {
+    pub fn faellig(&mut self, angefordert: bool) -> bool {
         if self.abstand == 0 {
             return false;
         }
         if angefordert {
-            self.seit = 0;
-            return false;
-        }
-        if fern && self.fern_pause {
             self.seit = 0;
             return false;
         }
@@ -410,37 +379,6 @@ impl Selbsttakt {
             return true;
         }
         false
-    }
-}
-
-/// Ein Vollbild zu Beginn einer Fernsteuerung — **nur NVENC ohne Rueckkanal**
-/// (RTMPS, s. [`Selbsttakt`]).
-///
-/// Bis 2026-10-27 erzwang das Umschalten des Fern-Puffers auf NVENC dort ein
-/// IDR (`encode/fern_vbv.rs`: FFmpeg setzt beim Umkonfigurieren `forceIDR`),
-/// und auf RTMPS war genau das das erste scharfe Bild des steuernden
-/// Zuschauers — eine Anforderung erreicht den Sender dort nicht, er haette bis
-/// zum naechsten GOP-Vollbild gewartet. Seit der Puffer standardmaessig aus
-/// ist, faellt das IDR weg; dieser Merker setzt es an derselben Stelle wieder.
-/// Mit Rueckkanal braucht es ihn nicht (der Zuschauer fordert an), und dort
-/// kaeme es ohne den kleinen Puffer in voller Groesse genau beim ersten
-/// Eingriff.
-#[derive(Debug)]
-pub struct FernBeginn {
-    an: bool,
-    vorher: bool,
-}
-
-impl FernBeginn {
-    pub fn neu(an: bool) -> Self {
-        Self { an, vorher: false }
-    }
-
-    /// Einmal je Bild rufen. `true` beim ersten Bild einer Fernsteuerung.
-    pub fn faellig(&mut self, fern: bool) -> bool {
-        let beginn = fern && !self.vorher;
-        self.vorher = fern;
-        self.an && beginn
     }
 }
 
@@ -521,8 +459,8 @@ mod tests {
     /// nicht auf 1.
     #[test]
     fn selbsttakt_haelt_den_abstand() {
-        let mut takt = Selbsttakt::neu(Some(4), true);
-        let treffer: Vec<bool> = (0..12).map(|_| takt.faellig(false, false)).collect();
+        let mut takt = Selbsttakt::neu(Some(4));
+        let treffer: Vec<bool> = (0..12).map(|_| takt.faellig(false)).collect();
         assert_eq!(
             treffer,
             vec![false, false, false, true, false, false, false, true, false, false, false, true],
@@ -535,51 +473,20 @@ mod tests {
     /// Vollbilder dann doppelt.
     #[test]
     fn selbsttakt_aus_liefert_nie() {
-        let mut takt = Selbsttakt::neu(None, true);
-        assert!((0..500).all(|_| !takt.faellig(false, false)));
-    }
-
-    /// Waehrend der Fernsteuerung kein Takt; danach ein voller Abstand bis zum
-    /// naechsten, nicht sofort eins.
-    #[test]
-    fn selbsttakt_pausiert_bei_fernsteuerung() {
-        let mut takt = Selbsttakt::neu(Some(4), true);
-        assert!(!takt.faellig(false, false));
-        assert!(!takt.faellig(false, false));
-        assert!((0..500).all(|_| !takt.faellig(true, false)), "in der Sitzung nie");
-        let danach: Vec<bool> = (0..4).map(|_| takt.faellig(false, false)).collect();
-        assert_eq!(danach, vec![false, false, false, true], "voller Abstand nach dem Ende");
+        let mut takt = Selbsttakt::neu(None);
+        assert!((0..500).all(|_| !takt.faellig(false)));
     }
 
     /// Nach einem angeforderten Vollbild zaehlt der Abstand neu — volle vier
     /// Bilder, nicht drei.
     #[test]
     fn selbsttakt_zaehlt_ab_angefordertem_neu() {
-        let mut takt = Selbsttakt::neu(Some(4), true);
-        assert!(!takt.faellig(false, false));
-        assert!(!takt.faellig(false, false));
-        assert!(!takt.faellig(false, true), "das angeforderte Bild selbst");
-        let danach: Vec<bool> = (0..4).map(|_| takt.faellig(false, false)).collect();
+        let mut takt = Selbsttakt::neu(Some(4));
+        assert!(!takt.faellig(false));
+        assert!(!takt.faellig(false));
+        assert!(!takt.faellig(true), "das angeforderte Bild selbst");
+        let danach: Vec<bool> = (0..4).map(|_| takt.faellig(false)).collect();
         assert_eq!(danach, vec![false, false, false, true]);
-    }
-
-    /// Die Gegenprobe: ohne Pause laeuft der Takt durch die Sitzung.
-    #[test]
-    fn selbsttakt_ohne_pause_laeuft_weiter() {
-        let mut takt = Selbsttakt::neu(Some(4), false);
-        let treffer = (0..12).filter(|_| takt.faellig(true, false)).count();
-        assert_eq!(treffer, 3);
-    }
-
-    /// Genau ein Vollbild beim Beginn jeder Sitzung, und nur, wenn eingeschaltet.
-    #[test]
-    fn fern_beginn_einmal_je_sitzung() {
-        let mut b = FernBeginn::neu(true);
-        let folge: Vec<bool> =
-            [false, true, true, true, false, false, true, true].map(|f| b.faellig(f)).to_vec();
-        assert_eq!(folge, vec![false, true, false, false, false, false, true, false]);
-        let mut aus = FernBeginn::neu(false);
-        assert!([false, true, true, false, true].iter().all(|&f| !aus.faellig(f)));
     }
 
     #[test]

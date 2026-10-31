@@ -279,10 +279,6 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
     // einen toten Prozess statt einer Fehlermeldung). Am Binding gilt die
     // Zusage für JEDEN Ausgang, auch für später hinzukommende.
     let mut capture = std::mem::ManuallyDrop::new(capture);
-    // Erst hier, wo nichts mehr an einen anderen Weg abgibt: vorher gemeldet,
-    // hielte die Liste ein verworfenes Gerät am Leben und gäbe IHM den
-    // Vorrang. Dasselbe Gerät trägt Skalierer und Encoder.
-    crate::system::prioritaet::geraet(hw.device(), "Aufnahme+Encoder (D3D11)");
     // `_hw`: wird ab hier nicht mehr gelesen, muss aber gebunden bleiben —
     // der Pool trägt die Frames, die noch durch den Loop laufen.
     let _hw = std::mem::ManuallyDrop::new(hw);
@@ -299,7 +295,7 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
     // readTimeout → Verbindungsabbruch). Pro Tick wird der zuletzt gecapturete
     // Frame encodet (dupliziert, wenn kein neuer da ist); die PTS kommt aus der
     // Wanduhr → Stream-Zeit läuft mit Echtzeit statt mit der Capture-Rate.
-    // Fälligkeit des Platzes und Bremse dazu: [`bildplatz::Bildplatz`].
+    // Das Raster selbst: [`bildplatz::Bildplatz`].
     let started = Instant::now();
     // A/V-Sync über echte Hardware-Timestamps (QPC): Video-PTS aus dem WGC-QPC
     // relativ zum QPC des ersten Frames (origin_qpc); Audio am selben origin
@@ -331,31 +327,15 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
     // langsame Ticks/pts-Gaps und loggt sie. Details: `tick_monitor.rs`.
     let mut monitor = TickMonitor::new(fps);
     let mut prev_pts: i64 = 0;
-    // Notausgang für die A/B-Messung (gleiche Bauart wie PULSE_HQ_NO_AV_OFFSET):
-    // erzwingt das feste Tick-Raster auch während einer Fernsteuerung.
-    let fern_sofort = !crate::env::flag("PULSE_HQ_FERN_TICKRASTER");
-    // Liegt in `last_frame` ein Bild, das die PTS-Platz-Bremse zurückgestellt
-    // hat und das die Vorstufe noch NICHT gesehen hat? (s. die Bremse unten)
-    let mut gehaltenes_ungewandelt = false;
 
     loop {
         if stop_rx.try_recv().is_ok() {
             break;
         }
-        // Vorrang nur während einer Fernsteuerung (`system::prioritaet`).
-        crate::system::prioritaet::abgleichen();
 
-        // Warten (Tick-Raster beim Zusehen, Ankunft bei Fernsteuerung) und
-        // die Capture-Queue leeren — samt Begründung in [`warten`].
-        let fern = fern_sofort && crate::remote_input::fern_aktiv();
+        // Bis zum Tick warten und die Capture-Queue leeren — in [`warten`].
         let warten::Abholung { captured, geplant, iter_start, capture_drain } =
-            warten::warten_und_abholen(
-                &mut capture,
-                fern,
-                &mut platz,
-                &mut last_frame,
-                &mut newest_qpc,
-            )?;
+            warten::warten_und_abholen(&mut capture, &mut platz, &mut last_frame, &mut newest_qpc)?;
         let wake_jitter = iter_start.saturating_duration_since(geplant);
 
         // Audio non-blocking nachziehen.
@@ -420,21 +400,6 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
         } else {
             bilduhr.duplikat(last_pts, uhr_pts)
         };
-        // Fern-Weg: höchstens ein Bild je Bildabstand — wozu, und warum die
-        // Grenze ein Bildabstand ist und kein Takt, steht bei
-        // [`bildplatz::Bildplatz`]. Das gehaltene Bild bleibt in `last_frame`
-        // und geht spätestens zur Fälligkeit des Platzes hinaus.
-        if fern && captured > 0 && !platz.traegt(pts, last_pts) {
-            // Bughunt 2026-08-13: Das Halten allein genügte NICHT. Beim
-            // Heartbeat ist `captured == 0`, und `captured == 0` heißt für die
-            // Vorstufe „Quelle unverändert — gib dein letztes Ergebnis zurück".
-            // Das gehaltene Bild wäre damit NIE gewandelt worden: der Zuschauer
-            // blieb dauerhaft auf dem Stand davor stehen, und zwar genau am
-            // Ende jeder Interaktion (danach ändert sich nichts mehr, WGC
-            // liefert nichts mehr — mit verborgenem Cursor der Normalfall).
-            gehaltenes_ungewandelt = true;
-            continue;
-        }
         if pts <= last_pts {
             pts = last_pts + 1;
         }
@@ -452,17 +417,13 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
                     // `BildEncoder::vor_dem_schreiben`. Für den Regelweg ist
                     // das ein leerer Aufruf.
                     //
-                    // **„Die Quelle ist unverändert" heisst `captured == 0`
-                    // UND kein zurückgehaltenes Bild** (WGC ist
-                    // änderungsgetrieben und liefert bei stehendem Inhalt gar
-                    // nichts); die Vorstufe rechnet dann nicht neu, sondern
-                    // gibt ihr letztes Ergebnis zurück. Warum sie das darf und
-                    // warum die Entscheidung von HIER kommen muss, steht an
-                    // `Vorstufe::verarbeiten`. Der Gehalten-Merker gehört in
-                    // diese Bedingung: ein von der PTS-Platz-Bremse
-                    // zurückgestelltes Bild erreicht diese Stelle mit
-                    // `captured == 0` und ist trotzdem NEU.
-                    let ziel = s.verarbeiten(frame, captured == 0 && !gehaltenes_ungewandelt, |z| {
+                    // **„Die Quelle ist unverändert" heisst `captured == 0`**
+                    // (WGC ist änderungsgetrieben und liefert bei stehendem
+                    // Inhalt gar nichts); die Vorstufe rechnet dann nicht neu,
+                    // sondern gibt ihr letztes Ergebnis zurück. Warum sie das
+                    // darf und warum die Entscheidung von HIER kommen muss,
+                    // steht an `Vorstufe::verarbeiten`.
+                    let ziel = s.verarbeiten(frame, captured == 0, |z| {
                         encoder.vor_dem_schreiben(z)
                     })?;
                     convert = t_conv.elapsed();
@@ -471,18 +432,8 @@ pub fn run(adapter: Adapter, params: StartParams, stop_rx: Receiver<()>) -> Resu
                 // Native: Capture-Frame direkt in den Encoder.
                 None => encoder.send_hw(frame, pts)?,
             }
-            gehaltenes_ungewandelt = false;
             last_pts = pts;
             frames_sent += 1;
-            // **Erst hier.** Der Platz ist bedient, der nächste wird einen
-            // Bildabstand nach DIESEM Bild fällig. Ein Durchlauf, der oben
-            // gehalten hat, kommt nicht hierher und verschiebt den Platz
-            // deshalb auch nicht — genau daran hing der Fehler vom
-            // 2026-08-22 (Herleitung im Kopf von `bildplatz.rs`). Beim
-            // Zusehen läuft stattdessen das Raster in `warten`.
-            if fern {
-                platz.vergeben(iter_start);
-            }
         }
 
         // Tick verbuchen. `send`/`mux` kommen aus dem Encoder (NVENC-Submit

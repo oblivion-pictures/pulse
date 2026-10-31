@@ -299,8 +299,10 @@ pub struct PlayerOptions {
     /// 30 ms reichen die vorhandenen zwoelf bis rund 360 Bilder je Sekunde,
     /// mit 60 ms nur bis 180.
     ///
-    /// **Fuer die Fernsteuerung ist er falsch** — dort zaehlt jede
-    /// Millisekunde, und dieser Weg wird sie auf `0` setzen, wenn er kommt.
+    /// **Er gilt auch waehrend einer Fernsteuerung**, samt Regler, genau wie
+    /// beim Zusehen (Eigentuemer-Entscheid 2026-10-31). Hier stand „Fuer die
+    /// Fernsteuerung ist er falsch"; vom 2026-08-12 bis dahin senkte der
+    /// Player ihn beim Steuern ab, zuletzt auf 0.
     /// Ueber die Umgebung: `PULSE_PLAYER_AUSGABETAKT_MS`.
     ///
     /// Lokal ueber die Schleife ist der Unterschied NICHT messbar (dort steht
@@ -388,10 +390,9 @@ impl PlayerOptions {
             av_offset_ms: Some(0),
             paused: Some(false),
             hwdec: None,
-            // An, mit 60 ms. Begruendung samt Messwerten an der Feld-Doku:
-            // gegen die Produktion gemessen laeuft die Ausgabe damit in 96
-            // statt 54 Prozent der Sekunden sauber, fuer rund 55 ms Vorhalt.
-            // Die Fernsteuerung setzt ihn auf 0, wenn sie kommt.
+            // An, mit 30 ms (seit 2026-08-07; hier stand noch die 60 ms vom
+            // 2026-08-05). Begruendung samt Messwerten an der Feld-Doku und an
+            // `AUSGABETAKT_MS_VORGABE`. Gilt auch waehrend einer Fernsteuerung.
             ausgabetakt_ms: Some(AUSGABETAKT_MS_VORGABE),
         }
     }

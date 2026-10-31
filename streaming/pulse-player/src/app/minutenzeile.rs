@@ -36,7 +36,9 @@ fn bildstand(s: &Session) -> Bildstand {
         nach_paketluecke: st.frames_dropped,
         paketverlust: st.packets_lost.saturating_sub(st.packets_lost_ton),
         vorhalt_stufen: s.takt.regler_stufen(),
-        betriebsart: s.takt.betriebsart(),
+        // Nur noch zur Einordnung der Zeile: der Ausgabe-Takt spielt beim
+        // Steuern seit dem 2026-10-31 genau wie beim Zusehen ab.
+        betriebsart: if s.eingabe.aktiv() { "fernsteuerung" } else { "zusehen" },
         vorhalt_ms: s.takt.wirksamer_vorhalt().as_millis() as u64,
     }
 }

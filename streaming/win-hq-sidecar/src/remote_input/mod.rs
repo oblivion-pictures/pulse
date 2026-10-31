@@ -30,10 +30,12 @@ use pulse_fernsteuerung::zuordnung::Rechteck;
 
 pub use pulse_fernsteuerung::sitzung::Bericht;
 
-/// Laeuft gerade eine Fernsteuerung? Fuer den Pacing-Loop (`pipeline_hw`).
+/// Laeuft gerade eine Fernsteuerung? Fuer den Wecker der Zeigerform
+/// (`zeigerform::tick`). Den Pacing-Loop geht das seit dem 2026-10-31 nichts
+/// mehr an: waehrend einer Fernsteuerung wird gestreamt wie sonst.
 ///
-/// Atomar statt ueber die Sitzungssperre, weil der Pacing-Loop das bis zu
-/// 60-mal je Sekunde liest und dafuer nicht die Eingabe-Sperre anfassen soll.
+/// Atomar statt ueber die Sitzungssperre, weil der Wecker das alle 100 ms
+/// liest und dafuer nicht die Eingabe-Sperre anfassen soll.
 static FERN_AKTIV: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn fern_aktiv() -> bool {
