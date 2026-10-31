@@ -22,7 +22,8 @@
 //! **Bewusst KEINE automatische Bitraten-Anpassung.** Bei NVENC nimmt FFmpeg
 //! eine geänderte Rate zwar zur Laufzeit an, erzwingt dabei aber jedes Mal
 //! ein IDR (n8.1 `libavcodec/nvenc.c`, `reconfig_encoder`, Z. 2974-3007; so
-//! nutzt es `win-hq-sidecar/src/encode/fern_vbv.rs`). Hier stand, die Rate
+//! nutzte es bis 2026-10-31 `win-hq-sidecar/src/encode/fern_vbv.rs` für den
+//! Puffer, s. Git-Historie). Hier stand, die Rate
 //! sei nach dem Öffnen fest — für NVENC stimmte das nicht; AMF ist nicht
 //! nachgeprüft. Eine echte Adaption hieße also ein Vollbild je Änderung und
 //! gehört als eigenes, gemessenes Vorhaben angegangen. Die Meldung hier ist

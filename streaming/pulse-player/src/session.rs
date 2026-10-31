@@ -115,28 +115,6 @@ const MARKEN_BILANZ_NACH: u64 = 120;
 /// waeren nur Last auf dem Rueckkanal.
 const EINSTIEG_REQUEST_INTERVAL: Duration = Duration::from_millis(500);
 
-/// Jitter-Geduld waehrend einer Fernsteuerung: Untergrenze und Aufschlag auf
-/// die gemessene Umlaufzeit.
-///
-/// **Warum RTT-gekoppelt statt fester Zahl.** Die Geduld (`jitter_ms`, Vorgabe
-/// 100 ms) wirkt NUR bei einer Luecke: so lange wartet der Puffer auf ein
-/// fehlendes Paket, bevor er die Luecke meldet — und die Meldung kostet ein
-/// angefordertes Vollbild plus Anzeigesperre. Die Nachlieferung braucht
-/// mindestens eine Umlaufzeit plus bis zu einen Takt des NACK-Erzeugers
-/// (10 ms); geht die erste Anforderung verloren, kommt die Sperrfrist (20 ms)
-/// dazu. Eine Geduld UNTER RTT + Aufschlag hiesse also: jede Nachlieferung
-/// kommt zu spaet, jeder einzelne Verlust wird zur Luecke — schneller wird es
-/// davon nicht, nur kaputter. Deshalb senkt die Fernsteuerung nicht blind auf
-/// einen kleinen Wert, sondern auf `max(40, RTT + 30)`, gedeckelt auf die
-/// Geduld des Nutzers: auf der 58-ms-Teststrecke bleibt fast alles beim Alten
-/// (~88 ms), im Stadtnetz (RTT 10) faellt die Wartezeit je Verlust von 100 auf
-/// 40 ms.
-///
-/// Ohne belastbare RTT-Messung bleibt die Geduld unveraendert (s.
-/// [`fern_jitter_ziel`]).
-const FERN_JITTER_MIN_MS: u64 = 40;
-const FERN_JITTER_RTT_AUFSCHLAG_MS: u64 = 30;
-
 /// Gemessener Median-Abstand zweier Bilder in RTP-Ticks (90 kHz) als
 /// Container-Bildrate. Die Messung ist gegen Jitter robust, aber der Bruch
 /// `90000/median` ist nicht die ERNST gemeinte Rate: bei 59,94 Hz wechselt
@@ -178,24 +156,7 @@ fn gcd(a: u64, b: u64) -> u64 {
     if b == 0 { a } else { gcd(b, a % b) }
 }
 
-/// Die Zielgeduld waehrend einer Fernsteuerung — pure Rechnung, getrennt von
-/// der Schleife, damit die Grenzen pruefbar sind.
-///
-/// `rtt_ms` ist die BELASTBARE Antwortzeit
-/// ([`crate::nachforderung::rtt_belastbar`]); ohne sie bleibt es bei der
-/// Geduld des Nutzers. Bis 2026-10-15 senkte schon eine einzige, viel zu
-/// kleine Messung die Geduld auf 40 ms — und die Nachlieferungen kamen danach
-/// zu spaet (s. `patches/0002-...`, Messung ab der ersten Anforderung).
-fn fern_jitter_ziel(rtt_ms: Option<u64>, basis_ms: u64) -> u64 {
-    match rtt_ms {
-        Some(rtt) => (rtt + FERN_JITTER_RTT_AUFSCHLAG_MS)
-            .clamp(FERN_JITTER_MIN_MS.min(basis_ms), basis_ms),
-        None => basis_ms,
-    }
-}
-
-/// Die Puffergeduld, die der Nutzer eingestellt hat — die Basis, auf die jede
-/// Absenkung wieder zurueckfaellt.
+/// Die Puffergeduld, die der Nutzer eingestellt hat.
 ///
 /// Der Rueckfallwert muss mit `PlayerOptions::defaults` uebereinstimmen —
 /// sonst haengt die Puffergeduld davon ab, ob der Aufrufer das Feld gesetzt
@@ -206,11 +167,12 @@ fn basis_jitter_ms(options: &PlayerOptions) -> u64 {
 
 /// Puffergeduld aller Stroeme setzen und die gemeldete Zahl mitziehen.
 ///
-/// **An einer Stelle**, weil drei Wege genau das brauchen (Options-Patch, Ende
-/// einer Fernsteuerung, RTT-Kopplung im Statistik-Takt): liefe einer davon an
-/// `stats.jitter_target_ms` vorbei, zeigte die Anzeige eine Wartezeit, die die
-/// Puffer gar nicht mehr einhalten — und genau diese Zahl ist es, an der eine
-/// Messung spaeter abgelesen wird.
+/// **An einer Stelle**, weil Puffer und gemeldete Zahl zusammen gehen muessen:
+/// liefe eine Aenderung an `stats.jitter_target_ms` vorbei, zeigte die Anzeige
+/// eine Wartezeit, die die Puffer gar nicht mehr einhalten — und genau diese
+/// Zahl ist es, an der eine Messung spaeter abgelesen wird. Bis zum 2026-10-31
+/// brauchten das drei Wege (dazu Ende und RTT-Kopplung der Fernsteuerung),
+/// seitdem nur noch der Options-Patch.
 fn jitter_setzen(
     buffers: &mut HashMap<Codec, JitterBuffer>,
     stats: &mut SessionStats,
@@ -220,7 +182,7 @@ fn jitter_setzen(
     stats.jitter_target_ms = ziel_ms;
     // `ziel_aktuell` ist die Geduld für Puffer, die es noch gar nicht gibt
     // (Bughunt 2026-08-13): eine Spur, deren erstes Paket NACH einer
-    // Absenkung eintrifft (Ton kommt später dazu, Republish), bekam sonst den
+    // Aenderung eintrifft (Ton kommt später dazu, Republish), bekam sonst den
     // Anfangswert — und die Statistik behauptete etwas anderes, als galt.
     *ziel_aktuell = Duration::from_millis(ziel_ms);
     for b in buffers.values_mut() {
@@ -277,8 +239,9 @@ pub struct SessionStats {
     pub sr: crate::bildton::SrStand,
     /// Vom NACK-Erzeuger gemessene Antwortzeit auf eigene Nachforderungen,
     /// in Millisekunden (s. [`crate::nachforderung`]) — KEINE ICE-Umlaufzeit.
-    /// Steuert die Puffergeduld der Fernsteuerung ([`fern_jitter_ziel`]) und,
-    /// nur mit `PULSE_PLAYER_NACK_SPERRE_AUTO=1`, die Sperrfrist.
+    /// Steuert nur mit `PULSE_PLAYER_NACK_SPERRE_AUTO=1` die Sperrfrist (bis
+    /// zum 2026-10-31 auch die Puffergeduld der Fernsteuerung); sonst steht
+    /// sie nur in der `stats`-Antwort und in `nachforderung_zeile`.
     pub rtt_ms: Option<u64>,
     /// Wie viele Messungen in `rtt_ms` stecken.
     pub rtt_proben: u64,
@@ -367,9 +330,11 @@ pub enum SessionCommand {
     /// Direkter P2P-Weg: die Answer des Hosts setzen. Die Antwort traegt
     /// keine Nutzlast — Erfolg und Misserfolg genuegen.
     DirectSignal { answer: String, reply: MediaReply },
-    /// Fernsteuerung laeuft (true) bzw. ist beendet (false). Die Sitzung senkt
-    /// dafuer die Jitter-Geduld RTT-gekoppelt ab (s. [`FERN_JITTER_MIN_MS`])
-    /// und stellt danach die Geduld des Nutzers wieder her.
+    /// Fernsteuerung laeuft (true) bzw. ist beendet (false). Die Sitzung
+    /// wartet dann bei Stille laenger, bevor sie abbricht (s.
+    /// [`STILLE_FENSTER_BIS_ABBRUCH_FERN`]). Wiedergabe und Jitter-Geduld
+    /// bleiben wie beim Zusehen (seit 2026-10-31; davor senkte sie die
+    /// Geduld RTT-gekoppelt ab).
     Fernsteuerung(bool),
     /// Bild/Ton-Versatz in der Uhr der Sender Reports, gemessen vom Fenster
     /// (`crate::bildton::versatz_ms`; + heisst: der Ton hinkt). Geht an die
@@ -662,14 +627,9 @@ pub async fn run(
     // (`fallback_url`), nicht das Weglassen der Anforderung.
     let ohne_anforderung =
         std::env::var("PULSE_PLAYER_NO_KEYFRAME_REQUEST").as_deref() == Ok("1");
-    // Fernsteuerung aktiv? Dann zieht der Statistik-Takt unten die
-    // Jitter-Geduld an die gemessene Umlaufzeit heran (s. FERN_JITTER_*).
+    // Fernsteuerung aktiv? Dann wartet der Statistik-Takt unten bei Stille
+    // laenger, bevor er abbricht (s. STILLE_FENSTER_BIS_ABBRUCH_FERN).
     let mut fernsteuerung = false;
-    // Die zuletzt GERECHNETE Fern-Geduld — damit ein Options-Patch sie sofort
-    // wieder anwenden kann, statt bis zum nächsten Statistik-Takt auf der
-    // Basis zu stehen. `None` = keine Fernsteuerung oder seit ihrem Beginn
-    // noch kein Statistik-Takt.
-    let mut fern_geduld: Option<u64> = None;
     let mut ticker = tokio::time::interval(POLL_INTERVAL);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -771,14 +731,6 @@ pub async fn run(
                 }
                 Some(SessionCommand::Fernsteuerung(aktiv)) => {
                     fernsteuerung = aktiv;
-                    if !aktiv {
-                        // Zurueck auf die Geduld des Nutzers — sofort, nicht
-                        // erst beim naechsten Statistik-Fenster: die Sitzung
-                        // laeuft als Zuschauer weiter und soll dort wieder
-                        // die volle Nachlieferungs-Toleranz haben.
-                        fern_geduld = None;
-                        jitter_setzen(&mut buffers, &mut stats, &mut target, basis_jitter_ms(&options));
-                    }
                 }
                 Some(SessionCommand::BildTon { versatz_ms, gemessen }) => {
                     media.bildton(versatz_ms, gemessen);
@@ -797,19 +749,6 @@ pub async fn run(
                     }
                     if let Some(ms) = options.jitter_ms {
                         jitter_setzen(&mut buffers, &mut stats, &mut target, ms.into());
-                    }
-                    // Ein Options-Patch darf die Fern-Absenkung nicht aufheben
-                    // (Bughunt 2026-08-13): `options.jitter_ms` ist nach den
-                    // Vorgaben IMMER gesetzt, der Zweig darüber stellt also bei
-                    // JEDEM set_option die Basis her — und der Lautstärkeregler
-                    // sitzt ausgerechnet im Fernsteuerungs-Menü. Ohne diese
-                    // Zeile stünde die Geduld bis zum nächsten Statistik-Takt
-                    // wieder auf 100 ms.
-                    if fernsteuerung {
-                        if let Some(g) = fern_geduld {
-                            let ziel = g.min(basis_jitter_ms(&options));
-                            jitter_setzen(&mut buffers, &mut stats, &mut target, ziel);
-                        }
                     }
                 }
             },
@@ -1434,18 +1373,6 @@ pub async fn run(
             // Antwortzeit des NACK-Erzeugers abholen (s. `crate::nachforderung`).
             stats.rtt_ms = strom.nack().rtt_ms();
             stats.rtt_proben = strom.nack().proben();
-            // Fernsteuerung: Jitter-Geduld an die gemessene Umlaufzeit koppeln
-            // (Begruendung bei FERN_JITTER_MIN_MS). Im Statistik-Takt, nicht je
-            // Durchlauf — die RTT aendert sich nicht schneller, und `set_target`
-            // auf jedem der >1000 Durchlaeufe je Sekunde waere Laerm.
-            if fernsteuerung {
-                let rtt = crate::nachforderung::rtt_belastbar(stats.rtt_ms, stats.rtt_proben);
-                let ziel = fern_jitter_ziel(rtt, basis_jitter_ms(&options));
-                fern_geduld = Some(ziel);
-                if ziel != stats.jitter_target_ms {
-                    jitter_setzen(&mut buffers, &mut stats, &mut target, ziel);
-                }
-            }
             // Nachforderungen enden mit der Geduld des Puffers, aber nie vor der
             // des Nutzers — s. `nachforderung::hoechstalter_aus_geduld`.
             strom.nack().hoechstalter_setzen(stats.jitter_target_ms, basis_jitter_ms(&options));
@@ -1666,25 +1593,6 @@ pub(crate) fn bilder_ausgeben(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Die Grenzen der Fernsteuerungs-Geduld: nie unter die NACK-Umlaufzeit,
-    /// nie ueber die Geduld des Nutzers, ohne belastbare Messung keine Senkung.
-    #[test]
-    fn fern_jitter_haelt_beide_grenzen() {
-        // Teststrecke Hetzner (RTT ~58): fast beim Alten — Nachlieferungen
-        // muessen weiter ankommen koennen.
-        assert_eq!(fern_jitter_ziel(Some(58), 100), 88);
-        // Stadtnetz: der eigentliche Gewinn.
-        assert_eq!(fern_jitter_ziel(Some(10), 100), 40);
-        // Lange Strecke: die Geduld des Nutzers ist der Deckel.
-        assert_eq!(fern_jitter_ziel(Some(90), 100), 100);
-        // Nutzer hat selbst tiefer gestellt (Pruefstand): nie anheben.
-        assert_eq!(fern_jitter_ziel(Some(58), 20), 20);
-        // Keine belastbare Messung: die Geduld des Nutzers, NICHT die
-        // Untergrenze 40.
-        assert_eq!(fern_jitter_ziel(None, 100), 100);
-        assert_eq!(fern_jitter_ziel(None, 20), 20);
-    }
 
     /// Bildraten-Erkennung fuer den Aufnahme-Container (Michaels Fund
     /// 2026-09-27: „1000 fps" in der Datei). 60 Hz = 1500 Ticks Abstand.

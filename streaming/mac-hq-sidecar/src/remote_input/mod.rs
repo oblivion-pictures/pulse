@@ -146,16 +146,11 @@ fn hueterin() -> &'static MacHandschlagWache {
     })
 }
 
-/// Laeuft gerade eine Fernsteuerung? Der Aufnahme-Takt darf sich daran haengen.
+/// Laeuft gerade eine Fernsteuerung?
 ///
-/// **Zwei Leser.** Der Sendetakt — seit dem 2026-08-24 versendet der
-/// `stream_controller` waehrend einer Fernsteuerung bei Ankunft statt im
-/// Tick-Raster, gleichgezogen mit dem Windows-Zwilling (dort seit dem
-/// 2026-08-13) — und die Zeiger-Meldung mit ihrem zweiten Blick nach dem
-/// Fuehrungswechsel (`zeigermeldung`). Der Merker war frueher da als seine
-/// mac-seitigen Verbraucher, weil der Vertrag ihn verlangt: „ein Feld, das
-/// erst mit seinem Verbraucher entsteht, wird beim Bauen des Verbrauchers
-/// vergessen."
+/// Leser ist die Zeiger-Meldung mit ihrem zweiten Blick nach dem
+/// Fuehrungswechsel (`zeigermeldung`). Der Sendetakt des `stream_controller`
+/// fragt nicht danach: er ist mit und ohne Fernsteuerung derselbe.
 static FERN_AKTIV: AtomicBool = AtomicBool::new(false);
 
 pub fn fern_aktiv() -> bool {

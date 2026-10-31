@@ -27,7 +27,6 @@ mod d3d12_device;
 mod einmal;
 pub mod encoder;
 pub mod farbraum;
-pub mod fern_vbv;
 pub mod hdr;
 mod hdr_ansichten;
 pub mod hdr_metadaten;
@@ -68,12 +67,12 @@ pub mod zehnbit;
 /// genau die Bitstromform, die `infra/mediamtx-fork/` wegpatcht, weil sie
 /// libwebrtcs RTP-Zusammenbau zerlegt. Kein Weg.
 ///
-/// **Auf NVENC gilt das nicht, und dort steht seit dem 2026-10-21 eine
-/// Ausnahme:** während einer Fernsteuerung kann der offene Encoder einen
-/// Puffer von wenigen Bildern bekommen ([`fern_vbv`], mit Messanlass und den
-/// FFmpeg-Fundstellen; seit 2026-10-27 nur noch auf Wunsch, Vorgabe aus). AMF
-/// bleibt davon ausgenommen — aus dem Grund oben, und weil `amfenc` das Feld
-/// ohnehin nur beim Öffnen liest.
+/// **Auf NVENC gilt das nicht.** Dort bekam der offene Encoder vom
+/// 2026-10-21 bis 2026-10-31 während einer Fernsteuerung einen Puffer von
+/// wenigen Bildern (`encode/fern_vbv.rs`, Messanlass und FFmpeg-Fundstellen in
+/// der Git-Historie) — entfernt mit dem Eigentümer-Entscheid, dass eine
+/// Fernsteuerung genau so streamt wie sonst. Seitdem setzt dieser Sidecar
+/// `rc_buffer_size` nirgends; NVENC fährt FFmpegs Vorgabe (`opts.rs`).
 ///
 /// Meldet, WELCHER Encoder wirklich offen ist — von allen drei Encoder-Pfaden
 /// direkt nach `open_with` gerufen.

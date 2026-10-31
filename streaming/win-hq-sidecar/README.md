@@ -411,29 +411,19 @@ einzeln beschrieben.
 - `PULSE_FERN_VORRANG_MS=<zahl>` — wie lange die Fremdeingabe nach einer Regung
   des Hosts verworfen wird (Vorgabe 5000, geklemmt auf 100…60000). Gedacht für
   den Zwei-Geräte-Test, wo fünf Sekunden je Durchgang die Messung beherrschen.
-- `PULSE_HQ_FERN_TICKRASTER=1` — Notausgang: im Fern-Modus wieder starr takten
-  statt bei Ankunft zu senden (A/B gegen den Latenzgewinn).
-- `PULSE_HQ_FERN_VBV_BILDER=<0..60>` — VBV-Puffer des offenen NVENC-Encoders,
-  **nur während einer Fernsteuerung**, in Bildern (seit 2026-10-27 Vorgabe aus,
-  also durchgehend FFmpegs 2 × Bitrate; vorher 2). Je Umschalten erzwingt NVENC
-  ein IDR. Auf AMF ohne Wirkung und deshalb übersprungen. Begründung:
-  `src/encode/fern_vbv.rs`.
-- `PULSE_HQ_FERN_VOLLBILDTAKT=1` — regulärer Vollbild-Takt auch während einer
-  Fernsteuerung (das Verhalten bis 2026-10-27). Ohne den Schalter pausiert er
-  dort auf NVENC und `h264_amf`, **sofern der Sendeweg einen Rückkanal hat**
-  (eigener WHIP-Sender, Direktweg); Vollbilder gibt es dann nur auf Anforderung
-  (Einstieg, Verlust). Über RTMPS (seit 2026-10-27 von der Oberfläche nicht
-  mehr gewählt) läuft der Takt weiter — NVENC bleibt dort beim GOP des
-  Encoders wie bisher und schickt zu Beginn jeder Fernsteuerung ein Vollbild
-  (vorher erzwang das der Fern-Puffer). `hevc_amf`, `av1_amf`, QSV und der CPU-Weg
-  (`PULSE_HQ_DISABLE_ZERO_COPY=1`) behalten ihren GOP-Takt. Begründung:
-  `src/keyframe.rs`, `Selbsttakt`.
-- `PULSE_HQ_PRIORITAET=0` — schaltet den Vorrang während einer Fernsteuerung
-  ab (Prozess `ABOVE_NORMAL`, Taktfaden `ABOVE_NORMAL`, GPU-Planungsklasse
-  `HIGH`, `SetGPUThreadPriority(7)`; Vorgabe an, nur solange gesteuert wird,
-  zurück mit ihrem Ende bzw. beim Stream-Ende). Für den
-  A/B-Vergleich gegen GPU-Hänger im Encoder-Submit. Begründung und
-  Sunshine-Abgleich: `src/system/prioritaet.rs`.
+- *(Bis zum 2026-10-31 sendete der Sidecar während einer Fernsteuerung
+  anders als sonst, mit je einem Schalter: Senden bei Ankunft statt im
+  Tick-Raster (`PULSE_HQ_FERN_TICKRASTER=1` führte zurück ins Raster), ein
+  kleiner VBV-Puffer am offenen NVENC-Encoder (`PULSE_HQ_FERN_VBV_BILDER`,
+  zuletzt Vorgabe aus), eine Pause des regulären Vollbild-Takts samt Vollbild
+  zu Beginn der Sitzung über RTMPS (`PULSE_HQ_FERN_VOLLBILDTAKT=1` hob die
+  Pause auf) und Prozess-, Faden- und GPU-Vorrang (`PULSE_HQ_PRIORITAET=0`
+  schaltete ihn ab). Eigentümer-Entscheid:
+  während einer Fernsteuerung wird genau so gestreamt wie sonst. Die Sonderwege
+  sind entfernt, die Variablen werden nicht mehr gelesen; Herleitungen und
+  Messungen stehen in der Git-Historie (`src/encode/fern_vbv.rs`,
+  `src/system/prioritaet.rs`, `src/pipeline_hw/bildplatz.rs`,
+  `src/keyframe.rs`).)*
 - `PULSE_HQ_ADAPTER_VENDOR=nvidia|amd|intel` — Adapter-Filter statt
   DXGI-`HIGH_PERFORMANCE`-Default. Auf Multi-GPU (dGPU+iGPU) der einzige Weg, einen
   bestimmten Vendor-Pfad zu validieren, ohne den Default umzustellen.
@@ -457,8 +447,7 @@ einzeln beschrieben.
   wenn der Encoder die Betriebsart nicht trug. Die Betriebsart ist aus Pulse
   entfernt — die Variable wird nicht mehr gelesen, auf Windows so wenig wie auf
   Linux. Der Vollbild-Abstand steht auf 60 s, `PULSE_KEYFRAME_SECONDS`
-  verstellt ihn; während einer Fernsteuerung mit Rückkanal pausiert er auf
-  NVENC und `h264_amf`, s. `PULSE_HQ_FERN_VOLLBILDTAKT`.)*
+  verstellt ihn — auch während einer Fernsteuerung.)*
 - `PULSE_WHIP_PACING=0` — schaltet die Verteilung der RTP-Pakete eines Bildes über
   die Zeit AB (zurück zum Schwall-Senden). **AN als Vorgabe seit 2026-08-14**, seit
   dem Neubau mit absoluten Zeitpunkten und Paketgruppen; die erste Fassung war

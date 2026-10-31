@@ -26,6 +26,11 @@ use std::sync::Arc;
 /// auch zehn kleine Messungen. Dort fehlt dann zwar die Geduld, aber es gibt
 /// auch nichts nachzuliefern; die erste echte Nachlieferung hebt das Maximum
 /// sofort an, die Geduld folgt im naechsten Statistik-Takt (250 ms).
+///
+/// **Die Geduld, von der hier die Rede ist, gibt es seit dem 2026-10-31
+/// nicht mehr:** gemeint war die RTT-gekoppelte Jitter-Geduld der
+/// Fernsteuerung. Seitdem liest die Schwelle nur noch die Log-Zeile
+/// (`SessionStats::nachforderung_zeile`, „belastbar"/„nicht belastbar").
 pub const RTT_MIN_PROBEN: u64 = 10;
 
 /// Die Antwortzeit, wenn sie belastbar ist — sonst `None`.
@@ -48,15 +53,15 @@ pub fn rtt_belastbar(rtt_ms: Option<u64>, proben: u64) -> Option<u64> {
 /// koennte, laesst aber die letzten bis zu einer Umlaufzeit vor der Aufgabe
 /// noch hinaus.
 ///
-/// **Nie unter der Geduld des Nutzers, auch wenn die Fernsteuerung sie
-/// absenkt**. Sonst schliesst sich
-/// eine Schleife (Pruefung 2026-10-15): zehn kleine Messungen aus bloss
-/// umsortierten Paketen gelten als belastbar, die Fern-Geduld faellt auf
+/// **Nie unter der Geduld des Nutzers.** Bis zum 2026-10-31 senkte die
+/// Fernsteuerung die Puffergeduld RTT-gekoppelt ab, und ohne diese Grenze
+/// schloss sich eine Schleife (Pruefung 2026-10-15): zehn kleine Messungen aus
+/// bloss umsortierten Paketen galten als belastbar, die Fern-Geduld fiel auf
 /// 40 ms, das Hoechstalter mit ihr — und bei einer echten Umlaufzeit ueber
-/// 40 ms kommt keine Nachlieferung mehr rechtzeitig, um gemessen zu werden.
-/// Der falsche Wert stuende dann fuer immer. Mit der Geduld des Nutzers als
-/// Untergrenze bleiben Antworten bis dorthin messbar; die Anforderungen
-/// zwischen Fern-Geduld und Nutzer-Geduld sind der Preis dafuer.
+/// 40 ms kam keine Nachlieferung mehr rechtzeitig, um gemessen zu werden.
+/// Seit die Absenkung entfallen ist, sind `ziel_ms` und `nutzer_ms` gleich und
+/// die Grenze wirkt nicht; sie bleibt, damit eine kuenftige Absenkung nicht
+/// wieder in dieselbe Schleife laeuft.
 ///
 /// Mindestens 1 ms: `0` hiesse im Erzeuger „keine Grenze", und eine Geduld
 /// von null (Pruefstand) soll das Gegenteil bewirken.
@@ -152,8 +157,9 @@ mod tests {
         assert_eq!(hoechstalter_aus_geduld(0, 0), 1);
     }
 
-    /// Die abgesenkte Fern-Geduld zieht das Hoechstalter nicht mit herunter —
+    /// Eine abgesenkte Geduld zieht das Hoechstalter nicht mit herunter —
     /// sonst bliebe eine zu klein gemessene Umlaufzeit fuer immer stehen.
+    /// (Abgesenkt hat bis zum 2026-10-31 die Fernsteuerung.)
     #[test]
     fn hoechstalter_nie_unter_der_geduld_des_nutzers() {
         assert_eq!(hoechstalter_aus_geduld(40, 100), 100);

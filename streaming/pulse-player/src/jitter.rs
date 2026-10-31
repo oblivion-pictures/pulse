@@ -38,7 +38,7 @@ const MAX_LATE_STREAK: u32 = 8;
 /// Wie viele aufgegebene Luecken sich der Puffer merkt, um ein spaeter doch
 /// noch eintreffendes Paket als „nach Aufgabe" zu erkennen. 64 Luecken sind
 /// bei einer Luecke je 50 ms gut drei Sekunden; die Nachforderung endet mit
-/// der Geduld, bei abgesenkter Fern-Geduld erst mit der des Nutzers
+/// der Geduld, nie vor der des Nutzers
 /// (`nachforderung::hoechstalter_aus_geduld`) — Antworten weit danach sind
 /// also nicht zu erwarten. Was trotzdem kommt, zaehlt nur als `reordered`.
 const AUFGABE_GEDAECHTNIS: usize = 64;

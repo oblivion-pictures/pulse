@@ -171,7 +171,9 @@ pub trait Umgebung: Sync {
     /// mit Kosten auf der Leitung.
     fn sitzung_beendet(&self);
 
-    /// Laeuft gerade eine Fernsteuerung? Der Aufnahme-Takt haengt daran.
+    /// Laeuft gerade eine Fernsteuerung? Windows und macOS haengen den Wecker
+    /// der Zeigerform-Meldung daran. Den Aufnahme-Takt nicht mehr (seit
+    /// 2026-10-31): waehrend einer Fernsteuerung wird gestreamt wie sonst.
     fn fern_aktiv_setzen(&self, aktiv: bool);
 
     /// Vorrang beginnt oder endet — geht als `remote_state` nach vorn.

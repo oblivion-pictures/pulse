@@ -591,13 +591,13 @@ fn beenden_gibt_alles_frei() {
 fn das_sitzungsende_raeumt_die_umgebung_genau_einmal() {
     let s = stand();
     s.sitzung.frames(0, Some("test-ende"), &[hello()], false).expect("kein Fehler");
-    assert!(*s.umg.fern_aktiv.lock().unwrap(), "der Handschlag schaltet den Fern-Takt ein");
+    assert!(*s.umg.fern_aktiv.lock().unwrap(), "der Handschlag setzt den Sitzungsmerker");
     assert!(*s.wache.steht.lock().unwrap(), "und stellt die Wache auf");
     assert_eq!(*s.umg.beendet.lock().unwrap(), 0, "und meldet noch kein Ende");
 
     s.sitzung.beenden();
     assert_eq!(*s.umg.beendet.lock().unwrap(), 1, "genau einmal");
-    assert!(!*s.umg.fern_aktiv.lock().unwrap(), "der Aufnahme-Takt geht zurueck");
+    assert!(!*s.umg.fern_aktiv.lock().unwrap(), "der Sitzungsmerker geht zurueck");
     assert!(*s.umg.zeiger_sichtbar.lock().unwrap(), "der Host-Zeiger gehoert zurueck ins Bild");
     assert!(!*s.wache.steht.lock().unwrap(), "die Wache wird abgebaut");
 }

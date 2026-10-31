@@ -1594,9 +1594,9 @@ function fernsteuerungAufraeumen(grund: string): void {
   void remoteEingabe.beenden(); // Host: alles Gedrueckte freigeben
   // Steuernder: die ERFASSUNG im Player-Fenster ausschalten (Bughunt R2).
   // Der Player ist ein eigener Prozess und ueberlebt den Renderer — ohne
-  // diesen Ruf blieben Erfassung, Zeigerfang, Fern-Vorhalt und die gesenkte
-  // Jitter-Geduld fuer den Rest des Fensters an: ein Fenster, das Maus und
-  // Tastatur schluckt und nirgendwohin leitet, ohne einen Weg hinaus (das
+  // diesen Ruf blieben Erfassung, Zeigerfang, Tastensperre und die lange
+  // Stille-Frist der Sitzung fuer den Rest des Fensters an: ein Fenster, das
+  // Maus und Tastatur schluckt und nirgendwohin leitet, ohne einen Weg hinaus (das
   // Griff-Menue verlangt eine aktive Sitzung, die es nicht mehr gibt). Die
   // Hoch-Ereignisse, die der Player daraufhin nachreicht, verpuffen hier
   // bewusst — es gibt keinen Renderer mehr, der sie absetzen koennte; die

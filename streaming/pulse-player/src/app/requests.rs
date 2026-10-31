@@ -234,13 +234,7 @@ impl App {
         // `ok: true`, ohne dass sich etwas aendert (genau die Falle, wegen der
         // `hwdec` unten den Decoder verwirft).
         if let Some(ms) = patch.ausgabetakt_ms {
-            // **Ueber den Nutzer-Weg**, nicht direkt `setze_vorhalt`: laeuft
-            // gerade eine Fernsteuerung, ist der geltende Vorhalt die
-            // Absenkung und nicht der Wunsch. Der Wunsch wird deshalb gemerkt
-            // und erst beim Fern-Ende gestellt (Begruendung dort) — sonst hoebe
-            // ein `set_option` die Absenkung still auf und waere danach selbst
-            // wieder weg. Derselbe Fall wie `fern_geduld` in `session.rs`.
-            session.takt.setze_vorhalt_vom_nutzer(ms);
+            session.takt.setze_vorhalt(ms);
         }
         session.window.request_redraw();
         // **Der Weg zur Sitzung muss die Reihenfolge halten.** Jeder Patch

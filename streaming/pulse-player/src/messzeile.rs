@@ -194,6 +194,9 @@ pub struct Bildstand {
     pub paketverlust: u64,
     /// Neue Ziele des Vorhalt-Reglers.
     pub vorhalt_stufen: u64,
+    /// „zusehen" oder „fernsteuerung" — nur zur Einordnung: seit dem
+    /// 2026-10-31 spielt der Player beides gleich ab (bis dahin auch
+    /// „fern sofort" und „fern geglaettet").
     pub betriebsart: &'static str,
     pub vorhalt_ms: u64,
 }
@@ -323,7 +326,7 @@ mod tests {
             assert_eq!(m.melden(t0 + Duration::from_secs(s), ton(0), false), None);
         }
         let mut b = Meldetakt::<Bildstand>::ab(t0);
-        let stand = Bildstand { betriebsart: "fern sofort", vorhalt_ms: 0, ..Default::default() };
+        let stand = Bildstand { betriebsart: "fernsteuerung", vorhalt_ms: 30, ..Default::default() };
         assert_eq!(b.melden(t0 + Duration::from_secs(90), stand, false), None);
     }
 
@@ -363,15 +366,15 @@ mod tests {
     fn bild_zaehlt_nur_zaehler_als_ereignis() {
         let t0 = Instant::now();
         let mut m = Meldetakt::<Bildstand>::ab(t0);
-        let ruhig = Bildstand { betriebsart: "fern geglaettet", vorhalt_ms: 45, ..Default::default() };
+        let ruhig = Bildstand { betriebsart: "fernsteuerung", vorhalt_ms: 45, ..Default::default() };
         assert_eq!(m.melden(t0 + Duration::from_secs(1), ruhig, false), None);
         let stufe = Bildstand { vorhalt_stufen: 1, ..ruhig };
         let z = m.melden(t0 + Duration::from_secs(2), stufe, false).expect("Ereignis");
-        assert!(z.contains("Vorhalt-Stufen 1; fern geglaettet, Vorhalt 45 ms"), "{z}");
+        assert!(z.contains("Vorhalt-Stufen 1; fernsteuerung, Vorhalt 45 ms"), "{z}");
         let z = m.melden(t0 + Duration::from_secs(3), stufe, true).expect("Schluss");
         assert!(z.starts_with("Bild-Zaehlung Sitzung (3,0 s) — verspaetet 0"), "{z}");
         let mut leer = Meldetakt::<Bildstand>::ab(t0);
         let z = leer.melden(t0 + Duration::from_secs(3), ruhig, true).expect("Schluss");
-        assert!(z.ends_with("nichts aufgefallen; fern geglaettet, Vorhalt 45 ms"), "{z}");
+        assert!(z.ends_with("nichts aufgefallen; fernsteuerung, Vorhalt 45 ms"), "{z}");
     }
 }

@@ -309,14 +309,14 @@ impl Sitzung {
     }
 
     /// Was ein Sitzungsende nach AUSSEN bedeutet: Host-Zeiger zurück in den
-    /// Stream, Aufnahme-Takt zurück auf sein glättendes Raster, Wache
-    /// abgebaut.
+    /// Stream, Sitzungsmerker der Plattform aus ([`Umgebung::fern_aktiv_setzen`]),
+    /// Wache abgebaut.
     ///
     /// **An einer Stelle, weil das zusammengehört.** Es gibt drei
     /// Ausstiegswege ([`Self::beenden`], [`Self::beenden_endgueltig`] und
     /// fail-closed in `stilllegen`); einer, der nur die Hälfte täte,
     /// ließe entweder den Zeiger für alle Zuschauer aus dem Bild verschwunden
-    /// oder den Stream dauerhaft im ungeglätteten Fern-Takt.
+    /// oder den Sitzungsmerker der Plattform dauerhaft an.
     fn fern_abschalten(&self) {
         self.umgebung.host_zeiger_zeigen(true);
         self.umgebung.fern_aktiv_setzen(false);
@@ -417,8 +417,7 @@ impl Sitzung {
         z.tat.druck.loslassen(self.injektor);
         z.tat.zeiger = None;
         // Fail-closed heißt: diese Sitzung steuert nichts mehr — der Stream läuft
-        // aber weiter, seine Zuschauer bekommen den Cursor zurück und der
-        // Aufnahme-Takt sein glättendes Raster.
+        // aber weiter, und seine Zuschauer bekommen den Cursor zurück.
         self.fern_abschalten();
         eprintln!("[remote-input] fail-closed: {grund}");
         self.umgebung.fehler_melden(&grund);

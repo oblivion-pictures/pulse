@@ -80,13 +80,6 @@ impl App {
         if let Some(overlay) = session.overlay.as_mut() {
             overlay.set_fernsteuerung(aktiv);
         }
-        // Und der Vorhalt sinkt fuer die Dauer der Fernsteuerung: beim Steuern
-        // zaehlt der geschlossene Kreis aus Eingabe hin und Bild zurueck, und
-        // dort schlaegt jede Millisekunde Glaettung voll durch
-        // (`takt::Ausgabetakt::fernsteuerung`) — in der Vorgabe auf 0, mit
-        // abgewaehltem „Bild sofort zeigen" auf den Fern-Wert. Der vorherige
-        // Wert kommt danach von selbst zurueck.
-        session.takt.fernsteuerung(aktiv);
         // Und die Tastenkuerzel des Fenstermanagers stehen still, solange
         // gesteuert wird (s. [`crate::tastensperre`]). Hier und nicht in der
         // Sitzung nebenan, weil die Sperre am FENSTER haengt: sie gilt je
@@ -101,8 +94,9 @@ impl App {
         // dort und gehoert nicht auf „einheitlich fail-closed" geradegezogen.
         self.tastensperre.setzen(&mut session.tastensperre, &session.window, aktiv);
 
-        // Dieselbe Merk-und-Zurueck-Mechanik fuer die Jitter-Geduld bei
-        // Luecken (RTT-gekoppelt, `session`).
+        // Die Sitzung erfaehrt es auch — allein, damit sie bei Stille laenger
+        // wartet, bevor sie abbricht (`session::STILLE_FENSTER_BIS_ABBRUCH_FERN`).
+        // Bis zum 2026-10-31 senkte sie dabei zusaetzlich die Jitter-Geduld.
         //
         // **Die Swapchain-Tiefe bleibt bewusst bei 2** (Bughunt 2026-08-13):
         // eine Absenkung auf 1 laesst Mailbox auf Windows/DX12 zu Fifo
@@ -114,9 +108,9 @@ impl App {
         // Schleifendauer statt ~4, nur 90-140 von 144 Bildern gezeichnet).
         //
         // `try_send` mit Netz darunter: verwirft der volle Kanal ausgerechnet
-        // das AUS, bliebe die Geduld dauerhaft abgesenkt — es gibt danach
-        // keinen weiteren Ruf, der es nachtraegt. Der Nachschub laeuft dann
-        // ueber die Laufzeit (blockierendes send auf einem Tokio-Task).
+        // das AUS, bliebe die lange Stille-Frist dauerhaft stehen — es gibt
+        // danach keinen weiteren Ruf, der es nachtraegt. Der Nachschub laeuft
+        // dann ueber die Laufzeit (blockierendes send auf einem Tokio-Task).
         let cmd = crate::session::SessionCommand::Fernsteuerung(aktiv);
         if let Err(tokio::sync::mpsc::error::TrySendError::Full(cmd)) =
             session.commands.try_send(cmd)

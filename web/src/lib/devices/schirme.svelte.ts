@@ -76,7 +76,9 @@ const WARTEN_MS = 25_000;
  * Weckruf nur die Kachel; das Fenster kam erst über den Abkoppel-Knopf oder
  * über `playerSettings.useNativePlayer`, eine Vorgabe ohne Oberfläche, die per
  * Vorgabe aus ist. Der Weckruf endete also im `<video>`-Weg — ohne
- * Übernahme-Weg und ohne die Latenzmassnahmen des Fern-Modus.
+ * Übernahme-Weg (und, bis zum 2026-10-31, ohne die damaligen
+ * Latenzmassnahmen des Fern-Modus; seitdem spielt der Player beim Steuern
+ * wie beim Zusehen ab).
  *
  * Fehlt das Player-Binary (Browser, unfertiger Bau), ist die Anforderung
  * folgenlos: `useNativePlayback` prüft zusätzlich `isPlayerAvailable()` und

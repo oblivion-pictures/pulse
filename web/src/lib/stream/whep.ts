@@ -49,11 +49,11 @@ const ICE_GATHERING_TIMEOUT_MS = 2000;
  * klein genug, dass beim Zuschauen niemand die Verzögerung bemerkt.
  *
  * **Wo das NICHT gilt:** die Fernsteuerung. Sie läuft über den nativen Player
- * (`streaming/pulse-player/`), der seinen Vorhalt im Fern-Modus bewusst auf
- * 5 ms senkt — dort ist jede Millisekunde zwischen Eingabe und Bild spürbar,
- * und Glätte ist der falsche Tausch. Diese Datei bedient nur die
- * Zuschauer-Kachel im Browser; wer sie je für einen Steuerweg mitbenutzt,
- * muss den Wert dort auf 0 setzen.
+ * (`streaming/pulse-player/`) mit dessen eigenem Vorhalt — und der spielt
+ * seit dem 2026-10-31 beim Steuern genau wie beim Zuschauen ab (Vorgabe
+ * 30 ms samt Regler, `AUSGABETAKT_MS_VORGABE` in `proto.rs`; davor senkte
+ * er ihn beim Steuern ab, zuletzt auf 0). Diese Datei bedient nur die
+ * Zuschauer-Kachel im Browser.
  */
 const JITTER_BUFFER_TARGET_MS = 120;
 
