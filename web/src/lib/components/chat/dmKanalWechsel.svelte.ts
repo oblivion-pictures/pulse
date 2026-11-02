@@ -63,21 +63,36 @@ export function vorbereiten(cid: string) {
 export function erstelleDmKanalWechsel(cloudRoute: DmRoute) {
   let loadError = $state<string | null>(null);
   let resolving = $state(false);
+  /** Das abonnierte, fertig geladene Gespräch — gesetzt erst am ENDE eines
+   *  Wechsels. */
   let prevDM = $state('');
+  /** Das zuletzt angesteuerte Gespräch — gesetzt am ANFANG eines Wechsels.
+   *  Bis 2026-11-02 prüfte der Doppelaufruf-Schutz gegen `prevDM`, das
+   *  während des Ladens noch auf dem VORGÄNGER stand: A → B → zurück zu A,
+   *  solange B lud, hielt die Rückkehr für „schon offen" und brach ab — A
+   *  stand da, war aber abgemeldet (kein „schreibt …", neue Nachrichten
+   *  zählten als ungelesen im offenen Gespräch). Nach einem Ladefehler
+   *  blockierte derselbe Vergleich die Rückkehr zum Vorgänger. */
+  let ziel = '';
   let switchGen = 0;
 
   async function switchTo(cid: string) {
+    if (cid === ziel) return;
     const gen = untrack(() => (switchGen += 1));
     const isStale = () => untrack(() => switchGen) !== gen;
+    ziel = cid;
     const prev = untrack(() => prevDM);
-
-    if (cid === prev) return;
-    if (prev) abonnementAufgeben(prev);
-
-    if (!cid) {
+    if (prev) {
+      abonnementAufgeben(prev);
       untrack(() => (prevDM = ''));
-      return;
     }
+    // Ein Fehler des vorigen Gesprächs gehört nicht über das nächste (und
+    // nicht über die leere Liste) — sonst verdeckt er den lokalen Verlauf,
+    // bis die Serverantwort des neuen Gesprächs kommt.
+    loadError = null;
+    resolving = false;
+
+    if (!cid) return;
 
     // Gruppe oder DM? Einmal festhalten, danach nicht mehr nachsehen:
     // `switchTo` laeuft aus einem `$effect`, und ein Lesen des Speichers
@@ -138,11 +153,8 @@ export function erstelleDmKanalWechsel(cloudRoute: DmRoute) {
         if (isStale()) return;
         loadError = err instanceof Error ? err.message : m.dm_page_dm_not_found();
         resolving = false;
-        // Bughunt Runde 7: prevDM lösen — sonst blockt `cid === prev` die
-        // Rückkehr zum VORGÄNGER-Gespräch (dessen Abo wir oben schon
-        // abgegeben haben) und der Fehlerbildschirm bleibt für einen völlig
-        // gesunden Kanal stehen, bis der Nutzer einen dritten öffnet.
-        untrack(() => (prevDM = ''));
+        // Die Rückkehr zum Vorgänger bleibt offen: `prevDM` ist seit dem
+        // Anfang dieses Wechsels leer, und `ziel` steht auf DIESEM Kanal.
         return;
       }
     }
@@ -332,6 +344,12 @@ export function erstelleDmKanalWechsel(cloudRoute: DmRoute) {
   });
 
   function aufraeumen() {
+    // Einen noch laufenden Wechsel verwerfen. Ohne das lief er nach dem
+    // Abbau der Seite zu Ende, abonnierte sein Gespräch und hielt es für
+    // immer offen (auch über jedes Neuverbinden): jede Nachricht dort galt
+    // als gelesen, ohne Zähler und Ton, und der Absender sah Blau.
+    untrack(() => (switchGen += 1));
+    ziel = '';
     hinschauenAbmelden();
     if (prevDM) abonnementAufgeben(prevDM);
   }
