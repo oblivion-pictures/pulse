@@ -19,7 +19,7 @@ import { messages } from '$lib/stores/messages.svelte';
 import { directMessages } from '$lib/stores/directMessages.svelte';
 import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
 import { readState } from '$lib/stores/readState.svelte';
-import { lesestandAnker } from '$lib/stores/lesestandKern';
+import { istGelesenBis, lesestandAnker } from '$lib/stores/lesestandKern';
 import { typing } from '$lib/stores/typing.svelte';
 import { currentServerUserId } from '$lib/stores/currentServerUser';
 import { dmGegenstelle } from '$lib/krypto/dmGegenstelle';
@@ -81,6 +81,15 @@ export function zustellungenVerbuchen(
     // fremde Kennung (B3, s. `lesestandKern.lesestandAnker`).
     const anker = lesestandAnker(nachricht);
     readState.recordSeen(nachricht.channel_id, anker);
+    // Auf einem anderen Gerät schon gelesen: nicht zählen, nicht melden.
+    // Ein Gerät, das Tage nicht offen war, findet beim Start alles im
+    // Postfach, was seither kam — der eigene Lesestand der anderen Geräte
+    // steht da schon fest (`ready` setzt ihn vor dem Abholen,
+    // `seedOwnLesestand`), wurde hier aber nie gefragt: bis 2026-11-02 zählte
+    // jede dieser Nachrichten als ungelesen, samt Ton und Toast, obwohl sie
+    // am Rechner längst gelesen war. Ein später eintreffender Stand räumt den
+    // Zähler über `seedOwnLesestand` (Vergleich gegen `unreadBisByChannel`).
+    if (istGelesenBis(readState.lastReadByChannel[nachricht.channel_id], anker) === true) continue;
     // Offen UND hingeschaut — ein offenes Gespräch hinter einem minimierten
     // Fenster (oder einer App im Hintergrund) ist ungelesen (s.
     // `nachrichten/hinschauen.ts`); das Gespräch meldet sich beim

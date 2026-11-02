@@ -127,3 +127,15 @@ test('Entscheid 2026-10-21: Anruf in der App bei „Nicht stören“ oder stumme
   assert.match(anruf, /\{ ton = true, nativ = true \}: \{ ton\?: boolean; nativ\?: boolean \} = \{\}/);
   assert.match(anruf, /if \(nativ\) void nativAnkommen\(evt\.call_id, gegenstelle\);/);
 });
+
+test('Bughunt 2026-11-02: woanders schon Gelesenes zählt beim Abholen nicht als ungelesen', () => {
+  // Die Prüfung muss VOR dem Zählen und dem Melden stehen — sonst zeigt ein
+  // Gerät, das Tage nicht offen war, alles aus dem Postfach als ungelesen.
+  const verbuchen = lies('lib/ws/handlers/postfachVerbuchen.ts');
+  const pruefung = verbuchen.indexOf(
+    'if (istGelesenBis(readState.lastReadByChannel[nachricht.channel_id], anker) === true) continue;'
+  );
+  assert.ok(pruefung > 0, 'Lesestand-Prüfung fehlt');
+  assert.ok(pruefung < verbuchen.indexOf('readState.incUnread('));
+  assert.ok(pruefung < verbuchen.indexOf('meldeNeueZustellung(nachricht'));
+});
