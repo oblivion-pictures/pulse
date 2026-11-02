@@ -294,9 +294,14 @@
     if (!channel) return;
     const oldest = messages[0]?.id;
     if (!oldest) return;
+    const forChannel = channel.id;
     loadingOlder = true;
     try {
-      const { nachrichten: older, vomServer, sicherungLieferte } = await ladeAeltereSeite(channel.id, oldest, OLDER_PAGE, route);
+      const { nachrichten: older, vomServer, sicherungLieferte } = await ladeAeltereSeite(forChannel, oldest, OLDER_PAGE, route);
+      // Während des Ladens das Gespräch gewechselt: die Seite gehört nicht
+      // in die Liste, die jetzt angezeigt wird (sie landete sonst im neuen
+      // Gespräch und blieb dort, weil `liveBehalten` sie für live hielt).
+      if (channel?.id !== forChannel) return;
       // shift NUR für diese eine Prepend-Längenänderung aktivieren, dann sofort
       // wieder deaktivieren — virtua liest den Wert im Moment, in dem `items`
       // (und damit data.length) wächst, also innerhalb des tick()-Flushes.

@@ -220,6 +220,15 @@ class GuildBan(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     banned_by_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # War das Ziel beim Bannen Mitglied? Nur dann bekommt es beim Entbannen
+    # Einladung, Hinweis und Moderations-DM (``unban_user``). Ein vorsorglich
+    # gebannter Fremder bekommt nichts — sonst war Bannen + Entbannen ein Weg,
+    # beliebigen Konten an Freundschaftspflicht und Blockade vorbei zu
+    # schreiben (Migration 0109). ORM-Vorgabe ``False`` (im Zweifel keine
+    # Nachricht); ``true`` in der DB gilt nur dem Altbestand vor 0109.
+    was_member: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true"), default=False
+    )
 
     __table_args__ = (
         PrimaryKeyConstraint("guild_id", "user_id"),

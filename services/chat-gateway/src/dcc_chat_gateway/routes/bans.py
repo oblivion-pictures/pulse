@@ -179,26 +179,31 @@ async def ban_user(
         detail="cannot ban a user with an equal or higher role",
     )
 
+    member = await session.get(GuildMember, (guild_id, user_id))
+    was_member = member is not None
+
     # Upsert the ban row. ON CONFLICT support varies by dialect; we
     # instead try INSERT, on uniqueness violation refresh the existing.
     existing = await session.get(GuildBan, (guild_id, user_id))
     if existing is not None:
         existing.reason = payload.reason
         existing.banned_by_id = current.id
+        # Ein Gebannter kann nicht Mitglied sein — das Erneuern behält, was
+        # der erste Bann festgehalten hat.
+        existing.was_member = existing.was_member or was_member
     else:
         existing = GuildBan(
             guild_id=guild_id,
             user_id=user_id,
             reason=payload.reason,
             banned_by_id=current.id,
+            was_member=was_member,
         )
         session.add(existing)
 
     # If the target is currently a member, evict them. Same cleanup
     # path as ``kick_member``: drop the row + clean per-user channel
     # overwrites in the same transaction.
-    member = await session.get(GuildMember, (guild_id, user_id))
-    was_member = member is not None
     if member is not None:
         channel_ids_stmt = select(Channel.id).where(Channel.guild_id == guild_id)
         channel_ids = list((await session.execute(channel_ids_stmt)).scalars())
@@ -278,6 +283,7 @@ async def unban_user(
     row = await session.get(GuildBan, (guild_id, user_id))
     if row is None:
         raise HTTPException(404, detail="user is not banned")
+    was_member = row.was_member
     await session.delete(row)
     await write_audit_log(
         session,
@@ -289,6 +295,14 @@ async def unban_user(
     )
     await session.commit()
 
+    await _publish_ban_event(request, "guild_ban_removed", guild_id, user_id)
+    # Nur wer beim Bannen Mitglied war, hat einen Weg zurück zu bekommen.
+    # Bannen setzt keine Mitgliedschaft voraus — ohne diese Bedingung war
+    # Bannen + Entbannen ein Weg, beliebigen Konten zu schreiben, an
+    # Freundschaftspflicht und Blockade vorbei (Bughunt 2026-11-02).
+    if not was_member:
+        return
+
     # Mint a one-click rejoin invite (single-use, 7 days) and tell the
     # unbanned user directly — lifting a ban otherwise leaves them with no
     # way back and no idea it happened. Local import avoids the bans↔invites
@@ -296,7 +310,6 @@ async def unban_user(
     from dcc_chat_gateway.routes.invites import create_rejoin_invite
 
     invite_code = await create_rejoin_invite(session, guild_id, current.id)
-    await _publish_ban_event(request, "guild_ban_removed", guild_id, user_id)
     if invite_code is not None:
         await _notify_ban_lifted(request, user_id, guild_id, guild.name, invite_code)
         # Durable PM with the rejoin invite (from the acting admin). The client

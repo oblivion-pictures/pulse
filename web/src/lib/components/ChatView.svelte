@@ -352,14 +352,34 @@
     melden?: (ok: boolean) => void
   ) {
     const target = replyTarget;
-    onSend(text, target?.id ?? null, attachmentIds, anhaenge, melden);
-    if (melden) {
-      // Restorable Weg (Entscheidung 3.4): der Composer leert selbst erst
-      // nach melden(true) — der Antwort-Banner darf deshalb noch stehen.
+    if (!melden) {
+      onSend(text, target?.id ?? null, attachmentIds, anhaenge);
+      replyTarget = null;
       return;
     }
-    replyTarget = null;
+    // Restorable Weg (Entscheidung 3.4): der Composer leert selbst erst nach
+    // melden(true) — der Antwort-Banner fällt mit ihm, nicht vorher. Bis
+    // 2026-11-02 fiel er nie: jede weitere Nachricht ging als Antwort auf
+    // dieselbe hinaus. Nur wenn er noch derselbe ist — ein inzwischen neu
+    // gewählter oder im Gesprächswechsel geleerter bleibt unberührt.
+    onSend(text, target?.id ?? null, attachmentIds, anhaenge, (ok) => {
+      if (ok && replyTarget === target) replyTarget = null;
+      melden(ok);
+    });
   }
+
+  // Antwort und Medienblatt gehören zum Gespräch, nicht zur Ansicht: die
+  // DM-Seite behält diese Instanz über jeden Gesprächswechsel, sonst stand
+  // „Antwort an …" aus A über dem Eingabefeld von B (und ging mit hinaus).
+  // Über ein `$derived` auf die ID, nicht auf `channel` — die DM-Seite baut
+  // das Objekt bei jeder Neuberechnung frisch (s. `kanalSchluessel` in
+  // MessageInput).
+  const kanalKennung = $derived(channel?.id);
+  $effect(() => {
+    void kanalKennung;
+    replyTarget = null;
+    medienOffen = false;
+  });
 
   // Typing indicator. The composer fires onTyping on every keystroke; we
   // debounce to one broadcast per 3s (the store keeps each user "typing" for

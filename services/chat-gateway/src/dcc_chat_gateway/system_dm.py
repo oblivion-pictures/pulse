@@ -37,11 +37,22 @@ async def send_moderation_dm(
 ) -> None:
     """Persist + deliver a one-way admin→user DM, bypassing the friend-gate.
 
+    Nur die Freundschaftspflicht wird übergangen, eine Blockade (in eine der
+    beiden Richtungen) gilt weiter und die DM entfällt — sonst war jede
+    Moderations-Aktion ein Weg, einem Konto zu schreiben, das den Absender
+    blockiert hat (Bughunt 2026-11-02). Den Live-Hinweis
+    (``guild_membership_revoked`` usw.) schicken die Aufrufer getrennt; er
+    bleibt davon unberührt.
+
     The message is committed before the best-effort WS fan-out, so a Redis
     hiccup can't lose it. No-op-safe when ``manager`` is None (dev / no-WS).
     """
     # Local import avoids any load-order coupling with the dms route module.
+    from dcc_chat_gateway.friend_helpers import block_exists_either_way
     from dcc_chat_gateway.routes.dms import ensure_dm_channel
+
+    if await block_exists_either_way(session, from_user_id, to_user_id):
+        return
 
     dm = await ensure_dm_channel(session, from_user_id, to_user_id)
     msg = Message(

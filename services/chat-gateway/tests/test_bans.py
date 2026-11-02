@@ -494,6 +494,69 @@ async def test_unban_sends_dm_with_rejoin_invite_link(
 
 
 @pytest.mark.asyncio
+async def test_entbannen_eines_nie_mitglieds_schickt_nichts(
+    client, app, _auth_signer, session_factory
+):
+    """Bannen setzt keine Mitgliedschaft voraus. Bekäme ein nie
+    beigetretenes Konto beim Entbannen trotzdem Einladung, Hinweis und DM,
+    wäre Bannen + Entbannen ein Weg, jedem zu schreiben (Bughunt
+    2026-11-02)."""
+    s = await _setup(client, _auth_signer)
+    _t_fremd, uid_fremd = await _register_user(_auth_signer)
+    gid = s["g"]["id"]
+    r = await client.put(f"/guilds/{gid}/bans/{uid_fremd}", json={}, headers=auth(s["t_owner"]))
+    assert r.status_code == 200
+    captured = _capture_user_events(app)
+
+    r = await client.request("DELETE", f"/guilds/{gid}/bans/{uid_fremd}", headers=auth(s["t_owner"]))
+    assert r.status_code == 204
+
+    assert [e for (t, e) in captured if t == str(uid_fremd)] == []
+    dm, msgs = await _dm_messages(session_factory, s["uid_owner"], uid_fremd)
+    assert dm is None
+    assert msgs == []
+
+
+@pytest.mark.asyncio
+async def test_erneuter_bann_behaelt_die_mitgliedschaft_des_ersten(
+    client, _auth_signer, session_factory
+):
+    """Ein Mitglied gebannt, dann der Bann erneuert (jetzt Nicht-Mitglied):
+    das Entbannen schickt die Einladung trotzdem."""
+    s = await _setup(client, _auth_signer)
+    gid = s["g"]["id"]
+    for grund in ("erst", "nochmal"):
+        r = await client.put(
+            f"/guilds/{gid}/bans/{s['uid_a']}", json={"reason": grund}, headers=auth(s["t_owner"])
+        )
+        assert r.status_code == 200
+    r = await client.request("DELETE", f"/guilds/{gid}/bans/{s['uid_a']}", headers=auth(s["t_owner"]))
+    assert r.status_code == 204
+
+    _dm, msgs = await _dm_messages(session_factory, s["uid_owner"], s["uid_a"])
+    assert len([m for m in msgs if "/invite/" in m.content]) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("cloud_mode")
+async def test_moderations_dm_respektiert_blockade(client, _auth_signer, session_factory):
+    """Die Moderations-DM übergeht die Freundschaftspflicht, nicht die
+    Blockade: wer den Admin blockiert hat, bekommt beim Bann keine DM."""
+    s = await _setup(client, _auth_signer)
+    r = await client.post(
+        "/blocks", json={"target_user_id": str(s["uid_owner"])}, headers=auth(s["t_a"])
+    )
+    assert r.status_code == 200, r.text
+    r = await client.put(
+        f"/guilds/{s['g']['id']}/bans/{s['uid_a']}", json={"reason": "x"}, headers=auth(s["t_owner"])
+    )
+    assert r.status_code == 200
+
+    _dm, msgs = await _dm_messages(session_factory, s["uid_owner"], s["uid_a"])
+    assert msgs == []
+
+
+@pytest.mark.asyncio
 async def test_ban_zieht_lese_token_des_streams_zurueck(client, app, _auth_signer):
     """Ende-zu-Ende: nach dem Bann darf das WHEP-Lese-Token nicht mehr gelten.
 

@@ -289,10 +289,19 @@
       // Rest gefunden): Inhalt STEHEN LASSEN, bis das Ergebnis da ist. Der
       // 4. Parameter wandert durch ChatView/Seite in dmSenden, das
       // melden(ok) genau einmal ruft.
+      const sendeKanal = channelId;
       const melden = (ok: boolean): void => {
         if (ok) {
           haptikTicken(); // Erst der gemeldete Erfolg tickt — kein Tick bei Fehlversuch
           nachErfolgreichemSenden();
+          if (channelId !== sendeKanal) {
+            // Während der Sendung das Gespräch gewechselt: Feld und Anhänge
+            // gehören jetzt dem neuen Gespräch und bleiben stehen. Geleert
+            // wird nur der Entwurf des alten — sonst stand der gesendete
+            // Text dort beim Zurückkehren noch einmal zum Absenden bereit.
+            if (sendeKanal) drafts.clear(sendeKanal);
+            return;
+          }
           text = '';
           anhaenge.nachDemSenden();
           mentionOverlay?.clear();
