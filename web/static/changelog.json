@@ -2,6 +2,18 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-03",
+      "date": "2026-11-03",
+      "style": "Sachlich",
+      "title": "Direktnachrichten",
+      "items": [
+        "Nachrichten, die auf einem anderen Gerät schon gelesen wurden, erscheinen beim Öffnen der App nicht mehr als ungelesen.",
+        "Nach dem Senden einer Antwort verschwindet der Antwort-Hinweis über dem Eingabefeld wieder und wandert beim Wechsel in ein anderes Gespräch nicht mehr mit.",
+        "Beim schnellen Wechseln zwischen Gesprächen bleibt das geöffnete Gespräch zuverlässig verbunden.",
+        "Eine Blockade gilt jetzt auch für Nachrichten der Community-Moderation."
+      ]
+    },
+    {
       "id": "2026-10-31",
       "date": "2026-10-31",
       "style": "Sachlich",
