@@ -127,7 +127,7 @@
          einer eigenen Zeile zwischen Kopf und Liste. -->
     <div class="flex items-center justify-between pr-2 pl-3 pb-1">
       <p class="text-text-muted text-2xs font-semibold uppercase tracking-wider">
-        Direktnachrichten
+        {m.dm_channel_list_heading()}
       </p>
       <button
         type="button"
@@ -141,7 +141,7 @@
     </div>
     {#if directMessages.list.length === 0}
       <p class="text-text-muted px-3 py-2 text-xs">
-        Noch keine DMs. Klick auf einen User im Channel, um eine zu starten.
+        {m.dm_channel_list_empty()}
       </p>
     {/if}
     {#each directMessages.list as dm (dm.id)}
@@ -178,13 +178,13 @@
             class="ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-badge-count px-1 text-2xs font-bold leading-none text-white"
             data-testid="dm-unread-pill"
             data-unread-count={unreadCount}
-            aria-label="ungelesen"
+            aria-label={m.dm_channel_list_unread()}
           >{unreadCount > 99 ? '99+' : unreadCount}</span>
         {:else if isUnread}
           <span
             class="ml-auto size-2 shrink-0 rounded-full bg-badge-count"
             data-testid="dm-unread-dot"
-            aria-label="ungelesen"
+            aria-label={m.dm_channel_list_unread()}
           ></span>
         {/if}
       </button>
@@ -221,13 +221,13 @@
               class="ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-badge-count px-1 text-2xs font-bold leading-none text-white"
               data-testid="gruppe-unread-pill"
               data-unread-count={unreadCount}
-              aria-label="ungelesen"
+              aria-label={m.dm_channel_list_unread()}
             >{unreadCount > 99 ? '99+' : unreadCount}</span>
           {:else if isUnread}
             <span
               class="ml-auto size-2 shrink-0 rounded-full bg-badge-count"
               data-testid="gruppe-unread-dot"
-              aria-label="ungelesen"
+              aria-label={m.dm_channel_list_unread()}
             ></span>
           {/if}
         </button>

@@ -315,7 +315,10 @@
   /** Kanalkopf-Badge "📌 N": Zahl direkt aus der Pin-Liste. */
   const pinCount = $derived(pins?.length ?? 0);
   // Pin-Recht: Guild-Kanäle koppeln an MANAGE_MESSAGES (dieselbe Vorgabe wie
-  // canDelete fremder Nachrichten), DM-Teilnehmer dürfen immer pinnen.
+  // canDelete fremder Nachrichten); ohne Guild darf jedes Mitglied pinnen.
+  // Ob es den Knopf überhaupt gibt, entscheidet `onTogglePin`: die private
+  // Gruppe reicht ihn durch (Anker am Gruppen-Objekt), die DM nicht — ihre
+  // Nachrichten tragen nur eine lokale ID, `/messages/{id}/pin` lief ins 404.
   const canPin = $derived(channel?.guild_id ? isOwner : true);
   // Sprung in die Liste (von MessageList gemountet) für Klicks im Popover.
   let jumpToMessage = $state<((id: string) => void) | undefined>(undefined);

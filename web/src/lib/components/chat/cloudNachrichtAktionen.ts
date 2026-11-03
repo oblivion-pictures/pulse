@@ -25,6 +25,7 @@ import { confirmDialog } from '$lib/components/feedback/confirm.svelte';
 import { m } from '$lib/paraglide/messages.js';
 import { auth } from '$lib/stores/auth.svelte';
 import { messages } from '$lib/stores/messages.svelte';
+import { directMessages } from '$lib/stores/directMessages.svelte';
 import {
   verlaufBearbeitungAnwenden,
   verlaufNachrichtGeloescht,
@@ -68,6 +69,7 @@ export async function nachrichtBearbeiten(
       const bearbeitetAm = new Date().toISOString();
       if (await verlaufBearbeitungAnwenden(msg.channel_id, msg.id, content, bearbeitetAm)) {
         messages.bearbeiteInhalt(msg.channel_id, msg.id, content, bearbeitetAm);
+        directMessages.nachBearbeitung(msg.channel_id, msg.id, content);
       }
       // Die Bearbeitungs-Zeile fürs Server-Archiv, damit ein Frischgerät den
       // neuen Text sieht (`archiv/zeile.ts`); zählt dort nur vom Autor.
@@ -132,6 +134,7 @@ export async function nachrichtLoeschen(
     }
     verlaufNachrichtGeloescht(msg.channel_id, msg.id);
     messages.remove(msg.channel_id, msg.id);
+    void directMessages.nachLoeschen(msg.channel_id, msg.id);
     if (msg.author_id === auth.user?.id) {
       // Dynamisch wie der Sendeweg (`krypto/senden.ts`); `archiviereGrabstein` wirft nie.
       void import('$lib/archiv/senden')

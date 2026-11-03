@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  juengsterSichtbarerSatz,
   mitLokalerVorschauMergen,
+  vorschauAusSatzOderLeer,
   vorschauAusText,
   type LokalerLetzterSatz,
   type ServerDmVorschau
@@ -76,4 +78,40 @@ test('vorschauAusText: leerer Text mit Bild-Anhang -> __image__, mit anderem Anh
   assert.equal(vorschauAusText('', 'image/png'), '__image__');
   assert.equal(vorschauAusText('   ', 'application/pdf'), '__file__');
   assert.equal(vorschauAusText('', null), null);
+});
+
+// Fund 6 (Bughunt 2026-11-02): Löschen der letzten Nachricht ließ ihren Text
+// in der DM-Liste stehen; beim nächsten Start fiel die Vorschau auf den
+// Server-Wert zurück, weil der jüngste Satz ein Grabstein war.
+test('Fund 6: der jüngste sichtbare Satz überspringt Grabsteine und die gerade gelöschte ID', () => {
+  const saetze = [
+    { ...lokal({ nachrichtId: 'a', inhalt: 'eins' }), geloescht: false },
+    { ...lokal({ nachrichtId: 'b', inhalt: 'zwei' }), geloescht: true },
+    { ...lokal({ nachrichtId: 'c', inhalt: 'drei' }), geloescht: false }
+  ];
+  assert.equal(juengsterSichtbarerSatz(saetze)?.nachrichtId, 'c');
+  // Grabstein von „c“ noch nicht geschrieben: `ausser` nimmt sie trotzdem aus,
+  // und „b“ ist schon ein Grabstein → „a“.
+  assert.equal(juengsterSichtbarerSatz(saetze, 'c')?.nachrichtId, 'a');
+  assert.equal(juengsterSichtbarerSatz([saetze[1]]), null);
+  assert.equal(juengsterSichtbarerSatz([]), null);
+});
+
+test('Fund 6: nach dem Löschen rückt die Vorschau auf den Nachfolger oder wird leer', () => {
+  const dm: ServerDmVorschau = {
+    last_message_id: 'c',
+    last_message_preview: 'geheim',
+    last_message_author_id: 'u2',
+    last_message_at: '2026-11-02T10:00:00Z'
+  };
+  const nachfolger = vorschauAusSatzOderLeer(dm, lokal({ nachrichtId: 'a', inhalt: 'eins' }));
+  assert.equal(nachfolger.last_message_id, 'a');
+  assert.equal(nachfolger.last_message_preview, 'eins');
+  assert.equal(nachfolger.last_message_author_id, 'u1');
+
+  const leer = vorschauAusSatzOderLeer(dm, null);
+  assert.equal(leer.last_message_preview, null);
+  assert.equal(leer.last_message_author_id, null);
+  // Die Zeile springt nicht ans Ende: die Sortier-ID bleibt.
+  assert.equal(leer.last_message_id, 'c');
 });

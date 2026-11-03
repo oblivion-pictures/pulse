@@ -20,6 +20,7 @@
   import UserProfilePopover from '$lib/components/UserProfilePopover.svelte';
   import PresenceBadge from '$lib/components/PresenceBadge.svelte';
   import { friends } from '$lib/stores/friends.svelte';
+  import { directMessages } from '$lib/stores/directMessages.svelte';
   import { userCache } from '$lib/stores/users.svelte';
   import { presence } from '$lib/stores/presence.svelte';
   import { voicePresence } from '$lib/stores/voicePresence.svelte';
@@ -159,6 +160,10 @@
     try {
       await friendsApi.removeFriend(userId);
       friends.remove(userId);
+      // Ob das Eingabefeld frei ist (`can_send`), entscheidet der Server; die
+      // DM-Liste neu holen. `friend_removed` geht nur an die Gegenseite, hier
+      // blieb das Feld sonst bis zum nächsten Start aktiv (Bughunt 2026-11-02).
+      void directMessages.hydrate().catch(() => undefined);
     } catch (e) {
       toast.error(m.friend_list_unfriend_failed(), {
         description: e instanceof Error ? e.message : undefined

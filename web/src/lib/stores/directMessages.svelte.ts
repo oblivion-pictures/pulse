@@ -7,10 +7,17 @@ import { verlaufLesenSaetze } from '$lib/verlauf/db';
 import { aktuellesKonto } from '$lib/verlauf/konto';
 import { verlaufZustand } from '$lib/verlauf/zustand.svelte';
 import {
+  juengsterSichtbarerSatz,
   mitLokalerVorschauMergen,
   vorschauAusNachricht,
+  vorschauAusSatzOderLeer,
   type LokalerLetzterSatz
 } from '$lib/verlauf/vorschauMerge';
+
+/** Wie weit `letzterLokalerSatz` zurückschaut, wenn die jüngsten Sätze
+ *  Grabsteine sind. Wer mehr als so viele Nachrichten am Stück löscht, sieht
+ *  die leere Vorschau — kein Klartext mehr, also kein Datenschutz-Problem. */
+const VORSCHAU_FENSTER = 20;
 
 /**
  * Holds the caller's 1:1 DM channels. Mirrors `guilds.svelte.ts` in shape:
@@ -124,12 +131,16 @@ class DirectMessageStore {
    *  — dessen `istLokalerKanal`-Gate wuerde hier immer durchfallen (dieser Kanal
    *  wird ja GERADE erst in `byId` eingetragen), obwohl die ID unzweifelhaft
    *  ein DM-Kanal ist (sie steht in der DM-Liste, die diese Funktion aufruft). */
-  private async letzterLokalerSatz(kanalId: string): Promise<LokalerLetzterSatz | null> {
+  private async letzterLokalerSatz(
+    kanalId: string,
+    ausser?: string
+  ): Promise<LokalerLetzterSatz | null> {
     try {
       const kontoId = aktuellesKonto();
       if (kontoId === null) return null;
-      const [satz] = await verlaufLesenSaetze(kanalId, { anzahl: 1 }, kontoId);
-      if (!satz || satz.geloescht) return null;
+      const saetze = await verlaufLesenSaetze(kanalId, { anzahl: VORSCHAU_FENSTER }, kontoId);
+      const satz = juengsterSichtbarerSatz(saetze, ausser);
+      if (!satz) return null;
       return {
         nachrichtId: satz.nachrichtId,
         autorId: satz.autorId,
@@ -141,6 +152,35 @@ class DirectMessageStore {
       verlaufZustand.melde(err);
       return null;
     }
+  }
+
+  /**
+   * Die Vorschau nach einer Bearbeitung nachziehen (Bughunt 2026-11-02, Fund
+   * 6). Bearbeiten und Löschen ändern die Nachrichtenliste und den lokalen
+   * Verlauf, die DM-Liste aber kannte nur Senden und Empfangen — der alte
+   * Text stand dort bis zum nächsten Start. Wirkt nur, wenn die bearbeitete
+   * Nachricht gerade die Vorschau stellt; IDs sind die lokalen Anzeige-IDs,
+   * dieselben, die `upsertFromEncrypted` einträgt.
+   */
+  nachBearbeitung(kanalId: string, nachrichtId: string, inhalt: string): void {
+    const dm = this.byId[kanalId];
+    if (!dm || dm.last_message_id !== nachrichtId) return;
+    // Anhänge bleiben beim Bearbeiten unverändert; ohne Text bliebe die
+    // bisherige Marker-Vorschau (`__image__`/`__file__`) richtig.
+    const vorschau = vorschauAusNachricht(inhalt, []) ?? dm.last_message_preview ?? null;
+    this.byId = { ...this.byId, [kanalId]: { ...dm, last_message_preview: vorschau } };
+  }
+
+  /** Gegenstück zu `nachBearbeitung` für eine Löschung: die Vorschau rückt
+   *  auf die nächstältere sichtbare Nachricht, gibt es keine, wird sie leer.
+   *  Der Lesezugriff auf `this.byId` läuft nach dem `await` — ein
+   *  zwischenzeitlich angekommenes Ereignis wird nicht zurückgesetzt. */
+  async nachLoeschen(kanalId: string, nachrichtId: string): Promise<void> {
+    if (this.byId[kanalId]?.last_message_id !== nachrichtId) return;
+    const nachfolger = await this.letzterLokalerSatz(kanalId, nachrichtId);
+    const dm = this.byId[kanalId];
+    if (!dm || dm.last_message_id !== nachrichtId) return;
+    this.byId = { ...this.byId, [kanalId]: vorschauAusSatzOderLeer(dm, nachfolger) };
   }
 
   upsert(dm: DMChannel): void {

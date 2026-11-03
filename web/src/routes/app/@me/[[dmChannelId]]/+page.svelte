@@ -7,6 +7,7 @@
   import DMChannelList from '$lib/components/DMChannelList.svelte';
   import MobileChatsList from '$lib/components/mobile/MobileChatsList.svelte';
   import GruppenSheet from '$lib/components/mobile/GruppenSheet.svelte';
+  import DmHandyPlatzhalter from '$lib/components/mobile/DmHandyPlatzhalter.svelte';
   import { anrufe } from '$lib/anrufe/anruf.svelte';
   import ChatView from '$lib/components/ChatView.svelte';
   import FieldError from '$lib/components/feedback/FieldError.svelte';
@@ -19,7 +20,6 @@
   import { gruppenApi } from '$lib/api/gruppen';
   import { lesestandAnker } from '$lib/stores/lesestandKern';
   import { messages } from '$lib/stores/messages.svelte';
-  import { chatApi } from '$lib/api/chat';
   import { verlaufZustand } from '$lib/verlauf/zustand.svelte';
   import { serversStore } from '$lib/api/servers.svelte';
   import { selectGuild, selectDM as selectDmRail } from '$lib/navigation/railNavi';
@@ -273,22 +273,6 @@
       gruppe: aktiveGruppe !== undefined
     });
 
-  async function togglePin(msg: Message) {
-    try {
-      if (msg.pinned_at) {
-        await chatApi.unpinMessage(msg.id, cloudRoute);
-      } else {
-        await chatApi.pinMessage(msg.id, cloudRoute);
-      }
-    } catch (e) {
-      // WS pin_update spiegelt den Zustand — bei Fehler bleibt die UI konsistent.
-      toast.error(
-        (e as Error).message.includes('pin_limit_reached') ? m.pin_limit_reached() : m.pin_failed()
-      );
-      console.error(e);
-    }
-  }
-
   /** Anpinnen in einer PRIVATEN GRUPPE (Nutzerwunsch 2026-10-19): der Anker
    *  hängt am Gruppen-Objekt (E2E — der Server kennt nur die Zeichenkette),
    *  nicht an einer Server-Nachrichtenliste wie bei Guild-Kanälen. Nochmal
@@ -348,7 +332,10 @@
 {#if !viewport.isMobile || !!dmChannelId}
   <div class="flex h-full min-w-0 flex-1 flex-col gap-2">
   <DmBrowserWarnhinweis handy={viewport.isMobile} />
-  {#if kanalWechsel.loadError}
+  {#if viewport.isMobile && (kanalWechsel.loadError || !synthChannel)}
+    <!-- Hier ist `dmChannelId` gesetzt (äußere Bedingung): Laden oder Fehler. -->
+    <DmHandyPlatzhalter fehler={kanalWechsel.loadError} onBack={() => zurueckZu('/app/@me')} />
+  {:else if kanalWechsel.loadError}
     <section
       class="glass-panel flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-4 rounded-none p-8 nicht-handy:rounded-2xl"
     >
@@ -407,7 +394,6 @@
         onEditMessage={editMessage}
         onDeleteMessage={deleteMessage}
         onToggleReaction={toggleReaction}
-        onTogglePin={togglePin}
         onAnrufen={() => anrufStartenFuer('dm')}
         leerHinweis={sicherungHinweis && !browserWarnung ? leereNachrichten : undefined}
       />

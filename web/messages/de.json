@@ -3629,5 +3629,11 @@
   "agb_zustimmung_abmelden": "Abmelden",
   "agb_zustimmung_konto_loeschen": "Konto löschen",
   "gast_agb_vor": "Mit dem Beitritt akzeptierst du unsere",
-  "gast_agb_mitte": ". Hinweise zum Datenschutz findest du in der"
+  "gast_agb_mitte": ". Hinweise zum Datenschutz findest du in der",
+  "dm_handy_laedt": "Gespräch wird geladen …",
+  "message_item_edit_save": "Speichern",
+  "message_item_edit_cancel": "Abbrechen",
+  "dm_channel_list_heading": "Direktnachrichten",
+  "dm_channel_list_empty": "Noch keine Direktnachrichten. Klick auf eine Person im Kanal, um eine zu starten.",
+  "dm_channel_list_unread": "ungelesen"
 }

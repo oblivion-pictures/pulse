@@ -27,7 +27,7 @@ function zahlEinesGespraechs(kanalId: string): number {
 }
 
 /**
- * Ungelesene private Nachrichten — die **zusammengezählte Anzahl** über alle
+ * Ungelesene Direktnachrichten — die **zusammengezählte Anzahl** über alle
  * Gespräche, nicht die Anzahl der Gespräche (Umstellung 2026-08-24 auf
  * Nutzerwunsch): zwei neue Nachrichten im selben Chat sind eine 2, nicht eine
  * 1. Gekappt wird erst in der Anzeige (99+), nicht hier.
@@ -44,13 +44,14 @@ function zahlEinesGespraechs(kanalId: string): number {
  * Aus demselben Grund NICHT über `readState.sumUnread(ids)`: der summiert nur
  * den Zähler und hätte genau diese Lücke.
  */
-export function ungeleseneChats(): number {
+function ungeleseneChats(): number {
   return directMessages.list.reduce((summe, dm) => summe + zahlEinesGespraechs(dm.id), 0);
 }
 
 /**
- * Die Zahl für das App-Icon (iOS) — ungelesene Nachrichten über alle
- * privaten Gespräche: Direktnachrichten UND private Gruppen.
+ * Die Zahl für das App-Icon (iOS) und den Chats-Bereich der Leiste —
+ * ungelesene Nachrichten über alle privaten Gespräche: Direktnachrichten UND
+ * private Gruppen.
  *
  * **Warum Community-Kanäle NICHT mitzählen**, obwohl der Titel-Punkt sie
  * berücksichtigt: Die Zahl am Icon muss dasselbe zählen, was der Server im

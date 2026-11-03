@@ -12,7 +12,7 @@ import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 import UsersIcon from '@lucide/svelte/icons/users';
 import UserIcon from '@lucide/svelte/icons/user';
 import type { TabId } from '$lib/navigation/tabs';
-import { ungeleseneChats, offeneAnfragen } from '$lib/navigation/abzeichen.svelte';
+import { ungeleseneNachrichten, offeneAnfragen } from '$lib/navigation/abzeichen.svelte';
 import { m } from '$lib/paraglide/messages.js';
 import { settings } from '$lib/stores/settings.svelte';
 import { BEREICHE } from '$lib/navigation/tabs';
@@ -55,9 +55,12 @@ export function beschriftung(id: TabId): string {
  * nicht: dort steckt Ungelesenes je Community und je Kanal, eine
  * zusammengezählte Zahl an der Leiste sagte nur „irgendwo ist etwas" und
  * führte nirgendwohin.
+ *
+ * Chats zählt DMs und private Gruppen — dieselbe Zahl wie das App-Symbol.
+ * Bis 2026-11-03 standen hier nur die DMs, obwohl der Bereich beide listet.
  */
 export function zahlFuer(id: TabId): number {
-  if (id === 'chats') return ungeleseneChats();
+  if (id === 'chats') return ungeleseneNachrichten();
   if (id === 'friends') return offeneAnfragen();
   return 0;
 }

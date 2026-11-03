@@ -3629,5 +3629,11 @@
   "agb_zustimmung_abmelden": "Sign out",
   "agb_zustimmung_konto_loeschen": "Delete account",
   "gast_agb_vor": "By joining, you accept our",
-  "gast_agb_mitte": ". Information on data protection is in our"
+  "gast_agb_mitte": ". Information on data protection is in our",
+  "dm_handy_laedt": "Loading conversation…",
+  "message_item_edit_save": "Save",
+  "message_item_edit_cancel": "Cancel",
+  "dm_channel_list_heading": "Direct messages",
+  "dm_channel_list_empty": "No direct messages yet. Click a person in a channel to start one.",
+  "dm_channel_list_unread": "unread"
 }
