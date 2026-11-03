@@ -108,11 +108,57 @@ export function mitLokalerVorschauMergen<T extends ServerDmVorschau>(
   if (server.last_message_id !== null && vergleicheId(server.last_message_id, lokal.nachrichtId) >= 0) {
     return server;
   }
+  return mitSatzAlsVorschau(server, lokal);
+}
+
+/** Übernimmt alle vier Vorschau-Felder aus dem lokalen Satz — gemeinsamer
+ *  Teil von `mitLokalerVorschauMergen` und `vorschauAusSatzOderLeer`. */
+function mitSatzAlsVorschau<T extends ServerDmVorschau>(dm: T, satz: LokalerLetzterSatz): T {
   return {
-    ...server,
-    last_message_id: lokal.nachrichtId,
-    last_message_preview: vorschauAusNachricht(lokal.inhalt, lokal.anhaenge),
-    last_message_author_id: lokal.autorId,
-    last_message_at: lokal.erstelltAm
+    ...dm,
+    last_message_id: satz.nachrichtId,
+    last_message_preview: vorschauAusNachricht(satz.inhalt, satz.anhaenge),
+    last_message_author_id: satz.autorId,
+    last_message_at: satz.erstelltAm
   };
+}
+
+/** Ausschnitt von `schema.ts::Satz` mit dem Lösch-Kennzeichen — für die Wahl
+ *  der jüngsten noch sichtbaren Nachricht (importfrei-Pflicht, s. oben). */
+export type LokalerSatzMitGrabstein = LokalerLetzterSatz & { geloescht: boolean };
+
+/**
+ * Die jüngste noch sichtbare Nachricht aus einem Stück Verlauf (älteste
+ * zuerst, wie `db.ts::verlaufLesenSaetze` liefert), oder `null`.
+ *
+ * Ein Grabstein zählt nicht — sonst fiel die Vorschau nach dem Löschen der
+ * letzten Nachricht beim nächsten Start auf den Server-Wert zurück (bei einem
+ * verschlüsselten Gespräch der letzte Klartext-Stand von früher oder nichts).
+ * `ausser` nimmt die gerade gelöschte Nachricht auch dann aus, wenn ihr
+ * Grabstein noch nicht geschrieben ist (`verlaufNachrichtGeloescht` schreibt
+ * ohne `await`).
+ */
+export function juengsterSichtbarerSatz<T extends LokalerSatzMitGrabstein>(
+  saetze: readonly T[],
+  ausser?: string
+): T | null {
+  for (let i = saetze.length - 1; i >= 0; i--) {
+    const satz = saetze[i];
+    if (!satz.geloescht && satz.nachrichtId !== ausser) return satz;
+  }
+  return null;
+}
+
+/** Die Vorschau-Felder aus einem lokalen Satz (oder geleert, wenn keiner
+ *  mehr sichtbar ist) — für `directMessages.nachLoeschen`. Die Sortierung
+ *  folgt der Vorschau: ohne Nachfolger bleibt `last_message_id` stehen, die
+ *  Zeile springt also nicht ans Listenende. */
+export function vorschauAusSatzOderLeer<T extends ServerDmVorschau>(
+  dm: T,
+  satz: LokalerLetzterSatz | null
+): T {
+  if (!satz) {
+    return { ...dm, last_message_preview: null, last_message_author_id: null };
+  }
+  return mitSatzAlsVorschau(dm, satz);
 }

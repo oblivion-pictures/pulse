@@ -11,11 +11,11 @@
   import ReportMessageDialog from './chat/ReportMessageDialog.svelte';
   import MessageRowLayout from './message/MessageRowLayout.svelte';
   import MessageBubbleLayout from './message/MessageBubbleLayout.svelte';
+  import NachrichtBearbeiten from './message/NachrichtBearbeiten.svelte';
   import { detectEmbeds } from '$lib/embeds/providers';
   import { plainifyMentions, renderMessage } from './messageRender';
   import { m } from '$lib/paraglide/messages.js';
   import { haptikTicken } from '$lib/platform/haptik';
-  import { mitwachsen } from '$lib/utils/mitwachsen';
   import { ersteEinladungImText } from '$lib/einladung/einladungsLink';
   import { einladungsKlicksAbfangen } from '$lib/einladung/linkKlick';
   import { CLOUD_HOSTNAME } from '$lib/api/servers.svelte';
@@ -108,7 +108,6 @@
   let infoOpen = $state(false);
 
   let editing = $state(false);
-  let draft = $state('');
   // Touch action sheet — opened by long-press, the only message-action path
   // on a device with no hover (the `MessageActions` toolbar is hover-gated).
   let sheetOpen = $state(false);
@@ -189,30 +188,11 @@
 
   function startEdit() {
     if (isPending) return;
-    draft = message.content;
     editing = true;
   }
-  function cancelEdit() {
+  function saveEdit(text: string) {
+    onEditSubmit(message, text);
     editing = false;
-    draft = '';
-  }
-  function saveEdit() {
-    const v = draft.trim();
-    if (!v || v === message.content) {
-      cancelEdit();
-      return;
-    }
-    onEditSubmit(message, v);
-    editing = false;
-  }
-  function onEditKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelEdit();
-    } else if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      saveEdit();
-    }
   }
 
   function handleToggle(emoji: string, mine: boolean) {
@@ -286,19 +266,13 @@
       </button>
     {/if}
     {#if editing}
-      <textarea
-        bind:value={draft}
-        onkeydown={onEditKey}
-        use:mitwachsen
-        rows="2"
-        class="text-text-bright max-h-[60vh] w-full resize-none overflow-y-auto rounded-md border border-border bg-bg-input px-2 py-1 text-[15px] outline-none focus:border-primary"
-        data-testid="message-edit-input"
-      ></textarea>
-      <!-- Auf der eigenen Blase im dunklen Erscheinungsbild helles Weiß (Grau
-           läge auf dem dunklen Blau zu matt), im hellen das normale Grau. -->
-      <div class="text-text-muted mt-1 text-xs {layout === 'bubble' && istEigene ? 'dark:text-white/85' : ''}">
-        {m.message_item_edit_hint()}
-      </div>
+      <NachrichtBearbeiten
+        inhalt={message.content}
+        {handy}
+        hellAufDunkel={layout === 'bubble' && istEigene}
+        onSpeichern={saveEdit}
+        onAbbrechen={() => (editing = false)}
+      />
     {:else}
       <!-- Beizeile UNTER dem Medium (WhatsApp-Prinzip): bei Medien steht der
            Text direkt drunter in derselben Blase; bei reinen Textnachrichten

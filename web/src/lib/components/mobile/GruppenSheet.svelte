@@ -119,9 +119,11 @@
       return;
     }
     void ausfuehren(async () => {
-      const neu = await gruppenApi.verlassen(gruppe.id);
-      if (neu) privateGruppen.upsert(neu);
-      else privateGruppen.entfernen(gruppe.id);
+      // Die Antwort ist die Gruppe OHNE mich, solange andere drin sind — wer
+      // sie per `upsert` übernahm, behielt die verlassene Gruppe in der Liste
+      // (Bughunt 2026-11-02, Fund 7). Für mich ist sie in jedem Fall weg.
+      await gruppenApi.verlassen(gruppe.id);
+      privateGruppen.entfernen(gruppe.id);
       open = false;
       onVerlassen?.();
     });

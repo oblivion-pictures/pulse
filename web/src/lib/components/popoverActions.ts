@@ -227,6 +227,10 @@ export async function removeFriend(ctx: ActionCtx): Promise<void> {
   await withWorking(ctx, () => m.popover_actions_remove_friend_failed(), async () => {
     await friendsApi.removeFriend(ctx.userId);
     friends.remove(ctx.userId);
+    // Ob das Eingabefeld frei ist (`can_send`), entscheidet der Server; die
+    // DM-Liste neu holen. `friend_removed` geht nur an die Gegenseite, hier
+    // blieb das Feld sonst bis zum nächsten Start aktiv (Bughunt 2026-11-02).
+    void directMessages.hydrate().catch(() => undefined);
     toast.success(m.popover_actions_friend_removed({ displayName: ctx.displayName }));
     ctx.close();
   });

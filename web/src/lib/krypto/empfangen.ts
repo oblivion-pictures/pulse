@@ -131,6 +131,7 @@ import {
 } from '../verlauf';
 import { zyklusAuswerten } from './zyklusAuswerten';
 import { messages } from '../stores/messages.svelte';
+import { directMessages } from '../stores/directMessages.svelte';
 import { auth } from '../stores/auth.svelte';
 import { verlaufZustand } from '../verlauf/zustand.svelte';
 import { postfachApi } from '../api/postfach';
@@ -239,9 +240,17 @@ async function postfachZyklus(): Promise<Message[]> {
     gebundenLoeschen: verlaufGebundenGeloeschtPflicht,
     reaktionAnwenden: verlaufReaktionAnwendenPflicht,
     bearbeitungAnwenden: verlaufBearbeitungAnwendenPflicht,
-    anzeigeEntfernen: (kanalId, id) => messages.remove(kanalId, id),
+    // Die DM-Liste zieht mit, sonst zeigt ihre Vorschau den gelöschten oder
+    // alten Text bis zum nächsten Start (Bughunt 2026-11-02, Fund 6).
+    anzeigeEntfernen: (kanalId, id) => {
+      messages.remove(kanalId, id);
+      void directMessages.nachLoeschen(kanalId, id);
+    },
     anzeigeReaktionen: (kanalId, id, r) => messages.setReactions(kanalId, id, r),
-    anzeigeInhalt: (kanalId, id, inhalt, am) => messages.bearbeiteInhalt(kanalId, id, inhalt, am),
+    anzeigeInhalt: (kanalId, id, inhalt, am) => {
+      messages.bearbeiteInhalt(kanalId, id, inhalt, am);
+      directMessages.nachBearbeitung(kanalId, id, inhalt);
+    },
     anrufSchluessel: (anrufId, schluessel) => anrufe.schluesselEmpfangen(anrufId, schluessel),
     jetzt: () => new Date().toISOString(),
     abgelegtLesen: verlaufAbgelegteNachricht
