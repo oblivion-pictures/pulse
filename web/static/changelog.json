@@ -2,6 +2,21 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-03.2",
+      "date": "2026-11-03",
+      "style": "Sachlich",
+      "title": "Direktnachrichten",
+      "items": [
+        "Nach dem Löschen oder Bearbeiten der letzten Nachricht zeigt die Chat-Liste sofort den richtigen Text.",
+        "Am Handy lassen sich Nachrichten beim Bearbeiten mehrzeilig schreiben und über eigene Knöpfe speichern oder verwerfen.",
+        "Eine verlassene Gruppe verschwindet sofort aus der Liste.",
+        "Die Zahl am Chats-Bereich zählt Gruppen mit.",
+        "Wer jemanden aus der Freundesliste entfernt, sieht im Gespräch sofort, ob noch geschrieben werden kann.",
+        "Beim Öffnen eines Gesprächs am Handy gibt es immer einen Zurück-Pfeil.",
+        "„Anheften“ wird in Direktnachrichten nicht mehr angeboten, weil es dort nicht funktionierte."
+      ]
+    },
+    {
       "id": "2026-11-03",
       "date": "2026-11-03",
       "style": "Sachlich",
