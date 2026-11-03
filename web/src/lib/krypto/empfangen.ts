@@ -145,6 +145,7 @@ import { unbekannteDmsNachladen } from './unbekannteDms';
 import type { Vormerkungen } from './gruppe/wasserstand';
 import { melde } from '../diagnose/app-diagnose';
 import { KontoSicherungFehlgeschlagen, zustellungOeffnen } from './zustellungOeffnen';
+import { auskunftsSpeicherAnlegen } from './empfangsbindung';
 import { mitKontosperre } from './sperren';
 import { mitNachlaufBeiWeckung } from './postfachNachlauf';
 import { fuelleEinmalschluesselNach } from './veroeffentlichen';
@@ -161,14 +162,25 @@ function cloudRoute(): { serverId?: string } {
   return { serverId: serversStore.cloudId() };
 }
 
-async function postfachZyklus(): Promise<Message[]> {
+/** Was ein Zyklus zurückgibt: die geöffneten Nachrichten und ob etwas
+ *  liegen blieb, weil das Schlüsselverzeichnis nicht antwortete (dann plant
+ *  der Aufrufer einen Nachlauf, `ws/handlers/chat.ts`). Bis 2026-11-03 kam
+ *  nur die Liste — eine aufgeschobene Zustellung wartete still auf den
+ *  nächsten Weckruf (DM-Bughunt 2026-11-02, Fund 3). */
+export type ZyklusErgebnis = { nachrichten: Message[]; aufgeschoben: boolean };
+
+function leeresErgebnis(): ZyklusErgebnis {
+  return { nachrichten: [], aufgeschoben: false };
+}
+
+async function postfachZyklus(): Promise<ZyklusErgebnis> {
   // Der Riegel (Gegenprüfung 2026-10-12, R3, `verlauf/verbindung.ts`): ein
   // anderer Tab hat die Verlaufs-Datenbank angehoben, dieser kann nichts mehr
   // ablegen. Dann nichts abholen, nichts entschlüsseln, nichts quittieren —
   // jede Sitzung bliebe sonst über eine Zustellung hinaus weitergedreht, die
   // nirgends liegt, und kein Tab könnte sie mehr öffnen. Der neu geladene Tab
   // holt alles ab. `zustellungOeffnen.ts` prüft ihn je Zustellung erneut.
-  if (verlaufVerriegelt()) return [];
+  if (verlaufVerriegelt()) return leeresErgebnis();
 
   // `geraeteKennung()` wirft, wenn sich keine Kennung ermitteln laesst
   // (nicht angemeldet) — und genau das muss hier ANDERS enden als ein
@@ -185,7 +197,7 @@ async function postfachZyklus(): Promise<Message[]> {
     kennung = await geraeteKennung();
   } catch (err) {
     verlaufZustand.melde(err);
-    return [];
+    return leeresErgebnis();
   }
 
   const zustellungen = await postfachApi.abholen({ device_pubkey: kennung }, cloudRoute());
@@ -197,7 +209,7 @@ async function postfachZyklus(): Promise<Message[]> {
     // Einmalschlüssel und jeder neue Sitzungsaufbau lief über den
     // Fallback-Schlüssel (s. `fuelleEinmalschluesselNach`).
     await fuelleEinmalschluesselNach();
-    return [];
+    return leeresErgebnis();
   }
 
   // Befund 3 (Push-Bughunt 2026-10-21, s. `unbekannteDms.ts`): eine
@@ -208,6 +220,9 @@ async function postfachZyklus(): Promise<Message[]> {
   // Die Wasserstand-Vormerkungen des Gruppenwegs gelten nur für DIESEN
   // Zyklus (`gruppe/wasserstand.ts::wirksamerStand`).
   const vorgemerkt: Vormerkungen = new Map();
+  // Die Verzeichnis-Auskunft je Absender, ebenfalls nur für diesen Zyklus
+  // (`zyklusSpeicher.ts`).
+  const auskunft = auskunftsSpeicherAnlegen();
   // FIX 2 (Bughunt-Runde 3, s. Modulkopf + `postfachSchleife.ts`): laesst nur
   // die EINE Zustellung liegen, deren Konto-Sichern scheitert — `ident` wird
   // fuer die naechste Zustellung frisch aus IndexedDB geladen (der zuletzt
@@ -216,7 +231,7 @@ async function postfachZyklus(): Promise<Message[]> {
   // anderen Zustellungen dieses Zyklus laufen normal weiter.
   const ergebnisse = await verarbeiteMitWiederherstellung(
     zustellungen,
-    (z) => zustellungOeffnen(ident, z, vorgemerkt),
+    (z) => zustellungOeffnen(ident, z, vorgemerkt, auskunft),
     (err) => err instanceof KontoSicherungFehlgeschlagen,
     async () => {
       ident = await kryptoAccountLaden();
@@ -286,13 +301,14 @@ async function postfachZyklus(): Promise<Message[]> {
   // `fuelleEinmalschluesselNach`).
   await fuelleEinmalschluesselNach();
 
-  return anzuzeigen;
+  return { nachrichten: anzuzeigen, aufgeschoben: auskunft.aufgeschoben };
 }
 
 /**
  * Holt alle offenen Zustellungen dieses Geraets ab, entschluesselt was sich
  * oeffnen laesst, legt es im lokalen Verlauf ab und quittiert erst danach.
- * Gibt die geoeffneten Nachrichten zurueck (fuer die sofortige Anzeige).
+ * Gibt ein `ZyklusErgebnis` zurück: die geöffneten Nachrichten (für die
+ * sofortige Anzeige) und ob etwas aufgeschoben liegen blieb.
  *
  * **Der ganze Zyklus laeuft unter der Konto-Sperre** (Bughunt 2026-08-29,
  * s. `sperren.ts`) — nicht bloss das Sichern, und nicht bloss der

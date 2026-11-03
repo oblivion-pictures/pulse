@@ -29,7 +29,7 @@ import { fireInPageNotification, isDnd } from '$lib/notifications/inPage';
 import { sounds } from '$lib/sounds/engine';
 import { neueNachrichtToast } from './postfachBenachrichtigung';
 import { zustellungenVerbuchen } from './postfachVerbuchen';
-import type { Message } from '$lib/api/types';
+import type { ZyklusErgebnis } from '$lib/krypto/empfangen';
 import { registerWsHandler } from '../handler-registry';
 import { serversStore } from '$lib/api/servers.svelte';
 import { dispatchingServerId } from '$lib/ws/gateway-connection';
@@ -63,7 +63,7 @@ function serverStumm(): boolean {
 }
 
 /** Schon verbuchte Abhol-Ergebnisse (s. `postfachAbholenUndAnzeigen`). */
-const verbucht = new WeakSet<readonly Message[]>();
+const verbucht = new WeakSet<ZyklusErgebnis>();
 
 /** Der Abo-Blick des `postfach_neu`-Weckrufs, gesetzt in `register` — der
  *  Hintergrund-Takt nimmt denselben (`postfachImHintergrundAbholen`). */
@@ -148,16 +148,20 @@ export function postfachAbholenUndAnzeigen(
     // Abgelegt hat `empfangen.ts` schon selbst; hier kommt nur noch die
     // Anzeige dazu. **Jedes Ergebnis genau einmal:** `mitNachlaufBeiWeckung`
     // gibt allen Aufrufern, die sich an denselben Nachlauf haengen (Weckruf,
-    // `ready`, Hintergrund-Takt), DIESELBE Liste zurueck. Verbuchte jeder sie,
-    // zaehlte „ungelesen" jede Nachricht doppelt. Also verbucht, wer die Liste
-    // zuerst sieht — mit SEINEM `stumm`. Gemischt kommt das nur vor, wenn sich
+    // `ready`, Hintergrund-Takt), DASSELBE Ergebnis zurück. Verbuchte jeder es,
+    // zählte „ungelesen" jede Nachricht doppelt. Also verbucht, wer es zuerst
+    // sieht — mit SEINEM `stumm`. Gemischt kommt das nur vor, wenn sich
     // ein Weckruf an eine Runde des Hintergrund-Takts haengt; die App ist
     // dann hinten, und gezaehlt wird so oder so.
     .then((neue) => {
-      postfachWiederholung.erfolgreich();
+      // Blieb etwas liegen, weil das Schlüsselverzeichnis nicht antwortete,
+      // denselben Nachlauf wie nach einem Wurf planen — sonst wartete es bis
+      // zum nächsten Weckruf (DM-Bughunt 2026-11-02, Fund 3).
+      if (neue.aufgeschoben && !stumm) postfachWiederholung.fehlgeschlagen();
+      else postfachWiederholung.erfolgreich();
       if (verbucht.has(neue)) return;
       verbucht.add(neue);
-      zustellungenVerbuchen(neue, istAboniert, { stumm });
+      zustellungenVerbuchen(neue.nachrichten, istAboniert, { stumm });
     })
     .catch((err: unknown) => {
       // Bis 2026-09-03 stand hier ein leeres `catch` — ein Fehler beim

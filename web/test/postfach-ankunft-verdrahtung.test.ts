@@ -25,7 +25,7 @@ test('Befund 1: der Zyklus quittiert über quittungVersuchen und liest abgelegte
   assert.match(zyklus, /await quittungVersuchen\(/);
   // Kein ungeschütztes Quittieren mehr, dessen Wurf `anzuzeigen` verschluckt.
   assert.doesNotMatch(zyklus, /await postfachApi\.quittieren\(/);
-  assert.ok(zyklus.indexOf('quittungVersuchen(') < zyklus.lastIndexOf('return anzuzeigen'));
+  assert.ok(zyklus.indexOf('quittungVersuchen(') < zyklus.lastIndexOf('return { nachrichten: anzuzeigen'));
   assert.match(zyklus, /abgelegtLesen: verlaufAbgelegteNachricht/);
   assert.match(lies('lib/verlauf/index.ts'), /export \{ verlaufAbgelegteNachricht \}/);
 });
@@ -40,7 +40,7 @@ test('Befund 2: der Gruppenweg merkt den Stand nur vor und schreibt ihn erst üb
   const merken = gruppe.indexOf('gruppenWasserstandMerken(');
   assert.ok(fest >= 0 && merken > fest, 'gruppenWasserstandMerken nur im festschreiben-Griff');
   // Die Vormerkung reist je Zyklus mit (empfangen.ts → zustellungOeffnen).
-  assert.match(lies('lib/krypto/empfangen.ts'), /zustellungOeffnen\(ident, z, vorgemerkt\)/);
+  assert.match(lies('lib/krypto/empfangen.ts'), /zustellungOeffnen\(ident, z, vorgemerkt, auskunft\)/);
 });
 
 test('Befund 3: ein Olm-Klartext für einen unbekannten Kanal wird vor dem Sichern liegen gelassen', () => {
