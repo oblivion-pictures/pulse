@@ -17,9 +17,11 @@
  * — verbrauchsfrei, denn `claim` würde je Gerät einen Einmalschluessel des
  * Absenders verbrennen), prüft Bündel-Signatur und TOFU-Pinnung
  * (`geraetebuendelAuthentifizieren`) und gleicht die Kurve ab. Der Lauf
- * passiert je Zustellung EINMAL, außerhalb der Sitzungssperre, und nur für
- * Aufbau-Umschläge (Art 0) — pro Gerät und Kanal also einmal je
- * Sitzungsleben.
+ * passiert je Zustellung einmal, außerhalb der Sitzungssperre, und nur für
+ * Aufbau-Umschläge (Art 0). **Das sind nicht wenige:** bis die Gegenseite
+ * antwortet, bleibt jede Nachricht eines Geräts ein Aufbau-Umschlag. Den
+ * Abruf selbst teilen sich deshalb alle Zustellungen eines Zyklus
+ * (`AuskunftsSpeicher`, Fund 3 vom 2026-11-02).
  *
  * **Drei Ausgänge, drei Behandlungen in `zustellungOeffnen.ts`:**
  * * `geprueft` — Kurve steht im Verzeichnis, Sitzung darf gebaut werden
@@ -39,6 +41,7 @@
 import { keysApi, type GeraeteSchluessel } from '../api/keys';
 import { serversStore } from '../api/servers.svelte';
 import { geraetebuendelAuthentifizieren } from './geraetePinnung';
+import { zyklusSpeicherAnlegen, type ZyklusSpeicher } from './zyklusSpeicher';
 
 function cloudRoute(): { serverId?: string } {
   return { serverId: serversStore.cloudId() };
@@ -63,6 +66,14 @@ export class EmpfangsBindungWidersprochen extends Error {
   }
 }
 
+/** Die Verzeichnis-Auskunft je Absender-Konto, einmal je Abholzyklus
+ *  (`zyklusSpeicher.ts`, DM-Bughunt 2026-11-02, Fund 3). */
+export type AuskunftsSpeicher = ZyklusSpeicher<GeraeteSchluessel[]>;
+
+export function auskunftsSpeicherAnlegen(): AuskunftsSpeicher {
+  return zyklusSpeicherAnlegen((userId) => keysApi.buendelAuskunft(userId, cloudRoute()));
+}
+
 export type EmpfangsBindung =
   | { art: 'geprueft'; curve25519: string }
   | { art: 'spaeter' }
@@ -71,14 +82,17 @@ export type EmpfangsBindung =
 export async function absenderBinden(
   absenderUserId: string,
   absenderGeraet: string,
-  behaupteteKurve: string
+  behaupteteKurve: string,
+  auskunft: AuskunftsSpeicher
 ): Promise<EmpfangsBindung> {
   let eintraege: GeraeteSchluessel[];
   try {
     // Verbrauchsfreie Leserate, NICHT claim — claim würde je Gerät einen
     // Einmalschluessel des Absenders verbrauchen, ohne ihn je zu benutzen
     // (`schluessel_auskunft.py`, dieselbe Abwägung wie /keys/verschluesselbar).
-    eintraege = await keysApi.buendelAuskunft(absenderUserId, cloudRoute());
+    // Über den Zyklus-Speicher: je Absender ein Abruf, nicht einer je
+    // Zustellung (sonst 429 ab der 61. Nachricht, Fund 3).
+    eintraege = await auskunft.holen(absenderUserId);
   } catch (err) {
     console.warn('[postfach] Verzeichnis nicht erreichbar — Sitzungsaufbau verschoben', err);
     return { art: 'spaeter' };

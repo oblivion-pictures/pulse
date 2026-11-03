@@ -42,7 +42,7 @@ import { baueEmpfangeneNachricht } from './empfangeneNachricht';
 import { absenderErmitteln } from './absenderErmitteln';
 import { absenderAngabeGefaelscht } from './olmAbsenderAngabe';
 import { oeffneMitRueckfall } from './sitzungsRueckfall';
-import { absenderBinden } from './empfangsbindung';
+import { absenderBinden, type AuskunftsSpeicher } from './empfangsbindung';
 import { PRIVATE_GRUPPEN_ENABLED } from './schalter';
 import { ABLAGE_KANAL_ENABLED } from '../featureFlags';
 import {
@@ -120,7 +120,9 @@ export async function zustellungOeffnen(
   z: PostfachZustellung,
   /** Die Wasserstand-Vormerkungen DIESES Abholzyklus (Gruppenweg, s.
    *  `gruppe/wasserstand.ts::wirksamerStand`). */
-  vorgemerkt: Vormerkungen
+  vorgemerkt: Vormerkungen,
+  /** Die Verzeichnis-Auskunft DIESES Abholzyklus (`empfangsbindung.ts`). */
+  auskunft: AuskunftsSpeicher
 ): Promise<ZustellungOffenErgebnis> {
   // FIX 3 (Bughunt-Runde 3) — ZUERST pruefen, noch vor jeder Sitzungssperre
   // und jedem Entschluesseln: liegt der Klartext schon lokal, braucht es
@@ -169,7 +171,8 @@ export async function zustellungOeffnen(
   // „als die Gegenseite" fälschen (DM-Nachrichten wie Verteilschlüssel
   // gleichermaßen — beide reisen als Olm-Umschläge hier hindurch). Details
   // und die drei Ausgänge: `empfangsbindung.ts`. Läuft nur für Aufbau-
-  // Umschläge, also einmal je Gerät und Sitzungsleben.
+  // Umschläge — bis zur ersten Antwort ist das jede Nachricht des Geräts;
+  // der Verzeichnis-Abruf kommt deshalb aus dem Zyklus-Speicher.
   let bindung: Awaited<ReturnType<typeof absenderBinden>> | null = null;
   if (z.art === 0 && z.absender_curve25519 !== null && z.absender_user_id !== null) {
     // Zweiter Bughunt-Lauf, Ergänzung: OHNE Metadaten-Konto keine Bindung —
@@ -181,7 +184,8 @@ export async function zustellungOeffnen(
     bindung = await absenderBinden(
       absenderUserId,
       z.absender_device_pubkey,
-      z.absender_curve25519
+      z.absender_curve25519,
+      auskunft
     );
     if (bindung.art === 'spaeter') return null; // Verzeichnis weg — liegen lassen, Retry im nächsten Zyklus
     if (bindung.art === 'zurueckgewiesen') return { art: 'ohneAblage', id: z.id };

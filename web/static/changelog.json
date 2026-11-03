@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-03.3",
+      "date": "2026-11-03",
+      "style": "Sachlich",
+      "title": "Direktnachrichten",
+      "items": [
+        "Wer die App nach längerer Pause öffnet, bekommt jetzt alle Nachrichten auf einmal, auch wenn sehr viele aufgelaufen sind. Bisher blieb ab etwa 60 Nachrichten der Rest bis zur nächsten neuen Nachricht liegen."
+      ]
+    },
+    {
       "id": "2026-11-03.2",
       "date": "2026-11-03",
       "style": "Sachlich",
