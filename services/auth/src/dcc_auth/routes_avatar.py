@@ -27,6 +27,11 @@ from dcc_auth.schemas import UserPublic
 router = APIRouter()
 
 _ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
+# Pillow-Formatnamen zu genau diesen Typen. Der Content-Type oben stammt vom
+# Client und beweist nichts — ohne ``formats=`` beim Oeffnen reicht Pillow
+# JEDES bekannte Format an seinen Decoder weiter, auch die Exoten mit
+# bekannten Speicherfehlern (JPEG2000, GD, EPS …; Security-Scan 2026-11-04).
+_PIL_FORMATE = ("PNG", "JPEG", "WEBP")
 _MAX_RAW_BYTES = 5 * 1024 * 1024  # 5 MB
 _MAX_DIM = 256
 _FILENAME_RE = re.compile(r"^\d+\.webp$")
@@ -42,9 +47,9 @@ def _process_image(raw: bytes) -> bytes:
     WEBP-Re-Encode das Orientation-Tag verwirft), und Paletten-PNGs mit
     Transparenz werden nach RGBA gehoben — sonst opacity-färbt die
     Palette den Hintergrund opak (oft schwarz)."""
-    img = Image.open(io.BytesIO(raw))
+    img = Image.open(io.BytesIO(raw), formats=_PIL_FORMATE)
     img.verify()
-    img = Image.open(io.BytesIO(raw))  # re-open after verify() (it exhausts the stream)
+    img = Image.open(io.BytesIO(raw), formats=_PIL_FORMATE)  # re-open after verify() (it exhausts the stream)
     img = ImageOps.exif_transpose(img)
     if img.mode in ("P", "LA"):
         img = img.convert("RGBA")

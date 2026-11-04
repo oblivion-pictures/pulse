@@ -280,3 +280,26 @@ async def test_upload_decompression_bomb_rejected(client, monkeypatch):
         files={"file": ("bomb.png", io.BytesIO(png_data), "image/png")},
     )
     assert r.status_code == 400
+
+
+def _make_exot(fmt: str) -> bytes:
+    img = Image.new("RGB", (32, 32), color=(10, 20, 30))
+    buf = io.BytesIO()
+    img.save(buf, fmt)
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fmt", ["BMP", "TGA", "GIF"])
+async def test_upload_rejects_exotic_format_disguised_as_png(client, fmt):
+    """Security-Scan 2026-11-04: Der Content-Type stammt vom Client. Ohne
+    ``formats=`` beim Oeffnen dekodiert Pillow JEDES Format, das es kennt —
+    auch die Exoten (JPEG2000, GD, EPS …) mit bekannten Speicherfehlern.
+    Nur PNG/JPEG/WEBP duerfen den Decoder erreichen."""
+    token, _ = await _register_and_token(client)
+    r = await client.post(
+        "/me/avatar",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("x.png", io.BytesIO(_make_exot(fmt)), "image/png")},
+    )
+    assert r.status_code == 400
