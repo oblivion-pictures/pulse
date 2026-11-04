@@ -33,7 +33,10 @@ router = APIRouter()
 class CallTokenIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    call_id: Annotated[str, Field(min_length=1, max_length=64)]
+    # Nur Ziffern (Snowflake): der Wert wandert in den Pfad der Mitgliedschafts-
+    # Abfrage, und httpx löst ``..`` darin auf — vorher ließ sich die Abfrage auf
+    # eine beliebige chat-gateway-Route umbiegen (Security-Scan 2026-11-04).
+    call_id: Annotated[str, Field(pattern=r"^\d{1,20}$")]
 
 
 class CallTokenOut(BaseModel):
@@ -82,7 +85,14 @@ async def issue_call_token(
             status.HTTP_502_BAD_GATEWAY, detail="membership check failed"
         )
     tatbestand = resp.json()
-    room = tatbestand["room"]
+    room = tatbestand.get("room")
+    # Zweite Schranke: ausgestellt wird nur der Raum GENAU dieses Anrufs
+    # (Schema ``Anruf.raum()`` im chat-gateway), nie ein Name, den eine Antwort
+    # vorgibt.
+    if room != f"call-{payload.call_id}":
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, detail="membership check failed"
+        )
 
     grants = lk.VideoGrants(
         room_join=True,
