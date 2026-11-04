@@ -238,11 +238,11 @@ async def test_mint_reset_allows_remint_after_redeem(
     )
     assert blocked.status_code == 403
 
-    # Mit reset=true: neuer Token, einlösbar, Secret rotiert.
+    # Mit reset=true (und Passwort): neuer Token, einlösbar, Secret rotiert.
     r2 = await client.post(
         f"/me/instances/{alice_instance.id}/bootstrap-token",
         headers={"Cookie": alice["cookie"]},
-        json={"reset": True},
+        json={"reset": True, "password": _REG_A["password"]},
     )
     assert r2.status_code == 201, r2.text
     rr2 = await client.post(
@@ -251,6 +251,64 @@ async def test_mint_reset_allows_remint_after_redeem(
     )
     assert rr2.status_code == 200, rr2.text
     assert rr2.json()["client_secret"] != old_client_secret
+
+
+async def _eingeloest(client, alice, instance_id) -> None:
+    """Erst-Mint + Redeem: danach läuft der Reset-Pfad (Übernahme)."""
+    token = await _mint(client, alice, instance_id)
+    rr = await client.post("/selfhost/bootstrap", headers={"Authorization": f"Bearer {token}"})
+    assert rr.status_code == 200, rr.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [{"reset": True}, {"reset": True, "password": "falsches passwort"}],
+    ids=["ohne-passwort", "falsches-passwort"],
+)
+async def test_mint_reset_verlangt_passwort(client, alice, alice_instance, body):
+    """Sicherheitsfund 2026-11-04: der Reset nach eingelöstem Bootstrap rotiert
+    die Zugangsdaten des laufenden Heimservers. Ein gestohlenes Sitzungs-Cookie
+    allein darf das nicht — ohne oder mit falschem Passwort 401, kein Token."""
+    await _eingeloest(client, alice, alice_instance.id)
+    r = await client.post(
+        f"/me/instances/{alice_instance.id}/bootstrap-token",
+        headers={"Cookie": alice["cookie"]},
+        json=body,
+    )
+    assert r.status_code == 401, r.text
+    assert r.json()["detail"] == "invalid credentials"
+    assert "token" not in r.json()
+
+
+@pytest.mark.asyncio
+async def test_erster_mint_braucht_kein_passwort(client, alice, alice_instance):
+    """Die Ersteinrichtung direkt nach der Anmeldung bleibt ohne Passwort — auch
+    mit ``reset=true``, solange noch nichts eingelöst ist."""
+    r = await client.post(
+        f"/me/instances/{alice_instance.id}/bootstrap-token",
+        headers={"Cookie": alice["cookie"]},
+        json={"reset": True},
+    )
+    assert r.status_code == 201, r.text
+
+
+@pytest.mark.asyncio
+async def test_mint_reset_passwort_je_konto_gebremst(client, alice, alice_instance):
+    """Passwort-Raten mit gestohlenem Cookie: je Konto gebremst
+    (``rate_limit_per_account``, 10/Minute) — danach 429, auch mit dem
+    richtigen Passwort."""
+    await _eingeloest(client, alice, alice_instance.id)
+    url = f"/me/instances/{alice_instance.id}/bootstrap-token"
+    for _ in range(10):
+        r = await client.post(
+            url, headers={"Cookie": alice["cookie"]}, json={"reset": True, "password": "geraten"}
+        )
+        assert r.status_code == 401, r.text
+    r = await client.post(
+        url, headers={"Cookie": alice["cookie"]}, json={"reset": True, "password": _REG_A["password"]}
+    )
+    assert r.status_code == 429, r.text
 
 
 @pytest.mark.asyncio

@@ -130,7 +130,12 @@ async def test_gesperrt_geloeschte_instanz_bekommt_kein_ticket(client, session_f
         (await s.get(RegisteredInstance, 900004)).status = "suspended"
         s.add(SuspendedInstance(instance_id=900004, reason="Test"))
         await s.commit()
-    r = await client.delete("/me/instances/900004", headers={"Cookie": cookie})
+    r = await client.request(
+        "DELETE",
+        "/me/instances/900004",
+        headers={"Cookie": cookie},
+        json={"password": _REG["password"]},
+    )
     assert r.status_code == 204, r.text
     async with session_factory() as s:
         assert (await s.get(RegisteredInstance, 900004)).hostname == "d.example.com"

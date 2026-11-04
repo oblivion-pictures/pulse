@@ -193,7 +193,11 @@ async function netJson(
 
 export type ProvisionResult =
   | { ok: true; creds: BootstrapCreds }
-  | { ok: false; error: string; needsTakeoverConfirm?: boolean };
+  | { ok: false; error: string; needsTakeoverConfirm?: boolean; passwordWrong?: boolean };
+
+/** Übernahme bestätigen: `password` ist das Kontopasswort, das die Cloud für
+ *  den Reset verlangt (Sicherheitsfund 2026-11-04). Nie loggen, nie speichern. */
+type ProvisionOpts = { confirmTakeover?: boolean; password?: string };
 
 /** Findet die aktive Self-Host-Instanz des eingeloggten Users, mintet einen
  *  Bootstrap-Token und löst ihn ein. Setzt einen gültigen `pulse_session`-Cookie
@@ -204,10 +208,10 @@ export type ProvisionResult =
  *  Server auf einem anderen Gerät. Statt ihn still zu entwerten (reset rotiert
  *  client_secret sofort) pausiert die Provisionierung mit
  *  `needsTakeoverConfirm` — erst der zweite Aufruf mit `confirmTakeover: true`
- *  mintet mit reset. */
+ *  und dem Kontopasswort mintet mit reset. */
 export async function provision(
   cloudOrigin: string,
-  opts: { confirmTakeover?: boolean } = {},
+  opts: ProvisionOpts = {},
   getBearer?: () => Promise<string | null>,
 ): Promise<ProvisionResult> {
   try {
@@ -288,7 +292,7 @@ async function proceedWithInstance(
   inst: InstanceOut,
   cookie: string,
   cloudOrigin: string,
-  opts: { confirmTakeover?: boolean },
+  opts: ProvisionOpts,
 ): Promise<ProvisionResult> {
   try {
     const reset = opts.confirmTakeover === true;
@@ -296,9 +300,13 @@ async function proceedWithInstance(
       'POST',
       `${cloudOrigin}/api/auth/me/instances/${inst.id}/bootstrap-token`,
       cookie,
-      { reset },
+      reset ? { reset, password: opts.password ?? '' } : { reset },
     );
-    const verdict = classifyMintStatus(mint.status);
+    const verdict = classifyMintStatus(mint.status, mint.json);
+    if (verdict === 'wrong_password') {
+      // Dialog bleibt offen, der Nutzer versucht es erneut (server.js).
+      return { ok: false, needsTakeoverConfirm: true, passwordWrong: true, error: 'Passwort falsch.' };
+    }
     if (verdict === 'consumed' && !reset) {
       return {
         ok: false,
@@ -375,17 +383,20 @@ export async function fetchCloudStatus(
 /** "Server aufgeben": Cloud-Registrierung löschen (Soft-Delete im Backend,
  *  routes_instance_delete.py). Läuft wie provision() über den
  *  pulse_session-Cookie — ohne gültige Session 'unauthorized', damit die UI
- *  auf den Client-Weg („Meine Server“ über den Server-Knopf der Leiste) verweisen kann. */
+ *  auf den Client-Weg („Meine Server“ über den Server-Knopf der Leiste) verweisen kann.
+ *  `password` = Kontopasswort, das die Cloud verlangt; nie loggen. */
 export async function deleteInstanceRegistration(
   cloudOrigin: string,
   instanceId: string,
+  password: string,
   getBearer?: () => Promise<string | null>,
 ): Promise<CloudDeleteVerdict> {
   try {
     const cookie = await ensureSessionCookie(cloudOrigin, getBearer);
     if (!cookie) return 'unauthorized';
-    const r = await netJson('DELETE', `${cloudOrigin}/api/auth/me/instances/${instanceId}`, cookie);
-    return classifyDeleteStatus(r.status);
+    const url = `${cloudOrigin}/api/auth/me/instances/${instanceId}`;
+    const r = await netJson('DELETE', url, cookie, { password });
+    return classifyDeleteStatus(r.status, r.json);
   } catch {
     return 'error';
   }

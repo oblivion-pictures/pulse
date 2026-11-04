@@ -113,6 +113,15 @@ export function mitCloudCookie(url: string): Promise<Response | null> {
   });
 }
 
+/** 401 `invalid credentials`: die Route hat das mitgeschickte Kontopasswort
+ *  abgelehnt (z. B. Server löschen, Sicherheitsfund 2026-11-04) — die Sitzung
+ *  selbst ist gesund. Kein Renew und keine Wiederholung: die zählte jeden
+ *  Fehlversuch doppelt gegen die Je-Konto-Bremse des Servers. */
+async function passwortAbgelehnt(resp: Response): Promise<boolean> {
+  const text = await resp.clone().text().catch(() => '');
+  return extractDetail(text ? safeParse(text) : null) === 'invalid credentials';
+}
+
 export async function cookieFetch<T>(
   path: string,
   opts: { method?: string; body?: unknown } = {},
@@ -132,7 +141,7 @@ export async function cookieFetch<T>(
   // Greift sowohl bei Cookie-only-Endpoints ("missing session cookie") als auch
   // bei Bearer-or-Cookie-Endpoints, die ohne Cookie auf "missing bearer token"
   // durchfallen (z.B. /me/profile, /admin/instances).
-  if (resp.status === 401 && !retried) {
+  if (resp.status === 401 && !retried && !(await passwortAbgelehnt(resp))) {
     if (await renewSession()) return cookieFetch<T>(path, opts, true);
     // Auch der Renew scheitert UND die JWT-Tokens sind weg (entweder hat
     // `doRefresh` sie bei definitiver Ablehnung bereits gelöscht, oder

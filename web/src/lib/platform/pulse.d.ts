@@ -324,11 +324,13 @@ export interface PairResult {
 /** Ergebnis von host.provision(). needsTakeoverConfirm: Bootstrap wurde schon
  *  einmal eingelöst — es läuft vermutlich ein eingerichteter Server auf einem
  *  anderen Gerät; Übernahme erst nach explizitem zweiten Aufruf mit
- *  `{ confirmTakeover: true }`. */
+ *  `{ confirmTakeover: true, password }` (Kontopasswort, Sicherheitsfund
+ *  2026-11-04). passwordWrong: die Cloud lehnte das Passwort ab — erneut fragen. */
 export interface ProvisionResult {
   ok: boolean;
   error?: string;
   needsTakeoverConfirm?: boolean;
+  passwordWrong?: boolean;
 }
 
 /** Cloud-Registrierungs-Status (Directory-Heartbeat). true = registriert &
@@ -352,9 +354,11 @@ export interface HostExportResult {
 
 /** Ergebnis von host.giveUp(). cloudDeleted null = bewusst übersprungen
  *  (superseded-Zustand); false = liegengeblieben → UI verweist auf den
- *  Client-Weg (Meine Server: Server-Knopf der Leiste bzw. Du-Bereich). */
+ *  Client-Weg (Meine Server: Server-Knopf der Leiste bzw. Du-Bereich).
+ *  ok false + wrongPassword: Kontopasswort falsch, nichts wurde angefasst. */
 export interface HostGiveUpResult {
   ok: boolean;
+  wrongPassword?: true;
   cloudDeleted: boolean | null;
   dataDeleted: boolean | null;
   errors: string[];
@@ -385,7 +389,7 @@ export interface PulseHostApi {
   getPairing(): Promise<PairingStatus>;
   /** Login-basierte Auto-Provision (Server-App). Ohne `confirmTakeover` pausiert
    *  sie mit `needsTakeoverConfirm`, wenn schon ein Server eingerichtet ist. */
-  provision(opts?: { confirmTakeover?: boolean }): Promise<ProvisionResult>;
+  provision(opts?: { confirmTakeover?: boolean; password?: string }): Promise<ProvisionResult>;
   /** Cloud-Registrierungs-Status (Directory-Heartbeat) einmalig abfragen. */
   cloudStatus(): Promise<HostCloudStatus>;
   /** Cloud-Status-Updates abonnieren (60s-Poll aus dem Main-Prozess). */
@@ -404,8 +408,9 @@ export interface PulseHostApi {
   /** Export-Schritte abonnieren (stopping/exporting/restarting). */
   onExportStep(cb: (step: string) => void): () => void;
   /** "Server aufgeben": Container + Cloud-Registrierung + Pairing entfernen,
-   *  optional inkl. lokaler Daten. Best-effort — Teilfehler im Ergebnis. */
-  giveUp(opts?: { deleteData?: boolean }): Promise<HostGiveUpResult>;
+   *  optional inkl. lokaler Daten. Best-effort — Teilfehler im Ergebnis. Die
+   *  Cloud-Löschung verlangt das Kontopasswort (außer im superseded-Zustand). */
+  giveUp(opts?: { deleteData?: boolean; password?: string }): Promise<HostGiveUpResult>;
   /** Pairing-Credentials löschen. */
   unpair(): Promise<void>;
   /** Gibt es eine Container-Runtime (Host-Podman/Docker)? Ohne die zeigt die

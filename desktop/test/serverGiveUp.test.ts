@@ -14,6 +14,10 @@ test('classifyDeleteStatus: 401/403 → unauthorized (Client-Weg-Hinweis)', () =
   assert.equal(classifyDeleteStatus(401), 'unauthorized');
   assert.equal(classifyDeleteStatus(403), 'unauthorized');
 });
+test('classifyDeleteStatus: 401 invalid credentials → wrong_password (Passwort falsch)', () => {
+  assert.equal(classifyDeleteStatus(401, { detail: 'invalid credentials' }), 'wrong_password');
+  assert.equal(classifyDeleteStatus(401, { detail: 'missing session cookie' }), 'unauthorized');
+});
 test('classifyDeleteStatus: 5xx/Transportfehler → error', () => {
   assert.equal(classifyDeleteStatus(500), 'error');
   assert.equal(classifyDeleteStatus(0), 'error');
@@ -32,17 +36,17 @@ function fakeOps(calls: string[], over: Partial<GiveUpOps> = {}): GiveUpOps {
   };
 }
 
-test('runGiveUp ohne deleteData: Volume bleibt, Reihenfolge container→cloud→autostart→pairing', async () => {
+test('runGiveUp ohne deleteData: Volume bleibt, Reihenfolge cloud→container→autostart→pairing', async () => {
   const calls: string[] = [];
   const r = await runGiveUp({ deleteData: false, skipCloud: false }, fakeOps(calls));
-  assert.deepEqual(calls, ['container', 'cloud', 'autostart', 'pairing']);
+  assert.deepEqual(calls, ['cloud', 'container', 'autostart', 'pairing']);
   assert.deepEqual(r, { ok: true, cloudDeleted: true, dataDeleted: null, errors: [] });
 });
 
 test('runGiveUp mit deleteData: Volume-rm NACH Container-rm', async () => {
   const calls: string[] = [];
   const r = await runGiveUp({ deleteData: true, skipCloud: false }, fakeOps(calls));
-  assert.deepEqual(calls, ['container', 'cloud', 'autostart', 'pairing', 'volume']);
+  assert.deepEqual(calls, ['cloud', 'container', 'autostart', 'pairing', 'volume']);
   assert.equal(r.dataDeleted, true);
 });
 
@@ -59,7 +63,7 @@ test('runGiveUp: Cloud unauthorized → cloudDeleted false, Rest läuft trotzdem
     deleteCloudRegistration: async () => { calls.push('cloud'); return 'unauthorized'; },
   }));
   assert.equal(r.cloudDeleted, false);
-  assert.deepEqual(calls, ['container', 'cloud', 'autostart', 'pairing']);
+  assert.deepEqual(calls, ['cloud', 'container', 'autostart', 'pairing']);
   assert.ok(r.errors.some((e) => e.startsWith('cloud:')));
 });
 
@@ -91,4 +95,18 @@ test('runGiveUp: Cloud-Op wirft → wie error behandelt, kein throw nach außen'
   }));
   assert.equal(r.cloudDeleted, false);
   assert.ok(calls.includes('pairing'));
+});
+
+test('runGiveUp: Passwort falsch → bricht VOR allem anderen ab, nichts wird angefasst', async () => {
+  const calls: string[] = [];
+  const r = await runGiveUp({ deleteData: true, skipCloud: false }, fakeOps(calls, {
+    deleteCloudRegistration: async () => { calls.push('cloud'); return 'wrong_password'; },
+  }));
+  // Nur der Cloud-Aufruf: Container, Autostart, Pairing und Daten bleiben, damit
+  // der Nutzer mit dem richtigen Passwort erneut aufgeben kann.
+  assert.deepEqual(calls, ['cloud']);
+  assert.equal(r.ok, false);
+  assert.equal(r.wrongPassword, true);
+  assert.equal(r.cloudDeleted, false);
+  assert.equal(r.dataDeleted, null);
 });

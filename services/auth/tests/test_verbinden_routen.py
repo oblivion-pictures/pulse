@@ -89,6 +89,16 @@ async def _konto(client, name: str) -> dict:
     return {"cookie": cookie, "id": int(me.json()["id"])}
 
 
+async def _loeschen(client, konto: dict, iid: int):
+    """``DELETE /me/instances/{iid}`` durch den Besitzer — mit Passwort."""
+    return await client.request(
+        "DELETE",
+        f"/me/instances/{iid}",
+        headers={"Cookie": konto["cookie"]},
+        json={"password": "correct horse battery staple"},
+    )
+
+
 async def _start(client, hostname: str = _HOST, kennung: str = _KENNUNG):
     return await client.post(
         "/selfhost/verbinden/start", json={"hostname": hostname, "kennung": kennung}
@@ -595,7 +605,7 @@ async def test_gesperrt_geloeschte_adresse_bleibt_gesperrt_bis_zur_freigabe(
         s.add(SuspendedInstance(instance_id=962210, reason="admin"))
         await s.commit()
 
-    r = await client.delete("/me/instances/962210", headers={"Cookie": besitzer["cookie"]})
+    r = await _loeschen(client, besitzer, 962210)
     assert r.status_code == 204, r.text
 
     # Die Ablehnung ist endgültig (der Vorgang endet, pulse-connect holt den
@@ -632,7 +642,7 @@ async def test_geloeschte_adresse_ohne_sperre_ist_sofort_frei(
     unter derselben Adresse gleich wieder."""
     besitzer = await _konto(client, "loeschtfrei")
     await _eintrag(session_factory, besitzer["id"], 962220)
-    r = await client.delete("/me/instances/962220", headers={"Cookie": besitzer["cookie"]})
+    r = await _loeschen(client, besitzer, 962220)
     assert r.status_code == 204, r.text
 
     code = (await _start(client)).json()["code"]

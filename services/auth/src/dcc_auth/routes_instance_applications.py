@@ -41,6 +41,7 @@ from dcc_auth.models_instances import (
     RegisteredInstance,
     UserInstanceMembership,
 )
+from dcc_auth.passwort_schranke import OptionalesPasswort, passwort_bestaetigen
 from dcc_auth.routes import _check_rate
 from dcc_auth.snowflake import next_id
 
@@ -334,9 +335,14 @@ class ReissueIn(BaseModel):
     nach Geräteverlust (Server-App). Das Einlösen rotiert die Credentials,
     alte sterben sofort. Bis Oktober 2026 teilte sich der ``.env``-Download
     dasselbe Modell; der Download ist entfernt (Spec E11).
+
+    ``password``: Pflicht für den Reset nach dem Einlösen (Sicherheitsfund
+    2026-11-04) — ein gestohlenes Sitzungs-Cookie allein darf den laufenden
+    Server nicht übernehmen. Die Ersteinrichtung braucht es nicht.
     """
 
     reset: bool = False
+    password: OptionalesPasswort = None
 
 
 # ---------------------------------------------------------------------------
@@ -369,7 +375,8 @@ async def mint_bootstrap_token(
     generieren" entwertet den alten sofort. Nach erfolgreichem Redeem sind
     weitere Mints geblockt (Hijack-Härtung: eine gekaperte Session kann keine
     laufende Instanz still übernehmen) — AUSSER der Owner setzt explizit
-    ``reset=true``: der bewusste Recovery-Pfad nach Gerätewechsel/Creds-Verlust.
+    ``reset=true`` und nennt sein Passwort: der bewusste Recovery-Pfad nach
+    Gerätewechsel/Creds-Verlust (401 ``invalid credentials`` ohne Passwort).
     Das Einlösen rotiert client_secret + Tunnel-Token, ein alter Server verliert
     damit sofort seinen Cloud-Zugang — es entstehen nie zwei lebende Server aus
     einer Instanz. Token-Verlust vor Redeem (TTL abgelaufen) erlaubt weiteres
@@ -393,10 +400,16 @@ async def mint_bootstrap_token(
     # blockiert weitere Mints — außer beim expliziten Reset (s. Docstring).
     # Audit-Spur bleibt in der Token-Tabelle (Redeem setzt nur consumed_at,
     # löscht nicht; auch der Reset löscht nur uneingelöste Tokens).
-    if await bootstrap_redeemed(db, iid) and not (payload and payload.reset):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="Bootstrap bereits eingelöst — neu ausstellen nur mit reset=true",
+    if await bootstrap_redeemed(db, iid):
+        if not (payload and payload.reset):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail="Bootstrap bereits eingelöst — neu ausstellen nur mit reset=true",
+            )
+        # Übernahme eines eingerichteten Servers: nur mit Kontopasswort
+        # (passwort_schranke.py). Der Erst-Mint oben bleibt ohne.
+        await passwort_bestaetigen(
+            request, user, payload.password, zweck="bootstrap_reset"
         )
 
     await drop_unredeemed_tokens(db, iid)

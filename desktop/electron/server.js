@@ -51,6 +51,8 @@ const UI_EN = {
   ' — alles danach hängt daran.': ' — everything after this depends on it.',
   'Cloud-Prüfung nicht erreichbar: ': 'Cloud check unreachable: ',
   'Einrichtung fehlgeschlagen: ': 'Setup failed: ',
+  'Passwort falsch — bitte erneut eingeben.': 'Wrong password — please try again.',
+  'Bitte gib dein Passwort ein.': 'Please enter your password.',
   'Start fehlgeschlagen: ': 'Start failed: ',
   'Die Windows-Abfrage wurde abgebrochen — WSL2 ist nicht installiert.': 'The Windows prompt was cancelled — WSL2 is not installed.',
   'WSL2 ist installiert. Bitte Windows neu starten und danach den Server starten.': 'WSL2 is installed. Please restart Windows, then start the server.',
@@ -84,6 +86,12 @@ const ui = (s) => {
   if (SPRACHE === 'de') return s;
   const e = UI_EN[String(s).trim()];
   return e !== undefined ? e : s;
+};
+
+/** Fehlerzeile unter einem Passwortfeld setzen; leerer Text blendet sie aus. */
+const zeigeFehler = (id, text) => {
+  $(id).textContent = text ? ui(text) : '';
+  $(id).classList.toggle('hidden', !text);
 };
 
 function dotClass(phase) {
@@ -426,17 +434,31 @@ function bind() {
     $('btnSetup').disabled = true; $('statustext').textContent = 'Einrichten …'; $('dot').className = 'dot prep';
     const r = await host.provision(opts);
     $('btnSetup').disabled = false;
-    if (r && r.needsTakeoverConfirm) { $('takeoverOverlay').classList.remove('hidden'); }
+    if (r && r.needsTakeoverConfirm) {
+      // Zweiter Anlauf nach falschem Passwort: Dialog wieder auf, mit Hinweis.
+      zeigeFehler('takeoverError', r.passwordWrong ? 'Passwort falsch — bitte erneut eingeben.' : '');
+      $('takeoverOverlay').classList.remove('hidden');
+      $('takeoverPassword').focus();
+    }
     else if (r && r.ok) { provisionFailed = false; }
     else { provisionFailed = true; alert(ui('Einrichtung fehlgeschlagen: ') + ((r && r.error) || 'unbekannt')); }
     refresh();
   };
   $('btnSetup').onclick = () => doProvision();
+  // Das Passwort geht nur an host.provision und wird sofort aus dem Feld
+  // geräumt — es bleibt nirgends liegen.
   $('btnTakeover').onclick = () => {
+    const password = $('takeoverPassword').value;
+    if (!password) { zeigeFehler('takeoverError', 'Bitte gib dein Passwort ein.'); return; }
+    $('takeoverPassword').value = '';
     $('takeoverOverlay').classList.add('hidden');
-    doProvision({ confirmTakeover: true });
+    doProvision({ confirmTakeover: true, password });
   };
-  $('btnTakeoverCancel').onclick = () => { $('takeoverOverlay').classList.add('hidden'); refresh(); };
+  $('btnTakeoverCancel').onclick = () => {
+    $('takeoverPassword').value = '';
+    $('takeoverOverlay').classList.add('hidden');
+    refresh();
+  };
   $('btnExport').onclick = () => doExport();
   $('btnVerbindungstest').onclick = () => { void doVerbindungstest(); };
   // Import: erst das Bestätigungs-Overlay (Bestand wird ersetzt), dann Dateiwahl.
@@ -525,19 +547,38 @@ function bind() {
   // "Server aufgeben": gemeinsames Overlay für den Danger-Knopf (Checkbox
   // default AUS) und den superseded-Zweitknopf (Datenlöschung ist dort der
   // Zweck → Checkbox vorbelegt AN; Cloud-Delete überspringt der Main-Prozess
-  // im superseded-Zustand selbst).
-  const openGiveUp = (dataChecked) => {
+  // im superseded-Zustand selbst — dort entfällt deshalb auch das Passwortfeld).
+  const openGiveUp = (dataChecked, mitPasswort) => {
     $('giveupData').checked = dataChecked;
+    $('giveupPassword').value = '';
+    zeigeFehler('giveupError', '');
+    $('giveupPasswordRow').classList.toggle('hidden', !mitPasswort);
     $('giveupOverlay').classList.remove('hidden');
   };
-  $('btnGiveUp').onclick = () => openGiveUp(false);
-  $('btnWipeLocal').onclick = () => openGiveUp(true);
-  $('btnGiveUpCancel').onclick = () => $('giveupOverlay').classList.add('hidden');
+  $('btnGiveUp').onclick = () => openGiveUp(false, true);
+  $('btnWipeLocal').onclick = () => openGiveUp(true, false);
+  $('btnGiveUpCancel').onclick = () => {
+    $('giveupPassword').value = '';
+    $('giveupOverlay').classList.add('hidden');
+  };
   $('btnGiveUpConfirm').onclick = async () => {
+    const password = $('giveupPassword').value;
+    if (!$('giveupPasswordRow').classList.contains('hidden') && !password) {
+      zeigeFehler('giveupError', 'Bitte gib dein Passwort ein.');
+      return;
+    }
+    $('giveupPassword').value = '';
     $('btnGiveUpConfirm').disabled = true;
     $('statustext').textContent = 'Server wird aufgegeben …'; $('dot').className = 'dot prep';
-    const r = await host.giveUp({ deleteData: $('giveupData').checked }).catch(() => null);
+    const r = await host.giveUp({ deleteData: $('giveupData').checked, password }).catch(() => null);
     $('btnGiveUpConfirm').disabled = false;
+    // Falsches Passwort: runGiveUp hat nichts angefasst — Dialog bleibt offen.
+    if (r && r.wrongPassword) {
+      zeigeFehler('giveupError', 'Passwort falsch — bitte erneut eingeben.');
+      $('giveupPassword').focus();
+      await refresh();
+      return;
+    }
     $('giveupOverlay').classList.add('hidden');
     provisionFailed = false;
     await refresh();
@@ -637,6 +678,7 @@ if (SPRACHE !== 'de') {
     'Dein Server wird dauerhaft gelöscht. Mitglieder verlieren den Zugang und der Server verschwindet aus ihren Listen.': 'Your server will be permanently deleted. Members lose access and the server disappears from their lists.',
     'Auch die lokalen Serverdaten auf diesem Gerät löschen (Nachrichten, Dateien — unwiderruflich)': 'Also delete the local server data on this device (messages, files — irreversible)',
     'Server dauerhaft aufgeben': 'Shut down server permanently',
+    'Zur Bestätigung dein Pulse-Passwort': 'Your Pulse password to confirm',
   };
   const wanderer = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   const knoten = [];
