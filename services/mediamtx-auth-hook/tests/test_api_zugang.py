@@ -62,3 +62,24 @@ async def test_api_umgeht_die_zuschauer_drossel(client, mit_passwort):
         assert not hook_routes._hook_zeiten.get("127.0.0.1")
     finally:
         hook_routes._hook_zeiten.clear()
+
+
+# ---- Security-Scan 2026-11-04: Platzhalter aus .env.example nie annehmen ----
+
+
+def test_platzhalter_passwort_verhindert_den_start():
+    """``__CHANGE_ME__`` steht öffentlich in ``infra/prod/.env.example`` — wer die
+    Vorlage unverändert übernimmt, hätte eine API mit bekanntem Passwort."""
+    import pytest
+
+    from dcc_mediamtx_auth_hook.api_zugang import api_passwort_pruefen
+
+    with pytest.raises(RuntimeError):
+        api_passwort_pruefen("__CHANGE_ME__")
+
+
+def test_leeres_und_echtes_passwort_starten():
+    from dcc_mediamtx_auth_hook.api_zugang import api_passwort_pruefen
+
+    api_passwort_pruefen("")  # Dev: ohne Passwort, nur eine Warnung im Log
+    api_passwort_pruefen("a" * 64)

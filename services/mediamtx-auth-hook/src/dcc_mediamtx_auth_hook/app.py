@@ -8,6 +8,7 @@ import structlog
 from fastapi import FastAPI
 from redis.asyncio import Redis
 
+from dcc_mediamtx_auth_hook.api_zugang import api_passwort_pruefen
 from dcc_mediamtx_auth_hook.config import get_settings
 from dcc_mediamtx_auth_hook.routes import router
 
@@ -17,6 +18,7 @@ log = structlog.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    api_passwort_pruefen(settings.mediamtx_api_password)
     redis: Redis | None = None
     if getattr(app.state, "skip_redis", False):
         # Tests pre-wire `app.state.redis` themselves.

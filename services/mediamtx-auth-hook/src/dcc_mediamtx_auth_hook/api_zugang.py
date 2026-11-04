@@ -47,3 +47,23 @@ def api_pruefen(user: str, password: str, erwartet_user: str, erwartet_passwort:
         # Nie das übergebene Passwort loggen.
         log.info("auth_denied", reason="api_bad_credentials")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="denied")
+
+
+_PLATZHALTER = "__CHANGE_ME__"
+
+
+def api_passwort_pruefen(passwort: str) -> None:
+    """Beim Start: Platzhalter abweisen, fehlendes Passwort laut melden.
+
+    ``__CHANGE_ME__`` steht öffentlich in ``infra/prod/.env.example`` — eine
+    unverändert übernommene Vorlage hieße eine API mit bekanntem Passwort, also
+    lieber gar nicht starten. Ein LEERES Passwort bleibt erlaubt (Dev-Stacks
+    laufen ohne), wird aber gewarnt: dann prüft dieser Hook die API nicht
+    (Security-Scan 2026-11-04)."""
+    if passwort == _PLATZHALTER:
+        raise RuntimeError(
+            "MEDIAMTX_API_PASSWORD ist noch der Platzhalter aus .env.example — "
+            "ein echtes Passwort setzen (openssl rand -hex 32)."
+        )
+    if not passwort:
+        log.warning("mediamtx_api_ohne_passwort")
