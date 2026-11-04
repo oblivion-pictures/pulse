@@ -117,7 +117,7 @@ bewusst auf die Prod-Fassung gepinnt**:
 | | Produktion | hier |
 |---|---|---|
 | MediaMTX-Fork | `1.19.1-pulse12` | `1.19.1-pulse12` |
-| LiveKit | `v1.13.3` | `v1.13.3` |
+| LiveKit | `v1.13.11` | `v1.13.11` |
 
 Vorher lief hier ein lokal gebautes MediaMTX vom 2026-08-04 und LiveKit
 `v1.11`. Dem Fork fehlten damit die 60-fps-Glättung (2026-08-14) und die

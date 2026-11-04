@@ -1,6 +1,6 @@
 # Pulse-Fork von LiveKit
 
-LiveKit **1.13.3 + ein Pulse-Patch**, aus dem Quelltext gebaut. Fassung,
+LiveKit **1.13.11 + ein Pulse-Patch**, aus dem Quelltext gebaut. Fassung,
 Commits und Patch-Stand stehen allein in [`quelle.env`](quelle.env); gebaut
 wird mit [`bauen.sh`](bauen.sh) — von beiden Stellen, die LiveKit ausliefern:
 
@@ -87,7 +87,8 @@ deshalb nur, wer nachweislich neben dem Fork-Binary sitzt:
 fehlt oder abweicht — sonst bliebe eine zwischengespeicherte
 `resources-native/` beim alten Stand (oder beim offiziellen Binary aus der Zeit
 vor dem Fork). `PULSE_REVISION` **hochzählen, sobald sich der Patch-Satz
-ändert**; das Binary selbst meldet weiter `livekit-server version 1.13.3`.
+ändert**; das Binary selbst meldet weiter die LiveKit-Fassung
+(`livekit-server version <LIVEKIT_VERSION>`).
 
 ## Lokal bauen
 
@@ -124,7 +125,14 @@ Braucht `git` und Go ≥ 1.26 (LiveKits `go.mod`). Das Image baut mit
 ## Wann der Fork entfallen kann
 
 Sobald LiveKit (bzw. mediatransportutil) selbst mehrere Adressen im
-`node_ip`-Weg ankündigen kann. Dann `infra/livekit-fork/` löschen, das
+`node_ip`-Weg ankündigen kann. **Ein Kandidat ist da:** seit
+mediatransportutil #94 (in LiveKit 1.13.11) reicht LiveKit dort
+`advertise_internal_ip` durch und kündigt dann jede lokale Adresse zusätzlich
+zu `node_ip` an. Ob das `extra_node_ips` ersetzt, hängt davon ab, welche
+Adressen LiveKit am Heimserver als „lokal" sieht — im Linux-Container die
+Docker-Brücke statt der LAN-IP, unter Windows nativ auch VPN- und
+Hyper-V-Adapter. Bis das im echten Heimnetz gemessen ist, behält der Patch im
+`node_ip`-Weg das alte Ersetzen bei (Begründung und Gegenprobe im Patch-Kopf). Dann `infra/livekit-fork/` löschen, das
 Dockerfile auf den Release-Tarball zurückstellen, `fetch-win-native.ps1` auf
 den Release-Download, und den Feldnamen in `livekit-node-ip.sh` und
 `nativeBackend/configs.ts` nachziehen. Vorher `git grep -n livekit-fork`.

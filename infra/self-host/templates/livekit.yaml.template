@@ -48,6 +48,9 @@ rtc:
   # LAN-IPv4 als `extra_node_ips` — eine Option des Pulse-Forks
   # (infra/livekit-fork/). Im node_ip-Weg wirkt advertise_internal_ip NICHT:
   # dort ersetzt LiveKit jede lokale Adresse durch node_ip (+ extra_node_ips).
+  # Das offizielle LiveKit reicht den Schalter seit 1.13.11 auch dort durch
+  # (mediatransportutil #94, dann kämen Docker-Brücke & Co. dazu); der
+  # Pulse-Fork behält das Ersetzen bei (Patch-Kopf, mit Test).
   advertise_internal_ip: true
   # IPv6-Kandidaten unterdrücken: Fritz!Box blockt eingehendes IPv6 → Gäste
   # laufen auf v6-Kandidaten nur in Timeouts (bekannter Dauer-Fallstrick,

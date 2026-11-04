@@ -1,0 +1,121 @@
+RTMP: leere H264-/H265-Parametersätze abweisen statt abzustürzen
+
+Sicherheitshinweise GHSA-5jgv-c722-r5cg (H264) und GHSA-7498-vjgw-9cr2 (H265),
+beide „high", betroffen MediaMTX >= 1.16.0, < 1.21.0 — also unser 1.19.1.
+Ein RTMP-Sender schickt nach einer gültigen Spur eine zweite Konfiguration,
+deren SPS/PPS (bzw. VPS/SPS/PPS) je eine NAL-Einheit der Länge null
+deklarieren. H265: gortmplibs `h265FindNALU` liest `NALUnit[0]` der leeren
+Scheibe. H264: die leeren Scheiben gehen an MediaMTX weiter, wo
+`formatUpdaterH264` `nalu[0]` liest. In beiden Fällen ein Panic in der
+RTMP-Verbindungs-Goroutine ohne recover — der ganze MediaMTX-Prozess fällt,
+jeder Stream bricht ab. Bei uns braucht der Sender einen gültigen Stream-Key
+(authHTTP), jeder streamberechtigte Nutzer könnte also alle Streams abwürgen.
+
+Upstream behebt das in gortmplib PR #121 (v1.0.2, MediaMTX 1.21.0). Der PR
+passt nicht auf das von 1.19.1 eingebundene gortmplib v0.4.0, und der Sprung
+auf 1.x wäre ein API-Wechsel. Dieser Patch setzt dieselbe Regel minimal um:
+leere oder nicht belegte Parametersätze sind ungültige Eingabe, die
+Verbindung endet mit einem Fehler (`h264Params` für alle drei H264-Stellen,
+Längenprüfung in `h265FindNALU`). Der Datenweg (AVCC) überspringt leere
+NAL-Einheiten schon in mediacommon (`h264.AVCC.Unmarshal`).
+
+Test (in einer Kopie von gortmplib v0.4.0, nicht Teil des Vendor-Baums):
+beide Konfigurationen gegen `OnDataH264`/`OnDataH265` — ohne Patch rot (H265
+mit „index out of range [0] with length 0"), mit grün; übrige gortmplib-Tests
+grün (2026-11-04). Entfällt mit dem Rebase auf MediaMTX >= 1.21.0.
+
+diff --git a/vendor/github.com/bluenviron/gortmplib/reader.go b/vendor/github.com/bluenviron/gortmplib/reader.go
+index 5cb1f04..0ae308f 100644
+--- a/vendor/github.com/bluenviron/gortmplib/reader.go
++++ b/vendor/github.com/bluenviron/gortmplib/reader.go
+@@ -52,7 +52,11 @@ type OnDataLPCMFunc func(pts time.Duration, samples []byte)
+ 
+ func h265FindNALU(array []mp4.HEVCNaluArray, typ h265.NALUType) []byte {
+ 	for _, entry := range array {
+-		if entry.NaluType == byte(typ) && entry.NumNalus == 1 &&
++		// Pulse patch: a declared but empty NAL unit (or a NumNalus that the
++		// Nalus slice doesn't back) is malformed input, not an index to read
++		// (GHSA-7498-vjgw-9cr2; upstream fix in gortmplib PR #121, v1.0.2).
++		if entry.NaluType == byte(typ) && entry.NumNalus == 1 && len(entry.Nalus) == 1 &&
++			len(entry.Nalus[0].NALUnit) > 0 &&
+ 			h265.NALUType((entry.Nalus[0].NALUnit[0]>>1)&0b111111) == typ {
+ 			return entry.Nalus[0].NALUnit
+ 		}
+@@ -60,17 +64,31 @@ func h265FindNALU(array []mp4.HEVCNaluArray, typ h265.NALUType) []byte {
+ 	return nil
+ }
+ 
+-func h264TrackFromConfig(avcC *mp4.AVCDecoderConfiguration) (*Track, error) {
+-	if avcC.NumOfSequenceParameterSets < 1 {
+-		return nil, fmt.Errorf("no SPS found")
++// h264Params returns the first SPS and PPS of an AVC configuration.
++// Pulse patch: empty parameter sets are rejected instead of being passed on,
++// where MediaMTX reads their first byte (GHSA-5jgv-c722-r5cg; upstream fix in
++// gortmplib PR #121, v1.0.2).
++func h264Params(avcC *mp4.AVCDecoderConfiguration) ([]byte, []byte, error) {
++	if avcC.NumOfSequenceParameterSets < 1 || len(avcC.SequenceParameterSets) < 1 ||
++		len(avcC.SequenceParameterSets[0].NALUnit) == 0 {
++		return nil, nil, fmt.Errorf("no SPS found")
++	}
++	if avcC.NumOfPictureParameterSets < 1 || len(avcC.PictureParameterSets) < 1 ||
++		len(avcC.PictureParameterSets[0].NALUnit) == 0 {
++		return nil, nil, fmt.Errorf("no PPS found")
+ 	}
+-	if avcC.NumOfPictureParameterSets < 1 {
+-		return nil, fmt.Errorf("no PPS found")
++	return avcC.SequenceParameterSets[0].NALUnit, avcC.PictureParameterSets[0].NALUnit, nil
++}
++
++func h264TrackFromConfig(avcC *mp4.AVCDecoderConfiguration) (*Track, error) {
++	sps, pps, err := h264Params(avcC)
++	if err != nil {
++		return nil, err
+ 	}
+ 
+ 	return &Track{Codec: &codecs.H264{
+-		SPS: avcC.SequenceParameterSets[0].NALUnit,
+-		PPS: avcC.PictureParameterSets[0].NALUnit,
++		SPS: sps,
++		PPS: pps,
+ 	}}, nil
+ }
+ 
+@@ -172,10 +190,14 @@ func videoTrackFromSequenceStart(msg *message.VideoExSequenceStart) (*Track, err
+ 		if len(msg.AVCConfig.SequenceParameterSets) != 1 || len(msg.AVCConfig.PictureParameterSets) != 1 {
+ 			return nil, fmt.Errorf("H264 parameters are missing")
+ 		}
++		sps, pps, err := h264Params(msg.AVCConfig)
++		if err != nil {
++			return nil, err
++		}
+ 
+ 		return &Track{Codec: &codecs.H264{
+-			SPS: msg.AVCConfig.SequenceParameterSets[0].NALUnit,
+-			PPS: msg.AVCConfig.PictureParameterSets[0].NALUnit,
++			SPS: sps,
++			PPS: pps,
+ 		}}, nil
+ 
+ 	default:
+@@ -658,17 +680,12 @@ func (r *Reader) OnDataH264(track *Track, cb OnDataH26xFunc) {
+ 		case *message.Video:
+ 			switch msg.Type {
+ 			case message.VideoTypeConfig:
+-				if msg.AVCConfig.NumOfSequenceParameterSets < 1 {
+-					return fmt.Errorf("no SPS found")
+-				}
+-				if msg.AVCConfig.NumOfPictureParameterSets < 1 {
+-					return fmt.Errorf("no PPS found")
++				sps, pps, err := h264Params(msg.AVCConfig)
++				if err != nil {
++					return err
+ 				}
+ 
+-				au := [][]byte{
+-					msg.AVCConfig.SequenceParameterSets[0].NALUnit,
+-					msg.AVCConfig.PictureParameterSets[0].NALUnit,
+-				}
++				au := [][]byte{sps, pps}
+ 
+ 				cb(msg.DTS+msg.PTSDelta, msg.DTS, au)
+ 

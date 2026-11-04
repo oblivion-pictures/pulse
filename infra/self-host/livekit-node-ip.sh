@@ -21,7 +21,8 @@
 #
 # Warum zusätzlich die LAN-Adresse (2026-10-12): im node_ip-Weg ersetzt
 # LiveKit JEDE lokale Adresse durch diese eine — `advertise_internal_ip` wirkt
-# dort nicht (nur im STUN-Weg), und die „interne" Adresse wäre im Container
+# dort nicht (nur im STUN-Weg; im offiziellen LiveKit seit 1.13.11 schon, der
+# Pulse-Fork hält es dort bewusst aus, s. Patch), und die „interne" Adresse wäre im Container
 # ohnehin die Docker-Brücke, nicht die LAN-IP. Mit node_ip allein müsste jedes
 # Gerät im Heimnetz, auch der Rechner des Servers selbst, über die öffentliche
 # Adresse zurück ins eigene Netz; die Fritz!Box kann kein Hairpin-NAT →

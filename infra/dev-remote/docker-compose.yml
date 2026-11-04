@@ -345,7 +345,7 @@ services:
 
   livekit:
     <<: *base
-    image: livekit/livekit-server:v1.13.3
+    image: livekit/livekit-server:v1.13.11
     container_name: pulsetest_livekit
     command: ["--config", "/livekit.yaml"]
     ports:

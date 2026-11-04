@@ -124,11 +124,11 @@ in `/data/jwt_keys/` and persisted across container restarts.
 | Component | Version | Source | Checksum |
 |---|---|---|---|
 | s6-overlay | v3.2.0.2 | github.com/just-containers/s6-overlay | SHA-256 pinned per artifact |
-| Caddy | v2.8.4 | github.com/caddyserver/caddy | SHA-256 pinned per artifact |
-| LiveKit | v1.13.3 + Pulse-Patch (`extra_node_ips`) | built from source, `infra/livekit-fork/` | commits pinned in `infra/livekit-fork/quelle.env`; patch test runs in the build |
+| Caddy | v2.11.8 | github.com/caddyserver/caddy | SHA-256 pinned per artifact |
+| LiveKit | v1.13.11 + Pulse-Patch (`extra_node_ips`) | built from source, `infra/livekit-fork/` | commits pinned in `infra/livekit-fork/quelle.env`; patch test runs in the build |
 | MediaMTX | 1.19.1-pulse12 (Pulse-Fork) | ghcr.io/oblivion-pictures/pulse-mediamtx | Registry-Digest |
 | Garage | v1.3.1 | dxflrs/garage (Docker Hub) | pinned image tag — the binary is copied into our image (`garage-upstream` stage) |
-| frp (frpc) | 0.69.1 | github.com/fatedier/frp | SHA-256 pinned per artifact |
+| frp (frpc) | 0.71.1 | github.com/fatedier/frp | SHA-256 pinned per artifact |
 | Postgres | 15 (Debian Bookworm) | apt | — (Debian-signed package) |
 | Redis | 7 (Debian Bookworm) | apt | — (Debian-signed package) |
 | coturn | (Debian Bookworm) | apt | — (Debian-signed package) |
@@ -144,7 +144,7 @@ LiveKit is the exception since 2026-10-12: it is built from source in the
 `livekit-build` stage (`infra/livekit-fork/bauen.sh`, both repositories
 fetched by commit, not by tag). Without `extra_node_ips` in `livekit.yaml` —
 which a VPS self-host never sets — the patched binary behaves like the
-official 1.13.3. License, NOTICE and the patch ship in
+official 1.13.11. License, NOTICE and the patch ship in
 `/usr/share/doc/livekit-server/` inside the image.
 
 ### Refreshing or bumping pinned versions
