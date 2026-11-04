@@ -14,7 +14,11 @@
   import * as Alert from '$lib/components/ui/alert/index.js';
   import OctagonXIcon from '@lucide/svelte/icons/octagon-x';
   import { toast } from 'svelte-sonner';
-  import { registerPasskey, type WebAuthnCredentialSummary } from '$lib/api/webauthn';
+  import {
+    registerPasskey,
+    type WebAuthnCredentialSummary,
+    type ZweiterFaktor
+  } from '$lib/api/webauthn';
   import BackupCodesView from './BackupCodesView.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import Checkbox from '$lib/components/form/Checkbox.svelte';
@@ -82,21 +86,23 @@
       error = m.passkey_add_dialog_password_required();
       return;
     }
-    const zweiterFaktor: { code?: string; backup_code?: string } = {};
-    if (totpEnabled && useBackup) {
-      const normalized = normalizeBackupCode(backupCode);
-      if (!normalized) {
-        error = m.totp_disable_dialog_error_backup_code_empty();
-        return;
+    const zweiterFaktor: ZweiterFaktor = {};
+    if (totpEnabled) {
+      if (useBackup) {
+        const normalized = normalizeBackupCode(backupCode);
+        if (!normalized) {
+          error = m.totp_disable_dialog_error_backup_code_empty();
+          return;
+        }
+        zweiterFaktor.backup_code = normalized;
+      } else {
+        const digits = stripTotpFormatting(code);
+        if (digits.length !== 6) {
+          error = m.totp_disable_dialog_error_code_invalid();
+          return;
+        }
+        zweiterFaktor.code = digits;
       }
-      zweiterFaktor.backup_code = normalized;
-    } else if (totpEnabled) {
-      const digits = stripTotpFormatting(code);
-      if (digits.length !== 6) {
-        error = m.totp_disable_dialog_error_code_invalid();
-        return;
-      }
-      zweiterFaktor.code = digits;
     }
     const lauf = ++erstellenLauf;
     busy = true;

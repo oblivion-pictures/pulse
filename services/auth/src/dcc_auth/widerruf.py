@@ -121,9 +121,6 @@ def bearer_kette(request: Request) -> str | None:
     return getattr(request.state, _STATE_ATTR, None)
 
 
-__all__ = ["bearer_kette", "kette_lebt", "konto_sperren", "merke_bearer_kette"]
-
-
 async def offene_email_wechsel_entwerten(db: AsyncSession, user_id: int) -> None:
     """Entwertet jeden noch offenen E-Mail-Wechsel des Kontos.
 
@@ -138,3 +135,12 @@ async def offene_email_wechsel_entwerten(db: AsyncSession, user_id: int) -> None
         .where(EmailChangeToken.user_id == user_id, EmailChangeToken.used_at.is_(None))
         .values(used_at=datetime.now(UTC))
     )
+
+
+__all__ = [
+    "bearer_kette",
+    "kette_lebt",
+    "konto_sperren",
+    "merke_bearer_kette",
+    "offene_email_wechsel_entwerten",
+]

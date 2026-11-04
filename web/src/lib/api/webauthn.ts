@@ -120,6 +120,10 @@ function ceremonyError(err: unknown): Error {
 
 // ---- registration (authenticated) ------------------------------------------
 
+/** Zweiter Faktor beim Passkey-Anlegen: TOTP- oder Backup-Code, leer bei
+ *  Konten ohne TOTP. */
+export type ZweiterFaktor = { code?: string; backup_code?: string };
+
 /** Enrol a new passkey. `backup_codes` is non-null only when this is the
  *  account's first MFA factor — the caller must then show them once. */
 /** Passkey anlegen. `password` ist seit 2026-08-13 Pflicht: ein
@@ -131,7 +135,7 @@ export async function registerPasskey(
   name: string,
   password: string,
   /** Bei TOTP-Konten Pflicht (Security-Scan 2026-11-04): TOTP- ODER Backup-Code. */
-  zweiterFaktor: { code?: string; backup_code?: string } = {}
+  zweiterFaktor: ZweiterFaktor = {}
 ): Promise<{ credential: WebAuthnCredentialSummary; backup_codes: string[] | null }> {
   const opts = await request<OptionsResponse>('/webauthn/register/options', {
     method: 'POST',
