@@ -46,6 +46,7 @@ INTERNE_NETZE = (
     ipaddress.ip_network("169.254.0.0/16"),
     ipaddress.ip_network("0.0.0.0/8"),
     ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("::/128"),  # unspezifiziert — Linux verbindet es als ::1
     ipaddress.ip_network("fc00::/7"),
     ipaddress.ip_network("fe80::/10"),
 )

@@ -33,3 +33,9 @@ def test_oeffentliche_adressen_bleiben_erlaubt():
     assert not ist_privat("::ffff:8.8.8.8")  # mapped auf öffentliches v4
     assert not ist_privat("2002:0808:0808::")  # 6to4 von 8.8.8.8
     assert not ist_privat("2606:4700:4700::1111")
+
+
+def test_unspezifizierte_ipv6_adresse_ist_gesperrt():
+    """Security-Scan 2026-11-04: ``http://[::]/`` verbindet Linux als ``::1`` —
+    die Sperrliste kannte ``::1/128``, aber nicht ``::/128``."""
+    assert ist_privat("::")
