@@ -1,0 +1,75 @@
+WHEP: Antwort ohne Medienabschnitte abweisen statt abzustürzen
+
+Backport von mediamtx #6309 (Issue #6301, behoben in v1.21.2). Ein
+handgemachtes WHEP-Angebot ohne Medienabschnitte, aber mit ice-ufrag/ice-pwd
+auf Sitzungsebene, kommt durch pions SetRemoteDescription; die erzeugte
+Antwort hat dann ebenfalls keine Medienabschnitte, und
+`filterLocalDescription` las `psdp.MediaDescriptions[0]` — Panic, der ganze
+MediaMTX-Prozess fällt. Browser erzeugen solche Angebote nie. Bei uns braucht
+der Absender ein gültiges Zuschauer-Token (authHTTP vor dem Angebot), jeder
+angemeldete Zuschauer könnte also alle Streams abwürgen.
+
+Änderung wie upstream: den Unmarshal-Fehler prüfen und bei null
+Medienabschnitten mit Fehler abbrechen. Test aus dem Upstream-Commit
+übernommen; ohne die Änderung rot („index out of range [0] with length 0"),
+mit grün, übrige Tests von internal/protocols/webrtc grün (2026-11-04, auf
+1.19.1 mit den Patches 0001–0012). Entfällt mit dem Rebase auf >= 1.21.2.
+
+diff --git a/internal/protocols/webrtc/peer_connection.go b/internal/protocols/webrtc/peer_connection.go
+index d892d87..7373fb9 100644
+--- a/internal/protocols/webrtc/peer_connection.go
++++ b/internal/protocols/webrtc/peer_connection.go
+@@ -992,11 +992,21 @@ func (co *PeerConnection) addAdditionalCandidates(firstMedia *sdp.MediaDescripti
+ 
+ func (co *PeerConnection) filterLocalDescription(desc *webrtc.SessionDescription) (*webrtc.SessionDescription, error) {
+ 	var psdp sdp.SessionDescription
+-	psdp.Unmarshal([]byte(desc.SDP)) //nolint:errcheck
++	err := psdp.Unmarshal([]byte(desc.SDP))
++	if err != nil {
++		return nil, err
++	}
++
++	// Pulse patch 0014 (backport of mediamtx #6309, v1.21.2): a WHEP offer
++	// without media sections yields an answer without any; indexing it
++	// crashed the whole process.
++	if len(psdp.MediaDescriptions) == 0 {
++		return nil, fmt.Errorf("local description has no media sections")
++	}
+ 
+ 	firstMedia := psdp.MediaDescriptions[0]
+ 
+-	err := co.removeUnwantedCandidates(firstMedia)
++	err = co.removeUnwantedCandidates(firstMedia)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+diff --git a/internal/protocols/webrtc/peer_connection_test.go b/internal/protocols/webrtc/peer_connection_test.go
+index 713b229..618227d 100644
+--- a/internal/protocols/webrtc/peer_connection_test.go
++++ b/internal/protocols/webrtc/peer_connection_test.go
+@@ -170,6 +170,25 @@ func TestPeerConnectionCandidates(t *testing.T) {
+ 	}
+ }
+ 
++// Pulse-Patch 0014 (Backport von mediamtx #6309, v1.21.2).
++func TestPeerConnectionFilterLocalDescriptionNoMedia(t *testing.T) {
++	pc := &PeerConnection{
++		Log: test.NilLogger,
++	}
++
++	_, err := pc.filterLocalDescription(&webrtc.SessionDescription{
++		Type: webrtc.SDPTypeAnswer,
++		SDP: "v=0\r\n" +
++			"o=- 42 42 IN IP4 127.0.0.1\r\n" +
++			"s=-\r\n" +
++			"t=0 0\r\n" +
++			"a=ice-ufrag:repu\r\n" +
++			"a=ice-pwd:repuHAqYyVvVJmvsjTQvzvFv\r\n" +
++			"a=setup:actpass\r\n",
++	})
++	require.EqualError(t, err, "local description has no media sections")
++}
++
+ func TestPeerConnectionConnectivity(t *testing.T) {
+ 	for _, mode := range []string{
+ 		"passive udp",

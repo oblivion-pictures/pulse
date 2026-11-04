@@ -20,12 +20,12 @@ ARG PYTHON_VERSION=3.13
 # Versions of bundled third-party binaries — pinned, verified by SHA-256
 # below where upstream publishes checksums (see TODOs for the few that don't).
 ARG S6_OVERLAY_VERSION=3.2.0.2
-ARG CADDY_VERSION=2.8.4
+ARG CADDY_VERSION=2.11.8
 # LiveKit steht hier NICHT mehr als Version: es wird seit 2026-10-12 aus dem
-# Quelltext gebaut, als 1.13.3 + Pulse-Patch (Stufe `livekit-build` unten).
+# Quelltext gebaut, als 1.13.11 + Pulse-Patch (Stufe `livekit-build` unten).
 # Fassung, Commits und Patch-Stand stehen allein in
 # `infra/livekit-fork/quelle.env` — dieselbe Quelle baut die livekit-server.exe
-# der Windows-Server-App. Warum 1.13.3 und warum der Patch: Kopf von
+# der Windows-Server-App. Warum diese Fassung und warum der Patch: Kopf von
 # `infra/livekit-fork/README.md`.
 # MediaMTX kommt als BINAERDATEI AUS DEM PULSE-FORK, nicht mehr von upstream
 # (seit 2026-09-07) — dieselbe Fassung, die die Cloud faehrt.
@@ -61,11 +61,12 @@ ARG PULSE_MEDIAMTX_TAG=1.19.1-pulse12
 # (Garage ersetzt MinIO, Bughunt Runde 32/Entscheidung 1.1 — das
 #  dl.min.io-Archiv ist 410 und das Hub-Image gelöscht. Garage kommt aus
 #  dem dxflrs-Image, siehe garage-upstream-Stage unten.)
-# frp-Client für den Steuerungs-Relay-Tunnel (App-Hosting). Der frps der
-# Cloud (infra/prod: snowdreamtech/frps) ist seit 2026-11-04 auf 0.71.1;
-# frpc 0.69.1 läuft dagegen (services/relay-frps-plugin/tests/test_integration.py
-# mit frps 0.71.1 + frpc 0.69.1 grün, am selben Tag).
-ARG FRP_VERSION=0.69.1
+# frp-Client für den Steuerungs-Relay-Tunnel (App-Hosting). Version passend
+# zum frps auf dem Cloud-Server (infra/prod: snowdreamtech/frps:0.71.1-alpine);
+# ältere Heimserver mit frpc 0.69.1 laufen dagegen weiter
+# (services/relay-frps-plugin/tests/test_integration.py mit beiden Paarungen
+# grün, 2026-11-04).
+ARG FRP_VERSION=0.71.1
 ARG TARGETARCH=amd64
 
 # SHA-256 checksums for all bundled binaries. Pinned to a specific upstream
@@ -83,11 +84,11 @@ ARG TARGETARCH=amd64
 ARG SHA256_S6_NOARCH=6dbcde158a3e78b9bb141d7bcb5ccb421e563523babbe2c64470e76f4fd02dae
 ARG SHA256_S6_X86_64=59289456ab1761e277bd456a95e737c06b03ede99158beb24f12b165a904f478
 ARG SHA256_S6_AARCH64=8b22a2eaca4bf0b27a43d36e65c89d2701738f628d1abd0cea5569619f66f785
-ARG SHA256_CADDY_AMD64=a7e8306c54138cf88e371c5ec0caf7baf142ecc1d60a30897dfb67d65d3748c8
-ARG SHA256_CADDY_ARM64=93a3eb31883d678c6590c6d823eb6bb9f7a3af66dcd9d53df3eb2c7528b2af05
-# frp: upstream publiziert keine Checksums-Datei — re-hashed vom offiziellen Tarball.
-ARG SHA256_FRP_AMD64=7be257b72dbbc60bcb3e0e25a5afd1dfac7b63f897084864d3c956dd3d5674e1
-ARG SHA256_FRP_ARM64=bbc0c75e896af3f292fb46ba09c844a04fa9b5ea3530c039c7af20637f836355
+ARG SHA256_CADDY_AMD64=f032f8805e4df2ce5e1a8a624495c91e9ff763d8ff3ceddadd4784a07c472f40
+ARG SHA256_CADDY_ARM64=6781a68e090fecda8c563b5a3b00115e18d7134084099ae804a017622471bed1
+# frp: aus frp_sha256_checksums.txt des Releases (2026-11-04 gegen die Tarballs nachgerechnet).
+ARG SHA256_FRP_AMD64=1d9875210972a5d1a62b2dc4c48df45ab0af05d3ca1b5e494a014428259df803
+ARG SHA256_FRP_ARM64=8edf590b0c396fa42f9c147121a76af83cfc2002b08f5aef0ea1008c43482019
 
 # ── Stage 1 ────────────────────────────────────────────────────────────────
 # Python-Services: build the uv workspace, produce a self-contained .venv
@@ -196,10 +197,10 @@ RUN cargo build --release --locked \
     && cp target/release/direct-adapter /opt/pulse-direct-adapter
 
 # ── Stage 2c ───────────────────────────────────────────────────────────────
-# LiveKit-Server aus dem Pulse-Fork: 1.13.3 + Patch `extra_node_ips`
+# LiveKit-Server aus dem Pulse-Fork: 1.13.11 + Patch `extra_node_ips`
 # (infra/livekit-fork/ — README dort). Der Heimserver der Server-App kündigt
 # damit LAN- UND öffentliche IPv4 an; ohne `extra_node_ips` in der livekit.yaml
-# verhält sich das Binary wie das offizielle 1.13.3 (alle VPS-Self-Hosts).
+# verhält sich das Binary wie das offizielle 1.13.11 (alle VPS-Self-Hosts).
 #
 # Gebaut von DEMSELBEN Skript, das die Windows-Server-App benutzt — Commits und
 # Patch-Stand stehen nur in `infra/livekit-fork/quelle.env`. Das Skript holt

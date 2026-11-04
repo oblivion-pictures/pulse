@@ -826,8 +826,8 @@ against its dependency mediatransportutil.
 
 | Component | Version / pin | License | Notes |
 |---|---|---|---|
-| [LiveKit server](https://github.com/livekit/livekit) | v1.13.3, commit `8f6a9cb8b735549f0c5770df8ea70ac51f860ecb` | Apache-2.0 | Built from source; reports `version 1.13.3` |
-| [mediatransportutil](https://github.com/livekit/mediatransportutil) | commit `a3417d38cda0c840ef8c7ebe9628472028921d58` (the one v1.13.3 requires) | Apache-2.0 | **Modified by Pulse** — one patch, see below |
+| [LiveKit server](https://github.com/livekit/livekit) | v1.13.11, commit `385aa40f9292fe1db8caad87301e4b285b7c198a` | Apache-2.0 | Built from source; reports `version 1.13.11` |
+| [mediatransportutil](https://github.com/livekit/mediatransportutil) | commit `dd8e31a0adc029947ef8ed18f369d8140b982ec2` (the one v1.13.11 requires) | Apache-2.0 | **Modified by Pulse** — one patch, see below |
 
 Where it ships: the self-host image (`/usr/local/bin/livekit-server`; LICENSE,
 NOTICE and the patch in `/usr/share/doc/livekit-server/`), the Windows Pulse

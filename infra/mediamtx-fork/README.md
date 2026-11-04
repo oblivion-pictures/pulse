@@ -29,15 +29,19 @@ rationale for each; this is the map.
 | `0009-ton-nachforderung` | negotiates `nack` for audio too, on the WHEP sending side only (`PULSE_AUDIO_NACK=1`). pion's `ConfigureNack` registers it for video codecs only, so a lost Opus packet on the way to the viewer never came back — although the native player offers and requests it (41 lost audio packets in 10 min measured on 2026-10-15, while NACK rescued 94-98 % of the video losses). Negotiated only where the viewer offers it; the publish (WHIP) side stays upstream. Also: the FlexFEC gate (0004) counts only NACKs for the video SSRC. |
 | `0010-vollbild-beim-beitritt` | asks the publisher for a key frame as soon as a viewer attaches (`PULSE_KEYFRAME_ON_JOIN=1`). 0002 is purely reactive, and only Chromium sends a request on join; WebKit (Safari, everything on iOS) waits silently — with 60 s between key frames an iPhone sat in front of black for up to a minute (measured 2026-10-08). |
 | `0011-ton-reserve-am-eingang` | accepts RED (RFC 2198) for audio on the WHIP ingest (`PULSE_AUDIO_RED=1`). Our senders offer `audio/red` (PT 63) before Opus 111 and only pack RED when the answer contains it; every packet then carries, by default, the previous two again. The server unpacks it into plain Opus *before* the reorder buffer, so a lost audio packet comes back out of the next one without extra delay, and everything downstream — viewers included — sees only Opus. Logs `[pulse] Ton-Reserve: fehlten …, ersetzt …, unrettbar …` per track. Derived from the code and tested against pion/gortsplib, not yet measured on a real line. |
+| `0012-h265-ohne-level-id` | drops `level-id` from the H265 fmtp of the WHEP output, so pion's codec match with Chromium's offer stays exact when FlexFEC (0003) is on. No switch. |
+| `0014-whep-ohne-medien` | security backport of mediamtx #6309 (fixed upstream in 1.21.2): a WHEP offer without media sections no longer crashes the process. No switch. |
 
 `patches-vendor/` — applied to vendored third-party code, after `go mod vendor`:
 
 | Patch | What it does |
 |---|---|
 | `0005-flexfec-nachlieferungen-nicht-puffern` | keeps NACK retransmissions out of pion's parity buffer; a single one otherwise left the whole group unprotected. |
+| `0013-rtmp-leere-parametersaetze` | security backport (GHSA-5jgv-c722-r5cg, GHSA-7498-vjgw-9cr2; fixed upstream in gortmplib v1.0.2 / MediaMTX 1.21.0): empty H264/H265 parameter sets from an RTMP publisher end that connection with an error instead of crashing the process. No switch. |
 
 **Every one of 0002-0011 is off unless its environment variable is set.** An
-un-configured deployment behaves exactly like upstream plus 0001.
+un-configured deployment behaves exactly like upstream plus 0001, 0012 and the
+two security backports 0013/0014.
 
 > **Dieser Abschnitt beschrieb den Fork bis 2026-08-04 als „minimal" mit genau
 > einem Patch**, und den Abschnitt darunter als offene Frage („Experimentelles
@@ -54,8 +58,8 @@ wendet **jeden** Patch in `patches/` an, und der Workflow baut daraus das Image,
 das Produktion pinnt.
 
 **Seit 2026-08-04 steht der Patch-Stand im Tag** (`PULSE_REVISION` im
-Dockerfile → aktuell `1.19.1-pulse11`; die Compose-Dateien pinnen bis zum Bau
-noch `1.19.1-pulse9`, Reihenfolge im Dockerfile-Kopf). Hier stand vorher, ein Patch lande „in Produktion
+Dockerfile → aktuell `1.19.1-pulse13`; die Compose-Dateien ziehen erst nach dem
+Bau nach, Reihenfolge im Dockerfile-Kopf). Hier stand vorher, ein Patch lande „in Produktion
 — ohne Versionswechsel und ohne dass man es am Tag ablesen könnte". Genau das
 ist jetzt behoben: wer den Satz ändert, ändert den Tag mit, das alte Image
 bleibt in der Registry stehen, und ein Rückweg ist eine Zeile in der

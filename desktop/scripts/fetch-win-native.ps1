@@ -62,8 +62,8 @@ $ErrorActionPreference = "Stop"
 #     S3-Metadaten des Servers stimmte mit der Datei überein).
 #   weed (SeaweedFS): kein Download, sondern `git clone` am Tag — festgeschrieben
 #     ist der Commit, auf den der Tag zeigt.
-$CaddyVersion   = "2.8.4"
-$CaddySha256    = "2631fbe1c4f6fb08783ed6dc6ac238d6655b4c923abe2bce1433dbd7fd079630"
+$CaddyVersion   = "2.11.8"
+$CaddySha256    = "eaf062366aeba9d782af7f70edb4b49097652be1af31e8141f9f2761aa25cb1f"
 $GarnetVersion  = "2.2.0"
 $GarnetSha256   = "8812ae916dd2386db6ebfaeeee3fb6508024f82ee4c66284532a1a5baa6afea2"
 $PgVersion      = "15.14-1"
@@ -72,8 +72,8 @@ $DotnetVersion  = "10.0.12"
 $DotnetSha256   = "da3947e6acbb5228e4e987c7585aa40ce2d7000856e3da0804e6ee3771e806dc"
 $WeedVersion    = "4.48"
 $WeedCommit     = "530be3e37337488ecc34d58441e0bc476e121c93"   # Commit, auf den der Tag 4.48 zeigt
-$FrpVersion     = "0.69.1"   # läuft gegen den frps der Cloud (seit 2026-11-04 0.71.1, s. infra/self-host/Dockerfile)
-$FrpSha256      = "829ac915f8655d4d4e021b8db61b46c3445205ed80d32b04cda7fa89d87c46e0"
+$FrpVersion     = "0.71.1"   # passend zum frps der Cloud (snowdreamtech/frps:0.71.1-alpine)
+$FrpSha256      = "b90074b2b6a1d792a7a40f085ac6d276bcab2d1bc60201f8a86ca53ce65ce821"
 
 $Repo = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $Tmp = Join-Path $env:TEMP "pulse-native-fetch"

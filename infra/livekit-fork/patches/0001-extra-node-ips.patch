@@ -1,5 +1,6 @@
-Pulse-Patch 0001 gegen github.com/livekit/mediatransportutil @ a3417d38cda0
-(der Stand, den LiveKit v1.13.3 verlangt).
+Pulse-Patch 0001 gegen github.com/livekit/mediatransportutil @ dd8e31a0adc0
+(der Stand, den LiveKit v1.13.11 verlangt; neu geschnitten am 2026-11-04,
+zuerst gegen a3417d38cda0 für v1.13.3).
 
 Neue Option `rtc.extra_node_ips` (Liste): weitere Adressen, die LiveKit neben
 `node_ip` als Host-Kandidaten ankündigt. Gebraucht vom Heimserver der
@@ -11,10 +12,23 @@ nicht kann — „could not establish pc connection".
 Warum ein Patch und keine Konfiguration: `node_ip` nimmt genau eine IPv4
 (`NodeIP{V4,V6}`), und im `node_ip`-Weg (`use_external_ip: false`) ersetzt
 `SetNAT1To1AddressRewriteRules` per Catch-all-Regel JEDE lokale Adresse durch
-diese eine; `advertise_internal_ip` wirkt dort nicht (nur im STUN-Weg). Pion
+diese eine (bis mediatransportutil #94 wirkte `advertise_internal_ip` dort
+nicht, s. u.). Pion
 (ice v4.2.7, external_ip_mapper.go) kann für eine lokale Adresse mehrere
 externe ausgeben — LiveKit reicht nur keine zweite durch. Der Patch hängt
 `extra_node_ips` an genau diese Catch-all-Regel an.
+
+Seit mediatransportutil #94 (in v1.13.11) reicht LiveKit im node_ip-Weg
+`advertise_internal_ip` durch: dann kündigt es JEDE lokale Adresse zusätzlich
+an (Append-Modus). Pulse setzt `advertise_internal_ip: true` in allen
+Konfigurationen (Template, Windows nativ) für den STUN-Weg; im node_ip-Weg
+kämen damit Docker-Brücke, VPN- und Hyper-V-Adapter als Kandidaten dazu. Der
+Patch behält dort deshalb das alte Ersetzen bei (`includeInternal=false`), die
+LAN-Adresse kommt gezielt über `extra_node_ips`. Der Test setzt
+`AdvertiseInternalIP: true` und wird ohne diese Zeile rot („local address
+leaked: 172.17.0.2", nachgefahren 2026-11-04). #94 könnte den Fork später
+ersetzen, aber nur nach einem Test im echten Heimnetz (welche Adressen sieht
+LiveKit im Container als „lokal"?).
 
 Wirkung ohne die Option: keine. `nodeIPsWithExtras` liefert dann `node_ip`
 unverändert, und im STUN-Weg (`use_external_ip: true`, alle VPS-Self-Hosts)
@@ -22,17 +36,18 @@ wird die neue Funktion gar nicht aufgerufen. `node_ip` bleibt die primäre
 Adresse für Routing und TURN.
 
 Test: `go test ./pkg/rtcconfig/` sammelt echte ICE-Kandidaten einer
-PeerConnection (ohne Patch rot, mit grün; nachgefahren 2026-10-12).
+PeerConnection (ohne Patch rot, mit grün; nachgefahren 2026-10-12, gegen
+dd8e31a0adc0 erneut am 2026-11-04).
 
 Entfernen, sobald upstream eine gleichwertige Option kennt (dann den Namen in
 infra/self-host/livekit-node-ip.sh und desktop/electron/localBackend/
 nativeBackend/configs.ts nachziehen).
 
 diff --git a/pkg/rtcconfig/config.go b/pkg/rtcconfig/config.go
-index a0d03d2..b06a3e8 100644
+index 8b5416b..8782314 100644
 --- a/pkg/rtcconfig/config.go
 +++ b/pkg/rtcconfig/config.go
-@@ -75,6 +75,13 @@ type RTCConfig struct {
+@@ -76,6 +76,13 @@ type RTCConfig struct {
  
  	// for testing, disable UDP
  	ForceTCP bool `yaml:"force_tcp,omitempty"`
@@ -47,19 +62,26 @@ index a0d03d2..b06a3e8 100644
  
  type InterfacesConfig struct {
 diff --git a/pkg/rtcconfig/webrtc_config.go b/pkg/rtcconfig/webrtc_config.go
-index 3c9d489..8000353 100644
+index 80f1bf2..0bd7015 100644
 --- a/pkg/rtcconfig/webrtc_config.go
 +++ b/pkg/rtcconfig/webrtc_config.go
-@@ -109,7 +109,7 @@ func NewWebRTCConfig(rtcConf *RTCConfig, development bool) (*WebRTCConfig, error
+@@ -109,8 +109,13 @@ func NewWebRTCConfig(rtcConf *RTCConfig, development bool) (*WebRTCConfig, error
  			}
  			nat1to1IPs = ips
  		} else {
--			if err := SetNAT1To1AddressRewriteRules(&s, rtcConf.NodeIP.ToStringSlice(), false); err != nil {
+-			logger.Infow("using explicit node IP for NAT1To1Ips", "ip", rtcConf.NodeIP, "advertiseInternalIP", rtcConf.AdvertiseInternalIP)
+-			if err := SetNAT1To1AddressRewriteRules(&s, rtcConf.NodeIP.ToStringSlice(), rtcConf.AdvertiseInternalIP); err != nil {
++			// Pulse patch: node_ip plus extra_node_ips, and the replace semantics
++			// LiveKit had up to mediatransportutil #94 (includeInternal=false):
++			// the LAN address is announced explicitly via extra_node_ips, so
++			// advertise_internal_ip must not add every local interface (Docker
++			// bridge, VPN and Hyper-V adapters) on top.
++			logger.Infow("using explicit node IP for NAT1To1Ips", "ip", rtcConf.NodeIP, "extraNodeIPs", rtcConf.ExtraNodeIPs)
 +			if err := SetNAT1To1AddressRewriteRules(&s, nodeIPsWithExtras(rtcConf), false); err != nil {
  				return nil, err
  			}
  		}
-@@ -249,6 +249,30 @@ func NewWebRTCConfig(rtcConf *RTCConfig, development bool) (*WebRTCConfig, error
+@@ -250,6 +255,30 @@ func NewWebRTCConfig(rtcConf *RTCConfig, development bool) (*WebRTCConfig, error
  	}, nil
  }
  
@@ -88,26 +110,23 @@ index 3c9d489..8000353 100644
 +}
 +
  func SetNAT1To1AddressRewriteRules(s *webrtc.SettingEngine, ips []string, includeInternal bool) error {
- 	rules := make([]webrtc.ICEAddressRewriteRule, 0, len(ips)+1)
- 	catchAll := make([]string, 0, len(ips))
+ 	return s.SetICEAddressRewriteRules(nat1To1AddressRewriteRules(ips, includeInternal)...)
+ }
 diff --git a/pkg/rtcconfig/webrtc_config_test.go b/pkg/rtcconfig/webrtc_config_test.go
-index ae91c15..f467ef4 100644
+index ef3d039..0366134 100644
 --- a/pkg/rtcconfig/webrtc_config_test.go
 +++ b/pkg/rtcconfig/webrtc_config_test.go
-@@ -16,8 +16,10 @@ package rtcconfig
+@@ -16,6 +16,7 @@ package rtcconfig
  
  import (
  	"net"
 +	"strings"
  	"testing"
  
-+	"github.com/pion/webrtc/v4"
- 	"github.com/stretchr/testify/require"
- )
- 
-@@ -86,3 +88,56 @@ func Test_InterfaceFilterFromConf(t *testing.T) {
- 		}
- 	}
+ 	"github.com/pion/webrtc/v4"
+@@ -117,3 +118,59 @@ func Test_NAT1To1AddressRewriteRules(t *testing.T) {
+ 		require.Equal(t, webrtc.ICEAddressRewriteAppend, rules[1].Mode)
+ 	})
  }
 +
 +// Pulse patch: extra_node_ips must show up as additional host candidates next
@@ -117,6 +136,9 @@ index ae91c15..f467ef4 100644
 +	conf := &RTCConfig{
 +		NodeIP:       NodeIP{V4: "203.0.113.7"},
 +		ExtraNodeIPs: []string{"192.0.2.10", "203.0.113.7", "not-an-ip"},
++		// Set as in Pulse's configs: must not let local addresses through in
++		// the node_ip path (see NewWebRTCConfig).
++		AdvertiseInternalIP: true,
 +	}
 +	wc, err := NewWebRTCConfig(conf, false)
 +	require.NoError(t, err)

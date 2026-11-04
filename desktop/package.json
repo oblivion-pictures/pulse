@@ -22,7 +22,7 @@
     "test:localbackend-int": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test test/localBackend/portMapper.int.test.ts test/localBackend/reachability.int.test.ts"
   },
   "dependencies": {
-    "electron-updater": "^6.3.9"
+    "electron-updater": "^6.8.11"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",

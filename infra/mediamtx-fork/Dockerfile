@@ -187,7 +187,15 @@ ARG MEDIAMTX_VERSION=1.19.1
 # supported by remote“. Wirkt ohne Schalter. Wie bei 8-11: erst baut der
 # Workflow `1.19.1-pulse12`, DANACH ziehen die Compose-Dateien,
 # `infra/self-host/Dockerfile` und die Stellen, die den Tag nur nennen, nach.
-ARG PULSE_REVISION=12
+#
+# 13 (2026-11-04): Sicherheits-Backports ohne Schalter — `patches-vendor/
+# 0013-rtmp-leere-parametersaetze` (GHSA-5jgv-c722-r5cg, GHSA-7498-vjgw-9cr2:
+# leere H264-/H265-Parametersätze eines RTMP-Senders brachten den ganzen
+# Prozess zum Absturz) und `patches/0014-whep-ohne-medien` (mediamtx #6309:
+# WHEP-Angebot ohne Medienabschnitte, dasselbe). Wie bei 8-12: erst baut der
+# Workflow `1.19.1-pulse13`, DANACH ziehen die Compose-Dateien,
+# `infra/self-host/Dockerfile` und die Stellen, die den Tag nur nennen, nach.
+ARG PULSE_REVISION=13
 ARG GO_VERSION=1.26
 
 # ── Stage 1: build the patched binary ──────────────────────────────────────
