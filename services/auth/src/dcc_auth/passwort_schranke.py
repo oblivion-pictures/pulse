@@ -25,9 +25,11 @@ from dcc_auth.models import User
 from dcc_auth.routes import _check_account_rate
 from dcc_auth.security import verify_password
 
-# Wie ``schemas._CurrentPasswordField``, aber optional: ein fehlendes Passwort
-# soll als 401 ankommen (alte Server-App, alte Web-App), nicht als 422.
-OptionalesPasswort = Annotated[str | None, Field(min_length=1, max_length=128)]
+# Wie ``schemas._CurrentPasswordField``, aber optional und ohne Mindestlänge:
+# ein fehlendes ODER leeres Passwort soll als 401 ankommen (alte Server-App,
+# alte Web-App), nicht als 422 — die Server-App wertet nur die 401 als
+# „Passwort falsch“ und bricht „Server aufgeben“ dann vor dem Gerät ab.
+OptionalesPasswort = Annotated[str | None, Field(max_length=128)]
 
 
 class PasswortIn(BaseModel):

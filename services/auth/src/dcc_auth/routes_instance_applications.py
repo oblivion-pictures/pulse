@@ -401,7 +401,7 @@ async def mint_bootstrap_token(
     # Audit-Spur bleibt in der Token-Tabelle (Redeem setzt nur consumed_at,
     # löscht nicht; auch der Reset löscht nur uneingelöste Tokens).
     if await bootstrap_redeemed(db, iid):
-        if not (payload and payload.reset):
+        if payload is None or not payload.reset:
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN,
                 detail="Bootstrap bereits eingelöst — neu ausstellen nur mit reset=true",
