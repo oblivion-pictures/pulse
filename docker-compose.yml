@@ -50,7 +50,7 @@ services:
   # gegenüber MinIO nichts (Dev-Creds bleiben minioadmin/minioadmin).
   # Achtung: der alte `miniodata`-Bestand wird NICHT migriert — Dev-Daten.
   garage:
-    image: dxflrs/garage:v1.1.0
+    image: dxflrs/garage:v1.3.1
     container_name: dcc_night_garage
     # Kein Entrypoint im Image (CMD ist [/garage, server]) — der volle Aufruf
     # muss hier rein, `command: ["-c", …]` allein würde "-c" als Programm

@@ -108,7 +108,7 @@ services:
   # `miniodata`-Bestand wird nicht migriert; Test-Daten.
   minio:
     <<: *base
-    image: dxflrs/garage:v1.1.0
+    image: dxflrs/garage:v1.3.1
     container_name: pulsetest_minio
     # Runde-42-Nachzieher: das Image hat keinen Entrypoint — ["-c", …]
     # exec'd "-c" als Programm (Crash-Loop). Fix wie Prod/Root-Compose.
@@ -270,7 +270,7 @@ services:
   # Bestückt wird sie mit `scripts/dev-sync.sh --web`.
   web:
     <<: *base
-    image: nginx:1.27-alpine
+    image: nginx:1.30-alpine
     container_name: pulsetest_web
     depends_on:
       auth: { condition: service_started }

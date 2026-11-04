@@ -61,8 +61,10 @@ ARG PULSE_MEDIAMTX_TAG=1.19.1-pulse12
 # (Garage ersetzt MinIO, Bughunt Runde 32/Entscheidung 1.1 — das
 #  dl.min.io-Archiv ist 410 und das Hub-Image gelöscht. Garage kommt aus
 #  dem dxflrs-Image, siehe garage-upstream-Stage unten.)
-# frp-Client für den Steuerungs-Relay-Tunnel (App-Hosting). Version passend
-# zum frps auf dem Cloud-Server (infra/prod: snowdreamtech/frps:0.69.1).
+# frp-Client für den Steuerungs-Relay-Tunnel (App-Hosting). Der frps der
+# Cloud (infra/prod: snowdreamtech/frps) ist seit 2026-11-04 auf 0.71.1;
+# frpc 0.69.1 läuft dagegen (services/relay-frps-plugin/tests/test_integration.py
+# mit frps 0.71.1 + frpc 0.69.1 grün, am selben Tag).
 ARG FRP_VERSION=0.69.1
 ARG TARGETARCH=amd64
 
@@ -313,7 +315,7 @@ RUN set -eux; \
 # Entscheidung 1.1/Option 3: dl.min.io hat die Community-Archive gestrichen
 # und das Hub-Image ist gelöscht; Garage ist ein statisches Rust-Binary in
 # einem eigenen minimalen Image, das wir hier nur als Binary-Quelle nutzen).
-FROM dxflrs/garage:v1.1.0 AS garage-upstream
+FROM dxflrs/garage:v1.3.1 AS garage-upstream
 
 # ── Stage 4 — runtime ─────────────────────────────────────────────────────
 # Debian Bookworm (NOT Alpine — coturn + Postgres + Python+uv expect glibc;

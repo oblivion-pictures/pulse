@@ -72,7 +72,7 @@ $DotnetVersion  = "10.0.12"
 $DotnetSha256   = "da3947e6acbb5228e4e987c7585aa40ce2d7000856e3da0804e6ee3771e806dc"
 $WeedVersion    = "4.48"
 $WeedCommit     = "530be3e37337488ecc34d58441e0bc476e121c93"   # Commit, auf den der Tag 4.48 zeigt
-$FrpVersion     = "0.69.1"   # passend zum frps der Cloud (snowdreamtech/frps:0.69.1)
+$FrpVersion     = "0.69.1"   # läuft gegen den frps der Cloud (seit 2026-11-04 0.71.1, s. infra/self-host/Dockerfile)
 $FrpSha256      = "829ac915f8655d4d4e021b8db61b46c3445205ed80d32b04cda7fa89d87c46e0"
 
 $Repo = Resolve-Path (Join-Path $PSScriptRoot "..\..")
