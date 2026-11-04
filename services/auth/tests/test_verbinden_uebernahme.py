@@ -230,6 +230,16 @@ async def _antraege(session_factory) -> list[InstanzUebernahme]:
         )
 
 
+async def _loeschen(client, konto: dict):
+    """``DELETE /me/instances/{_ALT}`` durch den Besitzer — mit Passwort."""
+    return await client.request(
+        "DELETE",
+        f"/me/instances/{_ALT}",
+        headers={"Cookie": konto["cookie"]},
+        json={"password": "correct horse battery staple"},
+    )
+
+
 async def _konto_loeschen(session_factory, konto: dict) -> None:
     """Was ``DELETE /me`` an der Datenbank tut (der Antragsteller besitzt
     keinen Server, also bleibt nur die Nutzerzeile)."""
@@ -502,7 +512,7 @@ async def test_loeschen_macht_die_adresse_sofort_frei(
     await _bestaetigen(client, b)
 
     uhr.vor(hours=1)
-    r = await client.delete(f"/me/instances/{_ALT}", headers={"Cookie": a["cookie"]})
+    r = await _loeschen(client, a)
     assert r.status_code == 204, r.text
 
     lauf = await _bestaetigen(client, b)
@@ -558,7 +568,7 @@ async def test_alter_eintrag_gewechselt(
 
     uhr.vor(hours=1)
     assert (
-        await client.delete(f"/me/instances/{_ALT}", headers={"Cookie": a["cookie"]})
+        await _loeschen(client, a)
     ).status_code == 204
     lauf = await _bestaetigen(client, c)
     assert lauf.antwort.json()["status"] == "verbunden", lauf.antwort.text

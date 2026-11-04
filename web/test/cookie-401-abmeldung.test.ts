@@ -67,3 +67,11 @@ test('Sitzung tot: ZUERST die Gerätetoken abmelden, DANN die Anmeldung löschen
 test('doRefresh räumt eine endgültig abgelehnte Sitzung über sitzungTotRaeumen', () => {
   assert.match(client, /resp\.status === 401 \|\| resp\.status === 403\) \{\s*sitzungTotRaeumen\(\);/);
 });
+
+test('abgelehntes Kontopasswort (401 invalid credentials) erneuert keine Sitzung', () => {
+  // Sicherheitsfund 2026-11-04: „Server löschen“ verlangt das Passwort. Ein
+  // falsches ist kein Sitzungsproblem — Renew + Wiederholung zählten jeden
+  // Fehlversuch doppelt gegen die Je-Konto-Bremse.
+  assert.match(quelle, /resp\.status === 401 && !retried && !\(await passwortAbgelehnt\(resp\)\)/);
+  assert.match(quelle, /=== 'invalid credentials'/);
+});

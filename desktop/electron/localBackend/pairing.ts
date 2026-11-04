@@ -100,9 +100,19 @@ export async function redeemBootstrap(
  *  (routes_instance_applications.py) — dann läuft vermutlich ein eingerichteter
  *  Server, und die Übernahme (reset=true entwertet dessen Creds sofort) braucht
  *  eine explizite Bestätigung im UI statt stillem Überschreiben. */
-export function classifyMintStatus(status: number): 'ok' | 'consumed' | 'error' {
+export function classifyMintStatus(
+  status: number,
+  json?: unknown,
+): 'ok' | 'consumed' | 'wrong_password' | 'error' {
   if (status === 201) return 'ok';
   if (status === 403) return 'consumed';
+  // Übernahme (reset=true) verlangt seit dem Sicherheitsfund 2026-11-04 das
+  // Kontopasswort. Nur DIESES 401 heißt „Passwort falsch“ — ein 401 ohne
+  // gültige Sitzung trägt ein anderes `detail` und bleibt ein Fehler. Dieselbe
+  // Prüfung steht in serverGiveUp.classifyDeleteStatus.
+  if (status === 401 && (json as { detail?: unknown } | null)?.detail === 'invalid credentials') {
+    return 'wrong_password';
+  }
   return 'error';
 }
 

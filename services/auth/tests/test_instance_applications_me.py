@@ -299,7 +299,12 @@ async def test_role_unterscheidet_besitzer_von_mitglied(
         headers={"Cookie": bob_cookie},
     )
     assert r.status_code == 404, r.text
-    r = await client.delete(f"/me/instances/{alice_instance.id}", headers={"Cookie": bob_cookie})
+    r = await client.request(
+        "DELETE",
+        f"/me/instances/{alice_instance.id}",
+        headers={"Cookie": bob_cookie},
+        json={"password": _REG_B["password"]},
+    )
     assert r.status_code == 404, r.text
 
 

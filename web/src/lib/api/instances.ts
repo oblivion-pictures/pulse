@@ -197,9 +197,15 @@ export const instancesApi = {
    * wieder frei, außer der Server war gesperrt — dann bleibt sie gesperrt, bis
    * der Admin sie freigibt. Ein noch laufender Server landet auf der
    * Sperrliste und stellt den Betrieb ein.
+   *
+   * Verlangt das Kontopasswort (Sicherheitsfund 2026-11-04): ein falsches
+   * antwortet 401 `invalid credentials` (`ApiError`).
    */
-  deleteMyInstance(instanceId: string): Promise<void> {
-    return cookieFetch<void>(`/me/instances/${instanceId}`, { method: 'DELETE' });
+  deleteMyInstance(instanceId: string, password: string): Promise<void> {
+    return cookieFetch<void>(`/me/instances/${instanceId}`, {
+      method: 'DELETE',
+      body: { password }
+    });
   }
 };
 

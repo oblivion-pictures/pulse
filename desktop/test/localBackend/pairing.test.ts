@@ -14,6 +14,16 @@ test('classifyMintStatus: 201 → ok, 403 → consumed, Rest → error', () => {
   assert.equal(classifyMintStatus(0), 'error'); // Transportfehler (netJson)
 });
 
+// Übernahme nur mit Kontopasswort (Sicherheitsfund 2026-11-04): ein 401 mit
+// `invalid credentials` heißt „Passwort falsch“, jedes andere 401 bleibt ein
+// Fehler (Sitzung weg).
+test('classifyMintStatus: 401 invalid credentials → wrong_password, anderes 401 → error', () => {
+  assert.equal(classifyMintStatus(401, { detail: 'invalid credentials' }), 'wrong_password');
+  assert.equal(classifyMintStatus(401, { detail: 'missing session cookie' }), 'error');
+  assert.equal(classifyMintStatus(401), 'error');
+  assert.equal(classifyMintStatus(401, null), 'error');
+});
+
 const SAMPLE = {
   instance_id: '123', owner_user_id: '7', hostname: 'mein-pc',
   client_id: 'cid', client_secret: 'SECRET', cloud_origin: 'https://howispulse.com',

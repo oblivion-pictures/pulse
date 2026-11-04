@@ -117,6 +117,17 @@ async def _fetch_suspend_rows(session_factory) -> list[SuspendedInstance]:
         return list(rows.scalars().all())
 
 
+async def _loeschen(client, iid, cookie: str | None, passwort: str | None = _REG_OWNER["password"]):
+    """``DELETE /me/instances/{iid}`` mit Passwort im Körper (Sicherheitsfund
+    2026-11-04). ``passwort=None`` schickt keinen Körper — wie ein alter Klient."""
+    headers = {"Cookie": cookie} if cookie else {}
+    if passwort is None:
+        return await client.delete(f"/me/instances/{iid}", headers=headers)
+    return await client.request(
+        "DELETE", f"/me/instances/{iid}", headers=headers, json={"password": passwort}
+    )
+
+
 # ---------------------------------------------------------------------------
 # Auth + Ownership
 # ---------------------------------------------------------------------------
@@ -130,9 +141,7 @@ async def test_delete_requires_cookie(client):
 
 @pytest.mark.asyncio
 async def test_delete_404_for_other_user(client, other_cookie, owner_instance, session_factory):
-    r = await client.delete(
-        f"/me/instances/{owner_instance.id}", headers={"Cookie": other_cookie}
-    )
+    r = await _loeschen(client, owner_instance.id, other_cookie, _REG_OTHER["password"])
     assert r.status_code == 404
     inst = await _fetch_instance(session_factory)
     assert inst is not None and inst.status == "active"
@@ -140,10 +149,37 @@ async def test_delete_404_for_other_user(client, other_cookie, owner_instance, s
 
 @pytest.mark.asyncio
 async def test_delete_404_nonexistent_and_invalid_id(client, owner_cookie):
-    r = await client.delete("/me/instances/999999999", headers={"Cookie": owner_cookie})
+    r = await _loeschen(client, 999999999, owner_cookie)
     assert r.status_code == 404
-    r = await client.delete("/me/instances/not-a-number", headers={"Cookie": owner_cookie})
+    r = await _loeschen(client, "not-a-number", owner_cookie)
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("passwort", [None, "falsches passwort"], ids=["ohne", "falsch"])
+async def test_delete_verlangt_passwort(
+    client, owner_cookie, owner_instance, session_factory, passwort
+):
+    """Sicherheitsfund 2026-11-04: ein gestohlenes Sitzungs-Cookie allein darf
+    den Server nicht löschen — ohne oder mit falschem Passwort 401, die Instanz
+    bleibt unangetastet."""
+    r = await _loeschen(client, owner_instance.id, owner_cookie, passwort)
+    assert r.status_code == 401, r.text
+    assert r.json()["detail"] == "invalid credentials"
+    inst = await _fetch_instance(session_factory)
+    assert inst is not None and inst.status == "active"
+    assert await _fetch_suspend_rows(session_factory) == []
+
+
+@pytest.mark.asyncio
+async def test_delete_passwort_je_konto_gebremst(client, owner_cookie, owner_instance):
+    """Passwort-Raten mit gestohlenem Cookie: nach 10 Fehlversuchen je Konto
+    und Minute 429, auch mit dem richtigen Passwort."""
+    for _ in range(10):
+        r = await _loeschen(client, owner_instance.id, owner_cookie, "geraten")
+        assert r.status_code == 401, r.text
+    r = await _loeschen(client, owner_instance.id, owner_cookie)
+    assert r.status_code == 429, r.text
 
 
 # ---------------------------------------------------------------------------
@@ -153,9 +189,7 @@ async def test_delete_404_nonexistent_and_invalid_id(client, owner_cookie):
 
 @pytest.mark.asyncio
 async def test_delete_happy_path(client, owner_cookie, owner_instance, session_factory):
-    r = await client.delete(
-        f"/me/instances/{owner_instance.id}", headers={"Cookie": owner_cookie}
-    )
+    r = await _loeschen(client, owner_instance.id, owner_cookie)
     assert r.status_code == 204, r.text
 
     # Soft-Delete: Zeile bleibt (Worker-IDs verbrannt), Hostname freigegeben.
@@ -175,9 +209,7 @@ async def test_delete_happy_path(client, owner_cookie, owner_instance, session_f
     assert r.json() == []
 
     # Zweites Löschen → 404 (weg ist weg).
-    r = await client.delete(
-        f"/me/instances/{owner_instance.id}", headers={"Cookie": owner_cookie}
-    )
+    r = await _loeschen(client, owner_instance.id, owner_cookie)
     assert r.status_code == 404
 
 
@@ -186,9 +218,7 @@ async def test_delete_appears_in_wellknown_deleted_list(
     client, owner_cookie, owner_instance, session_factory
 ):
     """Gelöschte Instanz steht in instance_ids UND deleted_instance_ids."""
-    r = await client.delete(
-        f"/me/instances/{owner_instance.id}", headers={"Cookie": owner_cookie}
-    )
+    r = await _loeschen(client, owner_instance.id, owner_cookie)
     assert r.status_code == 204
 
     r = await client.get("/.well-known/pulse-suspended-instances")
@@ -219,9 +249,7 @@ async def test_admin_suspend_not_in_deleted_list(client, owner_cookie, session_f
 async def test_delete_blocks_snippet_and_bootstrap_token(
     client, owner_cookie, owner_instance, session_factory
 ):
-    r = await client.delete(
-        f"/me/instances/{owner_instance.id}", headers={"Cookie": owner_cookie}
-    )
+    r = await _loeschen(client, owner_instance.id, owner_cookie)
     assert r.status_code == 204
 
     r = await client.get(
@@ -247,7 +275,7 @@ async def test_delete_suspended_instance_keeps_single_suspend_entry(
         session.add(SuspendedInstance(instance_id=_INSTANCE_ID, reason="admin"))
         await session.commit()
 
-    r = await client.delete(f"/me/instances/{_INSTANCE_ID}", headers={"Cookie": owner_cookie})
+    r = await _loeschen(client, _INSTANCE_ID, owner_cookie)
     assert r.status_code == 204
 
     inst = await _fetch_instance(session_factory)
@@ -286,7 +314,7 @@ async def test_delete_suspended_instance_keeps_address_blocked(
     umgangen. Der echte Hostname bleibt stehen, bis der Admin sie freigibt."""
     await _gesperrte_instanz_saeen(session_factory, client, owner_cookie)
 
-    r = await client.delete(f"/me/instances/{_INSTANCE_ID}", headers={"Cookie": owner_cookie})
+    r = await _loeschen(client, _INSTANCE_ID, owner_cookie)
     assert r.status_code == 204, r.text
 
     inst = await _fetch_instance(session_factory)
@@ -339,9 +367,7 @@ async def admin_token(client, session_factory, owner_cookie) -> str:
 async def test_admin_actions_409_on_deleted(
     client, owner_cookie, owner_instance, session_factory, admin_token
 ):
-    r = await client.delete(
-        f"/me/instances/{owner_instance.id}", headers={"Cookie": owner_cookie}
-    )
+    r = await _loeschen(client, owner_instance.id, owner_cookie)
     assert r.status_code == 204
 
     headers = {"Authorization": f"Bearer {admin_token}"}
@@ -403,9 +429,7 @@ async def test_delete_cleans_memberships_directory_and_application(
         )
         await s.commit()
 
-    r = await client.delete(
-        f"/me/instances/{owner_instance.id}", headers={"Cookie": owner_cookie}
-    )
+    r = await _loeschen(client, owner_instance.id, owner_cookie)
     assert r.status_code == 204, r.text
 
     async with session_factory() as s:
@@ -435,7 +459,7 @@ async def test_admin_gibt_die_adresse_einer_gesperrt_geloeschten_instanz_frei(
     client, owner_cookie, session_factory, admin_token
 ):
     await _gesperrte_instanz_saeen(session_factory, client, owner_cookie)
-    r = await client.delete(f"/me/instances/{_INSTANCE_ID}", headers={"Cookie": owner_cookie})
+    r = await _loeschen(client, _INSTANCE_ID, owner_cookie)
     assert r.status_code == 204, r.text
     headers = {"Authorization": f"Bearer {admin_token}"}
 

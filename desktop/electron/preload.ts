@@ -534,9 +534,10 @@ contextBridge.exposeInMainWorld('pulse', {
     pair: (bootstrapToken: string): Promise<unknown> =>
       ipcRenderer.invoke('host:pair', bootstrapToken),
     getPairing: (): Promise<unknown> => ipcRenderer.invoke('host:getPairing'),
+    // Übernahme mit Kontopasswort (`password`, Sicherheitsfund 2026-11-04).
     provision: (
-      opts?: { confirmTakeover?: boolean },
-    ): Promise<{ ok: boolean; error?: string; needsTakeoverConfirm?: boolean }> =>
+      opts?: { confirmTakeover?: boolean; password?: string },
+    ): Promise<{ ok: boolean; error?: string; needsTakeoverConfirm?: boolean; passwordWrong?: boolean }> =>
       ipcRenderer.invoke('host:provision', opts),
     // "In der Cloud registriert & auffindbar" — Directory-Heartbeat-Abfrage.
     // { registered: true|false|null }. server.html fragt bei Phase 'live' ab
@@ -563,8 +564,9 @@ contextBridge.exposeInMainWorld('pulse', {
       return () => ipcRenderer.removeListener('host:exportStep', handler);
     },
     // "Server aufgeben": Container+Cloud-Registrierung+Pairing entfernen,
-    // optional inkl. lokaler Daten (server.html-Bestätigungs-Overlay).
-    giveUp: (opts?: { deleteData?: boolean }): Promise<unknown> =>
+    // optional inkl. lokaler Daten (server.html-Bestätigungs-Overlay). Die
+    // Cloud-Löschung verlangt das Kontopasswort (`password`).
+    giveUp: (opts?: { deleteData?: boolean; password?: string }): Promise<unknown> =>
       ipcRenderer.invoke('host:giveUp', opts),
     unpair: (): Promise<void> => ipcRenderer.invoke('host:unpair'),
     runtimeAvailable: (): Promise<boolean> => ipcRenderer.invoke('host:runtime'),

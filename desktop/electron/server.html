@@ -201,6 +201,13 @@
     <div class="card" style="width: 400px">
       <h1>Server übernehmen?</h1>
       <div class="sub">Für dieses Konto läuft bereits ein eingerichteter Server. Übernehmen? Der bisherige Server verliert dauerhaft den Zugang.</div>
+      <!-- Kontopasswort (Sicherheitsfund 2026-11-04): die Cloud verlangt es für
+           die Übernahme, ein gestohlenes Sitzungs-Cookie allein reicht nicht. -->
+      <div class="row">
+        <label for="takeoverPassword">Zur Bestätigung dein Pulse-Passwort</label>
+        <input id="takeoverPassword" type="password" autocomplete="current-password" />
+        <div id="takeoverError" class="hint warn hidden"></div>
+      </div>
       <div class="row"><button id="btnTakeover" class="danger">Übernehmen</button></div>
       <div class="row" style="margin-bottom: 0"><button id="btnTakeoverCancel" class="secondary">Abbrechen</button></div>
     </div>
@@ -222,6 +229,13 @@
       <h1>Server aufgeben?</h1>
       <div class="sub">Dein Server wird dauerhaft gelöscht. Mitglieder verlieren den Zugang und der Server verschwindet aus ihren Listen.</div>
       <label class="toggle" style="margin-bottom: 16px"><input id="giveupData" type="checkbox" /> Auch die lokalen Serverdaten auf diesem Gerät löschen (Nachrichten, Dateien — unwiderruflich)</label>
+      <!-- Kontopasswort für die Cloud-Löschung; im superseded-Zustand entfällt
+           sie und damit das Feld (server.js, openGiveUp). -->
+      <div id="giveupPasswordRow" class="row">
+        <label for="giveupPassword">Zur Bestätigung dein Pulse-Passwort</label>
+        <input id="giveupPassword" type="password" autocomplete="current-password" />
+        <div id="giveupError" class="hint warn hidden"></div>
+      </div>
       <div class="row"><button id="btnGiveUpConfirm" class="danger">Server dauerhaft aufgeben</button></div>
       <div class="row" style="margin-bottom: 0"><button id="btnGiveUpCancel" class="secondary">Abbrechen</button></div>
     </div>

@@ -46,6 +46,7 @@ from dcc_auth.models_instances import (
     SuspendedInstance,
     UserInstanceMembership,
 )
+from dcc_auth.passwort_schranke import PasswortIn, passwort_bestaetigen
 from dcc_auth.routes_instance_applications import _require_user
 from dcc_auth.routes_suspended_instances import _get_redis, suspended_list_add
 
@@ -59,8 +60,15 @@ async def delete_my_instance(
     instance_id: str,
     request: Request,
     db: SessionDep,
+    payload: PasswortIn | None = None,
 ) -> None:
     """Eigene Instanz löschen (Soft-Delete, irreversibel für den Owner).
+
+    Verlangt das Kontopasswort im Körper (``{"password": …}``, Sicherheitsfund
+    2026-11-04): ein gestohlenes Sitzungs-Cookie allein darf keinen Server
+    entfernen. Ohne oder mit falschem Passwort 401 ``invalid credentials``.
+    Geprüft wird VOR dem Nachschlagen der Instanz — so hält kein Zeilen-Lock
+    über die argon2-Rechnung, und eine 401 verrät nichts über die Instanz.
 
     Nur der Besitzer; 404 statt 403 gegen Existence-Leak (wie die
     Nachbar-Routen). Eine bereits gelöschte Instanz ist für den Owner
@@ -70,6 +78,9 @@ async def delete_my_instance(
     Admin sie freigibt. Bei jeder anderen Instanz wird die Adresse frei.
     """
     user = await _require_user(request, db)
+    await passwort_bestaetigen(
+        request, user, payload.password if payload else None, zweck="instance_delete"
+    )
 
     inst = await eigene_instanz_oder_404(db, user.id, instance_id, with_for_update=True)
 

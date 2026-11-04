@@ -154,7 +154,7 @@ test('Direktpfad-Komplettlauf: Selbstbedienung → Container → Bob über DataC
   await register(owner, OWNER);
 
   const { iid, hostname, clientSecret, clientId, ownerUserId, adminEmail } =
-    await owner.evaluate(async () => {
+    await owner.evaluate(async (passwort) => {
     const token = localStorage.getItem('dcc.tokens.access');
     const kopf = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
     let r = await fetch('/api/auth/me/instances', {
@@ -174,11 +174,12 @@ test('Direktpfad-Komplettlauf: Selbstbedienung → Container → Bob über DataC
       ).json()) as { id: string; hostname: string; status: string; origin: string }[];
       const alt = liste.find((i) => i.status === 'active' && i.origin === 'app_host')!;
       // Secret ist unbekannt (nur beim ersten Mal gezeigt) → Reset-Mint + Redeem.
+      // Der Reset verlangt das Kontopasswort (Sicherheitsfund 2026-11-04).
       const mint = (await (
         await fetch(`/api/auth/me/instances/${alt.id}/bootstrap-token`, {
           method: 'POST',
           headers: kopf,
-          body: JSON.stringify({ reset: true })
+          body: JSON.stringify({ reset: true, password: passwort })
         })
       ).json()) as { token: string };
       const creds = (await (
@@ -222,7 +223,7 @@ test('Direktpfad-Komplettlauf: Selbstbedienung → Container → Bob über DataC
       ownerUserId: String(me.id),
       adminEmail: me.email
     };
-  });
+  }, OWNER.password);
   expect(iid).toMatch(/^\d+$/);
   expect(hostname).toContain('app-');
 

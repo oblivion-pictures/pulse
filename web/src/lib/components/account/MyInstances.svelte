@@ -19,7 +19,6 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { toast } from 'svelte-sonner';
   import { m } from '$lib/paraglide/messages.js';
   import { currentLocale } from '$lib/i18n';
   import { instancesApi, type Instance } from '$lib/api/instances';
@@ -31,9 +30,9 @@
   import InstanceDiagnose from './InstanceDiagnose.svelte';
   import InstanzStatus from './InstanzStatus.svelte';
   import UebernahmeHinweis from './UebernahmeHinweis.svelte';
+  import InstanzLoeschenDialog from './InstanzLoeschenDialog.svelte';
   import EmptyState from '$lib/components/feedback/EmptyState.svelte';
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
-  import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
   import { Button } from '$lib/components/ui/button';
   import Trash2Icon from '@lucide/svelte/icons/trash-2';
   import PencilIcon from '@lucide/svelte/icons/pencil';
@@ -42,43 +41,20 @@
   let loading = $state(true);
   let deleteTarget = $state<Instance | null>(null);
   let deleteConfirmOpen = $state(false);
-  let deleting = $state(false);
 
   function openDelete(inst: Instance) {
     deleteTarget = inst;
     deleteConfirmOpen = true;
   }
 
-  /** „Die Adresse wird wieder frei“ stimmt nicht für einen gesperrten Server:
-   *  löscht man ihn, bleibt die Adresse gesperrt (Backend: geloeschte_adresse.py). */
-  function deleteText(inst: Instance | null): string {
-    const hostname = inst?.hostname ?? '';
-    if (inst?.origin === 'app_host') return m.my_instances_apphost_delete_description();
-    return inst?.status === 'suspended'
-      ? m.eigener_server_loeschen_text_gesperrt({ hostname })
-      : m.eigener_server_loeschen_text({ hostname });
-  }
-
-  async function confirmDelete() {
-    if (!deleteTarget || deleting) return;
-    deleting = true;
-    const id = deleteTarget.id;
-    try {
-      await instancesApi.deleteMyInstance(id);
-      instances = instances.filter((i) => i.id !== id);
-      // Auch aus der eigenen Server-Leiste entfernen (Match über die
-      // Instanz-ID) — andere Geräte/User räumt der Start-Sweep auf
-      // (deleted-instance-sweep.ts).
-      const localEntry = serversStore.servers.find((s) => s.instance_id === id);
-      if (localEntry) removeServerLocally(localEntry.id);
-      toast.success(m.my_instances_delete_success());
-    } catch {
-      toast.error(m.my_instances_delete_error());
-    } finally {
-      deleting = false;
-      deleteConfirmOpen = false;
-      deleteTarget = null;
-    }
+  /** Nach erfolgreichem Löschen (Dialog: `InstanzLoeschenDialog`). */
+  function geloescht(id: string) {
+    instances = instances.filter((i) => i.id !== id);
+    // Auch aus der eigenen Server-Leiste entfernen (Match über die
+    // Instanz-ID) — andere Geräte/User räumt der Start-Sweep auf
+    // (deleted-instance-sweep.ts).
+    const localEntry = serversStore.servers.find((s) => s.instance_id === id);
+    if (localEntry) removeServerLocally(localEntry.id);
   }
 
   /** Liste holen — beim Öffnen und nach einem Widerspruch. */
@@ -176,20 +152,5 @@
   {/if}
 </div>
 
-<!-- Lösch-Bestätigung -->
-<AlertDialog.Root bind:open={deleteConfirmOpen}>
-  <AlertDialog.Content data-testid="instance-delete-dialog">
-    <AlertDialog.Header>
-      <AlertDialog.Title>{m.my_instances_delete_title()}</AlertDialog.Title>
-      <AlertDialog.Description>
-        {deleteText(deleteTarget)}
-      </AlertDialog.Description>
-    </AlertDialog.Header>
-    <AlertDialog.Footer>
-      <AlertDialog.Cancel>{m.my_instances_delete_cancel()}</AlertDialog.Cancel>
-      <AlertDialog.Action onclick={confirmDelete} disabled={deleting} data-testid="instance-delete-confirm">
-        {m.my_instances_delete_action()}
-      </AlertDialog.Action>
-    </AlertDialog.Footer>
-  </AlertDialog.Content>
-</AlertDialog.Root>
+<!-- Lösch-Bestätigung mit Kontopasswort -->
+<InstanzLoeschenDialog bind:open={deleteConfirmOpen} ziel={deleteTarget} onGeloescht={geloescht} />

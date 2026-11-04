@@ -1029,15 +1029,19 @@ function wireHost(getWin: () => Electron.BrowserWindow | null): void {
     console.log('[provision] begin, weltUser =', weltUser);
     // Übernahme-Bestätigung nur als exaktes true durchreichen — alles andere
     // aus dem Renderer bleibt der vorsichtige Kein-reset-Pfad.
-    const confirmTakeover =
-      typeof opts === 'object' && opts !== null &&
-      (opts as { confirmTakeover?: unknown }).confirmTakeover === true;
+    const o = typeof opts === 'object' && opts !== null
+      ? (opts as { confirmTakeover?: unknown; password?: unknown })
+      : {};
+    const confirmTakeover = o.confirmTakeover === true;
+    // Kontopasswort für die Übernahme (Sicherheitsfund 2026-11-04) — geht nur
+    // an die Cloud, nie ins Log.
+    const password = confirmTakeover && typeof o.password === 'string' ? o.password : undefined;
     console.log('[provision] cloud call …');
     // Realm-Kette wie login/logout/me: gepairt → Instanz-Cloud, sonst Dev-URL,
     // sonst Produktion. Hartcodiertes PROD_URL fragte im Dev-Cloud-Betrieb
     // nach der falschen Session → "bitte zuerst einloggen" trotz Login.
     const provisionOrigin = realmOrigin();
-    const result = await provision(provisionOrigin, { confirmTakeover }, () => getAccessToken(provisionOrigin));
+    const result = await provision(provisionOrigin, { confirmTakeover, password }, () => getAccessToken(provisionOrigin));
     // Nur das Ergebnis, nie `result` selbst: bei Erfolg trägt es die
     // vollständigen Zugangsdaten (client_secret, Tunnel-Token).
     console.log('[provision] fertig:', result.ok ? `ok, Instanz ${result.creds.instanceId}` : 'nicht ok');
@@ -1061,7 +1065,9 @@ function wireHost(getWin: () => Electron.BrowserWindow | null): void {
     }
     // Übernahme-Frage ist kein Fehler — Provisionierung pausiert nur, bis der
     // User im UI bestätigt oder abbricht.
-    if (result.needsTakeoverConfirm) return { ok: false, needsTakeoverConfirm: true };
+    if (result.needsTakeoverConfirm) {
+      return { ok: false, needsTakeoverConfirm: true, passwordWrong: result.passwordWrong === true };
+    }
     // Der Renderer zeigt den Text nur im alert() — ohne Log ist ein Fehlschlag
     // nachträglich nicht diagnostizierbar. `error` trägt nie Token/Secrets.
     console.error('[provision] fehlgeschlagen:', result.error);
@@ -1463,12 +1469,16 @@ function wireHost(getWin: () => Electron.BrowserWindow | null): void {
   // (der Zweitknopf dort räumt nur das Gerät auf).
   ipcMain.handle('host:giveUp', async (e, opts?: unknown) => {
     if (!localSenderOnly(e) || !creds) return { ok: false };
-    const deleteData = (opts as { deleteData?: boolean } | undefined)?.deleteData === true;
+    const o = (opts ?? {}) as { deleteData?: unknown; password?: unknown };
+    const deleteData = o.deleteData === true;
+    // Kontopasswort für die Cloud-Löschung (Sicherheitsfund 2026-11-04); nie loggen.
+    const password = typeof o.password === 'string' ? o.password : '';
     const skipCloud = hl.getStatus().phase === 'superseded';
     const { cloudOrigin, instanceId } = creds;
     return runGiveUp({ deleteData, skipCloud }, {
       removeContainer: () => manager.removeContainer(),
-      deleteCloudRegistration: () => deleteInstanceRegistration(cloudOrigin, instanceId, () => getAccessToken(cloudOrigin)),
+      deleteCloudRegistration: () =>
+        deleteInstanceRegistration(cloudOrigin, instanceId, password, () => getAccessToken(cloudOrigin)),
       removeAutostart: () => {
         storeSet('serverAutostart', false);
         osApplyAutostart(false);
