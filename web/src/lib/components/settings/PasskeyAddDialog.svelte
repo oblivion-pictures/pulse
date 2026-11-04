@@ -18,6 +18,9 @@
   import BackupCodesView from './BackupCodesView.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import Checkbox from '$lib/components/form/Checkbox.svelte';
+  import ZweiterFaktorFelder from './ZweiterFaktorFelder.svelte';
+  import { auth } from '$lib/stores/auth.svelte';
+  import { stripTotpFormatting, normalizeBackupCode } from '$lib/auth/format';
 
   type Props = {
     open?: boolean;
@@ -31,6 +34,11 @@
   let error = $state<string | null>(null);
   let name = $state('');
   let password = $state('');
+  // TOTP-Konten: der Server verlangt zusätzlich den zweiten Faktor.
+  const totpEnabled = $derived(auth.user?.totp_enabled === true);
+  let code = $state('');
+  let backupCode = $state('');
+  let useBackup = $state(false);
   let backupCodes = $state<string[]>([]);
   let saved = $state(false);
 
@@ -50,6 +58,9 @@
       // Das Passwort wird im Dialog nie geleert (steht im Reset-Effekt
       // nicht drin) — nach dem Schließen gehört es nicht mehr ins Feld.
       password = '';
+      code = '';
+      backupCode = '';
+      useBackup = false;
       backupCodes = [];
       saved = false;
     }
@@ -71,11 +82,27 @@
       error = m.passkey_add_dialog_password_required();
       return;
     }
+    const zweiterFaktor: { code?: string; backup_code?: string } = {};
+    if (totpEnabled && useBackup) {
+      const normalized = normalizeBackupCode(backupCode);
+      if (!normalized) {
+        error = m.totp_disable_dialog_error_backup_code_empty();
+        return;
+      }
+      zweiterFaktor.backup_code = normalized;
+    } else if (totpEnabled) {
+      const digits = stripTotpFormatting(code);
+      if (digits.length !== 6) {
+        error = m.totp_disable_dialog_error_code_invalid();
+        return;
+      }
+      zweiterFaktor.code = digits;
+    }
     const lauf = ++erstellenLauf;
     busy = true;
     error = null;
     try {
-      const res = await registerPasskey(trimmed, password);
+      const res = await registerPasskey(trimmed, password, zweiterFaktor);
       if (lauf !== erstellenLauf) return;
       onAdded(res.credential);
       toast.success(m.passkey_add_dialog_added());
@@ -148,6 +175,9 @@
               data-testid="passkey-password-input"
             />
           </div>
+          {#if totpEnabled}
+            <ZweiterFaktorFelder bind:code bind:backupCode bind:useBackup idPrefix="passkey-faktor" />
+          {/if}
           <Dialog.Footer>
             <Button
               variant="ghost"

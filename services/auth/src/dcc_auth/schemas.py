@@ -457,6 +457,14 @@ class WebAuthnRegisterVerifyIn(BaseModel):
     # fremde Schluessel nicht. Das Abschalten von 2FA verlangte es laengst
     # (`routes_totp.py::totp_disable`), das Anlegen bis 2026-08-13 nicht.
     password: _CurrentPasswordField
+    # **Bei TOTP-Konten zusätzlich der zweite Faktor** (Security-Scan
+    # 2026-11-04): mit Sitzung + Passwort allein hing ein Angreifer sonst einen
+    # eigenen Passkey an und meldete sich danach passwortlos mit acr=1 an —
+    # TOTP dauerhaft umgangen. Gleiche Felder wie ``TotpDisableIn``.
+    code: Annotated[str | None, Field(default=None, pattern=TOTP_CODE_PATTERN)] = None
+    backup_code: Annotated[
+        str | None, Field(default=None, pattern=BACKUP_CODE_PATTERN)
+    ] = None
 
 
 class WebAuthnDeleteIn(BaseModel):
