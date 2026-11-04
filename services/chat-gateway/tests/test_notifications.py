@@ -21,6 +21,8 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
+from .conftest import beitreten_per_einladung
+
 
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -277,11 +279,7 @@ async def _make_two_member_guild(client, _auth_signer):
     g = (
         await client.post("/guilds", json={"name": "g"}, headers=_auth(t_owner))
     ).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_member)},
-        headers=_auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_member), t_owner)
     c = (
         await client.post(
             f"/guilds/{g['id']}/channels",

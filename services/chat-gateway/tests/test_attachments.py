@@ -17,6 +17,7 @@ from sqlalchemy import select
 from dcc_chat_gateway.models import MessageAttachment
 from dcc_chat_gateway.routes import attachments as att_mod
 from dcc_chat_gateway import s3 as s3_mod
+from .conftest import beitreten_per_einladung
 
 
 def auth(token: str) -> dict[str, str]:
@@ -346,11 +347,7 @@ async def test_attach_files_blocked_without_attach_files(
     (t_owner, _u_owner), (t_member, uid_member) = await register_two(_auth_signer)
     gid, cid = await _make_guild_channel(client, t_owner)
     # Owner adds the second user as a guild member.
-    await client.post(
-        f"/guilds/{gid}/members",
-        json={"user_id": str(uid_member)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, gid, str(uid_member), t_owner)
     # Owner denies ATTACH_FILES for that user in this channel.
     r = await client.put(
         f"/channels/{cid}/permissions/{OVERWRITE_TARGET_USER}/{uid_member}",

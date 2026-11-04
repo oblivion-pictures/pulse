@@ -21,6 +21,7 @@
  */
 
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { beitretenPerEinladung } from './_einladung';
 
 const ts = Date.now();
 const ALICE = {
@@ -63,25 +64,6 @@ async function currentUserId(page: Page): Promise<string> {
   });
   if (!value) throw new Error('no access token found in localStorage');
   return value;
-}
-
-/** Add a user to a guild via the chat-gateway REST API. */
-async function addMember(page: Page, guildId: string, userId: string) {
-  const r = await page.evaluate(
-    async ([gid, uid]) => {
-      const token = localStorage.getItem('dcc.tokens.access');
-      const res = await fetch(`/api/chat/guilds/${gid}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id: uid })
-      });
-      return { status: res.status, body: await res.text() };
-    },
-    [guildId, userId]
-  );
-  if (r.status !== 201 && r.status !== 200) {
-    throw new Error(`addMember ${r.status}: ${r.body}`);
-  }
 }
 
 /** Create a channel via REST. type=1 is voice. */
@@ -317,7 +299,7 @@ test.describe.serial('Watch Party E2E', () => {
     // Add a voice channel and add Bob — both via REST so the test stays focused
     // on the watch-party UI itself.
     voiceChannelId = await createChannel(alicePage, guildId, 'Voice', 1);
-    await addMember(alicePage, guildId, bobUserId);
+    await beitretenPerEinladung(alicePage, bobPage, guildId);
 
     // Both navigate to the voice channel.
     await alicePage.goto(`/app/guilds/${guildId}/channels/${voiceChannelId}`);

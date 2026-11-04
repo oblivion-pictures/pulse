@@ -389,7 +389,7 @@ async def test_apply_guild_member_added_adds_to_socket_guild_set(
     await manager.set_guild_membership(ws, [guild_a])  # type: ignore[arg-type]
     assert manager._ws_guilds[ws] == {guild_a}
 
-    # Simulate the guild:events envelope routes/guilds.py:add_member emits
+    # Simulate the guild:events envelope routes/invites.py:_publish_member_added emits
     # when this user joins guild_b.
     manager._apply_guild_membership_update(
         {

@@ -10,6 +10,8 @@ import random
 
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -25,9 +27,7 @@ async def _make_guild_with_channel(client, _auth_signer):
     t1, uid1 = await _register(_auth_signer)
     t2, uid2 = await _register(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t1))).json()
-    await client.post(
-        f"/guilds/{g['id']}/members", json={"user_id": uid2}, headers=auth(t1)
-    )
+    await beitreten_per_einladung(client, g['id'], uid2, t1)
     c = (await client.post(
         f"/guilds/{g['id']}/channels", json={"name": "general"}, headers=auth(t1)
     )).json()

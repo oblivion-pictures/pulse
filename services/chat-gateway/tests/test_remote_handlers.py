@@ -25,7 +25,7 @@ from starlette.testclient import TestClient
 
 from dcc_chat_gateway import remote_reconnect_registry
 
-from .conftest import ping_barrier, skip_init_frames, trenne
+from .conftest import beitreten_per_einladung_sync, ping_barrier, skip_init_frames, trenne
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -70,11 +70,7 @@ def _setup_remote(tc: TestClient, _auth_signer):
     ).json()
     member_uid = random.randint(1, 1_000_000)
     member_token = _auth_signer.issue_access(member_uid, f"u{member_uid}")
-    tc.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(member_uid)},
-        headers=_auth(owner_token),
-    )
+    beitreten_per_einladung_sync(tc, g['id'], str(member_uid), owner_token)
     return owner_token, owner_uid, member_token, member_uid, g["id"], vc["id"]
 
 
@@ -153,11 +149,7 @@ async def test_consent_flow_and_signal_forwarding(ws_app, _auth_signer):
             # A third member, connected but not a peer of the session.
             third_uid = random.randint(1, 1_000_000)
             third_token = _auth_signer.issue_access(third_uid, f"u{third_uid}")
-            tc.post(
-                f"/guilds/{gid}/members",
-                json={"user_id": str(third_uid)},
-                headers=_auth(owner_token),
-            )
+            beitreten_per_einladung_sync(tc, gid, str(third_uid), owner_token)
             with tc.websocket_connect(f"/ws?token={owner_token}") as ctrl_ws, \
                  tc.websocket_connect(f"/ws?token={member_token}") as host_ws, \
                  tc.websocket_connect(f"/ws?token={third_token}") as third_ws:

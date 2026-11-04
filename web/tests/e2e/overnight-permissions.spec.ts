@@ -14,6 +14,7 @@
  */
 
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { beitretenPerEinladung } from './_einladung';
 
 const ts = Date.now();
 const PASSWORD = 'sup3r-secret-pass';
@@ -187,13 +188,10 @@ test.describe.serial('Overnight Kanalrechte', () => {
     guildId = owner.url().match(/\/app\/guilds\/(\d+)/)![1];
     generalId = owner.url().match(/channels\/(\d+)/)![1];
 
-    // Beitragritt per API (addBobToGuild-Muster aus chat.spec) — der
-    // UI-Join über das Rail-Menü war die flakigste Stelle der Suite.
-    for (const uid of [bobId, carolId]) {
-      await api(owner, `/guilds/${guildId}/members`, {
-        method: 'POST',
-        body: { user_id: uid }
-      });
+    // Beitragritt per API (Einladung anlegen + einlösen, `_einladung.ts`) —
+    // der UI-Join über das Rail-Menü war die flakigste Stelle der Suite.
+    for (const page of [bob, carol]) {
+      await beitretenPerEinladung(owner, page, guildId);
     }
     // Beide landen im general-Kanal, damit spätere Reloads den vollen
     // Zustand laden.

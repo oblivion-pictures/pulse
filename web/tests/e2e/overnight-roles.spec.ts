@@ -10,6 +10,7 @@
  */
 
 import { test, expect, type Page, type BrowserContext, type Browser } from '@playwright/test';
+import { beitretenPerEinladung } from './_einladung';
 
 const ts = Date.now();
 const PASSWORD = 'sup3r-secret-pass';
@@ -181,9 +182,9 @@ test.describe.serial('Overnight Rollen', () => {
 
   test('bob registrieren — Owner fügt ihn per API hinzu', async () => {
     // Jeder Neben-Nutzer braucht nur zu EXISTIEREN: Registrierung, Id
-    // ablesen, Kontext schließen. Der Beitragritt läuft per API
-    // (addBobToGuild-Muster aus chat.spec) — der UI-Join über das Rail-Menü
-    // war die flakigste Stelle der ganzen Suite.
+    // ablesen, Einladung einlösen, Kontext schließen. Der Beitragritt läuft
+    // per API (Einladung anlegen + einlösen, `_einladung.ts`) — der UI-Join
+    // über das Rail-Menü war die flakigste Stelle der ganzen Suite.
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await register(page, {
@@ -192,11 +193,8 @@ test.describe.serial('Overnight Rollen', () => {
       password: PASSWORD
     });
     bobId = await userId(page);
+    await beitretenPerEinladung(owner, page, guildId);
     await ctx.close();
-    await api(owner, `/guilds/${guildId}/members`, {
-      method: 'POST',
-      body: { user_id: bobId }
-    });
   });
 
   test('carol registrieren und per API hinzufügen', async () => {
@@ -208,11 +206,8 @@ test.describe.serial('Overnight Rollen', () => {
       password: PASSWORD
     });
     carolId = await userId(page);
+    await beitretenPerEinladung(owner, page, guildId);
     await ctx.close();
-    await api(owner, `/guilds/${guildId}/members`, {
-      method: 'POST',
-      body: { user_id: carolId }
-    });
   });
 
   test('dave registrieren und per API hinzufügen', async () => {
@@ -224,11 +219,8 @@ test.describe.serial('Overnight Rollen', () => {
       password: PASSWORD
     });
     daveId = await userId(page);
+    await beitretenPerEinladung(owner, page, guildId);
     await ctx.close();
-    await api(owner, `/guilds/${guildId}/members`, {
-      method: 'POST',
-      body: { user_id: daveId }
-    });
   });
 
   test('Mod-Rolle mit KICK anlegen (Rollen-Reiter, Rechte-Raster)', async () => {

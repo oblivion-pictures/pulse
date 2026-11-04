@@ -10,6 +10,7 @@ import random
 import pytest
 
 from dcc_chat_gateway import s3 as s3_mod
+from .conftest import beitreten_per_einladung
 
 # Die Owner-Routen (Betreiber-Zuweisung) lösen die Owner-Claim nur im
 # Cloud-Modus auf — dieselbe Regel wie test_guild_limits.py.
@@ -55,11 +56,7 @@ async def _guild_mit_zwei_mitgliedern(client, _auth_signer):
     t_mitglied, uid_mitglied = await _register_user(_auth_signer)
 
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t_owner))).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_mitglied)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_mitglied), t_owner)
     return t_owner, uid_owner, t_mitglied, uid_mitglied, g["id"]
 
 
@@ -275,9 +272,7 @@ async def test_loeschen_nur_uploader_oder_besitzer(client, _auth_signer, mock_s3
     t_zwei, uid_zwei = await _register_user(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t_owner))).json()
     for uid in (uid_mitglied, uid_zwei):
-        await client.post(
-            f"/guilds/{g['id']}/members", json={"user_id": str(uid)}, headers=auth(t_owner)
-        )
+        await beitreten_per_einladung(client, g['id'], str(uid), t_owner)
     gid = g["id"]
     await client.put(f"/guilds/{gid}/ablage/pulse/laufwerk", headers=auth(t_owner))
 

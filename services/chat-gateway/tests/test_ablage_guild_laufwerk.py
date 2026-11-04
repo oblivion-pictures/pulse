@@ -15,6 +15,8 @@ import dcc_chat_gateway.ablage_ssrf as ablage_ssrf
 import httpx
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -31,11 +33,7 @@ async def _guild_mit_zwei_mitgliedern(client, _auth_signer):
     t_fremd, _ = await _register_user(_auth_signer)
 
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t_owner))).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_mitglied)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_mitglied), t_owner)
     return t_owner, t_mitglied, t_fremd, g["id"]
 
 

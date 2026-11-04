@@ -1,4 +1,5 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { beitretenPerEinladung } from './_einladung';
 
 const ts = Date.now();
 const ALICE = {
@@ -57,29 +58,6 @@ async function currentUserId(page: Page): Promise<string> {
   return value;
 }
 
-async function addBobToGuild(alicePage: Page, guildId: string, bobUserId: string) {
-  const response = await alicePage.evaluate(
-    async ([gid, uid]) => {
-      const token = localStorage.getItem('dcc.tokens.access');
-      const r = await fetch(`/api/chat/guilds/${gid}/members`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        // Pass the user_id as a *string* — snowflake IDs exceed 2^53 and
-        // Number() would silently drop the lowest bits.
-        body: JSON.stringify({ user_id: uid })
-      });
-      return { status: r.status, body: await r.text() };
-    },
-    [guildId, bobUserId]
-  );
-  if (response.status !== 201 && response.status !== 200) {
-    throw new Error(`addBobToGuild failed ${response.status}: ${response.body}`);
-  }
-}
-
 test.describe.serial('Discord-Clone E2E', () => {
   let aliceCtx: BrowserContext;
   let alicePage: Page;
@@ -131,7 +109,7 @@ test.describe.serial('Discord-Clone E2E', () => {
   });
 
   test('Bob joins the guild and sees the channel', async () => {
-    await addBobToGuild(alicePage, guildId, bobUserId);
+    await beitretenPerEinladung(alicePage, bobPage, guildId);
     await bobPage.goto(`/app/guilds/${guildId}/channels/${channelId}`);
     await bobPage.reload();
     await expect(bobPage.getByTestId('app-shell')).toBeVisible();

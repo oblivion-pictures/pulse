@@ -16,6 +16,8 @@ import random
 
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -32,11 +34,7 @@ async def _setup(client, _auth_signer):
     g = (
         await client.post("/guilds", json={"name": "nicks"}, headers=auth(t_owner))
     ).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_other)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_other), t_owner)
     return t_owner, uid_owner, t_other, uid_other, g
 
 
@@ -127,11 +125,7 @@ async def test_non_owner_without_manage_nicknames_is_403(client, _auth_signer):
         await client.post("/guilds", json={"name": "n"}, headers=auth(t_owner))
     ).json()
     for uid in (uid_a, uid_b):
-        await client.post(
-            f"/guilds/{g['id']}/members",
-            json={"user_id": str(uid)},
-            headers=auth(t_owner),
-        )
+        await beitreten_per_einladung(client, g['id'], str(uid), t_owner)
     r = await client.patch(
         f"/guilds/{g['id']}/members/{uid_b}",
         json={"nickname": "spite"},
@@ -164,11 +158,7 @@ async def test_admin_route_non_member_empty_body_is_rejected(client, _auth_signe
     g = (
         await client.post("/guilds", json={"name": "idor"}, headers=auth(t_owner))
     ).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_target)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_target), t_owner)
     r = await client.patch(
         f"/guilds/{g['id']}/members/{uid_target}",
         json={},
@@ -223,11 +213,7 @@ async def _grant_role(client, g, owner_token, name, permissions, *uids) -> dict:
 
 
 async def _add_member(client, g, owner_token, uid) -> None:
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid)},
-        headers=auth(owner_token),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid), owner_token)
 
 
 @pytest.mark.asyncio

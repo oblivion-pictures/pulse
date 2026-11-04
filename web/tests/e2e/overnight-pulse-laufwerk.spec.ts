@@ -15,6 +15,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { beitretenPerEinladung } from './_einladung';
 
 const ts = Date.now();
 const OWNER = {
@@ -107,13 +108,7 @@ test.describe.serial('T12 — Pulse-Laufwerk API', () => {
     });
 
     await register(memberPage, MEMBER);
-    const memberId = await memberPage.evaluate(() => {
-      const raw = localStorage.getItem('dcc.tokens.access');
-      const payload = JSON.parse(atob(raw!.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-      return payload.sub as string;
-    });
-    const added = await chatApi(page, 'POST', `/guilds/${gid}/members`, { user_id: memberId });
-    expect([200, 201]).toContain(added.status);
+    await beitretenPerEinladung(page, memberPage, gid);
 
     // Vor dem Verbinden: ehrlicher 404 fürs Ankündigen, Status sagt unverbunden
     const frueh = await chatApi(page, 'POST', `/guilds/${gid}/ablage/pulse/dateien`, {

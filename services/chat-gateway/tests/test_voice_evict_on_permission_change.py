@@ -27,6 +27,8 @@ from dcc_chat_gateway.permissions import OVERWRITE_TARGET_ROLE, OVERWRITE_TARGET
 from dcc_chat_gateway.snowflake import next_id
 from dcc_shared.permissions import Permissions
 
+from .conftest import beitreten_per_einladung
+
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -48,11 +50,7 @@ async def _make_channel(client, token, guild_id, name, type_):
 
 
 async def _add_member(client, token_owner, guild_id, uid):
-    await client.post(
-        f"/guilds/{guild_id}/members",
-        json={"user_id": str(uid)},
-        headers=auth(token_owner),
-    )
+    await beitreten_per_einladung(client, guild_id, str(uid), token_owner)
 
 
 async def _everyone(client, token, guild_id) -> dict:

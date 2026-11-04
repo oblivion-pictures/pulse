@@ -23,6 +23,8 @@ from dcc_chat_gateway.remote_registry import _RemoteRegistryMixin
 from dcc_chat_gateway.security import AuthenticatedUser
 from dcc_shared.permissions import Permissions
 
+from .conftest import beitreten_per_einladung
+
 ALLOWED = Permissions.VIEW_CHANNEL | Permissions.REMOTE_CONTROL
 
 
@@ -325,11 +327,7 @@ async def test_audit_uses_the_real_permission_resolution(
         )
     ).json()
     member_t, member_uid = await _token(_auth_signer)
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(member_uid)},
-        headers=_auth(owner_t),
-    )
+    await beitreten_per_einladung(client, g['id'], str(member_uid), owner_t)
 
     # Seit f3dff047 ist REMOTE_CONTROL Default für neue Communitys — dieser
     # Test will das Bit ausdrücklich NICHT in @everyone (s. conftest).

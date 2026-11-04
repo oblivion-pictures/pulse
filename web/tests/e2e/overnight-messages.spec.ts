@@ -11,6 +11,7 @@
  */
 
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { beitretenPerEinladung } from './_einladung';
 
 const ts = Date.now();
 const ALICE = {
@@ -45,35 +46,6 @@ async function register(page: Page, u: { username: string; email: string; passwo
     .locator('[data-testid=backup-onboarding-skip-btn]')
     .click({ timeout: 2500 })
     .catch(() => undefined);
-}
-
-async function currentUserId(page: Page): Promise<string> {
-  const value = await page.evaluate(() => {
-    const raw = localStorage.getItem('dcc.tokens.access');
-    if (!raw) return null;
-    const parts = raw.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return payload.sub as string;
-  });
-  if (!value) throw new Error('kein Access-Token im localStorage');
-  return value;
-}
-
-async function addMember(adminPage: Page, guildId: string, userId: string) {
-  const r = await adminPage.evaluate(
-    async ({ gid, uid }) => {
-      const token = localStorage.getItem('dcc.tokens.access');
-      const res = await fetch(`/api/chat/guilds/${gid}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id: uid })
-      });
-      return res.status;
-    },
-    { gid: guildId, uid: userId }
-  );
-  expect([200, 201]).toContain(r);
 }
 
 /** Nachricht anhand ihres Texts finden; der Wrapper trägt `group` — Hover
@@ -122,7 +94,6 @@ test.describe.serial('Overnight T6 — Nachrichten', () => {
   test('Aufbau: beide registriert, Community + #general bereit', async () => {
     await register(alicePage, ALICE);
     await register(bobPage, BOB);
-    const bobUserId = await currentUserId(bobPage);
 
     await alicePage.locator('[data-testid^="guild-create-menu-"]').first().click();
     await alicePage.getByTestId('guild-create').click();
@@ -136,7 +107,7 @@ test.describe.serial('Overnight T6 — Nachrichten', () => {
       timeout: 10_000
     });
 
-    await addMember(alicePage, guildId, bobUserId);
+    await beitretenPerEinladung(alicePage, bobPage, guildId);
     await bobPage.goto(`/app/guilds/${guildId}/channels/${channelId}`);
     await expect(bobPage.getByTestId('active-channel-name')).toHaveText('general', {
       timeout: 15_000

@@ -16,6 +16,7 @@ from dcc_shared.permission_resolver import (
     OVERWRITE_TARGET_USER,
 )
 from dcc_shared.permissions import Permissions
+from .conftest import beitreten_per_einladung
 
 
 def auth(token: str) -> dict[str, str]:
@@ -38,11 +39,7 @@ async def _make_guild_channel_with_member(client, _auth_signer):
         json={"name": "general"},
         headers=auth(t_owner),
     )).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_other)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_other), t_owner)
     return t_owner, t_other, uid_other, g, c
 
 
@@ -296,11 +293,7 @@ async def test_benutzer_ausnahme_prueft_den_rang(client, _auth_signer):
 
     async def _neues_mitglied() -> int:
         _t, uid = await _register_user(_auth_signer)
-        await client.post(
-            f"/guilds/{g['id']}/members",
-            json={"user_id": str(uid)},
-            headers=auth(t_owner),
-        )
+        await beitreten_per_einladung(client, g['id'], str(uid), t_owner)
         return uid
 
     uid_opfer = await _neues_mitglied()

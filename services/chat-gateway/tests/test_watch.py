@@ -24,7 +24,7 @@ from dcc_shared.permission_resolver import OVERWRITE_TARGET_USER
 from dcc_shared.permissions import Permissions
 from redis.asyncio import Redis
 from starlette.testclient import TestClient
-from .conftest import receive_skipping, skip_init_frames
+from .conftest import beitreten_per_einladung, beitreten_per_einladung_sync, receive_skipping, skip_init_frames
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6380/0")
 
@@ -269,9 +269,7 @@ async def test_guild_watch_state_hides_view_denied_channel(client, _auth_signer,
             f"/guilds/{g['id']}/channels", json={"name": "Voice", "type": 1}, headers=_auth(owner)
         )
     ).json()
-    await client.post(
-        f"/guilds/{g['id']}/members", json={"user_id": str(member_uid)}, headers=_auth(owner)
-    )
+    await beitreten_per_einladung(client, g['id'], str(member_uid), owner)
     r = await client.put(
         f"/channels/{vc['id']}/permissions/{OVERWRITE_TARGET_USER}/{member_uid}",
         json={"allow": "0", "deny": str(int(Permissions.VIEW_CHANNEL))},
@@ -510,11 +508,7 @@ async def test_watch_join_and_start_reject_view_denied(ws_app, _auth_signer):
             owner_token, _, gid, cid = _setup_voice_channel(tc, _auth_signer)
             member_uid = random.randint(1, 1_000_000)
             member_token = _auth_signer.issue_access(member_uid, f"u{member_uid}")
-            tc.post(
-                f"/guilds/{gid}/members",
-                json={"user_id": str(member_uid)},
-                headers=_auth(owner_token),
-            )
+            beitreten_per_einladung_sync(tc, gid, str(member_uid), owner_token)
             r = tc.put(
                 f"/channels/{cid}/permissions/{OVERWRITE_TARGET_USER}/{member_uid}",
                 json={"allow": "0", "deny": str(int(Permissions.VIEW_CHANNEL))},
@@ -648,11 +642,7 @@ async def test_watch_control_only_host(ws_app, _auth_signer):
             other_uid = random.randint(1, 1_000_000)
             other_token = _auth_signer.issue_access(other_uid, f"u{other_uid}")
             # Add `other` to the guild so they're a member of the voice channel.
-            tc.post(
-                f"/guilds/{gid}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_token),
-            )
+            beitreten_per_einladung_sync(tc, gid, str(other_uid), owner_token)
             with tc.websocket_connect(f"/ws?token={owner_token}") as host_ws:
                 skip_init_frames(host_ws)  # hello + ready
                 host_ws.send_json(
@@ -764,11 +754,7 @@ async def test_watch_source_change_only_host(ws_app, _auth_signer):
             owner_token, _, gid, cid = _setup_voice_channel(tc, _auth_signer)
             other_uid = random.randint(1, 1_000_000)
             other_token = _auth_signer.issue_access(other_uid, f"u{other_uid}")
-            tc.post(
-                f"/guilds/{gid}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_token),
-            )
+            beitreten_per_einladung_sync(tc, gid, str(other_uid), owner_token)
             with tc.websocket_connect(f"/ws?token={owner_token}") as host_ws:
                 skip_init_frames(host_ws)  # hello + ready
                 host_ws.send_json(
@@ -805,11 +791,7 @@ async def test_watch_stop_only_host(ws_app, _auth_signer):
             owner_token, _, gid, cid = _setup_voice_channel(tc, _auth_signer)
             other_uid = random.randint(1, 1_000_000)
             other_token = _auth_signer.issue_access(other_uid, f"u{other_uid}")
-            tc.post(
-                f"/guilds/{gid}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_token),
-            )
+            beitreten_per_einladung_sync(tc, gid, str(other_uid), owner_token)
             with tc.websocket_connect(f"/ws?token={owner_token}") as host_ws:
                 skip_init_frames(host_ws)  # hello + ready
                 host_ws.send_json(

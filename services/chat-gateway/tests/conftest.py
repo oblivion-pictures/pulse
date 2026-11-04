@@ -410,6 +410,57 @@ def make_auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _ziel_token(uid, ziel_token: str | None) -> str:
+    if ziel_token is not None:
+        return ziel_token
+    # Derselbe Signer wie in ``_auth_signer``: die Fixture biegt
+    # ``dcc_auth.security.get_settings`` auf ihre Schlüssel um und leert den
+    # Cache, ``get_signer()`` baut also mit genau diesen Schlüsseln neu.
+    from dcc_auth.security import get_signer  # noqa: PLC0415
+
+    return get_signer().issue_access(int(uid), f"user{uid}")
+
+
+async def beitreten_per_einladung(
+    client, gid, uid, einladender_token: str, *, ziel_token: str | None = None,
+    erwartet: int = 200,
+) -> httpx.Response:
+    """Macht ``uid`` über den echten Einladungsweg zum Mitglied von ``gid``.
+
+    Ersatz für das abgeschaffte ``POST /guilds/{id}/members`` (Security-Scan
+    2026-11-04): der Einladende legt eine Einmal-Einladung an, das Ziel löst sie
+    mit eigenem Token ein — mit denselben Nebenwirkungen (``guild_member_added``).
+    Ohne ``ziel_token`` wird einer ausgestellt. Prüft beide Statuscodes;
+    ``erwartet`` gilt fürs Einlösen und liefert dessen Antwort zurück.
+    """
+    r = await client.post(
+        f"/guilds/{gid}/invites", json={"max_uses": 1}, headers=make_auth_header(einladender_token)
+    )
+    assert r.status_code == 201, r.text
+    r = await client.post(
+        f"/invites/{r.json()['code']}/accept",
+        headers=make_auth_header(_ziel_token(uid, ziel_token)),
+    )
+    assert r.status_code == erwartet, r.text
+    return r
+
+
+def beitreten_per_einladung_sync(
+    tc, gid, uid, einladender_token: str, *, ziel_token: str | None = None
+):
+    """``beitreten_per_einladung`` für den Starlette-``TestClient`` (ws_app-Tests)."""
+    r = tc.post(
+        f"/guilds/{gid}/invites", json={"max_uses": 1}, headers=make_auth_header(einladender_token)
+    )
+    assert r.status_code == 201, r.text
+    r = tc.post(
+        f"/invites/{r.json()['code']}/accept",
+        headers=make_auth_header(_ziel_token(uid, ziel_token)),
+    )
+    assert r.status_code == 200, r.text
+    return r
+
+
 @pytest_asyncio.fixture
 async def friend_pair(session_factory):
     """Factory: install a Friendship row between (uid_a, uid_b).

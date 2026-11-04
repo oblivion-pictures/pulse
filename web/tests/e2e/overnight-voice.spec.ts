@@ -13,6 +13,7 @@
  */
 
 import { test, expect, type Page, type BrowserContext, type Locator } from '@playwright/test';
+import { beitretenPerEinladung } from './_einladung';
 
 const ts = Date.now();
 const OWNER = {
@@ -84,23 +85,9 @@ test.describe.serial('Overnight T10 — Sprachkanal', () => {
 
   test('Gast registriert und sieht den Sprachkanal in der Liste', async () => {
     await register(gastPage, GAST);
-    // Beitritt per API (Beitritts-UI gehört in T9), dann in die Community.
-    // guildId muss als Argument in die Browser-Seite hinein — im Callback
-    // gibt es den Test-Scope nicht.
-    const gastId = await gastPage.evaluate(() => {
-      const raw = localStorage.getItem('dcc.tokens.access')!;
-      return JSON.parse(atob(raw.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub as string;
-    });
-    const status = await ownerPage.evaluate(async ({ gid, uid }) => {
-      const token = localStorage.getItem('dcc.tokens.access');
-      const r = await fetch(`/api/chat/guilds/${gid}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id: uid })
-      });
-      return r.status;
-    }, { gid: guildId, uid: gastId });
-    expect([200, 201]).toContain(status);
+    // Beitritt per API (Einladung anlegen + einlösen; Beitritts-UI gehört in
+    // T9), dann in die Community.
+    await beitretenPerEinladung(ownerPage, gastPage, guildId);
 
     await gastPage.goto('/app');
     await gastPage.getByTestId(`guild-${guildId}`).first().click();

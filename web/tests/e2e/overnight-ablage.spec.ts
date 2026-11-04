@@ -16,6 +16,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { execSync } from 'node:child_process';
 import { E2E_DB } from './_db';
+import { beitretenPerEinladung } from './_einladung';
 
 function detectExec(): string {
   if (process.env.DOCKER_CMD) return process.env.DOCKER_CMD;
@@ -260,7 +261,7 @@ test.describe.serial('T11 — Community-Dateiablage', () => {
   });
 
   test('Zweitbenutzer ohne Schlüssel sieht ehrlichen Zustand', async ({ browser }) => {
-    const gastId = await page.evaluate(async (user) => {
+    const gastToken = await page.evaluate(async (user) => {
       const r = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -268,18 +269,9 @@ test.describe.serial('T11 — Community-Dateiablage', () => {
       });
       const body = await r.json();
       if (!r.ok && !('access_token' in body)) throw new Error(`register failed ${r.status}`);
-      const token = body.access_token as string;
-      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-      return payload.sub as string;
+      return body.access_token as string;
     }, GAST);
-    await page.evaluate(async ({ gid, gastId }) => {
-      const token = localStorage.getItem('dcc.tokens.access');
-      await fetch(`/api/chat/guilds/${gid}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id: gastId })
-      });
-    }, { gid, gastId });
+    await beitretenPerEinladung(page, gastToken, gid);
 
     const gastCtx = await browser.newContext();
     const gastPage = await gastCtx.newPage();

@@ -16,6 +16,7 @@ import random
 import pytest
 
 from dcc_shared.permissions import Permissions
+from .conftest import beitreten_per_einladung
 
 
 def auth(token: str) -> dict[str, str]:
@@ -33,11 +34,7 @@ async def _make_guild_with_member(client, _auth_signer):
     g = (await client.post(
         "/guilds", json={"name": "g"}, headers=auth(t_owner)
     )).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_other)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_other), t_owner)
     return t_owner, t_other, uid_other, g
 
 
@@ -498,11 +495,7 @@ async def test_unassign_role_anti_escalation_blocks_non_admin_bits(
     t_owner, t_mod, uid_mod, g = await _make_guild_with_member(client, _auth_signer)
     # Third user gets the ban-role assigned by the owner.
     t_victim, uid_victim = await _register_user(_auth_signer)
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_victim)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_victim), t_owner)
     ban_role = (await client.post(
         f"/guilds/{g['id']}/roles",
         json={"name": "Banhammer", "permissions": str(int(Permissions.BAN_MEMBERS))},
