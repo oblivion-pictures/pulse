@@ -57,7 +57,7 @@ ARG CADDY_VERSION=2.11.8
 # (`docker/login-action` laeuft dort vor dem Bau). Wer dieses Dockerfile von
 # Hand baut, braucht ein `docker login ghcr.io` — beim frueheren
 # `curl`-Download war das nicht noetig.
-ARG PULSE_MEDIAMTX_TAG=1.19.1-pulse12
+ARG PULSE_MEDIAMTX_TAG=1.19.1-pulse13
 # (Garage ersetzt MinIO, Bughunt Runde 32/Entscheidung 1.1 — das
 #  dl.min.io-Archiv ist 410 und das Hub-Image gelöscht. Garage kommt aus
 #  dem dxflrs-Image, siehe garage-upstream-Stage unten.)
@@ -146,7 +146,7 @@ RUN test -f /opt/pulse/services/auth/alembic.ini \
 # ──────────────────────────────────────────────────────────────────────────
 FROM rust:1-slim-bookworm AS wasm-build
 # Version gepinnt wie ueberall sonst im Baum (pnpm@10.33.0 drei Zeilen
-# weiter, electron 43.0.0, mediamtx 1.19.1-pulse12): ohne `--version` holt
+# weiter, electron 43.0.0, mediamtx 1.19.1-pulse13): ohne `--version` holt
 # `cargo install` zur BAUZEIT, was crates.io gerade als neuestes fuehrt —
 # und dessen Ausgabe landet im ausgelieferten Buendel. 0.15.0 ist die
 # Fassung, gegen die lokal geprueft wurde.
