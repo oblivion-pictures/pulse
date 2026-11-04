@@ -107,11 +107,14 @@ webrtcAdditionalHosts:
 # from its container via host.docker.internal (the Docker bridge gateway IP,
 # NOT loopback) — so binding 127.0.0.1 here would refuse that connection and
 # break the stream-state poller. MediaMTX 1.19 REMOVED `apiAllowAddresses`
-# (replaced by the auth system / apiTrustedProxies), so access control here now
-# relies solely on UFW: port 9997 only accepts traffic from the Docker bridge
-# (`ufw allow from 10.0.0.0/8 to any port 9997`) and the default INPUT DROP
-# blocks external reach (the API stays excluded from auth via authHTTPExclude).
-# See intern/docs/wissen/prod-deployment.md and DEPLOY.md.
+# (replaced by the auth system / apiTrustedProxies). UFW keeps 9997 off the
+# internet (default INPUT DROP), but that is only a reachability limit: every
+# container on the Docker network reaches it, and until the security scan of
+# 2026-11-04 the chat-gateway's archive passthrough let any account read it via
+# the server's own public IP. So `api` now goes through the auth hook like on
+# Self-Host (no longer in authHTTPExclude below): the hook checks
+# MEDIAMTX_API_USER/MEDIAMTX_API_PASSWORD from .env (api_zugang.py), and
+# media-svc sends the same pair as Basic auth. See DEPLOY.md.
 api: yes
 apiAddress: :9997
 
@@ -131,7 +134,6 @@ srt: no
 authMethod: http
 authHTTPAddress: http://127.0.0.1:8005/
 authHTTPExclude:
-  - action: api
   - action: metrics
   - action: pprof
 

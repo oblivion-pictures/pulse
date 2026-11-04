@@ -39,9 +39,10 @@ class Settings(BaseSettings):
     # the same box media-svc is co-located on in prod. In dev that's the local
     # `streaming/server/docker-compose.yml` MediaMTX (network_mode: host).
     mediamtx_api_url: str = "http://localhost:9997/v3/paths/list"
-    # Zugangsdaten für diese API. Leer = ohne Anmeldung wie bisher (Cloud, Dev).
-    # Der Self-Host-Container setzt das Passwort, und der auth-hook prüft es
-    # dort (``dcc_mediamtx_auth_hook/api_zugang.py``) — dieselben Variablen.
+    # Zugangsdaten für diese API. Leer = ohne Anmeldung (Dev). Cloud (seit
+    # 2026-11-04, ``infra/prod/.env``) und Self-Host-Container setzen das
+    # Passwort, und der auth-hook prüft es (``dcc_mediamtx_auth_hook/
+    # api_zugang.py``) — dieselben Variablen.
     mediamtx_api_user: str = "pulse-media-svc"
     mediamtx_api_password: str = ""
 

@@ -10,11 +10,14 @@ einen präparierten Pfad dorthin umlenken. Die Bindung ist damit kein
 Zugangsschutz, sondern nur eine Erreichbarkeitsgrenze.
 
 **Abschaltbar und abgeschaltet als Vorgabe:** Ist ``mediamtx_api_password``
-leer, bleibt alles wie zuvor (``api`` → 200). Gesetzt wird es nur im
+leer, bleibt alles wie zuvor (``api`` → 200). Gesetzt wird es im
 Self-Host-Container (``03-init-secrets.sh`` erzeugt es, ``07-render-env.sh``
 reicht es an Hook UND media-svc, ``08-init-mediamtx.sh`` nimmt ``api`` aus
-``authHTTPExclude``). Die Cloud (``infra/prod/mediamtx.yml``) schließt ``api``
-weiter vom Hook aus — dort kommt die Anfrage hier nie an, gleich was gesetzt ist.
+``authHTTPExclude``) und seit dem Security-Scan 2026-11-04 auch in der Cloud
+(``MEDIAMTX_API_PASSWORD`` in ``infra/prod/.env``, ``api`` nicht mehr in
+``infra/prod/mediamtx.yml::authHTTPExclude``). Vorher hing die Cloud-API allein
+an UFW — und war über die Archiv-Weiterreichung des chat-gateway für jedes
+Konto lesbar.
 
 **Vor der Drossel geprüft** (``routes.authenticate``): Im Container erreichen
 auch die WHEP-Zuschauer den Hook über Caddy, also mit ``ip == 127.0.0.1`` —

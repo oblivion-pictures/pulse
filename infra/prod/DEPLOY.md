@@ -94,6 +94,9 @@ sudo ufw allow 7882:7892/udp   # LiveKit RTC
 #    otherwise; only these two need a rule):
 sudo ufw allow from 10.0.0.0/8 to any port 7880 proto tcp   # LiveKit signaling
 sudo ufw allow from 10.0.0.0/8 to any port 9997 proto tcp   # MediaMTX API
+#    The rule only limits REACHABILITY — every container still gets there. The
+#    API itself needs MEDIAMTX_API_PASSWORD in .env (auth hook checks it,
+#    media-svc sends it; security scan 2026-11-04, see mediamtx.yml).
 #    NO 8888/8889 to Anywhere (Bughunt 2026-09-23, resolves the old note that
 #    claimed they were "already open to Anywhere" from the legacy streaming
 #    setup): HLS is off and WHEP playback goes through the public pulse_web
