@@ -625,3 +625,83 @@ async def test_weiterer_passkey_mit_backup_code_statt_bestaetigung(client, monke
         zweiter_faktor={"backup_code": codes[0]},
     )
     assert r.status_code == 401, r.text
+
+
+# ---- TOTP einschalten bei Passkey-Konten: dieselbe Bestätigung -------------
+
+
+async def _totp_vorbereiten(client, bearer) -> str:
+    import pyotp
+
+    setup = (await client.post("/totp/setup", headers=bearer)).json()
+    return pyotp.TOTP(setup["secret"]).now()
+
+
+@pytest.mark.asyncio
+async def test_totp_einschalten_bei_passkey_konto_braucht_bestaetigung(client, monkeypatch):
+    """Sonst schaltet ein Angreifer mit Sitzung + Passwort eigenes TOTP ein,
+    hat damit einen Faktor in der Hand (und die Passkey-Schranke umgangen) und
+    ersetzt nebenbei die Backup-Codes des Inhabers."""
+    bearer = _bearer(await _register(client))
+    codes = (await _enrol(client, monkeypatch, bearer)).json()["backup_codes"]
+
+    code = await _totp_vorbereiten(client, bearer)
+    r = await client.post(
+        "/totp/verify-setup", headers=bearer, json={"code": code, "password": REG["password"]}
+    )
+    assert r.status_code == 401, r.text
+    assert r.json()["detail"] == "passkey_confirmation_required"
+    me = (await client.get("/me", headers=bearer)).json()
+    assert me["totp_enabled"] is False
+    # Die Backup-Codes des Inhabers sind unangetastet.
+    r = await _enrol(
+        client, monkeypatch, bearer, cred_id=ZWEITER_ID, zweiter_faktor={"backup_code": codes[0]}
+    )
+    assert r.status_code == 201, r.text
+
+
+@pytest.mark.asyncio
+async def test_bestaetigungs_options_ohne_passkey_leer(client):
+    bearer = _bearer(await _register(client))
+    r = await client.post("/webauthn/bestaetigung/options", headers=bearer)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"bestaetigung_options": None, "bestaetigung_ticket": None}
+
+
+@pytest.mark.asyncio
+async def test_totp_einschalten_mit_passkey_bestaetigt(client, monkeypatch):
+    bearer = _bearer(await _register(client))
+    assert (await _enrol(client, monkeypatch, bearer)).status_code == 201
+    code = await _totp_vorbereiten(client, bearer)
+
+    opts = (await client.post("/webauthn/bestaetigung/options", headers=bearer)).json()
+    erlaubt = [c["id"] for c in opts["bestaetigung_options"]["allowCredentials"]]
+    assert erlaubt == [bytes_to_base64url(FAKE_CRED_ID)]
+    _patch_auth_verify(monkeypatch)
+    alt = bytes_to_base64url(FAKE_CRED_ID)
+    r = await client.post(
+        "/totp/verify-setup",
+        headers=bearer,
+        json={
+            "code": code,
+            "password": REG["password"],
+            "bestaetigung_ticket": opts["bestaetigung_ticket"],
+            "bestaetigung": {"id": alt, "rawId": alt, "type": "public-key", "response": {}},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert len(r.json()["backup_codes"]) == 10
+
+
+@pytest.mark.asyncio
+async def test_totp_einschalten_mit_backup_code_bestaetigt(client, monkeypatch):
+    bearer = _bearer(await _register(client))
+    codes = (await _enrol(client, monkeypatch, bearer)).json()["backup_codes"]
+    code = await _totp_vorbereiten(client, bearer)
+
+    r = await client.post(
+        "/totp/verify-setup",
+        headers=bearer,
+        json={"code": code, "password": REG["password"], "backup_code": codes[0]},
+    )
+    assert r.status_code == 200, r.text

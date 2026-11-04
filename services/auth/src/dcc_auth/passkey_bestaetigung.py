@@ -11,23 +11,33 @@ eingerichteten: ``webauthn_register_options`` legt eine zweite Zeremonie
 bei, ``webauthn_register_verify`` prüft deren Antwort hier. Wer keinen Passkey
 zur Hand hat, weist sich ersatzweise mit einem Backup-Code aus.
 
-Nicht hier: TOTP-Konten (dort verlangt ``webauthn_register_verify`` den
-TOTP- oder Backup-Code) und der erste Passkey eines Kontos (es gibt noch
-keinen Faktor, mit dem man bestätigen könnte; wie beim Einrichten von TOTP
-reicht das Passwort).
+Dieselbe Bestätigung verlangt ``totp_verify_setup``, wenn das Konto schon
+Passkeys hat: sonst schaltete der Angreifer zuerst eigenes TOTP ein (und
+ersetzte dabei die Backup-Codes des Inhabers), hätte damit einen Faktor in der
+Hand und käme über den TOTP-Zweig an der Passkey-Schranke vorbei. Die
+Zeremonie dafür holt der Klient direkt vor dem Absenden über
+``POST /webauthn/bestaetigung/options`` (das QR-Scannen kann länger dauern als
+die Gültigkeit eines Tickets).
+
+Nicht hier: TOTP-Konten beim Passkey-Anlegen (dort verlangt
+``webauthn_register_verify`` den TOTP- oder Backup-Code) und Konten ohne
+Passkey (es gibt noch keinen Faktor, mit dem man bestätigen könnte; wie beim
+Einrichten von TOTP reicht das Passwort).
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Annotated, Any
 
 import jwt
 import structlog
 import webauthn
-from fastapi import HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from webauthn.helpers import base64url_to_bytes
 
 from dcc_auth.config import Settings, get_settings
+from dcc_auth.db import SessionDep
 from dcc_auth.models import User, WebAuthnCredential
 from dcc_auth.passkeys import (
     PURPOSE_CONFIRM,
@@ -37,10 +47,11 @@ from dcc_auth.passkeys import (
     load_user_credentials,
 )
 from dcc_auth.recovery import SingleUseNichtPruefbar, claim_ticket_jti
-from dcc_auth.routes import _check_account_rate
-from dcc_auth.schemas import WebAuthnRegisterVerifyIn
+from dcc_auth.routes import _check_account_rate, _check_rate, _get_current_user, _signer_dep
+from dcc_auth.schemas import PasskeyBestaetigungOut
 from dcc_auth.security import JwtSigner
 
+router = APIRouter()
 log = structlog.get_logger(__name__)
 
 
@@ -69,41 +80,62 @@ def bestaetigung_anbieten(
     return options, ticket
 
 
+@router.post("/webauthn/bestaetigung/options", response_model=PasskeyBestaetigungOut)
+async def bestaetigung_options(
+    request: Request,
+    session: SessionDep,
+    current: Annotated[User, Depends(_get_current_user)],
+    signer: Annotated[JwtSigner, Depends(_signer_dep)],
+):
+    """Bestätigungs-Zeremonie für ``totp_verify_setup``; ohne Passkeys beide Felder ``None``."""
+    settings = get_settings()
+    await _check_rate(request, "webauthn_register", settings.rate_limit_webauthn_register)
+    options, ticket = bestaetigung_anbieten(
+        settings,
+        signer,
+        user_id=current.id,
+        vorhandene=await load_user_credentials(session, current.id),
+    )
+    return PasskeyBestaetigungOut(bestaetigung_options=options, bestaetigung_ticket=ticket)
+
+
 async def bestaetigung_pruefen(
     session,
     request: Request,
     signer: JwtSigner,
     current: User,
-    payload: WebAuthnRegisterVerifyIn,
+    *,
+    backup_code: str | None,
+    bestaetigung: dict[str, Any] | None,
+    bestaetigung_ticket: str | None,
 ) -> None:
-    """Wirft 401, wenn ein weiterer Passkey ohne gültige Bestätigung kommt.
+    """Wirft 401, wenn ein Konto mit Passkeys ohne gültige Bestätigung kommt.
 
-    Nur für Konten ohne TOTP aufrufen. Ein verbrauchter Backup-Code und der
-    neue Zählerstand des bestätigenden Passkeys landen in ``session``; der
-    Aufrufer committet.
+    Ein verbrauchter Backup-Code und der neue Zählerstand des bestätigenden
+    Passkeys landen in ``session``; der Aufrufer committet.
     """
     vorhandene = await load_user_credentials(session, current.id)
     if not vorhandene:
         return
     settings = get_settings()
 
-    if payload.backup_code:
+    if backup_code:
         # Je-Konto-Bremse wie bei TOTP-Konten, sonst grindet ein verteilter
         # Angreifer die Backup-Codes.
         await _check_account_rate(request, "webauthn_register", str(current.id))
         from dcc_auth.routes_totp import _consume_second_factor  # noqa: PLC0415
 
         if not await _consume_second_factor(
-            session, current, code=None, backup_code=payload.backup_code
+            session, current, code=None, backup_code=backup_code
         ):
             raise _abgelehnt("invalid code")
         return
 
-    if not (payload.bestaetigung and payload.bestaetigung_ticket):
+    if not (bestaetigung and bestaetigung_ticket):
         raise _abgelehnt("passkey_confirmation_required")
     try:
         challenge, ticket_user_id, jti = decode_challenge_ticket(
-            signer, payload.bestaetigung_ticket, expected_purpose=PURPOSE_CONFIRM
+            signer, bestaetigung_ticket, expected_purpose=PURPOSE_CONFIRM
         )
     except jwt.PyJWTError as exc:
         raise _abgelehnt("invalid or expired confirmation") from exc
@@ -112,13 +144,13 @@ async def bestaetigung_pruefen(
 
     # Nur ein Passkey DIESES Kontos bestätigt; ein fremder (auch ein eigener
     # des Angreifers) ist nicht in ``vorhandene``.
-    raw_id = str(payload.bestaetigung.get("id") or payload.bestaetigung.get("rawId") or "")
+    raw_id = str(bestaetigung.get("id") or bestaetigung.get("rawId") or "")
     row = next((c for c in vorhandene if c.credential_id == raw_id), None)
     if row is None:
         raise _abgelehnt("passkey does not match account")
     try:
         verified = webauthn.verify_authentication_response(
-            credential=payload.bestaetigung,
+            credential=bestaetigung,
             expected_challenge=challenge,
             expected_rp_id=settings.webauthn_rp_id,
             expected_origin=settings.webauthn_origins_list,
