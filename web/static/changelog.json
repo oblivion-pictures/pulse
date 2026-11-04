@@ -7,7 +7,8 @@
       "style": "Sachlich",
       "title": "Passkeys",
       "items": [
-        "Wer Passkeys ohne Zwei-Faktor-App nutzt, bestätigt einen neuen Passkey jetzt mit einem schon eingerichteten. Ist keiner zur Hand, geht es auch mit einem Backup-Code."
+        "Wer Passkeys ohne Zwei-Faktor-App nutzt, bestätigt einen neuen Passkey jetzt mit einem schon eingerichteten. Ist keiner zur Hand, geht es auch mit einem Backup-Code.",
+        "Auch wer bei einem Konto mit Passkeys die Zwei-Faktor-App einschaltet, bestätigt das mit einem vorhandenen Passkey."
       ]
     },
     {

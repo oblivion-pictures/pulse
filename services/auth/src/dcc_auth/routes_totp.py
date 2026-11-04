@@ -118,6 +118,7 @@ async def totp_verify_setup(
     request: Request,
     session: SessionDep,
     current: Annotated[User, Depends(_get_current_user)],
+    signer: Annotated[JwtSigner, Depends(_signer_dep)],
 ):
     """Validate first code → enable 2FA → issue 10 single-use backup codes.
 
@@ -144,6 +145,19 @@ async def totp_verify_setup(
     totp = pyotp.TOTP(current.totp_secret)
     if not totp.verify(payload.code, valid_window=1):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid code")
+    # Konten mit Passkeys: Bestätigung durch einen vorhandenen (oder einen
+    # Backup-Code), Begründung in ``passkey_bestaetigung.py``.
+    from dcc_auth.passkey_bestaetigung import bestaetigung_pruefen  # noqa: PLC0415
+
+    await bestaetigung_pruefen(
+        session,
+        request,
+        signer,
+        current,
+        backup_code=payload.backup_code,
+        bestaetigung=payload.bestaetigung,
+        bestaetigung_ticket=payload.bestaetigung_ticket,
+    )
 
     current.totp_enabled = True
     # NB: we deliberately do NOT seed the replay counter here. Replay-prevention

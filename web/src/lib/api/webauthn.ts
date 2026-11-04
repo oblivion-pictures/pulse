@@ -27,12 +27,17 @@ export type WebAuthnCredentialSummary = {
 };
 
 type OptionsResponse = { options: Record<string, any>; challenge_ticket: string };
-/** Registrier-Optionen: bei Konten mit Passkey, aber ohne TOTP zusätzlich die
- *  Bestätigung mit einem vorhandenen Passkey (sonst beide Felder `null`). */
-type RegisterOptionsResponse = OptionsResponse & {
+/** Bestätigungs-Zeremonie vom Server (in den Registrier-Optionen oder von
+ *  `/webauthn/bestaetigung/options`); ohne verlangte Bestätigung `null`. */
+type BestaetigungOptions = {
   bestaetigung_options?: Record<string, any> | null;
   bestaetigung_ticket?: string | null;
 };
+/** Felder für den Absende-Body; leer, wenn keine Bestätigung verlangt war. */
+type BestaetigungFelder = { bestaetigung?: Record<string, unknown>; bestaetigung_ticket?: string };
+/** Registrier-Optionen: bei Konten mit Passkey, aber ohne TOTP zusätzlich die
+ *  Bestätigung mit einem vorhandenen Passkey (sonst beide Felder `null`). */
+type RegisterOptionsResponse = OptionsResponse & BestaetigungOptions;
 
 /** True when this browser exposes the WebAuthn API at all. */
 export function webauthnSupported(): boolean {
@@ -124,6 +129,39 @@ function ceremonyError(err: unknown): Error {
   return err instanceof Error ? err : new Error(m.webauthn_fehlgeschlagen());
 }
 
+// ---- Bestätigung mit einem vorhandenen Passkey -----------------------------
+
+/** Fragt einen vorhandenen Passkey ab, wenn der Server eine Bestätigung
+ *  verlangt (Konto mit Passkeys, Security-Scan 2026-11-04), und liefert die
+ *  Felder `bestaetigung`/`bestaetigung_ticket` für den Absende-Body; ohne
+ *  Bestätigungs-Optionen ein leeres Objekt. */
+export async function passkeyBestaetigen(o: BestaetigungOptions): Promise<BestaetigungFelder> {
+  if (!o.bestaetigung_options || !o.bestaetigung_ticket) return {};
+  let alt: Credential | null;
+  try {
+    alt = await navigator.credentials.get({
+      publicKey: decodeRequestOptions(o.bestaetigung_options)
+    });
+  } catch (err) {
+    throw ceremonyError(err);
+  }
+  if (!alt) throw new Error(m.webauthn_abgebrochen());
+  return {
+    bestaetigung: encodeAssertion(alt as PublicKeyCredential),
+    bestaetigung_ticket: o.bestaetigung_ticket
+  };
+}
+
+/** Bestätigung für Vorgänge außerhalb des Passkey-Anlegens (TOTP einschalten):
+ *  Optionen direkt vor dem Absenden holen, damit das Ticket frisch ist. */
+export async function passkeyBestaetigungHolen(): Promise<BestaetigungFelder> {
+  const o = await request<BestaetigungOptions>('/webauthn/bestaetigung/options', {
+    method: 'POST',
+    endpoint: 'auth'
+  });
+  return passkeyBestaetigen(o);
+}
+
 // ---- registration (authenticated) ------------------------------------------
 
 /** Zweiter Faktor beim Passkey-Anlegen: TOTP- oder Backup-Code. Leer bei
@@ -151,20 +189,7 @@ export async function registerPasskey(
   // Konto hat schon Passkeys, aber kein TOTP: erst mit einem vorhandenen
   // bestätigen (Security-Scan 2026-11-04), außer der Nutzer schickt einen
   // Backup-Code. Zwei Browser-Abfragen nacheinander.
-  const bestaetigung: Record<string, unknown> = {};
-  if (opts.bestaetigung_options && opts.bestaetigung_ticket && !zweiterFaktor.backup_code) {
-    let alt: Credential | null;
-    try {
-      alt = await navigator.credentials.get({
-        publicKey: decodeRequestOptions(opts.bestaetigung_options)
-      });
-    } catch (err) {
-      throw ceremonyError(err);
-    }
-    if (!alt) throw new Error(m.webauthn_abgebrochen());
-    bestaetigung.bestaetigung = encodeAssertion(alt as PublicKeyCredential);
-    bestaetigung.bestaetigung_ticket = opts.bestaetigung_ticket;
-  }
+  const bestaetigung = zweiterFaktor.backup_code ? {} : await passkeyBestaetigen(opts);
   let cred: Credential | null;
   try {
     cred = await navigator.credentials.create({

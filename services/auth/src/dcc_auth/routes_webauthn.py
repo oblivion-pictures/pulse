@@ -155,7 +155,15 @@ async def webauthn_register_verify(
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid code")
     else:
         # Ohne TOTP: weiterer Passkey nur mit Bestätigung durch einen vorhandenen.
-        await bestaetigung_pruefen(session, request, signer, current, payload)
+        await bestaetigung_pruefen(
+            session,
+            request,
+            signer,
+            current,
+            backup_code=payload.backup_code,
+            bestaetigung=payload.bestaetigung,
+            bestaetigung_ticket=payload.bestaetigung_ticket,
+        )
     try:
         challenge, ticket_user_id, challenge_jti = decode_challenge_ticket(
             signer, payload.challenge_ticket, expected_purpose=PURPOSE_REGISTER

@@ -378,6 +378,14 @@ class TotpVerifySetupIn(BaseModel):
     # Inhaber beim naechsten Login aus. Bis 2026-08-13 genuegte dafuer ein
     # gueltiges Zugangs-Token — also ein gestohlenes.
     password: _CurrentPasswordField
+    # **Konten mit Passkeys:** Bestätigung mit einem vorhandenen Passkey,
+    # ersatzweise ein Backup-Code (Security-Scan 2026-11-04, Begründung in
+    # ``passkey_bestaetigung.py``).
+    backup_code: Annotated[
+        str | None, Field(default=None, pattern=BACKUP_CODE_PATTERN)
+    ] = None
+    bestaetigung: dict[str, Any] | None = None
+    bestaetigung_ticket: _TicketField | None = None
 
 
 class TotpVerifySetupOut(BaseModel):
@@ -447,6 +455,13 @@ class WebAuthnRegisterOptionsOut(WebAuthnOptionsOut):
     diese Felder die ``navigator.credentials.get``-Optionen und ihr Ticket,
     sonst sind beide ``None``.
     """
+
+    bestaetigung_options: dict[str, Any] | None = None
+    bestaetigung_ticket: str | None = None
+
+
+class PasskeyBestaetigungOut(BaseModel):
+    """``POST /webauthn/bestaetigung/options``; ohne Passkeys beide ``None``."""
 
     bestaetigung_options: dict[str, Any] | None = None
     bestaetigung_ticket: str | None = None

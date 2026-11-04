@@ -1,6 +1,7 @@
 import { request, requestForm, resetRefreshLock } from './client';
 import { saveTokens } from './storage';
 import type { Session, Tokens, User } from './types';
+import { passkeyBestaetigungHolen } from './webauthn';
 
 /**
  * The /login endpoint returns one of two shapes:
@@ -214,9 +215,13 @@ export async function totpSetup(): Promise<TotpSetup> {
  *  Abschalten: ein untergeschobenes TOTP-Gerät sperrt den echten Inhaber beim
  *  nächsten Login aus, und einen Weg zurück gibt es nicht. */
 export async function totpVerifySetup(code: string, password: string): Promise<BackupCodes> {
+  // Konto mit Passkeys: der Server verlangt eine Bestätigung durch einen
+  // vorhandenen (Security-Scan 2026-11-04) — sonst schaltete ein Angreifer mit
+  // Sitzung + Passwort eigenes TOTP ein. Ohne Passkeys kommen keine Felder dazu.
+  const bestaetigung = await passkeyBestaetigungHolen();
   return request<BackupCodes>('/totp/verify-setup', {
     method: 'POST',
-    body: { code, password },
+    body: { code, password, ...bestaetigung },
     endpoint: 'auth'
   });
 }
