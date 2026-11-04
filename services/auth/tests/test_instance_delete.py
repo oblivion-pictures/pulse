@@ -156,7 +156,9 @@ async def test_delete_404_nonexistent_and_invalid_id(client, owner_cookie):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("passwort", [None, "falsches passwort"], ids=["ohne", "falsch"])
+@pytest.mark.parametrize(
+    "passwort", [None, "", "falsches passwort"], ids=["ohne", "leer", "falsch"]
+)
 async def test_delete_verlangt_passwort(
     client, owner_cookie, owner_instance, session_factory, passwort
 ):

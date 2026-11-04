@@ -2,6 +2,16 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-04.4",
+      "date": "2026-11-04",
+      "style": "Sachlich",
+      "title": "Heimserver",
+      "items": [
+        "Einen Heimserver übernehmen oder löschen fragt jetzt nach deinem Passwort, in der Server-App und unter „Meine Server“.",
+        "Die Server-App bringt aktuelle Fassungen von LiveKit, MediaMTX, Caddy und frp mit, darunter mehrere Sicherheitskorrekturen."
+      ]
+    },
+    {
       "id": "2026-11-04.3",
       "date": "2026-11-04",
       "style": "Sachlich",
