@@ -105,8 +105,8 @@ async def create_community_invite(
         )
 
     # Cloud-Ziel: ``accept`` tritt HIER bei, der Code ist der einzige Beleg
-    # fuer die Einladeberechtigung (Modul-Docstring). Gleiche Antwort fuer
-    # „gibt es nicht" und „andere Community" — kein Orakel ueber fremde Codes.
+    # für die Einladeberechtigung (Modul-Docstring). Gleiche Antwort fuer
+    # „gibt es nicht" und „andere Community" — kein Orakel über fremde Codes.
     if fremder_host(payload.target_host) is None and not await invite_gilt_fuer(
         session, payload.code, payload.target_guild_id
     ):
