@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -326,7 +328,18 @@ def create_app(*, skip_redis: bool = False) -> FastAPI:
     # any request is served. Idempotent — safe across repeated create_app calls.
     from dcc_chat_gateway.log_filters import install_access_log_redaction
     install_access_log_redaction()
-    app = FastAPI(title="dcc-chat-gateway", version="0.1.0", lifespan=lifespan)
+    # Wie der auth-Service (Security-Audit 2026-09-16): Routenkatalog default
+    # ZU, per PULSE_DOCS=1 für Entwicklung an. Über ``/api/ws/`` war er bis zum
+    # Security-Scan 2026-11-04 öffentlich abrufbar, samt internen Routen.
+    _docs = "/docs" if os.environ.get("PULSE_DOCS") == "1" else None
+    app = FastAPI(
+        title="dcc-chat-gateway",
+        version="0.1.0",
+        lifespan=lifespan,
+        docs_url=_docs,
+        redoc_url=None,
+        openapi_url="/openapi.json" if _docs else None,
+    )
 
     registriere_422_log(app)
     app.state.skip_redis = skip_redis
