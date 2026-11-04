@@ -89,7 +89,7 @@ services:
   # infra/prod/garage/garage.toml (Layout, Bucket, Key-Import).
   garage:
     <<: *logging
-    image: dxflrs/garage:v1.1.0
+    image: dxflrs/garage:v1.3.1
     container_name: pulse_garage
     restart: unless-stopped
     environment:
@@ -337,7 +337,7 @@ services:
 
   frps:
     <<: *logging
-    image: snowdreamtech/frps:0.69.1
+    image: snowdreamtech/frps:0.71.1
     container_name: pulse_frps
     restart: unless-stopped
     networks: [pulse-net]
