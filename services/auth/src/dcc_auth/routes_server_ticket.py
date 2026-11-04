@@ -58,7 +58,7 @@ class TicketAus(BaseModel):
 async def server_ticket(
     payload: TicketEin, request: Request, db: SessionDep
 ) -> TicketAus:
-    from dcc_auth.routes import _check_rate
+    from dcc_auth.routes import _check_rate, _email_gate_blocked
     from dcc_auth.routes_instance_applications import _require_user_mit_sitzung
 
     user, sitzung = await _require_user_mit_sitzung(request, db)
@@ -66,6 +66,12 @@ async def server_ticket(
     await _check_rate(
         request, "server_ticket", settings.rate_limit_server_ticket, account=str(user.id)
     )
+    # E-Mail-Gate wie in der Cloud selbst: ein Konto mit unbestätigter Adresse
+    # ist dort gesperrt und darf diese Sperre nicht über einen Self-Host mit
+    # offenem Beitritt umgehen (Spec 2026-08-28: „E-Mail bestätigt";
+    # Security-Scan 2026-11-04).
+    if await _email_gate_blocked(db, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="email_unverified")
 
     # Hostname genauso normalisieren wie bei der Registrierung, sonst scheitert
     # der Vergleich an einem Schema, einem Port oder einem Grossbuchstaben. Das
