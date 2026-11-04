@@ -234,6 +234,11 @@ async def request_email_change(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+def _aware(dt: datetime) -> datetime:
+    """SQLite (Tests) liefert naive Zeitstempel, Postgres aware."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
 @router.post("/me/email/change/confirm", response_model=MessageOut)
 async def confirm_email_change(
     payload: EmailChangeConfirmIn,
@@ -274,6 +279,13 @@ async def confirm_email_change(
 
     user = await session.get(User, row.user_id)
     if user is None or user.disabled or user.is_suspended:
+        raise bad
+    # Nur Anträge, die NACH dem letzten Passwortwechsel/-Reset entstanden.
+    # ``offene_email_wechsel_entwerten`` deckt die offenen Zeilen beim
+    # Widerruf; ein gleichzeitig beantragter Wechsel, der erst danach
+    # committet, entginge ihm — dieser Vergleich nicht (Security-Scan
+    # 2026-11-04).
+    if user.revoke_until is not None and _aware(row.created_at) <= _aware(user.revoke_until):
         raise bad
 
     clash = (
