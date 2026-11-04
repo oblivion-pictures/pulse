@@ -16,12 +16,17 @@ Route (cloud-only via the router-level ``CloudOnly`` guard):
 
 Trust model: the inviter is authenticated by the Cloud (a normal access token).
 The *proof of authorisation to invite into a community* is the host-coined
-``code`` (a live ``GuildInvite`` on the hosting server) — the Cloud only relays
-``{host, code}``; it never validates the code (it can't reach a Self-Host's
-invite table). A relayed invite therefore grants **nothing** on its own: access
-is still gated by the host re-checking the live invite at accept time
-(``invites.py::accept_invite`` / the cert-login community grant). The broker is
-a notification + auto-join convenience, not an authority.
+``code`` (a live ``GuildInvite`` on the hosting server).
+
+* **Self-Host target:** the Cloud only relays ``{host, code}``; it can't reach
+  the Self-Host's invite table, so it never validates the code. The relayed
+  invite grants nothing on its own — the host re-checks the live invite when
+  the client redeems it (``invites.py::accept_invite``).
+* **Cloud target:** the Cloud IS the host, and accepting joins right here
+  (``member_invites.accept_community_invite``). So the code is checked on
+  create (a live invite of exactly ``target_guild_id``) and consumed on accept.
+  Until the security scan of 2026-11-04 it was checked nowhere: two befriended
+  accounts sufficed to join any private Cloud community by its id.
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ from dcc_chat_gateway.models import CommunityInviteNotification, GuildMember
 from dcc_chat_gateway.push import fan_out_community_invite_push
 from dcc_chat_gateway.ratelimit import check as ratelimit_check
 from dcc_chat_gateway.routes._deps import CloudOnly
+from dcc_chat_gateway.routes.invites import invite_gilt_fuer
 from dcc_chat_gateway.routes.member_invites import _to_out
 from dcc_chat_gateway.schemas import CommunityInviteOut, CreateCommunityInviteIn
 from dcc_chat_gateway.security import CurrentUser
@@ -70,9 +76,10 @@ async def create_community_invite(
       * no block in **either** direction (403). Checked before friendship so a
         block always wins.
 
-    The host-coined ``code`` is the cross-host authorisation proof — the Cloud
-    does not (cannot) verify it, it just delivers it. The friend-gate here is
-    the Cloud-side guard that only a social contact can even reach the invitee.
+    The host-coined ``code`` is the authorisation proof — for a Self-Host
+    target relayed unverified, for a Cloud target checked here (module
+    docstring). The friend-gate is the Cloud-side guard that only a social
+    contact can even reach the invitee.
     Per-inviter rate-limited.
     """
     if not ratelimit_check("community_invite", current.id):
@@ -96,6 +103,14 @@ async def create_community_invite(
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="not_friends"
         )
+
+    # Cloud-Ziel: ``accept`` tritt HIER bei, der Code ist der einzige Beleg
+    # fuer die Einladeberechtigung (Modul-Docstring). Gleiche Antwort fuer
+    # „gibt es nicht" und „andere Community" — kein Orakel ueber fremde Codes.
+    if fremder_host(payload.target_host) is None and not await invite_gilt_fuer(
+        session, payload.code, payload.target_guild_id
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="invite_invalid")
 
     # Cloud-Guild-Mitgliedschaft: wer bereits in der Ziel-Community ist, braucht
     # keine Einladung — eine weitere Beitreten-Karte wäre nur verwirrend. Greift
