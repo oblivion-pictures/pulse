@@ -679,3 +679,22 @@ async def test_ban_beendet_gehostete_watch_party(client, app, _auth_signer):
         assert (await watchkeys.read_party(redis, cid, "party-1")) is None
     finally:
         await redis.delete(watchkeys.WATCH_STATE_KEY.format(channel_id=cid))
+
+
+@pytest.mark.asyncio
+async def test_bann_zieht_die_einladungen_des_gebannten_zurueck(client, _auth_signer):
+    """Security-Scan 2026-11-04: Wer vor dem Bann einen unbegrenzten Code anlegte,
+    brachte damit danach Zweitkonten oder Freunde wieder hinein. Der Bann zieht
+    jetzt die Codes des Gebannten in dieser Community zurück."""
+    s = await _setup(client, _auth_signer)
+    gid = s["g"]["id"]
+    r = await client.post(f"/guilds/{gid}/invites", json={}, headers=auth(s["t_a"]))
+    assert r.status_code == 201, r.text
+    code = r.json()["code"]
+
+    r = await client.put(f"/guilds/{gid}/bans/{s['uid_a']}", json={}, headers=auth(s["t_owner"]))
+    assert r.status_code == 200, r.text
+
+    t_neu, _ = await _register_user(_auth_signer)
+    r = await client.post(f"/invites/{code}/accept", headers=auth(t_neu))
+    assert r.status_code == 404, r.text

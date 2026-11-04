@@ -13,6 +13,8 @@ to know the schema.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from dcc_shared.events import (
     GuildBanAddedEvent,
     GuildBanLiftedEvent,
@@ -21,7 +23,7 @@ from dcc_shared.events import (
 )
 from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +31,9 @@ from dcc_chat_gateway.audit_log import write_audit_log
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.models import (
     Channel,
+    CommunityInviteNotification,
     GuildBan,
+    GuildInvite,
     GuildMember,
     PermissionOverwrite,
 )
@@ -216,6 +220,26 @@ async def ban_user(
                 )
             )
         await session.delete(member)
+
+    # Die Türen, die der Gebannte geöffnet hat, schließen mit: seine Codes in
+    # dieser Community und seine offenen Nutzername-/Freundes-Einladungen.
+    # Vorher brachte ein vor dem Bann angelegter unbegrenzter Code danach
+    # Zweitkonten wieder hinein (Security-Scan 2026-11-04).
+    await session.execute(
+        update(GuildInvite)
+        .where(
+            GuildInvite.guild_id == guild_id,
+            GuildInvite.creator_id == user_id,
+            GuildInvite.revoked_at.is_(None),
+        )
+        .values(revoked_at=datetime.now(UTC))
+    )
+    await session.execute(
+        sa_delete(CommunityInviteNotification).where(
+            CommunityInviteNotification.guild_id == guild_id,
+            CommunityInviteNotification.inviter_user_id == user_id,
+        )
+    )
 
     await write_audit_log(
         session,
