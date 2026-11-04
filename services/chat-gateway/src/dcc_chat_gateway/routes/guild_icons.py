@@ -37,6 +37,11 @@ log = structlog.get_logger(__name__)
 router = APIRouter()
 
 _ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
+# Pillow-Formatnamen zu genau diesen Typen. Der Content-Type oben stammt vom
+# Client und beweist nichts — ohne ``formats=`` beim Oeffnen reicht Pillow
+# JEDES bekannte Format an seinen Decoder weiter, auch die Exoten mit
+# bekannten Speicherfehlern (JPEG2000, GD, EPS …; Security-Scan 2026-11-04).
+_PIL_FORMATE = ("PNG", "JPEG", "WEBP")
 _MAX_RAW_BYTES = 5 * 1024 * 1024
 _MAX_DIM = 256
 _FILENAME_RE = re.compile(r"^\d+\.webp$")
@@ -88,9 +93,9 @@ def _icon_verarbeiten(raw: bytes, ziel: Path) -> None:
     Gleiche Schritte, gleiche Reihenfolge wie vormals inline im Handler.
     """
     try:
-        img = Image.open(io.BytesIO(raw))
+        img = Image.open(io.BytesIO(raw), formats=_PIL_FORMATE)
         img.verify()
-        img = Image.open(io.BytesIO(raw))
+        img = Image.open(io.BytesIO(raw), formats=_PIL_FORMATE)
     except Exception as exc:
         raise _KaputtesBild("invalid image file") from exc
     img = ImageOps.exif_transpose(img)  # Handy-JPEGs: Orientation physisch anwenden
