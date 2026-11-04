@@ -54,6 +54,24 @@ services:
     image: ghcr.io/oblivion-pictures/pulse:edge
     container_name: pulse
     restart: unless-stopped
+    # Härtung wie die Server-App (desktop/electron/localBackend/containerLauf.ts,
+    # ERLAUBTE_FAEHIGKEITEN): keine neuen Rechte, alle Fähigkeiten weg bis auf
+    # die sieben, die s6 und die Init-Skripte brauchen. Unter Docker am
+    # Allinone-Bild nachgemessen (2026-11-04): Erststart, Stopp, Neustart auf
+    # demselben Volume — gesund, dieselbe Prozessliste, kein EPERM. Ohne das
+    # liefe der Container mit den vollen Docker-Standardrechten.
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
+      - KILL
+      - NET_BIND_SERVICE
     # Log-Begrenzung wie Prod (x-logging-Anker in infra/prod/docker-compose.yml):
     # json-file sammelt sonst UNBEGRENZT. 10 MB x 5 = hoechstens 50 MB.
     logging:
