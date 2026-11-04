@@ -13,6 +13,8 @@ import random
 
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -30,10 +32,7 @@ async def _make_guild(client, owner_token: str) -> dict:
 
 
 async def _add_member(client, owner_token: str, gid: str, uid: int) -> None:
-    r = await client.post(
-        f"/guilds/{gid}/members", json={"user_id": str(uid)}, headers=auth(owner_token)
-    )
-    assert r.status_code in (200, 201), r.text
+    await beitreten_per_einladung(client, gid, uid, owner_token)
 
 
 async def _audit_actions(client, owner_token: str, gid: str) -> list[str]:

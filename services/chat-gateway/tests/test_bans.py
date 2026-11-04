@@ -5,9 +5,9 @@ Endpoints under test:
   * DELETE /guilds/{gid}/bans/{uid}
   * GET    /guilds/{gid}/bans
 
-Plus the two join-block side-effects:
-  * POST /guilds/{gid}/members              (direct add)
-  * POST /invites/{code}/accept             (invite acceptance)
+Plus the join-block side-effect on invite acceptance
+(``POST /invites/{code}/accept``) — seit dem Security-Scan 2026-11-04 der
+einzige Weg in eine Community; das direkte Hinzufügen per ID ist abgeschafft.
 """
 
 from __future__ import annotations
@@ -16,6 +16,8 @@ import random
 
 import pytest
 from dcc_chat_gateway import watchkeys
+
+from .conftest import beitreten_per_einladung
 
 
 def auth(token: str) -> dict[str, str]:
@@ -36,11 +38,7 @@ async def _setup(client, _auth_signer) -> dict:
         await client.post("/guilds", json={"name": "bantown"}, headers=auth(t_owner))
     ).json()
     for uid in (uid_a, uid_b):
-        await client.post(
-            f"/guilds/{g['id']}/members",
-            json={"user_id": str(uid)},
-            headers=auth(t_owner),
-        )
+        await beitreten_per_einladung(client, g['id'], str(uid), t_owner)
     return {
         "t_owner": t_owner,
         "uid_owner": uid_owner,
@@ -131,11 +129,9 @@ async def test_ban_blocks_re_add(client, _auth_signer):
         json={},
         headers=auth(s["t_owner"]),
     )
-    # Owner tries to add the banned user back — must 403.
-    r = await client.post(
-        f"/guilds/{s['g']['id']}/members",
-        json={"user_id": str(s["uid_a"])},
-        headers=auth(s["t_owner"]),
+    # Owner invites the banned user back with a fresh invite — accepting must 403.
+    r = await beitreten_per_einladung(
+        client, s['g']['id'], s["uid_a"], s["t_owner"], ziel_token=s["t_a"], erwartet=403
     )
     assert r.status_code == 403
 
@@ -176,13 +172,10 @@ async def test_unban_allows_rejoin(client, _auth_signer):
         headers=auth(s["t_owner"]),
     )
     assert r.status_code == 204
-    # Owner can re-add now.
-    r2 = await client.post(
-        f"/guilds/{s['g']['id']}/members",
-        json={"user_id": str(s["uid_a"])},
-        headers=auth(s["t_owner"]),
+    # A can rejoin via a fresh invite now (the helper asserts 200).
+    await beitreten_per_einladung(
+        client, s['g']['id'], s["uid_a"], s["t_owner"], ziel_token=s["t_a"]
     )
-    assert r2.status_code == 201
 
 
 @pytest.mark.asyncio

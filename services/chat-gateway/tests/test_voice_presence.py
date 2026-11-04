@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 from redis.asyncio import Redis
 from starlette.testclient import TestClient
-from .conftest import receive_skipping
+from .conftest import beitreten_per_einladung_sync, receive_skipping
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6380/0")
 
@@ -227,11 +227,7 @@ async def test_voice_self_state_rejects_connect_denied(ws_app, _auth_signer):
             ).json()
             member_uid = random.randint(1, 1_000_000)
             member_token = _auth_signer.issue_access(member_uid, f"u{member_uid}")
-            tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": str(member_uid)},
-                headers=_auth(owner_token),
-            )
+            beitreten_per_einladung_sync(tc, g['id'], str(member_uid), owner_token)
             from dcc_shared.permission_resolver import OVERWRITE_TARGET_USER
             from dcc_shared.permissions import Permissions
 
@@ -466,11 +462,7 @@ async def test_ready_hides_private_voice_channel_from_denied_member(
             g = tc.post(
                 "/guilds", json={"name": "g"}, headers=_auth(owner_token)
             ).json()
-            tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": member_uid},
-                headers=_auth(owner_token),
-            )
+            beitreten_per_einladung_sync(tc, g['id'], member_uid, owner_token)
             vc = tc.post(
                 f"/guilds/{g['id']}/channels",
                 json={"name": "Secret", "type": 1},

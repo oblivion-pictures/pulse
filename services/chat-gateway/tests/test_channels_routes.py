@@ -6,6 +6,8 @@ import random
 
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -20,11 +22,7 @@ async def _make_guild_with_member(client, _auth_signer):
     t_owner, _ = await _register_user(_auth_signer)
     t_other, uid_other = await _register_user(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t_owner))).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_other)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_other), t_owner)
     return t_owner, t_other, uid_other, g
 
 

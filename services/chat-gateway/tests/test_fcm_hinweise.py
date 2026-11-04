@@ -18,7 +18,7 @@ from dcc_chat_gateway.fcm_empfaenger import android_faehigkeiten_merken
 from dcc_chat_gateway.models import FcmToken
 from dcc_chat_gateway.presence_keys import PRESENCE_STATUS_KEY
 
-from .conftest import make_auth_header
+from .conftest import beitreten_per_einladung, make_auth_header
 
 
 @pytest.fixture
@@ -51,9 +51,8 @@ async def _handy(session_factory, uid: int, gid: str = "handy") -> str:
 
 async def _community(client, heads_owner, uid_member) -> tuple[str, str]:
     g = (await client.post("/guilds", json={"name": "Runde"}, headers=heads_owner)).json()
-    await client.post(
-        f"/guilds/{g['id']}/members", json={"user_id": str(uid_member)}, headers=heads_owner
-    )
+    t_owner = heads_owner["Authorization"].removeprefix("Bearer ")
+    await beitreten_per_einladung(client, g['id'], uid_member, t_owner)
     c = (
         await client.post(
             f"/guilds/{g['id']}/channels", json={"name": "allgemein"}, headers=heads_owner

@@ -7,6 +7,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import update
 
+from .conftest import beitreten_per_einladung
+
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -337,9 +339,7 @@ async def test_revoke_invite_as_creator(client, _auth_signer):
     creator_t, creator_uid = await _register_user(_auth_signer)
     g = await _make_guild(client, owner_t)
     # owner adds creator as a member so they can create an invite
-    await client.post(
-        f"/guilds/{g['id']}/members", json={"user_id": str(creator_uid)}, headers=auth(owner_t)
-    )
+    await beitreten_per_einladung(client, g['id'], str(creator_uid), owner_t)
     inv = (
         await client.post(f"/guilds/{g['id']}/invites", json={}, headers=auth(creator_t))
     ).json()
@@ -352,9 +352,7 @@ async def test_revoke_invite_as_stranger_forbidden(client, _auth_signer):
     owner_t, _ = await _register_user(_auth_signer)
     member_t, member_uid = await _register_user(_auth_signer)
     g = await _make_guild(client, owner_t)
-    await client.post(
-        f"/guilds/{g['id']}/members", json={"user_id": str(member_uid)}, headers=auth(owner_t)
-    )
+    await beitreten_per_einladung(client, g['id'], str(member_uid), owner_t)
     inv = (
         await client.post(f"/guilds/{g['id']}/invites", json={}, headers=auth(owner_t))
     ).json()
@@ -376,16 +374,8 @@ async def test_revoke_invite_with_manage_invites_positive(client, _auth_signer):
     creator_t, creator_uid = await _register_user(_auth_signer)
     g = await _make_guild(client, owner_t)
     # Both other users join the guild.
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(mod_uid)},
-        headers=auth(owner_t),
-    )
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(creator_uid)},
-        headers=auth(owner_t),
-    )
+    await beitreten_per_einladung(client, g['id'], str(mod_uid), owner_t)
+    await beitreten_per_einladung(client, g['id'], str(creator_uid), owner_t)
     # Owner mints a role with MANAGE_INVITES and assigns it to mod_uid.
     mod_role = (await client.post(
         f"/guilds/{g['id']}/roles",

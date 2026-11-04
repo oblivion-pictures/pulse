@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import select
 
 from dcc_chat_gateway.models import GuildMember, InstanceMember
+from .conftest import beitreten_per_einladung
 
 
 def auth(token: str) -> dict[str, str]:
@@ -63,11 +64,7 @@ async def test_leave_removes_instance_and_guild_memberships(
     g = (
         await client.post("/guilds", json={"name": "exitvale"}, headers=auth(t_owner))
     ).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_a)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_a), t_owner)
     await _seed_instance_member(session_factory, str(uid_a))
 
     with _self_host_settings():

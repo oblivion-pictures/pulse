@@ -12,6 +12,7 @@ import random
 import pytest
 
 from dcc_chat_gateway.models import Report
+from .conftest import beitreten_per_einladung
 
 
 def auth(token: str) -> dict[str, str]:
@@ -41,12 +42,7 @@ async def _make_guild(client, owner_token: str) -> dict:
 
 
 async def _add_member(client, guild_id: str, uid: int, owner_token: str) -> None:
-    r = await client.post(
-        f"/guilds/{guild_id}/members",
-        json={"user_id": str(uid)},
-        headers=auth(owner_token),
-    )
-    assert r.status_code in (200, 201), r.text
+    await beitreten_per_einladung(client, guild_id, uid, owner_token)
 
 
 async def _grant_role_with_perms(client, guild_id: str, uid: int, perms: int, owner_token: str):

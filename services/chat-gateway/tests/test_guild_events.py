@@ -14,7 +14,7 @@ import random
 
 import pytest
 from starlette.testclient import TestClient
-from .conftest import receive_skipping
+from .conftest import beitreten_per_einladung_sync, receive_skipping
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -133,29 +133,6 @@ async def test_guild_member_added_broadcast_via_invite(ws_app, _auth_signer):
 
 
 @pytest.mark.asyncio
-async def test_guild_member_added_broadcast_via_add_member(ws_app, _auth_signer):
-    def _run():
-        with TestClient(ws_app) as tc:
-            owner_uid = random.randint(1, 1_000_000)
-            joiner_uid = random.randint(1, 1_000_000)
-            owner_token = _auth_signer.issue_access(owner_uid, f"o{owner_uid}")
-            g = tc.post("/guilds", json={"name": "g"}, headers=_auth(owner_token)).json()
-            with tc.websocket_connect(f"/ws?token={owner_token}") as ws:
-                receive_skipping(ws)  # skip hello + ready
-                r = tc.post(
-                    f"/guilds/{g['id']}/members",
-                    json={"user_id": str(joiner_uid)},
-                    headers=_auth(owner_token),
-                )
-                assert r.status_code == 201, r.text
-                evt = _drain_until(ws, "guild_member_added")
-                assert evt["guild_id"] == g["id"]
-                assert evt["user_id"] == str(joiner_uid)
-
-    await asyncio.to_thread(_run)
-
-
-@pytest.mark.asyncio
 async def test_guild_updated_broadcast(ws_app, _auth_signer):
     def _run():
         with TestClient(ws_app) as tc:
@@ -211,11 +188,7 @@ async def test_ownership_transfer_broadcasts_guild_updated(ws_app, _auth_signer)
             g = tc.post(
                 "/guilds", json={"name": "handover"}, headers=_auth(owner_token)
             ).json()
-            tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_token),
-            )
+            beitreten_per_einladung_sync(tc, g['id'], str(other_uid), owner_token)
             with tc.websocket_connect(f"/ws?token={owner_token}") as ws:
                 receive_skipping(ws)  # skip hello + ready
                 r = tc.post(
@@ -312,12 +285,9 @@ async def test_kicked_user_receives_guild_member_removed(ws_app, _auth_signer):
             owner_token = _auth_signer.issue_access(owner_uid, f"o{owner_uid}")
             member_token = _auth_signer.issue_access(member_uid, f"m{member_uid}")
             g = tc.post("/guilds", json={"name": "g"}, headers=_auth(owner_token)).json()
-            r = tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": str(member_uid)},
-                headers=_auth(owner_token),
+            beitreten_per_einladung_sync(
+                tc, g['id'], member_uid, owner_token, ziel_token=member_token
             )
-            assert r.status_code == 201, r.text
             # The kicked user is the one connected — they must hear about it.
             with tc.websocket_connect(f"/ws?token={member_token}") as ws:
                 receive_skipping(ws)  # skip hello + ready

@@ -26,7 +26,7 @@ from dcc_shared.permission_resolver import (
     OVERWRITE_TARGET_USER,
 )
 from dcc_shared.permissions import DEFAULT_EVERYONE_PERMISSIONS, Permissions
-from .conftest import ping_barrier, receive_skipping, skip_init_frames
+from .conftest import beitreten_per_einladung_sync, ping_barrier, receive_skipping, skip_init_frames
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -94,11 +94,7 @@ async def test_ready_member_my_permissions_equals_everyone_default(
             owner_t = _auth_signer.issue_access(owner_uid, f"o{owner_uid}")
             other_t = _auth_signer.issue_access(other_uid, f"o{other_uid}")
             g = tc.post("/guilds", json={"name": "g"}, headers=_auth(owner_t)).json()
-            tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_t),
-            )
+            beitreten_per_einladung_sync(tc, g['id'], str(other_uid), owner_t)
             ready = _ready_payload(tc, other_t)
             guild = ready["guilds"][0]
             assert int(guild["my_permissions"]) == DEFAULT_EVERYONE_PERMISSIONS
@@ -115,11 +111,7 @@ async def test_ready_my_role_ids_lists_assigned(ws_app, _auth_signer):
             owner_t = _auth_signer.issue_access(owner_uid, f"o{owner_uid}")
             other_t = _auth_signer.issue_access(other_uid, f"o{other_uid}")
             g = tc.post("/guilds", json={"name": "g"}, headers=_auth(owner_t)).json()
-            tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_t),
-            )
+            beitreten_per_einladung_sync(tc, g['id'], str(other_uid), owner_t)
             mod = tc.post(
                 f"/guilds/{g['id']}/roles",
                 json={"name": "Mod", "permissions": str(int(Permissions.MANAGE_MESSAGES))},
@@ -168,11 +160,7 @@ async def test_member_roles_updated_broadcasts(ws_app, _auth_signer):
             other_uid = random.randint(1, 1_000_000)
             owner_t = _auth_signer.issue_access(owner_uid, f"o{owner_uid}")
             g = tc.post("/guilds", json={"name": "g"}, headers=_auth(owner_t)).json()
-            tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_t),
-            )
+            beitreten_per_einladung_sync(tc, g['id'], str(other_uid), owner_t)
             role = tc.post(
                 f"/guilds/{g['id']}/roles",
                 json={"name": "Mod", "permissions": "0"},
@@ -254,11 +242,7 @@ async def test_private_channel_blocks_member_from_message_broadcast(
                 json={"name": "visible"},
                 headers=_auth(owner_t),
             ).json()
-            tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_t),
-            )
+            beitreten_per_einladung_sync(tc, g['id'], str(other_uid), owner_t)
             everyone_id = next(
                 r["id"]
                 for r in tc.get(
@@ -338,11 +322,7 @@ async def test_role_grants_view_back_unlocks_broadcast(ws_app, _auth_signer):
                 json={"name": "general"},
                 headers=_auth(owner_t),
             ).json()
-            tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_t),
-            )
+            beitreten_per_einladung_sync(tc, g['id'], str(other_uid), owner_t)
             everyone_id = next(
                 r["id"]
                 for r in tc.get(
@@ -404,11 +384,7 @@ async def test_subscribe_blocked_without_view_channel(ws_app, _auth_signer):
                 json={"name": "secret"},
                 headers=_auth(owner_t),
             ).json()
-            tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_t),
-            )
+            beitreten_per_einladung_sync(tc, g['id'], str(other_uid), owner_t)
             everyone_id = next(
                 r["id"]
                 for r in tc.get(
@@ -449,11 +425,7 @@ async def test_send_blocked_without_send_messages(ws_app, _auth_signer):
                 json={"name": "readonly"},
                 headers=_auth(owner_t),
             ).json()
-            tc.post(
-                f"/guilds/{g['id']}/members",
-                json={"user_id": str(other_uid)},
-                headers=_auth(owner_t),
-            )
+            beitreten_per_einladung_sync(tc, g['id'], str(other_uid), owner_t)
             everyone_id = next(
                 r["id"]
                 for r in tc.get(

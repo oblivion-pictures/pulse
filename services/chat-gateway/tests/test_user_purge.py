@@ -35,6 +35,7 @@ from dcc_chat_gateway.models import (
     UserPrivacy,
     WebPushSubscription,
 )
+from .conftest import beitreten_per_einladung
 
 _TEST_SECRET = "test-internal-secret-do-not-leak"
 
@@ -128,12 +129,7 @@ async def test_purge_rate_limits_secret_guessing(
 
 async def _make_user_in_guild(client, _auth_signer, owner_token: str, guild_id: str) -> tuple[str, int]:
     token, uid = await _register(_auth_signer)
-    r = await client.post(
-        f"/guilds/{guild_id}/members",
-        json={"user_id": str(uid)},
-        headers=_auth(owner_token),
-    )
-    assert r.status_code in (200, 201, 204), r.text
+    await beitreten_per_einladung(client, guild_id, uid, owner_token, ziel_token=token)
     return token, uid
 
 

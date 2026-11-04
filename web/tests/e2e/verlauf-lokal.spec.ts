@@ -1,4 +1,5 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { beitretenPerEinladung } from './_einladung';
 
 /**
  * Ersetzt den manuellen Schritt aus Task 2 Schritt 5 des Etappe-C1-Plans
@@ -50,24 +51,6 @@ async function currentUserId(page: Page): Promise<string> {
   });
   if (!value) throw new Error('no access token found in localStorage');
   return value;
-}
-
-async function addMemberToGuild(adminPage: Page, guildId: string, userId: string) {
-  const response = await adminPage.evaluate(
-    async ([gid, uid]) => {
-      const token = localStorage.getItem('dcc.tokens.access');
-      const r = await fetch(`/api/chat/guilds/${gid}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id: uid })
-      });
-      return { status: r.status, body: await r.text() };
-    },
-    [guildId, userId]
-  );
-  if (response.status !== 201 && response.status !== 200) {
-    throw new Error(`addMember failed ${response.status}: ${response.body}`);
-  }
 }
 
 /** Muster aus dms.spec.ts: DMs sind seit Phase 2 friend-gated. */
@@ -209,7 +192,7 @@ test.describe.serial('lokaler Verlauf (IndexedDB) E2E', () => {
     const parts = url.pathname.split('/');
     guildId = parts[3];
     channelId = parts[5];
-    await addMemberToGuild(alicePage, guildId, bobUserId);
+    await beitretenPerEinladung(alicePage, bobPage, guildId);
   });
 
   test('eine Community-Nachricht landet NICHT im lokalen Verlauf', async () => {

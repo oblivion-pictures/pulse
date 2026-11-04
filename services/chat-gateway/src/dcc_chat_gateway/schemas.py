@@ -553,10 +553,6 @@ class DMMessageSearchHit(BaseModel):
         return _id_str(v)
 
 
-class MemberIn(BaseModel):
-    user_id: SnowflakeId
-
-
 class MemberNicknameIn(BaseModel):
     """Nickname patch payload. Empty string ``""`` clears the nickname
     (same convention as Discord's "reset"). ``None`` means "don't touch"

@@ -6,7 +6,6 @@ from typing import Annotated
 
 from dcc_shared.events import (
     GuildDeletedEvent,
-    GuildMemberAddedEvent,
     GuildMemberRemovedEvent,
     GuildMembershipRevokedEvent,
     GuildMemberUpdatedEvent,
@@ -22,7 +21,6 @@ from dcc_chat_gateway import ratelimit
 from dcc_chat_gateway.audit_log import write_audit_log
 from dcc_chat_gateway.community_categories import is_valid_category
 from dcc_chat_gateway.db import SessionDep
-from dcc_chat_gateway.guild_caps import enforce_member_cap
 from dcc_chat_gateway.guild_limits import clamp_to_ceilings, effective_wire_limits
 from dcc_chat_gateway.models import (
     AblagePulseObjekt,
@@ -63,7 +61,6 @@ from dcc_chat_gateway.schemas import (
     GuildOut,
     GuildPatchIn,
     GuildSettingsOut,
-    MemberIn,
     MemberNicknameIn,
     MemberOut,
     TransferOwnershipIn,
@@ -526,58 +523,11 @@ async def transfer_ownership(
     return guild
 
 
-# ---- Members (lightweight invite-by-id) ------------------------------------
-
-
-@router.post("/guilds/{guild_id}/members", response_model=MemberOut, status_code=201)
-async def add_member(
-    guild_id: int,
-    payload: MemberIn,
-    session: SessionDep,
-    current: CurrentUser,
-    request: Request,
-):
-    guild = await guild_or_404(session, guild_id)
-    # MANAGE_INVITES gates direct-add-by-id (same caller-trust as creating
-    # an invite link). Self-add is intentionally NOT allowed: guild IDs are
-    # enumerable, so a self-add path would let any authenticated user join
-    # any guild (IDOR over all channels/messages/voice tokens).
-    await check_permission(
-        session, current, guild_id, Permissions.MANAGE_INVITES,
-        detail="not allowed to add members",
-    )
-    # Ban check — even a MANAGE_INVITES caller can't re-add a banned
-    # user; unban is the explicit path. Imported lazily to avoid the
-    # import cycle (bans.py needs to import from guilds via models).
-    from dcc_chat_gateway.routes.bans import is_user_banned  # local
-
-    if await is_user_banned(session, guild_id, payload.user_id):
-        raise HTTPException(403, detail="user is banned from this server")
-    await enforce_member_cap(session, guild_id)
-    member = GuildMember(guild_id=guild_id, user_id=payload.user_id)
-    session.add(member)
-    # Re-check the ban-list inside the transaction (post-INSERT, pre-
-    # commit) so a concurrent PUT /bans/{uid} that committed between
-    # the first check and now can't sneak through.
-    if await is_user_banned(session, guild_id, payload.user_id):
-        await session.rollback()
-        raise HTTPException(403, detail="user is banned from this server")
-    try:
-        await session.commit()
-    except IntegrityError:
-        await session.rollback()
-        # idempotent: already a member
-        member = await session.get(GuildMember, (guild_id, payload.user_id))
-        return member  # type: ignore[return-value]
-    await session.refresh(member)
-    await _publish_guild_event(
-        request,
-        GuildMemberAddedEvent(
-            guild_id=str(guild_id),
-            user_id=str(payload.user_id),
-        ),
-    )
-    return member
+# ---- Members ---------------------------------------------------------------
+# Kein ``POST /guilds/{id}/members`` mehr (Security-Scan 2026-11-04): das
+# direkte Hinzufügen per Nutzer-ID kam ohne Zustimmung aus. Mitglied wird man
+# nur noch durch Einlösen einer Einladung (``invites.py``, ``member_invites.py``,
+# ``community_invites.py``).
 
 
 def _normalise_nickname(value: str | None) -> str | None:

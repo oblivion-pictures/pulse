@@ -20,6 +20,8 @@ import random
 
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 # Block routes are cloud-only — ensure cloud mode for all tests in this file.
 pytestmark = pytest.mark.usefixtures("cloud_mode")
 
@@ -49,11 +51,7 @@ async def test_mention_added_skipped_when_receiver_blocks_sender(
     t_a, uid_a = await _register(_auth_signer)
     t_b, uid_b = await _register(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t_a))).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_b)},
-        headers=auth(t_a),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_b), t_a)
     c = (
         await client.post(
             f"/guilds/{g['id']}/channels",
@@ -101,11 +99,7 @@ async def test_mention_added_skipped_when_sender_blocked_receiver(
     t_a, uid_a = await _register(_auth_signer)
     t_b, uid_b = await _register(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t_a))).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_b)},
-        headers=auth(t_a),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_b), t_a)
     c = (
         await client.post(
             f"/guilds/{g['id']}/channels",
@@ -148,11 +142,7 @@ async def test_mention_added_still_fires_for_unblocked_third_party(
     t_c, uid_c = await _register(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t_a))).json()
     for uid in (uid_b, uid_c):
-        await client.post(
-            f"/guilds/{g['id']}/members",
-            json={"user_id": str(uid)},
-            headers=auth(t_a),
-        )
+        await beitreten_per_einladung(client, g['id'], str(uid), t_a)
     c = (
         await client.post(
             f"/guilds/{g['id']}/channels",

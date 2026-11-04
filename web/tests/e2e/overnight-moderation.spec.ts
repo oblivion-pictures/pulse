@@ -16,6 +16,7 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { execSync } from 'node:child_process';
 import { E2E_DB } from './_db';
+import { beitretenPerEinladung } from './_einladung';
 
 function detectExec(): string {
   if (process.env.DOCKER_CMD) return process.env.DOCKER_CMD;
@@ -147,9 +148,8 @@ test.describe.serial('T13 — Moderations-Warteschlange', () => {
     gid = (await chatApi<{ id: string }>(ownerPage, 'POST', '/guilds', { name: `Mod Guild ${ts}` }))
       .body!.id;
 
-    for (const uid of [modUserId, reporterUserId, targetUserId]) {
-      const add = await chatApi(ownerPage, 'POST', `/guilds/${gid}/members`, { user_id: uid });
-      expect([200, 201]).toContain(add.status);
+    for (const p of [modPage, reporterPage, targetPage]) {
+      await beitretenPerEinladung(ownerPage, p, gid);
     }
 
     // Mod-Rolle (alle drei Mod-Rechte) + Zuweisung an den Mod

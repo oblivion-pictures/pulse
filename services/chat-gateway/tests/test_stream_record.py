@@ -13,7 +13,7 @@ import random
 import pytest
 from starlette.testclient import TestClient
 
-from .conftest import ping_barrier, skip_init_frames, trenne
+from .conftest import beitreten_per_einladung_sync, ping_barrier, skip_init_frames, trenne
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -43,11 +43,7 @@ def _setup(tc: TestClient, signer):
     ).json()
     member_uid = random.randint(1, 1_000_000)
     member_token = signer.issue_access(member_uid, f"u{member_uid}")
-    tc.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(member_uid)},
-        headers=_auth(owner_token),
-    )
+    beitreten_per_einladung_sync(tc, g['id'], str(member_uid), owner_token)
     return owner_token, owner_uid, member_token, member_uid, vc["id"]
 
 

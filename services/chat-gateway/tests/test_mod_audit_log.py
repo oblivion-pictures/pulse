@@ -16,6 +16,7 @@ import pytest
 
 from dcc_chat_gateway.audit_log import write_audit_log
 from dcc_chat_gateway.models import ModAuditLog
+from .conftest import beitreten_per_einladung
 
 
 def auth(token: str) -> dict[str, str]:
@@ -77,11 +78,7 @@ async def test_audit_log_requires_manage_guild(client, _auth_signer):
     g = await _make_guild(client, t_owner)
 
     # Give mod MANAGE_MESSAGES but NOT MANAGE_GUILD
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_mod)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_mod), t_owner)
     role = (
         await client.post(
             f"/guilds/{g['id']}/roles",

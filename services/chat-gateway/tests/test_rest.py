@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -57,11 +59,7 @@ async def test_create_channel_requires_owner(client, _auth_signer):
     t2, uid2 = await _register_user(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t1))).json()
     # add the second user as a member, but they are not owner
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": uid2},
-        headers=auth(t1),
-    )
+    await beitreten_per_einladung(client, g['id'], uid2, t1)
     r = await client.post(
         f"/guilds/{g['id']}/channels",
         json={"name": "general"},
@@ -222,34 +220,6 @@ async def test_invalid_token_rejected(client):
 
 
 @pytest.mark.asyncio
-async def test_self_add_to_guild_forbidden(client, _auth_signer):
-    # Audit #1: a user must not be able to add *themselves* to an arbitrary
-    # guild (guild IDs are enumerable -> IDOR over all channels/messages).
-    owner_t, _ = await _register_user(_auth_signer)
-    intruder_t, intruder_uid = await _register_user(_auth_signer)
-    g = (await client.post("/guilds", json={"name": "g"}, headers=auth(owner_t))).json()
-    r = await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(intruder_uid)},
-        headers=auth(intruder_t),  # intruder tries to add themselves
-    )
-    assert r.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_owner_can_add_member(client, _auth_signer):
-    owner_t, _ = await _register_user(_auth_signer)
-    _, member_uid = await _register_user(_auth_signer)
-    g = (await client.post("/guilds", json={"name": "g"}, headers=auth(owner_t))).json()
-    r = await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(member_uid)},
-        headers=auth(owner_t),
-    )
-    assert r.status_code == 201, r.text
-
-
-@pytest.mark.asyncio
 async def test_message_rate_limit(client, _auth_signer):
     # Audit #10: chat-gateway must throttle message posts. Limit is 10/s.
     t, _ = await _register_user(_auth_signer)
@@ -304,11 +274,7 @@ async def _make_owner_member_channel(client, _auth_signer):
         json={"name": "general"},
         headers=auth(t_owner),
     )).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_member)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_member), t_owner)
     return t_owner, t_member, uid_member, g, c
 
 
@@ -409,11 +375,7 @@ async def _setup_guild_and_channel(client, _auth_signer):
         headers=auth(t_owner),
     )).json()
     # Add other user as member so they have access (but not ownership)
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_other)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_other), t_owner)
     return t_owner, t_other, g, c
 
 

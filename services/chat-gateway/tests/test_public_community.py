@@ -23,6 +23,8 @@ import random
 import pytest
 from dcc_chat_gateway.community_handle import is_valid_handle, validate_handle
 
+from .conftest import beitreten_per_einladung
+
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -209,11 +211,7 @@ async def test_settings_requires_manage_guild(client, _auth_signer):
     owner_t, _ = await _register_user(_auth_signer)
     member_t, member_uid = await _register_user(_auth_signer)
     g = await _make_guild(client, owner_t)
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(member_uid)},
-        headers=auth(owner_t),
-    )
+    await beitreten_per_einladung(client, g['id'], str(member_uid), owner_t)
     # A plain member lacks MANAGE_GUILD → 403 on both read + write.
     r = await client.get(f"/guilds/{g['id']}/settings", headers=auth(member_t))
     assert r.status_code == 403

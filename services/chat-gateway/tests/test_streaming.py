@@ -25,7 +25,7 @@ import pytest_asyncio
 from dcc_shared.streaming import MAX_MONITORS
 from redis.asyncio import Redis
 from starlette.testclient import TestClient
-from .conftest import receive_skipping
+from .conftest import beitreten_per_einladung, receive_skipping
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6380/0")
 
@@ -100,11 +100,7 @@ async def test_stream_token_403_without_stream_permission(
             headers=_auth(t_owner),
         )
     ).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_other)},
-        headers=_auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_other), t_owner)
     # Strip STREAM from @everyone.
     await _set_everyone_perms(
         client,

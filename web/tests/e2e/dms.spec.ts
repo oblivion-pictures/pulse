@@ -1,4 +1,5 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { beitretenPerEinladung } from './_einladung';
 
 const ts = Date.now();
 const ALICE = {
@@ -41,24 +42,6 @@ async function currentUserId(page: Page): Promise<string> {
   });
   if (!value) throw new Error('no access token found in localStorage');
   return value;
-}
-
-async function addMemberToGuild(adminPage: Page, guildId: string, userId: string) {
-  const response = await adminPage.evaluate(
-    async ([gid, uid]) => {
-      const token = localStorage.getItem('dcc.tokens.access');
-      const r = await fetch(`/api/chat/guilds/${gid}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id: uid })
-      });
-      return { status: r.status, body: await r.text() };
-    },
-    [guildId, userId]
-  );
-  if (response.status !== 201 && response.status !== 200) {
-    throw new Error(`addMember failed ${response.status}: ${response.body}`);
-  }
 }
 
 /** Establish a mutual friendship between the two users by sending cross
@@ -146,7 +129,7 @@ test.describe.serial('DM (direct messages) E2E', () => {
     guildId = parts[3];
     channelId = parts[5];
 
-    await addMemberToGuild(alicePage, guildId, bobUserId);
+    await beitretenPerEinladung(alicePage, bobPage, guildId);
     await bobPage.goto(`/app/guilds/${guildId}/channels/${channelId}`);
     await expect(bobPage.getByTestId('active-channel-name')).toHaveText('general', {
       timeout: 15_000

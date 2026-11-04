@@ -12,6 +12,8 @@ import uuid
 
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -38,11 +40,7 @@ async def test_member_cap_blocks_extra_member(client, _auth_signer, session_fact
     g = (await client.post("/guilds", json={"name": "g"}, headers=_auth(token))).json()
     # Owner is member #1 already; cap of 1 means no more may join.
     await _set_cap(session_factory, g["id"], max_members=1)
-    r = await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid + 1)},
-        headers=_auth(token),
-    )
+    r = await beitreten_per_einladung(client, g['id'], uid + 1, token, erwartet=403)
     assert r.status_code == 403, r.text
 
 
@@ -51,11 +49,7 @@ async def test_member_cap_allows_under_limit(client, _auth_signer, session_facto
     token, uid = _fresh(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=_auth(token))).json()
     await _set_cap(session_factory, g["id"], max_members=5)
-    r = await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid + 1)},
-        headers=_auth(token),
-    )
+    r = await beitreten_per_einladung(client, g['id'], uid + 1, token)
     assert r.status_code in (200, 201), r.text
 
 

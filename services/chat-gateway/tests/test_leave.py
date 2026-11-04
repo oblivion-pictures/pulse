@@ -20,6 +20,7 @@ import pytest
 from sqlalchemy import select
 
 from dcc_chat_gateway.models import GuildMember, PermissionOverwrite
+from .conftest import beitreten_per_einladung
 
 
 def auth(token: str) -> dict[str, str]:
@@ -38,11 +39,7 @@ async def _setup(client, _auth_signer) -> dict:
     g = (
         await client.post("/guilds", json={"name": "leavetown"}, headers=auth(t_owner))
     ).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_a)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_a), t_owner)
     return {"t_owner": t_owner, "uid_owner": uid_owner, "t_a": t_a, "uid_a": uid_a, "g": g}
 
 

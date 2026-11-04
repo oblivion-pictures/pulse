@@ -14,6 +14,8 @@ import random
 
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 # Privacy routes are part of the Social layer — cloud-only.
 pytestmark = pytest.mark.usefixtures("cloud_mode")
 
@@ -237,12 +239,7 @@ async def test_server_members_policy_requires_shared_guild(
     g = (
         await client.post("/guilds", json={"name": "g"}, headers=auth(t_b))
     ).json()
-    r2 = await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_a)},
-        headers=auth(t_b),
-    )
-    assert r2.status_code in (200, 201, 204)
+    await beitreten_per_einladung(client, g['id'], uid_a, t_b, ziel_token=t_a)
     async with session_factory() as s:
         member = await s.get(GuildMember, (int(g["id"]), uid_a))
     assert member is not None

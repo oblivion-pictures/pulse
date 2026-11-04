@@ -14,6 +14,8 @@ import random
 
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -32,11 +34,7 @@ async def _setup_guild_with_second_member(client, _auth_signer):
             "/guilds", json={"name": "transferable"}, headers=auth(t_owner)
         )
     ).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_other)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_other), t_owner)
     return t_owner, uid_owner, t_other, uid_other, g
 
 

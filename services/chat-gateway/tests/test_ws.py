@@ -16,7 +16,7 @@ import pytest
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from .conftest import receive_skipping, skip_init_frames
+from .conftest import beitreten_per_einladung_sync, receive_skipping, skip_init_frames
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -29,11 +29,7 @@ def _bootstrap_sync(tc: TestClient, signer) -> tuple[str, str, int, str, str]:
     owner_token = signer.issue_access(owner_uid, f"o{owner_uid}")
     member_token = signer.issue_access(member_uid, f"m{member_uid}")
     g = tc.post("/guilds", json={"name": "g"}, headers=_auth(owner_token)).json()
-    tc.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": member_uid},
-        headers=_auth(owner_token),
-    )
+    beitreten_per_einladung_sync(tc, g['id'], member_uid, owner_token)
     c = tc.post(
         f"/guilds/{g['id']}/channels",
         json={"name": "general"},

@@ -19,7 +19,7 @@ import random
 
 import pytest
 from starlette.testclient import TestClient
-from .conftest import receive_skipping
+from .conftest import beitreten_per_einladung, beitreten_per_einladung_sync, receive_skipping
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -40,11 +40,7 @@ async def _make_two_member_guild(client, _auth_signer):
     t_owner, uid_owner = await _register_user(_auth_signer)
     t_member, uid_member = await _register_user(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=_auth(t_owner))).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_member)},
-        headers=_auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_member), t_owner)
     c = (
         await client.post(
             f"/guilds/{g['id']}/channels",
@@ -255,11 +251,7 @@ def _bootstrap_two_users(tc: TestClient, signer) -> tuple[str, int, str, int, st
     owner_token = signer.issue_access(owner_uid, f"o{owner_uid}")
     member_token = signer.issue_access(member_uid, f"m{member_uid}")
     g = tc.post("/guilds", json={"name": "g"}, headers=_auth(owner_token)).json()
-    tc.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": member_uid},
-        headers=_auth(owner_token),
-    )
+    beitreten_per_einladung_sync(tc, g['id'], member_uid, owner_token)
     c = tc.post(
         f"/guilds/{g['id']}/channels",
         json={"name": "general"},
@@ -367,11 +359,7 @@ async def test_edit_message_only_pings_new_user(ws_app, _auth_signer):
             # second ``mention_added``.
             carol_uid = random.randint(1, 1_000_000)
             carol_token = _auth_signer.issue_access(carol_uid, f"c{carol_uid}")
-            tc.post(
-                f"/guilds/{gid}/members",
-                json={"user_id": carol_uid},
-                headers=_auth(owner_token),
-            )
+            beitreten_per_einladung_sync(tc, gid, carol_uid, owner_token)
             # Pre-create the message that mentions Bob.
             first = tc.post(
                 f"/channels/{cid}/messages",

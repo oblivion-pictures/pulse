@@ -22,6 +22,8 @@ import dcc_chat_gateway.config as chat_config
 import httpx
 import pytest
 
+from .conftest import beitreten_per_einladung
+
 BASIS = "https://cloud.example/pub"
 
 
@@ -42,11 +44,7 @@ async def _guild_mit_ablage_kanal(client, _auth_signer, basis: str = BASIS):
     t_fremd, _ = await _register_user(_auth_signer)
 
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t_owner))).json()
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(uid_mitglied)},
-        headers=auth(t_owner),
-    )
+    await beitreten_per_einladung(client, g['id'], str(uid_mitglied), t_owner)
     c = (
         await client.post(
             f"/guilds/{g['id']}/channels",
@@ -360,12 +358,7 @@ async def test_owner_darf_besetzte_adresse_uebernehmen(client, _auth_signer):
 
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t_owner))).json()
     for uid in (uid_mitglied, uid_dritter):
-        r = await client.post(
-            f"/guilds/{g['id']}/members",
-            json={"user_id": str(uid)},
-            headers=auth(t_owner),
-        )
-        assert r.status_code in (200, 201), r.text
+        await beitreten_per_einladung(client, g['id'], uid, t_owner)
     c = (
         await client.post(
             f"/guilds/{g['id']}/channels",

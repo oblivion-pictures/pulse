@@ -17,6 +17,7 @@ import pytest
 from sqlalchemy import update
 
 from dcc_chat_gateway.models import ChatSettings
+from .conftest import beitreten_per_einladung
 
 
 def auth(token: str) -> dict[str, str]:
@@ -71,11 +72,7 @@ async def test_invites_open_by_default(client, _auth_signer):
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(owner_t))).json()
     other_t, other_uid = await _make_token(_auth_signer)
     # Add the other as a member.
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(other_uid)},
-        headers=auth(owner_t),
-    )
+    await beitreten_per_einladung(client, g['id'], str(other_uid), owner_t)
     # Default = open: non-owner member can create an invite.
     r = await client.post(f"/guilds/{g['id']}/invites", json={}, headers=auth(other_t))
     assert r.status_code == 201
@@ -88,11 +85,7 @@ async def test_invites_blocked_for_non_owner_when_disabled(
     owner_t, _ = await _make_token(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(owner_t))).json()
     other_t, other_uid = await _make_token(_auth_signer)
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(other_uid)},
-        headers=auth(owner_t),
-    )
+    await beitreten_per_einladung(client, g['id'], str(other_uid), owner_t)
 
     await _set_permissions(session_factory, allow_member_invites=False)
 
@@ -115,11 +108,7 @@ async def test_invites_admin_not_special(
     owner_t, _ = await _make_token(_auth_signer)
     g = (await client.post("/guilds", json={"name": "g"}, headers=auth(owner_t))).json()
     admin_t, admin_uid = await _make_token(_auth_signer, is_admin=True)
-    await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(admin_uid)},
-        headers=auth(owner_t),
-    )
+    await beitreten_per_einladung(client, g['id'], str(admin_uid), owner_t)
 
     await _set_permissions(session_factory, allow_member_invites=False)
 

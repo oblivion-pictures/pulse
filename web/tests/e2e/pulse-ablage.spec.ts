@@ -17,6 +17,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { beitretenPerEinladung } from './_einladung';
 
 const ts = Date.now();
 const OWNER = {
@@ -219,7 +220,7 @@ test.describe('Pulse-Laufwerk — Community-Dateiablage', () => {
     await expect(ownerPage.getByTestId('community-ablage-ansicht')).toBeVisible();
 
     // … Gast-Konto anlegen, in die Community holen, separat anmelden …
-    const gastId = await ownerPage.evaluate(async (user) => {
+    const gastToken = await ownerPage.evaluate(async (user) => {
       const r = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -227,19 +228,9 @@ test.describe('Pulse-Laufwerk — Community-Dateiablage', () => {
       });
       const body = await r.json();
       if (!r.ok && !('access_token' in body)) throw new Error(`register failed ${r.status}`);
-      // User-Id aus dem Token lesen (sub-Claim)
-      const token = body.access_token as string;
-      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-      return payload.sub as string;
+      return body.access_token as string;
     }, GAST);
-    await ownerPage.evaluate(async ({ gid, gastId }) => {
-      const token = localStorage.getItem('dcc.tokens.access');
-      await fetch(`/api/chat/guilds/${gid}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id: gastId })
-      });
-    }, { gid, gastId });
+    await beitretenPerEinladung(ownerPage, gastToken, gid);
 
     const gastCtx = await browser.newContext();
     const gastPage = await gastCtx.newPage();

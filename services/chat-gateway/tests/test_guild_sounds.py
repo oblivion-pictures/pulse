@@ -17,6 +17,7 @@ import uuid
 import pytest
 
 from dcc_chat_gateway import s3 as s3_mod
+from .conftest import beitreten_per_einladung
 
 
 def auth(token: str) -> dict[str, str]:
@@ -228,12 +229,9 @@ async def test_non_manager_cannot_upload(client, _auth_signer, mock_s3):
     g = await _create_guild(client, owner_token)
 
     # Add the second user as a plain member.
-    r = await client.post(
-        f"/guilds/{g['id']}/members",
-        json={"user_id": str(member_uid)},
-        headers=auth(owner_token),
+    await beitreten_per_einladung(
+        client, g['id'], member_uid, owner_token, ziel_token=member_token
     )
-    assert r.status_code in (200, 201)
 
     r = await client.put(
         f"/guilds/{g['id']}/sounds/ui.send",
