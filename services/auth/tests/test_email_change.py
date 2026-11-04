@@ -222,3 +222,67 @@ async def test_email_change_ohne_smtp_503(client, monkeypatch):
         headers={"Authorization": f"Bearer {access}"},
     )
     assert r.status_code == 503
+
+
+# ---- Security-Scan 2026-11-04: offene Wechsel sterben mit dem Passwort -----
+# Ein offener E-Mail-Wechsel überlebte Passwortwechsel und -Reset: wer einmal
+# Sitzung + Passwort hatte, beantragte den Wechsel auf seine Adresse, das Opfer
+# reagierte mit Reset/Wechsel — und der Link aus dem Postfach des Angreifers
+# ging danach immer noch durch (dann Reset-Mail an ihn = Kontoübernahme).
+
+
+async def _offener_wechsel(client, monkeypatch, login_r) -> str:
+    captured = _spy_capture(monkeypatch)
+    r = await client.post(
+        "/me/email/change",
+        json={"new_email": _NEW, "current_password": _REG["password"]},
+        headers=_bearer(login_r),
+    )
+    assert r.status_code == 204, r.text
+    return captured["url"].rsplit("/", 1)[1]
+
+
+@pytest.mark.asyncio
+async def test_passwortwechsel_entwertet_offenen_email_wechsel(client, monkeypatch):
+    login_r = await _register_and_login(client)
+    token = await _offener_wechsel(client, monkeypatch, login_r)
+
+    r = await client.post(
+        "/me/password",
+        json={"current_password": _REG["password"], "new_password": "ein ganz neues passwort 42"},
+        headers=_bearer(login_r),
+    )
+    assert r.status_code == 200, r.text
+
+    c = await client.post("/me/email/change/confirm", json={"token": token})
+    assert c.status_code == 401
+    neu = await client.post("/login", json={**_LOGIN, "password": "ein ganz neues passwort 42"})
+    me = await client.get("/me", headers=_bearer(neu))
+    assert me.json()["email"] == _REG["email"]
+
+
+@pytest.mark.asyncio
+async def test_passwort_reset_entwertet_offenen_email_wechsel(client, monkeypatch):
+    from dcc_auth import routes_recovery
+
+    login_r = await _register_and_login(client)
+    token = await _offener_wechsel(client, monkeypatch, login_r)
+
+    reset_url: dict[str, str] = {}
+
+    def _spy_reset(to, url):
+        reset_url["url"] = url
+        return ("subject", "body")
+
+    monkeypatch.setattr(routes_recovery, "compose_password_reset_email", _spy_reset)
+    assert (
+        await client.post("/password/forgot", json={"email_or_username": _REG["email"]})
+    ).status_code == 204
+    r = await client.post(
+        "/password/reset",
+        json={"token": reset_url["url"].rsplit("/", 1)[1], "new_password": "ein ganz neues passwort 42"},
+    )
+    assert r.status_code in (200, 204), r.text
+
+    c = await client.post("/me/email/change/confirm", json={"token": token})
+    assert c.status_code == 401

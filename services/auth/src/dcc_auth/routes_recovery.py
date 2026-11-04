@@ -57,7 +57,7 @@ from dcc_auth.schemas import (
     PasswordResetIn,
 )
 from dcc_auth.security import hash_password
-from dcc_auth.widerruf import konto_sperren
+from dcc_auth.widerruf import konto_sperren, offene_email_wechsel_entwerten
 
 log = logging.getLogger(__name__)
 
@@ -209,6 +209,7 @@ async def password_reset(
     # ein noch gültiges Zugriffstoken holt sich am auth-svc weder Cookie noch
     # Ticket mehr (``widerruf.py``).
     await revoke_all_for_user(session, user.id)
+    await offene_email_wechsel_entwerten(session, user.id)
 
     # Archiv-Re-Wrap (Übergabe 2026-10-04 §5): der E-Mail-Reset darf NICHTS
     # verlieren — der private Archiv-Schlüssel wird aus dem Schrank geholt
