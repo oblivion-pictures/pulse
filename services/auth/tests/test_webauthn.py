@@ -75,6 +75,7 @@ async def _enrol(
     cred_id: bytes = FAKE_CRED_ID,
     name="Laptop",
     password: str = REG["password"],
+    zweiter_faktor: dict | None = None,
 ):
     """Run a full options→verify registration, return the verify response.
 
@@ -100,6 +101,7 @@ async def _enrol(
             },
             "name": name,
             "password": password,
+            **(zweiter_faktor or {}),
         },
     )
 
@@ -400,3 +402,42 @@ async def test_delete_last_passkey_requires_backup_code(client, monkeypatch):
         json={"password": REG["password"], "backup_code": codes[0]},
     )
     assert r.status_code == 401, r.text
+
+
+# ---- Security-Scan 2026-11-04: zweiter Faktor bei TOTP-Konten -------------
+
+
+async def _mit_totp(client, bearer) -> list[str]:
+    import pyotp
+
+    setup = (await client.post("/totp/setup", headers=bearer)).json()
+    r = await client.post(
+        "/totp/verify-setup",
+        json={"code": pyotp.TOTP(setup["secret"]).now(), "password": REG["password"]},
+        headers=bearer,
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["backup_codes"]
+
+
+@pytest.mark.asyncio
+async def test_passkey_bei_totp_konto_braucht_den_zweiten_faktor(client, monkeypatch):
+    """Sitzung + Passwort reichten, um bei einem TOTP-Konto einen eigenen Passkey
+    anzuhängen — danach passwortlose Anmeldung mit acr=1, TOTP dauerhaft
+    umgangen. TOTP abschalten verlangte längst beides."""
+    bearer = _bearer(await _register(client))
+    await _mit_totp(client, bearer)
+
+    r = await _enrol(client, monkeypatch, bearer)
+    assert r.status_code == 401, r.text
+    assert r.json()["detail"] == "second_factor_required"
+    assert (await client.get("/webauthn/credentials", headers=bearer)).json() == []
+
+
+@pytest.mark.asyncio
+async def test_passkey_bei_totp_konto_mit_backup_code(client, monkeypatch):
+    bearer = _bearer(await _register(client))
+    codes = await _mit_totp(client, bearer)
+
+    r = await _enrol(client, monkeypatch, bearer, zweiter_faktor={"backup_code": codes[0]})
+    assert r.status_code == 201, r.text

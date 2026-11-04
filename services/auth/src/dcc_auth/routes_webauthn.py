@@ -128,6 +128,19 @@ async def webauthn_register_verify(
     # eine dauerhafte Kontouebernahme, die ein Passwortwechsel nicht aufhebt.
     if not await asyncio.to_thread(verify_password, payload.password, current.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
+    # TOTP-Konten: zweiter Faktor wie beim Abschalten von TOTP (Begründung an
+    # ``WebAuthnRegisterVerifyIn.code``). Je-Konto-Bremse wie dort, sonst
+    # grindet ein verteilter Angreifer den sechsstelligen Code.
+    if current.totp_enabled:
+        if not (payload.code or payload.backup_code):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="second_factor_required")
+        await _check_account_rate(request, "webauthn_register", str(current.id))
+        from dcc_auth.routes_totp import _consume_second_factor  # noqa: PLC0415
+
+        if not await _consume_second_factor(
+            session, current, code=payload.code, backup_code=payload.backup_code
+        ):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid code")
     try:
         challenge, ticket_user_id, challenge_jti = decode_challenge_ticket(
             signer, payload.challenge_ticket, expected_purpose=PURPOSE_REGISTER

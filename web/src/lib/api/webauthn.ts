@@ -129,7 +129,9 @@ function ceremonyError(err: unknown): Error {
  *  entfernt fremde Schlüssel nicht). Das Abschalten von 2FA verlangte es längst. */
 export async function registerPasskey(
   name: string,
-  password: string
+  password: string,
+  /** Bei TOTP-Konten Pflicht (Security-Scan 2026-11-04): TOTP- ODER Backup-Code. */
+  zweiterFaktor: { code?: string; backup_code?: string } = {}
 ): Promise<{ credential: WebAuthnCredentialSummary; backup_codes: string[] | null }> {
   const opts = await request<OptionsResponse>('/webauthn/register/options', {
     method: 'POST',
@@ -151,7 +153,8 @@ export async function registerPasskey(
       challenge_ticket: opts.challenge_ticket,
       credential: encodeRegistration(cred as PublicKeyCredential),
       name,
-      password
+      password,
+      ...zweiterFaktor
     }
   });
 }
