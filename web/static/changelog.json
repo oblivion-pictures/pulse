@@ -2,6 +2,17 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-04",
+      "date": "2026-11-04",
+      "style": "Sachlich",
+      "title": "Mehr Sicherheit beim Beitreten",
+      "items": [
+        "Mitglieder lassen sich nicht mehr direkt per Nutzer-ID hinzufügen. Wer in eine Community soll, bekommt eine Einladung und entscheidet selbst, ob er sie annimmt.",
+        "Einladungen in Communities werden strenger geprüft.",
+        "Profilbilder und Community-Icons werden nur noch als PNG, JPEG oder WebP angenommen."
+      ]
+    },
+    {
       "id": "2026-11-03.3",
       "date": "2026-11-03",
       "style": "Sachlich",

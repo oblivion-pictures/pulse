@@ -525,9 +525,10 @@ async def transfer_ownership(
 
 # ---- Members ---------------------------------------------------------------
 # Kein ``POST /guilds/{id}/members`` mehr (Security-Scan 2026-11-04): das
-# direkte Hinzufügen per Nutzer-ID kam ohne Zustimmung aus. Mitglied wird man
-# nur noch durch Einlösen einer Einladung (``invites.py``, ``member_invites.py``,
-# ``community_invites.py``).
+# direkte Hinzufügen per Nutzer-ID kam ohne Zustimmung aus. Außer dem Gründer
+# wird man nur noch Mitglied, indem man eine Einladung einlöst (``invites.py``,
+# ``member_invites.py``, ``community_invites.py``) oder einer öffentlichen
+# Community selbst beitritt (``public_community.py``).
 
 
 def _normalise_nickname(value: str | None) -> str | None:

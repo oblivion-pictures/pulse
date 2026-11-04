@@ -389,10 +389,9 @@ async def accept_invite(code: str, session: SessionDep, current: CurrentUser, re
 
     async def _consume_use(added: bool) -> None:
         """Bereits Mitglied → idempotent, kein Use."""
-        if not added:
-            return
         nonlocal invite_channel_id
-        invite_channel_id = await invite_verbrauchen(session, code, guild_id)
+        if added:
+            invite_channel_id = await invite_verbrauchen(session, code, guild_id)
 
     _, channel_id = await _join_guild(
         session, request, guild_id, current.id, stage=_consume_use

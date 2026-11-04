@@ -199,5 +199,4 @@ import { errText } from '$lib/utils/errText';
       {/each}
     </ul>
   {/if}
-
 </section>

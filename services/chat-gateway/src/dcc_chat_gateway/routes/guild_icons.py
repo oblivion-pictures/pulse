@@ -38,7 +38,7 @@ router = APIRouter()
 
 _ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 # Pillow-Formatnamen zu genau diesen Typen. Der Content-Type oben stammt vom
-# Client und beweist nichts — ohne ``formats=`` beim Oeffnen reicht Pillow
+# Client und beweist nichts — ohne ``formats=`` beim Öffnen reicht Pillow
 # JEDES bekannte Format an seinen Decoder weiter, auch die Exoten mit
 # bekannten Speicherfehlern (JPEG2000, GD, EPS …; Security-Scan 2026-11-04).
 _PIL_FORMATE = ("PNG", "JPEG", "WEBP")
