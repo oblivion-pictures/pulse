@@ -162,3 +162,19 @@ async def test_open_mode_ignores_invite_code(client, admin_headers):
         client, username="open2", email="open2@example.com", invite_code="whatever"
     )
     assert r.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_ohne_gueltigen_code_kein_hinweis_auf_vergebene_email(
+    client, admin_headers, session_factory
+):
+    """Security-Scan 2026-11-04: Im invite_only-Modus wurde vorab nur geprüft,
+    OB ein Code mitkam — eingelöst erst nach dem Flush. Mit einem beliebigen
+    String bekam man so 409 email_taken statt 403 und konnte ohne Einladung
+    abfragen, welche Adressen registriert sind."""
+    await _register(client, username="schon_da", email="schon_da@dcc-test.example.com")
+    await _set_mode(session_factory, "invite_only")
+    r = await _register(
+        client, username="neugier", email="schon_da@dcc-test.example.com", invite_code="ERFUNDEN"
+    )
+    assert r.status_code == 403, r.text

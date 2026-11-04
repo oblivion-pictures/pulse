@@ -143,6 +143,25 @@ async def _email_gate_blocked(session, user: User) -> bool:
     return (await _get_smtp_config_cached(session)) is not None
 
 
+async def _registration_invite_spendable(session, code: str) -> bool:
+    """Read-only twin of the guarded consume in ``register`` (same three conditions)."""
+    now = datetime.now(UTC)
+    row = (
+        await session.execute(
+            select(RegistrationInvite.code).where(
+                RegistrationInvite.code == code,
+                RegistrationInvite.revoked.is_(False),
+                or_(RegistrationInvite.expires_at.is_(None), RegistrationInvite.expires_at > now),
+                or_(
+                    RegistrationInvite.max_uses.is_(None),
+                    RegistrationInvite.uses < RegistrationInvite.max_uses,
+                ),
+            )
+        )
+    ).first()
+    return row is not None
+
+
 async def _passkey_count(session, user_id: int) -> int:
     """Anzahl registrierter Passkeys des Kontos — dieselbe MFA-Frage an jeder
     Stelle (login, /me, TOTP-Disable, Login-TOTP, Passkey-Loeschung)."""
@@ -350,9 +369,12 @@ async def register(
     #   open        → anyone may register
     #   closed      → nobody may register
     #   invite_only → a valid, unspent, non-expired invite code is required.
-    # We only *check presence* of the code here (cheap 403 before the Argon2
-    # hash); the actual atomic consume happens after the user row flushes, so
-    # a duplicate-username 409 doesn't burn a code.
+    # Here the code is checked for VALIDITY (cheap 403 before the Argon2 hash,
+    # and before the duplicate check — otherwise any string got a 409
+    # ``email_taken`` and revealed registered addresses without an invite;
+    # security scan 2026-11-04). The atomic consume still happens after the
+    # user row flushes, so a duplicate-username 409 doesn't burn a code, and
+    # it re-checks under the guarded UPDATE.
     row = await session.get(AuthSettings, 1)
     mode = row.registration_mode if row else "open"
     if mode == "closed":
@@ -360,6 +382,12 @@ async def register(
     if mode == "invite_only" and not payload.invite_code:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="invite code required"
+        )
+    if mode == "invite_only" and not await _registration_invite_spendable(
+        session, payload.invite_code
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="invalid or expired invite code"
         )
     # Nutzungsbedingungen: in der Cloud ohne Häkchen kein Konto (``agb.py``).
     # Der Server prüft selbst, damit weder ein alter Client noch ein direkter
