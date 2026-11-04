@@ -4,6 +4,9 @@
   (`stripTotpFormatting`/`normalizeBackupCode`). Markup und Texte wie im
   TOTP-Abschalten-Dialog; genutzt vom Passkey-Anlegen, seit der Server dort bei
   TOTP-Konten den zweiten Faktor verlangt (Security-Scan 2026-11-04).
+  `ohneTotp`: Konto mit Passkeys, aber ohne TOTP. Statt des Code-Felds steht
+  dann der Hinweis, dass der Browser nach einem vorhandenen Passkey fragt; der
+  Backup-Code bleibt die Ausweichmöglichkeit.
 -->
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js';
@@ -16,12 +19,14 @@
     backupCode?: string;
     useBackup?: boolean;
     idPrefix: string;
+    ohneTotp?: boolean;
   };
   let {
     code = $bindable(''),
     backupCode = $bindable(''),
     useBackup = $bindable(false),
-    idPrefix
+    idPrefix,
+    ohneTotp = false
   }: Props = $props();
 </script>
 
@@ -40,6 +45,10 @@
       data-testid="{idPrefix}-backup"
     />
   </div>
+{:else if ohneTotp}
+  <p class="text-text-muted text-sm" data-testid="{idPrefix}-hinweis">
+    {m.passkey_add_dialog_bestaetigung_hinweis()}
+  </p>
 {:else}
   <div class="space-y-1.5">
     <FieldLabel for="{idPrefix}-code" required class="text-text-muted text-xs font-semibold uppercase">
@@ -59,5 +68,11 @@
   </div>
 {/if}
 <Button variant="link" size="xs" type="button" onclick={() => (useBackup = !useBackup)}>
-  {useBackup ? m.totp_disable_dialog_toggle_use_totp() : m.totp_disable_dialog_toggle_use_backup()}
+  {#if !useBackup}
+    {m.totp_disable_dialog_toggle_use_backup()}
+  {:else if ohneTotp}
+    {m.passkey_add_dialog_bestaetigung_mit_passkey()}
+  {:else}
+    {m.totp_disable_dialog_toggle_use_totp()}
+  {/if}
 </Button>

@@ -439,6 +439,19 @@ class WebAuthnOptionsOut(BaseModel):
     challenge_ticket: str
 
 
+class WebAuthnRegisterOptionsOut(WebAuthnOptionsOut):
+    """``/webauthn/register/options``: zusätzlich die Bestätigungs-Zeremonie.
+
+    Hat das Konto schon Passkeys und kein TOTP, muss der neue mit einem
+    vorhandenen bestätigt werden (``passkey_bestaetigung.py``). Dann tragen
+    diese Felder die ``navigator.credentials.get``-Optionen und ihr Ticket,
+    sonst sind beide ``None``.
+    """
+
+    bestaetigung_options: dict[str, Any] | None = None
+    bestaetigung_ticket: str | None = None
+
+
 class WebAuthnRegisterVerifyIn(BaseModel):
     """Body for ``POST /webauthn/register/verify``.
 
@@ -465,6 +478,11 @@ class WebAuthnRegisterVerifyIn(BaseModel):
     backup_code: Annotated[
         str | None, Field(default=None, pattern=BACKUP_CODE_PATTERN)
     ] = None
+    # **Konten mit Passkey, aber ohne TOTP:** Bestätigung mit einem vorhandenen
+    # Passkey (Assertion + Ticket aus den Options), ersatzweise ``backup_code``.
+    # Begründung in ``passkey_bestaetigung.py``.
+    bestaetigung: dict[str, Any] | None = None
+    bestaetigung_ticket: _TicketField | None = None
 
 
 class WebAuthnDeleteIn(BaseModel):

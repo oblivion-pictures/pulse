@@ -2041,6 +2041,8 @@
   "owner_transfer_select_placeholder": "— Select member —",
   "owner_transfer_success": "Ownership transferred",
   "passkey_add_dialog_added": "Passkey added",
+  "passkey_add_dialog_bestaetigung_hinweis": "To confirm, your browser first asks for one of your existing passkeys, then you create the new one.",
+  "passkey_add_dialog_bestaetigung_mit_passkey": "Use an existing passkey",
   "passkey_add_dialog_cancel": "Cancel",
   "passkey_add_dialog_create": "Create passkey",
   "passkey_add_dialog_creating": "Creating…",

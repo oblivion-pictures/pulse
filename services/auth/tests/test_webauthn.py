@@ -76,16 +76,30 @@ async def _enrol(
     name="Laptop",
     password: str = REG["password"],
     zweiter_faktor: dict | None = None,
+    bestaetigen_mit: bytes | None = None,
 ):
     """Run a full options→verify registration, return the verify response.
 
     ``password`` ist seit 2026-08-13 Pflicht (ein untergeschobener Schluessel
     waere eine dauerhafte Kontouebernahme) und hier ueberschreibbar, damit der
-    Gegentest ein falsches schicken kann.
+    Gegentest ein falsches schicken kann. ``bestaetigen_mit`` schickt eine
+    (gemockte) Bestätigung mit diesem vorhandenen Passkey samt dem
+    Bestätigungs-Ticket aus der Options-Antwort mit.
     """
     r = await client.post("/webauthn/register/options", headers=bearer)
     assert r.status_code == 200, r.text
     ticket = r.json()["challenge_ticket"]
+    extra = dict(zweiter_faktor or {})
+    if bestaetigen_mit is not None:
+        _patch_auth_verify(monkeypatch, sign_count=7)
+        alt_b64 = bytes_to_base64url(bestaetigen_mit)
+        extra["bestaetigung_ticket"] = r.json()["bestaetigung_ticket"]
+        extra["bestaetigung"] = {
+            "id": alt_b64,
+            "rawId": alt_b64,
+            "type": "public-key",
+            "response": {},
+        }
     _patch_reg_verify(monkeypatch, cred_id=cred_id)
     cred_b64 = bytes_to_base64url(cred_id)
     return await client.post(
@@ -101,7 +115,7 @@ async def _enrol(
             },
             "name": name,
             "password": password,
-            **(zweiter_faktor or {}),
+            **extra,
         },
     )
 
@@ -136,7 +150,12 @@ async def test_register_verify_enrols_and_mints_backup_codes(client, monkeypatch
 
     # A second passkey does NOT re-issue codes.
     r2 = await _enrol(
-        client, monkeypatch, bearer, cred_id=bytes(range(21, 41)), name="YubiKey"
+        client,
+        monkeypatch,
+        bearer,
+        cred_id=bytes(range(21, 41)),
+        name="YubiKey",
+        bestaetigen_mit=FAKE_CRED_ID,
     )
     assert r2.status_code == 201, r2.text
     assert r2.json()["backup_codes"] is None
@@ -168,7 +187,7 @@ async def test_register_verify_duplicate_conflict(client, monkeypatch):
     bearer = _bearer(await _register(client))
     assert (await _enrol(client, monkeypatch, bearer)).status_code == 201
     # Same credential id again → 409.
-    r = await _enrol(client, monkeypatch, bearer)
+    r = await _enrol(client, monkeypatch, bearer, bestaetigen_mit=FAKE_CRED_ID)
     assert r.status_code == 409, r.text
 
 
@@ -441,3 +460,168 @@ async def test_passkey_bei_totp_konto_mit_backup_code(client, monkeypatch):
 
     r = await _enrol(client, monkeypatch, bearer, zweiter_faktor={"backup_code": codes[0]})
     assert r.status_code == 201, r.text
+
+
+# ---- Security-Scan 2026-11-04: weiterer Passkey nur mit Bestätigung -------
+
+ZWEITER_ID = bytes(range(21, 41))
+
+
+@pytest.mark.asyncio
+async def test_options_bieten_bestaetigung_erst_ab_dem_ersten_passkey(client, monkeypatch):
+    bearer = _bearer(await _register(client))
+    leer = (await client.post("/webauthn/register/options", headers=bearer)).json()
+    assert leer.get("bestaetigung_options") is None
+    assert leer.get("bestaetigung_ticket") is None
+
+    assert (await _enrol(client, monkeypatch, bearer)).status_code == 201
+    mit = (await client.post("/webauthn/register/options", headers=bearer)).json()
+    assert mit["bestaetigung_ticket"]
+    erlaubt = [c["id"] for c in mit["bestaetigung_options"]["allowCredentials"]]
+    assert erlaubt == [bytes_to_base64url(FAKE_CRED_ID)]
+
+
+@pytest.mark.asyncio
+async def test_weiterer_passkey_ohne_bestaetigung_wird_abgelehnt(client, monkeypatch):
+    """Passkey-Konto ohne TOTP: mit Sitzung + Passwort hing ein Angreifer einen
+    eigenen Passkey an und meldete sich danach dauerhaft passwortlos an."""
+    bearer = _bearer(await _register(client))
+    assert (await _enrol(client, monkeypatch, bearer)).status_code == 201
+
+    r = await _enrol(client, monkeypatch, bearer, cred_id=ZWEITER_ID)
+    assert r.status_code == 401, r.text
+    assert r.json()["detail"] == "passkey_confirmation_required"
+    assert len((await client.get("/webauthn/credentials", headers=bearer)).json()) == 1
+
+
+@pytest.mark.asyncio
+async def test_weiterer_passkey_mit_vorhandenem_passkey_bestaetigt(client, monkeypatch):
+    bearer = _bearer(await _register(client))
+    assert (await _enrol(client, monkeypatch, bearer)).status_code == 201
+
+    r = await _enrol(client, monkeypatch, bearer, cred_id=ZWEITER_ID, bestaetigen_mit=FAKE_CRED_ID)
+    assert r.status_code == 201, r.text
+    assert r.json()["backup_codes"] is None
+    assert len((await client.get("/webauthn/credentials", headers=bearer)).json()) == 2
+
+
+@pytest.mark.asyncio
+async def test_bestaetigung_mit_fremdem_passkey_zaehlt_nicht(client, monkeypatch):
+    opfer = _bearer(await _register(client))
+    assert (await _enrol(client, monkeypatch, opfer)).status_code == 201
+    angreifer = _bearer(
+        await _register(client, username="angreifer", email="angreifer@dcc-test.example.com")
+    )
+    fremd_id = bytes(range(41, 61))
+    assert (await _enrol(client, monkeypatch, angreifer, cred_id=fremd_id)).status_code == 201
+
+    r = await _enrol(client, monkeypatch, opfer, cred_id=ZWEITER_ID, bestaetigen_mit=fremd_id)
+    assert r.status_code == 401, r.text
+    assert len((await client.get("/webauthn/credentials", headers=opfer)).json()) == 1
+
+
+@pytest.mark.asyncio
+async def test_bestaetigung_die_nicht_verifiziert_zaehlt_nicht(client, monkeypatch):
+    import dcc_auth.routes_webauthn as rw
+
+    bearer = _bearer(await _register(client))
+    assert (await _enrol(client, monkeypatch, bearer)).status_code == 201
+    r = await client.post("/webauthn/register/options", headers=bearer)
+    body = r.json()
+
+    def _kaputt(**kw):
+        raise ValueError("signature mismatch")
+
+    monkeypatch.setattr(rw.webauthn, "verify_authentication_response", _kaputt)
+    _patch_reg_verify(monkeypatch, cred_id=ZWEITER_ID)
+    alt = bytes_to_base64url(FAKE_CRED_ID)
+    neu = bytes_to_base64url(ZWEITER_ID)
+    r = await client.post(
+        "/webauthn/register/verify",
+        headers=bearer,
+        json={
+            "challenge_ticket": body["challenge_ticket"],
+            "credential": {"id": neu, "rawId": neu, "type": "public-key", "response": {}},
+            "name": "Zweit",
+            "password": REG["password"],
+            "bestaetigung_ticket": body["bestaetigung_ticket"],
+            "bestaetigung": {"id": alt, "rawId": alt, "type": "public-key", "response": {}},
+        },
+    )
+    assert r.status_code == 401, r.text
+    assert len((await client.get("/webauthn/credentials", headers=bearer)).json()) == 1
+
+
+@pytest.mark.asyncio
+async def test_bestaetigung_braucht_das_bestaetigungs_ticket(client, monkeypatch):
+    """Das Registrier-Ticket taugt nicht als Bestätigungs-Ticket (eigener Zweck)."""
+    bearer = _bearer(await _register(client))
+    assert (await _enrol(client, monkeypatch, bearer)).status_code == 201
+    body = (await client.post("/webauthn/register/options", headers=bearer)).json()
+    _patch_auth_verify(monkeypatch)
+    _patch_reg_verify(monkeypatch, cred_id=ZWEITER_ID)
+    alt = bytes_to_base64url(FAKE_CRED_ID)
+    neu = bytes_to_base64url(ZWEITER_ID)
+    r = await client.post(
+        "/webauthn/register/verify",
+        headers=bearer,
+        json={
+            "challenge_ticket": body["challenge_ticket"],
+            "credential": {"id": neu, "rawId": neu, "type": "public-key", "response": {}},
+            "name": "Zweit",
+            "password": REG["password"],
+            "bestaetigung_ticket": body["challenge_ticket"],
+            "bestaetigung": {"id": alt, "rawId": alt, "type": "public-key", "response": {}},
+        },
+    )
+    assert r.status_code == 401, r.text
+
+
+@pytest.mark.asyncio
+async def test_bestaetigungs_ticket_gilt_nur_einmal(client, monkeypatch):
+    bearer = _bearer(await _register(client))
+    assert (await _enrol(client, monkeypatch, bearer)).status_code == 201
+    body = (await client.post("/webauthn/register/options", headers=bearer)).json()
+    _patch_auth_verify(monkeypatch)
+    alt = bytes_to_base64url(FAKE_CRED_ID)
+    status_codes = []
+    for neu_id in (ZWEITER_ID, bytes(range(61, 81))):
+        # Frisches Registrier-Ticket je Versuch, aber DASSELBE Bestätigungs-Ticket.
+        reg = (await client.post("/webauthn/register/options", headers=bearer)).json()
+        _patch_reg_verify(monkeypatch, cred_id=neu_id)
+        neu = bytes_to_base64url(neu_id)
+        r = await client.post(
+            "/webauthn/register/verify",
+            headers=bearer,
+            json={
+                "challenge_ticket": reg["challenge_ticket"],
+                "credential": {"id": neu, "rawId": neu, "type": "public-key", "response": {}},
+                "name": "Zweit",
+                "password": REG["password"],
+                "bestaetigung_ticket": body["bestaetigung_ticket"],
+                "bestaetigung": {"id": alt, "rawId": alt, "type": "public-key", "response": {}},
+            },
+        )
+        status_codes.append(r.status_code)
+    assert status_codes == [201, 401]
+
+
+@pytest.mark.asyncio
+async def test_weiterer_passkey_mit_backup_code_statt_bestaetigung(client, monkeypatch):
+    """Wer seinen Passkey nicht zur Hand hat, weist sich mit einem Backup-Code aus."""
+    bearer = _bearer(await _register(client))
+    codes = (await _enrol(client, monkeypatch, bearer)).json()["backup_codes"]
+
+    r = await _enrol(
+        client, monkeypatch, bearer, cred_id=ZWEITER_ID, zweiter_faktor={"backup_code": codes[0]}
+    )
+    assert r.status_code == 201, r.text
+    # Verbraucht: derselbe Code trägt keinen dritten Passkey.
+    r = await _enrol(
+        client,
+        monkeypatch,
+        bearer,
+        cred_id=bytes(range(61, 81)),
+        zweiter_faktor={"backup_code": codes[0]},
+    )
+    assert r.status_code == 401, r.text
