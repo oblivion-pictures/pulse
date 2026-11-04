@@ -47,7 +47,7 @@ from dcc_auth.schemas import (
 )
 from dcc_auth.security import JwtSigner, hash_password, verify_password
 from dcc_auth.session_link import parse_sid
-from dcc_auth.widerruf import konto_sperren
+from dcc_auth.widerruf import konto_sperren, offene_email_wechsel_entwerten
 
 log = logging.getLogger(__name__)
 
@@ -108,6 +108,7 @@ async def change_password(
         delete(RefreshToken).where(RefreshToken.user_id == current.id)
     )
     await revoke_all_for_user(session, current.id)
+    await offene_email_wechsel_entwerten(session, current.id)
 
     # ...then re-arm THIS client with a fresh token pair + session cookie, so the
     # password change doesn't immediately log the active device out.

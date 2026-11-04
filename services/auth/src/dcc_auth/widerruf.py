@@ -67,10 +67,10 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import Request
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dcc_auth.models import RefreshToken, User
+from dcc_auth.models import EmailChangeToken, RefreshToken, User
 
 #: Wo ``_get_current_user`` die Kette eines Bearer-Tokens für die Route ablegt.
 _STATE_ATTR = "pulse_anmeldekette"
@@ -122,3 +122,19 @@ def bearer_kette(request: Request) -> str | None:
 
 
 __all__ = ["bearer_kette", "kette_lebt", "konto_sperren", "merke_bearer_kette"]
+
+
+async def offene_email_wechsel_entwerten(db: AsyncSession, user_id: int) -> None:
+    """Entwertet jeden noch offenen E-Mail-Wechsel des Kontos.
+
+    Gerufen von Passwortwechsel und -Reset — den beiden Reaktionen auf einen
+    Verdacht. Vorher überlebte ein offener Wechsel beide: wer einmal Sitzung
+    und Passwort hatte, beantragte den Wechsel auf seine eigene Adresse, und der
+    Link aus seinem Postfach ging nach der Reaktion des Opfers immer noch durch
+    — danach kam jede Reset-Mail bei ihm an (Security-Scan 2026-11-04).
+    """
+    await db.execute(
+        update(EmailChangeToken)
+        .where(EmailChangeToken.user_id == user_id, EmailChangeToken.used_at.is_(None))
+        .values(used_at=datetime.now(UTC))
+    )
