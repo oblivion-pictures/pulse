@@ -9,8 +9,8 @@ gestohlenes Token deshalb über ``POST /session/renew`` (Weg 3,
 Tickets, deren Cookie bei Benutzung immer weiter gleitet. Aus 15 Minuten wurde
 so ein unbegrenzter Zugang. Gedacht war dagegen ``users.revoke_until``
 (Migration 0012): ein Fünf-Minuten-Riegel an ``/credentials/issue``. Der
-verschwand mit den Geräte-Zertifikaten (Commit 9be416cce, 2026-08-28); die
-Spalte wird seitdem nur noch geschrieben.
+verschwand mit den Geräte-Zertifikaten (Commit 9be416cce, 2026-08-28); seit
+dem Security-Scan 2026-11-04 liest die Spalte nur ``confirm_email_change``.
 
 **Kette statt Zeitstempel.** Jedes Zugriffstoken trägt seine Anmelde-Kette
 (Claim ``kette`` = ``refresh_tokens.family_id``, gestempelt in

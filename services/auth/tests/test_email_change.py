@@ -286,3 +286,27 @@ async def test_passwort_reset_entwertet_offenen_email_wechsel(client, monkeypatc
 
     c = await client.post("/me/email/change/confirm", json={"token": token})
     assert c.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_wechsel_von_vor_dem_letzten_widerruf_geht_nicht_durch(
+    client, monkeypatch, session_factory
+):
+    """Rennen: ein Wechsel, der GLEICHZEITIG mit einem Passwortwechsel beantragt
+    wird, kann dessen Entwerten verpassen (Antrag committet nach dem UPDATE).
+    Die Bestätigung lehnt deshalb jeden Antrag ab, der nicht NACH dem letzten
+    Widerruf (``users.revoke_until``) entstand — unabhängig von ``used_at``."""
+    from datetime import UTC, datetime, timedelta
+
+    from dcc_auth.models import User
+    from sqlalchemy import select
+
+    login_r = await _register_and_login(client)
+    token = await _offener_wechsel(client, monkeypatch, login_r)
+    async with session_factory() as s:
+        user = (await s.execute(select(User).where(User.email == _REG["email"]))).scalar_one()
+        user.revoke_until = datetime.now(UTC) + timedelta(seconds=5)
+        await s.commit()
+
+    c = await client.post("/me/email/change/confirm", json={"token": token})
+    assert c.status_code == 401

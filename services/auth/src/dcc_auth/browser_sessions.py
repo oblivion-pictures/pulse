@@ -149,8 +149,8 @@ async def revoke_all_for_user(db: AsyncSession, user_id: int) -> int:
     gleichzeitiges ``/session/renew`` wartet darauf, statt eine Sitzung
     anzulegen, die das UPDATE unten nicht sieht (``widerruf.py``, „Das
     Rennen“). Wer vorher schon Token-Zeilen schreibt, sperrt selbst früher
-    (beide Aufrufer tun das). ``revoke_until`` selbst liest heute niemand
-    (``models.User``).
+    (beide Aufrufer tun das). ``revoke_until`` selbst liest heute nur
+    ``confirm_email_change`` (``models.User``).
 
     Gibt die Zahl der betroffenen Sitzungszeilen zurück.
     """

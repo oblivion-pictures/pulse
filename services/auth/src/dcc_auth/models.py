@@ -90,10 +90,11 @@ class User(Base):
         LargeBinary(), nullable=False, default=lambda: secrets.token_bytes(32)
     )
     # Zeitpunkt des letzten ``revoke_all_for_user`` (Passwortwechsel, -Reset).
-    # Gedacht als Riegel an ``/credentials/issue`` (Migration 0012: fünf Minuten
-    # nach dem Widerruf keine Ausstellung); der fiel mit den Geräte-
-    # Zertifikaten (2026-08-28). Seitdem liest den Wert kein Code, er wird nie
-    # zurückgesetzt. Was ein vor dem Widerruf ausgestelltes Zugriffstoken heute
+    # Gedacht als Riegel an ``/credentials/issue`` (Migration 0012); der fiel
+    # mit den Geräte-Zertifikaten (2026-08-28). Seit dem Security-Scan
+    # 2026-11-04 liest ihn ``confirm_email_change``: ein E-Mail-Wechsel, der
+    # vor diesem Zeitpunkt beantragt wurde, geht nicht mehr durch. Er wird nie
+    # zurückgesetzt. Was ein vor dem Widerruf ausgestelltes Zugriffstoken
     # aufhält, ist seine Anmelde-Kette (``widerruf.py``).
     revoke_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
