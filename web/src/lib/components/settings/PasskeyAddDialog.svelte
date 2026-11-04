@@ -28,9 +28,11 @@
 
   type Props = {
     open?: boolean;
+    /** Konto hat schon Passkeys: ohne TOTP bestätigt dann ein vorhandener. */
+    hatPasskeys?: boolean;
     onAdded: (cred: WebAuthnCredentialSummary) => void;
   };
-  let { open = $bindable(false), onAdded }: Props = $props();
+  let { open = $bindable(false), hatPasskeys = false, onAdded }: Props = $props();
 
   type Step = 'name' | 'codes';
   let step = $state<Step>('name');
@@ -40,6 +42,10 @@
   let password = $state('');
   // TOTP-Konten: der Server verlangt zusätzlich den zweiten Faktor.
   const totpEnabled = $derived(auth.user?.totp_enabled === true);
+  // Ohne TOTP, aber mit Passkeys: Bestätigung mit einem vorhandenen Passkey
+  // (fragt registerPasskey selbst ab) oder ersatzweise ein Backup-Code.
+  const passkeyBestaetigung = $derived(!totpEnabled && hatPasskeys);
+  const faktorFelder = $derived(totpEnabled || passkeyBestaetigung);
   let code = $state('');
   let backupCode = $state('');
   let useBackup = $state(false);
@@ -87,22 +93,20 @@
       return;
     }
     const zweiterFaktor: ZweiterFaktor = {};
-    if (totpEnabled) {
-      if (useBackup) {
-        const normalized = normalizeBackupCode(backupCode);
-        if (!normalized) {
-          error = m.totp_disable_dialog_error_backup_code_empty();
-          return;
-        }
-        zweiterFaktor.backup_code = normalized;
-      } else {
-        const digits = stripTotpFormatting(code);
-        if (digits.length !== 6) {
-          error = m.totp_disable_dialog_error_code_invalid();
-          return;
-        }
-        zweiterFaktor.code = digits;
+    if (faktorFelder && useBackup) {
+      const normalized = normalizeBackupCode(backupCode);
+      if (!normalized) {
+        error = m.totp_disable_dialog_error_backup_code_empty();
+        return;
       }
+      zweiterFaktor.backup_code = normalized;
+    } else if (totpEnabled) {
+      const digits = stripTotpFormatting(code);
+      if (digits.length !== 6) {
+        error = m.totp_disable_dialog_error_code_invalid();
+        return;
+      }
+      zweiterFaktor.code = digits;
     }
     const lauf = ++erstellenLauf;
     busy = true;
@@ -181,8 +185,14 @@
               data-testid="passkey-password-input"
             />
           </div>
-          {#if totpEnabled}
-            <ZweiterFaktorFelder bind:code bind:backupCode bind:useBackup idPrefix="passkey-faktor" />
+          {#if faktorFelder}
+            <ZweiterFaktorFelder
+              bind:code
+              bind:backupCode
+              bind:useBackup
+              ohneTotp={passkeyBestaetigung}
+              idPrefix="passkey-faktor"
+            />
           {/if}
           <Dialog.Footer>
             <Button

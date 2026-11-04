@@ -39,6 +39,10 @@ from dcc_auth.security import JwtSigner
 # ticket can never be replayed into the authentication verify step.
 PURPOSE_REGISTER = "webauthn-register"
 PURPOSE_AUTHENTICATE = "webauthn-authenticate"
+# Bestätigung mit einem vorhandenen Passkey vor dem Anlegen eines weiteren
+# (``passkey_bestaetigung.py``) — eigener Zweck, damit weder ein Login- noch
+# ein Registrier-Ticket als Bestätigung durchgeht.
+PURPOSE_CONFIRM = "webauthn-confirm"
 
 _VALID_TRANSPORTS = {t.value for t in AuthenticatorTransport}
 

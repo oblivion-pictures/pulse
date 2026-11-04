@@ -99,4 +99,4 @@
   {/if}
 </section>
 
-<PasskeyAddDialog bind:open={addOpen} {onAdded} />
+<PasskeyAddDialog bind:open={addOpen} hatPasskeys={passkeys.length > 0} {onAdded} />

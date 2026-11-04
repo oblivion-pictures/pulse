@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-04.3",
+      "date": "2026-11-04",
+      "style": "Sachlich",
+      "title": "Passkeys",
+      "items": [
+        "Wer Passkeys ohne Zwei-Faktor-App nutzt, bestätigt einen neuen Passkey jetzt mit einem schon eingerichteten. Ist keiner zur Hand, geht es auch mit einem Backup-Code."
+      ]
+    },
+    {
       "id": "2026-11-04.2",
       "date": "2026-11-04",
       "style": "Sachlich",

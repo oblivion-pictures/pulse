@@ -25,6 +25,7 @@ from webauthn.helpers import bytes_to_base64url
 from dcc_auth.config import get_settings
 from dcc_auth.db import SessionDep
 from dcc_auth.models import BackupCode, User, WebAuthnCredential
+from dcc_auth.passkey_bestaetigung import bestaetigung_anbieten, bestaetigung_pruefen
 from dcc_auth.passkeys import (
     PURPOSE_REGISTER,
     build_registration_options,
@@ -50,7 +51,7 @@ from dcc_auth.schemas import (
     WebAuthnCredentialOut,
     WebAuthnCredentialRenameIn,
     WebAuthnDeleteIn,
-    WebAuthnOptionsOut,
+    WebAuthnRegisterOptionsOut,
     WebAuthnRegisterVerifyIn,
     WebAuthnRegisterVerifyOut,
 )
@@ -72,7 +73,7 @@ def _extract_transports(credential: dict) -> list[str] | None:
 # ---- registration -------------------------------------------------------
 
 
-@router.post("/webauthn/register/options", response_model=WebAuthnOptionsOut)
+@router.post("/webauthn/register/options", response_model=WebAuthnRegisterOptionsOut)
 async def webauthn_register_options(
     request: Request,
     session: SessionDep,
@@ -82,7 +83,8 @@ async def webauthn_register_options(
     """Issue ``create()`` options for enrolling a new passkey.
 
     Existing credentials are passed as ``excludeCredentials`` so the same
-    authenticator can't be registered twice.
+    authenticator can't be registered twice. Ohne TOTP liegt bei vorhandenen
+    Passkeys die Bestätigungs-Zeremonie bei (``passkey_bestaetigung.py``).
     """
     settings = get_settings()
     await _check_rate(request, "webauthn_register", settings.rate_limit_webauthn_register)
@@ -101,7 +103,17 @@ async def webauthn_register_options(
         user_id=current.id,
         ttl_seconds=settings.webauthn_challenge_ttl_seconds,
     )
-    return WebAuthnOptionsOut(options=options, challenge_ticket=ticket)
+    bestaetigung_options, bestaetigung_ticket = None, None
+    if not current.totp_enabled:
+        bestaetigung_options, bestaetigung_ticket = bestaetigung_anbieten(
+            settings, signer, user_id=current.id, vorhandene=existing
+        )
+    return WebAuthnRegisterOptionsOut(
+        options=options,
+        challenge_ticket=ticket,
+        bestaetigung_options=bestaetigung_options,
+        bestaetigung_ticket=bestaetigung_ticket,
+    )
 
 
 @router.post(
@@ -141,6 +153,9 @@ async def webauthn_register_verify(
             session, current, code=payload.code, backup_code=payload.backup_code
         ):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid code")
+    else:
+        # Ohne TOTP: weiterer Passkey nur mit Bestätigung durch einen vorhandenen.
+        await bestaetigung_pruefen(session, request, signer, current, payload)
     try:
         challenge, ticket_user_id, challenge_jti = decode_challenge_ticket(
             signer, payload.challenge_ticket, expected_purpose=PURPOSE_REGISTER

@@ -27,6 +27,12 @@ export type WebAuthnCredentialSummary = {
 };
 
 type OptionsResponse = { options: Record<string, any>; challenge_ticket: string };
+/** Registrier-Optionen: bei Konten mit Passkey, aber ohne TOTP zusätzlich die
+ *  Bestätigung mit einem vorhandenen Passkey (sonst beide Felder `null`). */
+type RegisterOptionsResponse = OptionsResponse & {
+  bestaetigung_options?: Record<string, any> | null;
+  bestaetigung_ticket?: string | null;
+};
 
 /** True when this browser exposes the WebAuthn API at all. */
 export function webauthnSupported(): boolean {
@@ -120,8 +126,9 @@ function ceremonyError(err: unknown): Error {
 
 // ---- registration (authenticated) ------------------------------------------
 
-/** Zweiter Faktor beim Passkey-Anlegen: TOTP- oder Backup-Code, leer bei
- *  Konten ohne TOTP. */
+/** Zweiter Faktor beim Passkey-Anlegen: TOTP- oder Backup-Code. Leer bei
+ *  Konten ohne TOTP; dort bestätigt ein vorhandener Passkey, ersatzweise ein
+ *  Backup-Code. */
 export type ZweiterFaktor = { code?: string; backup_code?: string };
 
 /** Enrol a new passkey. `backup_codes` is non-null only when this is the
@@ -137,10 +144,27 @@ export async function registerPasskey(
   /** Bei TOTP-Konten Pflicht (Security-Scan 2026-11-04): TOTP- ODER Backup-Code. */
   zweiterFaktor: ZweiterFaktor = {}
 ): Promise<{ credential: WebAuthnCredentialSummary; backup_codes: string[] | null }> {
-  const opts = await request<OptionsResponse>('/webauthn/register/options', {
+  const opts = await request<RegisterOptionsResponse>('/webauthn/register/options', {
     method: 'POST',
     endpoint: 'auth'
   });
+  // Konto hat schon Passkeys, aber kein TOTP: erst mit einem vorhandenen
+  // bestätigen (Security-Scan 2026-11-04), außer der Nutzer schickt einen
+  // Backup-Code. Zwei Browser-Abfragen nacheinander.
+  const bestaetigung: Record<string, unknown> = {};
+  if (opts.bestaetigung_options && opts.bestaetigung_ticket && !zweiterFaktor.backup_code) {
+    let alt: Credential | null;
+    try {
+      alt = await navigator.credentials.get({
+        publicKey: decodeRequestOptions(opts.bestaetigung_options)
+      });
+    } catch (err) {
+      throw ceremonyError(err);
+    }
+    if (!alt) throw new Error(m.webauthn_abgebrochen());
+    bestaetigung.bestaetigung = encodeAssertion(alt as PublicKeyCredential);
+    bestaetigung.bestaetigung_ticket = opts.bestaetigung_ticket;
+  }
   let cred: Credential | null;
   try {
     cred = await navigator.credentials.create({
@@ -158,7 +182,8 @@ export async function registerPasskey(
       credential: encodeRegistration(cred as PublicKeyCredential),
       name,
       password,
-      ...zweiterFaktor
+      ...zweiterFaktor,
+      ...bestaetigung
     }
   });
 }
