@@ -295,3 +295,29 @@ async def test_das_ticket_traegt_den_echten_zweitfaktor(client, session_factory)
     c = pyjwt.decode(r.json()["ticket"], options={"verify_signature": False}, audience="900020")
     assert c["acr"] == "mfa", "der Zweitfaktor-Nachweis faellt unter den Tisch"
     assert "webauthn" in c["amr"]
+
+
+@pytest.mark.asyncio
+async def test_unbestaetigte_email_bekommt_kein_ticket(client, session_factory, monkeypatch):
+    """Security-Scan 2026-11-04: In der Cloud sperrt das E-Mail-Gate ein Konto
+    mit unbestätigter Adresse — das Ticket trug es bisher trotzdem auf jeden
+    Self-Host mit offenem Beitritt (die Spec verlangt „E-Mail bestätigt")."""
+    from dcc_auth.models import SmtpSettings
+    from dcc_auth.routes import _invalidate_smtp_cache
+
+    monkeypatch.setattr("dcc_auth.email._send_smtp_sync", lambda *a, **k: None)
+    async with session_factory() as s:
+        row = await s.get(SmtpSettings, 1)
+        row.host = "mail.example.com"
+        row.from_email = "noreply@example.com"
+        row.configured = True
+        await s.commit()
+    _invalidate_smtp_cache()
+
+    cookie, user_id = await _reg_and_login(client)
+    await _instanz_anlegen(session_factory, iid=900077, hostname="u.example.com", besitzer=user_id)
+    r = await client.post(
+        "/me/server-ticket", json={"hostname": "u.example.com"}, headers={"Cookie": cookie}
+    )
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"] == "email_unverified"
