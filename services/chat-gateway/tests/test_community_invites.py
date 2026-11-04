@@ -59,6 +59,17 @@ def _payload(invitee_id: int, **over) -> dict:
     return base
 
 
+async def _echter_cloud_code(client, token: str) -> tuple[str, str]:
+    """Community des Einladenden + lebender Einladungscode. Für Cloud-Ziele
+    prüft der Broker den Code seit dem Security-Scan 2026-11-04."""
+    r = await client.post("/guilds", json={"name": "Cloud"}, headers=auth(token))
+    assert r.status_code in (200, 201), r.text
+    gid = r.json()["id"]
+    r = await client.post(f"/guilds/{gid}/invites", json={"max_uses": 1}, headers=auth(token))
+    assert r.status_code == 201, r.text
+    return gid, r.json()["code"]
+
+
 @pytest.fixture
 def captured_events(app, monkeypatch):
     captured: list[tuple[str, dict]] = []
@@ -175,9 +186,13 @@ async def test_create_cloud_ziel_ohne_host(
     t_a, uid_a = await _register(_auth_signer)
     _, uid_b = await _register(_auth_signer)
     await friend_pair(uid_a, uid_b)
+    gid, code = await _echter_cloud_code(client, t_a)
     r = await client.post(
         "/community-invites",
-        json=_payload(uid_b, target_host="howispulse.com", target_instance_id=None),
+        json=_payload(
+            uid_b, target_host="howispulse.com", target_instance_id=None,
+            target_guild_id=gid, code=code,
+        ),
         headers=auth(t_a),
     )
     assert r.status_code == 201, r.text
@@ -408,9 +423,10 @@ async def test_cloud_ziel_traegt_keinen_host(client, _auth_signer, friend_pair):
     t_b, uid_b = await _register(_auth_signer)
     await friend_pair(uid_a, uid_b)
 
+    gid, code = await _echter_cloud_code(client, t_a)
     r = await client.post(
         "/community-invites",
-        json=_payload(uid_b, target_host="https://howispulse.com"),
+        json=_payload(uid_b, target_host="https://howispulse.com", target_guild_id=gid, code=code),
         headers=auth(t_a),
     )
     assert r.status_code == 201, r.text

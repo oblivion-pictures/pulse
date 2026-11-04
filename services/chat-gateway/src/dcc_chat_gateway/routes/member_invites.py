@@ -43,7 +43,7 @@ from dcc_chat_gateway.permissions import check_permission
 from dcc_chat_gateway.push import fan_out_community_invite_push
 from dcc_chat_gateway.ratelimit import check as ratelimit_check
 from dcc_chat_gateway.routes._deps import CloudOnly
-from dcc_chat_gateway.routes.invites import _join_guild
+from dcc_chat_gateway.routes.invites import _join_guild, invite_gilt_fuer, invite_verbrauchen
 from dcc_chat_gateway.schemas import InviteAcceptOut, InviteGuildOut
 from dcc_chat_gateway.security import CurrentUser
 from dcc_chat_gateway.snowflake import next_id
@@ -315,10 +315,29 @@ async def accept_community_invite(
     # weggeputzten Objekt neu auf (MissingGreenlet → 500 statt idempotent
     # 200) — gleiche Vorkehrung wie accept_invite.
     guild_name, guild_icon = guild.name, guild.icon_url
+    guild_id, code = row.guild_id, row.code
+
+    # Security-Scan 2026-11-04: Zeilen MIT Code stammen vom Freundes-Weg
+    # (``community_invites``) — dort ist der Code der einzige Beleg, dass der
+    # Einladende einladen durfte. Er muss noch gelten und wird beim Beitritt
+    # wie auf ``accept_invite`` verbraucht; vorher trat jede Zeile direkt bei,
+    # auch eine mit erfundenem Code. Zeilen OHNE Code kommen vom Nutzername-
+    # Weg oben, dessen Anlegen ``CREATE_INVITES`` prüft.
+    if code is not None and not await invite_gilt_fuer(session, code, guild_id):
+        await session.delete(row)
+        await session.commit()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="invite_not_found")
+
+    async def _code_verbrauchen(added: bool) -> None:
+        if added and code is not None:
+            await invite_verbrauchen(session, code, guild_id)
+
     await session.delete(row)
-    _, channel_id = await _join_guild(session, request, row.guild_id, current.id)
+    _, channel_id = await _join_guild(
+        session, request, guild_id, current.id, stage=_code_verbrauchen
+    )
     return InviteAcceptOut(
-        guild=InviteGuildOut(id=row.guild_id, name=guild_name, icon_url=guild_icon),
+        guild=InviteGuildOut(id=guild_id, name=guild_name, icon_url=guild_icon),
         channel_id=channel_id,
     )
 

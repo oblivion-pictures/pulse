@@ -90,6 +90,43 @@ def _is_active(inv: GuildInvite, now: datetime) -> bool:
     return True
 
 
+async def invite_gilt_fuer(session, code: str, guild_id: int) -> bool:
+    """True, wenn ``code`` eine noch gültige Einladung genau von ``guild_id`` ist."""
+    inv = await session.get(GuildInvite, code)
+    return inv is not None and inv.guild_id == guild_id and _is_active(inv, datetime.now(tz=UTC))
+
+
+async def invite_verbrauchen(session, code: str, guild_id: int) -> int | None:
+    """Verbraucht atomar einen Use von ``code`` und liefert dessen Ziel-Kanal.
+
+    Nur, wenn die Einladung noch gilt UND zu ``guild_id`` gehört; sonst
+    Rollback + 404. Die Bedingung steckt im UPDATE selbst — ein 0-Zeilen-
+    Ergebnis schließt das Fenster zwischen Prüfen und Hochzählen. Gemeinsamer
+    Kern von ``accept_invite`` und dem Annehmen einer Community-Einladung
+    (``member_invites``, Security-Scan 2026-11-04)."""
+    now = datetime.now(tz=UTC)
+    stmt = (
+        update(GuildInvite)
+        .where(
+            GuildInvite.code == code,
+            GuildInvite.guild_id == guild_id,
+            GuildInvite.revoked_at.is_(None),
+            (GuildInvite.expires_at.is_(None)) | (GuildInvite.expires_at > now),
+            (GuildInvite.max_uses.is_(None)) | (GuildInvite.uses < GuildInvite.max_uses),
+        )
+        .values(uses=GuildInvite.uses + 1)
+        .returning(GuildInvite.channel_id)
+        .execution_options(synchronize_session=False)
+    )
+    result = (await session.execute(stmt)).first()
+    if result is None:
+        await session.rollback()
+        raise HTTPException(404, detail=_INVITE_INVALID)
+    # Aus der RETURNING-Zeile, nicht aus einem ORM-Objekt — das wäre nach
+    # einem Rollback expired.
+    return result[0]
+
+
 async def _first_text_channel_id(session, guild_id: int) -> int | None:
     stmt = (
         select(Channel.id)
@@ -351,32 +388,11 @@ async def accept_invite(code: str, session: SessionDep, current: CurrentUser, re
     invite_channel_id = invite.channel_id
 
     async def _consume_use(added: bool) -> None:
-        """Atomically consume one use iff the invite is still valid. Reacting
-        to a 0-row result closes the TOCTOU window between the validity check
-        and the increment. Bereits Mitgliedschaft → idempotent, kein Use."""
+        """Bereits Mitglied → idempotent, kein Use."""
         if not added:
             return
-        now = datetime.now(tz=UTC)
-        stmt = (
-            update(GuildInvite)
-            .where(
-                GuildInvite.code == code,
-                GuildInvite.revoked_at.is_(None),
-                (GuildInvite.expires_at.is_(None)) | (GuildInvite.expires_at > now),
-                (GuildInvite.max_uses.is_(None)) | (GuildInvite.uses < GuildInvite.max_uses),
-            )
-            .values(uses=GuildInvite.uses + 1)
-            .returning(GuildInvite.guild_id, GuildInvite.channel_id)
-            .execution_options(synchronize_session=False)
-        )
-        result = (await session.execute(stmt)).first()
-        if result is None:
-            await session.rollback()
-            raise HTTPException(404, detail=_INVITE_INVALID)
-        # Read the resolved channel id from the RETURNING row — NOT from the
-        # `invite` ORM object, which would be expired after a possible rollback.
         nonlocal invite_channel_id
-        invite_channel_id = result[1]
+        invite_channel_id = await invite_verbrauchen(session, code, guild_id)
 
     _, channel_id = await _join_guild(
         session, request, guild_id, current.id, stage=_consume_use
