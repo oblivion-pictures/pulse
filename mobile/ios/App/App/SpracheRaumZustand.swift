@@ -38,6 +38,10 @@ extension SpracheRaum {
             // kein gescheiterter Beitritt (man kann zuhören) — aber er muss
             // sichtbar sein, sonst hält sich der Nutzer für zu hören.
             "mikrofonFehler": mikrofonFehler ?? NSNull(),
+            // Mit Erlaubnis ist ein fehlendes Mikrofon kein Rechte-Problem: die
+            // Hülle holt es nach (`SpracheRaumMikroNachholen.swift`), und die
+            // Oberfläche sagt dann „wird verbunden“ statt „Zugriff fehlgeschlagen“.
+            "mikrofonErlaubt": Anrufverwaltung.mikrofonErlaubt(),
             // Der Wächter hat aufgegeben — nach einem Reload der WebView die
             // einzige Quelle für das Band „Mikrofon ausgefallen".
             "mikroTot": wache.tot,

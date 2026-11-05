@@ -186,6 +186,10 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // (Bughunt 2026-10-11, E1).
         taub = taubStart
         await hoerwunschSetzen(je: lautstaerken, gesamt: gesamt)
+        // Unter CarPlay die Aufnahme VOR dem Verbinden starten: das Auto schaltet
+        // dann in den Telefon-Modus, bevor die Signalverbindung steht
+        // (`SpracheRaumMikroNachholen.swift`, Befund 2026-10-25).
+        let vorgewaermt = await carPlayVorwaermen()
         TonMessung.geteilt.beginnen()
         let r = Room(delegate: self, roomOptions: Self.raumOptionen(statistik: Self.statistikNoetig()))
         sitzung += 1
@@ -247,7 +251,8 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // Ausfall — nur der zweite Fall ist ein Anlass für den Bericht.
         let art = mikrofonFehler == nil ? "beitritt"
             : (Anrufverwaltung.mikrofonErlaubt() ? "beitritt_ohne_mikro" : "beitritt_ohne_erlaubnis")
-        diagMelden(art, tonBeleg().merging(["stumm": stumm]) { $1 }.merging(fehlerFelder) { $1 }
+        diagMelden(art, tonBeleg().merging(["stumm": stumm, "vorgewaermt": vorgewaermt]) { $1 }
+            .merging(fehlerFelder) { $1 }
             .merging(mikroZeit) { $1 }.merging(TonMessung.geteilt.felder()) { $1 })
         await funkHqAbgleichen("beitritt")
         let vorn = await MainActor.run { UIApplication.shared.applicationState != .background }
@@ -276,8 +281,8 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     private func raumLoesen(_ r: Room) {
         guard raum === r else { return }
         raum = nil
-        // Was das Nachholen unter CarPlay verstellt hat, gilt nur für diesen Raum.
-        Self.carPlayZuruecksetzen()
+        // Die unter CarPlay vorgewärmte Aufnahme gilt nur für diesen Raum.
+        Self.vorwaermenBeenden()
         TonMessung.geteilt.beenden()
         SpracheFunkHq.geteilt.raumWeg()
         StreamTonVerwaltung.geteilt.echoAnstossen()

@@ -29,7 +29,10 @@ import Network
 ///
 /// **Nie Adressen, Kennungen oder Namen** — die Adresse eines Kandidaten
 /// geht nur als „v4“/„v6“ hinaus. Nach dem Befund geht diese Datei wieder
-/// heraus, zusammen mit den Varianten in `SpracheRaumMikroNachholen`.
+/// heraus. **Ausgewertet am 2026-11-05** (Befund im Kopf von
+/// `SpracheRaumMikroNachholen.swift`): die Puffer kamen, die Verbindung trug
+/// nicht. Sie bleibt für den nächsten Bericht aus dem Auto stehen, bis sich
+/// zeigt, ob das Vorwärmen dort trägt; die Varianten von damals sind weg.
 final class TonMessung: @unchecked Sendable {
     static let geteilt = TonMessung()
 

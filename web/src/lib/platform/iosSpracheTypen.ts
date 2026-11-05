@@ -78,6 +78,10 @@ export interface NativerZustand {
    *  sass man im Kanal, die eigene Oberfläche sagte „nicht verbunden", und es
    *  gab keinen Weg hinaus. */
   mikrofonFehler?: string | null;
+  /** Hat die App die Mikrofon-Erlaubnis? Dann holt die Hülle ein fehlendes
+   *  Mikrofon nach (`SpracheRaumMikroNachholen.swift`), und es ist kein
+   *  Rechte-Problem. Eine ältere Hülle schickt das Feld nicht. */
+  mikrofonErlaubt?: boolean;
   /** Der Mikrofon-Wächter hat aufgegeben (`SpracheMikroWache.swift`). Nach
    *  einem Reload die einzige Quelle für das Band; ein Bau ohne Wächter
    *  schickt es nicht. */
