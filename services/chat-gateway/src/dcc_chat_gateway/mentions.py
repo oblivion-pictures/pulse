@@ -114,21 +114,21 @@ async def filter_to_valid(
     guild_id: int | None,
     author_permissions: int,
     candidates: set[tuple[int, int]],
-    dm_participant_ids: set[int] | None = None,
 ) -> set[tuple[int, int]]:
     """Drop mentions that wouldn't ping anybody.
 
     Rules:
       * User-mentions only count if the target is a current member of
-        ``guild_id``. For DMs (``guild_id is None``) the only legitimate
-        mention targets are the two channel participants — pass them in
-        via ``dm_participant_ids`` and any other ``<@uid>`` marker is
-        dropped (otherwise a crafted DM message could fan ``mention_added``
-        events + push notifications out to arbitrary users system-wide).
+        ``guild_id``. Without a guild (``None``) every user-marker is
+        dropped — otherwise a crafted message could fan ``mention_added``
+        events + push notifications out to arbitrary users system-wide.
+        Klartext in DMs nimmt der Server seit 2026-11-05 nicht mehr an
+        (``DM_KLARTEXT_DETAIL``); bis dahin ließ dieser Fall die beiden
+        DM-Teilnehmer zu.
       * Role-mentions count if the role is in this guild AND either
         ``mentionable=true`` or the author holds ``MENTION_EVERYONE``
         (Discord's escape-hatch for moderators to ping a locked role).
-        DMs have no roles, so all role-markers are silently dropped.
+        Without a guild there are no roles, so all role-markers are dropped.
       * ``everyone`` markers pass through unchanged — the route layer
         already enforces ``MENTION_EVERYONE`` upstream (Permission
         check + 403). We only land here when that check passed.
@@ -144,24 +144,16 @@ async def filter_to_valid(
     valid_users: set[int] = set()
     valid_roles: set[int] = set()
 
-    if user_targets:
-        if guild_id is not None:
-            rows = (
-                await session.execute(
-                    select(GuildMember.user_id).where(
-                        GuildMember.guild_id == guild_id,
-                        GuildMember.user_id.in_(user_targets),
-                    )
+    if guild_id is not None and user_targets:
+        rows = (
+            await session.execute(
+                select(GuildMember.user_id).where(
+                    GuildMember.guild_id == guild_id,
+                    GuildMember.user_id.in_(user_targets),
                 )
-            ).all()
-            valid_users = {r[0] for r in rows}
-        else:
-            # DM channel: no guild membership to check against. The only
-            # users who can be pinged here are the two channel participants.
-            # Restrict to them so a crafted ``<@uid>`` for an unrelated user
-            # can't fan a mention out to arbitrary recipients. An empty/None
-            # participant set drops all user-mentions.
-            valid_users = set(user_targets) & (dm_participant_ids or set())
+            )
+        ).all()
+        valid_users = {r[0] for r in rows}
 
     if guild_id is not None and role_targets:
         rows = (
@@ -291,8 +283,10 @@ async def _expand_mention_targets(
     # ein Mitglied kann aber per Channel-Overwrite vom Kanal ausgeschlossen sein.
     # Ohne diese Filterung leakt der direkt zugestellte ``mention_added``-Event
     # (+ Web-Push) Existenz/Aktivität eines für den Empfänger unsichtbaren Kanals.
-    # DMs (``guild_id is None``) bleiben ungefiltert — dort hat ``filter_to_valid``
-    # user-Mentions bereits auf die zwei Channel-Teilnehmer begrenzt.
+    # Ohne Guild (``guild_id is None``) bleibt diese Filterung aus — dort hat
+    # ``filter_to_valid`` jede user-Mention bereits verworfen (bis 2026-11-05,
+    # als der Server noch Klartext in DMs annahm: auf die zwei DM-Teilnehmer
+    # begrenzt).
     if guild_id is not None and (targets or role_ids or has_everyone):
         viewers = await members_who_can_view(session, guild_id, channel_id)
         targets &= viewers
