@@ -86,7 +86,10 @@ def _check_internal_secret(request: Request, provided: str | None) -> None:
             status.HTTP_401_UNAUTHORIZED,
             detail="internal endpoint disabled — set INTERNAL_SERVICE_SECRET",
         )
-    if not provided or not hmac.compare_digest(provided, expected):
+    # Als Bytes vergleichen: `compare_digest` wirft bei `str` mit Nicht-ASCII-
+    # Zeichen (Header kommen latin-1-dekodiert an) einen TypeError — ein 500er
+    # statt 401 (Gegenprüfung des Security-Audits, 2026-11-05).
+    if not provided or not hmac.compare_digest(provided.encode(), expected.encode()):
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, detail="invalid internal secret"
         )

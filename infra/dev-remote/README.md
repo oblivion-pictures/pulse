@@ -176,9 +176,11 @@ Firebase-Konsole liegt es für diesen Weg wirkungslos.
 
 ```bash
 # Schlüssel neben die JWT-Schlüssel legen (der Container liest /secrets, uid 10001;
-# 0644 wie jwt_private.pem, sonst kommt uid 10001 nicht heran)
-scp AuthKey_<KEYID>.p8 michael@77.42.71.166:~/pulse-test/secrets/
-ssh michael@77.42.71.166 'chmod 644 ~/pulse-test/secrets/AuthKey_<KEYID>.p8'
+# 0644 wie jwt_private.pem, sonst kommt uid 10001 nicht heran). Vor anderen
+# Benutzern des Rechners schützt allein das Home-Verzeichnis (0750) — es muss so
+# bleiben; der APNs-Schlüssel gilt teamweit, auch für Produktions-Pushes.
+scp AuthKey_<KEYID>.p8 "$PULSE_DEV_HOST":~/pulse-test/secrets/
+ssh "$PULSE_DEV_HOST" 'chmod 644 ~/pulse-test/secrets/AuthKey_<KEYID>.p8'
 ```
 
 Dann in `~/pulse-test/.env`:
@@ -212,7 +214,7 @@ oder `ExpiredProviderToken` heisst, an Schlüssel, Key-ID oder Team-ID stimmt
 etwas nicht.
 
 ```bash
-ssh michael@77.42.71.166 'docker exec pulsetest_chat python -c "
+ssh "$PULSE_DEV_HOST" 'docker exec pulsetest_chat python -c "
 import asyncio, httpx
 from dcc_chat_gateway import apns_voip
 from dcc_chat_gateway.config import get_settings

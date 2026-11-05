@@ -112,7 +112,7 @@ async def post_stream_chat(
 ) -> StreamChatPostOut:
     await _require_voice_channel_member(
         session, channel_id, current,
-        feature="stream chat", member_detail="not a member of this channel",
+        feature="stream chat", member_detail="not a member of this channel", schreiben=True,
     )
 
     redis = getattr(request.app.state, "redis", None)

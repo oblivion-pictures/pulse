@@ -91,6 +91,7 @@ async def _require_voice_channel_member(
     *,
     feature: str,
     member_detail: str,
+    schreiben: bool = False,
 ) -> Channel:
     """Voice-Channel-Mitgliedschaft + VIEW_CHANNEL-Gate, geteilt mit
     ``stream_chat`` und ``stream_reactions``. ``feature``/``member_detail``
@@ -114,6 +115,11 @@ async def _require_voice_channel_member(
     perms = await resolve_permissions(session, current, channel.guild_id, channel_id)
     if not has_permission(perms, Permissions.VIEW_CHANNEL):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail=member_detail)
+    # Schreiben verlangt SEND_MESSAGES wie jeder andere Chat (`messages.py`):
+    # wem das Recht entzogen war, der schrieb hier bis 2026-11-05 weiter
+    # (Gegenprüfung des Security-Audits).
+    if schreiben and not has_permission(perms, Permissions.SEND_MESSAGES):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="missing permission: SEND_MESSAGES")
     return channel
 
 
@@ -132,7 +138,7 @@ async def post_watch_chat(
 ) -> WatchChatPostOut:
     await _require_voice_channel_member(
         session, channel_id, current,
-        feature="watch chat", member_detail="not a member",
+        feature="watch chat", member_detail="not a member", schreiben=True,
     )
 
     redis = getattr(request.app.state, "redis", None)

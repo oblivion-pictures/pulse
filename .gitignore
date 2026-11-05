@@ -174,3 +174,15 @@ web/data/
 
 # mkcert-Zertifikate fürs lokale HTTPS-Dev (Gerätetests)
 web/.cert/
+
+# Signier- und Push-Schlüssel, egal wo sie liegen (Gegenprüfung des
+# Security-Audits, 2026-11-05: außerhalb von packaging/android/ und secrets/
+# griff bis dahin keine Regel — ein unter mobile/ abgelegter APNs-Schlüssel wäre
+# ohne Warnung mitgekommen).
+*.p8
+*.p12
+*.pfx
+*.keystore
+*.jks
+*.mobileprovision
+AuthKey_*

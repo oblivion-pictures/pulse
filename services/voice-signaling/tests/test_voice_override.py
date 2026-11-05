@@ -683,6 +683,22 @@ async def test_internal_evict_rejects_bad_secret(
 
 
 @pytest.mark.asyncio
+async def test_internal_evict_nicht_ascii_secret_ist_403_nicht_500(
+    app_with_redis, monkeypatch, _stub_livekit_remove
+):
+    """``compare_digest`` warf bei ``str`` mit Nicht-ASCII-Zeichen einen
+    TypeError — ein 500er statt der Ablehnung (Gegenprüfung 2026-11-05)."""
+    client, _redis = app_with_redis
+    monkeypatch.setattr(voice_routes.get_settings(), "internal_service_secret", "S3CRET")
+    r = await client.post(
+        "/internal/evict-from-voice",
+        json={"channel_ids": ["1"], "user_id": "42"},
+        headers={"X-Pulse-Internal-Secret": "gehe\u00efm".encode("latin-1")},
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_internal_evict_calls_livekit_and_clears_overrides(
     app_with_redis, monkeypatch, _stub_livekit_remove
 ):

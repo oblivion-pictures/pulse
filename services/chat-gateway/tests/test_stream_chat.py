@@ -386,3 +386,37 @@ async def test_stream_chat_message_pushed_to_subscribed_ws(ws_app, _auth_signer)
                     r.close()
 
     await asyncio.to_thread(_run)
+
+
+@pytest.mark.asyncio
+async def test_post_stream_chat_403_ohne_send_messages(client, _auth_signer, redis):
+    """Wem SEND_MESSAGES im Kanal entzogen ist, der schrieb im Stream-Chat bis
+    2026-11-05 weiter (Gegenprüfung des Security-Audits). Lesen bleibt erlaubt."""
+    from dcc_shared.permission_resolver import OVERWRITE_TARGET_USER
+    from dcc_shared.permissions import Permissions
+
+    from .conftest import beitreten_per_einladung
+
+    t_owner, uid_owner = await _register(_auth_signer)
+    t_mitglied, uid_mitglied = await _register(_auth_signer)
+    gid, cid = await _setup_voice_channel(client, t_owner)
+    await beitreten_per_einladung(client, gid, str(uid_mitglied), t_owner)
+    r = await client.put(
+        f"/channels/{cid}/permissions/{OVERWRITE_TARGET_USER}/{uid_mitglied}",
+        json={"allow": "0", "deny": str(int(Permissions.SEND_MESSAGES))},
+        headers=_auth(t_owner),
+    )
+    assert r.status_code == 200, r.text
+    active_key = await _set_active(redis, cid, uid_owner)
+    try:
+        r = await client.post(
+            f"/channels/{cid}/streams/{uid_owner}/chat",
+            json={"content": "trotzdem"},
+            headers=_auth(t_mitglied),
+        )
+        assert r.status_code == 403, r.text
+        assert r.json()["detail"] == "missing permission: SEND_MESSAGES"
+        r = await client.get(f"/channels/{cid}/streams/{uid_owner}/chat", headers=_auth(t_mitglied))
+        assert r.status_code == 200, r.text
+    finally:
+        await redis.delete(active_key, f"stream:chat:channel-{cid}-{uid_owner}")

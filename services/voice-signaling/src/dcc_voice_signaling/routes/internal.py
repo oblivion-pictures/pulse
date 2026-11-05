@@ -65,7 +65,9 @@ async def internal_evict_from_voice(
     client_ip = request.client.host if request.client else "unknown"
     if not ratelimit.check("internal_secret", client_ip):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail="rate limit exceeded")
-    if not hmac.compare_digest(x_pulse_internal_secret or "", expected):
+    # Als Bytes: bei `str` mit Nicht-ASCII-Zeichen wirft `compare_digest` (500
+    # statt 403), s. chat-gateway `routes/internal.py`.
+    if not hmac.compare_digest((x_pulse_internal_secret or "").encode(), expected.encode()):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="bad service token")
 
     redis = voice_routes._get_redis(request)
