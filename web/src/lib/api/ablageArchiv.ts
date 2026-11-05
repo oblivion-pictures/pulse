@@ -85,6 +85,8 @@ export async function archivSchreiben(
 	if (!resp.ok) throw await apiFehlerAus(resp);
 }
 
+const KEIN_LAUFWERK = 'no archive drive connected';
+
 /** Holt `pfad` aus dem Archiv-Ordner. `null`, wenn es die Datei dort nicht
  *  gibt — beim ersten Lauf ist das der Normalfall, kein Fehler. */
 export async function archivAbruf(
@@ -97,7 +99,17 @@ export async function archivAbruf(
 		{},
 		route
 	);
-	if (resp.status === 404) return null;
+	if (resp.status === 404) {
+		// Zwei verschiedene 404: „Datei nicht da" ist eine Antwort (null),
+		// „kein Laufwerk hinterlegt" ein Fehler — nur als Wurf erreicht er
+		// `mitLaufwerkNachtragen` (`ablage/archivAdapter.ts`), das die Adresse
+		// bei der Cloud nachträgt. Vorher wurde auch dieser Fall zu null, und
+		// ein Lesen trug nie nach. Der Text kommt aus `_laufwerk_oder_404`
+		// (`routes/ablage_konto_laufwerk.py`).
+		const fehler = await apiFehlerAus(resp);
+		if (fehler.message === KEIN_LAUFWERK) throw fehler;
+		return null;
+	}
 	if (!resp.ok) throw await apiFehlerAus(resp);
 	return new Uint8Array(await resp.arrayBuffer());
 }

@@ -17,7 +17,7 @@
   import { userCache } from '$lib/stores/users.svelte';
   import { nameStyle } from '$lib/utils/nameColor';
   import { safeAvatarUrl } from '$lib/avatar';
-  import { gruppenApi } from '$lib/api/gruppen';
+  import { gruppenApi, type PrivateGruppe } from '$lib/api/gruppen';
   import { privateGruppen } from '$lib/stores/privateGruppen.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { toast } from 'svelte-sonner';
@@ -53,25 +53,50 @@
     const gekuerzt = name.trim();
     if (!gekuerzt || amAnlegen) return;
     amAnlegen = true;
+    let gruppe: PrivateGruppe | null;
     try {
-      let gruppe = await gruppenApi.erstellen(gekuerzt);
-      if (!gruppe) return;
-      for (const userId of ausgewaehlt) {
+      gruppe = await gruppenApi.erstellen(gekuerzt);
+    } catch (e) {
+      toast.error(m.chats_new_group_create_failed(), { description: fehlerText(e) });
+      amAnlegen = false;
+      return;
+    }
+    if (!gruppe) {
+      amAnlegen = false;
+      return;
+    }
+    // Ab hier GIBT es die Gruppe beim Server. Ein gescheitertes Hinzufügen
+    // darf sie nicht mehr verschlucken: vorher brach der erste Fehler alles
+    // ab, die Gruppe fehlte in der Liste (Waise), und ein zweiter Versuch
+    // legte sie doppelt an. Jetzt kommt sie immer in die Liste und in den
+    // Chat; wer fehlt, lässt sich über das Gruppen-Blatt nachtragen.
+    privateGruppen.upsert(gruppe);
+    let fehlgeschlagen = 0;
+    let letzterFehler: unknown;
+    for (const userId of ausgewaehlt) {
+      try {
         const nachMitglied = await gruppenApi.mitgliedHinzufuegen(gruppe.id, userId);
         if (nachMitglied) gruppe = nachMitglied;
+      } catch (e) {
+        fehlgeschlagen++;
+        letzterFehler = e;
       }
-      privateGruppen.upsert(gruppe);
-      open = false;
-      // Die Aufrufer navigieren selbst (onSelectGruppe springt in den Chat) —
-      // hier ein zweites goto wäre nur Rennen um dieselbe Adresse.
-      onErstellt(gruppe.id);
-    } catch (e) {
-      toast.error(m.chats_new_group_create_failed(), {
-        description: e instanceof Error ? e.message : undefined
-      });
-    } finally {
-      amAnlegen = false;
     }
+    privateGruppen.upsert(gruppe);
+    amAnlegen = false;
+    open = false;
+    if (fehlgeschlagen > 0) {
+      toast.error(m.chats_new_group_mitglieder_fehlgeschlagen({ anzahl: fehlgeschlagen }), {
+        description: fehlerText(letzterFehler)
+      });
+    }
+    // Die Aufrufer navigieren selbst (onSelectGruppe springt in den Chat) —
+    // hier ein zweites goto wäre nur Rennen um dieselbe Adresse.
+    onErstellt(gruppe.id);
+  }
+
+  function fehlerText(e: unknown): string | undefined {
+    return e instanceof Error ? e.message : undefined;
   }
 
   function initialen(anzName: string): string {

@@ -26,6 +26,7 @@ from dcc_chat_gateway.routes.private_gruppen import (
 )
 from dcc_chat_gateway.schemas import SnowflakeId
 from dcc_chat_gateway.security import CurrentUser
+from dcc_chat_gateway.stand_ordnung import ist_neuer, plausibel
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +65,9 @@ async def gruppen_lesestand_setzen(
     gruppe, _ = await _gruppe_fuer_mitglied_laden(session, gruppe_id, user.id)
     if gruppe is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="gruppe_not_found")
+    # Wie ``dm_lesestand``: ein Stand in der Zukunft wird still übergangen.
+    if not plausibel(body.last_read_message_id):
+        return
 
     stmt = (
         pg_insert(GruppenLesestand)
@@ -78,8 +82,10 @@ async def gruppen_lesestand_setzen(
                 "last_read_message_id": pg_insert(GruppenLesestand).excluded.last_read_message_id,
                 "gelesen_am": func.now(),
             },
-            where=pg_insert(GruppenLesestand).excluded.last_read_message_id
-            > GruppenLesestand.last_read_message_id,
+            where=ist_neuer(
+                pg_insert(GruppenLesestand).excluded.last_read_message_id,
+                GruppenLesestand.last_read_message_id,
+            ),
         )
         .returning(GruppenLesestand.last_read_message_id)
     )

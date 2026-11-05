@@ -22,6 +22,7 @@ from dcc_chat_gateway.audit_log import write_audit_log
 from dcc_chat_gateway.community_categories import is_valid_category
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.guild_limits import clamp_to_ceilings, effective_wire_limits
+from dcc_chat_gateway.haekchen import kanaele_loeschen
 from dcc_chat_gateway.models import (
     AblagePulseObjekt,
     AblageZwischenlagerDatei,
@@ -434,6 +435,9 @@ async def delete_guild(
     for gast_link in gast_links:
         await entwerte_link(session, request, gast_link)
     await session.execute(sa_delete(GuestLink).where(GuestLink.guild_id == guild_id))
+    # Zustellstände der Ablage-Kanäle: polymorph ohne Fremdschlüssel, die
+    # Kaskade über ``channels`` erreicht sie nicht (``haekchen.py``).
+    await kanaele_loeschen(session, channel_ids)
     await session.delete(guild)
     await session.commit()
     # Purge MinIO objects only after the commit succeeds — a rollback must not

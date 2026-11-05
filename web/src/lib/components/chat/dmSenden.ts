@@ -51,7 +51,12 @@ export function sendeDmNachricht(auftrag: DmSendeAuftrag): void {
     pendingOptimisticTimeouts,
     melden
   } = auftrag;
-  if (!userId) return;
+  // Jeder Ausgang meldet sich genau einmal (`melden`), auch die frühen: ohne
+  // Meldung wartet der Verfasser auf ein Ergebnis, das nie kommt.
+  if (!userId) {
+    melden?.(false);
+    return;
+  }
 
   // Private Gruppe: eigener Weg, ohne Klartext-Rueckfall und ohne
   // Gegenstelle (es gibt viele). Antwort-Kennungen werden wie im DM-Weg
@@ -77,11 +82,14 @@ export function sendeDmNachricht(auftrag: DmSendeAuftrag): void {
         // Ersetzt oder gescheitert — eine übrig gebliebene Kopie muss weg.
         vorlaeufig.entfernen();
       }
-    });
+    }, () => importGescheitert(vorlaeufig, melden));
     return;
   }
 
-  if (!activeDM) return;
+  if (!activeDM) {
+    melden?.(false);
+    return;
+  }
   // Kanal und Gegenstelle JETZT festhalten und weiterreichen: der
   // verschluesselte Weg unten wartet auf einen dynamischen Import und
   // mehrere Netzwerk-Aufrufe, und bis dahin kann der Nutzer laengst in einem
@@ -173,7 +181,7 @@ export function sendeDmNachricht(auftrag: DmSendeAuftrag): void {
       // Schluesseln (nie angemeldet, oder alles verfallen).
       melden?.(false);
       toast.error(m.dm_page_send_failed(), { description: m.dm_page_senden_kein_geraet() });
-    });
+    }, () => importGescheitert(vorlaeufig, melden));
     return;
   }
 
@@ -187,4 +195,19 @@ export function sendeDmNachricht(auftrag: DmSendeAuftrag): void {
     route: cloudRoute,
     zeitgeber: pendingOptimisticTimeouts
   });
+}
+
+/**
+ * Der Sende-Weg liegt in einem nachgeladenen Teil. Scheitert das Nachladen
+ * (typisch: nach einem Deploy sind die alten Teile weg, die offene Seite
+ * kennt nur ihre Namen), blieb vorher die Uhr für immer stehen und niemand
+ * erfuhr davon. Gesendet wurde in diesem Fall sicher nichts.
+ */
+function importGescheitert(
+  vorlaeufig: { entfernen: () => void },
+  melden: ((ok: boolean) => void) | undefined
+): void {
+  vorlaeufig.entfernen();
+  melden?.(false);
+  toast.error(m.dm_page_send_failed());
 }

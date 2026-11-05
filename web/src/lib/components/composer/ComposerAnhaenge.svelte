@@ -9,6 +9,7 @@
   import KameraOverlay from '$lib/components/mobile/KameraOverlay.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { toast } from 'svelte-sonner';
+  import { cleanupRow, startUpload } from '$lib/attachments/upload.svelte';
   import { startUploadVerschluesselt } from '$lib/attachments/uploadVerschluesselt';
   import type { AnhangAngabe } from '$lib/krypto/nachrichtNutzlast';
   import { haptikTicken } from '$lib/platform/haptik';
@@ -17,6 +18,7 @@
     aktiv,
     handy,
     channelId,
+    verschluesselt,
     accept,
     onDateien,
     onSend
@@ -25,6 +27,10 @@
     aktiv: boolean;
     handy: boolean;
     channelId: string | null;
+    /** Derselbe Weg wie jeder andere Anhang dieses Verfassers
+     *  (`verfasserZeilen.svelte.ts`): verschlüsselt nur in DMs, Gruppen und
+     *  Ablage — ein Community-Kanal nimmt nur den Klartext-Upload an. */
+    verschluesselt: boolean;
     accept: string;
     onDateien: (files: FileList | File[]) => void;
     onSend: (text: string, attachmentIds: string[], anhaenge: AnhangAngabe[]) => void;
@@ -46,24 +52,32 @@
   async function sendeKameraDirekt(datei: File, text: string): Promise<void> {
     if (!channelId) return;
     videoSendelauf = true;
+    let ladung: ReturnType<typeof startUpload> | undefined;
     try {
-      const ladung = startUploadVerschluesselt(channelId, datei, () => {});
+      const starte = verschluesselt ? startUploadVerschluesselt : startUpload;
+      const lauf = starte(channelId, datei, () => {});
+      ladung = lauf;
       await new Promise<void>((resolve) => {
         const uhr = setInterval(() => {
-          if (ladung.row.state === 'done' || ladung.row.state === 'error') {
+          if (lauf.row.state === 'done' || lauf.row.state === 'error') {
             clearInterval(uhr);
             resolve();
           }
         }, 200);
       });
-      if (ladung.row.state === 'error' || !ladung.row.attachmentId || !ladung.row.anhang) {
-        toast.error(m.camera_nicht_verfuegbar());
+      const { state, attachmentId, anhang, errorMessage } = lauf.row;
+      // Der Upload ist gescheitert, nicht die Kamera — die Aufnahme liegt
+      // noch im Overlay und lässt sich erneut senden.
+      if (state === 'error' || !attachmentId || (verschluesselt && !anhang)) {
+        toast.error(m.kamera_senden_fehlgeschlagen(), { description: errorMessage ?? undefined });
         return;
       }
-      onSend(text, [ladung.row.attachmentId], [ladung.row.anhang]);
+      onSend(text, [attachmentId], anhang ? [anhang] : []);
       videoOverlay = false;
     } finally {
       videoSendelauf = false;
+      // Nur die Vorschau-URL freigeben — wie `nachDemSenden` im normalen Weg.
+      if (ladung) cleanupRow(ladung.row);
     }
   }
 

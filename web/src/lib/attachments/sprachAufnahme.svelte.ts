@@ -44,6 +44,10 @@ export class SprachAufnahme {
   /** Zählt Verwerfen-Aufrufe: ein Stopp, dessen Datei erst nach einem
    *  Verwerfen fertig wird (Gesprächswechsel), legt keine Vorschau mehr an. */
   #verworfen = 0;
+  /** Wahr, solange `starteAufnahme` noch auf Mikrofon und Recorder wartet.
+   *  `lauf` steht erst danach — ein zweiter Tipp in dieser Lücke startete
+   *  eine zweite Aufnahme, und die erste blieb mit offenem Mikro liegen. */
+  #startet = false;
 
   #tickerStarten(): void {
     this.#timer = setInterval(() => {
@@ -72,14 +76,17 @@ export class SprachAufnahme {
   }
 
   async starten(): Promise<void> {
-    if (this.lauf) return;
+    if (this.lauf || this.#startet) return;
     // iOS-Hülle: im Sprachkanal gehört das Mikrofon der Hülle.
     if (aufnahmeGesperrt('ton')) {
       toast.info(m.aufnahme_im_sprachkanal_gesperrt());
       return;
     }
+    const stand = this.#verworfen;
+    let lauf: LaufendeAufnahme;
+    this.#startet = true;
     try {
-      this.lauf = await starteAufnahme();
+      lauf = await starteAufnahme();
     } catch (e) {
       // iOS: eine abgelehnte Erlaubnis lässt sich nur in den Einstellungen
       // umkehren — den Weg nennen statt nur „nicht verfügbar".
@@ -94,7 +101,16 @@ export class SprachAufnahme {
       }
       toast.error(m.message_input_mikrofon_fehler());
       return;
+    } finally {
+      this.#startet = false;
     }
+    // Während des Wartens verworfen (Gesprächswechsel): die Aufnahme gehört
+    // nicht ins nächste Gespräch — Mikro gleich wieder zu.
+    if (stand !== this.#verworfen) {
+      brichAufnahmeAb(lauf);
+      return;
+    }
+    this.lauf = lauf;
     this.sekunden = 0;
     this.#tickerStarten();
   }

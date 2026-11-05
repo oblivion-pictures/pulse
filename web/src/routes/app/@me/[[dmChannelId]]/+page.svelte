@@ -52,7 +52,14 @@
   // Global-Friends Stufe 1: DMs leben in der Cloud. Alle DM-REST-Calls werden
   // explizit gegen den Cloud-Server geroutet (sonst laufen sie bei aktivem
   // Self-Host gegen den falschen Server), WS-DM-Ops gehen über `cloudGateway`.
-  const cloudRoute = { serverId: serversStore.cloudId() };
+  // Als Getter, nicht als Wert beim Laden der Seite: ist die Serverliste da
+  // noch leer (Direktlink), wäre `serverId` für immer undefined, und jeder
+  // Aufruf ginge an den AKTIVEN Server — bei aktivem Self-Host der falsche.
+  const cloudRoute = {
+    get serverId() {
+      return serversStore.cloudId();
+    }
+  };
 
   let dmChannelId = $derived(page.params.dmChannelId ?? '');
   let activeDM = $derived<DMChannel | undefined>(
@@ -415,9 +422,10 @@
 {/if}
 
 {#if aktiveGruppe && gruppenBlattOffen}
+  <!-- `replaceState`: „Zurück" soll nicht wieder in die verlassene Gruppe führen. -->
   <GruppenSheet
     gruppe={aktiveGruppe}
     bind:open={gruppenBlattOffen}
-    onVerlassen={() => goto('/app/@me')}
+    onVerlassen={() => goto('/app/@me', { replaceState: true })}
   />
 {/if}

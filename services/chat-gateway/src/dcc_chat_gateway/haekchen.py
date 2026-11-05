@@ -31,11 +31,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from dcc_chat_gateway.dm_vorschau import lesestaende
 from dcc_chat_gateway.friend_privacy import DEFAULT_LESEBESTAETIGUNGEN
 from dcc_chat_gateway.models import (
+    Channel,
     DirectMessageChannel,
     GruppenLesestand,
+    PrivateGroupMember,
     UserPrivacy,
     Zustellstand,
 )
+from dcc_chat_gateway.stand_ordnung import ist_neuer, plausibel
 
 
 @dataclass(frozen=True)
@@ -163,8 +166,11 @@ async def zustellstaende_speichern(
     GELTENDEN Stände (ein veralteter Wert schiebt nichts zurück, das
     Ereignis trägt dann den gespeicherten)."""
     geltend: list[tuple[int, int, int]] = []
+    erlaubt = await _noch_gueltige_paare(session, erlaubt)
     for kanal, absender, bis in eintraege:
-        if (kanal, absender) not in erlaubt or absender == empfaenger_id:
+        # Die ID im Umschlag wählt der Absender — ein Stand in der Zukunft
+        # sperrte sonst jeden späteren (``stand_ordnung.py``).
+        if (kanal, absender) not in erlaubt or absender == empfaenger_id or not plausibel(bis):
             continue
         einfuegen = pg_insert(Zustellstand).values(
             channel_id=kanal,
@@ -181,7 +187,7 @@ async def zustellstaende_speichern(
                     Zustellstand.empfaenger_user_id,
                 ],
                 set_={"zugestellt_bis": neu, "aktualisiert_am": func.now()},
-                where=neu > Zustellstand.zugestellt_bis,
+                where=ist_neuer(neu, Zustellstand.zugestellt_bis),
             )
         )
         gespeichert = (
@@ -195,6 +201,55 @@ async def zustellstaende_speichern(
         ).scalar_one()
         geltend.append((kanal, absender, gespeichert))
     return geltend
+
+
+async def _noch_gueltige_paare(
+    session, paare: set[tuple[int, int]]
+) -> set[tuple[int, int]]:
+    """Die (Kanal, Absender)-Paare, deren Kanal es noch gibt und in dem der
+    Absender noch steht.
+
+    Eine Zustellung überlebt ihren Kanal: löscht ein Konto sich, gehen seine
+    DMs samt Zustellständen weg (``kanaele_loeschen``), aber die Umschläge,
+    die der Gegenseite noch im Postfach liegen, bleiben bis zum Abholen. Ihre
+    Quittung schrieb dann einen Zustellstand für einen Kanal, den es nicht
+    mehr gibt — eine Waise ohne Fremdschlüssel, die keine Löschstelle mehr
+    erreicht (DM-Bughunt 2026-11-02). Dasselbe nach dem Auflösen einer Gruppe,
+    dem Verlassen des Absenders und dem Löschen eines Ablage-Kanals.
+    """
+    if not paare:
+        return set()
+    kanaele = {kanal for kanal, _ in paare}
+    dms = {
+        dm_id: (a, b)
+        for dm_id, a, b in await session.execute(
+            select(
+                DirectMessageChannel.id,
+                DirectMessageChannel.user_a_id,
+                DirectMessageChannel.user_b_id,
+            ).where(DirectMessageChannel.id.in_(kanaele))
+        )
+    }
+    mitglieder = set(
+        (
+            await session.execute(
+                select(PrivateGroupMember.gruppe_id, PrivateGroupMember.user_id).where(
+                    PrivateGroupMember.gruppe_id.in_(kanaele)
+                )
+            )
+        ).all()
+    )
+    # Ablage-Kanäle einer Community: hier zählt nur, dass der Kanal noch steht.
+    ablage = set(
+        (await session.execute(select(Channel.id).where(Channel.id.in_(kanaele)))).scalars()
+    )
+    return {
+        (kanal, absender)
+        for kanal, absender in paare
+        if absender in dms.get(kanal, ())
+        or (kanal, absender) in mitglieder
+        or kanal in ablage
+    }
 
 
 async def kanaele_loeschen(session, kanal_ids: Iterable[int]) -> None:

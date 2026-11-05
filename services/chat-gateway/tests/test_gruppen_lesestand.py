@@ -52,14 +52,14 @@ async def test_lesestand_monoton_und_ereignis_an_alle(
     # Erster Stand — Ereignis an beide Mitglieder.
     r = await client.put(
         f"/gruppen/{gruppe_id}/lesestand",
-        json={"last_read_message_id": 900000000000000100},
+        json={"last_read_message_id": 100000000000000100},
         headers=make_auth_header(t_b),
     )
     assert r.status_code == 204, r.text
     ereignisse = [(t, e) for (t, e) in captured_events if e.get("op") == "gruppe_lesestand"]
     assert {(t, e["user_id"], e["last_read_message_id"]) for (t, e) in ereignisse} == {
-        (str(uid_a), str(uid_b), "900000000000000100"),
-        (str(uid_b), str(uid_b), "900000000000000100"),
+        (str(uid_a), str(uid_b), "100000000000000100"),
+        (str(uid_b), str(uid_b), "100000000000000100"),
     }
 
     # Zurückrollen: der ältere Stand wird abgewiesen (Monotonie-Guard) und
@@ -67,11 +67,11 @@ async def test_lesestand_monoton_und_ereignis_an_alle(
     captured_events.clear()
     r = await client.put(
         f"/gruppen/{gruppe_id}/lesestand",
-        json={"last_read_message_id": 900000000000000050},
+        json={"last_read_message_id": 100000000000000050},
         headers=make_auth_header(t_b),
     )
     assert r.status_code == 204
-    assert not [e for (_t, e) in captured_events if e.get("op") == "gruppe_lesestand" and e["last_read_message_id"] == "900000000000000050"]
+    assert not [e for (_t, e) in captured_events if e.get("op") == "gruppe_lesestand" and e["last_read_message_id"] == "100000000000000050"]
 
 
 @pytest.mark.asyncio
