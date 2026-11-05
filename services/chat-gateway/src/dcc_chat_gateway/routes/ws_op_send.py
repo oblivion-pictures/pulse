@@ -3,15 +3,19 @@
 Extracted from the old in-line elif branch in ``routes/ws_ops.py``. Owns the
 full message-send path: payload validation, channel/permission resolution
 (fast path from the ``subscribed`` cache, slow path via DB lookup),
-DM friend-gate, SEND_MESSAGES + MENTION_EVERYONE gates, reply target
-validation, persistence + bump, mention persistence + fan-out + web-push,
-and the channel_bump/dm_bump envelope.
+SEND_MESSAGES + MENTION_EVERYONE gates, reply target validation,
+persistence, mention persistence + fan-out + web-push, and the
+channel_bump envelope.
 
 Behaviour-neutral relative to the pre-split branch: same error codes (4005,
 4006, 4008, 4013, 4014, 4290), same envelope shapes, same best-effort
 guards around Redis publishes and mention fan-out. 4015 added for Etappe E9
 (Umstellung, Entwurf §9): a legacy_readonly channel gets a begründende
-message instead of the generic 4006.
+message instead of the generic 4006. 4016 added 2026-11-05: plaintext into
+a DM is rejected (``DM_KLARTEXT_DETAIL``) — the send path below therefore
+only ever writes into community channels; its former DM branches (friend
+gate, ``last_message_id`` bump, ``dm_bump``, DM web-push) are gone, and with
+the friend gate this handler no longer emits 4014.
 """
 
 from __future__ import annotations
@@ -19,17 +23,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from dcc_shared.events import ChannelBumpEvent, DmBumpEvent
+from dcc_shared.events import ChannelBumpEvent
 from dcc_shared.permission_resolver import has_permission
 from dcc_shared.permissions import Permissions
-from sqlalchemy import or_, update
 
 from dcc_chat_gateway import ratelimit
 from dcc_chat_gateway.db import SessionLocal
-from dcc_chat_gateway.friend_helpers import (
-    block_exists_either_way,
-    friendship_exists,
-)
 from dcc_chat_gateway.mentions import (
     INT64_MAX,
     INT64_MIN,
@@ -49,7 +48,7 @@ from dcc_chat_gateway.models import (
     Message,
 )
 from dcc_chat_gateway.permissions import resolve_permissions
-from dcc_chat_gateway.push import fan_out_dm_push, fan_out_mention_push
+from dcc_chat_gateway.push import fan_out_mention_push
 from dcc_chat_gateway.routes._deps import (
     parse_snowflake_int as _channel_id,
     resolve_channel_for_user,
@@ -148,9 +147,6 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
         # behaviour.
         kind: str | None = None
         guild_id_for_bump: int | None = None
-        # (user_a_id, user_b_id) for the dm_bump envelope. Filled by a
-        # small SELECT when kind == "dm".
-        dm_pair: tuple[int, int] | None = None
         # Umstellung (Entwurf §9, Etappe E9): separat von ``ok`` verfolgt, damit
         # ein eingefrorener Alt-Kanal eine begründende Meldung bekommt statt
         # des generischen "channel not accessible" (4006) — anders als
@@ -162,15 +158,9 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
             guild_id_for_bump = gid
             if kind == "dm":
                 dm_obj = await session.get(DirectMessageChannel, cid_int)
-                if dm_obj is None:
-                    # DM channel deleted under us (e.g. concurrent account
-                    # purge). Treat as inaccessible — falling through to ok=True
-                    # would skip the friend/block gate (dm_pair stays None) and
-                    # persist an orphaned message row.
-                    ok = False
-                else:
-                    dm_pair = (dm_obj.user_a_id, dm_obj.user_b_id)
-                    ok = True
+                # DM channel deleted under us (e.g. concurrent account purge):
+                # inaccessible (4006), otherwise the plaintext rejection below.
+                ok = dm_obj is not None
             else:
                 # Die Mischzustand-Regel (Konzept §2a) gilt auf BEIDEN Pfaden.
                 # Sie stand bis zum 2026-08-31 nur im langsamen Zweig unten —
@@ -180,8 +170,8 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
                 # Pfad einspart, ist die Rechte-Aufloesung; die Kanalzeile
                 # selbst ist ein Primaerschluessel-Treffer und liegt nach dem
                 # ``subscribe`` derselben Sitzung ohnehin meist schon in der
-                # Identity Map. Der DM-Zweig darueber laedt aus demselben
-                # Grund seine Zeile.
+                # Identity Map. Der DM-Zweig darueber laedt seine Zeile nur
+                # noch, um 4006 (Kanal weg) von 4016 (Klartext) zu trennen.
                 ch_obj = await session.get(Channel, cid_int)
                 if ch_obj is None:
                     ok = False
@@ -201,7 +191,6 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
                         guild_id_for_bump = ch.guild_id
                 else:
                     ok = True
-                    dm_pair = (ch.user_a_id, ch.user_b_id)
         if legacy_blocked:
             await websocket.send_json(
                 {"op": "error", "code": 4015, "msg": LEGACY_READONLY_DETAIL}
@@ -217,30 +206,11 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
             # (``DM_KLARTEXT_DETAIL``, ``routes/messages.py``).
             await websocket.send_json({"op": "error", "code": 4016, "msg": DM_KLARTEXT_DETAIL})
             return
-        # Etappe 2 friend-gate for DMs (mirrors routes/messages.py
-        # POST /channels/{id}/messages). A historical DM (pre-friend-cut)
-        # cannot send any more. Errors share the same 4014 code so the FE
-        # can branch on the detail string.
-        if kind == "dm" and dm_pair is not None:
-            other = dm_pair[1] if dm_pair[0] == user.id else dm_pair[0]
-            if await block_exists_either_way(session, user.id, other):
-                await websocket.send_json(
-                    {"op": "error", "code": 4014, "msg": "blocked"}
-                )
-                return
-            if not await friendship_exists(session, user.id, other):
-                await websocket.send_json(
-                    {"op": "error", "code": 4014, "msg": "not_friends"}
-                )
-                return
-        # SEND_MESSAGES gate for guild channels. Mirrors the REST
-        # ``POST /channels/{id}/messages`` check; DMs bypass (no channel
-        # overwrites apply). VIEW_CHANNEL alone is not enough — a member
-        # may be allowed to read but not post.
+        # SEND_MESSAGES gate. Mirrors the REST ``POST /channels/{id}/messages``
+        # check. VIEW_CHANNEL alone is not enough — a member may be allowed
+        # to read but not post.
         # Resolved author permissions — drives the SEND_MESSAGES gate,
         # the MENTION_EVERYONE gate, and the @-mention validation below.
-        # Stays 0 for DMs (no permission overlay there — ``filter_to_valid``
-        # treats 0 as "no override").
         author_perms = 0
         if kind == "guild" and guild_id_for_bump is not None:
             author_perms = await resolve_permissions(
@@ -295,14 +265,12 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
         session.add(persisted)
         # Parse + persist @-mentions so WS-sent messages get the same pill
         # rendering / counters as the REST POST path. ``guild_id_for_bump``
-        # is the guild id for guild channels and None for DMs — exactly
-        # the scope filter_to_valid expects.
+        # is the channel's guild — the scope filter_to_valid expects.
         valid_mentions = await filter_to_valid(
             session,
             guild_id=guild_id_for_bump,
             author_permissions=author_perms,
             candidates=parse_markers(content),
-            dm_participant_ids=set(dm_pair) if dm_pair is not None else None,
         )
         await persist_for_message(
             session,
@@ -310,23 +278,6 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
             mentions=valid_mentions,
             replace=False,
         )
-        if kind == "dm":
-            # Bump last_message_id so the DM list can sort by recency.
-            # UPDATE-only to avoid loading the row. Guarded (Bughunt Runde 6):
-            # zwei parallele Sende-Commits konnten die Spalte sonst auf die
-            # AELTERE Snowflake zurückschreiben — die DM-Liste sortierte bis
-            # zum nächsten Senden falsch.
-            await session.execute(
-                update(DirectMessageChannel)
-                .where(DirectMessageChannel.id == cid_int)
-                .where(
-                    or_(
-                        DirectMessageChannel.last_message_id.is_(None),
-                        DirectMessageChannel.last_message_id < persisted.id,
-                    )
-                )
-                .values(last_message_id=persisted.id)
-            )
         await session.commit()
         await session.refresh(persisted)
     await websocket.send_json(
@@ -361,12 +312,10 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
             )
     except Exception:
         log.exception("ws mention fan-out failed for channel %s", cid)
-    if notified and kind == "guild":
+    if notified:
         # Same audience as the in-window ``mention_added`` envelope —
         # role + everyone pings already expanded + VIEW-filtered +
         # author-excluded. ``fan_out_mention_push`` never raises.
-        # Bughunt Runde 19: nur Guild-Kanäle — DMs bekommen den Push
-        # bereits über fan_out_dm_push (Doppel-Benachrichtigung).
         await fan_out_mention_push(
             user_ids=notified,
             author_name=user.username,
@@ -377,10 +326,7 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
             redis=getattr(manager, "redis", None),
         )
     # Mirror routes/messages.py: lightweight global bump so clients NOT
-    # subscribed to this channel can flag it as unread. Guild channels
-    # emit channel_bump; DMs emit dm_bump with the (a, b) pair so
-    # receiving clients can decide locally whether they're a member (no
-    # per-user routing in Phase 1).
+    # subscribed to this channel can flag it as unread.
     if guild_id_for_bump is not None:
         try:
             await manager.publish_guild_event(
@@ -393,29 +339,3 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
             )
         except Exception:
             log.exception("ws guild_event publish failed for channel %s", cid)
-    elif kind == "dm" and dm_pair is not None:
-        try:
-            await manager.publish_guild_event(
-                DmBumpEvent(
-                    channel_id=cid,
-                    user_a_id=str(dm_pair[0]),
-                    user_b_id=str(dm_pair[1]),
-                    message_id=str(persisted.id),
-                    author_id=str(user.id),
-                )
-            )
-        except Exception:
-            log.exception("ws dm_bump publish failed for channel %s", cid)
-        # Closed-browser web-push for the DM recipient (the other member).
-        # The dm_bump above only reaches tabs that are open. Mirrors
-        # routes/messages.py::post_message (same ordering — after the
-        # in-app bump). Best-effort — fan_out_dm_push never raises.
-        recipient_id = dm_pair[1] if dm_pair[0] == user.id else dm_pair[0]
-        if recipient_id != user.id:
-            await fan_out_dm_push(
-                recipient_id=recipient_id,
-                author_name=user.username,
-                channel_id=cid_int,
-                message_id=persisted.id,
-                manager=manager,
-            )

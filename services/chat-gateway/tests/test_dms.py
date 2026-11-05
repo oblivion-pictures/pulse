@@ -191,10 +191,12 @@ async def test_dm_klartext_senden_wird_abgelehnt(
 
     pushes: list[dict] = []
 
-    async def _fake_push(**kwargs):
-        pushes.append(kwargs)
+    async def _fake_push(*args, **kwargs):
+        pushes.append({"args": args, **kwargs})
 
-    monkeypatch.setattr(push, "fan_out_dm_push", _fake_push)
+    # Jeder Web-Push läuft über ``_fan_out_payload``; der Erwähnungs-Push
+    # zusätzlich über seinen eigenen Namen in der Route.
+    monkeypatch.setattr(push, "_fan_out_payload", _fake_push)
     monkeypatch.setattr(messages_routen, "fan_out_mention_push", _fake_push)
 
     t_a, _, t_b, uid_b, dm_id = await _make_dm(client, _auth_signer, friend_pair)

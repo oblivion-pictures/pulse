@@ -64,7 +64,6 @@ from dcc_chat_gateway.security import CurrentUser
 from dcc_chat_gateway.snowflake import next_id
 from dcc_shared.events import (
     ChannelBumpEvent,
-    DmBumpEvent,
     MessageDeleteData,
     MessageDeleteEvent,
     MessageUpdateEvent,
@@ -138,10 +137,15 @@ async def post_message(
     request: Request,
 ):
     kind, ch = await resolve_channel_or_raise(session, channel_id, current.id)
-    if kind == "guild" and ch.type != CHANNEL_TYPE_TEXT:
-        # Voice channels reject text posts. DM channels are always text-only.
+    if kind == "dm":
+        # Klartext in DMs nimmt der Server nicht mehr an (``DM_KLARTEXT_DETAIL``)
+        # — verschlüsselt geht es über das Postfach, nicht über diese Route.
+        # Alles darunter gilt damit nur noch für Community-Kanäle.
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=DM_KLARTEXT_DETAIL)
+    if ch.type != CHANNEL_TYPE_TEXT:
+        # Voice channels reject text posts.
         raise HTTPException(404, detail="text channel not found")
-    if kind == "guild" and getattr(ch, "ablage", False):
+    if getattr(ch, "ablage", False):
         # Mischzustand-Regel (Konzept §2a): Ablage-Kanaele sind serverblind.
         # Klartext wird nicht stillschweigend akzeptiert — der Klient
         # verschluesselt und konsolidiert selbst; der Server fuhrt nur
@@ -150,31 +154,19 @@ async def post_message(
             403,
             detail="ablage channel: content is end-to-end encrypted, not accepted here",
         )
-    if kind == "guild" and getattr(ch, "legacy_readonly", False):
+    if getattr(ch, "legacy_readonly", False):
         # Umstellung (Entwurf §9, Etappe E9): dieser Alt-Kanal ist eingefroren
         # — Verlauf bleibt lesbar, neue Nachrichten nimmt nur noch ein
         # Ablage-Kanal an. Begruendende Meldung statt nacktem 403, s. Aufgabe.
         raise HTTPException(403, detail=LEGACY_READONLY_DETAIL)
-    if kind == "dm":
-        # Klartext in DMs nimmt der Server nicht mehr an (``DM_KLARTEXT_DETAIL``)
-        # — verschlüsselt geht es über das Postfach, nicht über diese Route.
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=DM_KLARTEXT_DETAIL)
-    # SEND_MESSAGES + MENTION_EVERYONE gates (guild channels only — DMs have
-    # no permission overlay). Resolve once and bit-check locally.
-    perms = 0  # DM-path default; mentions.filter_to_valid treats it as
-    # "no MENTION_EVERYONE override" (DMs have no roles anyway).
-    if kind == "guild":
-        perms = await resolve_permissions(
-            session, current, ch.guild_id, channel_id=channel_id
-        )
-        if not has_permission(perms, Permissions.SEND_MESSAGES):
-            raise HTTPException(403, detail="missing permission: SEND_MESSAGES")
-        if _MENTION_EVERYONE_RE.search(payload.content) and not has_permission(
-            perms, Permissions.MENTION_EVERYONE
-        ):
-            raise HTTPException(
-                403, detail="missing permission: MENTION_EVERYONE"
-            )
+    # SEND_MESSAGES + MENTION_EVERYONE gates — resolve once and bit-check locally.
+    perms = await resolve_permissions(session, current, ch.guild_id, channel_id=channel_id)
+    if not has_permission(perms, Permissions.SEND_MESSAGES):
+        raise HTTPException(403, detail="missing permission: SEND_MESSAGES")
+    if _MENTION_EVERYONE_RE.search(payload.content) and not has_permission(
+        perms, Permissions.MENTION_EVERYONE
+    ):
+        raise HTTPException(403, detail="missing permission: MENTION_EVERYONE")
     if not ratelimit.check("message", current.id):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, detail="rate limit exceeded"
@@ -262,29 +254,17 @@ async def post_message(
     # ping anyone (non-member users, non-mentionable roles without
     # MENTION_EVERYONE) are silently skipped. ``everyone`` already
     # 403's upstream if the author lacks the bit.
-    guild_id_for_mentions = ch.guild_id if kind == "guild" else None
-    dm_participant_ids = (
-        {ch.user_a_id, ch.user_b_id} if kind == "dm" else None
-    )
+    guild_id_for_mentions = ch.guild_id
     raw_mentions = parse_markers(payload.content)
     valid_mentions = await filter_to_valid(
         session,
         guild_id=guild_id_for_mentions,
         author_permissions=perms,
         candidates=raw_mentions,
-        dm_participant_ids=dm_participant_ids,
     )
     await persist_for_message(
         session, message_id=msg.id, mentions=valid_mentions, replace=False
     )
-
-    if kind == "dm":
-        # Bump last_message_id so the DM list can sort by recency.
-        # Nur VORWÄRTS (Bughunt Runde 6): ein paralleler Send-Commit konnte
-        # die Spalte sonst auf die ältere Snowflake zurückschreiben.
-        if ch.last_message_id is None or ch.last_message_id < msg.id:
-            ch.last_message_id = msg.id
-            session.add(ch)
     await session.commit()
     await session.refresh(msg)
 
@@ -318,11 +298,7 @@ async def post_message(
     # sync pywebpush calls to threads and batches its DB writes, so it does not
     # block the event loop meaningfully. An unreferenced asyncio.create_task can
     # be GC'd before it runs and makes dead-subscription cleanup non-deterministic.
-    # Bughunt Runde 19: in DMs deckt fan_out_dm_push (unten) den Empfänger
-    # bereits ab — der zusätzliche Mention-Push lieferte dieselbe Nachricht
-    # zweimal (renotify=true → doppelter Ton/Vibration; im Electron-Weg
-    # zwei OS-Toasts). Mention-Push nur für Guild-Kanäle.
-    if notified and kind == "guild":
+    if notified:
         await fan_out_mention_push(
             user_ids=notified,
             author_name=current.username,
@@ -334,50 +310,18 @@ async def post_message(
         )
     mgr = getattr(request.app.state, "connection_manager", None)
     if mgr is not None:
-        if kind == "guild":
-            # Global "channel had activity" envelope on guild:events so
-            # clients NOT subscribed to this channel (i.e. everyone except
-            # whoever is currently viewing it) can flag the channel as
-            # unread in the sidebar. Payload is intentionally minimal —
-            # no content.
-            await mgr.publish_guild_event(
-                ChannelBumpEvent(
-                    guild_id=str(ch.guild_id),
-                    channel_id=str(channel_id),
-                    message_id=str(msg.id),
-                    author_id=str(current.id),
-                )
+        # Global "channel had activity" envelope on guild:events so clients
+        # NOT subscribed to this channel (i.e. everyone except whoever is
+        # currently viewing it) can flag the channel as unread in the
+        # sidebar. Payload is intentionally minimal — no content.
+        await mgr.publish_guild_event(
+            ChannelBumpEvent(
+                guild_id=str(ch.guild_id),
+                channel_id=str(channel_id),
+                message_id=str(msg.id),
+                author_id=str(current.id),
             )
-        else:
-            # DM equivalent. ``user_a_id``/``user_b_id`` are carried in the
-            # envelope so each receiving client can decide locally whether
-            # it's a member (no server-side per-user routing in Phase 1 —
-            # this fans to every connected socket). MVP-acceptable for
-            # low user counts; tighten later if it matters.
-            await mgr.publish_guild_event(
-                DmBumpEvent(
-                    channel_id=str(channel_id),
-                    user_a_id=str(ch.user_a_id),
-                    user_b_id=str(ch.user_b_id),
-                    message_id=str(msg.id),
-                    author_id=str(current.id),
-                )
-            )
-    # Closed-browser web-push for the DM recipient (the other member). The
-    # WS dm_bump above only reaches tabs that are open. Out-of-band + best-
-    # effort — never blocks or fails the send.
-    if kind == "dm":
-        recipient_id = ch.user_b_id if ch.user_a_id == current.id else ch.user_a_id
-        if recipient_id != current.id:
-            from dcc_chat_gateway.push import fan_out_dm_push
-
-            await fan_out_dm_push(
-                recipient_id=recipient_id,
-                author_name=current.username,
-                channel_id=channel_id,
-                message_id=msg.id,
-                manager=mgr,
-            )
+        )
     msg.reactions = []  # type: ignore[attr-defined]
     msg.attachments = atts  # type: ignore[attr-defined]
     msg.mentions = mentions_serial  # type: ignore[attr-defined]
@@ -412,33 +356,28 @@ async def edit_message(
 
     # SEND_MESSAGES + MENTION_EVERYONE gates: editing publishes content the
     # same way posting does — a read-only channel must reject edits too, and
-    # ``@everyone`` smuggled in via edit needs the same bit. Guild channels
-    # only; DMs bypass.
-    perms = 0  # DM-path default — see notes in post_message.
-    if kind == "guild":
-        # Bughunt Runde 4: derselbe Frost wie post_message — eingefrorene
-        # Alt-Kanäle bleiben lesbar, aber nicht BESCHREIBBAR, und Bearbeiten
-        # ist Schreiben (vorher ließ sich eingefrorener Verlauf via PATCH
-        # umschreiben, während Posten korrekt 403 gab). Ablage-Kanäle nehmen
-        # ohnehin keinen Klartext an (Mischzustand-Regel, Konzept §2a).
-        if getattr(ch, "legacy_readonly", False):
-            raise HTTPException(403, detail=LEGACY_READONLY_DETAIL)
-        if getattr(ch, "ablage", False):
-            raise HTTPException(
-                403,
-                detail="ablage channel: content is end-to-end encrypted, not accepted here",
-            )
-        perms = await resolve_permissions(
-            session, current, ch.guild_id, channel_id=msg.channel_id
+    # ``@everyone`` smuggled in via edit needs the same bit. Ab hier ist es
+    # ein Community-Kanal (DMs: 403 oben).
+    #
+    # Bughunt Runde 4: derselbe Frost wie post_message — eingefrorene
+    # Alt-Kanäle bleiben lesbar, aber nicht BESCHREIBBAR, und Bearbeiten
+    # ist Schreiben (vorher ließ sich eingefrorener Verlauf via PATCH
+    # umschreiben, während Posten korrekt 403 gab). Ablage-Kanäle nehmen
+    # ohnehin keinen Klartext an (Mischzustand-Regel, Konzept §2a).
+    if getattr(ch, "legacy_readonly", False):
+        raise HTTPException(403, detail=LEGACY_READONLY_DETAIL)
+    if getattr(ch, "ablage", False):
+        raise HTTPException(
+            403,
+            detail="ablage channel: content is end-to-end encrypted, not accepted here",
         )
-        if not has_permission(perms, Permissions.SEND_MESSAGES):
-            raise HTTPException(403, detail="missing permission: SEND_MESSAGES")
-        if _MENTION_EVERYONE_RE.search(payload.content) and not has_permission(
-            perms, Permissions.MENTION_EVERYONE
-        ):
-            raise HTTPException(
-                403, detail="missing permission: MENTION_EVERYONE"
-            )
+    perms = await resolve_permissions(session, current, ch.guild_id, channel_id=msg.channel_id)
+    if not has_permission(perms, Permissions.SEND_MESSAGES):
+        raise HTTPException(403, detail="missing permission: SEND_MESSAGES")
+    if _MENTION_EVERYONE_RE.search(payload.content) and not has_permission(
+        perms, Permissions.MENTION_EVERYONE
+    ):
+        raise HTTPException(403, detail="missing permission: MENTION_EVERYONE")
 
     if not ratelimit.check("message", current.id):
         raise HTTPException(
@@ -523,10 +462,7 @@ async def edit_message(
     # Re-compute mentions from the edited content. Read the pre-edit set
     # first so we can fire ``mention_added`` only for *newly* added user
     # pings (an edit that just fixes a typo must not re-notify everyone).
-    guild_id_for_mentions = ch.guild_id if kind == "guild" else None
-    dm_participant_ids = (
-        {ch.user_a_id, ch.user_b_id} if kind == "dm" else None
-    )
+    guild_id_for_mentions = ch.guild_id
     pre_existing = await mentions_for(session, [msg.id])
     # Full pre-edit marker set ``(type, id)`` — drives the "only notify for
     # *newly* added pings" diff below (a typo-fix edit must not re-ping).
@@ -539,7 +475,6 @@ async def edit_message(
         guild_id=guild_id_for_mentions,
         author_permissions=perms,
         candidates=raw_mentions,
-        dm_participant_ids=dm_participant_ids,
     )
     await persist_for_message(
         session, message_id=msg.id, mentions=valid_mentions, replace=True
@@ -576,11 +511,7 @@ async def edit_message(
             guild_id=guild_id_for_mentions,
             author_id=current.id,
         )
-        # Wie beim Senden (Bughunt Runde 19, s. ``post_message``): nur
-        # Community-Kanäle. In einer DM trug dieser Push sonst den KLARTEXT
-        # der bearbeiteten Nachricht zum Push-Dienst — der DM-Push sagt nur
-        # „Neue Direktnachricht“ (Push-Bughunt 2026-10-20).
-        if notified and kind == "guild":
+        if notified:
             await fan_out_mention_push(
                 user_ids=notified,
                 author_name=current.username,

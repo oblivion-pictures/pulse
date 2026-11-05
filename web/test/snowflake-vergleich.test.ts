@@ -51,7 +51,8 @@ test('gleiche Laenge, reiner Zeitunterschied bleibt korrekt (bestehendes Verhalt
 
 test('eine vorlaeufige `tmp-`-ID laesst den Vergleich nicht abstuerzen', () => {
   // Drittes ID-Schema, das der Vergleich bisher nicht kannte:
-  // `chat/dmKlartextSenden.ts:38` vergibt fuer die optimistische Kopie einer
+  // `chat/kanalNachrichtenAktionen.ts` (und damals `chat/dmKlartextSenden.ts`)
+  // vergibt fuer die optimistische Kopie einer
   // noch nicht bestaetigten Nachricht `tmp-${nonce}` mit
   // `nonce = n-${Date.now()}-${4 Hexstellen}`. Der Modulkopf von
   // `snowflakeZeit.ts` sprach von genau ZWEI Schemata; auf dieses dritte

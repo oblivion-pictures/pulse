@@ -24,28 +24,6 @@ def captured(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_dm_push_payload(captured):
-    """Security-Audit 2026-09-16: der DM-Push ist inhaltsfrei — der Push-
-    Dienst (Drittanbieter) sieht NIE den Nachrichtentext, nur Absender und
-    Kanal (gleiche Grenze wie die verschluesselte Variante unten)."""
-    await push.fan_out_dm_push(
-        recipient_id=42,
-        author_name="alice",
-        channel_id=999,
-        message_id=1000,
-    )
-    assert len(captured) == 1
-    users, payload = captured[0]
-    assert users == {42}
-    assert payload["type"] == "dm"
-    assert payload["title"] == "alice"
-    assert payload["channel_id"] == "999"
-    assert payload["message_id"] == "1000"
-    assert payload["guild_id"] is None  # SW routes to /app/@me/<channel>
-    assert payload["body"] == "Neue Direktnachricht"
-
-
-@pytest.mark.asyncio
 async def test_dm_push_encrypted_payload_traegt_keinen_inhalt(captured):
     """Bughunt 2026-08-28 Runde 4, Befund 1: die verschluesselte DM hat
     KEINEN Klartext auf dem Server — der Push darf deshalb weder Inhalt noch

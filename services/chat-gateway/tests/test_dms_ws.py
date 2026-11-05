@@ -123,15 +123,19 @@ async def test_ws_dm_klartext_wird_abgelehnt(ws_app, _auth_signer, monkeypatch):
     Datenbank, der nächste ``ready`` zeigt keine letzte Nachricht.
     """
     import dcc_chat_gateway.routes.ws_op_send as ws_op_send
+    from dcc_chat_gateway import push
     from dcc_chat_gateway.models import DM_KLARTEXT_DETAIL
     from sqlalchemy import create_engine, text
 
     pushes: list[dict] = []
 
-    async def _fake_fan_out_dm_push(**kwargs):
-        pushes.append(kwargs)
+    async def _fake_push(*args, **kwargs):
+        pushes.append({"args": args, **kwargs})
 
-    monkeypatch.setattr(ws_op_send, "fan_out_dm_push", _fake_fan_out_dm_push)
+    # Jeder Web-Push läuft über ``_fan_out_payload``; der Erwähnungs-Push
+    # zusätzlich über seinen eigenen Namen im Sendeweg.
+    monkeypatch.setattr(push, "_fan_out_payload", _fake_push)
+    monkeypatch.setattr(ws_op_send, "fan_out_mention_push", _fake_push)
     erwartet = {"op": "error", "code": 4016, "msg": DM_KLARTEXT_DETAIL}
 
     def _run():

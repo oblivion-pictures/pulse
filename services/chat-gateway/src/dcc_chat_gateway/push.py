@@ -200,51 +200,6 @@ async def _fan_out_payload(user_ids: set[int], payload: dict) -> None:
         log.exception("_fan_out_payload failed")
 
 
-async def fan_out_dm_push(
-    *,
-    recipient_id: int,
-    author_name: str,
-    channel_id: int,
-    message_id: int,
-    manager=None,
-) -> None:
-    """Push a closed-browser notification for a new DM to its recipient.
-
-    The in-app path (``dm_bump`` WS frame) covers the tab-open case; this
-    covers the tab-closed case. ``guild_id: None`` makes the SW route the
-    click to ``/app/@me/<channel_id>``. DND is honoured SW-side; the per-type
-    ``onDM`` toggle gates the in-page path (matching mention push).
-
-    Security-Audit 2026-09-16: ``body`` ist inhaltsfrei. Der Push-Dienst
-    (Drittanbieter) sah bisher den Klartext der DM — dieselbe Information wie
-    im verschlüsselten Postfach-Weg (``fan_out_dm_push_encrypted``), das
-    Absender und Kanal nennt, aber nie Inhalt.
-    ``manager`` (ConnectionManager) reicht Redis und die Socket-Zählung an
-    das FCM-Bein: wer dort welchen Push bekommt, entscheidet
-    ``fcm_empfaenger.empfangende_geraete`` (nur iOS-Bauten ohne die Zusage
-    ``dm_vordergrund`` hängen noch an der wachen Verbindung).
-    """
-    payload = {
-        "type": "dm",
-        "title": author_name or "Pulse",
-        "body": "Neue Direktnachricht",
-        "channel_id": str(channel_id),
-        "message_id": str(message_id),
-        "guild_id": None,
-        "author_name": author_name or "",
-        "icon": None,
-    }
-    await _fan_out_payload({recipient_id}, payload)
-    # Das Handy-Bein wartet (``fcm_warteschlange.py``); der Web-Push oben nicht.
-    await fcm_warteschlange.vormerken(
-        recipient_ids={recipient_id},
-        author_name=author_name,
-        channel_id=channel_id,
-        manager=manager,
-        message_id=message_id,
-    )
-
-
 async def fan_out_dm_push_encrypted(
     *,
     recipient_ids: set[int],
@@ -258,15 +213,19 @@ async def fan_out_dm_push_encrypted(
     """Push eine geschlossene-Browser-Benachrichtigung fuer eine ende-zu-
     ende-verschluesselte DM aus.
 
-    Gegenstueck zu ``fan_out_dm_push`` fuer den Postfach-Weg
-    (``routes/postfach.py``): der Server oeffnet den Umschlag nie und kennt
-    deshalb weder Klartext noch Nachrichten-Id — ``body`` ist derselbe
+    Der einzige DM-Push: Klartext in DMs nimmt der Server seit 2026-11-05
+    nicht mehr an, das Gegenstück für den Klartext-Weg ist damit entfallen.
+    Gerufen vom Postfach-Weg (``routes/postfach.py``): der Server oeffnet den
+    Umschlag nie und kennt deshalb weder Klartext noch Nachrichten-Id — ``body`` ist derselbe
     inhaltsfreie Text wie die In-App-Benachrichtigung des Klienten fuer
     diesen Fall (``chat_handler_dm_notification_body`` im Paraglide-
     Katalog: "Neue Direktnachricht"), ``message_id`` bleibt ``null``. Absender
-    und Kanal duerfen genannt werden — das tut der Klartext-Weg auch.
+    und Kanal duerfen genannt werden.
 
-    ``manager`` gated das FCM-Bein wie in ``fan_out_dm_push``. ``art``
+    ``manager`` (ConnectionManager) reicht Redis und die Socket-Zählung an
+    das FCM-Bein: wer dort welchen Push bekommt, entscheidet
+    ``fcm_empfaenger.empfangende_geraete`` (nur iOS-Bauten ohne die Zusage
+    ``dm_vordergrund`` hängen noch an der wachen Verbindung). ``art``
     (``dm``/``gruppe``) und ``zustellungen`` (je Empfaenger die Zustellungs-IDs
     je Geraet) braucht die Warteschlange des Handy-Beins fuer die Frage, ob
     die Nachricht inzwischen woanders gelesen wurde (``fcm_gelesen.py``).
@@ -321,7 +280,6 @@ __all__ = [
     "MENTION_PAYLOAD_SCHEMA",
     "VapidKeys",
     "ensure_vapid",
-    "fan_out_dm_push",
     "fan_out_dm_push_encrypted",
     "fan_out_community_invite_push",
     "fan_out_friend_push",

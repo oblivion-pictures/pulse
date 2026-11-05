@@ -3,7 +3,8 @@
  * DREI verschiedene ID-Schemata gemischt auftreten koennen: echte
  * Server-Snowflakes (`dcc_shared/snowflake.py`), lokal vergebene Kennungen
  * aus `krypto/senden.ts::lokaleNachrichtId()` UND die vorlaeufige `tmp-`-ID
- * einer noch nicht bestaetigten Nachricht (`chat/dmKlartextSenden.ts`).
+ * einer noch nicht bestaetigten Nachricht (`chat/kanalNachrichtenAktionen.ts`,
+ * `chat/vorlaeufigVerschluesselt.ts`).
  *
  * Das dritte kam nicht als Erweiterung dazu, sondern war von Anfang an da
  * und wurde uebersehen: bis zum 2026-08-31 sprach dieser Kopf von zweien,
@@ -50,7 +51,8 @@ export const SNOWFLAKE_ZEIT_SHIFT = 22n; // WORKER_BITS(10) + SEQ_BITS(12)
 const LOKALE_ID_LAENGE = 19; // lokaleNachrichtId(): 13-stelliger Date.now() + 6 Zufallsstellen (unter int64, Befund 2026-09-02)
 const LOKALE_ID_LAENGE_ALT = 20; // dieselbe Form bis 2026-09-02 mit 7 Zufallsstellen — Altbestand, s. zeitOderNull
 const LOKALE_ID_ZEIT_STELLEN = 13;
-/** `chat/dmKlartextSenden.ts`: `tmp-${nonce}` mit `nonce = n-${Date.now()}-${4
+/** `chat/kanalNachrichtenAktionen.ts`, `chat/vorlaeufigVerschluesselt.ts`:
+ *  `tmp-${nonce}` mit `nonce = n-${Date.now()}-${4
  *  Hexstellen}` — die optimistische Kopie einer noch nicht bestaetigten
  *  Nachricht. Das dritte Schema; der Modulkopf sprach frueher von zweien. */
 const VORLAEUFIG_PRAEFIX = 'tmp-n-';

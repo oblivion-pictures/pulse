@@ -58,8 +58,9 @@ function ungeleseneChats(): number {
  * Push fortschreibt, sonst springt sie bei jeder Korrektur. Und der Server
  * schreibt nur fort, was er auch hinausschickt — FCM-Pushes gehen heute für
  * DMs und private Gruppen raus, nicht für Community-Nachrichten
- * (`push.py`: `fan_out_dm_push` und `fan_out_dm_push_encrypted` sind die
- * beiden Aufrufer von `fan_out_fcm_dm_push`). Wer das ändert, zieht BEIDE
+ * (`push.py`: `fan_out_dm_push_encrypted` führt — seit dem Ende des
+ * Klartext-Wegs am 2026-11-05 allein — über die Warteschlange zu
+ * `fan_out_fcm_dm_push`). Wer das ändert, zieht BEIDE
  * Seiten nach — sonst zeigt das Icon zwei verschiedene Wahrheiten,
  * abhängig davon, ob die App gerade wach war.
  *

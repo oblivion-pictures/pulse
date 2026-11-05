@@ -137,7 +137,6 @@
   // laeuft der switchTo-Effekt (der leert ebenfalls).
   // svelte-ignore state_referenced_locally
   if (dmChannelId) kanalWechsel.vorbereiten(dmChannelId);
-  const pendingOptimisticTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
   // Mirrors the channel-page effect: when the DM id in the URL changes, load
   // messages + subscribe + leave the previous one. The DM record itself is
@@ -180,8 +179,6 @@
   });
 
   onDestroy(() => {
-    for (const handle of pendingOptimisticTimeouts.values()) clearTimeout(handle);
-    pendingOptimisticTimeouts.clear();
     kanalWechsel.aufraeumen();
   });
 
@@ -216,12 +213,14 @@
     }
   }
 
-  // Sende-Einstieg (Gruppe / verschluesselte DM / Klartext-DM) ausgelagert —
-  // s. `chat/dmSenden.ts`.
+  // Sende-Einstieg (Gruppe / verschluesselte DM) ausgelagert — s.
+  // `chat/dmSenden.ts`. Die Anhang-IDs des Klartext-Wegs braucht hier niemand
+  // mehr (verschlüsselt fahren die Anhänge in `anhaenge`); der Parameter bleibt,
+  // weil `onSend` dieselbe Form hat wie im Community-Kanal.
   function sendMessage(
     text: string,
     replyToId: string | null,
-    attachmentIds: string[],
+    _attachmentIds: string[],
     anhaenge: AnhangAngabe[] = [],
     melden?: (ok: boolean) => void
   ) {
@@ -232,11 +231,7 @@
       visibleMessages,
       text,
       replyToId,
-      attachmentIds,
       anhaenge,
-      e2eDmsEnabled: E2E_DMS_ENABLED,
-      cloudRoute,
-      pendingOptimisticTimeouts,
       melden
     });
   }
