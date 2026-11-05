@@ -21,10 +21,6 @@ from sqlalchemy import delete, select, update as sa_update
 from dcc_chat_gateway import ratelimit
 from dcc_chat_gateway.audit_log import write_audit_log
 from dcc_chat_gateway.db import SessionDep
-from dcc_chat_gateway.friend_helpers import (
-    block_exists_either_way,
-    friendship_exists,
-)
 from dcc_chat_gateway.mentions import (
     MENTION_EVERYONE_RE as _MENTION_EVERYONE_RE,
     fan_out_mention_events,
@@ -42,6 +38,7 @@ from dcc_chat_gateway.message_helpers import (
 from dcc_chat_gateway.mentions import serialize_mentions
 from dcc_chat_gateway.models import (
     CHANNEL_TYPE_TEXT,
+    DM_KLARTEXT_DETAIL,
     LEGACY_READONLY_DETAIL,
     Message,
     MessageAttachment,
@@ -159,18 +156,9 @@ async def post_message(
         # Ablage-Kanal an. Begruendende Meldung statt nacktem 403, s. Aufgabe.
         raise HTTPException(403, detail=LEGACY_READONLY_DETAIL)
     if kind == "dm":
-        # Etappe 2 friend-gate: a DM send requires both sides to still be
-        # friends with no block in either direction. Pre-existing rows from
-        # Phase 1 stay in the table but become send-locked (tombstone) when
-        # one party unfriends or blocks. The 403 detail mirrors the create
-        # endpoint so clients can branch on the same string set.
-        other = ch.user_b_id if ch.user_a_id == current.id else ch.user_a_id
-        if await block_exists_either_way(session, current.id, other):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="blocked")
-        if not await friendship_exists(session, current.id, other):
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN, detail="not_friends"
-            )
+        # Klartext in DMs nimmt der Server nicht mehr an (``DM_KLARTEXT_DETAIL``)
+        # — verschlüsselt geht es über das Postfach, nicht über diese Route.
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=DM_KLARTEXT_DETAIL)
     # SEND_MESSAGES + MENTION_EVERYONE gates (guild channels only — DMs have
     # no permission overlay). Resolve once and bit-check locally.
     perms = 0  # DM-path default; mentions.filter_to_valid treats it as
@@ -416,11 +404,9 @@ async def edit_message(
     # existence to non-members (existence oracle).
     kind, ch = await resolve_channel_or_raise(session, msg.channel_id, current.id)
     if kind == "dm":
-        other = ch.user_b_id if ch.user_a_id == current.id else ch.user_a_id
-        if await block_exists_either_way(session, current.id, other):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="blocked")
-        if not await friendship_exists(session, current.id, other):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="not_friends")
+        # Alter Klartext-Verlauf bleibt lesbar, wird aber nicht mehr
+        # umgeschrieben — Bearbeiten ist Schreiben (``DM_KLARTEXT_DETAIL``).
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=DM_KLARTEXT_DETAIL)
     if msg.author_id != current.id:
         raise HTTPException(403, detail="only the author can edit")
 

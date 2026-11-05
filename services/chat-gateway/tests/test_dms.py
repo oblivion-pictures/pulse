@@ -155,6 +155,11 @@ async def test_get_dm_channel_not_found(client, _auth_signer):
 # DM messages reuse the polymorphic /channels/{id}/messages endpoint. These
 # tests pin the polymorphism: same routes, same wire shape, separate access
 # rules (DM membership instead of guild membership).
+#
+# Seit 2026-11-05 nimmt der Server Klartext in DMs nicht mehr an
+# (``DM_KLARTEXT_DETAIL``); verschlüsselt geht es über das Postfach. Lesen,
+# Löschen, Vorschau usw. betreffen nur noch den Altbestand — den legt die
+# Fixture ``dm_altnachricht`` direkt in die Datenbank.
 
 
 async def _make_dm(client, _auth_signer, friend_pair):
@@ -168,24 +173,76 @@ async def _make_dm(client, _auth_signer, friend_pair):
 
 
 @pytest.mark.asyncio
-async def test_dm_post_and_list_messages(client, _auth_signer, friend_pair):
-    t_a, _, t_b, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+async def test_dm_klartext_senden_wird_abgelehnt(
+    client, session_factory, _auth_signer, friend_pair, monkeypatch
+):
+    """Klartext in eine DM: 403 mit ``DM_KLARTEXT_DETAIL`` — und keine
+    einzige Nebenwirkung des früheren Sendewegs.
+
+    Der Inhalt erwähnt das Gegenüber UND einen Fremden und antwortet auf eine
+    Altnachricht: früher wurde daraus eine Zeile, Erwähnungen (für den
+    Fremden gefiltert), ein ``last_message_id``-Schub, ein DM-Push. Nichts
+    davon darf mehr entstehen.
+    """
+    from dcc_chat_gateway import push
+    from dcc_chat_gateway.models import DM_KLARTEXT_DETAIL, Message, MessageMention
+    from dcc_chat_gateway.routes import messages as messages_routen
+    from sqlalchemy import func, select
+
+    pushes: list[dict] = []
+
+    async def _fake_push(**kwargs):
+        pushes.append(kwargs)
+
+    monkeypatch.setattr(push, "fan_out_dm_push", _fake_push)
+    monkeypatch.setattr(messages_routen, "fan_out_mention_push", _fake_push)
+
+    t_a, _, t_b, uid_b, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+    vorher = (await client.get("/dm-channels", headers=auth(t_a))).json()[0]
+    assert vorher["last_message_id"] is None
+
     r = await client.post(
         f"/channels/{dm_id}/messages",
-        json={"content": "hallo b"},
+        json={"content": f"hallo <@{uid_b}> und <@987654>", "nonce": "n-1"},
         headers=auth(t_a),
     )
-    assert r.status_code == 201
-    posted = r.json()
-    assert posted["channel_id"] == dm_id
-    assert posted["content"] == "hallo b"
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"] == DM_KLARTEXT_DETAIL
+    # Auch das Gegenüber kommt nicht durch.
+    r = await client.post(
+        f"/channels/{dm_id}/messages", json={"content": "zurück"}, headers=auth(t_b)
+    )
+    assert r.status_code == 403
+    assert r.json()["detail"] == DM_KLARTEXT_DETAIL
 
-    # Both members can list.
+    async with session_factory() as s:
+        zeilen = await s.scalar(
+            select(func.count()).select_from(Message).where(Message.channel_id == int(dm_id))
+        )
+        erwaehnungen = await s.scalar(select(func.count()).select_from(MessageMention))
+    assert zeilen == 0
+    assert erwaehnungen == 0
+    nachher = (await client.get("/dm-channels", headers=auth(t_a))).json()[0]
+    assert nachher["last_message_id"] is None
+    assert nachher["last_message_preview"] is None
+    assert pushes == []
+
+
+@pytest.mark.asyncio
+async def test_dm_altbestand_fuer_beide_lesbar(
+    client, _auth_signer, friend_pair, dm_altnachricht
+):
+    """Alter Klartext-Verlauf bleibt für beide Teilnehmer lesbar."""
+    t_a, uid_a, t_b, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+    mid = await dm_altnachricht(dm_id, uid_a, "hallo b")
+
     for token in (t_a, t_b):
         r = await client.get(f"/channels/{dm_id}/messages", headers=auth(token))
         assert r.status_code == 200
         body = r.json()
         assert len(body) == 1
+        assert body[0]["id"] == mid
+        assert body[0]["channel_id"] == dm_id
         assert body[0]["content"] == "hallo b"
 
 
@@ -205,81 +262,59 @@ async def test_dm_non_member_cannot_post_or_list(client, _auth_signer, friend_pa
 
 
 @pytest.mark.asyncio
-async def test_dm_post_message_bumps_last_message_id(client, _auth_signer, friend_pair):
-    """The DM list sorts by last_message_id; posting a message must bump it."""
-    t_a, _, _, uid_b, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    # Before: last_message_id is null in the list.
-    r0 = await client.get("/dm-channels", headers=auth(t_a))
-    assert r0.json()[0]["last_message_id"] is None
-    # Post a message.
-    r1 = await client.post(
-        f"/channels/{dm_id}/messages",
-        json={"content": "first"},
-        headers=auth(t_a),
-    )
-    posted_id = r1.json()["id"]
-    # After: last_message_id matches.
-    r2 = await client.get("/dm-channels", headers=auth(t_a))
-    assert r2.json()[0]["last_message_id"] == posted_id
+async def test_dm_altnachricht_bearbeiten_wird_abgelehnt(
+    client, session_factory, _auth_signer, friend_pair, dm_altnachricht, monkeypatch
+):
+    """Bearbeiten ist Schreiben: auch der Autor schreibt alten Klartext nicht
+    mehr um. Die Ablehnung kommt VOR der Autorenprüfung, das Gegenüber
+    bekommt also dieselbe Meldung.
+
+    Die Bearbeitung fügt eine Erwähnung hinzu — früher schickte genau das
+    einen Erwähnungs-Push mit dem Klartext (Push-Bughunt 2026-10-20). Weder
+    Push noch Erwähnungszeile dürfen entstehen, der Inhalt bleibt.
+    """
+    from dcc_chat_gateway.models import DM_KLARTEXT_DETAIL, MessageMention
+    from dcc_chat_gateway.routes import messages as messages_routen
+    from sqlalchemy import func, select
+
+    pushes: list[dict] = []
+
+    async def _fake_push(**kwargs):
+        pushes.append(kwargs)
+
+    monkeypatch.setattr(messages_routen, "fan_out_mention_push", _fake_push)
+
+    t_a, uid_a, t_b, uid_b, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+    msg_id = await dm_altnachricht(dm_id, uid_a, "v1")
+
+    for token in (t_a, t_b):
+        r = await client.patch(
+            f"/messages/{msg_id}", json={"content": f"v2 <@{uid_b}>"}, headers=auth(token)
+        )
+        assert r.status_code == 403, r.text
+        assert r.json()["detail"] == DM_KLARTEXT_DETAIL
+
+    liste = (await client.get(f"/channels/{dm_id}/messages", headers=auth(t_a))).json()
+    assert liste[0]["content"] == "v1"
+    assert liste[0]["edited_at"] is None
+    async with session_factory() as s:
+        assert await s.scalar(select(func.count()).select_from(MessageMention)) == 0
+    assert pushes == []
 
 
 @pytest.mark.asyncio
-async def test_dm_edit_message_author_only(client, _auth_signer, friend_pair):
-    t_a, _, t_b, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    r = await client.post(
-        f"/channels/{dm_id}/messages",
-        json={"content": "v1"},
-        headers=auth(t_a),
-    )
-    msg_id = r.json()["id"]
-    # Author edits — ok.
-    r1 = await client.patch(
-        f"/messages/{msg_id}", json={"content": "v2"}, headers=auth(t_a)
-    )
-    assert r1.status_code == 200
-    assert r1.json()["content"] == "v2"
-    # Other DM member tries to edit — 403.
-    r2 = await client.patch(
-        f"/messages/{msg_id}", json={"content": "hacked"}, headers=auth(t_b)
-    )
-    assert r2.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_dm_delete_message_no_owner_override(client, _auth_signer, friend_pair):
+async def test_dm_delete_message_no_owner_override(
+    client, _auth_signer, friend_pair, dm_altnachricht
+):
     """In a DM there is no guild owner — only the author may delete."""
-    t_a, _, t_b, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    r = await client.post(
-        f"/channels/{dm_id}/messages",
-        json={"content": "to be deleted"},
-        headers=auth(t_a),
-    )
-    msg_id = r.json()["id"]
+    t_a, uid_a, t_b, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+    msg_id = await dm_altnachricht(dm_id, uid_a, "to be deleted")
     # Other DM member tries to delete — 403 (no owner-override exists).
     r1 = await client.delete(f"/messages/{msg_id}", headers=auth(t_b))
     assert r1.status_code == 403
     # Author deletes — 204.
     r2 = await client.delete(f"/messages/{msg_id}", headers=auth(t_a))
     assert r2.status_code == 204
-
-
-@pytest.mark.asyncio
-async def test_dm_reply_target_must_be_in_same_channel(client, _auth_signer, friend_pair):
-    """Reply-to validation works for DMs the same way as guild channels."""
-    t_a, _, _, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    r1 = await client.post(
-        f"/channels/{dm_id}/messages",
-        json={"content": "parent"},
-        headers=auth(t_a),
-    )
-    parent_id = r1.json()["id"]
-    r2 = await client.post(
-        f"/channels/{dm_id}/messages",
-        json={"content": "reply", "reply_to_id": parent_id},
-        headers=auth(t_a),
-    )
-    assert r2.status_code == 201
-    assert r2.json()["reply_to_id"] == parent_id
 
 
 # --- Vorschautext in der DM-Liste (Mobil-Umbau 2026-08-22) -------------------
@@ -290,13 +325,14 @@ async def test_dm_reply_target_must_be_in_same_channel(client, _auth_signer, fri
 
 
 @pytest.mark.asyncio
-async def test_dm_liste_traegt_vorschautext(client, _auth_signer, friend_pair):
+async def test_dm_liste_traegt_vorschautext(client, _auth_signer, friend_pair, dm_altnachricht):
     t_a, uid_a, _, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    r = await client.post(
-        f"/channels/{dm_id}/messages", json={"content": "Hallo Welt"}, headers=auth(t_a)
-    )
-    posted_at = r.json()["created_at"]
+    mid = await dm_altnachricht(dm_id, uid_a, "Hallo Welt")
+    posted_at = (await client.get(f"/channels/{dm_id}/messages", headers=auth(t_a))).json()[0][
+        "created_at"
+    ]
     eintrag = (await client.get("/dm-channels", headers=auth(t_a))).json()[0]
+    assert eintrag["last_message_id"] == mid
     assert eintrag["last_message_preview"] == "Hallo Welt"
     assert eintrag["last_message_author_id"] == str(uid_a)
     assert eintrag["last_message_at"] == posted_at
@@ -312,25 +348,21 @@ async def test_dm_vorschau_ohne_nachricht_ist_null(client, _auth_signer, friend_
 
 
 @pytest.mark.asyncio
-async def test_dm_vorschau_wird_gekuerzt(client, _auth_signer, friend_pair):
+async def test_dm_vorschau_wird_gekuerzt(client, _auth_signer, friend_pair, dm_altnachricht):
     """Eine lange Nachricht darf die Liste nicht aufblaehen — 80 Zeichen."""
-    t_a, _, _, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    await client.post(
-        f"/channels/{dm_id}/messages", json={"content": "a" * 500}, headers=auth(t_a)
-    )
+    t_a, uid_a, _, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+    await dm_altnachricht(dm_id, uid_a, "a" * 500)
     eintrag = (await client.get("/dm-channels", headers=auth(t_a))).json()[0]
     assert len(eintrag["last_message_preview"]) <= 80
 
 
 @pytest.mark.asyncio
-async def test_dm_vorschau_ohne_zeilenumbrueche(client, _auth_signer, friend_pair):
+async def test_dm_vorschau_ohne_zeilenumbrueche(
+    client, _auth_signer, friend_pair, dm_altnachricht
+):
     """Eine Zeile in der Liste ist EINE Zeile — sonst springt das Layout."""
-    t_a, _, _, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    await client.post(
-        f"/channels/{dm_id}/messages",
-        json={"content": "erste\nzweite\r\ndritte"},
-        headers=auth(t_a),
-    )
+    t_a, uid_a, _, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+    await dm_altnachricht(dm_id, uid_a, "erste\nzweite\r\ndritte")
     vorschau = (await client.get("/dm-channels", headers=auth(t_a))).json()[0][
         "last_message_preview"
     ]
@@ -340,14 +372,11 @@ async def test_dm_vorschau_ohne_zeilenumbrueche(client, _auth_signer, friend_pai
 
 @pytest.mark.asyncio
 async def test_dm_vorschau_einer_geloeschten_nachricht_ist_null(
-    client, _auth_signer, friend_pair
+    client, _auth_signer, friend_pair, dm_altnachricht
 ):
     """Geloescht heisst geloescht — auch in der Vorschau der Liste."""
-    t_a, _, _, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    r = await client.post(
-        f"/channels/{dm_id}/messages", json={"content": "weg damit"}, headers=auth(t_a)
-    )
-    mid = r.json()["id"]
+    t_a, uid_a, _, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+    mid = await dm_altnachricht(dm_id, uid_a, "weg damit")
     d = await client.delete(f"/messages/{mid}", headers=auth(t_a))
     assert d.status_code in (200, 204)
     eintrag = (await client.get("/dm-channels", headers=auth(t_a))).json()[0]
