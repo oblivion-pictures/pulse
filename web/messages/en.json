@@ -3636,5 +3636,6 @@
   "dm_channel_list_unread": "unread",
   "kamera_senden_fehlgeschlagen": "Could not send the recording",
   "chats_search_section_groups": "Groups",
-  "chats_new_group_mitglieder_fehlgeschlagen": "Group created, but {anzahl} person(s) could not be added"
+  "chats_new_group_mitglieder_fehlgeschlagen": "Group created, but {anzahl} person(s) could not be added",
+  "livekit_mikrofon_wird_verbunden": "Microphone is still connecting. On a weak connection this can take a moment."
 }

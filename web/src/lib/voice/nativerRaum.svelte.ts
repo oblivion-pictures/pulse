@@ -44,6 +44,19 @@ import { voiceState } from './state.svelte';
 // braucht (der Sender prüft selbst, ob er in der iOS-Hülle läuft).
 berichtSenderSetzen(iosTonBerichtSenden);
 
+/** Was die Oberfläche bei einem Beitritt ohne Mikrofon sagt: mit Erlaubnis
+ *  holt die Hülle es nach (`SpracheRaumMikroNachholen.swift`), ohne liegt es
+ *  an der Erlaubnis oder am Gerät. `undefined`: eine ältere Hülle. */
+function mikrofonMeldung(erlaubt: boolean | undefined): string {
+  return erlaubt === true ? m.livekit_mikrofon_wird_verbunden() : m.livekit_microphone_access_failed();
+}
+
+/** Beide Meldungen von `mikrofonMeldung` — eine Funktion statt einer Liste,
+ *  weil die Texte von der eingestellten Sprache abhängen. */
+function mikrofonMeldungen(): string[] {
+  return [m.livekit_microphone_access_failed(), m.livekit_mikrofon_wird_verbunden()];
+}
+
 /**
  * Der native Weg auf iOS — die Hülle hält den Raum, der Voice-Store spiegelt
  * (Entwurf `docs/superpowers/specs/2026-10-10-ios-nativer-sprachweg-design.md`).
@@ -140,14 +153,16 @@ export class NativerRaum {
       return;
     }
     w.state = ConnectionState.Connected;
-    // Beigetreten, aber ohne Mikrofon (verweigerte Erlaubnis, belegtes Gerät):
-    // die Hülle lässt den Raum dafür bewusst stehen — man kann zuhören —, also
-    // muss die Oberfläche es SAGEN.
+    // Beigetreten, aber ohne Mikrofon (verweigerte Erlaubnis, belegtes Gerät,
+    // im Auto eine abreissende Verbindung): die Hülle lässt den Raum dafür
+    // bewusst stehen — man kann zuhören —, also muss die Oberfläche es SAGEN.
     // Die Hülle liefert eine rohe SDK-Zeile (englisch, technisch) — in die Konsole,
-    // dem Nutzer die vorhandene Erklärung (Erlaubnis/Gerät prüfen).
+    // dem Nutzer eine Erklärung. Mit Erlaubnis holt die Hülle das Mikrofon nach;
+    // „Zugriff fehlgeschlagen" schickte den Nutzer dann in die Einstellungen,
+    // obwohl dort alles stimmt (CarPlay-Befund, ausgewertet 2026-11-05).
     if (z.mikrofonFehler) {
       console.warn('[Sprache] Mikrofon in der Hülle nicht verfügbar:', z.mikrofonFehler);
-      w.error = m.livekit_microphone_access_failed();
+      w.error = mikrofonMeldung(z.mikrofonErlaubt);
     }
     this.#stehen(z, opts.taub, opts.micBeforeDeafen);
     // **Muss hier stehen.** Die Sperre „Audio aktivieren" gehört zum
@@ -430,7 +445,7 @@ export class NativerRaum {
     if (e.taub !== undefined) w.deafened = e.taub;
     // Mikrofon nachgeholt (CarPlay-Befund 2026-10-25): die Meldung vom Beitritt
     // gilt nicht mehr. Eine ältere Hülle schickt das Feld nicht (`undefined`).
-    if (e.mikrofonFehler === null && w.error === m.livekit_microphone_access_failed()) {
+    if (e.mikrofonFehler === null && mikrofonMeldungen().includes(w.error ?? '')) {
       w.error = null;
     }
     this.#pause = pausenWunsch(e);

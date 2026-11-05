@@ -3636,5 +3636,6 @@
   "dm_channel_list_unread": "ungelesen",
   "kamera_senden_fehlgeschlagen": "Aufnahme konnte nicht gesendet werden",
   "chats_search_section_groups": "Gruppen",
-  "chats_new_group_mitglieder_fehlgeschlagen": "Gruppe erstellt, aber {anzahl} Person(en) konnten nicht hinzugefügt werden"
+  "chats_new_group_mitglieder_fehlgeschlagen": "Gruppe erstellt, aber {anzahl} Person(en) konnten nicht hinzugefügt werden",
+  "livekit_mikrofon_wird_verbunden": "Mikrofon wird noch verbunden. Bei schwacher Verbindung kann das etwas dauern."
 }

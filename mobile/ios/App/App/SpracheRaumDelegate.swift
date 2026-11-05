@@ -36,6 +36,10 @@ extension SpracheRaum: RoomDelegate {
                                      "seitMs": TonMessung.geteilt.seitMs()]
         Task { diagMelden("verbindung_wechsel", felder) }
         if state == .connected { schickeTeilnehmer() }
+        // Wieder verbunden, aber das Mikrofon fehlt seit dem Beitritt noch: neu
+        // anstossen. Im Auto riss die Verbindung genau beim ersten
+        // Veröffentlichen ab (`SpracheRaumMikroNachholen.swift`).
+        if state == .connected, alt == .reconnecting { nachholenNachWiederverbinden() }
     }
 
     func room(_ room: Room, didDisconnectWithError error: LiveKitError?) {
