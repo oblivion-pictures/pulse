@@ -2,6 +2,22 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-05",
+      "date": "2026-11-05",
+      "style": "Sachlich",
+      "title": "Direktnachrichten",
+      "items": [
+        "Fotos und Videos direkt aus der Kamera lassen sich jetzt auch in Community-Kanälen senden. Scheitert das Hochladen, sagt die Meldung das, statt „Kamera nicht verfügbar“.",
+        "Kannst du in einem Gespräch nicht schreiben, sind auch Anhänge, Kamera und Sprachnachricht gesperrt.",
+        "Eine neue Gruppe erscheint auch dann, wenn einzelne Personen nicht hinzugefügt werden konnten. Die Meldung nennt, wie viele fehlen.",
+        "Die Suche am Handy findet jetzt auch Gruppen.",
+        "Nach dem Verlassen einer Gruppe führt „Zurück“ nicht mehr in die Gruppe.",
+        "Ein doppelter Tipp aufs Mikrofon startet keine zweite Aufnahme mehr.",
+        "Scheitert das Senden nach einem Update, bleibt keine Uhr mehr stehen, du bekommst eine Meldung.",
+        "Der Lesestand zwischen deinen Geräten bleibt zuverlässiger abgeglichen."
+      ]
+    },
+    {
       "id": "2026-11-04.4",
       "date": "2026-11-04",
       "style": "Sachlich",
