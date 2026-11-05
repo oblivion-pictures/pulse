@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dcc_chat_gateway.models import AblageKontoLaufwerk, AblagePulseObjekt, AblageZwischenlagerDatei
+from dcc_chat_gateway.models.ablage_pulse import VERZEICHNIS_NAME
 
 
 async def purge_ablage_zwischenlager(session: AsyncSession, user_id: int) -> list[str]:
@@ -86,21 +87,25 @@ async def purge_ablage_pulse_objekte(session: AsyncSession, user_id: int) -> lis
     bestehen — nur seine eigenen Uploads fallen heraus; deren
     Verzeichnis-Eintraege verschwinden mit dem naechsten Verzeichnis-Schreib
     eines verbleibenden Geraets.
+
+    **„Eigene Uploads" heißt: von ihm ANGELEGT** (``urheber_id``, Migration
+    0110), nicht zuletzt von ihm angekündigt — sonst nahm ein Mitglied, das
+    fremde Dateien neu ankündigte, sie mit seinem Konto mit (Gegenprüfung des
+    Security-Audits, 2026-11-05). Das gemeinsame ``verzeichnis.puls`` bleibt
+    immer stehen: es gehört dem ganzen Laufwerk, auch wenn er es angelegt hat.
     """
+    eigene = (
+        AblagePulseObjekt.urheber_id == user_id,
+        ~AblagePulseObjekt.storage_key.like(f"%/{VERZEICHNIS_NAME}"),
+    )
     schluessel = list(
         (
-            await session.execute(
-                select(AblagePulseObjekt.storage_key).where(
-                    AblagePulseObjekt.hochgeladen_von == user_id
-                )
-            )
+            await session.execute(select(AblagePulseObjekt.storage_key).where(*eigene))
         ).scalars()
     )
     if not schluessel:
         return []
-    await session.execute(
-        sa_delete(AblagePulseObjekt).where(AblagePulseObjekt.hochgeladen_von == user_id)
-    )
+    await session.execute(sa_delete(AblagePulseObjekt).where(*eigene))
     return schluessel
 
 

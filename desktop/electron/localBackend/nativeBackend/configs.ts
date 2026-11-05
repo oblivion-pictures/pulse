@@ -98,6 +98,9 @@ srt: no
 webrtc: yes
 webrtcAddress: 127.0.0.1:8889
 webrtcEncryption: no
+# Caddy liegt davor auf 127.0.0.1 — wie 08-init-mediamtx.sh (ein Drossel-Budget
+# je Zuschauer statt eines für alle, Gegenprüfung des Security-Audits 2026-11-05).
+webrtcTrustedProxies: [127.0.0.1/32, ::1/128]
 # App-Host hinter Heim-NAT — Container-Parität aus 08-init-mediamtx.sh
 # (App-Host-Zweig): MediaMTX holt sich per STUN selbst den srflx-Kandidaten
 # und locht durchs NAT (wie LiveKit use_external_ip / direct-adapter) —

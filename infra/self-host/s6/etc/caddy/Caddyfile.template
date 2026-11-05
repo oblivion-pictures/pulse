@@ -93,7 +93,10 @@
         # Route. Handle-Blöcke sind exklusiv in Dateireihenfolge — deshalb stehen
         # diese VOR den Weiterleitungen (Spiegel des @voice_restricted-Blocks
         # unten und der Cloud-nginx-deny-Blöcke, Audit 2026-09).
-        @auth_chat_internal path /api/auth/internal/* /api/chat/internal/*
+        # Dazu die zwei Dienst-Routen außerhalb von /internal/ (Rundruf, frps-
+        # Anmeldung) — auf dem Heimserver ohne Aufrufer, gesperrt wie in der
+        # Cloud (Gegenprüfung des Security-Audits 2026-11-05, S-M3).
+        @auth_chat_internal path /api/auth/internal/* /api/chat/internal/* /api/auth/admin/instances/_broadcast-update* /api/auth/selfhost/relay/auth*
         handle @auth_chat_internal {
             respond 403
         }

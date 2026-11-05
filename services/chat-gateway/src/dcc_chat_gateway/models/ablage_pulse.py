@@ -64,6 +64,11 @@ class AblagePulseLaufwerk(Base):
     )
 
 
+# Das gemeinsame Verzeichnis eines Pulse-Laufwerks — jedes Mitglied schreibt es
+# bei jedem Schreibvorgang neu (Klient: `web/src/lib/ablage/dateispeicher.ts`).
+VERZEICHNIS_NAME = "verzeichnis.puls"
+
+
 class AblagePulseObjekt(Base):
     """Ein Chiffrat-Klumpen auf dem Pulse-Laufwerk — namenlos, je Guild.
 
@@ -81,7 +86,16 @@ class AblagePulseObjekt(Base):
     guild_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("guilds.id", ondelete="CASCADE"), nullable=False
     )
+    # Wer zuletzt angekündigt hat — die Wettlauf-Erkennung von `gelungen`
+    # (Bughunt Runde 48): kündigt ein anderes Gerät zwischendurch neu an, gilt
+    # das ältere PUT als ersetzt. Wandert deshalb mit jeder Neuankündigung.
     hochgeladen_von: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # Wer die Datei ANGELEGT hat — nur er (oder der Eigentümer) löscht sie, und
+    # nur mit seinem Konto fällt sie weg. Seit Migration 0110 getrennt von
+    # `hochgeladen_von`: bis dahin übernahm eine Neuankündigung beides, und
+    # jedes Mitglied konnte fremde Dateien löschen (Gegenprüfung des
+    # Security-Audits, 2026-11-05).
+    urheber_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     storage_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     # Bytes des Klumpens — für die Kontingent-Rechnung ohne HEAD je Zeile,
     # dieselbe Regel wie beim Zwischenlager.
