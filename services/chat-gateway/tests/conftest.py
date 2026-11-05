@@ -711,3 +711,15 @@ async def everyone_remote_control_entfernen(client, owner_token: str, gid) -> No
     )
 
 
+@pytest.fixture(autouse=True)
+def _laufwerk_probe_besteht(monkeypatch):
+    """Das Setzen einer Laufwerks-Adresse verlangt seit 2026-11-05 die
+    bestandene Verbindungsprobe (`laufwerk_bestaetigung.py`). Die Tests
+    sprechen kein echtes WebDAV — hier besteht sie per Vorgabe; wer das
+    Scheitern prüft, ersetzt `_probiere` selbst."""
+    from dcc_chat_gateway import ablage_probe, laufwerk_bestaetigung
+
+    async def _bestanden(**_kw):
+        return ablage_probe.ProbeErgebnis(True)
+
+    monkeypatch.setattr(laufwerk_bestaetigung, "_probiere", _bestanden)

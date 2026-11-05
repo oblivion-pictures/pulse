@@ -3,7 +3,8 @@
  *
  * Findet die leichteste verfügbare Runtime pro Plattform:
  *  - Linux im Flatpak: Host-Podman via `flatpak-spawn --host` (Boxbuddy-Muster;
- *    braucht `--talk-name=org.freedesktop.Flatpak` im Manifest).
+ *    braucht `--talk-name=org.freedesktop.Flatpak` im Manifest — nur noch das
+ *    der Server-App, seit 2026-11-05 nicht mehr das des Clients).
  *  - Überall sonst: gebündeltes Podman (resourcesPath, Phase 2/3 Win/Mac) →
  *    Podman im PATH → Docker im PATH.
  *

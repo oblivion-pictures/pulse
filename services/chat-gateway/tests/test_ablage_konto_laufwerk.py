@@ -152,3 +152,53 @@ async def test_die_bereitschaft_faellt_mit(client, _auth_signer, friend_pair):
     assert nachher.status_code == 200, nachher.text
     assert nachher.json()["moeglich"] is False
     assert nachher.json()["ohne_laufwerk"] == [str(uid_b)]
+
+
+# ---------------------------------------------------------------------------
+# Gegenprüfung des Security-Audits (2026-11-05): kein offener Proxy mehr
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_eine_adresse_ohne_bestandene_probe_wird_nicht_gespeichert(
+    client, session_factory, _auth_signer, monkeypatch
+):
+    """Eine beliebige Webseite als „Laufwerk" machte den Server zum offenen
+    HTTP-Proxy. Was die Verbindungsprobe nicht besteht, wird nicht gespeichert."""
+    from dcc_chat_gateway import ablage_probe, laufwerk_bestaetigung
+
+    async def _gescheitert(**_kw):
+        return ablage_probe.ProbeErgebnis(False, "schreiben", "status_405")
+
+    monkeypatch.setattr(laufwerk_bestaetigung, "_probiere", _gescheitert)
+    token, uid = await _register(_auth_signer)
+    r = await client.put(
+        "/ablage/archiv/laufwerk",
+        json={"freigabe_adresse": "https://eine-beliebige-seite.example/"},
+        headers=_auth(token),
+    )
+    assert r.status_code == 400, r.text
+    assert "drive probe failed" in r.json()["detail"]
+    assert await _zeile(session_factory, uid) is None
+
+
+@pytest.mark.asyncio
+async def test_eine_unveraenderte_adresse_wird_nicht_erneut_geprobt(
+    client, _auth_signer, monkeypatch
+):
+    """Der Klient trägt die gemerkte Adresse selbsttätig nach — jedes Mal eine
+    Probedatei zu schreiben, wäre Last ohne Erkenntnis."""
+    from dcc_chat_gateway import ablage_probe, laufwerk_bestaetigung
+
+    aufrufe: list[str] = []
+
+    async def _zaehlend(**kw):
+        aufrufe.append(kw["freigabe_adresse"])
+        return ablage_probe.ProbeErgebnis(True)
+
+    monkeypatch.setattr(laufwerk_bestaetigung, "_probiere", _zaehlend)
+    token, _ = await _register(_auth_signer)
+    for _ in range(2):
+        await _laufwerk_setzen(client, token, "https://cloud.example/s/abc")
+    await _laufwerk_setzen(client, token, "https://cloud.example/s/neu")
+    assert aufrufe == ["https://cloud.example/s/abc", "https://cloud.example/s/neu"]

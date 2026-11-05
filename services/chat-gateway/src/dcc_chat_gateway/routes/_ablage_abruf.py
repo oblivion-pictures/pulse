@@ -30,6 +30,8 @@ STATUS_JE_CODE: dict[str, int] = {
     "ziel_privat": status.HTTP_403_FORBIDDEN,
     "umleitung_ohne_ziel": status.HTTP_502_BAD_GATEWAY,
     "zu_viele_umleitungen": status.HTTP_502_BAD_GATEWAY,
+    # Umleitung auf einen anderen Host — ein verbotenes Ziel wie `ziel_privat`.
+    "umleitung_fremder_host": status.HTTP_403_FORBIDDEN,
     # Die Gegenstelle sagt „gibt es nicht" — das reicht der Klient als
     # `null` durch (`ablageKanalAbruf`), es ist kein Fehlerfall.
     "nicht_gefunden": status.HTTP_404_NOT_FOUND,
