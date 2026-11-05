@@ -121,9 +121,13 @@ async def test_non_member_cannot_list_or_pin(client, _auth_signer):
 
 
 @pytest.mark.asyncio
-async def test_dm_members_can_pin(client, _auth_signer, friend_pair, cloud_mode):
+async def test_dm_members_can_pin(
+    client, _auth_signer, friend_pair, cloud_mode, dm_altnachricht
+):
     """In DMs darf jeder Teilnehmer pinnen — es gibt kein Moderationsbit und
-    ``resolve_channel_or_raise`` kapselt die Mitgliedschaft."""
+    ``resolve_channel_or_raise`` kapselt die Mitgliedschaft. Gepinnt wird
+    Klartext-Altbestand: neuen Klartext nimmt eine DM seit 2026-11-05 nicht
+    mehr an."""
     t_a, uid_a = await _register(_auth_signer)
     t_b, uid_b = await _register(_auth_signer)
     await friend_pair(uid_a, uid_b)
@@ -132,9 +136,9 @@ async def test_dm_members_can_pin(client, _auth_signer, friend_pair, cloud_mode)
             "/dm-channels", json={"target_user_id": str(uid_b)}, headers=auth(t_a)
         )
     ).json()
-    msg = await _post(client, t_a, dm["id"], "dm pin me")
-    r = await client.put(f"/messages/{msg['id']}/pin", headers=auth(t_b))
+    msg_id = await dm_altnachricht(dm["id"], uid_a, "dm pin me")
+    r = await client.put(f"/messages/{msg_id}/pin", headers=auth(t_b))
     assert r.status_code == 204, r.text
     r = await client.get(f"/channels/{dm['id']}/pins", headers=auth(t_a))
     assert r.status_code == 200
-    assert [p["id"] for p in r.json()] == [msg["id"]]
+    assert [p["id"] for p in r.json()] == [msg_id]

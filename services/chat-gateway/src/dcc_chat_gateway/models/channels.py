@@ -47,6 +47,14 @@ LEGACY_READONLY_DETAIL = (
     "the instance now only accepts new messages in ablage channels"
 )
 
+# Klartext in DMs: seit 2026-11-05 lehnt der Server ihn ab (Eigentümer-
+# Entscheid nach dem DM-Bughunt). Die App sendet seit Ende August nur noch
+# verschlüsselt (``E2E_DMS_ENABLED``, Postfach-Weg); angenommen hat der
+# Server Klartext trotzdem weiter — von alten oder veränderten Klienten.
+# Alter Verlauf bleibt lesbar und löschbar, aber nicht mehr bearbeitbar
+# (Bearbeiten ist Schreiben, dieselbe Regel wie beim eingefrorenen Alt-Kanal).
+DM_KLARTEXT_DETAIL = "dm_plaintext_not_accepted: direct messages are end-to-end encrypted"
+
 
 class Channel(Base):
     __tablename__ = "channels"

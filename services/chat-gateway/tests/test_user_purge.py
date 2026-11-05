@@ -672,10 +672,11 @@ async def test_purge_clears_guild_bans(
 
 @pytest.mark.asyncio
 async def test_purge_deletes_dm_channels(
-    client, session_factory, _auth_signer, _internal_secret_set, friend_pair, cloud_mode
+    client, session_factory, _auth_signer, _internal_secret_set, friend_pair, cloud_mode,
+    dm_altnachricht,
 ):
     t_a, uid_a = await _register(_auth_signer)
-    t_b, uid_b = await _register(_auth_signer)
+    _, uid_b = await _register(_auth_signer)
     await friend_pair(uid_a, uid_b)
     dm = (
         await client.post(
@@ -684,8 +685,10 @@ async def test_purge_deletes_dm_channels(
             headers=_auth(t_a),
         )
     ).json()
-    await _post_message(client, t_a, dm["id"], "hi")
-    await _post_message(client, t_b, dm["id"], "hello")
+    # Klartext-Altbestand beider Seiten — neu senden lässt sich Klartext in
+    # DMs seit 2026-11-05 nicht mehr, gelöscht werden muss der alte trotzdem.
+    await dm_altnachricht(dm["id"], uid_a, "hi")
+    await dm_altnachricht(dm["id"], uid_b, "hello")
 
     async with session_factory() as s:
         c = (

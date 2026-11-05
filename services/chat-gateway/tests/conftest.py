@@ -490,6 +490,58 @@ async def friend_pair(session_factory):
 
 
 @pytest_asyncio.fixture
+async def dm_altnachricht(session_factory):
+    """Factory: legt eine Klartext-Nachricht aus dem DM-Altbestand direkt an.
+
+    Seit 2026-11-05 nimmt der Server Klartext in DMs nicht mehr an
+    (``DM_KLARTEXT_DETAIL``) — weder per REST noch per WS. Alter Verlauf
+    bleibt aber lesbar, durchsuchbar, löschbar, und Reaktionen/Pins auf ihm
+    funktionieren weiter. Tests dieser Lesepfade brauchen deshalb eine
+    Altnachricht, die sie nicht mehr über die Senderoute anlegen können.
+
+    Die Zeile sieht aus wie eine, die der frühere Sendeweg
+    (``routes/messages.py::post_message`` vor dem 2026-11-05) geschrieben
+    hat: Inhalt getrimmt, ``reply_to_id`` wie übergeben, und
+    ``DirectMessageChannel.last_message_id`` nur VORWÄRTS nachgezogen — davon
+    leben Sortierung und Vorschautext der DM-Liste. Erwähnungen, Anhänge und
+    Ereignisse legt sie nicht an; wer die braucht, legt sie selbst dazu.
+
+    Gibt die Kennung als Zeichenkette zurück, wie die API sie liefert.
+
+    Usage:
+        async def test_thing(client, dm_altnachricht):
+            mid = await dm_altnachricht(dm_id, uid_a, "hallo")
+    """
+    from dcc_chat_gateway.models import DirectMessageChannel, Message
+    from dcc_chat_gateway.snowflake import next_id
+
+    async def _anlegen(
+        channel_id: int | str,
+        author_id: int,
+        content: str,
+        *,
+        reply_to_id: int | str | None = None,
+    ) -> str:
+        async with session_factory() as s:
+            msg = Message(
+                id=next_id(),
+                channel_id=int(channel_id),
+                author_id=author_id,
+                content=content.strip(),
+                reply_to_id=int(reply_to_id) if reply_to_id is not None else None,
+            )
+            s.add(msg)
+            dm = await s.get(DirectMessageChannel, int(channel_id))
+            assert dm is not None, "dm_altnachricht: kein DM-Kanal mit dieser Kennung"
+            if dm.last_message_id is None or dm.last_message_id < msg.id:
+                dm.last_message_id = msg.id
+            await s.commit()
+            return str(msg.id)
+
+    return _anlegen
+
+
+@pytest_asyncio.fixture
 async def second_member(session_factory):
     """Factory: install a GuildMember row for (guild_id, user_id).
 

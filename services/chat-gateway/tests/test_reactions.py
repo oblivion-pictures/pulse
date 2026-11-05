@@ -70,39 +70,35 @@ async def test_guild_reaction_add_and_remove(client, _auth_signer):
 
 
 @pytest.mark.asyncio
-async def test_dm_reaction_add_and_remove(client, _auth_signer, friend_pair, cloud_mode):
+async def test_dm_reaction_add_and_remove(
+    client, _auth_signer, friend_pair, cloud_mode, dm_altnachricht
+):
     """Regression: DM reactions used to always 404 because reactions.py
     looked up the channel in the guild ``Channel`` table only."""
-    t_a, _, t_b, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    msg = (
-        await client.post(
-            f"/channels/{dm_id}/messages", json={"content": "dm hi"}, headers=auth(t_a)
-        )
-    ).json()
+    t_a, uid_a, t_b, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+    msg_id = await dm_altnachricht(dm_id, uid_a, "dm hi")
 
     # The other DM member can react.
     r = await client.put(
-        f"/messages/{msg['id']}/reactions/%E2%9D%A4/@me", headers=auth(t_b)
+        f"/messages/{msg_id}/reactions/%E2%9D%A4/@me", headers=auth(t_b)
     )
     assert r.status_code == 204, r.text
     r = await client.delete(
-        f"/messages/{msg['id']}/reactions/%E2%9D%A4/@me", headers=auth(t_b)
+        f"/messages/{msg_id}/reactions/%E2%9D%A4/@me", headers=auth(t_b)
     )
     assert r.status_code == 204
 
 
 @pytest.mark.asyncio
-async def test_non_member_cannot_react_to_dm(client, _auth_signer, friend_pair, cloud_mode):
+async def test_non_member_cannot_react_to_dm(
+    client, _auth_signer, friend_pair, cloud_mode, dm_altnachricht
+):
     """A third user (not in the DM) gets 404 — same status as listing the DM."""
-    t_a, _, _, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    msg = (
-        await client.post(
-            f"/channels/{dm_id}/messages", json={"content": "private"}, headers=auth(t_a)
-        )
-    ).json()
+    t_a, uid_a, _, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+    msg_id = await dm_altnachricht(dm_id, uid_a, "private")
     t_c, _ = await _register_user(_auth_signer)
     r = await client.put(
-        f"/messages/{msg['id']}/reactions/%F0%9F%91%80/@me", headers=auth(t_c)
+        f"/messages/{msg_id}/reactions/%F0%9F%91%80/@me", headers=auth(t_c)
     )
     assert r.status_code == 404
 
@@ -238,20 +234,18 @@ async def test_list_reactions_empty_message(client, _auth_signer):
 
 
 @pytest.mark.asyncio
-async def test_list_reactions_dm_visible_to_member(client, _auth_signer, friend_pair, cloud_mode):
+async def test_list_reactions_dm_visible_to_member(
+    client, _auth_signer, friend_pair, cloud_mode, dm_altnachricht
+):
     """DM participants can list reactions on a DM message — same gate
     as the existing add/remove routes."""
-    t_a, _, t_b, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    msg = (
-        await client.post(
-            f"/channels/{dm_id}/messages", json={"content": "hi"}, headers=auth(t_a)
-        )
-    ).json()
+    t_a, uid_a, t_b, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
+    msg_id = await dm_altnachricht(dm_id, uid_a, "hi")
     r = await client.put(
-        f"/messages/{msg['id']}/reactions/%E2%9D%A4%EF%B8%8F/@me", headers=auth(t_b)
+        f"/messages/{msg_id}/reactions/%E2%9D%A4%EF%B8%8F/@me", headers=auth(t_b)
     )
     assert r.status_code == 204, r.text
-    r = await client.get(f"/messages/{msg['id']}/reactions", headers=auth(t_a))
+    r = await client.get(f"/messages/{msg_id}/reactions", headers=auth(t_a))
     assert r.status_code == 200, r.text
     payload = r.json()
     assert len(payload) == 1
@@ -292,17 +286,17 @@ async def test_list_reactions_denied_without_view_channel(client, _auth_signer):
 
 
 @pytest.mark.asyncio
-async def test_dm_reaction_add_blocked(client, _auth_signer, friend_pair, cloud_mode):
+async def test_dm_reaction_add_blocked(
+    client, _auth_signer, friend_pair, cloud_mode, dm_altnachricht
+):
     """Regression: emoji reactions on DM messages used to skip the
     block-gate entirely — a blocked user could keep reacting visibly.
-    Mirrors the block-gate on DM message sends
-    (``routes/messages.py::post_message``)."""
+    Mirrors the block-gate on DM sends — seit 2026-11-05 nur noch der
+    Postfach-Weg (``routes/_postfach_deps.py::_channel_zugriff_pruefen``);
+    die Nachricht selbst ist Klartext-Altbestand, auf den man weiter
+    reagieren kann."""
     t_a, uid_a, t_b, _, dm_id = await _make_dm(client, _auth_signer, friend_pair)
-    msg = (
-        await client.post(
-            f"/channels/{dm_id}/messages", json={"content": "hi"}, headers=auth(t_a)
-        )
-    ).json()
+    msg_id = await dm_altnachricht(dm_id, uid_a, "hi")
     r = await client.post(
         "/blocks", json={"target_user_id": uid_a}, headers=auth(t_b)
     )
@@ -310,14 +304,14 @@ async def test_dm_reaction_add_blocked(client, _auth_signer, friend_pair, cloud_
 
     # The blocked user (t_a) can no longer add a reaction to that DM.
     r = await client.put(
-        f"/messages/{msg['id']}/reactions/%F0%9F%91%8D/@me", headers=auth(t_a)
+        f"/messages/{msg_id}/reactions/%F0%9F%91%8D/@me", headers=auth(t_a)
     )
     assert r.status_code == 403
     assert r.json()["detail"] == "blocked"
 
     # Nor can the blocker (t_b) — block gate applies either direction.
     r = await client.put(
-        f"/messages/{msg['id']}/reactions/%E2%9D%A4/@me", headers=auth(t_b)
+        f"/messages/{msg_id}/reactions/%E2%9D%A4/@me", headers=auth(t_b)
     )
     assert r.status_code == 403
     assert r.json()["detail"] == "blocked"

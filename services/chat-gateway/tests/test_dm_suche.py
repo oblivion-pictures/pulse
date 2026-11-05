@@ -33,25 +33,27 @@ async def _user(_auth_signer) -> tuple[str, int]:
     return _auth_signer.issue_access(uid, f"user{uid}"), uid
 
 
-async def _dm_mit_nachricht(client, token: str, ziel_uid: int, text: str) -> str:
+async def _dm_mit_nachricht(
+    client, dm_altnachricht, token: str, autor_uid: int, ziel_uid: int, text: str
+) -> str:
+    """Legt die DM an (oder holt die bestehende) und darin eine Nachricht aus
+    dem Klartext-Altbestand — senden lässt sich Klartext in DMs seit
+    2026-11-05 nicht mehr, durchsuchbar bleibt der alte Verlauf."""
     r = await client.post(
         "/dm-channels", json={"target_user_id": str(ziel_uid)}, headers=auth(token)
     )
     assert r.status_code == 201
     kanal = r.json()["id"]
-    r = await client.post(
-        f"/channels/{kanal}/messages", json={"content": text}, headers=auth(token)
-    )
-    assert r.status_code == 201
+    await dm_altnachricht(kanal, autor_uid, text)
     return kanal
 
 
 @pytest.mark.asyncio
-async def test_findet_eigene_nachricht(client, _auth_signer, friend_pair):
+async def test_findet_eigene_nachricht(client, _auth_signer, friend_pair, dm_altnachricht):
     t_a, uid_a = await _user(_auth_signer)
     _, uid_b = await _user(_auth_signer)
     await friend_pair(uid_a, uid_b)
-    kanal = await _dm_mit_nachricht(client, t_a, uid_b, "Treffen am Donnerstag")
+    kanal = await _dm_mit_nachricht(client, dm_altnachricht, t_a, uid_a, uid_b, "Treffen am Donnerstag")
 
     r = await client.get("/dm-channels-search", params={"q": "Donnerstag"}, headers=auth(t_a))
     assert r.status_code == 200
@@ -62,12 +64,12 @@ async def test_findet_eigene_nachricht(client, _auth_signer, friend_pair):
 
 
 @pytest.mark.asyncio
-async def test_alle_kennungen_sind_zeichenketten(client, _auth_signer, friend_pair):
+async def test_alle_kennungen_sind_zeichenketten(client, _auth_signer, friend_pair, dm_altnachricht):
     """Der Kern des Fehlers: JSON-Zahlen verlieren die unteren Stellen."""
     t_a, uid_a = await _user(_auth_signer)
     _, uid_b = await _user(_auth_signer)
     await friend_pair(uid_a, uid_b)
-    await _dm_mit_nachricht(client, t_a, uid_b, "Kennungen bitte als Text")
+    await _dm_mit_nachricht(client, dm_altnachricht, t_a, uid_a, uid_b, "Kennungen bitte als Text")
 
     r = await client.get("/dm-channels-search", params={"q": "Kennungen"}, headers=auth(t_a))
     hit = r.json()[0]
@@ -79,12 +81,12 @@ async def test_alle_kennungen_sind_zeichenketten(client, _auth_signer, friend_pa
 
 
 @pytest.mark.asyncio
-async def test_gegenueber_ist_der_ANDERE(client, _auth_signer, friend_pair):
+async def test_gegenueber_ist_der_ANDERE(client, _auth_signer, friend_pair, dm_altnachricht):
     """``other_user_id`` ist aus Sicht des Fragenden zu füllen, nicht fest."""
     t_a, uid_a = await _user(_auth_signer)
     t_b, uid_b = await _user(_auth_signer)
     await friend_pair(uid_a, uid_b)
-    await _dm_mit_nachricht(client, t_a, uid_b, "Gegenprobe beidseitig")
+    await _dm_mit_nachricht(client, dm_altnachricht, t_a, uid_a, uid_b, "Gegenprobe beidseitig")
 
     r_a = await client.get("/dm-channels-search", params={"q": "Gegenprobe"}, headers=auth(t_a))
     r_b = await client.get("/dm-channels-search", params={"q": "Gegenprobe"}, headers=auth(t_b))
@@ -93,12 +95,12 @@ async def test_gegenueber_ist_der_ANDERE(client, _auth_signer, friend_pair):
 
 
 @pytest.mark.asyncio
-async def test_fremde_gespraeche_bleiben_draussen(client, _auth_signer, friend_pair):
+async def test_fremde_gespraeche_bleiben_draussen(client, _auth_signer, friend_pair, dm_altnachricht):
     t_a, uid_a = await _user(_auth_signer)
     _, uid_b = await _user(_auth_signer)
     t_c, uid_c = await _user(_auth_signer)
     await friend_pair(uid_a, uid_b)
-    await _dm_mit_nachricht(client, t_a, uid_b, "Geheimwort Nashorn")
+    await _dm_mit_nachricht(client, dm_altnachricht, t_a, uid_a, uid_b, "Geheimwort Nashorn")
 
     # C ist an diesem Gespräch nicht beteiligt und darf es nicht finden.
     r = await client.get("/dm-channels-search", params={"q": "Nashorn"}, headers=auth(t_c))
@@ -108,11 +110,11 @@ async def test_fremde_gespraeche_bleiben_draussen(client, _auth_signer, friend_p
 
 
 @pytest.mark.asyncio
-async def test_geloeschte_nachrichten_bleiben_draussen(client, _auth_signer, friend_pair):
+async def test_geloeschte_nachrichten_bleiben_draussen(client, _auth_signer, friend_pair, dm_altnachricht):
     t_a, uid_a = await _user(_auth_signer)
     _, uid_b = await _user(_auth_signer)
     await friend_pair(uid_a, uid_b)
-    kanal = await _dm_mit_nachricht(client, t_a, uid_b, "Loeschkandidat Zebra")
+    kanal = await _dm_mit_nachricht(client, dm_altnachricht, t_a, uid_a, uid_b, "Loeschkandidat Zebra")
     liste = await client.get(f"/channels/{kanal}/messages", headers=auth(t_a))
     nachricht_id = liste.json()[0]["id"]
     r = await client.delete(f"/messages/{nachricht_id}", headers=auth(t_a))
@@ -123,13 +125,13 @@ async def test_geloeschte_nachrichten_bleiben_draussen(client, _auth_signer, fri
 
 
 @pytest.mark.asyncio
-async def test_prozentzeichen_ist_ein_zeichen_kein_muster(client, _auth_signer, friend_pair):
+async def test_prozentzeichen_ist_ein_zeichen_kein_muster(client, _auth_signer, friend_pair, dm_altnachricht):
     """Ohne Maskierung träfe ein getipptes ``%`` jede Nachricht der Instanz."""
     t_a, uid_a = await _user(_auth_signer)
     _, uid_b = await _user(_auth_signer)
     await friend_pair(uid_a, uid_b)
-    await _dm_mit_nachricht(client, t_a, uid_b, "ganz ohne Sonderzeichen")
-    await _dm_mit_nachricht(client, t_a, uid_b, "Rabatt 50% auf alles")
+    await _dm_mit_nachricht(client, dm_altnachricht, t_a, uid_a, uid_b, "ganz ohne Sonderzeichen")
+    await _dm_mit_nachricht(client, dm_altnachricht, t_a, uid_a, uid_b, "Rabatt 50% auf alles")
 
     r = await client.get("/dm-channels-search", params={"q": "50%"}, headers=auth(t_a))
     treffer = r.json()

@@ -42,6 +42,7 @@ from dcc_chat_gateway.mentions import (
 )
 from dcc_chat_gateway.models import (
     CHANNEL_TYPE_TEXT,
+    DM_KLARTEXT_DETAIL,
     LEGACY_READONLY_DETAIL,
     Channel,
     DirectMessageChannel,
@@ -210,6 +211,11 @@ async def handle_send(ctx: WSOpContext, msg: dict[str, Any]) -> None:
             await websocket.send_json(
                 {"op": "error", "code": 4006, "msg": "channel not accessible"}
             )
+            return
+        if kind == "dm":
+            # Klartext in DMs nimmt der Server nicht mehr an
+            # (``DM_KLARTEXT_DETAIL``, ``routes/messages.py``).
+            await websocket.send_json({"op": "error", "code": 4016, "msg": DM_KLARTEXT_DETAIL})
             return
         # Etappe 2 friend-gate for DMs (mirrors routes/messages.py
         # POST /channels/{id}/messages). A historical DM (pre-friend-cut)

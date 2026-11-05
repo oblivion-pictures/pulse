@@ -742,6 +742,10 @@
     // Umschlag freischaltet (`bearbeitungErlaubt`, analog
     // `reaktionUmschlag`).
     if (m.verschluesselt) return bearbeitungErlaubt && m.author_id === myId && !m.id.startsWith('tmp-') && !m.deleted_at;
+    // Klartext ohne Community = alter DM-Verlauf: der Server nimmt dort seit
+    // 2026-11-05 keinen Klartext mehr an, auch kein Bearbeiten
+    // (`DM_KLARTEXT_DETAIL`, `routes/messages.py`).
+    if (!channel?.guild_id) return false;
     return !!myId && m.author_id === myId && !m.id.startsWith('tmp-') && !m.deleted_at;
   }
   function canDeleteMessage(m: Message): boolean {

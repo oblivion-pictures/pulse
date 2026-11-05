@@ -1,7 +1,12 @@
 """WebSocket round-trip tests for direct-message channels.
 
-Mirrors test_ws.py for guild channels: subscribe + send + ready payload,
-but exercising the DM-side of the polymorphic /ws endpoint.
+Mirrors test_ws.py for guild channels: subscribe + ready payload, but
+exercising the DM-side of the polymorphic /ws endpoint.
+
+Senden gehört seit 2026-11-05 nicht mehr dazu: Klartext in DMs lehnt der
+Server ab (4016, ``DM_KLARTEXT_DETAIL``), verschlüsselt geht es über das
+Postfach. Geprüft wird hier deshalb nur noch die Ablehnung samt fehlender
+Nebenwirkungen.
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ from starlette.testclient import TestClient
 
 import dcc_chat_gateway.config as chat_cfg
 
-from .conftest import install_friendship_sync, receive_skipping
+from .conftest import install_friendship_sync, ping_barrier, receive_skipping
 
 # DM routes and ready-frame DM payload are cloud-only.
 pytestmark = pytest.mark.usefixtures("cloud_mode")
@@ -107,8 +112,27 @@ async def test_ws_subscribe_dm_as_non_member_rejected(ws_app, _auth_signer):
 
 
 @pytest.mark.asyncio
-async def test_ws_dm_send_and_fanout(ws_app, _auth_signer):
-    """Both DM members receive the message via fanout; sender gets ack."""
+async def test_ws_dm_klartext_wird_abgelehnt(ws_app, _auth_signer, monkeypatch):
+    """Ein WS-``send`` in eine DM endet seit 2026-11-05 mit 4016
+    (``DM_KLARTEXT_DETAIL``) — auf dem langsamen Pfad (nicht abonniert, die
+    Mitgliedschaft wird erst aufgelöst) wie auf dem schnellen (abonniert).
+
+    Früher folgten darauf Fan-out an beide Teilnehmer, ein ``dm_bump``, ein
+    DM-Push und der ``last_message_id``-Schub. Nichts davon darf mehr
+    passieren: das Gegenüber bekommt kein Frame, keine Zeile landet in der
+    Datenbank, der nächste ``ready`` zeigt keine letzte Nachricht.
+    """
+    import dcc_chat_gateway.routes.ws_op_send as ws_op_send
+    from dcc_chat_gateway.models import DM_KLARTEXT_DETAIL
+    from sqlalchemy import create_engine, text
+
+    pushes: list[dict] = []
+
+    async def _fake_fan_out_dm_push(**kwargs):
+        pushes.append(kwargs)
+
+    monkeypatch.setattr(ws_op_send, "fan_out_dm_push", _fake_fan_out_dm_push)
+    erwartet = {"op": "error", "code": 4016, "msg": DM_KLARTEXT_DETAIL}
 
     def _run():
         with TestClient(ws_app) as tc:
@@ -119,155 +143,44 @@ async def test_ws_dm_send_and_fanout(ws_app, _auth_signer):
             ):
                 receive_skipping(ws_a)  # ready
                 receive_skipping(ws_b)  # ready
-                ws_a.send_json({"op": "subscribe", "channel_id": dm_id})
                 ws_b.send_json({"op": "subscribe", "channel_id": dm_id})
+                ping_barrier(ws_b)
 
+                # Langsamer Pfad: A hat die DM nicht abonniert.
                 ws_a.send_json(
-                    {
-                        "op": "send",
-                        "channel_id": dm_id,
-                        "content": "hallo per dm",
-                        "nonce": "dm-n1",
-                    }
+                    {"op": "send", "channel_id": dm_id, "content": "langsam", "nonce": "k1"}
                 )
+                assert receive_skipping(ws_a) == erwartet
 
-                msgs_a = [receive_skipping(ws_a) for _ in range(2)]
-                ops_a = [m["op"] for m in msgs_a]
-                assert "message_ack" in ops_a
-                assert "message" in ops_a
-                ack = next(m for m in msgs_a if m["op"] == "message_ack")
-                assert ack["nonce"] == "dm-n1"
-
-                got = receive_skipping(ws_b)
-                assert got["op"] == "message"
-                assert got["data"]["content"] == "hallo per dm"
-                assert got["data"]["channel_id"] == dm_id
-
-    await asyncio.to_thread(_run)
-
-
-@pytest.mark.asyncio
-async def test_ws_dm_send_publishes_dm_bump(ws_app, _auth_signer):
-    """A send on a DM must publish a dm_bump on the guild:events channel
-    carrying the (a, b) pair so receiving clients can decide membership."""
-
-    def _run():
-        with TestClient(ws_app) as tc:
-            t_a, uid_a, t_b, uid_b, dm_id = _bootstrap_dm_sync(tc, _auth_signer)
-            with (
-                tc.websocket_connect(f"/ws?token={t_a}") as ws_a,
-                tc.websocket_connect(f"/ws?token={t_b}") as ws_b,
-            ):
-                receive_skipping(ws_a)  # ready
-                receive_skipping(ws_b)  # ready
-                # A sends without subscribing — exercises the slow path
-                # (membership resolved + dm_pair filled from the DM object).
-                ws_a.send_json(
-                    {
-                        "op": "send",
-                        "channel_id": dm_id,
-                        "content": "bump payload",
-                        "nonce": "bp",
-                    }
-                )
-                # A receives ack + dm_bump (no `message` because A isn't
-                # subscribed to the DM channel). Order isn't guaranteed.
-                seen_ack = False
-                seen_bump = False
-                for _ in range(2):
-                    m = receive_skipping(ws_a)
-                    if m["op"] == "message_ack":
-                        seen_ack = True
-                    elif m["op"] == "dm_bump":
-                        assert m["channel_id"] == dm_id
-                        assert {m["user_a_id"], m["user_b_id"]} == {
-                            str(uid_a),
-                            str(uid_b),
-                        }
-                        assert m["author_id"] == str(uid_a)
-                        seen_bump = True
-                assert seen_ack and seen_bump
-                # B also sees the dm_bump (fanned to all connections).
-                b_bump = receive_skipping(ws_b)
-                assert b_bump["op"] == "dm_bump"
-                assert b_bump["channel_id"] == dm_id
-
-    await asyncio.to_thread(_run)
-
-
-@pytest.mark.asyncio
-async def test_ws_dm_send_triggers_web_push(ws_app, _auth_signer, monkeypatch):
-    """Regression: the WS ``send`` op used to skip ``fan_out_dm_push``
-    entirely (only the REST POST path called it), so a tab-closed DM
-    recipient never got an OS-level notification for a message sent via
-    the WS path — the normal path for a plain-text DM from the web
-    client. Must fire with the same args REST would pass."""
-    import dcc_chat_gateway.routes.ws_op_send as ws_op_send
-
-    calls: list[dict] = []
-
-    async def _fake_fan_out_dm_push(**kwargs):
-        calls.append(kwargs)
-
-    monkeypatch.setattr(ws_op_send, "fan_out_dm_push", _fake_fan_out_dm_push)
-
-    def _run():
-        with TestClient(ws_app) as tc:
-            t_a, uid_a, _, uid_b, dm_id = _bootstrap_dm_sync(tc, _auth_signer)
-            with tc.websocket_connect(f"/ws?token={t_a}") as ws_a:
-                receive_skipping(ws_a)  # ready
+                # Schneller Pfad: nach dem Abonnieren.
                 ws_a.send_json({"op": "subscribe", "channel_id": dm_id})
                 ws_a.send_json(
-                    {
-                        "op": "send",
-                        "channel_id": dm_id,
-                        "content": "push me",
-                        "nonce": "push-n1",
-                    }
+                    {"op": "send", "channel_id": dm_id, "content": "schnell", "nonce": "k2"}
                 )
-                # Drain ack + message.
-                for _ in range(2):
-                    receive_skipping(ws_a)
+                assert receive_skipping(ws_a) == erwartet
 
-            assert len(calls) == 1
-            call = calls[0]
-            assert call["recipient_id"] == uid_b
-            # Security-Audit 2026-09-16: der Push ist inhaltsfrei — der
-            # Inhalt reist nicht mehr bis zum Push-Dienst.
-            assert "content" not in call
-            assert call["channel_id"] == int(dm_id)
+                # Kein message/dm_bump auf beiden Seiten: das nächste Frame
+                # ist jeweils das pong der Barriere.
+                ping_barrier(ws_a)
+                ping_barrier(ws_b)
 
-    await asyncio.to_thread(_run)
+            eng = create_engine(chat_cfg.get_settings().database_url.replace("+aiosqlite", ""))
+            try:
+                with eng.connect() as conn:
+                    zeilen = conn.execute(
+                        text("SELECT count(*) FROM messages WHERE channel_id = :c"),
+                        {"c": int(dm_id)},
+                    ).scalar()
+            finally:
+                eng.dispose()
+            assert zeilen == 0
 
-
-@pytest.mark.asyncio
-async def test_ws_dm_send_bumps_last_message_id(ws_app, _auth_signer):
-    """A WS send on a DM must update last_message_id (visible on next ready)."""
-
-    def _run():
-        with TestClient(ws_app) as tc:
-            t_a, _, _, _, dm_id = _bootstrap_dm_sync(tc, _auth_signer)
-            sent_msg_id: str | None = None
-            with tc.websocket_connect(f"/ws?token={t_a}") as ws:
-                receive_skipping(ws)  # skip hello + ready
-                ws.send_json({"op": "subscribe", "channel_id": dm_id})
-                ws.send_json(
-                    {
-                        "op": "send",
-                        "channel_id": dm_id,
-                        "content": "bump me",
-                        "nonce": "bump",
-                    }
-                )
-                msgs = [ws.receive_json() for _ in range(2)]
-                ack = next(m for m in msgs if m["op"] == "message_ack")
-                sent_msg_id = ack["id"]
-
-            # Open a fresh connection; ready must reflect the bump.
             with tc.websocket_connect(f"/ws?token={t_a}") as ws2:
                 ws2.receive_json()  # hello
                 payload = ws2.receive_json()  # ready
                 entry = next(d for d in payload["dm_channels"] if d["id"] == dm_id)
-                assert entry["last_message_id"] == sent_msg_id
+                assert entry["last_message_id"] is None
+
+        assert pushes == []
 
     await asyncio.to_thread(_run)

@@ -335,7 +335,7 @@ async def test_nur_wer_eine_zustellung_hat_bekommt_eine_abrufadresse(
 
 @pytest.mark.asyncio
 async def test_eingelieferter_anhang_kommt_in_keine_klartext_nachricht(
-    client, app, session_factory, _auth_signer, friend_pair, mock_s3
+    client, app, session_factory, _auth_signer, friend_pair, mock_s3, dm_altnachricht
 ):
     """Die Gegenrichtung: ein Anhang, der an einem Umschlag haengt, darf
     nicht zusaetzlich an einer Nachricht haengen.
@@ -343,7 +343,20 @@ async def test_eingelieferter_anhang_kommt_in_keine_klartext_nachricht(
     Sonst faellt er mit seinem letzten Umschlag, waehrend eine
     Klartext-Nachricht weiter auf ihn zeigt — und er waere ueber die
     Rechtepruefung des Klartext-Wegs erreichbar, an der Zustellung vorbei.
+
+    Seit 2026-11-05 weist die Klartext-Route eine DM schon VOR jeder
+    Anhang-Prüfung ab (403, ``DM_KLARTEXT_DETAIL``), und auch kein anderer
+    Kanal, in den das Postfach einliefert, nimmt Klartext an (Ablage-Kanal:
+    403; private Gruppe: 404). Die Sperre in ``bind_attachments``
+    (``postfach_gebunden_am``) ist damit über keine Route mehr erreichbar —
+    sie bleibt aber die zweite Linie, falls eine Route sie je wieder
+    erreicht. Geprüft werden deshalb beide: die Route und, direkt, die
+    Sperre gegen eine Altnachricht im selben Kanal.
     """
+    from dcc_chat_gateway.models import DM_KLARTEXT_DETAIL
+    from dcc_chat_gateway.routes.attachments import bind_attachments
+    from fastapi import HTTPException
+
     token_a, uid_a, _token_b, _uid_b, dm_id, pub_b = await _aufbau(
         client, session_factory, _auth_signer, friend_pair
     )
@@ -361,7 +374,21 @@ async def test_eingelieferter_anhang_kommt_in_keine_klartext_nachricht(
         json={"content": "harmlos", "attachment_ids": [anhang_id]},
         headers=_auth(token_a),
     )
-    assert nachricht.status_code == 400
+    assert nachricht.status_code == 403
+    assert nachricht.json()["detail"] == DM_KLARTEXT_DETAIL
+
+    altnachricht = await dm_altnachricht(dm_id, uid_a, "harmlos")
+    async with session_factory() as s:
+        with pytest.raises(HTTPException) as fehler:
+            await bind_attachments(
+                s,
+                attachment_ids=[int(anhang_id)],
+                message_id=int(altnachricht),
+                channel_id=int(dm_id),
+                uploader_id=uid_a,
+            )
+        assert fehler.value.status_code == 400
+        assert "already bound" in fehler.value.detail
     async with session_factory() as s:
         assert (await s.get(MessageAttachment, int(anhang_id))).message_id is None
 
