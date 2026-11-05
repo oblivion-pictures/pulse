@@ -110,6 +110,12 @@ srt: no
 webrtc: yes
 webrtcAddress: :8889
 webrtcEncryption: no
+# WHEP/WHIP kommen über Caddy im selben Container (127.0.0.1) herein: ohne
+# vertrauten Proxy meldete MediaMTX dem Auth-Hook für jeden Zuschauer
+# 127.0.0.1, und alle teilten sich ein Drossel-Budget (Gegenprüfung des
+# Security-Audits, 2026-11-05). Hinter einem weiteren Proxy (behind-proxy,
+# Relay) kommt die echte Adresse nur an, wenn Caddy sie weiterreicht.
+webrtcTrustedProxies: [127.0.0.1/32, ::1/128]
 # WebRTC/WHEP media plane: advertise a reachable ICE candidate. Without an
 # explicit UDP port + host, MediaMTX offers only the container's internal
 # bridge IPs and the WHEP connection never negotiates ("deadline exceeded").

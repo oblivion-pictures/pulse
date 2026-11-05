@@ -299,3 +299,27 @@ async def test_eine_adresse_ohne_https_wird_abgewiesen(client, session_factory, 
     assert r.status_code == 400, r.text
     assert r.json()["detail"] == "drive address must use https"
     assert await _zeile(session_factory, uid) is None
+
+
+@pytest.mark.parametrize(
+    "adresse",
+    [
+        "https://cloud.example/public.php/dav/files/x?weiter=1",
+        "https://cloud.example/public.php/dav/files/x#teil",
+        "https://nutzer:geheim@cloud.example/public.php/dav/files/x",
+        "https://cloud.example:99999/public.php/dav/files/x",
+    ],
+)
+@pytest.mark.asyncio
+async def test_query_fragment_zugangsdaten_und_kaputter_port_werden_abgewiesen(
+    client, session_factory, _auth_signer, adresse
+):
+    """Die Basis wird stumpf um Pfadsegmente verlängert — eine Query oder ein
+    Fragment schöbe den Pfad dorthin, Zugangsdaten prüft niemand."""
+    token, uid = await _register(_auth_signer)
+    r = await client.put(
+        "/ablage/archiv/laufwerk", json={"freigabe_adresse": adresse}, headers=_auth(token)
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"] == "invalid drive address"
+    assert await _zeile(session_factory, uid) is None

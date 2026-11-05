@@ -72,8 +72,13 @@ _READ_ACTIONS = frozenset({"read", "playback"})
 # für ALLE Calls gleich, und der Schieber hätte als einziges globales Budget
 # funktioniert: ein einziger Zuschauer mit WHEP-Reconnects hätte allen anderen
 # die Auth-Kapazität weggenommen (429 → MediaMTX wertet nicht-20x als Ablehnung).
-# ``ip`` füllt MediaMTX aus dem Socket und ist von außen nicht wählbar; ohne
-# den Fall-Klumpen dient loopback als Ersatzschlüssel.
+# ``ip`` füllt MediaMTX aus dem Socket — bei WHEP/WHIP hinter Proxys ist das
+# der Proxy, und alle Zuschauer teilten sich EIN Budget, bis
+# ``webrtcTrustedProxies`` gesetzt war (Gegenprüfung des Security-Audits,
+# 2026-11-05; ``infra/prod/mediamtx.yml``). Seitdem kommt die Client-Adresse
+# aus ``X-Forwarded-For``, und zwar nur über vertraute Proxys (gin ``ClientIP``,
+# von rechts) — von außen also weiter nicht wählbar. Ohne ``ip`` dient
+# loopback als Ersatzschlüssel.
 _HOOK_LIMIT = 120       # Requests je Fenster
 _HOOK_FENSTER_S = 60.0
 _hook_zeiten: dict[str, deque[float]] = defaultdict(deque)

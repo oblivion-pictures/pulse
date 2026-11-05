@@ -44,6 +44,7 @@ from dcc_chat_gateway import config as chat_config
 from dcc_chat_gateway import ratelimit, s3
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.models import AblagePulseLaufwerk, AblagePulseObjekt, DropboxConfig
+from dcc_chat_gateway.models.ablage_pulse import VERZEICHNIS_NAME
 from dcc_chat_gateway.permissions import Permissions, check_permission
 from dcc_chat_gateway.routes._deps import guild_or_404, mitglied_oder_403
 from dcc_chat_gateway.routes._dropbox_helpers import with_quota_lock
@@ -56,7 +57,6 @@ router = APIRouter()
 # Muster-Check ist keine Metadaten-Hygiene (der Name traegt eh keine
 # Information), sondern Pfad-Hygiene: er bleibt Teil des storage_key.
 _NAME_MUSTER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.puls$")
-VERZEICHNIS_NAME = "verzeichnis.puls"
 
 
 def _storage_key(guild_id: int, name: str) -> str:
@@ -290,6 +290,7 @@ async def kuendige_datei_an(
                 id=next_id(),
                 guild_id=guild_id,
                 hochgeladen_von=current.id,
+                urheber_id=current.id,
                 storage_key=key,
                 groesse=payload.groesse,
                 zustand=0,
@@ -430,7 +431,8 @@ async def loesche_datei(
 
     objekt = await _objekt_oder_404(session, guild_id, name)
     guild = await guild_or_404(session, guild_id)
-    if objekt.hochgeladen_von != current.id and guild.owner_id != current.id:
+    # Der Urheber, nicht der letzte Ankündiger (`models/ablage_pulse.py`).
+    if objekt.urheber_id != current.id and guild.owner_id != current.id:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             detail="only the uploader or the guild owner may delete",

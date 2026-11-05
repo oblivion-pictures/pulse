@@ -515,3 +515,70 @@ async def test_community_eroschung_wird_auf_decke_geklemmt(
 
     r = await client.get(f"/guilds/{gid}/ablage/pulse/status", headers=auth(t_owner))
     assert r.json()["kontingent_bytes"] == 2 * 1024 * 1024
+
+
+async def _laufwerk_mit_zwei_mitgliedern(client, _auth_signer):
+    t_owner, _ = await _register_user(_auth_signer)
+    t_a, uid_a = await _register_user(_auth_signer)
+    t_b, uid_b = await _register_user(_auth_signer)
+    g = (await client.post("/guilds", json={"name": "g"}, headers=auth(t_owner))).json()
+    for uid in (uid_a, uid_b):
+        await beitreten_per_einladung(client, g["id"], str(uid), t_owner)
+    await client.put(f"/guilds/{g['id']}/ablage/pulse/laufwerk", headers=auth(t_owner))
+    return g["id"], (t_a, uid_a), (t_b, uid_b)
+
+
+async def _ankuendigen_und_abschliessen(client, gid, token, name):
+    r = await client.post(
+        f"/guilds/{gid}/ablage/pulse/dateien", json={"name": name, "groesse": 10}, headers=auth(token)
+    )
+    assert r.status_code == 201, r.text
+    r = await client.post(
+        f"/guilds/{gid}/ablage/pulse/dateien/gelungen", json={"name": name}, headers=auth(token)
+    )
+    assert r.status_code == 204, r.text
+
+
+@pytest.mark.asyncio
+async def test_neuankuendigung_uebernimmt_das_loeschrecht_nicht(client, _auth_signer, mock_s3):
+    """Gegenprüfung des Security-Audits (2026-11-05): eine Neuankündigung machte
+    den Neuankündiger zum Hochlader — er durfte die fremde Datei danach löschen.
+    Abschließen darf er (Wettlauf-Erkennung), löschen nicht."""
+    gid, (t_a, _), (t_b, _) = await _laufwerk_mit_zwei_mitgliedern(client, _auth_signer)
+    await _ankuendigen_und_abschliessen(client, gid, t_a, "a-0a.puls")
+    await _ankuendigen_und_abschliessen(client, gid, t_b, "a-0a.puls")
+
+    r = await client.delete(
+        f"/guilds/{gid}/ablage/pulse/dateien", params={"name": "a-0a.puls"}, headers=auth(t_b)
+    )
+    assert r.status_code == 403
+    r = await client.delete(
+        f"/guilds/{gid}/ablage/pulse/dateien", params={"name": "a-0a.puls"}, headers=auth(t_a)
+    )
+    assert r.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_konto_purge_nimmt_nur_angelegte_dateien_und_nie_das_verzeichnis(
+    client, _auth_signer, mock_s3, session_factory
+):
+    from sqlalchemy import select
+
+    from dcc_chat_gateway.models import AblagePulseObjekt
+    from dcc_chat_gateway.user_purge_ablage import purge_ablage_pulse_objekte
+
+    gid, (t_a, _), (t_b, uid_b) = await _laufwerk_mit_zwei_mitgliedern(client, _auth_signer)
+    await _ankuendigen_und_abschliessen(client, gid, t_a, "a-0a.puls")
+    await _ankuendigen_und_abschliessen(client, gid, t_b, "a-0a.puls")  # fremde Datei neu
+    await _ankuendigen_und_abschliessen(client, gid, t_b, "verzeichnis.puls")  # B legt an
+    await _ankuendigen_und_abschliessen(client, gid, t_b, "a-0b.puls")  # B's eigene
+
+    async with session_factory() as s:
+        weg = await purge_ablage_pulse_objekte(s, uid_b)
+        await s.commit()
+        bleibt = sorted((await s.execute(select(AblagePulseObjekt.storage_key))).scalars())
+    assert [k.rsplit("/", 1)[-1] for k in weg] == ["a-0b.puls"]
+    assert [k.rsplit("/", 1)[-1] for k in bleibt if f"guild-{gid}/" in k] == [
+        "a-0a.puls",
+        "verzeichnis.puls",
+    ]

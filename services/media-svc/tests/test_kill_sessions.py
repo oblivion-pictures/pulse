@@ -24,22 +24,27 @@ def _auth() -> dict[str, str]:
 
 
 class _FakeMediaMtx:
-    """Mini-MediaMTX: listet Sessions, zählt Deletes, kann auch ausfallen."""
+    """Mini-MediaMTX: listet Sessions, zählt Kicks, kann auch ausfallen.
+
+    **Streng auf die echten Pfade** (MediaMTX 1.19.1, `api/openapi.yaml`): bis
+    2026-11-05 baute dieser Fake die falsche Route des Endpunkts nach
+    (``…/whepsessions`` + ``DELETE``), und der Test war grün, während in
+    Produktion jeder Rauswurf mit 404 endete."""
 
     def __init__(self, sessions: list[dict[str, Any]], *, kaputt: bool = False):
         self.sessions = sessions
         self.kaputt = kaputt
-        self.deleted: list[str] = []
+        self.gekickt: list[str] = []
 
     async def handler(self, request: httpx.Request) -> httpx.Response:
         if self.kaputt:
             return httpx.Response(500, json={"error": "boom"})
-        if request.url.path.endswith("/whepsessions") and request.method == "GET":
-            return httpx.Response(200, json={"items": self.sessions, "totalCount": len(self.sessions)})
-        if request.method == "DELETE" and "/whepsessions/" in request.url.path:
+        if request.url.path == "/v3/webrtcsessions/list" and request.method == "GET":
+            return httpx.Response(200, json={"items": self.sessions, "itemCount": len(self.sessions)})
+        if request.method == "POST" and request.url.path.startswith("/v3/webrtcsessions/kick/"):
             sid = request.url.path.rsplit("/", 1)[-1]
-            self.deleted.append(sid)
-            return httpx.Response(204)
+            self.gekickt.append(sid)
+            return httpx.Response(200)
         return httpx.Response(404)
 
 
@@ -67,8 +72,8 @@ def _install(monkeypatch, app, holder: dict, fake: _FakeMediaMtx) -> None:
         async def get(self, url: str, **k) -> httpx.Response:
             return await fake.handler(_httpx.Request("GET", url, params=k.get("params")))
 
-        async def delete(self, url: str, **k) -> httpx.Response:
-            return await fake.handler(_httpx.Request("DELETE", url))
+        async def post(self, url: str, **k) -> httpx.Response:
+            return await fake.handler(_httpx.Request("POST", url))
 
     monkeypatch.setattr(httpx, "AsyncClient", _FehlerClient)
 
@@ -100,7 +105,7 @@ async def test_kill_sessions_matcht_token_delimiter_genau(client, app, monkeypat
         headers=_auth(),
     )
     assert r.status_code == 204
-    assert fake.deleted == ["s1", "s3"]
+    assert fake.gekickt == ["s1", "s3"]
 
 
 @pytest.mark.asyncio

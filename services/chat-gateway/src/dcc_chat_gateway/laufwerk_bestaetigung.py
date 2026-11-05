@@ -89,8 +89,19 @@ async def adresse_bestaetigen(freigabe_adresse: str, bisher: str | None = None) 
     sie schon als bestätigt."""
     if bisher == freigabe_adresse:
         return
-    if urllib.parse.urlsplit(freigabe_adresse).scheme != "https":
+    geteilt = urllib.parse.urlsplit(freigabe_adresse)
+    if geteilt.scheme != "https":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="drive address must use https")
+    # Die Basis wird später stumpf um Pfadsegmente verlängert
+    # (`ablage_ssrf.baue_ziel_url`): eine Query oder ein Fragment schöbe den
+    # Pfad dorthin, Zugangsdaten in der Adresse prüft niemand. Ein Laufwerk
+    # braucht nichts davon.
+    try:
+        geteilt.port  # noqa: B018 — wirft bei einem unlesbaren Port
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="invalid drive address") from None
+    if geteilt.query or geteilt.fragment or geteilt.username or geteilt.password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="invalid drive address")
     ergebnis = await _probiere(freigabe_adresse=freigabe_adresse)
     if not ergebnis.gut:
         # Nur Schritt und Kennung, nie die Adresse (Modulkopf von `ablage_probe`).

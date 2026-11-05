@@ -86,6 +86,15 @@ moq: no
 # WebRTC / WHEP (reached via pulse_web → /whep/*; ICE on :8189/udp direct)
 webrtc: yes
 webrtcAddress: :8889
+# WHEP/WHIP kommen über Caddy → pulse_web (nginx) herein. Ohne vertraute
+# Proxys meldet MediaMTX dem Auth-Hook als `ip` die Adresse von nginx — alle
+# Zuschauer und Sender teilten sich dort EIN Drossel-Budget von 120/min, und
+# ein paar Müll-Anfragen je Sekunde sperrten jeden Stream (Gegenprüfung des
+# Security-Audits, 2026-11-05). Mit `pulse-net` als vertrautem Netz liest
+# MediaMTX `X-Forwarded-For` von rechts und überspringt nur diese Adressen
+# (gin `ClientIP`) — fälschen kann der Client die Kette damit nicht. Dasselbe
+# Netz wie `TRUSTED_PROXIES` der Dienste (`.env`).
+webrtcTrustedProxies: [172.18.0.0/16]
 webrtcLocalUDPAddress: :8189
 # With network_mode: host MediaMTX sees every host interface — loopback,
 # docker bridges, link-local IPv6 — and used to advertise them all as ICE

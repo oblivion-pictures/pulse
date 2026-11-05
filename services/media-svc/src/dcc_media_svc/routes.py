@@ -704,10 +704,16 @@ async def kill_gast_sessions(
     if not expected or not secrets.compare_digest(given, expected):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="internal routes disabled")
 
-    # ``mediamtx_api_url`` zeigt auf ``…/v3/paths/list`` — die Sessions-Liste
-    # lebt daneben unter ``…/v3/whepsessions``.
-    basis = get_settings().mediamtx_api_url.rsplit("/", 1)[0]
-    sessions_url = f"{basis}/whepsessions"
+    # ``mediamtx_api_url`` zeigt auf ``…/v3/paths/list``. Die WHEP-Zuschauer
+    # sind WebRTC-Sitzungen: Liste ``GET …/v3/webrtcsessions/list``, Trennen
+    # ``POST …/v3/webrtcsessions/kick/{id}`` (MediaMTX 1.19.1, `api/openapi.yaml`).
+    # Bis 2026-11-05 stand hier ``…/v3/paths/whepsessions`` + ``DELETE`` — eine
+    # Route, die es nicht gibt: jeder Rauswurf endete mit 404 und einer
+    # Log-Warnung, der Gast sah den Stream weiter (Gegenprüfung des
+    # Security-Audits).
+    api = get_settings().mediamtx_api_url.split("/v3/", 1)[0] + "/v3"
+    sessions_url = f"{api}/webrtcsessions/list"
+    kick_basis = f"{api}/webrtcsessions/kick"
     tokens = set(payload.tokens)
     getrennt = 0
 
@@ -757,11 +763,13 @@ async def kill_gast_sessions(
                     continue
                 if any(_passt(query, t) for t in tokens):
                     try:
-                        delete = await client.delete(f"{sessions_url}/{sid}")
-                        if delete.status_code < 400:
+                        kick = await client.post(f"{kick_basis}/{sid}")
+                        if kick.status_code < 400:
                             getrennt += 1
+                        else:
+                            log.warning("whep_session_kick_rejected", status=kick.status_code)
                     except Exception:  # noqa: BLE001 — best-effort je Session
-                        log.warning("whep_session_delete_failed", sid=sid)
+                        log.warning("whep_session_kick_failed", sid=sid)
             if len(items) < 1000:
                 break
     log.info("gast_whep_sessions_killed", sessions=getrennt, tokens=len(tokens))
