@@ -202,3 +202,100 @@ async def test_eine_unveraenderte_adresse_wird_nicht_erneut_geprobt(
         await _laufwerk_setzen(client, token, "https://cloud.example/s/abc")
     await _laufwerk_setzen(client, token, "https://cloud.example/s/neu")
     assert aufrufe == ["https://cloud.example/s/abc", "https://cloud.example/s/neu"]
+
+
+def _webdav_nachstellen(monkeypatch, *, schreibbar: bool = True) -> dict[str, bytes]:
+    """Ein öffentliches WebDAV-Laufwerk unter ``cloud.example`` (öffentliche
+    Doku-IP), über die Namen, die `ablage_ssrf` und `ablage_schreiben` für
+    Client und Namensauflösung benutzen. Gibt die abgelegten Dateien zurück."""
+    import httpx
+
+    from dcc_chat_gateway import ablage_schreiben, ablage_ssrf
+
+    dateien: dict[str, bytes] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        pfad = request.url.path
+        if request.method == "PUT":
+            if not schreibbar:
+                return httpx.Response(405)
+            dateien[pfad] = request.content
+            return httpx.Response(201)
+        if request.method == "GET":
+            if pfad not in dateien:
+                return httpx.Response(404)
+            return httpx.Response(200, content=dateien[pfad])
+        if request.method == "DELETE":
+            dateien.pop(pfad, None)
+            return httpx.Response(204)
+        return httpx.Response(405)
+
+    def _ctor(*args, **kwargs):
+        kwargs.pop("transport", None)
+        return httpx.AsyncClient(*args, transport=httpx.MockTransport(handler), **kwargs)
+
+    async def _resolver(host: str) -> list[str]:
+        return {"cloud.example": ["203.0.113.10"]}[host]
+
+    for modul in (ablage_ssrf, ablage_schreiben):
+        monkeypatch.setattr(modul, "client_ctor", _ctor)
+        monkeypatch.setattr(modul, "standard_resolver", _resolver)
+    return dateien
+
+
+def _echte_probe(monkeypatch) -> None:
+    from dcc_chat_gateway import laufwerk_bestaetigung
+
+    monkeypatch.setattr(
+        laufwerk_bestaetigung, "_probiere", laufwerk_bestaetigung._ueber_die_echten_wege
+    )
+
+
+@pytest.mark.asyncio
+async def test_die_webdav_basis_des_archivs_besteht_die_probe(
+    client, session_factory, _auth_signer, monkeypatch
+):
+    """Regressionstest: das Archiv speichert die WebDAV-Basis
+    (`…/public.php/dav/files/<token>`), keinen Freigabe-Link. Die erste Fassung
+    der Probe nahm nur Freigabe-Links an, und jede neue Archiv-Verbindung
+    scheiterte. Die Probe läuft über dieselben Wege wie das Archiv selbst und
+    lässt keine Probedatei zurück."""
+    dateien = _webdav_nachstellen(monkeypatch)
+    _echte_probe(monkeypatch)
+    token, uid = await _register(_auth_signer)
+    adresse = "https://cloud.example/public.php/dav/files/AbCdEf123"
+    await _laufwerk_setzen(client, token, adresse)
+    assert (await _zeile(session_factory, uid)).freigabe_adresse == adresse
+    assert dateien == {}
+
+
+@pytest.mark.asyncio
+async def test_eine_nicht_beschreibbare_seite_besteht_die_probe_nicht(
+    client, session_factory, _auth_signer, monkeypatch
+):
+    _webdav_nachstellen(monkeypatch, schreibbar=False)
+    _echte_probe(monkeypatch)
+    token, uid = await _register(_auth_signer)
+    r = await client.put(
+        "/ablage/archiv/laufwerk",
+        json={"freigabe_adresse": "https://cloud.example/irgendeine-seite"},
+        headers=_auth(token),
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"].startswith("drive probe failed: schreiben/")
+    assert await _zeile(session_factory, uid) is None
+
+
+@pytest.mark.asyncio
+async def test_eine_adresse_ohne_https_wird_abgewiesen(client, session_factory, _auth_signer):
+    """Bei http:// könnte der Name nach der Probe auf eine fremde IP umgebogen
+    werden (DNS-Rebinding); mit TLS scheitert das am Zertifikat."""
+    token, uid = await _register(_auth_signer)
+    r = await client.put(
+        "/ablage/archiv/laufwerk",
+        json={"freigabe_adresse": "http://cloud.example/public.php/dav/files/x"},
+        headers=_auth(token),
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"] == "drive address must use https"
+    assert await _zeile(session_factory, uid) is None
