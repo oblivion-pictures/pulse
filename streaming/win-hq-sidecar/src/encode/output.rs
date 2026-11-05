@@ -10,6 +10,8 @@ use anyhow::{Context, Result, anyhow};
 use ffmpeg_next as ffmpeg;
 use ffmpeg::{Dictionary, codec, format};
 
+use crate::redact::redact_url;
+
 /// Wartezeit des Muxer-Interleavers in Mikrosekunden (`max_interleave_delta`).
 ///
 /// **Bilder dürfen nicht auf den Ton warten.** `av_interleaved_write_frame`
@@ -152,11 +154,15 @@ pub fn open_output(output_path: &str) -> Result<format::context::Output> {
                     opts.set("tls_verify", "0");
                 }
             }
-            format::output_as_with(&output_path, fmt, opts)
-                .with_context(|| format!("format::output_as_with({output_path}, {fmt})"))
+            // Fehlerkontext über redact_url wie in Linux/macOS: `output_path`
+            // trägt das Stream-Token, und der Kontext geht als Event::Error roh
+            // an den Renderer und in die sidecar.log (Kontrakt in `pulse-redact`).
+            format::output_as_with(&output_path, fmt, opts).with_context(|| {
+                format!("format::output_as_with({}, {fmt})", redact_url(&output_path))
+            })
         }
         None => format::output(&output_path)
-            .with_context(|| format!("format::output({output_path})")),
+            .with_context(|| format!("format::output({})", redact_url(&output_path))),
     }
 }
 

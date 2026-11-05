@@ -157,6 +157,11 @@ test('nativeComponents: 14 Specs in Abhängigkeitsreihenfolge', () => {
   assert.ok(!garnet.args.includes(SECRETS.garnetPassword));
   // Ohne frpc.toml (VPS/keine Relay-Creds) startet KEIN frpc.
   assert.ok(!names.includes('frpc'));
+  // WS-Rahmen gedeckelt wie in der Cloud (Dockerfile.service), sonst puffert
+  // uvicorn bis 16 MiB vor der App-Grenze (Gegenprüfung 2026-11-05).
+  const chat = specs.find((s) => s.name === 'chat-gateway')!;
+  const i = chat.args.indexOf('--ws-max-size');
+  assert.ok(i > 0 && chat.args[i + 1] === '65536');
 });
 
 test('nativeComponents: frpc nur mit Relay-Config (Steuerungs-Tunnel)', () => {

@@ -33,6 +33,7 @@ from redis.asyncio import Redis
 
 from dcc_shared import gaeste as _gaeste
 
+from dcc_voice_signaling import zugang
 from dcc_voice_signaling.config import get_settings
 
 log = structlog.get_logger(__name__)
@@ -443,7 +444,14 @@ async def livekit_webhook(request: Request) -> None:
         return
     channel_id = channel_id_from_room(room_name)
     if channel_id is None:
-        # Not one of our voice-channel rooms — ignore.
+        # Kein Sprachkanal. Anruf-Räume (``call-<id>``) tragen keine Präsenz,
+        # bekommen aber dieselbe Beitritts-Prüfung (``zugang.py``).
+        if (
+            event.event == "participant_joined"
+            and room_name.startswith("call-")
+            and event.HasField("participant")
+        ):
+            await zugang.beitritt_pruefen(request, room_name, event.participant.identity)
         return
 
     redis = _get_redis(request)
@@ -490,6 +498,11 @@ async def livekit_webhook(request: Request) -> None:
             # vorher nur für NEUE Tokens).
             if _gaeste.ist_gast(user_id) and await _gaeste.ist_gesperrt(redis, user_id):
                 log.info("gast_gesperrt_rejoin", user_id=user_id, room=room_name)
+                await _publish_state(redis, room_name, channel_id)
+                return
+            # Mitglied mit überholtem Token (gebannt, Recht entzogen): dieselbe
+            # Abweisung, die Verbindung entfernt ``zugang`` gleich selbst.
+            if not await zugang.beitritt_pruefen(request, room_name, event.participant.identity):
                 await _publish_state(redis, room_name, channel_id)
                 return
             await _apply_join(redis, room_name, user_id)

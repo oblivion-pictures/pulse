@@ -54,9 +54,13 @@ test('probeGateway: offener Port → true, geschlossener → false', async () =>
   assert.equal(await probeGateway('127.0.0.1', 1), false); // Port 1: nichts lauscht
 });
 
-test('Ende-zu-Ende: UDP → Relay → TCP-Frames → Gateway → UDP-Echo → zurück', async () => {
+test('Ende-zu-Ende: UDP → Relay → TCP-Frames → Gateway → UDP-Echo → zurück', async (t) => {
+  // Aufräumen auch bei einem Fehlschlag: ein offener Socket hielte den
+  // Testprozess am Leben, und ohne Zeitlimit hinge `pnpm test:unit` (und das
+  // Gate) dann endlos statt rot zu werden (2026-11-05: 18 min Hänger).
   // Fake-„LiveKit": UDP-Echo auf zufälligem Port.
   const echo = createSocket('udp4');
+  t.after(() => echo.close());
   await new Promise<void>((r) => echo.bind(0, '127.0.0.1', r));
   const echoPort = (echo.address() as { port: number }).port;
   echo.on('message', (msg, addr) => echo.send(Buffer.concat([Buffer.from('echo:'), msg]), addr.port, addr.address));
@@ -95,19 +99,31 @@ test('Ende-zu-Ende: UDP → Relay → TCP-Frames → Gateway → UDP-Echo → zu
     });
     conn.on('close', () => udp?.close()); // Event-Loop für node --test freigeben
   });
+  t.after(() => gw.close());
   await new Promise<void>((r) => gw.listen(0, '127.0.0.1', r));
   const gwPort = (gw.address() as { port: number }).port;
 
   // Getrennte Listen/Ziel-Ports (Test-Seam): Relay und Echo-UDP teilen sich
   // im Test eine Maschine — in Produktion trennt sie die Container-Grenze.
-  const listenPort = await freeUdpPort();
-  const relay = await startUdpGatewayRelayMapped(
-    [{ listen: listenPort, target: echoPort }], '127.0.0.1', gwPort, () => {},
-  );
-  assert.deepEqual(relay.boundPorts, [listenPort]);
+  // Zwischen Suchen und Belegen des freien Ports kann ein parallel laufender
+  // Test ihn wegschnappen (das Relay bindet dann nichts, fail-soft) — dann
+  // mit einem neuen Port erneut.
+  let listenPort = 0;
+  let relay: Awaited<ReturnType<typeof startUdpGatewayRelayMapped>> | null = null;
+  t.after(() => relay?.close());
+  for (let versuch = 0; versuch < 5; versuch++) {
+    listenPort = await freeUdpPort();
+    relay = await startUdpGatewayRelayMapped(
+      [{ listen: listenPort, target: echoPort }], '127.0.0.1', gwPort, () => {},
+    );
+    if (relay.boundPorts.length > 0) break;
+    relay.close();
+  }
+  assert.deepEqual(relay?.boundPorts, [listenPort]);
 
   // Client sendet ans Relay und erwartet das Echo vom Relay-Listener zurück.
   const client = createSocket('udp4');
+  t.after(() => client.close());
   client.bind(0, '127.0.0.1');
   const antwort = await new Promise<Buffer>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('kein Echo durchs Relay')), 5000);
@@ -119,9 +135,4 @@ test('Ende-zu-Ende: UDP → Relay → TCP-Frames → Gateway → UDP-Echo → zu
     client.send(Buffer.from('hallo'), listenPort, '127.0.0.1');
   });
   assert.equal(antwort.toString(), 'echo:hallo');
-
-  client.close();
-  relay.close();
-  echo.close();
-  gw.close();
 });

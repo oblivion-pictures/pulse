@@ -37,12 +37,13 @@ function uvicornSpec(
   pkgModule: string,
   port: number,
   env: Record<string, string>,
+  zusatz: string[] = [],
 ): ServiceSpec {
   const py = venvPython();
   return {
     name: svcName,
     command: py,
-    args: ['-m', 'uvicorn', pkgModule, '--host', '127.0.0.1', '--port', String(port), '--no-access-log'],
+    args: ['-m', 'uvicorn', pkgModule, '--host', '127.0.0.1', '--port', String(port), '--no-access-log', ...zusatz],
     env: { ...env, PYTHONPATH: servicePythonPath() },
     cwd: serviceDir(svcName),
     healthCheck: () => httpHealth(`http://127.0.0.1:${port}/health`),
@@ -179,7 +180,12 @@ export function nativeComponents(
     healthCheck: () => tcpProbe(9997),
   };
 
-  const chatGateway = uvicornSpec('chat-gateway', 'dcc_chat_gateway.app:app', p.chat, input.env);
+  // `--ws-max-size 65536` wie in der Cloud (Dockerfile.service): ohne puffert
+  // uvicorn WS-Rahmen bis 16 MiB, bevor die App-Grenze von 16 KiB greift.
+  const chatGateway = uvicornSpec('chat-gateway', 'dcc_chat_gateway.app:app', p.chat, input.env, [
+    '--ws-max-size',
+    '65536',
+  ]);
 
   // Direktpfad-Adapter (WebRTC-DataChannel-Brücke → 127.0.0.1:8080). Optional:
   // fehlt die Binary (CI-Artifact noch nicht da), startet der Rest trotzdem.

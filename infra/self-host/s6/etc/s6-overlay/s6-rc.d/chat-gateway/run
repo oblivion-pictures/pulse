@@ -4,7 +4,11 @@
 exec 2>&1
 . /etc/pulse/env.sh
 cd /opt/pulse/services/chat-gateway
+# `--ws-max-size 65536` wie in der Cloud (Dockerfile.service): ohne puffert
+# uvicorn eingehende WS-Rahmen bis 16 MiB, bevor die App-Grenze von 16 KiB
+# greift (Speicher-DoS; Gegenprüfung des Security-Audits, 2026-11-05).
 exec /usr/sbin/gosu pulse /opt/pulse/venv/bin/uvicorn dcc_chat_gateway.app:app \
   --host 127.0.0.1 \
   --port 8002 \
+  --ws-max-size 65536 \
   --no-access-log

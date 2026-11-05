@@ -73,6 +73,24 @@ async def shutdown_client() -> None:
     _client = None
 
 
+async def darf_in_sprachkanal(
+    session: AsyncSession, guild_id: int, channel_id: int, user_id: int
+) -> bool:
+    """Darf ``user_id`` in diesem Sprachkanal sein? VIEW_CHANNEL + CONNECT.
+
+    Der Resolver liefert für Nicht-Mitglieder (gebannt, rausgeworfen,
+    ausgetreten) und in einer gesperrten Community 0, die Mitgliedschaft
+    steckt also mit drin. ``is_admin=False``, weil hier kein Token vorliegt:
+    der Instanz-Admin-Status ist nur im Token bekannt. Eine Regel für zwei
+    Stellen: den Rauswurf nach einer Rechteänderung (unten) und die
+    Beitritts-Prüfung für voice-signaling (`routes/internal_livekit.py`)."""
+    user = AuthenticatedUser(id=user_id, username="", is_admin=False, payload={})
+    value = await resolve_permissions(session, user, guild_id, channel_id=channel_id)
+    return has_permission(value, Permissions.VIEW_CHANNEL) and has_permission(
+        value, Permissions.CONNECT
+    )
+
+
 async def voice_channels_for_guild(
     session: AsyncSession, guild_id: int
 ) -> list[int]:
@@ -221,12 +239,7 @@ async def evict_ineligible_from_voice_channels(
             uid_str = raw.decode() if isinstance(raw, (bytes, bytearray)) else str(raw)
             if not uid_str.isdigit():
                 continue
-            user = AuthenticatedUser(id=int(uid_str), username="", is_admin=False, payload={})
-            value = await resolve_permissions(session, user, guild_id, channel_id=cid)
-            if not (
-                has_permission(value, Permissions.VIEW_CHANNEL)
-                and has_permission(value, Permissions.CONNECT)
-            ):
+            if not await darf_in_sprachkanal(session, guild_id, cid, int(uid_str)):
                 await _post_evict(secret, [cid], uid_str)
 
 

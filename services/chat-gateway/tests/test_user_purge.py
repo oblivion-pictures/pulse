@@ -85,6 +85,17 @@ async def test_purge_rejects_wrong_secret(client, _internal_secret_set):
 
 
 @pytest.mark.asyncio
+async def test_purge_nicht_ascii_secret_ist_401_nicht_500(client, _internal_secret_set):
+    """``compare_digest`` warf bei ``str`` mit Nicht-ASCII-Zeichen einen
+    TypeError — ein 500er statt 401 (Gegenprüfung 2026-11-05)."""
+    r = await client.post(
+        "/internal/users/12345/purge",
+        headers={"X-Pulse-Internal-Secret": "gehe\u00efm".encode("latin-1")},
+    )
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_purge_disabled_when_secret_unset(client, _isolate_chat_settings):
     """Empty server-side secret = fail-closed (the call returns 401
     even if the caller sends an arbitrary header value)."""
