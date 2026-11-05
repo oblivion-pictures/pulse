@@ -45,6 +45,7 @@ import {
 import { playerManager, recordingDir, shadowClipPath } from './player';
 import { auftragLesen, EingabeWeiche, erfassungSchalten } from './remoteInput';
 import { RemoteEingabe } from './remoteInputHost';
+import { pushZielErlaubt } from './pushZiel';
 import { EingabeLaufzeit } from './eingabeLaufzeit';
 import { logSidecar } from './sidecar-log';
 import { freigabeEinstellungAdresse } from './macFreigabe';
@@ -926,13 +927,13 @@ function wireHost(getWin: () => Electron.BrowserWindow | null): void {
   }
 
   // Server-App: privilegierte Host-IPC (provision/start/stop/pair/unpair) nur
-  // vom lokalen server.html (file://) zulassen — NICHT von der during der
+  // vom lokalen server.html (file://) zulassen — NICHT von der während der
   // Login-Phase geladenen howispulse.com-Seite (remote). Verhindert, dass eine
-  // kompromittierte Remote-Seite den Server provisioniert/startet. Im Client-
-  // Modus ohne Wirkung (SERVER_MODE=false → immer erlaubt; dort ruft die
-  // vertraute Web-App das Host-IPC auf, bis App-Hosting entfernt ist).
+  // kompromittierte Remote-Seite den Server provisioniert/startet. Der Client
+  // verdrahtet `wireHost` gar nicht mehr (`bootClient`); die frühere Ausnahme
+  // für den Client-Modus entfällt deshalb, die Prüfung gilt ohne Ausnahme.
   const localSenderOnly = (e: { sender?: { getURL?: () => string } }): boolean =>
-    !SERVER_MODE || (e.sender?.getURL?.().startsWith('file:') ?? false);
+    e.sender?.getURL?.().startsWith('file:') ?? false;
 
   ipcMain.handle('host:start', async (e) => {
     if (!localSenderOnly(e)) return;
@@ -1687,6 +1688,12 @@ function wireSidecar(): void {
     // Validate op against the allowlist (finding 156).
     if (!ALLOWED_SIDECAR_OPS.has(op)) {
       return { ok: false, error: 'unknown op' };
+    }
+    // Erlaubte Ops tragen auch gefährliche Parameter: `start` nimmt
+    // `channel.push_url` wörtlich, ein fremdes Schema schriebe FFmpeg als
+    // Datei oder an ein beliebiges Ziel (`pushZiel.ts`).
+    if (op === 'start' && !pushZielErlaubt(params)) {
+      return { ok: false, error: 'push_url not allowed' };
     }
     try {
       return await getSidecar(normaliseSlot(slot)).call(op, params);
@@ -2464,7 +2471,14 @@ async function bootClient(): Promise<void> {
   // startet sofort, `startUpdater` (weiter unten) lädt ein Update still herunter
   // und zeigt den „Update bereit"-Prompt im Hauptfenster-Renderer. Details:
   // updater.ts.
-  wireHost(() => mainWindow);
+  //
+  // **Kein `wireHost` im Client** (Gegenprüfung des Security-Audits,
+  // 2026-11-05): die Web-App ruft `window.pulse.host.*` nicht mehr auf (das
+  // App-Hosting ist entfernt), aber die Handler standen noch — eine XSS-Lücke
+  // auf der Remote-Seite hätte damit den Rechner des Nutzers per
+  // `host.pair`/`host.start` zum Pulse-Server eines Fremden gemacht (Ports,
+  // frpc-Tunnel, Router-Mappings, Autostart). Das Host-IPC gibt es nur noch in
+  // der Server-App (`bootServer`); im Client laufen `host:*` ins Leere.
   // Bestandsinstallationen einmalig auf den neuen Standard heben (Diagnose
   // standardmäßig an). Vor `wireSidecar`, damit schon der erste Stream
   // dieser Sitzung nach der neuen Vorgabe entscheidet.

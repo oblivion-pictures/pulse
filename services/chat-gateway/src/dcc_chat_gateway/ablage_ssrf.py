@@ -303,6 +303,16 @@ async def _pruefen_und_holen(
     return await _hole_einmal(client, verankert, host, max_bytes)
 
 
+def _herkunft(url: str) -> tuple[str, str, int | None]:
+    """Schema, Hostname (klein) und Port — Port aus dem Schema, wenn keiner steht."""
+    teile = urllib.parse.urlsplit(url)
+    try:
+        port = teile.port or {"http": 80, "https": 443}.get(teile.scheme)
+    except ValueError as exc:  # kaputter Port in einer Umleitung
+        raise AblageAbrufFehler("ziel_ungueltig") from exc
+    return teile.scheme, (teile.hostname or "").lower(), port
+
+
 async def hole(
     *,
     basis: str,
@@ -344,6 +354,15 @@ async def hole(
             )
             if ort is not None:
                 neue_url = urllib.parse.urljoin(url, ort)
+                # Nur auf denselben Host (Schema, Name, Port). Eine Umleitung
+                # anderswohin machte aus einem eigenen Laufwerk einen offenen
+                # Proxy auf jede öffentliche Seite (Gegenprüfung des
+                # Security-Audits, 2026-11-05; `laufwerk_bestaetigung.py`).
+                # Kein bekanntes Laufwerk braucht mehr: die Verbindungsprobe
+                # folgt Umleitungen gar nicht, ein Laufwerk, das beim Lesen
+                # anderswohin umleitet, ließ sich nie verbinden.
+                if _herkunft(neue_url) != _herkunft(url):
+                    raise AblageAbrufFehler("umleitung_fremder_host")
                 inhalt, typ, ort2 = await _pruefen_und_holen(
                     client, neue_url, tatsaechlicher_resolver, max_bytes
                 )

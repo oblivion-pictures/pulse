@@ -31,6 +31,7 @@ from dcc_chat_gateway.ablage_schreiben import liste as liste_vom_laufwerk
 from dcc_chat_gateway.ablage_schreiben import schreibe as schreibe_aufs_laufwerk
 from dcc_chat_gateway.ablage_ssrf import AblageAbrufFehler
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.laufwerk_bestaetigung import adresse_bestaetigen
 from dcc_chat_gateway.models import AblageKanalLaufwerk, Channel, Guild
 from dcc_chat_gateway.permissions import Permissions, check_permission
 from dcc_chat_gateway.routes._ablage_abruf import ablage_abruf_antwort
@@ -95,6 +96,7 @@ async def setze_freigabe_adresse(
 
     bestehend = await session.get(AblageKanalLaufwerk, channel.id)
     if bestehend is None:
+        await adresse_bestaetigen(payload.freigabe_adresse)
         session.add(
             AblageKanalLaufwerk(
                 channel_id=channel.id,
@@ -133,6 +135,7 @@ async def _ersetze_oder_403(
     Community-Laufwerk, das von Anfang an an ``Guild.owner_id`` gebunden ist,
     ``routes/ablage_guild_laufwerk.py``)."""
     if bestehend.ersteller_id == current.id:
+        await adresse_bestaetigen(payload.freigabe_adresse, bestehend.freigabe_adresse)
         bestehend.freigabe_adresse = payload.freigabe_adresse
         return
     guild = await session.get(Guild, channel.guild_id)
@@ -141,6 +144,7 @@ async def _ersetze_oder_403(
             status.HTTP_403_FORBIDDEN,
             detail="only the member who first set this drive may replace it",
         )
+    await adresse_bestaetigen(payload.freigabe_adresse, bestehend.freigabe_adresse)
     bestehend.ersteller_id = current.id  # Owner übernimmt das Laufwerk
     bestehend.freigabe_adresse = payload.freigabe_adresse
 

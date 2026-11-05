@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 from dcc_chat_gateway import ratelimit
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.laufwerk_bestaetigung import adresse_bestaetigen
 from dcc_chat_gateway.models import AblageGuildLaufwerk
 from dcc_chat_gateway.routes._ablage_abruf import ablage_abruf_antwort
 from dcc_chat_gateway.routes._deps import guild_or_404, mitglied_oder_403
@@ -69,6 +70,9 @@ async def setze_guild_freigabe_adresse(
         raise HTTPException(422, detail="freigabe_adresse must be an http(s) URL")
 
     bestehend = await session.get(AblageGuildLaufwerk, guild.id)
+    await adresse_bestaetigen(
+        payload.freigabe_adresse, bestehend.freigabe_adresse if bestehend else None
+    )
     if bestehend is None:
         session.add(
             AblageGuildLaufwerk(guild_id=guild.id, freigabe_adresse=payload.freigabe_adresse)

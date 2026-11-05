@@ -446,3 +446,71 @@ async def test_upstream_content_type_wird_nicht_durchgereicht(
     assert r.headers["content-type"] == "application/octet-stream"
     assert r.headers["x-content-type-options"] == "nosniff"
     assert "attachment" in r.headers.get("content-disposition", "")
+
+
+@pytest.mark.asyncio
+async def test_umleitung_auf_fremden_oeffentlichen_host_wird_abgewiesen(
+    client, _auth_signer, monkeypatch, upstream
+):
+    """Ein eigenes Laufwerk, das beim Abruf auf eine fremde öffentliche Seite
+    umleitet, machte den Server zum offenen Proxy (Gegenprüfung des
+    Security-Audits, 2026-11-05). Nur Umleitungen auf denselben Host gelten."""
+    from dcc_chat_gateway import ablage_ssrf
+
+    async def _alles_oeffentlich(host: str) -> list[str]:
+        return {"cloud.example": ["203.0.113.10"], "fremd.example": ["203.0.113.20"]}[host]
+
+    monkeypatch.setattr(ablage_ssrf, "standard_resolver", _alles_oeffentlich)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.headers["host"] == "cloud.example":
+            return httpx.Response(302, headers={"location": "https://fremd.example/x"})
+        raise AssertionError("die Umleitung haette nie verfolgt werden duerfen")
+
+    upstream(handler)
+    _, t_mitglied, _, cid = await _guild_mit_ablage_kanal(client, _auth_signer)
+
+    r = await client.get(
+        f"/channels/{cid}/ablage/abruf",
+        params={"pfad": "x"},
+        headers=auth(t_mitglied),
+    )
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"] == "umleitung_fremder_host"
+
+
+@pytest.mark.asyncio
+async def test_umleitung_auf_denselben_host_wird_verfolgt(client, _auth_signer, kein_dns, upstream):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/x"):
+            return httpx.Response(302, headers={"location": "/anderer-ort/y"})
+        return httpx.Response(200, content=b"inhalt")
+
+    upstream(handler)
+    _, t_mitglied, _, cid = await _guild_mit_ablage_kanal(client, _auth_signer)
+
+    r = await client.get(
+        f"/channels/{cid}/ablage/abruf",
+        params={"pfad": "x"},
+        headers=auth(t_mitglied),
+    )
+    assert r.status_code == 200, r.text
+    assert r.content == b"inhalt"
+
+
+@pytest.mark.asyncio
+async def test_umleitung_mit_kaputtem_port_ist_ein_ungueltiges_ziel(
+    client, _auth_signer, kein_dns, upstream
+):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(302, headers={"location": "https://cloud.example:99999/x"})
+
+    upstream(handler)
+    _, t_mitglied, _, cid = await _guild_mit_ablage_kanal(client, _auth_signer)
+
+    r = await client.get(
+        f"/channels/{cid}/ablage/abruf",
+        params={"pfad": "x"},
+        headers=auth(t_mitglied),
+    )
+    assert r.status_code == 422, r.text

@@ -45,6 +45,7 @@ from dcc_chat_gateway.ablage_schreiben import loesche as loesche_vom_laufwerk
 from dcc_chat_gateway.ablage_schreiben import schreibe as schreibe_aufs_laufwerk
 from dcc_chat_gateway.ablage_ssrf import AblageAbrufFehler
 from dcc_chat_gateway.db import SessionDep
+from dcc_chat_gateway.laufwerk_bestaetigung import adresse_bestaetigen
 from dcc_chat_gateway.models import AblageKontoLaufwerk
 from dcc_chat_gateway.routes._ablage_abruf import ablage_abruf_antwort
 from dcc_chat_gateway.security import CurrentUser
@@ -87,6 +88,9 @@ async def setze_konto_laufwerk(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="invalid drive address")
 
     laufwerk = await session.get(AblageKontoLaufwerk, current.id)
+    await adresse_bestaetigen(
+        payload.freigabe_adresse, laufwerk.freigabe_adresse if laufwerk else None
+    )
     if laufwerk is None:
         session.add(
             AblageKontoLaufwerk(
