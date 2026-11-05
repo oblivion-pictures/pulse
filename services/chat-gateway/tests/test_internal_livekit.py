@@ -63,6 +63,28 @@ async def test_braucht_secret(client):
 
 
 @pytest.mark.asyncio
+async def test_dienstverkehr_drosselt_sich_nicht_selbst(client, _secret, monkeypatch):
+    """Nur falsche Secrets zählen gegen die Bremse: sonst drosselte schnelles
+    Wiederbeitreten (je Beitritt eine Abfrage) alle internen Abfragen, und
+    voice-signaling ließe bei 429 durch — der Bann wäre umgangen."""
+    import dcc_chat_gateway.ratelimit as ratelimit
+
+    monkeypatch.setitem(ratelimit._RULES, "internal_secret", (2, 60.0))
+    params = {"raum": "channel-1", "nutzer": 1}
+    falsch = {"X-Pulse-Internal-Secret": "falsch"}
+    try:
+        for _ in range(5):
+            assert await _erlaubt(client, "channel-123456", 1) is False
+        for _ in range(2):
+            r = await client.get("/internal/livekit-zugang", params=params, headers=falsch)
+            assert r.status_code == 401
+        r = await client.get("/internal/livekit-zugang", params=params, headers=_H)
+        assert r.status_code == 429
+    finally:
+        ratelimit.reset()
+
+
+@pytest.mark.asyncio
 async def test_nur_bekannte_raumarten(client, _secret):
     r = await client.get("/internal/livekit-zugang", params={"raum": "fremd-1", "nutzer": 1}, headers=_H)
     assert r.status_code == 422
