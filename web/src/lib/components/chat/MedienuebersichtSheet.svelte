@@ -48,31 +48,41 @@
   const videos = $derived(medien.filter(istVideo));
   let videoIndex = $state<number | null>(null);
 
+  /** Schon entschlüsselte Dateien (ID → Objekt-URL, leer = nicht holbar).
+   *  Bewusst kein `$state`: nur der Effekt liest es, gezeigt wird `quellen`. */
+  const erzeugt = new Map<string, string>();
+
+  // Entschlüsselt wird erst, wenn das Blatt offen ist, und nur, was noch
+  // fehlt. Vorher lief der Effekt bei JEDER neuen Nachricht im Gespräch neu
+  // (die Liste ist jedes Mal ein neues Feld), warf alle URLs weg und holte
+  // jede Datei des Gesprächs erneut — auch bei geschlossenem Blatt.
   $effect(() => {
-    const liste = verschluesselteDateien;
-    if (liste.length === 0) return;
+    if (!open) return;
+    const fehlend = verschluesselteDateien.filter((a) => !erzeugt.has(a.id));
+    if (fehlend.length === 0) return;
     let abgebrochen = false;
-    const erzeugt: string[] = [];
-    const gesammelt: Record<string, string> = {};
     void (async () => {
       const { anhangBlob } = await import('$lib/krypto/anhangHolen');
-      for (const a of liste) {
+      for (const a of fehlend) {
         if (abgebrochen) return;
         const blob = a.schluessel
           ? await anhangBlob(a.id, a.schluessel, a.mime ?? 'application/octet-stream', false)
           : null;
+        // Überholt (neue Nachricht, Blatt zu): der nächste Lauf holt sie.
         if (abgebrochen) return;
         const url = blob ? URL.createObjectURL(blob) : '';
-        erzeugt.push(url);
-        gesammelt[a.id] = url;
-        quellen = { ...quellen, ...gesammelt };
+        erzeugt.set(a.id, url);
+        quellen = { ...quellen, [a.id]: url };
       }
     })();
     return () => {
       abgebrochen = true;
-      for (const url of erzeugt) URL.revokeObjectURL(url);
-      quellen = {};
     };
+  });
+
+  // Erst beim Abbau des Blatts alle Objekt-URLs freigeben.
+  $effect(() => () => {
+    for (const url of erzeugt.values()) if (url) URL.revokeObjectURL(url);
   });
 
   let lightboxAnhang = $state<Attachment | null>(null);

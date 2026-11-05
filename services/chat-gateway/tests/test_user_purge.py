@@ -720,6 +720,45 @@ async def test_purge_deletes_dm_channels(
 
 
 @pytest.mark.asyncio
+async def test_purge_raeumt_die_archivkopie_der_dm_mit(
+    client, session_factory, _auth_signer, _internal_secret_set, friend_pair, cloud_mode
+):
+    """Ohne den Kanal lehnt jede Archiv-Route ab (``_archiv_zugriff`` → 404):
+    die Archivzeilen und Schlüssel-Wraps der gelöschten DM, auch die des
+    übrigen Teilnehmers, lagen bis zum Verfallslauf unerreichbar herum
+    (DM-Bughunt 2026-11-02). Eine fremde DM bleibt unberührt."""
+    from dcc_chat_gateway.models import ArchivKanalSchluessel, ArchivZeile
+    from dcc_chat_gateway.snowflake import next_id
+
+    t_a, uid_a = await _register(_auth_signer)
+    _, uid_b = await _register(_auth_signer)
+    t_c, uid_c = await _register(_auth_signer)
+    await friend_pair(uid_a, uid_b)
+    await friend_pair(uid_c, uid_b)
+    dm_ab = int((await client.post(
+        "/dm-channels", json={"target_user_id": str(uid_b)}, headers=_auth(t_a)
+    )).json()["id"])
+    dm_cb = int((await client.post(
+        "/dm-channels", json={"target_user_id": str(uid_b)}, headers=_auth(t_c)
+    )).json()["id"])
+
+    async with session_factory() as s:
+        for kanal in (dm_ab, dm_cb):
+            s.add(ArchivZeile(id=next_id(), channel_id=kanal, nutzlast=b"x", user_id=uid_b))
+            s.add(ArchivKanalSchluessel(channel_id=kanal, user_id=uid_b, wrap=b"w"))
+        await s.commit()
+
+    r = await client.post(f"/internal/users/{uid_a}/purge", headers=_internal_headers())
+    assert r.status_code == 204, r.text
+
+    async with session_factory() as s:
+        zeilen = (await s.execute(select(ArchivZeile.channel_id))).scalars().all()
+        wraps = (await s.execute(select(ArchivKanalSchluessel.channel_id))).scalars().all()
+    assert dm_ab not in zeilen and dm_ab not in wraps
+    assert dm_cb in zeilen and dm_cb in wraps
+
+
+@pytest.mark.asyncio
 async def test_purge_raeumt_e2e_postfach(
     client, session_factory, _auth_signer, _internal_secret_set
 ):

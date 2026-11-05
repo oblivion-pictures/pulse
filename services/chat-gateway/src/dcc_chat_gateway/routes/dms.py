@@ -47,6 +47,7 @@ from dcc_chat_gateway.schemas import (
 )
 from dcc_chat_gateway.security import CurrentUser
 from dcc_chat_gateway.snowflake import next_id
+from dcc_chat_gateway.stand_ordnung import ist_neuer, plausibel
 from dcc_shared.events import DmLesestandEvent
 
 log = logging.getLogger(__name__)
@@ -252,6 +253,11 @@ async def set_dm_lesestand(
     dm = await dm_member_check(session, dm_channel_id, current.id)
     if dm is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="dm_channel_not_found")
+    # Ein Stand in der Zukunft (vom Absender gewählte ID, ``stand_ordnung.py``)
+    # sperrte sonst jeden späteren — still übergehen, wie eine Ablehnung des
+    # Guards.
+    if not plausibel(payload.last_read_message_id):
+        return
 
     stmt = (
         pg_insert(DmLesestand)
@@ -266,8 +272,10 @@ async def set_dm_lesestand(
                 "last_read_message_id": pg_insert(DmLesestand).excluded.last_read_message_id,
                 "gelesen_am": func.now(),
             },
-            where=pg_insert(DmLesestand).excluded.last_read_message_id
-            > DmLesestand.last_read_message_id,
+            where=ist_neuer(
+                pg_insert(DmLesestand).excluded.last_read_message_id,
+                DmLesestand.last_read_message_id,
+            ),
         )
         # Gespeicherten Wert zurücklesen: der Monotonie-Guard darf den
         # veralteten Stand eines Zweitgeräts ablehnen — das Event trägt dann

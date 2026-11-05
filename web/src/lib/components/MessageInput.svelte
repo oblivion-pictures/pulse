@@ -55,7 +55,10 @@
     mentionMitglieder
   }: MessageInputProps = $props();
 
-  const attachmentsEnabled = $derived(channelId !== null && attachmentsAllowed);
+  // Ein gesperrtes Feld (keine Freundschaft, Blockade, eingefrorener Kanal)
+  // sperrt auch Büroklammer, Kamera, Mikro und Ablegen — sonst ging eine
+  // Datei hoch, die sich nie senden lässt.
+  const attachmentsEnabled = $derived(channelId !== null && attachmentsAllowed && !disabled);
 
   let text = $state('');
 
@@ -124,7 +127,7 @@
   // when that bridge is present. Older shells (no bridge) stay disabled.
   // `handleDrop` still lets a parent own the zone (ChatView). Browsers: always on.
   const dropEnabled = $derived(
-    handleDrop && attachmentsAllowed && (!isElectron() || canRecoverDroppedFiles())
+    handleDrop && attachmentsEnabled && (!isElectron() || canRecoverDroppedFiles())
   );
   const ziehen = new DateiZiehZone(() => dropEnabled, (files) => addFiles(files));
 
@@ -174,7 +177,7 @@
     // Single choke point for every entry path (picker, paste, drop, and the
     // parent's `addExternalFiles`) — guarding here rather than at each call
     // site is what keeps paste/drop from staying live once the button is gone.
-    if (!channelId || !attachmentsAllowed) return;
+    if (!channelId || !attachmentsEnabled) return;
     anhaenge.hinzufuegen(channelId, Array.from(files), verschluesselt);
   }
 
@@ -194,7 +197,7 @@
   async function freigabeUebernehmen(): Promise<void> {
     // Kontext PRÜFEN, dann konsumieren — sonst wäre der Share weg, wenn der
     // Composer ihn gar nicht aufnehmen kann (Kanal ohne Anhänge, kein Chat).
-    if (!channelId || !attachmentsAllowed) return;
+    if (!channelId || !attachmentsEnabled) return;
     const { freigabeHolen, freigabeLeeren } = await import('$lib/freigabe/freigabeStore');
     const paket = freigabeHolen();
     if (!paket) return;
@@ -259,7 +262,7 @@
   });
 
   async function aufnahmeStart(): Promise<void> {
-    if (!channelId || !attachmentsAllowed) return;
+    if (!channelId || !attachmentsEnabled) return;
     await aufnahme.starten();
   }
 
@@ -423,6 +426,7 @@
       aktiv={attachmentsEnabled}
       handy={viewport.istHandy}
       {channelId}
+      {verschluesselt}
       accept={attachmentAccept}
       onDateien={addFiles}
       {onSend}
@@ -471,7 +475,7 @@
       <ComposerEmojiButton onPick={insertEmoji} />
       <ComposerSendButton
         disabled={sendDisabled}
-        mikro={!eingabeFokus && !aufnahme.lauf && text.trim().length === 0 && anhaenge.zeilen.length === 0}
+        mikro={attachmentsEnabled && !eingabeFokus && !aufnahme.lauf && text.trim().length === 0 && anhaenge.zeilen.length === 0}
         onMikrofon={aufnahmeStart}
       />
     {/if}

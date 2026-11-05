@@ -284,3 +284,100 @@ async def test_austritt_und_kontoloeschung_raeumen_die_staende(
         await konto_loeschen(s, uid_b)
         await s.commit()
     assert await zeilen() == (set(), 0)
+
+
+def _snowflake_bei(ms: int) -> str:
+    """Eine Server-Snowflake mit der Zeit ``ms`` (Worker und Folge 0)."""
+    from dcc_shared.snowflake import DEFAULT_EPOCH_MS, TIME_SHIFT
+
+    return str((ms - DEFAULT_EPOCH_MS) << TIME_SHIFT)
+
+
+@pytest.mark.asyncio
+async def test_zustellstand_ordnet_lokale_id_und_snowflake_ueber_die_zeit(
+    client, session_factory, _auth_signer, friend_pair, ereignisse
+):
+    """Eine lokale ID (19 Ziffern, ~1,8e18) ist als rohe Zahl grösser als jede
+    heutige Snowflake (~1e17). Der Guard verglich bis 2026-11-05 die rohen
+    Zahlen und nahm danach keine spätere Snowflake mehr an."""
+    t_a, uid_a = _konto(_auth_signer)
+    t_b, uid_b = _konto(_auth_signer)
+    await friend_pair(uid_a, uid_b)
+    dm_id = await _dm_erstellen(client, t_a, uid_b)
+
+    spaeter = _snowflake_bei(1_790_000_100_000)
+    for bis in ("1790000000000000001", spaeter):
+        await _zugestellt_und_quittiert(
+            client, session_factory, t_a=t_a, t_b=t_b, uid_a=uid_a, uid_b=uid_b, kanal=dm_id,
+            staende=[{"channel_id": dm_id, "absender_user_id": str(uid_a), "zugestellt_bis": bis}],
+        )
+
+    assert (await _dm_eintrag(client, t_a, dm_id))["partner_zugestellt_bis"] == spaeter
+
+
+@pytest.mark.asyncio
+async def test_zustellstand_aus_der_zukunft_wird_uebergangen(
+    client, session_factory, _auth_signer, friend_pair, ereignisse
+):
+    """Die ID im Umschlag wählt der Absender. Ein Stand im Jahr 2255 sperrte
+    sonst jeden späteren."""
+    t_a, uid_a = _konto(_auth_signer)
+    t_b, uid_b = _konto(_auth_signer)
+    await friend_pair(uid_a, uid_b)
+    dm_id = await _dm_erstellen(client, t_a, uid_b)
+
+    await _zugestellt_und_quittiert(
+        client, session_factory, t_a=t_a, t_b=t_b, uid_a=uid_a, uid_b=uid_b, kanal=dm_id,
+        staende=[{"channel_id": dm_id, "absender_user_id": str(uid_a),
+                  "zugestellt_bis": "9009000000000000001"}],
+    )
+
+    assert not [e for _t, e in ereignisse if e.get("op") == "zustellung_bestaetigt"]
+    assert (await _dm_eintrag(client, t_a, dm_id))["partner_zugestellt_bis"] is None
+
+
+@pytest.mark.asyncio
+async def test_quittung_nach_kanal_loeschung_legt_keine_waise_an(
+    client, session_factory, _auth_signer, friend_pair, ereignisse
+):
+    """Löscht sich A, gehen seine DMs weg, aber Bs Umschläge bleiben bis zum
+    Abholen. Ihre Quittung darf keinen Zustellstand für den gelöschten Kanal
+    mehr anlegen — den räumte danach keine Löschstelle mehr."""
+    from sqlalchemy import delete
+
+    from dcc_chat_gateway.models import DirectMessageChannel, Zustellstand
+
+    t_a, uid_a = _konto(_auth_signer)
+    t_b, uid_b = _konto(_auth_signer)
+    await friend_pair(uid_a, uid_b)
+    dm_id = await _dm_erstellen(client, t_a, uid_b)
+
+    pub_b = await _bundel_seeden_geraet(session_factory, user_id=uid_b)
+    r = await _einliefern(
+        client, token=t_a, channel_id=dm_id,
+        nutzlasten=[{"art": 1, "daten": _DATEN, "empfaenger": [pub_b]}],
+    )
+    assert r.status_code == 200, r.text
+    async with session_factory() as s:
+        await s.execute(delete(DirectMessageChannel).where(DirectMessageChannel.id == int(dm_id)))
+        await s.commit()
+
+    abgeholt = (await _abholen(client, token=t_b, pubkey=pub_b)).json()
+    r = await client.post(
+        "/postfach/quittung",
+        json={
+            "device_pubkey": pub_b,
+            "zustellung_ids": [z["id"] for z in abgeholt],
+            "zustellstaende": [{"channel_id": dm_id, "absender_user_id": str(uid_a),
+                                "zugestellt_bis": "1760000000000000123"}],
+        },
+        headers=make_auth_header(t_b),
+    )
+    assert r.status_code == 204, r.text
+
+    async with session_factory() as s:
+        zeilen = (
+            await s.execute(select(Zustellstand).where(Zustellstand.channel_id == int(dm_id)))
+        ).scalars().all()
+    assert zeilen == []
+    assert not [e for _t, e in ereignisse if e.get("op") == "zustellung_bestaetigt"]

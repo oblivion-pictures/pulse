@@ -15,6 +15,7 @@ from sqlalchemy import delete, select
 from dcc_chat_gateway import config as chat_config
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.guild_caps import enforce_channel_cap
+from dcc_chat_gateway.haekchen import kanaele_loeschen
 from dcc_chat_gateway.models import (
     CHANNEL_TYPE_DROPBOX,
     CHANNEL_TYPE_VOICE,
@@ -300,6 +301,8 @@ async def delete_channel(
     for gast_link in gast_links:
         await entwerte_link(session, request, gast_link)
     await session.execute(delete(GuestLink).where(GuestLink.channel_id == channel_id))
+    # Zustellstände eines Ablage-Kanals: polymorph ohne Fremdschlüssel (``haekchen.py``).
+    await kanaele_loeschen(session, [channel_id])
     await session.delete(channel)
     await session.commit()
     await purge_s3_keys(s3_keys_to_purge)

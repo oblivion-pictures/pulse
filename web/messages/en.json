@@ -3633,5 +3633,8 @@
   "message_item_edit_cancel": "Cancel",
   "dm_channel_list_heading": "Direct messages",
   "dm_channel_list_empty": "No direct messages yet. Click a person in a channel to start one.",
-  "dm_channel_list_unread": "unread"
+  "dm_channel_list_unread": "unread",
+  "kamera_senden_fehlgeschlagen": "Could not send the recording",
+  "chats_search_section_groups": "Groups",
+  "chats_new_group_mitglieder_fehlgeschlagen": "Group created, but {anzahl} person(s) could not be added"
 }

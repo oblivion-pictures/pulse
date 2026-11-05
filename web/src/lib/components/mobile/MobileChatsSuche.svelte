@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
    * Die Trefferliste der Chats-Suche: Personen aus der eigenen Gesprächsliste,
-   * Text-Kanäle der eigenen Communities, Nachrichten aus der DM-Historie.
+   * private Gruppen nach Namen, Text-Kanäle der eigenen Communities,
+   * Nachrichten aus der DM-Historie.
    *
    * **Eigene Komponente, weil es ein eigener Bildschirmzustand ist.** Solange
    * gesucht wird, ersetzt diese Liste die Gesprächsliste vollständig; die
@@ -25,17 +26,24 @@
   import { E2E_DMS_ENABLED } from '$lib/krypto/schalter';
   import type { DMChannel, Channel as ChannelTyp } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
+  import type { PrivateGruppe } from '$lib/api/gruppen';
+  import MobileGruppenZeile from './MobileGruppenZeile.svelte';
 
   let {
     suchbegriff,
     roheEingabe,
-    onSelect
+    onSelect,
+    gruppen,
+    onSelectGruppe
   }: {
     /** Normalisierte Eingabe ab drei Zeichen — nie leer, nie null. */
     suchbegriff: string;
     /** Die ungetrimmte Eingabe für den Server (er sucht im Originaltext). */
     roheEingabe: string;
     onSelect: (dm: DMChannel) => void;
+    /** Die Gruppen der Liste darüber — leer, wenn die Seite keine öffnen kann. */
+    gruppen: PrivateGruppe[];
+    onSelectGruppe?: (gruppeId: string) => void;
   } = $props();
 
   let treffer = $state<DMMessageSearchHit[]>([]);
@@ -48,6 +56,8 @@
       namePasst(userCache.displayName(dm.other_user_id), suchbegriff)
     )
   );
+
+  let gruppenTreffer = $derived(gruppen.filter((g) => namePasst(g.name, suchbegriff)));
 
   /** Text-Kanäle der eigenen Communities, deren Name passt. */
   let kanalTreffer = $derived.by(() => {
@@ -119,7 +129,7 @@
     'text-text-muted px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide';
 </script>
 
-{#if personenTreffer.length === 0 && kanalTreffer.length === 0 && treffer.length === 0 && !sucht}
+{#if personenTreffer.length === 0 && gruppenTreffer.length === 0 && kanalTreffer.length === 0 && treffer.length === 0 && !sucht}
   <p class="text-text-muted px-4 pt-8 text-center text-xs" data-testid="chats-search-empty">
     {m.chats_search_no_results()}
   </p>
@@ -146,6 +156,13 @@
     <span class="truncate text-sm font-semibold" style={nameStyle(dm.other_user_id)}>{name}</span>
   </button>
 {/each}
+
+{#if gruppenTreffer.length > 0 && onSelectGruppe}
+  <span class={UEBERSCHRIFT}>{m.chats_search_section_groups()}</span>
+  {#each gruppenTreffer as gruppe (gruppe.id)}
+    <MobileGruppenZeile {gruppe} onSelect={onSelectGruppe} />
+  {/each}
+{/if}
 
 {#if kanalTreffer.length > 0}
   <span class={UEBERSCHRIFT}>{m.chats_search_section_channels()}</span>

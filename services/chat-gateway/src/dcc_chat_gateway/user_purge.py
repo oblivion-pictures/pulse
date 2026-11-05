@@ -37,6 +37,7 @@ from dcc_chat_gateway.models import (
     MENTION_TYPE_USER,
     Anruf,
     ArchivKanalSchluessel,
+    ArchivZeile,
     ART_DM,
     Channel,
     CommunityInviteNotification,
@@ -162,6 +163,8 @@ async def _hard_delete_guild_with_attachments(
     await hard_delete_channel_attachments(
         session, channel_ids=channel_ids, defer_s3=defer_s3
     )
+    # Zustellstände der Ablage-Kanäle (``haekchen.py``, kein Fremdschlüssel).
+    await haekchen_kanaele_loeschen(session, channel_ids)
     guild = await session.get(Guild, guild_id)
     if guild is not None:
         await session.delete(guild)
@@ -234,6 +237,14 @@ async def _delete_dm_channels(
     )
     # Zustellstaende (Haekchen-Treppe) haengen polymorph ohne FK am Kanal.
     await haekchen_kanaele_loeschen(session, cids)
+    # Die Server-Archivkopie dieser DMs, auch die des UEBRIGEN Teilnehmers:
+    # ohne den Kanal lehnt jede Archiv-Route ab (``routes/archiv.py``,
+    # ``_archiv_zugriff`` → 404), Zeilen und Schluessel-Wraps lagen also
+    # unerreichbar bis zum Verfallslauf herum (DM-Bughunt 2026-11-02).
+    await session.execute(sa_delete(ArchivZeile).where(ArchivZeile.channel_id.in_(cids)))
+    await session.execute(
+        sa_delete(ArchivKanalSchluessel).where(ArchivKanalSchluessel.channel_id.in_(cids))
+    )
     await session.execute(
         sa_delete(DirectMessageChannel).where(DirectMessageChannel.id.in_(cids))
     )
@@ -363,9 +374,10 @@ async def _purge_db(
     await session.execute(sa_delete(Anruf).where(Anruf.einleiter_id == user_id))
 
     # 8d. Archiv-Kanal-Schlüssel-Wraps des Kontos (Übergabe §5). Die
-    # archiv_zeilen bleiben: sie sind Teil des Verlaufs des ÜBRIGEN
-    # Teilnehmers (dessen Server-Kopie), und Chiffre ohne seinen
-    # Kanal-Schlüssel-Wrap ist für den Gelöschten ohnehin wertlos.
+    # archiv_zeilen der Gruppen bleiben: sie sind Teil des Verlaufs der
+    # ÜBRIGEN Mitglieder (deren Server-Kopie), und Chiffre ohne seinen
+    # Kanal-Schlüssel-Wrap ist für den Gelöschten ohnehin wertlos. Die der
+    # DMs gehen mit dem Kanal (``_delete_dm_channels``, Schritt 9).
     await session.execute(
         sa_delete(ArchivKanalSchluessel).where(ArchivKanalSchluessel.user_id == user_id)
     )

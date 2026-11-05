@@ -183,6 +183,21 @@ export function postfachAbholenUndAnzeigen(
     .finally(badgeMeldungFreigeben);
 }
 
+/**
+ * Ob eine neue Nachricht in diesem Kanal sofort als gelesen gilt: der Kanal
+ * ist offen — und bei einer DM schaut der Nutzer auch hin (`siehtHin`),
+ * dieselbe Grenze wie `dm_bump` unten und der verschlüsselte Weg
+ * (`postfachVerbuchen.ts`). Ohne sie las ein minimiertes Fenster jede
+ * Klartext-DM sofort. Wer zurückkommt, liest über `beimHinschauen` im
+ * Gesprächswechsel nach (`dmKanalWechsel.svelte.ts`). Community-Kanäle
+ * bleiben bei „offen = gelesen": für sie gibt es dieses Nachlesen nicht,
+ * und ein Zähler bliebe stehen.
+ */
+function giltAlsGesehen(ctx: HandlerContext, kanalId: string): boolean {
+  if (!ctx.subs.has(kanalId)) return false;
+  return !directMessages.byId[kanalId] || siehtHin();
+}
+
 /** Ob die Anzeige unter dieser ID eine verschlüsselte Nachricht zeigt. */
 function verschluesseltAngezeigt(kanalId: string, id: string): boolean {
   return messages.for(kanalId).some((m) => m.id === id && m.verschluesselt === true);
@@ -200,7 +215,7 @@ export function register(ctx: HandlerContext): void {
       readState.recordSeen(evt.data.channel_id, evt.data.id);
       // We only get this op for channels we're subscribed to — i.e. the
       // one we're currently viewing — so it's safe to also mark it read.
-      if (ctx.subs.has(evt.data.channel_id)) {
+      if (giltAlsGesehen(ctx, evt.data.channel_id)) {
         readState.markRead(evt.data.channel_id, evt.data.id);
       }
     }
@@ -380,7 +395,7 @@ export function register(ctx: HandlerContext): void {
     // don't have to. If the user is actively viewing the channel,
     // the inline `markRead` below clears the counter immediately.
     const { channel_id, message_id, guild_id } = evt.data;
-    const viewingMentioned = ctx.subs.has(channel_id);
+    const viewingMentioned = giltAlsGesehen(ctx, channel_id);
     readState.incMention(channel_id);
     // Record before the matching channel_bump/dm_bump arrives so the
     // generic sound is suppressed.

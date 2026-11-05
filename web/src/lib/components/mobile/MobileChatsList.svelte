@@ -128,7 +128,7 @@
 
   <nav class="flex flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-3">
     {#if suchbegriff}
-      <MobileChatsSuche {suchbegriff} roheEingabe={suche} {onSelect} />
+      <MobileChatsSuche {suchbegriff} roheEingabe={suche} {onSelect} {gruppen} {onSelectGruppe} />
     {:else if zeigeSkelett}
       <Skelettzeilen variante="chat" anzahl={7} testId="chats-skelett" />
     {:else}
