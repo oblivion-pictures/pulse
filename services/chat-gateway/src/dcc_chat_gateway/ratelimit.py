@@ -96,8 +96,9 @@ _RULES: dict[str, tuple[int, float]] = {
     "ablage_schreiben": (300, 60.0),
     # Internal-Secret-Routen (Account-Purge, jwks-status, …): Schluessel ist
     # die Client-IP, nicht eine Nutzer-ID — der Aufrufer ist ein anderer
-    # Dienst. 120/min liegt weit ueber dem Binnenvolumen und deckelt
-    # Online-Raten auf INTERNAL_SERVICE_SECRET (Audit 2026-09); die
+    # Dienst. Gezaehlt werden nur FALSCHE Secrets (seit 2026-11-05, s.
+    # ``routes/internal._check_internal_secret``): 120 Fehlversuche je Minute
+    # deckeln Online-Raten auf INTERNAL_SERVICE_SECRET (Audit 2026-09); die
     # nginx-/Caddy-deny-Bloecke sind die erste Schicht davor.
     "internal_secret": (120, 60.0),
     # Audio-Diagnose (Bughunt Runde 28): die Route bremst je Nutzer, aber
@@ -158,6 +159,16 @@ def check(action: str, key: int | str) -> bool:
         return False
     bucket[key] = (start, count + 1)
     return True
+
+
+def erschoepft(action: str, key: int | str) -> bool:
+    """Ist ``key`` über dem Budget? Wie ``check``, verbraucht aber nichts.
+
+    Für Bremsen, die nur Fehlschläge zählen (``internal_secret``): erst
+    nachsehen, dann vergleichen, nur einen Fehlschlag per ``check`` buchen."""
+    limit, window = _RULES[action]
+    entry = _buckets.get(action, {}).get(key)
+    return entry is not None and monotonic() - entry[0] < window and entry[1] >= limit
 
 
 def reset() -> None:

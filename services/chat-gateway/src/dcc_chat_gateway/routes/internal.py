@@ -26,6 +26,7 @@ from dcc_chat_gateway import config as chat_cfg
 from dcc_chat_gateway.client_ip import client_ip
 from dcc_chat_gateway.db import SessionDep
 from dcc_chat_gateway.ratelimit import check as ratelimit_check
+from dcc_chat_gateway.ratelimit import erschoepft as ratelimit_erschoepft
 from dcc_chat_gateway.user_purge import purge_user
 from dcc_chat_gateway.voice_pull_cleanup import revoke_voice_pull
 
@@ -68,10 +69,17 @@ def _check_internal_secret(request: Request, provided: str | None) -> None:
 
     Raises 401 on missing / empty / wrong header, or when the server
     secret itself is unset (fail-closed — same posture as
-    voice-signaling's ``/internal/evict-from-voice``). Rate-limited BEFORE
-    the compare so online guessing can't run hot (Audit 2026-09; the
-    nginx/Caddy deny for ``/api/chat/internal/*`` is the layer in front)."""
-    if not ratelimit_check("internal_secret", client_ip(request)):
+    voice-signaling's ``/internal/evict-from-voice``).
+
+    Die Bremse gegen Online-Raten (Audit 2026-09; die nginx/Caddy-Sperre für
+    ``/api/chat/internal/*`` ist die Schicht davor) steht VOR dem Vergleich,
+    zählt aber nur Fehlversuche. Bis 2026-11-05 zählte jeder Aufruf: dann
+    teilte sich echter Dienstverkehr den Topf mit dem Raten, und wer genug
+    Dienst-Aufrufe auslöste (etwa durch schnelles Wiederbeitreten in einen
+    Sprachkanal, ``/internal/livekit-zugang``), drosselte alle internen
+    Abfragen dieser IP — deren Aufrufer bei 429 bewusst durchlassen."""
+    ip = client_ip(request)
+    if ratelimit_erschoepft("internal_secret", ip):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             detail="rate limit exceeded (internal_secret)",
@@ -90,6 +98,7 @@ def _check_internal_secret(request: Request, provided: str | None) -> None:
     # Zeichen (Header kommen latin-1-dekodiert an) einen TypeError — ein 500er
     # statt 401 (Gegenprüfung des Security-Audits, 2026-11-05).
     if not provided or not hmac.compare_digest(provided.encode(), expected.encode()):
+        ratelimit_check("internal_secret", ip)  # Fehlversuch buchen
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, detail="invalid internal secret"
         )
