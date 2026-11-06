@@ -46,12 +46,13 @@ use webrtc::rtp::packet::Packet;
 use webrtc::rtp::packetizer::Payloader;
 use webrtc::rtp_transceiver::rtp_sender::RTCRtpSender;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
-use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
+use webrtc::track::track_local::TrackLocal;
 
 use pulse_bildmarke as bildmarke;
 use pulse_bildmarke::EXTMAP_URI;
 
 use crate::aufnahmeuhr::Aufnahmeuhr;
+use crate::aussetzer::{self, Spur};
 use crate::av1::{self, SpurZustand};
 use crate::h264::h264_ist_vollbild;
 use crate::hevc;
@@ -314,7 +315,9 @@ impl DirectSender {
             Some(p) => p.send(pakete),
             None => {
                 for paket in pakete {
-                    laufzeit().block_on(track.write_rtp(&paket)).context("write_rtp")?;
+                    laufzeit()
+                        .block_on(aussetzer::schreiben(track, &paket, Spur::Bild))
+                        .context("write_rtp")?;
                 }
                 Ok(())
             }

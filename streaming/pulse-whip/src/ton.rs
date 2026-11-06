@@ -45,9 +45,10 @@ use webrtc::rtp::sequence::Sequencer;
 use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 use webrtc::rtp_transceiver::rtp_sender::RTCRtpSender;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
-use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
+use webrtc::track::track_local::TrackLocal;
 
 use crate::aufnahmeuhr::{Aufnahmeuhr, TON_HZ};
+use crate::aussetzer::{self, Spur};
 use crate::red::{RedPacker, KOPIEN_MAX};
 use crate::sdp::MIME_TYPE_RED;
 
@@ -166,7 +167,9 @@ impl TonSpur {
     /// Rahmenlaenge, gebraucht nur ohne `pts`.
     pub async fn senden(&self, opus: &[u8], pts: Option<i64>, dauer: Duration) -> Result<()> {
         let (paket, spur) = self.bauen(opus, pts, dauer);
-        spur.write_rtp(&paket).await.context("Tonpaket schreiben")?;
+        aussetzer::schreiben(&spur, &paket, Spur::Ton)
+            .await
+            .context("Tonpaket schreiben")?;
         Ok(())
     }
 

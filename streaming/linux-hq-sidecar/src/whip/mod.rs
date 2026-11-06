@@ -75,7 +75,7 @@ use webrtc::rtp::packet::Packet;
 use webrtc::rtp::packetizer::Payloader;
 use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
-use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
+use webrtc::track::track_local::TrackLocal;
 
 /// Obergrenze fuers Sammeln der ICE-Kandidaten, bevor das Angebot trotzdem
 /// rausgeht. Wie im Player (`pulse-player/src/whep.rs`).
@@ -158,6 +158,7 @@ pub struct WhipSender {
 /// `pulse-whip::h264`. Hier nur noch durchgereicht, damit die Aufrufstelle
 /// unveraendert bleibt.
 use pulse_whip::h264::h264_ist_vollbild;
+use pulse_whip::aussetzer;
 use pulse_whip::ton::{TonArt, TonSpur};
 
 /// Ein Annex-B-Zeitabschnitt in RTP-Nutzlasten zerlegen — der Weg, den H.264
@@ -640,7 +641,9 @@ impl WhipSender {
             Some(p) => p.send(pakete),
             None => {
                 for paket in pakete {
-                    runtime().block_on(track.write_rtp(&paket)).context("write_rtp")?;
+                    runtime()
+                        .block_on(aussetzer::schreiben(track, &paket, aussetzer::Spur::Bild))
+                        .context("write_rtp")?;
                 }
                 Ok(())
             }
