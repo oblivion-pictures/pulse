@@ -50,6 +50,26 @@ howispulse.com {
 	}
 }
 
+# --- Token-Schwärzung im FEHLERprotokoll (Security-Audit 2026-11-05, S-T5) ---
+# Browser-WebSockets können keine Header setzen → das Login-Token reist in der
+# URL (?token=…). Das pulse_web-nginx loggt bereits query-frei (pulse_noquery),
+# aber Caddys FEHLER-Log (Proxy-Dial-Fehler, z. B. während Deploys) druckte die
+# volle URI inklusive Token (live gesehen 2026-11-05). Der eingebaute
+# Query-Filter (Caddy ≥ 2.5) löscht den Parameter vor dem Schreiben — für den
+# FEHLER-Log-Eintrag der das auslöste, mit Beweis: /ws?x=1 statt ?token=…&x=1.
+# In denselben globalen Options-Block wie on_demand_tls oben, z. B. darunter:
+#
+#       log {
+#           format filter {
+#               wrap json
+#               fields {
+#                   request>uri query {
+#                       delete token
+#                   }
+#               }
+#           }
+#       }
+
 # --- Self-Host-allinone-Registry ---
 # VOR dem ersten `caddy reload` einen DNS-A-Record
 # registry.howispulse.com → <IP des VPS> anlegen, sonst schlägt ACME fehl.

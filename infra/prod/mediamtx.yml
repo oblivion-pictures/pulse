@@ -9,8 +9,11 @@
 #   - publish only with a valid stream-token (issued by media-svc) for the path
 #     `channel-<channel_id>`,
 #   - read/playback (WHEP/HLS) for `channel-*` paths,
-#   - api/metrics/pprof (also excluded here via authHTTPExclude).
-# No internal users, no fixed stream key — the HQ sidecar gets its push URL
+#   - api — but only with the right credentials (security scan 2026-11-04).
+#     metrics/pprof (excluded below) answer 401 to EVERYONE in this
+#     deployment, with and without credentials — verified 2026-11-06; nothing
+#     consumes them.
+# No fixed stream key — the HQ sidecar gets its push URL
 # (token in `?pass=…` or `streamid=publish:<path>:pulse:<token>`) from media-svc.
 #
 # Public ingest/egress ports must be open in UFW: 1936/tcp (RTMPS) and
@@ -18,8 +21,10 @@
 # the reason at that line); this header listed it until 2026-08-04 and sent
 # people opening a port nothing listens on. 8889/tcp (WHEP) and 8888/tcp (HLS) are reached
 # via the pulse_web nginx (host.docker.internal) → not exposed directly. The API
-# (:9997) is bound on all interfaces so media-svc (on pulse-net) can poll it via
-# host.docker.internal; UFW's default INPUT DROP keeps it private.
+# (:9997) is bound ONLY to the Docker bridge gateway (172.17.0.1 — what
+# host.docker.internal resolves to via `host-gateway`) so media-svc on pulse-net
+# can poll it; it does not listen on public interfaces at all (binding since
+# 2026-11-06, security-audit follow-up S-M2).
 
 logLevel: info
 logDestinations: [stdout]
@@ -113,19 +118,30 @@ webrtcAdditionalHosts:
   - 159.195.150.54
 
 # Control API. MediaMTX runs network_mode:host, and media-svc reaches this
-# from its container via host.docker.internal (the Docker bridge gateway IP,
-# NOT loopback) — so binding 127.0.0.1 here would refuse that connection and
-# break the stream-state poller. MediaMTX 1.19 REMOVED `apiAllowAddresses`
-# (replaced by the auth system / apiTrustedProxies). UFW keeps 9997 off the
-# internet (default INPUT DROP), but that is only a reachability limit: every
-# container on the Docker network reaches it, and until the security scan of
-# 2026-11-04 the chat-gateway's archive passthrough let any account read it via
-# the server's own public IP. So `api` now goes through the auth hook like on
-# Self-Host (no longer in authHTTPExclude below): the hook checks
-# MEDIAMTX_API_USER/MEDIAMTX_API_PASSWORD from .env (api_zugang.py), and
-# media-svc sends the same pair as Basic auth. See DEPLOY.md.
+# from its container via host.docker.internal — which `host-gateway` resolves
+# to the docker0 gateway 172.17.0.1, NOT loopback. Binding 127.0.0.1 here
+# would refuse that connection and break the stream-state poller; binding
+# 172.17.0.1 keeps that one address open — reachable from the host and every
+# bridge network (hence the UFW rule), but no longer from public interfaces
+# (until 2026-11-06 this was `:9997` = all interfaces, protected only by
+# UFW's INPUT DROP until the 2026-11-04 scan added the auth hook on top —
+# security-audit finding S-M2).
+# The 172.17.0.1 pin follows Docker's DEFAULT bridge gateway: if the host's
+# daemon.json ever sets `bip` or `host-gateway-ip`, only this address has to
+# move with it — the `host.docker.internal:host-gateway` mappings in
+# docker-compose.yml are symbolic and follow Docker automatically (a repo
+# grep for 172.17.0.1 finds every hard-coded occurrence: this file and
+# DEPLOY.md).
+# MediaMTX 1.19 REMOVED `apiAllowAddresses` (replaced by the auth system /
+# apiTrustedProxies). `api` goes through the auth hook like on Self-Host (not
+# in authHTTPExclude below): the hook checks a fixed username plus
+# MEDIAMTX_API_PASSWORD from .env (only the password lives in .env,
+# api_zugang.py), and media-svc sends the same pair as Basic auth
+# (security scan 2026-11-04).
+# UFW's bridge→host rule for port 9997 (DEPLOY.md) stays as the second layer
+# — with the binding above it is no longer the only one.
 api: yes
-apiAddress: :9997
+apiAddress: 172.17.0.1:9997
 
 # RTSP not needed — WHIP + RTMPS cover ingest
 rtsp: no
@@ -150,13 +166,16 @@ authHTTPExclude:
 # gegen Upstream v1.19.1 verifiziert (`internal/conf/conf.go`,
 # `internal/auth/manager.go`): interne Nutzer und der HTTP-Hook sind
 # EXKLUSIVE Branches (`authMethod`), d. h. unter `authMethod: http` wird
-# diese Liste NIE konsultiert — der Pin ist heute ein Verhaltens-No-op und
-# verteidigt gegen Fork-/Upstream-Divergenz (ein Default-Flip allein wäre
-# wirkungslos). Zwei Konsequenzen, die NICHT aus dem Pin ableitbar sind:
-# publish/read hängen AUSSCHLIESSLICH am Hook (Token, single-use), und
-# api/metrics/pprof hängen AUSSCHLIESSLICH an `authHTTPExclude` plus
-# Bindung/UFW — wer `authHTTPExclude` entfernt, in der Annahme, diese Liste
-# schütze die API, öffnet sie vollständig (leere Liste = keine Auth).
+# diese Liste für publish/read NIE konsultiert — der Pin ist dafür heute ein
+# Verhaltens-No-op und verteidigt gegen Fork-/Upstream-Divergenz (ein
+# Default-Flip allein wäre wirkungslos). Konsequenzen, die NICHT aus dem Pin
+# ableitbar sind: publish/read hängen AUSSCHLIESSLICH am Hook (Token,
+# single-use); die API hängt seit dem Security-Scan 2026-11-04 ebenfalls am
+# Hook (Passwort, s. Block bei `apiAddress`); nur metrics/pprof laufen am
+# Hook vorbei und hängen an Bindung/UFW — und antworten hier trotzdem 401 an
+# jeden (verifiziert 2026-11-06, Mechanik nicht gegen Upstream aufgelöst;
+# `authHTTPExclude` komplett zu entfernen öffnet die API NICHT mehr, nur
+# metrics/pprof).
 # Der Control-API-Poller kommt über host.docker.internal (Docker-Bridge,
 # nicht Loopback) und braucht hier keinen Eintrag; UFW-Pflicht s. oben.
 authInternalUsers: []

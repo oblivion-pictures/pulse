@@ -91,12 +91,20 @@ sudo ufw allow 7881/tcp        # LiveKit TCP fallback
 sudo ufw allow 7882:7892/udp   # LiveKit RTC
 #    docker-bridge → host (the pulse_web nginx + pulse_media_svc reach the
 #    host-network MediaMTX/LiveKit; UFW's INPUT DROP blocks bridge→host
-#    otherwise; only these two need a rule):
-sudo ufw allow from 10.0.0.0/8 to any port 7880 proto tcp   # LiveKit signaling
-sudo ufw allow from 10.0.0.0/8 to any port 9997 proto tcp   # MediaMTX API
+#    otherwise; only these two need a rule). Source range = Docker's bridge
+#    nets on this host: docker0 172.17.0.0/16 and pulse-net 172.18.0.0/16
+#    (external network, created without a subnet pin — matches
+#    TRUSTED_PROXIES in .env.example). Until 2026-11-06 this stood here as
+#    `from 10.0.0.0/8`, which matches NEITHER — a stale leftover from a
+#    former 10.0.6.0/24 pulse-net; check live rules with `sudo ufw status`:
+sudo ufw allow from 172.16.0.0/12 to any port 7880 proto tcp   # LiveKit signaling
+sudo ufw allow from 172.16.0.0/12 to any port 9997 proto tcp   # MediaMTX API
 #    The rule only limits REACHABILITY — every container still gets there. The
 #    API itself needs MEDIAMTX_API_PASSWORD in .env (auth hook checks it,
-#    media-svc sends it; security scan 2026-11-04, see mediamtx.yml).
+#    media-svc sends it; security scan 2026-11-04, see mediamtx.yml), and is
+#    bound to the docker0 gateway 172.17.0.1 only since 2026-11-06
+#    (`apiAddress` in mediamtx.yml) — UFW is the second layer, not the only
+#    one.
 #    NO 8888/8889 to Anywhere (Bughunt 2026-09-23, resolves the old note that
 #    claimed they were "already open to Anywhere" from the legacy streaming
 #    setup): HLS is off and WHEP playback goes through the public pulse_web
@@ -233,7 +241,7 @@ Voraussetzung: Tasks 1–3 (auth-Endpoint, frps-Container, CI-Env) sind bereits 
    ```
    Der Cron-Updater zieht nur App-`:latest`-Images — Struktur-Änderungen (neuer Service, neue Env-Vars) brauchen diesen manuellen Schritt.
 
-5. **Caddy:** globalen `on_demand_tls`-Block + `*.relay`-Site-Block einfügen (Vorlage: `Caddyfile.pulse.snippet`). Der globale Options-Block muss **ganz oben** in der Live-Caddyfile stehen und darf **nur einmal** vorkommen — keinen zweiten `{ … }`-Block anlegen.
+5. **Caddy:** globalen `on_demand_tls`-Block + den Query-Filter (Token-Schwärzung fürs FEHLERprotokoll, Security-Audit S-T5) in denselben globalen Options-Block + `*.relay`-Site-Block einfügen (Vorlage: `Caddyfile.pulse.snippet`). Der globale Options-Block muss **ganz oben** in der Live-Caddyfile stehen und darf **nur einmal** vorkommen — keinen zweiten `{ … }`-Block anlegen.
    ```sh
    cp ~/caddy/Caddyfile ~/caddy/Caddyfile.bak.$(date +%s)
    $EDITOR ~/caddy/Caddyfile   # globalen Block oben einfügen, *.relay-Block ans Ende
