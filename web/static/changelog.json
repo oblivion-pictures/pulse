@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-06",
+      "date": "2026-11-06",
+      "style": "Sachlich",
+      "title": "Bildschirmübertragung",
+      "items": [
+        "Startest du während einer Bildschirmübertragung ein Spiel, bricht die Übertragung nicht mehr ab. Ein kurzer Engpass im Netzwerk von Windows kostet jetzt höchstens einen Augenblick Bild oder Ton."
+      ]
+    },
+    {
       "id": "2026-11-05",
       "date": "2026-11-05",
       "style": "Sachlich",

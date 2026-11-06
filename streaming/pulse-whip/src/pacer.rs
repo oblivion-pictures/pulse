@@ -96,7 +96,8 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use webrtc::rtp::packet::Packet;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
-use webrtc::track::track_local::TrackLocalWriter;
+
+use crate::aussetzer::{self, Spur};
 
 /// Anteil des Bildabstands, der als Sendefenster zur Verfuegung steht.
 ///
@@ -189,7 +190,7 @@ async fn verteile(
         }
         let groesse = basis + usize::from(g < rest);
         for p in iter.by_ref().take(groesse) {
-            if track.write_rtp(&p).await.is_err() {
+            if aussetzer::schreiben(track, &p, Spur::Bild).await.is_err() {
                 return false;
             }
         }
