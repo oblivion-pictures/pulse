@@ -235,6 +235,48 @@ async def test_activity_op_idle_returns_to_online(ws_app, _auth_signer, redis_cl
 
 
 @pytest.mark.asyncio
+async def test_activity_op_manual_idle_stays_idle(ws_app, _auth_signer, redis_client):
+    """Selbst gewähltes „abwesend" übersteht eine Mausbewegung.
+
+    Nur das vom Sweeper gesetzte idle hebt ``activity`` wieder auf; wer
+    „abwesend" über ``PUT /me/presence-status`` gewählt hat, bleibt es, bis er
+    selbst etwas anderes wählt (Meldung 2026-11-07).
+    """
+    from dcc_chat_gateway.presence_keys import PRESENCE_STATUS_KEY, PRESENCE_ACTIVITY_ZSET
+
+    def _run():
+        uid = random.randint(1_000_000, 9_999_999)
+        token = _auth_signer.issue_access(uid, f"u{uid}")
+
+        import redis as sync_redis
+
+        r = sync_redis.Redis.from_url(_REDIS_URL)
+        key = PRESENCE_STATUS_KEY.replace("{user_id}", str(uid))
+        try:
+            with TestClient(ws_app) as tc:
+                resp = tc.put(
+                    "/me/presence-status",
+                    json={"status": "idle"},
+                    headers=_auth(token),
+                )
+                assert resp.status_code == 204
+                with tc.websocket_connect(f"/ws?token={token}") as ws:
+                    receive_skipping(ws)  # skip hello + ready
+                    ws.send_json({"op": "activity"})
+                    import time as _time
+                    _time.sleep(0.2)
+                    result = r.get(key)
+                    assert result is not None
+                    assert result.decode() == "idle"
+        finally:
+            r.delete(key)
+            r.delete(PRESENCE_ACTIVITY_ZSET)
+            r.close()
+
+    await asyncio.to_thread(_run)
+
+
+@pytest.mark.asyncio
 async def test_activity_op_dnd_stays_dnd(ws_app, _auth_signer, redis_client):
     """Sending op=activity when status=dnd must NOT change the status."""
     from dcc_chat_gateway.presence_keys import PRESENCE_STATUS_KEY, PRESENCE_ACTIVITY_ZSET

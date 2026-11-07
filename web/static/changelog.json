@@ -2,6 +2,16 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-07",
+      "date": "2026-11-07",
+      "style": "Sachlich",
+      "title": "Status „Abwesend“ korrigiert",
+      "items": [
+        "Wer einen eigenen Server ausgewählt hatte, blieb für Freunde dauerhaft auf „Abwesend“, auch beim Klicken in Pulse. Das ist behoben.",
+        "Selbst gewähltes „Abwesend“ bleibt jetzt stehen, bis du es selbst änderst."
+      ]
+    },
+    {
       "id": "2026-11-06",
       "date": "2026-11-06",
       "style": "Sachlich",

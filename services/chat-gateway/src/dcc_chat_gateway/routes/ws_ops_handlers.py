@@ -27,16 +27,8 @@ from dcc_chat_gateway.models import (
     CHANNEL_TYPE_VOICE,
 )
 from dcc_chat_gateway.permissions import resolve_permissions
+from dcc_chat_gateway.presence_aktivitaet import aktivitaet_verbuchen
 from dcc_chat_gateway.pubsub_channels import HIST_REPLAY_MAX_CHANNELS
-from dcc_chat_gateway.presence_status import (
-    STATUS_DND,
-    STATUS_INVISIBLE,
-    STATUS_ONLINE,
-    broadcast_presence_status_changed,
-    get_presence_status,
-    set_presence_status,
-    update_activity,
-)
 from dcc_chat_gateway.routes import (
     watch_handoff,
     ws_device_handlers,
@@ -52,8 +44,10 @@ from dcc_chat_gateway.routes import (
 )
 from dcc_chat_gateway.routes._deps import (
     channel_membership,
-    parse_snowflake_int as _channel_id,
     resolve_channel_for_user,
+)
+from dcc_chat_gateway.routes._deps import (
+    parse_snowflake_int as _channel_id,
 )
 from dcc_chat_gateway.routes.ws_abo_fehler import abo_fehler
 from dcc_chat_gateway.routes.ws_gruppen_abo import gruppen_abo_versuchen
@@ -453,19 +447,12 @@ async def handle_resync(ctx: WSOpContext, msg: dict[str, Any]) -> None:
 async def handle_activity(ctx: WSOpContext, msg: dict[str, Any]) -> None:
     """Etappe-3 client heartbeat / mouse-move / key-press.
 
-    Updates the presence:activity ZSET and, if the user's current status is
-    ``idle``, flips it back to ``online`` and broadcasts. ``dnd`` and
-    ``invisible`` are manual overrides — not overwritten.
+    Updates the presence:activity ZSET and, if the sweeper had set the user
+    to ``idle``, flips it back to ``online`` and broadcasts. ``dnd``,
+    ``invisible`` and a self-chosen ``idle`` stay (``presence_aktivitaet``).
     """
     try:
-        await update_activity(ctx.redis, ctx.user.id)
-        current_status = await get_presence_status(ctx.redis, ctx.user.id)
-        if current_status not in (STATUS_ONLINE, STATUS_DND, STATUS_INVISIBLE):
-            # Was idle → return to online
-            await set_presence_status(ctx.redis, ctx.user.id, STATUS_ONLINE)
-            await broadcast_presence_status_changed(
-                ctx.manager, ctx.redis, ctx.user.id, STATUS_ONLINE
-            )
+        await aktivitaet_verbuchen(ctx.manager, ctx.redis, ctx.user.id, SessionLocal)
     except Exception:  # noqa: BLE001
         log.exception("activity op failed for user=%s", ctx.user.id)
     # No reply — lightweight, fire-and-forget.
