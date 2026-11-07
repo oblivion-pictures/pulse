@@ -37,6 +37,7 @@ import { bootstrapHandlersOnce } from './gateway-handlers-bootstrap';
 import { gapFillAll, gapFillChannel } from './gapFill';
 import { wachEntscheid, zustandImHintergrund } from './wachentscheid';
 import { PongSchranke } from './pongSchranke';
+import { meldetSichNachReady } from './aktivitaetZiele';
 import { AboWiederholung } from './aboWiederholung';
 import { echterPlaner } from './nachholTakt';
 import {
@@ -281,6 +282,13 @@ export class GatewayConnection {
       }
     }
     this._preReadyBuffer = [];
+    // Gleich nach dem ready „ich bin da" melden — sonst bliebe ein vom
+    // Server mitgeliefertes automatisches „abwesend" stehen, bis die nächste
+    // Mausbewegung die Minuten-Bremse in `activity.ts` passiert.
+    const verborgen = typeof document !== 'undefined' && document.hidden;
+    if (meldetSichNachReady({ istCloud: this.isCloud, istAktiv: isActive, verborgen })) {
+      this.sendActivity();
+    }
   }
 
   /**

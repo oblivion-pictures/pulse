@@ -3,7 +3,9 @@
 Status values
 -------------
   online     — actively connected (default on first connect)
-  idle       — auto-set by the sweeper after IDLE_AFTER_MS of inactivity
+  idle       — auto-set by the sweeper after IDLE_AFTER_MS of inactivity, or
+               chosen manually (only the automatic one is lifted by activity,
+               see ``presence_aktivitaet``)
   dnd        — "do not disturb", set manually, sweeper ignores
   invisible  — manually set; broadcast as ``offline`` to others
   offline    — wire-only value used in broadcasts (never stored in Redis)

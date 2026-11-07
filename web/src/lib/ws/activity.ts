@@ -11,10 +11,15 @@
  * change → focus). On tab-hidden we suspend; on tab-visible we send one
  * immediately and reset the throttle.
  *
+ * Targets: the active server AND the Cloud (`aktivitaetZiele.ts` says why).
+ *
  * Designed to be a singleton (init/teardown wired from the /app layout).
  */
 
-import { gateway } from './connection';
+import { gatewayPool } from './gateway-pool.svelte';
+import { activeServer } from '$lib/stores/active-server.svelte';
+import { serversStore } from '$lib/api/servers.svelte';
+import { aktivitaetZiele } from './aktivitaetZiele';
 
 const MIN_INTERVAL_MS = 60_000;
 
@@ -24,11 +29,16 @@ let _onUserSignal: (() => void) | null = null;
 let _onVisibility: (() => void) | null = null;
 
 function _send(): void {
-  // Direct gateway send — no listener spam; the gateway no-ops the send
-  // silently if the socket isn't open yet (fine — we'll re-fire on the
-  // next user signal once the WS reconnects).
-  gateway.sendActivity();
-  _lastSent = Date.now();
+  // Direct send — no listener spam. A socket that isn't open yet no-ops
+  // silently (`sendActivity` → false); each connection reports itself once
+  // its `ready` is in (`GatewayConnection._finishReady`). The throttle only
+  // starts when at least one send went out — otherwise a lost boot-time
+  // send blocked the next user signal for a full minute.
+  let gesendet = false;
+  for (const id of aktivitaetZiele(activeServer.serverId, serversStore.cloudId())) {
+    if (gatewayPool.peek(id)?.sendActivity()) gesendet = true;
+  }
+  if (gesendet) _lastSent = Date.now();
 }
 
 function _maybeSend(): void {
