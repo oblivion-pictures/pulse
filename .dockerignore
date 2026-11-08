@@ -55,6 +55,18 @@ services/*/data
 web/data
 .plans
 
+# Lokale Arbeitsreste im Wurzelverzeichnis + das eingehängte private Archiv.
+# Kein COPY greift heute darauf zu — sie stehen hier, damit der Build-Kontext
+# sie nie enthält: das komplette pulse-intern-Archiv in jedem Kontext zu
+# schleppen wäre träge UND zu einer Falle, falls je jemand ein `COPY . .`
+# ergänzt (Docker-Fund 2026-11-08: Lücke ohne Schaden, Image unverändert sauber).
+intern
+uploads
+data
+build
+dump.rdb
+Pulse-win32-x64.zip
+
 # Markdown: keep the top-level README + the self-host README, drop everything else
 *.md
 !README.md
