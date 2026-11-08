@@ -363,7 +363,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         redis-server \
         coturn \
         libpq5 libffi8 libssl3 \
-        gosu procps \
+        gosu procps libcap2-bin \
         netbase \
     && rm -rf /var/lib/apt/lists/*
 
@@ -415,12 +415,20 @@ COPY infra/self-host/templates/ /opt/pulse/templates/
 
 # Filesystem prep — pulse:pulse (uid 10001) owns /data + service state dirs.
 # /data is a volume mount-point: docker creates it from this skeleton.
+# setcap HIER in der Runtime-Stufe (nicht schon in `binaries`): die Fähigkeit
+# klebt als xattr an der Datei, und COPY --from wäre ein Ort, an dem sie
+# still verloren gehen könnte — im selben Layer wie die Nutzung ist sie
+# nachweislich da (Beweis im Bau: getcap, s. README-Abschnitt Verifikation).
 RUN groupadd -g 10001 pulse \
     && useradd -u 10001 -g pulse -d /var/lib/pulse -s /usr/sbin/nologin -M pulse \
     && mkdir -p /data /var/log/pulse /var/run/pulse /etc/pulse \
                 /etc/caddy /etc/livekit /etc/mediamtx /etc/coturn \
     && chown -R pulse:pulse /data /var/log/pulse /var/run/pulse /etc/pulse \
     && chmod 0750 /var/log/pulse /var/run/pulse \
+    # Caddy darf 80/443 binden, OHNE als root zu laufen (caddy/run exec't via
+    # gosu pulse; Fund 2026-11-08: der Kommentar dort behauptete ein
+    # Selbst-Absteigen Caddys, live widerlegt — es lief als root).
+    && setcap cap_net_bind_service=+ep /usr/local/bin/caddy \
     # coturn's default unit user (`turnserver`) is unused — we run as pulse.
     && chmod +x /etc/s6-overlay/scripts/*.sh \
     # Permission everything in the s6-rc.d tree (the chmod above misses subdirs)
