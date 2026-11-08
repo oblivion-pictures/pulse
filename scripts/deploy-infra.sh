@@ -39,6 +39,13 @@ AUSNAHMEN=(
   "certs/"        # MediaMTX-TLS, self-signed auf dem Host erzeugt
   "*.log"         # Laufzeitprotokolle
   "pulse-update.log"
+  # Historische Server-Backups (Fund 2026-11-08 beim S-M2-Rollover): rsync
+  # --delete räumt sie sonst weg — darunter .env.vor-* mit ALTEN GEHEIMNISSEN.
+  # *.vor-* deckt jede Sicherungskopie dieser Namenskonvention ab
+  # (mediamtx.yml.vor-pulse11, docker-compose.yml.vor-pulse8, …), *.bak-*
+  # die zweite (garage.toml.bak-20260928, .env.bak-…).
+  "*.vor-*"
+  "*.bak-*"
 )
 
 ausschluss_argumente=()
@@ -64,9 +71,21 @@ echo "→ Trockenlauf (es wird noch nichts verändert):"
 ausgabe="$(rsync -az --delete --dry-run --itemize-changes \
   "${ausschluss_argumente[@]}" "$QUELLE" "$ZIEL:$PFAD" 2>&1)"
 
-# `*deleting` ist die Zeile, die 2026-08-07 niemand gesehen hat.
+# `*deleting` ist die Zeile, die 2026-08-07 niemand gesehen hat — deshalb
+# stehen Löschungen NIE in der gekürzten Vorschau, sondern immer vollständig
+# davor (ihr sind wenige; die Kürzung unten trifft nur Übertragungen).
 loeschungen="$(printf '%s\n' "$ausgabe" | grep -c '^\*deleting' || true)"
-printf '%s\n' "$ausgabe" | sed 's/^/    /' | head -40
+printf '%s\n' "$ausgabe" | grep '^\*deleting' | sed 's/^/    /' || true
+# Vorschau der Übertragungen, auf 40 Zeilen gekürzt. KEIN `head` in der
+# Pipeline: head schließt die Pipe nach 40 Zeilen, sed/printf sterben an
+# SIGPIPE, und `set -o pipefail` nimmt das Skript still mit — VOR der
+# Übertragung, ohne jede Meldung. Passierte bei jedem Lauf mit mehr als 40
+# Änderungszeilen (erstmals gesehen 2026-11-08 beim S-M2-Rollover; kleine
+# Läufe fielen nie auf, weil head die Pipe dann nie früh schließt). awk
+# liest ALLE Zeilen und druckt nur die ersten 40 — niemand bricht ab, und
+# die Kürzung wird gemeldet statt still zu schweigen.
+printf '%s\n' "$ausgabe" | grep -v '^\*deleting' | \
+  awk 'NR<=40 {printf "    %s\n", $0} END {if (NR>40) printf "    … Vorschau auf 40 Zeilen gekürzt, %d weitere\n", NR-40}'
 echo
 echo "→ $loeschungen Löschung(en), $(printf '%s\n' "$ausgabe" | grep -c '^[<>]' || true) Übertragung(en)"
 
