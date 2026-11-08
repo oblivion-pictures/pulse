@@ -7,9 +7,12 @@
 # nur auf macOS (gvproxy); ein VPS oder eine Windows-podman-machine mit
 # `--network host` (dort lauscht es sonst auf allen VM-Adressen) braucht es
 # nicht. Vorgabe bleibt AN, weil die macOS-Server-App die Variable nicht setzt.
+# Läuft als pulse (gosu) wie jeder Dienst — der Gateway-Port 55981 liegt über
+# 1024, es braucht keinerlei Root-Rechte (Abstieg 2026-11-08; vorher lief es
+# als letzter Dienst neben Caddy noch als root).
 exec 2>&1
 if [ "${PULSE_UDP_GATEWAY_DISABLED:-false}" = "true" ]; then
     echo "[udp-gateway] PULSE_UDP_GATEWAY_DISABLED=true — Dienst idlet."
     exec sleep infinity
 fi
-exec /opt/pulse/venv/bin/python3 -u /etc/s6-overlay/scripts/udp-gateway.py
+exec /usr/sbin/gosu pulse /opt/pulse/venv/bin/python3 -u /etc/s6-overlay/scripts/udp-gateway.py
