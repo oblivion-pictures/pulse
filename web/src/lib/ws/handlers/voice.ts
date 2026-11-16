@@ -103,7 +103,11 @@ export function register(ctx: HandlerContext): void {
       // sichert den Mikrofon-Vorzustand für den Restore; lief das Mute
       // zuerst, sicherte es den schon gemuteten Zustand (false), und das
       // spätere Unmute von mute+deafen restaurierte das Mikrofon nie.
-      if (evt.deafened !== voice.deafened) voice.setDeafened(evt.deafened);
+      // applyForceDeafen statt setDeafened(evt.deafened): der Event trägt
+      // den ADMIN-Flag, `voice.deafened` die eigene Taubstellung — der
+      // direkte Vergleich enttaubte Selbst-Getaubte bei jedem Admin-Mute
+      // (Meldung 16.11.).
+      voice.applyForceDeafen(evt.deafened);
       voice.applyForceMute(evt.muted);
     });
   });

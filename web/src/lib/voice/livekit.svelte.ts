@@ -261,6 +261,14 @@ class VoiceRoom {
   /** Tracks the last applied admin force-mute so applyForceMute only fires on
    *  the actual on→off / off→on transition (the WS event carries full state). */
   #forceMuted = false;
+  /** Tracks the last applied admin force-deafen, same role as #forceMuted. */
+  #forceDeafened = false;
+  /** Had the user SELF-deafened when the admin force-deafen landed? If so, the
+   *  admin's undeafen must NOT lift the user's own deafen — Ton und Mikrofon
+   *  bleiben stumm, bis der Nutzer selbst enttaubt (Meldung 16.11.: Server-Mute
+   *  + Unmute hob auch die eigene Taubstellung auf, weil der Handler den
+   *  Admin-Deafen-Flag mit dem lokalen `deafened` verglich). */
+  #selfDeafenedBeforeForceDeafen = false;
   /** Release fn for the screen wake-lock held while connected on mobile (so the
    *  phone's auto-lock can't blank the screen and suspend the outgoing mic).
    *  Null when not held. */
@@ -934,11 +942,12 @@ class VoiceRoom {
    *  Force-Mute ging sonst für immer verloren: das live-WS-Event traf tote
    *  Sockets, der Ready-Seed disabled nur die Buttons, der Track blieb
    *  unmuted — und applyForceMute(false) des späteren Unmute early-returnte,
-   *  weil #forceMuted nie true geworden war. */
+   *  weil #forceMuted nie true geworden war. Deafen zuerst, aus demselben
+   *  Grund wie im voice_override-Handler: setDeafened sichert den
+   *  Mikrofon-Vorzustand, bevor applyForceMute ihn wegsichert. */
   applyOverrideReconciliation(muted: boolean, deafened: boolean): void {
-    if (muted && !this.#forceMuted) this.applyForceMute(true);
-    if (!muted && this.#forceMuted) this.applyForceMute(false);
-    if (deafened !== this.deafened) this.setDeafened(deafened);
+    this.applyForceDeafen(deafened);
+    this.applyForceMute(muted);
   }
 
   /** React to an admin force-mute / force-unmute for the local user.
@@ -959,6 +968,30 @@ class VoiceRoom {
         void this.setMicEnabled(true);
       }
       this.#micEnabledBeforeForceMute = false;
+    }
+  }
+
+  /** React to an admin force-deafen / force-undeafen for the local user —
+   *  das Gegenstück zu applyForceMute. VOR dem Fix verglich der
+   *  voice_override-Handler den Admin-Flag direkt mit dem LOKALEN `deafened`
+   *  und rief setDeafened(evt.deafened): ein Admin-Mute (Event trägt
+   *  deafened=false) enttaubte einen selbst taubgestellten Nutzer — Ton an,
+   *  Mikrofon via #micEnabledBeforeDeafen wieder an —, und das spätere
+   *  Unmute stellte auch noch das Mikrofon her. Admin-Deafen und Selbst-Taub
+   *  sind zwei Zustände; nur ein Wechsel des Admin-Flags darf hier wirken. */
+  applyForceDeafen(deafened: boolean): void {
+    if (deafened === this.#forceDeafened) return;
+    this.#forceDeafened = deafened;
+    if (deafened) {
+      // Selbst-Taub merken: das Admin-Enttauben darf sie nicht aufheben.
+      // setDeafened(true) early-returnt bei bereits Tauben und lässt
+      // #micEnabledBeforeDeafen unangetastet — un-deafen durch den Nutzer
+      // stellt weiterhin das Mikrofon her.
+      this.#selfDeafenedBeforeForceDeafen = this.deafened;
+      this.setDeafened(true);
+    } else {
+      if (!this.#selfDeafenedBeforeForceDeafen) this.setDeafened(false);
+      this.#selfDeafenedBeforeForceDeafen = false;
     }
   }
 
@@ -1333,6 +1366,8 @@ class VoiceRoom {
     this.#micEnabledBeforeDeafen = false;
     this.#micEnabledBeforeForceMute = false;
     this.#forceMuted = false;
+    this.#forceDeafened = false;
+    this.#selfDeafenedBeforeForceDeafen = false;
     this.isScreenSharing = false;
     this.isCameraOn = false;
     this.localCameraTrack = null;
