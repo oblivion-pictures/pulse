@@ -95,7 +95,7 @@
   let selfForceMuted = $derived(
     selfContext ? voicePresence.isForceMuted(selfContext.cid, selfContext.uid) : false
   );
-  // Server force-deafen: voice.setDeafened is driven from the WS event
+  // Server force-deafen: voice.applyForceDeafen is driven from the WS event
   // handler; this flag just disables the toggle so the user can't undeafen
   // themselves until the override is cleared.
   let selfForceDeafened = $derived(
