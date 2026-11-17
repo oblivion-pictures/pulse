@@ -23,8 +23,10 @@ Side effects beyond ``websocket.send_json``: hydrates the
 ConnectionManager's per-socket caches (guild membership for precise
 permission-cache invalidation; friend/block sets for the presence
 visibility filter), and publishes a ``presence_update`` event when this
-is the user's first open socket. All of those need the same data the
-Ready frame already loaded — keeping them here avoids a second DB pass.
+is the user's first open socket (suppressed while the user is invisible
+— peers must keep seeing them offline). All of those need the same data
+the Ready frame already loaded — keeping them here avoids a second DB
+pass.
 """
 
 from __future__ import annotations
@@ -73,6 +75,7 @@ from dcc_chat_gateway.permissions import (
     resolve_guild_permissions_from_snapshot,
 )
 from dcc_chat_gateway.presence_status import (
+    STATUS_INVISIBLE,
     STATUS_ONLINE,
     _mask,
     get_presence_status_raw,
@@ -101,7 +104,7 @@ async def build_and_send_ready_frame(
 ) -> None:
     """Build the initial WS Ready snapshot, hydrate per-socket caches,
     send it to the client, and broadcast ``presence_update(online=True)``
-    iff this is the user's first open socket.
+    iff this is the user's first open socket and they are not invisible.
 
     ``manager`` is the :class:`ConnectionManager` from
     ``app.state.connection_manager`` — typed as plain ``Any`` to avoid a
@@ -488,20 +491,29 @@ async def build_and_send_ready_frame(
             await set_presence_status(redis, user.id, durable)
         else:
             own_presence_status = STATUS_ONLINE
-    # Bughunt-Entscheidung 4.3 (2026-09-21): der Intersect mit der
-    # Live-Socket-Menge passiert VOR dem Bulk-Fetch, nicht danach — der
-    # MGET lief sonst über ALLE Mitglieder ALLER Guilds (O(n) je Connect),
-    # obwohl hinterher nur die online Peers in die Map kommen. Offline
-    # Peers fallen ohnehin durch den Filter; ohne Status-Key im Client
-    # → 'offline' via displayStatus. Der Deckel ist damit die Instanz-
-    # Größen an CONCURRENT Sockets statt an Gesamtmitgliedern.
-    online_peer_ids = set(manager.online_user_ids())
-    gezielte_peers = [uid for uid in all_peer_ids if str(uid) in online_peer_ids]
-    peer_statuses_raw = await get_presence_statuses_bulk(redis, gezielte_peers)
+    # Bughunt-Entscheidung 4.3 (2026-09-21): der Bulk-Fetch läuft über die
+    # Live-Socket-Menge, nicht über ALLE Mitglieder ALLER Guilds (O(n) je
+    # Connect) — der Deckel ist damit die Instanz-Größe an CONCURRENT
+    # Sockets statt an Gesamtmitgliedern. Derselbe Fetch liefert zwei
+    # Dinge: die maskierte Peer-Map und den Invisible-Filter für die
+    # Hart-Online-Menge. Unsichtbare Nutzer bleiben verbunden (Voice-
+    # States laufen unmaskiert weiter), dürfen aber in ``online_user_ids``
+    # nicht auftauchen — für alle anderen sind sie offline, egal wie ihre
+    # Sockets stehen (2026-11-17: vorher standen sie in der Menge und der
+    # Client löste „Maske offline + Socket offen“ zugunsten von online
+    # auf). Die Peer-Map behält sie MASKIERT (``offline``), damit die
+    # Client-Anzeige auch dann nicht kippt, wenn die Socket-Menge sie
+    # doch noch hergibt.
+    online_ids_raw = manager.online_user_ids()
+    online_statuses = await get_presence_statuses_bulk(redis, online_ids_raw)
+    online_user_ids_sichtbar = [
+        uid for uid in online_ids_raw if online_statuses.get(uid) != STATUS_INVISIBLE
+    ]
+    raw_online_set = set(online_ids_raw)
     user_presence_statuses: dict[str, str] = {
-        str(uid): _mask(st)
-        for uid, st in peer_statuses_raw.items()
-        if str(uid) in online_peer_ids
+        str(uid): _mask(online_statuses[str(uid)])
+        for uid in all_peer_ids
+        if str(uid) in raw_online_set
     }
 
     # Hydrate the per-socket friend/block caches in the same loop so the
@@ -537,7 +549,7 @@ async def build_and_send_ready_frame(
         "stream_states": stream_states,
         "watch_states": watch_states,
         "voice_overrides": voice_overrides,
-        "online_user_ids": manager.online_user_ids(),
+        "online_user_ids": online_user_ids_sichtbar,
         # Etappe-3 presence status payload.
         # ``presence_status``: the caller's own real status (never masked).
         # ``user_presence_statuses``: map of visible peers → masked status.
@@ -595,7 +607,14 @@ async def build_and_send_ready_frame(
     first = is_first_socket if is_first_socket is not None else (
         manager.user_socket_count(user.id) == 1
     )
-    if broadcast_online and first:
+    # Ein unsichtbarer Nutzer darf seinen Connect nicht als presence_update
+    # (online=True) announce — sonst zeigen ihn Peers nach jedem Reconnect
+    # (auch zweites Gerät / Netz-Wackler) wieder als online, obwohl die
+    # masked-offline-Statusmeldung von vor dem Reconnect das Gegenteil
+    # sagte. Die eigene UI liest den echten Status aus ``presence_status``
+    # oben, nicht aus diesem Broadcast; ``own_presence_status`` steht an
+    # dieser Stelle schon fest (inkl. Restore aus dem durable Mirror).
+    if broadcast_online and first and own_presence_status != STATUS_INVISIBLE:
         try:
             await manager.broadcast_presence_update(str(user.id), online=True)
         except Exception:  # noqa: BLE001
