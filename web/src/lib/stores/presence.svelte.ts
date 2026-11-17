@@ -11,11 +11,14 @@
  *    masked — the wire payload sends our own status separately so we can
  *    show ``invisible`` in our own UI even though peers see ``offline``).
  *
- * Read-side semantics: ``isOnline()`` and ``displayStatus()`` treat socket
- * presence as the source of truth for online/offline and only consult
- * ``statuses`` for explicit idle/dnd choices on top of "currently online".
- * That way a friend who disconnects immediately flips back to "offline"
- * instead of being stuck on the last cached "dnd" until they reconnect.
+ * Read-side semantics: ``isOnline()`` and ``displayStatus()`` consult the
+ * masked status map FIRST — an explicit ``offline`` (the peer-side mask of
+ * ``invisible``) wins over an open socket, because that mask is the peer's
+ * wish, not a stale value. Only for peers without an explicit entry does
+ * socket presence decide online/offline; ``idle``/``dnd`` count on top of
+ * "currently online" (a friend who disconnects still flips back to
+ * "offline" instead of being stuck on the last cached "dnd"). The pure
+ * decision lives in ``presenceAnzeige.ts`` (testbar ohne Runes).
  *
  * Seeding contract: ``ready`` calls ``seed()`` for ``onlineIds`` and
  * ``seedStatuses()`` for the status map. The ``presence_status_changed``
@@ -25,6 +28,7 @@
 
 import { currentServerUserId } from '$lib/stores/currentServerUser';
 import { schreibeDndNachIdb } from '$lib/notifications/dndSpeicher';
+import { peerAnzeigeStatus, peerIstOnline } from '$lib/stores/presenceAnzeige';
 
 export type PresenceStatus = 'online' | 'idle' | 'dnd' | 'offline';
 export type OwnPresenceStatus = 'online' | 'idle' | 'dnd' | 'invisible';
@@ -141,22 +145,14 @@ class PresenceStore {
     // muss sich für einen selbst wie offline lesen — sonst sieht man sich oben
     // in der "Online"-Gruppe, während alle anderen einen offline sehen.
     if (userId === currentServerUserId()) return this.myStatus !== 'invisible';
-    // Socket-Präsenz ist die Quelle der Wahrheit für "gerade online". Ein
-    // veralteter ``statuses``-Eintrag (z.B. "dnd" von vor dem Disconnect,
-    // oder stehengengebliebene Cloud-Freunde nach einem Server-Switch —
-    // siehe Kommentar in ``multi-server-reset.ts``) darf nicht über den
-    // aktuellen Socket-Zustand triumphieren. Wer nicht in ``onlineIds``
-    // steht, ist offline, egal was die letzte bekannte Wahl war.
-    if (!this.onlineIds.has(userId)) return false;
-    // Explizites ``offline`` (peerseitige Maskierung von ``invisible``) bei
-    // gleichzeitig offenem Socket ist ein Widerspruch — der Peer ist live
-    // verbunden, also als online zählen.
-    return this.statuses[userId] !== 'offline';
+    // Maskiertes ``offline`` geht vor (Rangfolge: ``presenceAnzeige.ts``).
+    return peerIstOnline(this.onlineIds.has(userId), this.statuses[userId]);
   }
 
   /** Resolve the status string for ``userId`` — the canonical helper for
-   *  any presence-dot rendering. Socket presence wins; ``statuses`` only
-   *  contributes explicit idle/dnd choices for currently-online peers.
+   *  any presence-dot rendering. Masked ``offline`` (an invisible peer)
+   *  wins over an open socket; without an explicit entry, socket presence
+   *  decides, and ``idle``/``dnd`` only count for currently-online peers.
    *  Returns ``'offline'`` for any peer without an open socket, so the
    *  Online filter cannot leak stale values from a disconnected friend. */
   displayStatus(userId: string): PresenceStatus {
@@ -164,30 +160,21 @@ class PresenceStore {
       const s = this.myStatus;
       return s === 'invisible' ? 'offline' : s;
     }
-    // Siehe ``isOnline``: kein Socket → offline. Das schließt sowohl den
-    // Disconnect eines Cloud-Freundes (presence_update offline) als auch
-    // den Server-Switch-Fall (Cloud-Background bleibt, onlineIds ist auf
-    // den aktiven Server frisch geseedet — der getrennte Peer fehlt) ab.
-    if (!this.onlineIds.has(userId)) return 'offline';
-    const explicit = this.statuses[userId];
-    // Peerseitig maskierte ``invisible``-Peers landen als ``offline`` in
-    // der Map, sind aber sehr wohl live verbunden (wir haben den Socket
-    // gerade geprüft). Online als Default lesen — der explizite
-    // Server-Mask hat hier nur historische Bedeutung.
-    if (explicit === undefined || explicit === 'offline') return 'online';
-    return explicit;
+    // Rangfolge: ``presenceAnzeige.ts`` — der Kein-Socket-Fall deckt auch
+    // stehengebliebene Cloud-Freunde nach einem Server-Wechsel ab (siehe
+    // ``multi-server-reset.ts``).
+    return peerAnzeigeStatus(this.onlineIds.has(userId), this.statuses[userId]);
   }
 
   /** Status eines FREUNDES aus dem Cloud-Topf — für die Freundesliste. Gleiche
-   *  Semantik wie ``displayStatus`` (Socket = Wahrheit; explizites idle/dnd nur
-   *  obendrauf), aber gegen ``friendOnlineIds``/``friendStatuses``, die ein
-   *  Self-Host nicht anfasst. Kein Selbst-Sonderfall: man ist nie sein eigener
-   *  Freund. */
+   *  Semantik wie ``displayStatus``, aber gegen
+   *  ``friendOnlineIds``/``friendStatuses``, die ein Self-Host nicht anfasst.
+   *  Kein Selbst-Sonderfall: man ist nie sein eigener Freund. */
   displayStatusForFriend(userId: string): PresenceStatus {
-    if (!this.friendOnlineIds.has(userId)) return 'offline';
-    const explicit = this.friendStatuses[userId];
-    if (explicit === undefined || explicit === 'offline') return 'online';
-    return explicit;
+    return peerAnzeigeStatus(
+      this.friendOnlineIds.has(userId),
+      this.friendStatuses[userId]
+    );
   }
 
   clear(): void {

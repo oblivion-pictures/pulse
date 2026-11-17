@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-17",
+      "date": "2026-11-17",
+      "style": "Sachlich",
+      "title": "Unsichtbare Freunde nicht mehr als online angezeigt",
+      "items": [
+        "Freunde, die sich unsichtbar geschaltet haben, wurden versehentlich als online angezeigt — etwa nach dem eigenen Einloggen oder wenn deren Verbindung neu aufgebaut wurde. Das ist korrigiert."
+      ]
+    },
+    {
       "id": "2026-11-16",
       "date": "2026-11-16",
       "style": "Sachlich",

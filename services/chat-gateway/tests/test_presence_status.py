@@ -7,6 +7,8 @@ Covered:
   D. Idle sweeper: online user with stale activity → idle + broadcast; dnd/invisible → skip.
   E. Voice-presence: voice:events broadcast does NOT consult the status filter
      (users are visible in voice regardless of invisible status).
+  G. Invisible never leaks as online: ready frame (online_user_ids + masked
+     status map) and the connect broadcast suppress invisibles (2026-11-17).
 """
 
 from __future__ import annotations
@@ -686,3 +688,141 @@ async def test_ready_includes_online_friend_with_explicit_status(
             r.close()
 
     await asyncio.to_thread(_run)
+
+
+# ---------------------------------------------------------------------------
+# G. Invisible darf nie als online durchsickern (2026-11-17)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytestmark_peer_filter
+async def test_ready_hides_invisible_friend_from_online_user_ids(
+    ws_app, _auth_signer, redis_client
+):
+    """A connected friend with status=invisible must appear NEITHER in
+    ``online_user_ids`` (the hard-online socket set) NOR as online in
+    ``user_presence_statuses`` — to everyone else they are offline, open
+    socket or not. Regression guard for the 2026-11-17 bug where the raw
+    socket set contained invisibles and the client resolved "masked offline
+    + open socket" in favour of online."""
+    from dcc_chat_gateway.presence_keys import PRESENCE_STATUS_KEY
+    from dcc_chat_gateway.presence_status import STATUS_INVISIBLE
+
+    def _run():
+        viewer_uid = random.randint(1_000_000, 9_999_999)
+        friend_uid = random.randint(1_000_000, 9_999_999)
+        while friend_uid == viewer_uid:
+            friend_uid = random.randint(1_000_000, 9_999_999)
+        viewer_tok = _auth_signer.issue_access(viewer_uid, f"u{viewer_uid}")
+        friend_tok = _auth_signer.issue_access(friend_uid, f"u{friend_uid}")
+
+        db = chat_cfg.get_settings().database_url
+        install_friendship_sync(db, viewer_uid, friend_uid)
+
+        import redis as sync_redis
+
+        r = sync_redis.Redis.from_url(_REDIS_URL)
+        friend_key = PRESENCE_STATUS_KEY.format(user_id=friend_uid)
+        try:
+            r.set(friend_key, STATUS_INVISIBLE)
+            with TestClient(ws_app) as tc:
+                # Invisible friend connects first → open socket in the
+                # manager, status key says invisible.
+                with tc.websocket_connect(f"/ws?token={friend_tok}") as friend_ws:
+                    friend_ws.receive_json()  # hello
+                    friend_ws.receive_json()  # friend_ready (real: invisible)
+                    with tc.websocket_connect(f"/ws?token={viewer_tok}") as ws:
+                        ws.receive_json()  # hello
+                        payload = ws.receive_json()  # ready
+                        assert payload["op"] == "ready"
+                        # Hard-online set: invisible socket filtered out.
+                        assert str(friend_uid) not in payload["online_user_ids"]
+                        # Status map: masked to offline, not skipped.
+                        assert (
+                            payload["user_presence_statuses"].get(str(friend_uid))
+                            == "offline"
+                        )
+                        # The viewer themselves is of course still online.
+                        assert str(viewer_uid) in payload["online_user_ids"]
+        finally:
+            r.delete(friend_key)
+            r.close()
+
+    await asyncio.to_thread(_run)
+
+
+@pytest.mark.asyncio
+async def test_invisible_connect_broadcasts_no_presence_update(
+    ws_app, _auth_signer, redis_client
+):
+    """The first socket of an INVISIBLE user must not broadcast
+    ``presence_update(online=True)`` — otherwise every reconnect (second
+    device, network blip) re-announced them as online to peers. A visible
+    control user still fires the connect broadcast as before."""
+    from dcc_chat_gateway.presence_keys import PRESENCE_STATUS_KEY
+    from dcc_chat_gateway.presence_status import STATUS_INVISIBLE
+
+    broadcast_log: list[tuple[str, bool]] = []
+
+    inv_uid = random.randint(1_000_000, 9_999_999)
+    see_uid = random.randint(1_000_000, 9_999_999)
+    while see_uid == inv_uid:
+        see_uid = random.randint(1_000_000, 9_999_999)
+    inv_tok = _auth_signer.issue_access(inv_uid, f"u{inv_uid}")
+    see_tok = _auth_signer.issue_access(see_uid, f"u{see_uid}")
+
+    def _run():
+        import redis as sync_redis
+
+        r = sync_redis.Redis.from_url(_REDIS_URL)
+        inv_key = PRESENCE_STATUS_KEY.format(user_id=inv_uid)
+        try:
+            r.set(inv_key, STATUS_INVISIBLE)
+            with TestClient(ws_app) as tc:
+                # Lifespan läuft → ConnectionManager existiert jetzt.
+                mgr = ws_app.state.connection_manager
+                original = mgr.broadcast_presence_update
+
+                async def _cap(user_id: str, *, online: bool):
+                    broadcast_log.append((str(user_id), bool(online)))
+                    return await original(user_id, online=online)
+
+                mgr.broadcast_presence_update = _cap
+                try:
+                    # Invisible user connects (first socket) → no online=True.
+                    with tc.websocket_connect(f"/ws?token={inv_tok}") as inv_ws:
+                        inv_ws.receive_json()  # hello
+                        inv_ws.receive_json()  # ready
+                        # Control: without an invisible status the connect
+                        # broadcast fires as before.
+                        with tc.websocket_connect(f"/ws?token={see_tok}") as see_ws:
+                            see_ws.receive_json()  # hello
+                            see_ws.receive_json()  # ready
+                            # Wait (bounded) for the control broadcast so the
+                            # assertion below can't race the connect coroutine.
+                            deadline = time.time() + 5
+                            while not any(
+                                uid == str(see_uid) and online
+                                for uid, online in broadcast_log
+                            ):
+                                if time.time() > deadline:
+                                    break
+                                time.sleep(0.05)
+                finally:
+                    mgr.broadcast_presence_update = original
+        finally:
+            r.delete(inv_key)
+            r.close()
+
+    await asyncio.to_thread(_run)
+
+    # Invisible connect: no online=True broadcast (online=False from the
+    # final disconnect is fine and expected).
+    assert not any(
+        uid == str(inv_uid) and online for uid, online in broadcast_log
+    ), f"presence_update(online=True) leaked for invisible user: {broadcast_log}"
+    # Control user: connect broadcast fired.
+    assert any(
+        uid == str(see_uid) and online for uid, online in broadcast_log
+    ), f"control user's connect broadcast missing: {broadcast_log}"
