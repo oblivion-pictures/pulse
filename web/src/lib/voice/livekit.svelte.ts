@@ -865,7 +865,14 @@ class VoiceRoom {
     // Deafened → the mic is held off (setDeafened muted it). Toggling here would
     // compute target=true and re-enable the mic while the user believes they're
     // silent. Refuse — un-deafen is the only path that brings the mic back.
-    if (this.deafened) return;
+    // **Gesagt werden muss es trotzdem** (Meldung 21.11.: „kann mich nicht
+    // entstummen"): der Knopf ist nicht deaktiviert, auf dem Handy gibt es
+    // keinen Tooltip, und ohne Hinweis sieht der Taubzustand wie ein toter
+    // Mikrofon-Knopf aus — dabei erklärt er auch das „ich höre niemanden".
+    if (this.deafened) {
+      toast.info(m.livekit_mikro_taub());
+      return;
+    }
     // Force-muted by an admin → the mic toggle is inert (button is disabled;
     // this also blocks the keyboard-shortcut path). Mirrors toggleDeafen.
     if (this.#selfOverride().muted) return;
