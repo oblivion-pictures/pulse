@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-21",
+      "date": "2026-11-21",
+      "style": "Sachlich",
+      "title": "Mikrofon-Knopf erklärt Taubstellung",
+      "items": [
+        "Warst du taubgestellt, geschah beim Tippen auf den Mikrofon-Knopf nichts — kein Ton, keine Reaktion. Der Knopf weist jetzt darauf hin, dass zuerst das Taubstellen (Kopfhörer-Symbol) zurückgenommen werden muss; damit kommen Ton und Mikrofon zusammen zurück."
+      ]
+    },
+    {
       "id": "2026-11-17",
       "date": "2026-11-17",
       "style": "Sachlich",

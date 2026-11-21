@@ -1690,6 +1690,7 @@
   "livekit_leave_unconfirmed": "Die App hat das Verlassen nicht bestätigt — womöglich bist du noch verbunden.",
   "livekit_microphone_access_failed": "Mikrofon-Zugriff fehlgeschlagen",
   "livekit_microphone_not_found": "Kein Mikrofon gefunden — bitte eines anschließen und erneut versuchen.",
+  "livekit_mikro_taub": "Du bist taubgestellt — nimm zuerst das Taubstellen zurück (Kopfhörer-Symbol), dann kommt das Mikrofon mit.",
   "livekit_native_no_answer": "Die App hat nicht rechtzeitig geantwortet.",
   "livekit_screenshare_failed": "Bildschirm teilen fehlgeschlagen",
   "livekit_screenshare_unavailable": "Bildschirm teilen ist hier nicht verfügbar.",

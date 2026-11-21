@@ -1690,6 +1690,7 @@
   "livekit_leave_unconfirmed": "The app did not confirm leaving — you may still be connected.",
   "livekit_microphone_access_failed": "Microphone access failed",
   "livekit_microphone_not_found": "No microphone found — plug one in and try again.",
+  "livekit_mikro_taub": "You are deafened — un-deafen first (headphones icon); the mic comes back with it.",
   "livekit_native_no_answer": "The app did not respond in time.",
   "livekit_screenshare_failed": "Screen sharing failed",
   "livekit_screenshare_unavailable": "Screen sharing is not available here.",
