@@ -583,7 +583,7 @@
     {/if}
   {/snippet}
   {#snippet chatPanel()}
-    <WatchChatPanel {channelId} {partyId} source={party.source} onClose={() => (chatOpen = false)} />
+    <WatchChatPanel {channelId} {partyId} onClose={() => (chatOpen = false)} />
   {/snippet}
   {#snippet queuePanel()}
     <WatchQueuePanel {channelId} {partyId} {party} onClose={() => (queueOpen = false)} />

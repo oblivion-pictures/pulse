@@ -2,8 +2,6 @@
   WatchChatPanel — Seitenleisten-Chat für eine aktive Watch Party. Ein Chat pro
   Party (mehrere Partys pro Channel möglich → channelId + partyId). Backfill via
   REST, Live-Updates per WS `watch_chat_message`.
-  Läuft die Party auf einem Twitch-Live-Kanal, bietet eine Reiter-Leiste den
-  zusätzlich nur lesbaren Twitch-Chat an (WatchChatTabs + TwitchChatPanel).
 -->
 <script lang="ts">
 import { errText } from '$lib/utils/errText';
@@ -11,13 +9,10 @@ import { currentLocale } from '$lib/i18n';
   import { onMount, tick } from 'svelte';
   import { watchChat } from '$lib/stores/watchChat.svelte';
   import { userCache } from '$lib/stores/users.svelte';
-  import type { WatchSource } from '$lib/stores/watchPartyPresence.svelte';
   import { chatApi } from '$lib/api/chat';
   import MessageInput from '$lib/components/MessageInput.svelte';
   import MessageReactions from '$lib/components/MessageReactions.svelte';
   import EmojiPicker from '$lib/components/EmojiPicker.svelte';
-  import TwitchChatPanel from '$lib/components/TwitchChatPanel.svelte';
-  import WatchChatTabs from '$lib/components/WatchChatTabs.svelte';
   import { emojiPickerContentProps } from '$lib/components/emojiPickerContent';
   import EmptyState from '$lib/components/feedback/EmptyState.svelte';
   import LoadingState from '$lib/components/feedback/LoadingState.svelte';
@@ -32,32 +27,16 @@ import { currentLocale } from '$lib/i18n';
   let {
     channelId,
     partyId,
-    source,
     onClose
   }: {
     channelId: string;
     partyId: string;
-    /** Aktuelle Party-Quelle — entscheidet, ob es einen Twitch-Reiter gibt. */
-    source?: WatchSource;
     onClose?: () => void;
   } = $props();
 
   let messages = $derived(watchChat.for(channelId, partyId));
   let listEl = $state<HTMLDivElement | null>(null);
   let loading = $state(true);
-
-  // Twitch-Live-Quelle → zweiter Reiter mit dem (nur lesbaren) Kanal-Chat.
-  // Kanalnamen kleinschreiben: Twitch-IRC verlangt die Kleinform, das Backend
-  // normalisiert aber nicht (siehe watch_source.py).
-  const twitchChannel = $derived(
-    source?.type === 'twitch_live' ? source.channel.toLowerCase() : null
-  );
-  let tab = $state<'pulse' | 'twitch'>('pulse');
-  // Quelle weg vom Twitch-Live (Host wechselt das Video, Party endet) →
-  // zurück auf den Pulse-Reiter, statt einen toten Twitch-Reiter zu zeigen.
-  $effect(() => {
-    if (!twitchChannel) tab = 'pulse';
-  });
   // Auto-Scroll nur, wenn der User schon unten klebt — sonst reißt jede neue
   // Nachricht ihn aus dem Hochscrollen zurück (Twitch-Chat-Standardverhalten).
   let stickToBottom = $state(true);
@@ -172,17 +151,6 @@ import { currentLocale } from '$lib/i18n';
     {/if}
   </header>
 
-  {#if twitchChannel}
-    <WatchChatTabs active={tab} onSelect={(t) => (tab = t)} />
-  {/if}
-
-  {#if tab === 'twitch' && twitchChannel}
-    <!-- Twitch-Chat: eigene Verbindung (lebt nur, solange dieser Zweig
-         gemountet ist), kein Eingabefeld — nur lesen. -->
-    <div class="flex min-h-0 flex-1 flex-col">
-      <TwitchChatPanel channel={twitchChannel} />
-    </div>
-  {:else}
   <div
     bind:this={listEl}
     onscroll={onListScroll}
@@ -234,5 +202,4 @@ import { currentLocale } from '$lib/i18n';
   </div>
 
   <MessageInput placeholder={m.watch_chat_panel_input_placeholder()} onSend={send} />
-  {/if}
 </aside>
