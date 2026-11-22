@@ -2,6 +2,16 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-22",
+      "date": "2026-11-22",
+      "style": "Sachlich",
+      "title": "Twitch-Chat in Watch-Partys mitlesen",
+      "items": [
+        "Schaut eine Watch-Party einen Twitch-Live-Kanal, lässt sich der Chat des Streams jetzt direkt in Pulse mitlesen — als eigener Reiter neben dem Party-Chat.",
+        "Pulse liest nur mit; mitschreiben bleibt auf twitch.tv selbst. Kein Twitch-Konto, keine Anmeldung nötig."
+      ]
+    },
+    {
       "id": "2026-11-17",
       "date": "2026-11-17",
       "style": "Sachlich",
