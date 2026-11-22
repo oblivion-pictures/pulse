@@ -60,7 +60,6 @@ import { streamPresence } from './streamPresence.svelte';
 import { typing } from './typing.svelte';
 import { voicePresence } from './voicePresence.svelte';
 import { watchChat } from './watchChat.svelte';
-import { twitchChat } from './twitchChat.svelte';
 import { watchPartyPresence } from './watchPartyPresence.svelte';
 import { watchWatchers } from './watchWatchers.svelte';
 import { resetGuildPluginsCache } from '$lib/plugins';
@@ -106,8 +105,6 @@ export function resetServerScopedStores(): void {
   streamPresence.clear();
   streamChat.clearAll();
   watchChat.clearAll();
-  // Twitch-Live-Chat der Watch-Partys: Verbindungen kappen + Ringe leeren.
-  twitchChat.clearAll();
   watchPartyPresence.clear();
   watchWatchers.clear();
   typing.clearAll();
