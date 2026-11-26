@@ -44,6 +44,18 @@ export type AudioSettings = {
    * falls die höhere Mikrofon-Latenz stört, vor der Apple selbst warnt.
    */
   iosFunkHq: boolean;
+  /**
+   * Sprachkanal als Systemanruf (CallKit) in der iOS-App — **Vorgabe aus**.
+   *
+   * An heisst: Der Beitritt zu einem Sprachkanal wird dem iPhone als Anruf
+   * gemeldet, und das System führt die Audio-Session
+   * (`SpracheSystemanruf.swift`). Gedacht für das Mikrofon, das im Auto
+   * (CarPlay) beim Beitritt ausblieb. Ob der Weg im Moment trägt, entscheidet
+   * die Hülle — klappt es nicht, läuft der Kanal wie ohne Schalter.
+   * Nur ein Bau mit dem Weg bekommt den Wunsch (`nativeSystemanrufDa`);
+   * Desktop, Browser und Android tun mit dem Wert nichts.
+   */
+  iosSystemanruf: boolean;
   noiseGateThresholdDb: number;
   stereo: boolean;
   inputMakeupGain: number;
@@ -71,6 +83,7 @@ const DEFAULTS_AUDIO: AudioSettings = {
   noiseSuppression: 'rnnoise_gated',
   bluetoothHq: false,
   iosFunkHq: true,
+  iosSystemanruf: false,
   noiseGateThresholdDb: NOISE_GATE_DB_DEFAULT,
   stereo: false,
   inputMakeupGain: INPUT_MAKEUP_DEFAULT,
@@ -112,6 +125,8 @@ export const AUDIO_SECTION: SectionConfig<AudioSettings> = {
       echoCancellation: bool(a.echoCancellation, d.echoCancellation),
       bluetoothHq: a.bluetoothHq === true,
       iosFunkHq: a.iosFunkHq !== false,
+      // Vorgabe aus: nur ein gespeichertes „an" ist an.
+      iosSystemanruf: a.iosSystemanruf === true,
       // Migration: pre-binary configs may carry 'browser'/'rnnoise'/'deepfilternet'
       // (DFN3 was removed 2026-05-16). Any non-'off', non-current legacy value
       // indicates the user wanted *some* filter on — map to the gated mode.

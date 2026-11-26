@@ -105,8 +105,11 @@ final class StreamTonSitzung: @unchecked Sendable {
     func nachDemLetzten() {
         DispatchQueue.main.async { [self] in
             let v = Anrufverwaltung.geteilt
+            // Auch nicht, solange der Systemanruf des Kanals die Session führt
+            // oder seine Rückgabe noch aussteht: CallKit gibt sie frei, nicht wir.
             guard SpracheRaum.geteilt.raum == nil, AnrufRaum.geteilt.raum == nil,
-                  !v.callkitAktiv, !v.ohneCallKit else { return }
+                  !v.callkitAktiv, !v.ohneCallKit, !SpracheSystemanruf.geteilt.fuehrt,
+                  !SpracheSystemanruf.geteilt.rueckgabeAusstehend else { return }
             sperre.lock()
             defer { sperre.unlock() }
             let s = AVAudioSession.sharedInstance()

@@ -34,6 +34,7 @@ import type {
   NativerZustand,
   SpracheFunkHqPlugin,
   SprachePlugin,
+  SpracheSystemanrufPlugin,
   SpracheWachePlugin
 } from './iosSpracheTypen';
 
@@ -50,7 +51,10 @@ export {
 
 /** Alles, was die Hülle unter dem Namen `SprachePlugin` anbietet — je nach Bau
  *  nicht vollständig (s. `iosSpracheWeiche.ts`). */
-type HuellenPlugin = SprachePlugin & SpracheWachePlugin & SpracheFunkHqPlugin;
+type HuellenPlugin = SprachePlugin &
+  SpracheWachePlugin &
+  SpracheFunkHqPlugin &
+  SpracheSystemanrufPlugin;
 
 /**
  * **Über `registerPlugin`, nicht über `window.Capacitor.Plugins` — und das ist

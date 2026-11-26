@@ -3,16 +3,17 @@ import LiveKit
 import UIKit
 
 /// Was die Audio-Session der Hülle tut, während der Raum steht — beobachtet,
-/// nicht gesteuert; einzige Ausnahme ist der Ausgabe-Schalter (`ausgabe`),
-/// der zur Route gehört, die der Routen-Beobachter meldet.
+/// nicht gesteuert; einzige Ausnahme unter den Beobachtern ist der
+/// Ausgabe-Schalter (`ausgabe`), der zur Route gehört, die der
+/// Routen-Beobachter meldet. Seit dem Systemanruf steht hier zusätzlich das
+/// Aufräumen (`raumLoesen`), s. unten.
 ///
-/// **Warum eine eigene Datei.** Hier steht, ausser dem Schalter, nichts, was
-/// etwas bewirkt: nur Beobachter und ihre Begründungen — was sie anstossen,
-/// entscheidet der Mikrofon-Wächter (`SpracheMikroWache.swift`). Zusammen mit
-/// der Steuerung lag `SpracheRaum.swift` über der Grössen-Policy (`PLAN.md`
-/// §12.1). Reine Verschiebung, Verhalten unverändert; `sessionBeobachter`
-/// liegt weiter am Typ, weil eine Erweiterung keine gespeicherte Eigenschaft
-/// tragen kann.
+/// **Warum eine eigene Datei.** Die Beobachter hier stossen nur an — was sie
+/// anstossen, entscheidet der Mikrofon-Wächter (`SpracheMikroWache.swift`).
+/// Zusammen mit der Steuerung lag `SpracheRaum.swift` über der Grössen-Policy
+/// (`PLAN.md` §12.1). Reine Verschiebung, Verhalten unverändert;
+/// `sessionBeobachter` liegt weiter am Typ, weil eine Erweiterung keine
+/// gespeicherte Eigenschaft tragen kann.
 extension SpracheRaum {
     /// Horcht auf Routenwechsel UND Unterbrechungen der Session — einmal fuers
     /// ganze Leben des Singletons, nicht je Beitritt (beide haengen am
@@ -127,6 +128,44 @@ extension SpracheRaum {
             AudioManager.shared.isSpeakerOutputPreferred = lautsprecher
         }
         NSLog("[PulseSprache] Ausgabe '%@' gewuenscht", weg)
+        // Führt der Systemanruf, liest das SDK seinen Schalter nicht — dann
+        // stellt die Übersteuerung die Route (`SpracheSystemanrufSession.swift`).
+        SpracheSystemanruf.geteilt.ausgabe(lautsprecher: lautsprecher)
         schickeEigenen()
+    }
+
+    // MARK: - Aufräumen
+
+    /// Nimmt `r` als laufenden Raum heraus, falls er es noch ist. Bis zum
+    /// Systemanruf (2026-11-26) stand die Funktion in `SpracheRaum.swift`;
+    /// sie zog hierher, weil sie mit dem Raum endet und diese Datei die
+    /// Session-Seite des Raums ist — und weil `SpracheRaum.swift` sonst über
+    /// der Grössen-Policy läge. Wortgleich bis auf die Zeilen für den
+    /// Systemanruf. Intern statt privat, und `raum`, `kanalId` und
+    /// `kanalName` sind ohne `private(set)`: `private` gilt in Swift je
+    /// Datei, und `verlassen` und `raumAbgerissen` rufen sie aus
+    /// `SpracheRaum.swift`.
+    func raumLoesen(_ r: Room) {
+        guard raum === r else { return }
+        raum = nil
+        // Die unter CarPlay vorgewärmte Aufnahme gilt nur für diesen Raum.
+        Self.vorwaermenBeenden()
+        TonMessung.geteilt.beenden()
+        SpracheFunkHq.geteilt.raumWeg()
+        // Führt ein Systemanruf, endet er hier — die Session kommt mit
+        // `didDeactivate` zurück (`SpracheSystemanrufSession.swift`).
+        SpracheSystemanruf.geteilt.beenden(grund: "raum_weg")
+        StreamTonVerwaltung.geteilt.echoAnstossen()
+        wache.beenden()
+        kanalId = nil
+        kanalName = ""
+        // Was die Moderation in DIESEM Kanal geschaltet hat, gilt im nächsten nicht.
+        DispatchQueue.main.async { SpracheStand.geteilt.erzwungenSetzen(stumm: [], taub: []) }
+        // Der Begrenzer gehört zum Sprachkanal; der nächste Beitritt hängt ihn
+        // wieder ein, wenn die Einstellung es will (`SpracheRaumTaub.swift`).
+        tonFaden.async { Self.begrenzerSetzen(false) }
+        // Das Bild-in-Bild-Fenster zeigt diesen Raum — es geht mit ihm.
+        DispatchQueue.main.async { SpracheBildImBild.geteilt.raumWeg(r) }
+        SpracheLiveAktivitaet.beenden(sitzung: sitzung)
     }
 }

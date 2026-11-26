@@ -15,6 +15,9 @@ import PushKit
 /// (Bughunt E4).
 extension Anrufverwaltung: CXProviderDelegate {
     public func providerDidReset(_ provider: CXProvider) {
+        // Der Systemanruf des KANALS ist mit dem Reset ebenfalls weg — der
+        // Kanal bleibt, die Session gehört wieder dem SDK (`SpracheSystemanruf.swift`).
+        SpracheSystemanruf.geteilt.zurueckgesetzt()
         for uhr in klingelUhren.values { uhr.cancel() }
         klingelUhren.removeAll()
         for uhr in raumUhren.values { uhr.cancel() }
@@ -82,6 +85,11 @@ extension Anrufverwaltung: CXProviderDelegate {
     }
 
     public func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+        // Der Systemanruf des KANALS (`SpracheSystemanruf.swift`): eigene UUID, eigener Weg.
+        if SpracheSystemanruf.geteilt.gehoert(action.callUUID) {
+            SpracheSystemanruf.geteilt.startAusgefuehrt(provider, action)
+            return
+        }
         let uuid = action.callUUID
         sessionUebernehmen()
         action.fulfill()
@@ -96,6 +104,11 @@ extension Anrufverwaltung: CXProviderDelegate {
     /// ausgehender aufgelegt. Der Raum geht SOFORT zu — die Oberfläche kann
     /// eingefroren sein, und die Gegenseite darf nicht weiter mithören.
     public func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        // Für den Systemanruf des Kanals heisst „Beenden": den Kanal verlassen.
+        if SpracheSystemanruf.geteilt.gehoert(action.callUUID) {
+            SpracheSystemanruf.geteilt.vomSystemBeendet(action)
+            return
+        }
         let uuid = action.callUUID
         if stilleEnden.remove(uuid) == nil {
             melde(phasen[uuid] == .klingelt ? "ablehnen" : "auflegen", uuid)
@@ -109,6 +122,10 @@ extension Anrufverwaltung: CXProviderDelegate {
 
     /// Der Stummschalter im System-Bildschirm.
     public func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
+        if SpracheSystemanruf.geteilt.gehoert(action.callUUID) {
+            SpracheSystemanruf.geteilt.stumm(action)
+            return
+        }
         AnrufRaum.geteilt.mikrofonVonCallKit(stumm: action.isMuted)
         action.fulfill()
     }
@@ -116,12 +133,19 @@ extension Anrufverwaltung: CXProviderDelegate {
     public func provider(
         _ provider: CXProvider, didActivate audioSession: AVAudioSession
     ) {
+        // Führt der Systemanruf des Kanals, gehört die Aktivierung ihm.
+        if SpracheSystemanruf.geteilt.aktiviert() { return }
         sessionAktiviert()
     }
 
     public func provider(
         _ provider: CXProvider, didDeactivate audioSession: AVAudioSession
     ) {
+        // `true`: Der Systemanruf des Kanals führt noch, die Maschine ist sein —
+        // die Anruf-Logik hat dann nichts zu tun. Nach seinem Ende läuft sie
+        // weiter wie gewohnt (die Rückgabe hat schon stattgefunden oder ein
+        // Anruf führt inzwischen).
+        if SpracheSystemanruf.geteilt.deaktiviert() { return }
         sessionDeaktiviert()
     }
 
@@ -175,6 +199,9 @@ extension Anrufverwaltung: CXProviderDelegate {
             fertig()
             return
         }
+        // Die Hülle trägt einen CallKit-Anruf: Der Systemanruf des Kanals tritt
+        // zurück, bevor das Gespräch gemeldet wird (`SpracheSystemanruf.swift`).
+        SpracheSystemanruf.geteilt.weichen(grund: "beginnen")
         let uuid = UUID()
         kennungen[uuid] = kennung
         phasen[uuid] = phase

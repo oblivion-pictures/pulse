@@ -258,6 +258,21 @@ export interface SpracheFunkHqPlugin {
 export const SPRACHE_FUNK_HQ_METHODEN: readonly string[] = ['funkHq'];
 
 /**
+ * Der Sprachkanal als Systemanruf (CallKit, `SpracheSystemanruf.swift`) —
+ * Schalter und Kennzeichen zugleich, aus demselben Grund wie der Wächter und
+ * Bluetooth-HQ NICHT in `SPRACHE_METHODEN`: Ein älterer Bau gälte sonst als
+ * veraltet, statt nur ohne den Schalter zu laufen.
+ *
+ * Der Schalter wirkt sofort, auch mitten im Kanal — deshalb ein eigener Ruf
+ * und kein Feld an `beitreten` (das erst beim nächsten Beitritt griffe).
+ */
+export interface SpracheSystemanrufPlugin {
+  systemanruf(o: { an: boolean }): Promise<void>;
+}
+
+export const SPRACHE_SYSTEMANRUF_METHODEN: readonly string[] = ['systemanruf'];
+
+/**
  * Jede Methode, die die Oberfläche auf dem nativen Weg an der Hülle ruft — die
  * Liste, gegen die die Weiche den installierten Bau prüft
  * (`iosSpracheWeiche.ts`). Der Bau muss ALLE kennen, sonst gilt er als

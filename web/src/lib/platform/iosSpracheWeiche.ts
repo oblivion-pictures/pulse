@@ -23,6 +23,7 @@ import { huellenBefund } from './huelleKann.ts';
 import {
   SPRACHE_FUNK_HQ_METHODEN,
   SPRACHE_METHODEN,
+  SPRACHE_SYSTEMANRUF_METHODEN,
   SPRACHE_WACHE_METHODEN
 } from './iosSpracheTypen.ts';
 import { isCapacitorIOS } from './runtime.ts';
@@ -93,6 +94,15 @@ export function nativeWacheDa(): boolean {
  */
 export function nativeFunkHqDa(): boolean {
   return nativerSprachwegDa() && huellenBefund('SprachePlugin', SPRACHE_FUNK_HQ_METHODEN).da;
+}
+
+/**
+ * Trägt der Bau den Sprachkanal als Systemanruf (CallKit)? Nur dann gibt es
+ * den Schalter dafür; ein Bau ohne ihn zeigt ihn nicht — ein Schalter, der
+ * nichts tut, ist schlechter als keiner.
+ */
+export function nativeSystemanrufDa(): boolean {
+  return nativerSprachwegDa() && huellenBefund('SprachePlugin', SPRACHE_SYSTEMANRUF_METHODEN).da;
 }
 
 /**

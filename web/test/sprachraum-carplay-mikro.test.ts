@@ -79,9 +79,21 @@ test('Auswertung 2026-11-05: jedes Wiederverbinden stösst das Nachholen an', ()
 
 test('Auswertung 2026-11-05: unter CarPlay vor dem Verbinden vorwärmen, beim Verlassen abschalten', () => {
   const raum = huelle('SpracheRaum.swift');
-  assert.match(raum, /let vorgewaermt = await carPlayVorwaermen\(\)\n\s*TonMessung\.geteilt\.beginnen\(\)/);
-  assert.match(raum, /\["stumm": stumm, "vorgewaermt": vorgewaermt\]/);
-  assert.match(raum, /raum = nil\n[^\n]*\n\s*Self\.vorwaermenBeenden\(\)/);
+  // Seit dem Systemanruf geht das Vorwärmen über den Vorlauf
+  // (`SpracheSystemanruf.swift`): Führt ein Systemanruf, schaltet das System
+  // selbst; sonst wärmt der Vorlauf vor. In beiden Fällen VOR dem Verbinden.
+  assert.match(
+    raum,
+    /let vorlauf = await SpracheSystemanruf\.geteilt\.beitrittVorlauf\(\s*communityName: communityName, kanalName: kanalName\)\s*let vorgewaermt = vorlauf\.vorgewaermt\s*TonMessung\.geteilt\.beginnen\(\)/
+  );
+  assert.match(
+    huelle('SpracheSystemanruf.swift'),
+    /return \(false, await SpracheRaum\.geteilt\.carPlayVorwaermen\(\)\)/
+  );
+  assert.match(raum, /\["stumm": stumm, "vorgewaermt": vorgewaermt,\s*"systemanruf": vorlauf\.systemanruf\]/);
+  // Das Aufräumen (`raumLoesen`) zog am 2026-11-26 wortgleich nach
+  // `SpracheRaumSession.swift` (Grössen-Policy, Systemanruf).
+  assert.match(huelle('SpracheRaumSession.swift'), /raum = nil\n[^\n]*\n\s*Self\.vorwaermenBeenden\(\)/);
   const nachholen = huelle('SpracheRaumMikroNachholen.swift');
   // Dieselbe Verarbeitung wie die Spur, sonst schaltet die Maschine beim Veröffentlichen erneut um.
   assert.match(
@@ -98,7 +110,12 @@ test('Diagnose-Build: Messung beginnt vor dem Verbinden, endet beim Verlassen, W
   assert.match(raum, /TonMessung\.geteilt\.beginnen\(\)\n\s*let r = Room\(delegate: self, roomOptions: Self\.raumOptionen\(statistik: Self\.statistikNoetig\(\)\)\)/);
   assert.match(raum, /\.merging\(mikroZeit\) \{ \$1 \}\.merging\(TonMessung\.geteilt\.felder\(\)\) \{ \$1 \}/);
   assert.match(raum, /messReiheBeginnen\(sitzung: sitzung\)/);
-  assert.match(raum, /private func raumLoesen[\s\S]*?TonMessung\.geteilt\.beenden\(\)[\s\S]*?\n {4}\}/);
+  // `raumLoesen` zog am 2026-11-26 wortgleich nach `SpracheRaumSession.swift`
+  // (Grössen-Policy, Systemanruf) und ist dort intern statt privat.
+  assert.match(
+    huelle('SpracheRaumSession.swift'),
+    /func raumLoesen\(_ r: Room\) \{[\s\S]*?TonMessung\.geteilt\.beenden\(\)[\s\S]*?\n {4}\}/
+  );
   assert.match(huelle('SpracheRaumNeustart.swift'), /reportRemoteTrackStatistics: statistik/);
   const delegat = huelle('SpracheRaumDelegate.swift');
   assert.match(delegat, /diagMelden\("verbindung_wechsel", felder\)/);

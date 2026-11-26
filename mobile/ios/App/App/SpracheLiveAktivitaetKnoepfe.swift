@@ -29,7 +29,7 @@ extension SpracheRaum {
         case .stumm(let stumm):
             await mikrofonAusAktivitaet(an: !stumm)
         case .verlassen:
-            await verlassenAusAktivitaet()
+            await auflegenVonAussen()
         }
         SpracheLiveAktivitaet.anstossen(sofort: true)
     }
@@ -65,7 +65,13 @@ extension SpracheRaum {
     /// den Eintrag — der nächste Reload träte wieder bei. Hört das Web gar
     /// nicht zu (WebContent abgestürzt), merkt sich die Hülle das Auflegen
     /// selbst (`vomNutzerAufgelegt`, B1).
-    private func verlassenAusAktivitaet() async {
+    ///
+    /// **Gerufen wird es von beiden Wegen, die ausserhalb der Ansicht enden:**
+    /// dem Verlassen-Knopf der Live Activity und — seit dem Systemanruf —
+    /// „Beenden" im System-Bildschirm (`SpracheSystemanruf.swift`). Deshalb
+    /// intern und ohne „Aktivitaet" im Namen; bis zum 2026-11-26 hiess es
+    /// `verlassenAusAktivitaet`.
+    func auflegenVonAussen() async {
         _ = await wunschAnWeb?(.auflegen, true)
         await vomNutzerAufgelegt()
         melden("verbindung", ["zustand": "disconnected"])

@@ -2,6 +2,15 @@
   "_comment": "Pulse-Changelog. Neuester Eintrag zuerst. Wird beim Update-Reload einmalig als nicht-blockierender Toast unten rechts gezeigt, sobald der User eingeloggt ist (siehe web/src/lib/components/ChangelogGate.svelte + ChangelogToast.svelte). Pflege-Regeln: CLAUDE.md → 'Changelog'. Stil pro Eintrag wird vor jedem Push mit dem User abgestimmt. KEINE Emojis, nirgends.",
   "entries": [
     {
+      "id": "2026-11-26",
+      "date": "2026-11-26",
+      "style": "Sachlich",
+      "title": "Sprachkanal als Systemanruf (iPhone)",
+      "items": [
+        "In den iPhone-Einstellungen unter „Sprache & Video“ gibt es einen neuen Schalter „Sprachkanal als Systemanruf“, standardmäßig aus. Ist er an, behandelt das iPhone den Beitritt zu einem Sprachkanal wie einen Telefonanruf: Er erscheint auf dem Sperrbildschirm und in CarPlay, und die Knöpfe für Stumm und Beenden wirken von dort. Gedacht für den Fall, dass im Auto beim Beitritt das Mikrofon stumm bleibt. Wirksam mit der nächsten Version der iOS-App."
+      ]
+    },
+    {
       "id": "2026-11-21",
       "date": "2026-11-21",
       "style": "Sachlich",

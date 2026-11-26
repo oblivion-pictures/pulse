@@ -55,14 +55,18 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
     /// selbst (s. `wunsch`). Wird vom Plugin gesetzt.
     var wunschAnWeb: ((Wunsch, Bool) async -> Bool)?
 
-    /// Der LiveKit-Raum. **Setzen nur in dieser Datei** (`private(set)` ist in
-    /// Swift datei-weit) — gelesen wird er auch vom Zustandsteil und von der
-    /// nativen Ansicht, die ihn als `ObservableObject` beobachtet.
-    private(set) var raum: Room?
-    private(set) var kanalId: String?
+    /// Der LiveKit-Raum. **Gesetzt wird er nur hier (im Beitritt) und im
+    /// Aufräumen (`SpracheRaumSession.swift::raumLoesen`)** — gelesen wird er
+    /// auch vom Zustandsteil und von der nativen Ansicht, die ihn als
+    /// `ObservableObject` beobachtet. Kein `private(set)`: das gilt in Swift
+    /// je Datei und sperrte das Aufräumen aus, seit es in eigener Datei steht.
+    var raum: Room?
+    /// Der Kanal des Raums — gesetzt und gelöscht wie `raum`.
+    var kanalId: String?
     /// Gewünschter Kanalname für die Kopfzeile der nativen Ansicht. Kommt vom
-    /// Web mit — die Hülle kennt keine Kanäle.
-    private(set) var kanalName: String = ""
+    /// Web mit — die Hülle kennt keine Kanäle. Setzt und löscht der Beitritt
+    /// wie `raum`.
+    var kanalName: String = ""
     /// Zählt die Beitritte. **Die Antwort auf „welcher Raum ist gemeint?"** —
     /// ein Verlassen mit einer Sitzung, die nicht mehr die laufende ist, tut
     /// nichts. Ohne sie räumte ein überholter Beitritt im Web den NEUEREN Raum
@@ -188,8 +192,12 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         await hoerwunschSetzen(je: lautstaerken, gesamt: gesamt)
         // Unter CarPlay die Aufnahme VOR dem Verbinden starten: das Auto schaltet
         // dann in den Telefon-Modus, bevor die Signalverbindung steht
-        // (`SpracheRaumMikroNachholen.swift`, Befund 2026-10-25).
-        let vorgewaermt = await carPlayVorwaermen()
+        // (`SpracheRaumMikroNachholen.swift`, Befund 2026-10-25). Führt ein
+        // Systemanruf (`SpracheSystemanruf.swift`), schaltet das System selbst —
+        // dann ist kein Vorwärmen nötig.
+        let vorlauf = await SpracheSystemanruf.geteilt.beitrittVorlauf(
+            communityName: communityName, kanalName: kanalName)
+        let vorgewaermt = vorlauf.vorgewaermt
         TonMessung.geteilt.beginnen()
         let r = Room(delegate: self, roomOptions: Self.raumOptionen(statistik: Self.statistikNoetig()))
         sitzung += 1
@@ -251,7 +259,8 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         // Ausfall — nur der zweite Fall ist ein Anlass für den Bericht.
         let art = mikrofonFehler == nil ? "beitritt"
             : (Anrufverwaltung.mikrofonErlaubt() ? "beitritt_ohne_mikro" : "beitritt_ohne_erlaubnis")
-        diagMelden(art, tonBeleg().merging(["stumm": stumm, "vorgewaermt": vorgewaermt]) { $1 }
+        diagMelden(art, tonBeleg().merging(["stumm": stumm, "vorgewaermt": vorgewaermt,
+                                            "systemanruf": vorlauf.systemanruf]) { $1 }
             .merging(fehlerFelder) { $1 }
             .merging(mikroZeit) { $1 }.merging(TonMessung.geteilt.felder()) { $1 })
         await funkHqAbgleichen("beitritt")
@@ -275,28 +284,6 @@ final class SpracheRaum: NSObject, @unchecked Sendable {
         guard raum !== r else { return }
         await r.disconnect()
         throw Fehler.ueberholt
-    }
-
-    /// Nimmt `r` als laufenden Raum heraus, falls er es noch ist.
-    private func raumLoesen(_ r: Room) {
-        guard raum === r else { return }
-        raum = nil
-        // Die unter CarPlay vorgewärmte Aufnahme gilt nur für diesen Raum.
-        Self.vorwaermenBeenden()
-        TonMessung.geteilt.beenden()
-        SpracheFunkHq.geteilt.raumWeg()
-        StreamTonVerwaltung.geteilt.echoAnstossen()
-        wache.beenden()
-        kanalId = nil
-        kanalName = ""
-        // Was die Moderation in DIESEM Kanal geschaltet hat, gilt im nächsten nicht.
-        DispatchQueue.main.async { SpracheStand.geteilt.erzwungenSetzen(stumm: [], taub: []) }
-        // Der Begrenzer gehört zum Sprachkanal; der nächste Beitritt hängt ihn
-        // wieder ein, wenn die Einstellung es will (`SpracheRaumTaub.swift`).
-        tonFaden.async { Self.begrenzerSetzen(false) }
-        // Das Bild-in-Bild-Fenster zeigt diesen Raum — es geht mit ihm.
-        DispatchQueue.main.async { SpracheBildImBild.geteilt.raumWeg(r) }
-        SpracheLiveAktivitaet.beenden(sitzung: sitzung)
     }
 
     /// `sitzung`: nur verlassen, wenn genau dieser Beitritt noch läuft. `nil`

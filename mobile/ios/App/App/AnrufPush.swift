@@ -188,6 +188,10 @@ extension Anrufverwaltung {
     /// Hauptthread (CallKit ruft auf der Delegat-Queue, `CXProvider.h`).
     private func beiCallKitMelden(_ uuid: UUID, name: String, video: Bool,
                                   danach: @escaping (MeldungsFolge) -> Void) {
+        // Die Hülle trägt einen CallKit-Anruf: Der Systemanruf des Kanals endet,
+        // bevor das Gespräch gemeldet wird — im selben Lauf wie das Melden
+        // (Apples Pflicht bleibt gewahrt). Begründung: `SpracheSystemanruf.swift`.
+        SpracheSystemanruf.geteilt.weichen(grund: "melden")
         // Nicht zu erreichen: `starten()` legt den Anbieter vor der
         // Push-Registrierung an, und das Plugin ruft `starten()` vor jedem
         // `ankommen`.

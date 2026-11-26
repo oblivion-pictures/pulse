@@ -3179,6 +3179,8 @@
   "appsperre_einstellung_text": "Face ID or your device passcode is required when the app starts. While Pulse keeps running in the background, it will not ask again.",
   "settings_audio_ios_funk_hq_label": "Bluetooth headphones in high quality",
   "settings_audio_ios_funk_hq_hint": "With supported headphones (for example AirPods Pro 2) and iOS 26, you hear and speak more clearly in the channel instead of phone quality. Turn this off if others hear your voice with a delay.",
+  "settings_audio_ios_systemanruf_label": "Voice channel as a system call",
+  "settings_audio_ios_systemanruf_hint": "The iPhone treats the voice channel like a phone call: It appears on the lock screen and in CarPlay, and mute and end work from there. Meant for the case that your microphone stays silent when you join from a car. If a direct call comes in, the channel steps back. Bluetooth headphones then use phone quality.",
   "settings_audio_ios_diagnose_label": "Send diagnostics when audio fails",
   "settings_audio_ios_diagnose_hint": "If your microphone stops working in a voice channel, the app sends a short report about the audio state to Pulse – without messages, names or IDs.",
   "voice_mikro_tot_text": "Microphone stopped working",

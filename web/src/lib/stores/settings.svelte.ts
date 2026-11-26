@@ -253,6 +253,9 @@ class SettingsStore {
   setIosFunkHq(v: boolean): void {
     this.#audio.set('iosFunkHq', v);
   }
+  setIosSystemanruf(v: boolean): void {
+    this.#audio.set('iosSystemanruf', v);
+  }
 
   // --- voice / PTT setters ---
   setPttMode(v: boolean): void {
