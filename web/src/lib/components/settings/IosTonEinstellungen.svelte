@@ -9,6 +9,9 @@
     nur wenn der Bau ihn trägt (`nativeFunkHqDa`). Den Web-Weg dafür
     (`bluetoothHq`) gibt es nicht mehr (Eigentümer-Entscheid E6); ein früher
     gespeicherter Wert wird einmal übernommen (`platform/iosBluetoothHq.ts`).
+  - Sprachkanal als Systemanruf (CallKit): der Schalter `iosSystemanruf`, nur
+    wenn der Bau ihn trägt (`nativeSystemanrufDa`). Er wirkt sofort — auch
+    mitten im Kanal (`platform/iosSystemanruf.ts`).
   - Volle Tonqualität gibt es nicht mehr (Eigentümer-Entscheid 2026-10-17: es
     gilt Apples Sprachverarbeitung).
   - Diagnose bei Tonausfall: der Opt-out für den automatischen Bericht
@@ -21,13 +24,15 @@
   import Switch from '$lib/components/form/Switch.svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { funkHqSetzen } from '$lib/platform/iosFunkHq';
-  import { nativeFunkHqDa } from '$lib/platform/iosSpracheWeiche';
+  import { nativeFunkHqDa, nativeSystemanrufDa } from '$lib/platform/iosSpracheWeiche';
   import { isCapacitorIOS } from '$lib/platform/runtime';
+  import { systemanrufSetzen } from '$lib/platform/iosSystemanruf';
   import { settings } from '$lib/stores/settings.svelte';
   import { loadAll, saveAll } from '$lib/stream/persistence';
 
   const ios = isCapacitorIOS();
   const funkHqAnbieten = ios && nativeFunkHqDa();
+  const systemanrufAnbieten = ios && nativeSystemanrufDa();
   let diagnoseSenden = $state(true);
 
   onMount(async () => {
@@ -62,6 +67,18 @@
       (v) => {
         settings.setIosFunkHq(v);
         funkHqSetzen(v);
+      }
+    )}
+  {/if}
+  {#if systemanrufAnbieten}
+    {@render schalter(
+      'settings-ios-systemanruf',
+      m.settings_audio_ios_systemanruf_label(),
+      m.settings_audio_ios_systemanruf_hint(),
+      settings.audio.iosSystemanruf,
+      (v) => {
+        settings.setIosSystemanruf(v);
+        systemanrufSetzen(v);
       }
     )}
   {/if}

@@ -124,6 +124,10 @@ extension SpracheRaum {
             guard wartet else { return }
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
+        // Dasselbe für den Systemanruf des Kanals: Sein Ende wartet höchstens
+        // 3 s auf `didDeactivate`, und ein Beitritt in diesem Fenster tut gut
+        // daran, vorher zu warten (`SpracheSystemanruf.swift`).
+        await SpracheSystemanruf.geteilt.rueckgabeAbwarten()
     }
 
     /// Den Übergabeweg fahren, den die Hülle für CallKit schon kennt
@@ -162,7 +166,7 @@ extension SpracheRaum {
     func maschineNeu(grund: String, streamTonZurueck: Bool = true) async {
         let fehler = await MainActor.run { () -> String? in
             let v = Anrufverwaltung.geteilt
-            guard !v.callkitAktiv, !v.ohneCallKit else { return nil }
+            guard !v.callkitAktiv, !v.ohneCallKit, !SpracheSystemanruf.geteilt.fuehrt else { return nil }
             let am = AudioManager.shared
             am.audioSession.isAutomaticConfigurationEnabled = false
             // Der native Stream-Ton lässt seine Session-Anforderung los, solange
@@ -190,7 +194,7 @@ extension SpracheRaum {
     func maschineFreigeben(melden: Bool) async -> Bool {
         let fehler = await MainActor.run { () -> String? in
             let v = Anrufverwaltung.geteilt
-            guard !v.callkitAktiv, !v.ohneCallKit else { return nil }
+            guard !v.callkitAktiv, !v.ohneCallKit, !SpracheSystemanruf.geteilt.fuehrt else { return nil }
             AudioManager.shared.audioSession.isAutomaticConfigurationEnabled = true
             let fehler = Self.maschineFreigebenJetzt()
             StreamTonSitzung.geteilt.automatikAn(grund: "nachholen")
@@ -307,6 +311,8 @@ extension SpracheRaum {
             "agcAngef": am.platformVoiceProcessingState.voiceProcessingAGCEnabled.isRequested,
             "anrufPausiert": anrufPausiert,
             "callkitAktiv": Anrufverwaltung.geteilt.callkitAktiv,
+            // Führt der Systemanruf des Kanals die Session (`SpracheSystemanruf.swift`)?
+            "systemanruf": SpracheSystemanruf.geteilt.fuehrt,
             "verbunden": raum?.connectionState == .connected,
             "mikro": raum?.localParticipant.isMicrophoneEnabled() ?? false,
             "wacheTot": wache.tot

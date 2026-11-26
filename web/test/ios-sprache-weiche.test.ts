@@ -165,6 +165,33 @@ test('Bluetooth-HQ: der heutige Bau trägt ihn', async () => {
   assert.equal(nativeFunkHqDa(), true);
 });
 
+test('Systemanruf: ein Bau ohne `systemanruf` bleibt nativ, nur ohne den Schalter', async () => {
+  const { nativerSprachwegBefund, nativeSystemanrufDa } = await import(
+    '../src/lib/platform/iosSpracheWeiche.ts'
+  );
+  const { SPRACHE_METHODEN } = await import('../src/lib/platform/iosSpracheTypen.ts');
+  // Der Bau vor dem Systemanruf: nativer Weg samt Wächter und Bluetooth-HQ.
+  sprachKopfSetzen(
+    kopfWieDieHuelle('SprachePlugin', [...SPRACHE_METHODEN, 'diagnose', 'funkHq'])
+  );
+  assert.deepEqual(nativerSprachwegBefund(), { nativ: true });
+  assert.equal(nativeSystemanrufDa(), false);
+  // Und der Schalter gehört NICHT in die Liste des nativen Wegs — sonst fiele
+  // genau dieser Bau ganz auf den Web-Weg zurück.
+  assert.ok(!SPRACHE_METHODEN.includes('systemanruf'));
+});
+
+test('Systemanruf: der heutige Bau trägt ihn', async () => {
+  const { nativeSystemanrufDa } = await import('../src/lib/platform/iosSpracheWeiche.ts');
+  const swift = readFileSync(
+    new URL('../../mobile/ios/App/App/SprachePlugin.swift', import.meta.url),
+    'utf8'
+  );
+  const methoden = [...swift.matchAll(/CAPPluginMethod\(name: "(\w+)"/g)].map((t) => t[1]);
+  sprachKopfSetzen(kopfWieDieHuelle('SprachePlugin', methoden));
+  assert.equal(nativeSystemanrufDa(), true);
+});
+
 test('ausserhalb von iOS entscheidet die Plattform, nicht der Kopf', async () => {
   const { nativerSprachwegBefund } = await import('../src/lib/platform/iosSpracheWeiche.ts');
   Object.defineProperty(globalThis, 'navigator', {

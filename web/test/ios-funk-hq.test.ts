@@ -37,7 +37,9 @@ test('der Weg folgt der Route, dem Anruf-Ende und dem Beitritt', () => {
   assert.match(swift('SpracheRaumSession.swift'), /funkHqAnstossen\("route"\)/);
   assert.match(swift('SpracheRaumStumm.swift'), /funkHqAbgleichen\("anruf_ende"\)/);
   assert.match(swift('SpracheRaum.swift'), /await funkHqAbgleichen\("beitritt"\)/);
-  assert.match(swift('SpracheRaum.swift'), /SpracheFunkHq\.geteilt\.raumWeg\(\)/);
+  // Der Aufruf steht im Aufräumen (`raumLoesen`), das am 2026-11-26 wortgleich
+  // nach `SpracheRaumSession.swift` zog (Grössen-Policy, Systemanruf).
+  assert.match(swift('SpracheRaumSession.swift'), /SpracheFunkHq\.geteilt\.raumWeg\(\)/);
 });
 
 test('jede Diagnose-Zeile sagt, welcher Weg lief', () => {

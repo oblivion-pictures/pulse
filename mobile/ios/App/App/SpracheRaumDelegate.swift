@@ -35,7 +35,11 @@ extension SpracheRaum: RoomDelegate {
                                      "nach": Self.verbindungsName(state),
                                      "seitMs": TonMessung.geteilt.seitMs()]
         Task { diagMelden("verbindung_wechsel", felder) }
-        if state == .connected { schickeTeilnehmer() }
+        if state == .connected {
+            // Ab hier zählt CallKit die Dauer des Systemanrufs (`SpracheSystemanruf.swift`).
+            SpracheSystemanruf.geteilt.verbunden()
+            schickeTeilnehmer()
+        }
         // Wieder verbunden, aber das Mikrofon fehlt seit dem Beitritt noch: neu
         // anstossen. Im Auto riss die Verbindung genau beim ersten
         // Veröffentlichen ab (`SpracheRaumMikroNachholen.swift`).

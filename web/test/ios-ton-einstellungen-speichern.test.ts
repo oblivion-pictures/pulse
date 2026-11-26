@@ -26,6 +26,9 @@ test('der gespeicherte Wert übersteht das Neuladen (parse)', () => {
   // Bluetooth-HQ im nativen Kanal: Vorgabe an, ein gespeichertes „aus" bleibt.
   assert.equal(parse({}).iosFunkHq, true);
   assert.equal(parse({ iosFunkHq: false }).iosFunkHq, false);
+  // Sprachkanal als Systemanruf: Vorgabe aus, nur ein gespeichertes „an" ist an.
+  assert.equal(parse({}).iosSystemanruf, false);
+  assert.equal(parse({ iosSystemanruf: true }).iosSystemanruf, true);
 });
 
 test('die Schalter gehen über die Setter der Registry', () => {
@@ -35,6 +38,12 @@ test('die Schalter gehen über die Setter der Registry', () => {
   assert.doesNotMatch(ui, /setBluetoothHq|tonHqFunkSetzen/);
   assert.match(store, /setIosFunkHq\(v: boolean\): void \{\s*this\.#audio\.set\('iosFunkHq', v\);/);
   assert.match(ui, /settings\.setIosFunkHq\(v\)/);
+  // Dasselbe für den Schalter „Sprachkanal als Systemanruf".
+  assert.match(
+    store,
+    /setIosSystemanruf\(v: boolean\): void \{\s*this\.#audio\.set\('iosSystemanruf', v\);/
+  );
+  assert.match(ui, /settings\.setIosSystemanruf\(v\)/);
 });
 
 function dateien(dir: string): string[] {

@@ -218,7 +218,7 @@ final class SpracheMikroWache: @unchecked Sendable {
     private func nachholenFallsNoetig(_ jetzt: CFAbsoluteTime) {
         guard !nachholLaeuft, jetzt >= nachholenAb, sprache.raum != nil else { return }
         let v = Anrufverwaltung.geteilt
-        guard !v.callkitAktiv, !v.ohneCallKit,
+        guard !v.callkitAktiv, !v.ohneCallKit, !SpracheSystemanruf.geteilt.fuehrt,
               WacheRegeln.maschineGesperrt(AudioManager.shared.engineAvailability,
                                            erlaubt: Anrufverwaltung.mikrofonErlaubt()),
               !telefonatLaeuft(), stufeErlaubt(2, jetzt) else { return }
@@ -287,7 +287,12 @@ final class SpracheMikroWache: @unchecked Sendable {
         return !v.callkitAktiv && !v.ohneCallKit
     }
 
+    /// Der Systemanruf des KANALS zählt nicht: Er ist kein Telefonat, sondern
+    /// der Raum selbst. Ohne die Ausnahme hielte der Wächter den eigenen
+    /// Anruf für ein fremdes Gespräch und heilte nie mehr
+    /// (`SpracheSystemanruf.swift`).
     private func telefonatLaeuft() -> Bool {
-        anrufe.calls.contains { !$0.hasEnded }
+        let eigen = SpracheSystemanruf.geteilt.uuid
+        return anrufe.calls.contains { !$0.hasEnded && $0.uuid != eigen }
     }
 }

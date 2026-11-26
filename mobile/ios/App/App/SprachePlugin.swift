@@ -37,6 +37,10 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
         // Kennzeichen UND Schalter für Bluetooth in hoher Qualität
         // (`SpracheFunkHq.swift`), ebenfalls einzeln abgefragt (`nativeFunkHqDa`).
         CAPPluginMethod(name: "funkHq", returnType: CAPPluginReturnPromise),
+        // Kennzeichen UND Schalter für den Sprachkanal als Systemanruf
+        // (`SpracheSystemanruf.swift`), ebenfalls einzeln abgefragt
+        // (`nativeSystemanrufDa`).
+        CAPPluginMethod(name: "systemanruf", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnCallback),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise)
     ]
@@ -264,6 +268,13 @@ public class SprachePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func funkHq(_ call: CAPPluginCall) {
         SpracheFunkHq.geteilt.wunsch = call.getBool("an") ?? true
         SpracheRaum.geteilt.funkHqAnstossen("wunsch")
+        call.resolve()
+    }
+
+    /// Der Schalter „Sprachkanal als Systemanruf" (Vorgabe aus). Wirkt sofort,
+    /// auch mitten im Kanal (`SpracheSystemanruf.swift`). `an` fehlt: aus.
+    @objc func systemanruf(_ call: CAPPluginCall) {
+        SpracheSystemanruf.geteilt.wunschSetzen(call.getBool("an") ?? false, grund: "wunsch")
         call.resolve()
     }
 }

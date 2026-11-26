@@ -285,7 +285,10 @@ extension Anrufverwaltung {
 
     /// `.voiceChat`: Apples Sprachverarbeitung und Echo-Auslöschung — und am
     /// Ohr die richtige Wahl. Bluetooth-Kopfhörer bleiben erlaubt.
-    private func kategorieSetzen() {
+    ///
+    /// Intern seit dem Systemanruf des KANALS: `SpracheSystemanrufSession.swift`
+    /// führt dieselbe Kategorie — `private` gilt in Swift je Datei.
+    func kategorieSetzen() {
         do {
             try AVAudioSession.sharedInstance().setCategory(
                 .playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
@@ -296,7 +299,8 @@ extension Anrufverwaltung {
 
     /// Die Audio-Maschine sperren oder freigeben. Ein Fehlschlag wird
     /// geloggt, nicht geworfen — die Übergabe läuft trotzdem weiter.
-    private func maschineStellen(_ stand: AudioEngineAvailability, _ was: String) {
+    /// Intern aus demselben Grund wie `kategorieSetzen`.
+    func maschineStellen(_ stand: AudioEngineAvailability, _ was: String) {
         do {
             try AudioManager.shared.setEngineAvailability(stand)
             if stand.isInputAvailable { SpracheRaum.agcAus() }

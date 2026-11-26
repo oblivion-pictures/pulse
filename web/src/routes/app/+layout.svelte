@@ -50,6 +50,7 @@
   import { schnellwahlSetzen, schnellwahlVerfolgen } from '$lib/platform/schnellwahl';
   import { funkHqSetzen } from '$lib/platform/iosFunkHq';
   import { bluetoothHqEinmalUebernehmen } from '$lib/platform/iosBluetoothHqUebernahme';
+  import { systemanrufSetzen } from '$lib/platform/iosSystemanruf';
   import { settings } from '$lib/stores/settings.svelte';
   import { schnellwahlEintraege } from '$lib/platform/schnellwahlAuswahl';
   import VerbindungsHinweis from '$lib/components/VerbindungsHinweis.svelte';
@@ -368,6 +369,10 @@
     // des alten Web-Schalters einmal übernehmen (`platform/iosBluetoothHq.ts`).
     bluetoothHqEinmalUebernehmen();
     funkHqSetzen(settings.audio.iosFunkHq);
+    // Dasselbe für den Sprachkanal als Systemanruf: Die Hülle kennt den
+    // Schalter nach einem Prozess-Neustart nicht, und ein Kanal, den sie nach
+    // einem Neuladen der Oberfläche noch hält, soll ihn ebenfalls tragen.
+    systemanrufSetzen(settings.audio.iosSystemanruf);
 
     // Vom Betreiber gelöschte Self-Host-Server aus der lokalen Liste räumen
     // (öffentliche Suspend-Liste der Cloud, anonymer Abgleich). Fire-and-forget.
